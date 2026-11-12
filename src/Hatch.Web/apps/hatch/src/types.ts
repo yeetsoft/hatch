@@ -1,6 +1,7 @@
 /* The wire shapes, mirroring src/Hatch.Contracts/Dtos.cs.
 
-   Hand-written rather than generated, like every other app here. The one rule
+   Hand-written rather than generated, like every other hand-written mirror in
+   this app (lib/activity.ts, lib/attention.ts, and the rest). The one rule
    that keeps that honest: a field added there and not here is invisible, so
    these records are the place to look first when a value arrives undefined. */
 

@@ -150,7 +150,7 @@ into shipped work.
 
 It is spelled `Hatch` / `hatch` everywhere — C# namespace
 `Hatch.Api.Modules.Hatch`, Postgres schema `hatch`, routes under `/api/hatch`,
-bundle at `/apps/hatch/`, and its own host `hatch.${DOMAIN}`.
+bundle at `/`, and its own host `hatch.${DOMAIN}`.
 
 Four properties carry the design:
 
@@ -158,8 +158,8 @@ Four properties carry the design:
   Switching boards to find out what is next is the thing the markdown files
   already did badly.
 - **Behind the wall, and admin-gated on top of it.** The bundle 404s and the
-  API 403s for anyone who is not the operator — the same posture the admin app
-  takes, through the same gate.
+  API 403s for anyone who is not the operator — the same posture an
+  Admin-gated page takes, through the same gate.
 - **An agent is a first-class caller.** An `Authorization: Bearer hatch_ak_…` key
   reaches `/api/hatch/*` and nothing else, decided by the same gate that
   decides everything else. A ticket link is a complete instruction, and the
@@ -272,8 +272,7 @@ API for now" costs nothing architecturally.
 
 **Frontend: its own workspace SPA.**
 `src/Hatch.Web/apps/hatch`, built into `wwwroot/apps/hatch`, served by the same
-pod — the arrangement the admin and docs apps already use. It is an operator's
-tool.
+pod. It is an operator's tool.
 
 **The wire contract: its own project.** `src/Hatch.Contracts` holds the
 records the API serves and the records a client sends it — nothing else, and
@@ -290,7 +289,7 @@ being shell.
 
 **Host: one container, one origin.** The root [`compose.yaml`](../compose.yaml)
 is the standard way to run this install: `db`, a `migrate` step, and `api`
-serving every app — Hatch included — from `http://localhost:8080` (or
+serving the board and the sign-in shell from `http://localhost:8080` (or
 `HATCH_PORT`). There is no reverse proxy in front of it and nothing to rewrite:
 the board is served at the origin's own root, and `/api/hatch/*` is how a key
 can `curl` the API on the same origin the browser uses. A deep link pasted

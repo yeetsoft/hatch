@@ -3,7 +3,7 @@ import { DEFAULT_LANDING, safeReturnTo, signInHref } from './returnTo';
 
 describe('safeReturnTo', () => {
   it('keeps rooted same-origin paths', () => {
-    expect(safeReturnTo('/apps/hatch/plan')).toBe('/apps/hatch/plan');
+    expect(safeReturnTo('/plan')).toBe('/plan');
     expect(safeReturnTo('/x?a=b')).toBe('/x?a=b');
     expect(safeReturnTo('/')).toBe('/');
   });
@@ -27,7 +27,7 @@ describe('DEFAULT_LANDING', () => {
 
 describe('signInHref', () => {
   it('carries a safe r, encoded', () => {
-    expect(signInHref('/apps/hatch/plan')).toBe('/api/auth/google/start?r=%2Fapps%2Fhatch%2Fplan');
+    expect(signInHref('/plan')).toBe('/api/auth/google/start?r=%2Fplan');
   });
 
   it('drops an unsafe r', () => {

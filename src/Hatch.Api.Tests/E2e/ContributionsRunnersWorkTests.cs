@@ -64,7 +64,7 @@ public class ContributionsRunnersWorkTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/", StubAttention);
+            await harness.OpenAsync(deadline, baseUrl, "/", StubAttention);
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForVisibleAsync(deadline, $"{E2eHarness.AttentionSelector}.hatch-attention-asking");
             await harness.ClickAsync(deadline, E2eHarness.AttentionSelector);
@@ -125,7 +125,7 @@ public class ContributionsRunnersWorkTests(ITestOutputHelper output)
             }
 
             var puts = new List<string>();
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/projects", context => context.RouteAsync(
+            await harness.OpenAsync(deadline, baseUrl, "/projects", context => context.RouteAsync(
                 "**/api/hatch/projects/*/runners-work-contributions", route =>
                 {
                     lock (puts) puts.Add($"{route.Request.Method} {route.Request.PostData}");

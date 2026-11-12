@@ -17,13 +17,12 @@ namespace Hatch.Api.Modules.Hatch;
 /// other agents' containers authenticate with, and what to call whoever is
 /// sitting at this machine.
 ///
-/// Here rather than on the admin app's Settings page because an install with no
-/// admin app - which is every install that is only somebody's tracker - still
-/// has to be able to set them. They are the same site settings the admin page
-/// wrote, under the same keys, stored the same way, so an operator who set the
-/// token before this existed finds it already set here. The agent keys are
-/// held exactly as the token is: protected at rest, dots on read, <c>""</c>
-/// clears.
+/// Open to every signed-in User rather than gated to Admin, because an install
+/// with no Administrator yet - every install that is only somebody's tracker -
+/// still has to be able to set them. They are the same site settings an
+/// operator sets from here however the install is used, under the same keys,
+/// stored the same way. The agent keys are held exactly as the token is:
+/// protected at rest, dots on read, <c>""</c> clears.
 ///
 /// The two routes that read and write them are <c>[RequireRole(User)]</c> with
 /// no <c>AcceptKey</c>, unlike <see cref="UtilizationController"/> and
@@ -57,7 +56,7 @@ public class SettingsController(
     IOptions<AuthOptions> authOptions,
     ICallerIdentity caller) : ControllerBase
 {
-    /// <summary>What is stood in for a secret that is set. The admin app's SettingsController redacts to the same string, because it is the same answer.</summary>
+    /// <summary>What is stood in for a secret that is set.</summary>
     private const string Redacted = "••••••••";
 
     [HttpGet]

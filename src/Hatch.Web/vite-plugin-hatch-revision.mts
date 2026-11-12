@@ -120,14 +120,15 @@ export function hatchRevision({ app }: HatchRevisionOptions): RevisionPlugin {
  *
  * Same-origin only, and that is correctness rather than caution: a custom
  * header on a cross-origin request triggers a CORS preflight, turning one round
- * trip into two on a request that was working fine. Every Hatch app reaches its
- * API same-origin anyway (see docs/reverse-proxy-architecture.md).
+ * trip into two on a request that was working fine. Both Hatch apps reach
+ * their API same-origin anyway.
  *
  * Written as plain, conservative JS on purpose: it is injected verbatim into
  * index.html, which no build step transpiles, so whatever is written here is
- * what a browser parses. The kiosk tablets exist because their stock WebView
- * (Chrome 74) could not parse the dashboard's bundle at all - this is not the
- * file in which to discover the next such limit.
+ * what a browser parses. The kiosk tablets this suite once served, since
+ * retired, existed because their stock WebView (Chrome 74) could not parse
+ * the board's bundle at all - this is not the file in which to discover the
+ * next such limit.
  */
 function bootstrap(revision: string, sequence: string): string {
   return `
@@ -148,9 +149,11 @@ function bootstrap(revision: string, sequence: string): string {
           var headers = new Headers((init && init.headers) || (typeof input !== 'string' && input && input.headers) || undefined);
           headers.set('Hatch-Client-Revision', window.__hatchRevision);
           headers.set('Hatch-Client-Sequence', window.__hatchSequence);
-          // The kiosk shell tells the page its own revision (apps/kiosk); it is
-          // a separate artifact from this bundle and drifts independently, so
-          // it travels as its own header rather than overwriting this one.
+          // The kiosk shell this suite once served, since retired, told the
+          // page its own revision here; it was a separate artifact from this
+          // bundle and drifted independently, so it travelled as its own
+          // header rather than overwriting this one. Nothing sets
+          // window.__hatchShellRevision today.
           if (window.__hatchShellRevision) {
             headers.set('Hatch-Shell-Revision', window.__hatchShellRevision);
           }

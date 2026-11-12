@@ -42,8 +42,8 @@ public static class AuthCookie
     /// Found live on 2026-08-22 (docs/auth-architecture.md), the day after the
     /// wall went up: a phone that had signed in while Auth:CookieDomain was not
     /// yet supplied, and whose cookie was therefore host-only, held exactly
-    /// that pair. It authenticated on kiosk. and
-    /// bounced forever on home. - the sign-in loop that has no exit, because
+    /// that pair. It authenticated on one subdomain and
+    /// bounced forever on another - the sign-in loop that has no exit, because
     /// every successful redemption added a cookie that was then ignored.
     /// </summary>
     public static IReadOnlyList<string> ReadAll(HttpRequest request, AuthOptions options)
@@ -112,7 +112,7 @@ public static class AuthCookie
     private static CookieOptions Attributes(AuthOptions options, TimeSpan? maxAge) => new()
     {
         // The Domain attribute is the entire single-sign-on story: ".example.com"
-        // is what makes one enrollment cover home., kiosk. and share. Empty
+        // is what makes one enrollment cover every subdomain under it. Empty
         // leaves the cookie host-only, which is the only sane value on
         // localhost - and why the name has to be overridden there too, since
         // __Secure- is a promise about the whole cookie, not just its scope.

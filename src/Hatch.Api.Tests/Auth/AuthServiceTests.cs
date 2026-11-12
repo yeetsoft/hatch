@@ -368,7 +368,7 @@ public class AuthServiceTests
     {
         // EfAuthInvite.PersonId is deliberately not a foreign key. Someone
         // standing in the hall with a code read out five minutes ago must still
-        // get in after an unrelated tidy-up in the admin app - they end up with
+        // get in after an unrelated tidy-up by an Admin - they end up with
         // an unclaimed device, not a refusal.
         var (service, db, _) = NewService();
         var person = await AddPerson(db, "Ada");

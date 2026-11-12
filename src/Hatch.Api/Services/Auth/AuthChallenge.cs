@@ -94,8 +94,9 @@ public static class AuthChallenge
     /// wall working (a 302, on time, carrying the right ?r=) and the sign-in
     /// page never loading. An absolute Location is passed through untouched.
     ///
-    /// The origin is rebuilt from X-Forwarded-Proto/-Host so kiosk. still stays
-    /// on kiosk., and it is trusted only inside the cookie's own domain: a Host
+    /// The origin is rebuilt from X-Forwarded-Proto/-Host so a request to one
+    /// subdomain still stays on that subdomain, and it is trusted only inside
+    /// the cookie's own domain: a Host
     /// header naming anywhere else falls back to the relative form rather than
     /// turning the one page everybody is trained to trust into an open
     /// redirect. Traefik routes by Host rule and would not have asked about a
@@ -146,10 +147,10 @@ public static class AuthChallenge
     /// own-goal; keeping ?r= relative means there is nothing for the shell to
     /// get wrong beyond re-checking the same shape.
     ///
-    /// It is also why the redirect is relative on the wire: a request to
-    /// kiosk.&lt;domain&gt; bounces to kiosk.&lt;domain&gt;/auth/, not to
-    /// home., and the cookie's Domain attribute makes the resulting grant work
-    /// on both anyway.
+    /// It is also why the redirect is relative on the wire: a request to one
+    /// subdomain of the cookie's domain bounces to that same subdomain's
+    /// `/auth/`, not to another, and the cookie's Domain attribute makes the
+    /// resulting grant work on both anyway.
     /// </summary>
     public static string? SafeReturnTo(string? target)
     {

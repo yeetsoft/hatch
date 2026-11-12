@@ -7,7 +7,7 @@ namespace Hatch.Api.Tests;
 
 /// <summary>
 /// HA-269's criterion: the PWA manifest, now served at the origin's root
-/// (HA-2248) rather than under <c>/apps/hatch</c>, comes back as
+/// (HA-2248) rather than under the suite's old prefix, comes back as
 /// <c>application/manifest+json</c>, not whatever
 /// <see cref="Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider"/>'s
 /// defaults would otherwise fall back to for an unrecognised extension.
