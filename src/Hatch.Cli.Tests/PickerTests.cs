@@ -9,7 +9,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class PickerTests
 {
-    private const string Queue = "/api/hatch/work/queue";
+    private const string Queue = "/api/work/queue";
 
     private static string Held(string runner) =>
         $"\"hatch is working this from {runner}, last heard from 8 seconds ago\"";
@@ -30,7 +30,7 @@ public sealed class PickerTests
     private static readonly ModelFamilies TwoAgents = new([
         ModelFamilies.Default.Rows[0], new ModelFamily("fake-agent", "^fake-[a-z0-9-]+$", "fake-1")]);
 
-    private const string Claimed = "/api/hatch/issues/AER-2/claim";
+    private const string Claimed = "/api/issues/AER-2/claim";
 
     [Fact]
     public async Task The_queue_read_names_the_runner_so_the_board_can_defer_a_ticket_it_let_go()
@@ -51,7 +51,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picker = new Picker(
@@ -75,7 +75,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "claude-opus-5"), Fixtures.Row("AER-2", model: "opus") });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, agent: "fake-agent", families: TwoAgents)
@@ -83,7 +83,7 @@ public sealed class PickerTests
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
         Assert.Equal("AER-2", picked.Work!.Issue.Key);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         Assert.Equal(
             ["  AER-1  pinned to claude-opus-5, a claude model - this runner's agent is fake-agent"],
             picked.Skipped);
@@ -149,7 +149,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2", model: "opus") });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, agent: agent, families: TwoAgents)
@@ -176,7 +176,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "fake-1"), Fixtures.Row("AER-2", model: "claude-opus-5") });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, families: TwoAgents)
@@ -201,7 +201,7 @@ public sealed class PickerTests
             .Append(Fixtures.Row("AER-2")).ToArray();
         h.Wire.Json("GET", Queue, rows);
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, agent: "fake-agent", families: TwoAgents)
@@ -220,7 +220,7 @@ public sealed class PickerTests
         using var h = new Harness();
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, model: "claude-opus-5") });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h, agent: "fake-agent", families: TwoAgents)
             .PickAsync(null, 0, default, Harness.Beat);
@@ -241,14 +241,14 @@ public sealed class PickerTests
             Fixtures.Row("AER-1", deniedTools: ["Bash(git push:*)"]), Fixtures.Row("AER-2"),
         });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
         Assert.Equal("AER-2", picked.Work!.Issue.Key);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         Assert.Equal(["  AER-1  cannot deny Bash(git push:*)"], picked.Skipped);
 
         await picked.Claim!.ReleaseAsync();
@@ -278,7 +278,7 @@ public sealed class PickerTests
         var adapter = new FakeAdapter { CanDenyRefusal = "cannot deny Bash(git push:*)" };
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, deniedTools: ["Bash(git push:*)"]) });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
 
@@ -294,7 +294,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2", deniedTools: ["Bash(git push:*)"]) });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
@@ -326,14 +326,14 @@ public sealed class PickerTests
             Fixtures.Row("AER-1", model: "qwen3-coder:30b"), Fixtures.Row("AER-2"),
         });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, agent: "ollama", adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
         Assert.Equal("AER-2", picked.Work!.Issue.Key);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         Assert.Equal([$"  AER-1  {Unpulled}"], picked.Skipped);
 
         await picked.Claim!.ReleaseAsync();
@@ -363,7 +363,7 @@ public sealed class PickerTests
         var adapter = new FakeAdapter { CanServeRefusal = Unpulled };
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, model: "qwen3-coder:30b") });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h, adapter: adapter).PickAsync(null, 0, default, Harness.Beat);
 
@@ -389,14 +389,14 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "opus"), Fixtures.Row("AER-2") });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, narrowing: OpusNarrowed()).PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
         Assert.Equal("AER-2", picked.Work!.Issue.Key);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         Assert.Equal([$"  AER-1  {Narrowed}"], picked.Skipped);
 
         await picked.Claim!.ReleaseAsync();
@@ -407,7 +407,7 @@ public sealed class PickerTests
     {
         using var h = new Harness();
 
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
 
         var picked = await MakePicker(h, narrowing: OpusNarrowed()).NamedAsync("AER-1", default, Harness.Beat);
 
@@ -438,7 +438,7 @@ public sealed class PickerTests
         using var h = new Harness();
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, model: "opus") });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h, narrowing: OpusNarrowed()).PickAsync(null, 0, default, Harness.Beat);
 
@@ -454,7 +454,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, narrowing: OpusNarrowed()).PickAsync(null, 0, default, Harness.Beat);
@@ -478,7 +478,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2", model: "opus") });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, narrowing: narrowing, clock: clock).PickAsync(null, 0, default, Harness.Beat);
@@ -497,7 +497,7 @@ public sealed class PickerTests
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2", model: "qwen3-coder:30b") });
         h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
         h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, agent: "ollama").PickAsync(null, 0, default, Harness.Beat);
@@ -535,9 +535,9 @@ public sealed class PickerTests
         var token = Guid.NewGuid();
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", "a question is open"), Fixtures.Row("AER-2") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
@@ -547,11 +547,11 @@ public sealed class PickerTests
 
         // The runner's own lease must not fold the runner's own dispatch, which
         // is what the token on the second read is for.
-        Assert.Contains($"heldToken={token}", h.Wire.To("GET", "/api/hatch/work/AER-2")[0].Query,
+        Assert.Contains($"heldToken={token}", h.Wire.To("GET", "/api/work/AER-2")[0].Query,
             StringComparison.OrdinalIgnoreCase);
 
         // The blocked row was never reached for.
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
 
         await picked.Claim!.ReleaseAsync();
     }
@@ -564,17 +564,17 @@ public sealed class PickerTests
         var token = Guid.NewGuid();
 
         h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Equal(Pick.Claimed, picked.Outcome);
         var sent = Assert.Single(
-            h.Wire.To("POST", "/api/hatch/issues/AER-2/claim/heartbeat").Select(c => c.Read<ClaimHeartbeatRequest>()),
+            h.Wire.To("POST", "/api/issues/AER-2/claim/heartbeat").Select(c => c.Read<ClaimHeartbeatRequest>()),
             b => b.PlaybookId == Fixtures.Playbook().Id);
         Assert.Equal(token, sent.Token);
 
@@ -594,10 +594,10 @@ public sealed class PickerTests
         var token = Guid.NewGuid();
 
         h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", quietLimitSeconds: quietLimit));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", heartbeat, heartbeat == HttpStatusCode.NoContent ? "" : "boom");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2", quietLimitSeconds: quietLimit));
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim/heartbeat", heartbeat, heartbeat == HttpStatusCode.NoContent ? "" : "boom");
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
@@ -621,10 +621,10 @@ public sealed class PickerTests
         var token = Guid.NewGuid();
 
         h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", maxRunSeconds: maxRunSeconds));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", heartbeat, heartbeat == HttpStatusCode.NoContent ? "" : "boom");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2", maxRunSeconds: maxRunSeconds));
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim/heartbeat", heartbeat, heartbeat == HttpStatusCode.NoContent ? "" : "boom");
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
@@ -643,10 +643,10 @@ public sealed class PickerTests
         var token = Guid.NewGuid();
 
         h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", quietLimitSeconds: 1500, maxRunSeconds: 3600));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", HttpStatusCode.NoContent, "");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2", quietLimitSeconds: 1500, maxRunSeconds: 3600));
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim/heartbeat", HttpStatusCode.NoContent, "");
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
@@ -666,10 +666,10 @@ public sealed class PickerTests
         var token = Guid.NewGuid();
 
         h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
@@ -687,10 +687,10 @@ public sealed class PickerTests
         var token = Guid.NewGuid();
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.Conflict, Held("other:/tree"));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.Conflict, Held("other:/tree"));
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
@@ -712,7 +712,7 @@ public sealed class PickerTests
         var rows = Enumerable.Range(1, 8).Select(n => Fixtures.Row($"AER-{n}")).ToArray();
         h.Wire.Json("GET", Queue, rows);
         foreach (var row in rows)
-            h.Wire.Reply("POST", $"/api/hatch/issues/{row.Issue.Key}/claim", HttpStatusCode.Conflict,
+            h.Wire.Reply("POST", $"/api/issues/{row.Issue.Key}/claim", HttpStatusCode.Conflict,
                 Held("other:/tree"));
 
         var picked = await MakePicker(h)
@@ -755,12 +755,12 @@ public sealed class PickerTests
         var second = Guid.NewGuid();
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(first));
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", blocked: "a question is open here"));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(second));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(first));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", blocked: "a question is open here"));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(second));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h)
             .PickAsync(null, 0, default, Harness.Beat);
@@ -769,7 +769,7 @@ public sealed class PickerTests
         Assert.Equal("AER-2", picked.Work!.Issue.Key);
 
         // The one it could not use was let go of, not left held until the TTL.
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
 
         await picked.Claim!.ReleaseAsync();
     }
@@ -789,9 +789,9 @@ public sealed class PickerTests
             "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var picker = new Picker(
             h.Board, "test:/checkout", "test:/checkout", h.Say, h.Runtime.Checkouts, h.Root, null, workspace, (_, _) => new ThrowingClone());
@@ -800,7 +800,7 @@ public sealed class PickerTests
             () => picker.PickAsync(null, 0, default, Harness.Beat));
         Assert.Equal("AER-1", failed.Key);
 
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
@@ -812,14 +812,14 @@ public sealed class PickerTests
             "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/comments", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/comments", HttpStatusCode.InternalServerError, "boom");
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         h.Clone.Error = "could not clone";
 
@@ -929,9 +929,9 @@ public sealed class PickerTests
         };
 
         h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", repositories: repos));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2", repositories: repos));
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h, checkouts).PickAsync(null, 0, default, Harness.Beat);
 
@@ -952,9 +952,9 @@ public sealed class PickerTests
         var repos = new[] { Fixtures.Repository("https://example.test/elsewhere.git", primary: true, matchedRemote: null) };
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-3") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-3/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-3", Fixtures.Work("AER-3", repositories: repos));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-3/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-3/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/work/AER-3", Fixtures.Work("AER-3", repositories: repos));
+        h.Wire.Reply("DELETE", "/api/issues/AER-3/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
@@ -963,7 +963,7 @@ public sealed class PickerTests
         // busy rather than idle, exactly as it would for any other refusal.
         Assert.Equal(Pick.Busy, picked.Outcome);
         Assert.Contains(picked.Busy, b => b.Contains("AER-3", StringComparison.Ordinal));
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-3/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-3/claim"));
     }
 
     // ---- The hop ----
@@ -973,7 +973,7 @@ public sealed class PickerTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true) });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
@@ -989,7 +989,7 @@ public sealed class PickerTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Parent) });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
@@ -1002,7 +1002,7 @@ public sealed class PickerTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Epic) });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
@@ -1015,7 +1015,7 @@ public sealed class PickerTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Under, hopUnder: "HA-86") });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
@@ -1028,7 +1028,7 @@ public sealed class PickerTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.SendBack) });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
@@ -1041,7 +1041,7 @@ public sealed class PickerTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Approve) });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
@@ -1054,7 +1054,7 @@ public sealed class PickerTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Close) });
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
@@ -1069,10 +1069,10 @@ public sealed class PickerTests
         var token = Guid.NewGuid();
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true), Fixtures.Row("AER-2") });
-        h.Wire.Reply("POST", "/api/hatch/work/AER-1/hop", HttpStatusCode.Conflict, "\"AER-1 is not a hop\"");
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/work/AER-1/hop", HttpStatusCode.Conflict, "\"AER-1 is not a hop\"");
+        h.Wire.Reply("POST", "/api/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", "/api/issues/AER-2/claim", HttpStatusCode.NoContent);
 
         var picked = await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 

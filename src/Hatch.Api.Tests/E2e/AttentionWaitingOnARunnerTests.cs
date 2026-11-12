@@ -130,7 +130,7 @@ public class AttentionWaitingOnARunnerTests(ITestOutputHelper output)
             Conflicts: [],
             WaitingOnARunner: waiting ? [Row] : []);
 
-        return context.RouteAsync("**/api/hatch/attention", route => route.FulfillAsync(new()
+        return context.RouteAsync("**/api/attention", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(attention, Web),

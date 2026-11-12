@@ -34,8 +34,8 @@ public sealed class CodexStreamReaderTests
     [Fact]
     public void ACommandExecution_OfHatchApi_CountsItsEndpointWithoutTheQuery()
     {
-        var reader = Reader(Fixtures.CodexItemStarted("command_execution", command: "hatch api GET /api/hatch/issues?parentKey=HA-1"));
-        Assert.Equal([("/api/hatch/issues", 1)], ReadsOf(reader));
+        var reader = Reader(Fixtures.CodexItemStarted("command_execution", command: "hatch api GET /api/issues?parentKey=HA-1"));
+        Assert.Equal([("/api/issues", 1)], ReadsOf(reader));
     }
 
     [Fact]

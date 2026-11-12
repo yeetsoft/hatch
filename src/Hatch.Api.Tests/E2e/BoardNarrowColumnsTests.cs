@@ -121,13 +121,13 @@ public class BoardNarrowColumnsTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("E2E", "E2E"));
         var alpha = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "task", "Alpha", null, null, null, null));
+            http, "/api/issues", new(project.Id, "task", "Alpha", null, null, null, null));
         var beta = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "task", "Beta", null, null, null, null));
+            http, "/api/issues", new(project.Id, "task", "Beta", null, null, null, null));
 
-        var board = await http.GetFromJsonAsync<BoardDto>("/api/hatch/board", Web);
+        var board = await http.GetFromJsonAsync<BoardDto>("/api/board", Web);
         var columns = board!.Statuses.Where(s => !s.IsDeferred).OrderBy(s => s.SortOrder).ToList();
         Assert.True(columns.Count >= 2, "The board has fewer than two columns to move a card between.");
 
@@ -135,7 +135,7 @@ public class BoardNarrowColumnsTests(ITestOutputHelper output)
         var alphaColumn = columns.FindIndex(c => c.Id == alphaStatus);
         var betaColumn = alphaColumn == 0 ? 1 : 0;
 
-        using var response = await http.PostAsJsonAsync($"/api/hatch/issues/{beta.Key}/move", new IssueMoveRequest(columns[betaColumn].Id, null, null), Web);
+        using var response = await http.PostAsJsonAsync($"/api/issues/{beta.Key}/move", new IssueMoveRequest(columns[betaColumn].Id, null, null), Web);
         Assert.True(response.IsSuccessStatusCode, $"Moving {beta.Key} answered {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
 
         return (columns.Count, alphaColumn, betaColumn);

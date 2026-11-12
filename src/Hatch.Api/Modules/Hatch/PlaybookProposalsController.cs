@@ -23,7 +23,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// the group is not uniform the way <see cref="QuestionsController"/>'s is.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/playbook-proposals")]
+[Route("api/playbook-proposals")]
 public class PlaybookProposalsController(
     HatchContext db, ICallerIdentity caller, TimeProvider time, ModelFamilies? families = null) : ControllerBase
 {

@@ -94,4 +94,17 @@ describe('the timeline styles', () => {
   it('scrolls the pane sideways', () => {
     expect(declarationsIn(css, '.hatch-timeline-pane')['overflow-x']).toBe('auto');
   });
+
+  it('paints the ruler brush from a token, over the plot, and lets the pointer through', () => {
+    const brush = declarationsIn(css, '.hatch-timeline-brush');
+
+    expect(brush['background']).toBe('var(--primary-bg)');
+    expect(brush['position']).toBe('absolute');
+    expect(brush['pointer-events']).toBe('none');
+  });
+
+  it('makes only the brushable ruler a drag target', () => {
+    expect(declarationsIn(css, '.hatch-timeline-ruler--brushable')['cursor']).toBe('col-resize');
+    expect(declarationsIn(css, '.hatch-timeline-ruler')['cursor']).toBeUndefined();
+  });
 });

@@ -333,6 +333,9 @@ app.UseMiddleware<HatchRevisionMiddleware>();
 // to run - after the static block - would never get the chance: the /apps
 // mount would already have answered it.
 var opt = new RewriteOptions();
+// The Hatch module's old /api/hatch prefix, redirected to /api (301 for a read, 308
+// for everything else so a write keeps its method and body).
+opt.Add(new ApiPrefixRedirectRule());
 // The board is the whole origin now, so both of the house's old
 // general-purpose addresses, and every deep link that used to live under
 // /apps/hatch, redirect to the same path at the root. The query string

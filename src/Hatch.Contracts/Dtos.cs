@@ -70,7 +70,7 @@ public record ProjectDto(
 
 /// <summary>
 /// A stored file, as the list and the upload describe it. The bytes are not
-/// here: <c>GET /api/hatch/attachments/{id}</c> serves them.
+/// here: <c>GET /api/attachments/{id}</c> serves them.
 /// </summary>
 public record AttachmentDto(Guid Id, string FileName, string ContentType, long Size, DateTimeOffset CreatedAt);
 
@@ -1480,7 +1480,7 @@ public record ReviewDto(
 /// </param>
 /// <param name="Questions">
 /// Every open question in the house, oldest first - the same list, the same
-/// order and the same definition of open that <c>/api/hatch/questions</c>
+/// order and the same definition of open that <c>/api/questions</c>
 /// answers with, because it is the same call.
 /// </param>
 /// <param name="Conflicts">
@@ -1638,7 +1638,7 @@ public record BackupAttentionDto(string Sentence, DateTimeOffset? LastSuccessful
 
 /// <summary>
 /// The backup folder's truth and the last attempt's, for the Backups card -
-/// what <c>GET /api/hatch/backup</c> and <c>POST /api/hatch/backup/run</c>
+/// what <c>GET /api/backup</c> and <c>POST /api/backup/run</c>
 /// both answer.
 /// </summary>
 /// <param name="Configured">Whether an operator has set a backup path at all.</param>
@@ -2452,7 +2452,7 @@ public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);
 /// True where this issue is express, stands in a column marked
 /// <see cref="StatusDto.ExpressSkips"/>, and has no unanswered question - so
 /// the caller should carry it across itself, with
-/// <c>POST /api/hatch/work/{key}/hop</c>, and spawn nothing.
+/// <c>POST /api/work/{key}/hop</c>, and spawn nothing.
 /// <paramref name="Playbook"/> is always null on a hop, even where one covers
 /// the move, so no client can spawn a session for it by accident.
 /// </param>
@@ -3062,7 +3062,7 @@ public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Count
 /// <param name="To">The end of the range the answer covers, as resolved.</param>
 /// <param name="StepMinutes">The grid's bucket size in minutes: the finest of 1, 5, 15, 30, 60, 180, 360, 720, 1440 or 10080 that fits the point budget.</param>
 /// <param name="Columns">The board's columns, in board order, deferred columns excluded — parallel to each point's <see cref="CumulativeFlowPointDto.Counts"/>.</param>
-/// <param name="Projects">The project keys in scope, in <c>/api/hatch/projects</c>'s own order — parallel to each point's <see cref="CumulativeFlowPointDto.ProjectCounts"/>.</param>
+/// <param name="Projects">The project keys in scope, in <c>/api/projects</c>'s own order — parallel to each point's <see cref="CumulativeFlowPointDto.ProjectCounts"/>.</param>
 /// <param name="Points">One per grid step, oldest first.</param>
 /// <param name="Unresolved">Stretches in the range that named a column no longer on the board and were left out.</param>
 public record CumulativeFlowDto(

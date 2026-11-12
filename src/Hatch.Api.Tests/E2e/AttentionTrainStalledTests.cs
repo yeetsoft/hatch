@@ -120,7 +120,7 @@ public class AttentionTrainStalledTests(ITestOutputHelper output)
             Conflicts: [],
             TrainStalled: stalled ? [Row] : []);
 
-        return context.RouteAsync("**/api/hatch/attention", route => route.FulfillAsync(new()
+        return context.RouteAsync("**/api/attention", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(attention, Web),

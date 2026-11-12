@@ -301,7 +301,7 @@ public sealed class Claim : IAsyncDisposable
         // server's own ClaimedAt.
         var takenAt = client.Clock.GetUtcNow();
         var answer = await client.Send(
-            HttpMethod.Post, $"/api/hatch/issues/{key}/claim", new ClaimRequest(runner, playbookId), ct);
+            HttpMethod.Post, $"/api/issues/{key}/claim", new ClaimRequest(runner, playbookId), ct);
 
         if (answer.Conflict) return (null, new NotClaimed(answer.Sentence, Held: true));
         if (!answer.Ok) return (null, new NotClaimed($"the claim was refused - {answer.Sentence}", Held: false));
@@ -409,7 +409,7 @@ public sealed class Claim : IAsyncDisposable
             // HatchClient.Send spent retrying underneath it - see docs/hatch.md,
             // "What it stops for".
             var answer = await _quiet.Send(
-                HttpMethod.Post, $"/api/hatch/issues/{Key}/claim/heartbeat", body, ct);
+                HttpMethod.Post, $"/api/issues/{Key}/claim/heartbeat", body, ct);
 
             if (answer.Ok)
             {
@@ -519,9 +519,9 @@ public sealed class Claim : IAsyncDisposable
 
         var path = outcome is { Length: > 0 }
             ? reason is { Length: > 0 }
-                ? $"/api/hatch/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}&reason={Uri.EscapeDataString(reason)}"
-                : $"/api/hatch/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}"
-            : $"/api/hatch/issues/{Key}/claim?token={Token}";
+                ? $"/api/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}&reason={Uri.EscapeDataString(reason)}"
+                : $"/api/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}"
+            : $"/api/issues/{Key}/claim?token={Token}";
 
         try
         {
@@ -536,7 +536,7 @@ public sealed class Claim : IAsyncDisposable
             // since a 400 on any other is the endpoint refusing something
             // else. Otherwise the claim would sit out its lease.
             if (answer.Status == HttpStatusCode.BadRequest && outcome is ClaimOutcomes.Unservable or ClaimOutcomes.Unstarted)
-                await _client.Send(HttpMethod.Delete, $"/api/hatch/issues/{Key}/claim?token={Token}", null, budget.Token);
+                await _client.Send(HttpMethod.Delete, $"/api/issues/{Key}/claim?token={Token}", null, budget.Token);
         }
         catch (OperationCanceledException)
         {
@@ -556,7 +556,7 @@ public sealed class Claim : IAsyncDisposable
     public async Task<bool> AttachPlaybookAsync(int playbookId, CancellationToken ct)
     {
         var answer = await _quiet.Send(
-            HttpMethod.Post, $"/api/hatch/issues/{Key}/claim/heartbeat",
+            HttpMethod.Post, $"/api/issues/{Key}/claim/heartbeat",
             new ClaimHeartbeatRequest(Token, null, playbookId), ct);
         return answer.Ok;
     }

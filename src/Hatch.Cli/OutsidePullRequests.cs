@@ -342,7 +342,7 @@ public static class OutsidePullRequests
 /// </summary>
 /// <remarks>
 /// <para>In three writes, in this order, so a failure part-way leaves a visible issue and never a silent
-/// record: the issue, then its contribution record (which is also what <c>GET /api/hatch/issues?pullRequestUrl=</c>
+/// record: the issue, then its contribution record (which is also what <c>GET /api/issues?pullRequestUrl=</c>
 /// finds it by), then the move into review. The stage each pull request has reached is kept, so a later tick
 /// resumes at the write that failed and never files a second issue. A restart forgets it: the half-filed
 /// issue stays where it is, with the pull request's URL in its description.</para>

@@ -21,7 +21,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// it. Decorating the one action explicitly is what keeps a key out.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/dreams/weave")]
+[Route("api/dreams/weave")]
 public class DreamWeaveController(
     HatchContext db, TimeProvider time, ICallerIdentity caller,
     IActorDirectory actors, RankService ranks, IssueClaims claims) : ControllerBase
@@ -72,7 +72,7 @@ public class DreamWeaveController(
 
         if (created.Result is not CreatedAtActionResult { Value: IssueDto dto }) return created.Result!;
 
-        return Created($"/api/hatch/issues/{dto.Key}", dto);
+        return Created($"/api/issues/{dto.Key}", dto);
     }
 
     /// <summary>

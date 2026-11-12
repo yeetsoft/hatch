@@ -14,7 +14,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>GET /api/hatch/backup</c> and <c>POST /api/hatch/backup/run</c> - the
+/// <c>GET /api/backup</c> and <c>POST /api/backup/run</c> - the
 /// folder read, the gate around a run, and the person-only refusal, against a
 /// <see cref="BackupService"/> wired the same way <see cref="BackupServiceTests"/>
 /// wires it, never a real <c>pg_dump</c>.

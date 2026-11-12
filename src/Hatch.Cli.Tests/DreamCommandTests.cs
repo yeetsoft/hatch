@@ -7,7 +7,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class DreamCommandTests
 {
-    private const string Route = "/api/hatch/dreams";
+    private const string Route = "/api/dreams";
 
     private static ProjectDto AProject(int id, string key) =>
         new(id, key, key, 0, DateTimeOffset.UtcNow, null, null, [], null, [], false, false);
@@ -39,7 +39,7 @@ public sealed class DreamCommandTests
     public async Task A_source_and_a_project_key_post_the_source_and_the_projects_id(params string[] args)
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/projects", new List<ProjectDto> { AProject(3, "AER") });
+        h.Wire.Json("GET", "/api/projects", new List<ProjectDto> { AProject(3, "AER") });
         h.Wire.Json("POST", Route, ADream());
 
         Assert.Equal(0, await new DreamCommand(h.Cli).RunAsync(args, default));
@@ -54,7 +54,7 @@ public sealed class DreamCommandTests
     public async Task An_unknown_project_is_refused_before_anything_is_posted()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/projects", new List<ProjectDto> { AProject(3, "AER") });
+        h.Wire.Json("GET", "/api/projects", new List<ProjectDto> { AProject(3, "AER") });
 
         Assert.Equal(1, await new DreamCommand(h.Cli).RunAsync(["words", "--project", "ZZZ"], default));
 

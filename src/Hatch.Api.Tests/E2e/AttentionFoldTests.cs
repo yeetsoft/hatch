@@ -137,7 +137,7 @@ public class AttentionFoldTests(ITestOutputHelper output)
                 ? [new ConflictDto("E2E-14", "A story whose branch stopped merging", "story", "https://forge.example/pulls/14", [])]
                 : []);
 
-        return context.RouteAsync("**/api/hatch/attention", route => route.FulfillAsync(new()
+        return context.RouteAsync("**/api/attention", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(attention, Web),

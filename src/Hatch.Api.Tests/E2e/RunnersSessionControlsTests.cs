@@ -85,7 +85,7 @@ public class RunnersSessionControlsTests(ITestOutputHelper output)
             await deadline.BoundAsync("pausing the second session", () =>
                 page.Locator(".hatch-runner-session").Nth(1).GetByRole(AriaRole.Button, new() { Name = "Pause", Exact = true }).ClickAsync());
             await deadline.BoundAsync("waiting for the pause", () => WaitForRequests(sent, 1));
-            Assert.Equal(["PATCH /api/hatch/runners/" + Owned + "/sessions/2 {\"state\":\"paused\"}"], sent);
+            Assert.Equal(["PATCH /api/runners/" + Owned + "/sessions/2 {\"state\":\"paused\"}"], sent);
 
             // Stop all asks first, with the live loop count; Leave it sends nothing.
             await harness.ClickAsync(deadline, ".hatch-section-actions button:text-is(\"Stop all\")");
@@ -99,7 +99,7 @@ public class RunnersSessionControlsTests(ITestOutputHelper output)
             await deadline.BoundAsync("confirming", () => page.Locator(".hatch-form-actions").GetByRole(AriaRole.Button, new() { Name = "Stop all" }).ClickAsync());
             await harness.WaitForVisibleAsync(deadline, ".text-danger");
             Assert.Equal(2, sent.Count);
-            Assert.Equal("POST /api/hatch/runners/" + Owned + "/stop-all", sent[1]);
+            Assert.Equal("POST /api/runners/" + Owned + "/stop-all", sent[1]);
             var refusal = await harness.EvaluateOnAsync<string>(deadline, "reading the refusal", ".text-danger", "e => e.textContent ?? ''");
             Assert.Equal(RefusalSentence, refusal);
             var inCard = await harness.EvaluateOnAsync<bool>(deadline, "locating the refusal", ".text-danger", "e => e.closest('.hatch-card, [class*=card]')?.textContent?.includes('Live sessions') === true");
@@ -215,13 +215,13 @@ public class RunnersSessionControlsTests(ITestOutputHelper output)
             Runner(Viewed, false, "an invented owner", Session(4, "loop", 30)),
         };
 
-        await context.RouteAsync("**/api/hatch/runners*", route => route.FulfillAsync(new()
+        await context.RouteAsync("**/api/runners*", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(runners, Web),
         }));
 
-        await context.RouteAsync("**/api/hatch/runners/**", async route =>
+        await context.RouteAsync("**/api/runners/**", async route =>
         {
             var request = route.Request;
             var line = $"{request.Method} {new Uri(request.Url).AbsolutePath}{(request.PostData is null ? "" : " " + request.PostData)}";

@@ -113,9 +113,9 @@ public class AttachmentListTests
             await harness.SelectAllAsync(deadline);
             await harness.InsertTextAsync(
                 deadline,
-                $"![image](/api/hatch/images/{image1Id})\n" +
-                $"![image](/api/hatch/images/{image2Id})\n" +
-                "[gone](/api/hatch/attachments/00000000-0000-0000-0000-000000000000)");
+                $"![image](/api/images/{image1Id})\n" +
+                $"![image](/api/images/{image2Id})\n" +
+                "[gone](/api/attachments/00000000-0000-0000-0000-000000000000)");
 
             await harness.WaitForFunctionAsync(deadline, "waiting for the pdf's row to drop", RowCountScript, 3);
 
@@ -175,7 +175,7 @@ public class AttachmentListTests
             string? descriptionAfterDelete = null;
             for (var i = 0; i < 50; i++)
             {
-                var issueAfterDelete = await http.GetAsync($"/api/hatch/issues/{key}");
+                var issueAfterDelete = await http.GetAsync($"/api/issues/{key}");
                 Assert.Equal(HttpStatusCode.OK, issueAfterDelete.StatusCode);
                 descriptionAfterDelete = JsonDocument.Parse(await issueAfterDelete.Content.ReadAsStringAsync())
                     .RootElement.GetProperty("description").GetString();
@@ -184,7 +184,7 @@ public class AttachmentListTests
             }
             Assert.DoesNotContain(pdfId.ToString(), descriptionAfterDelete);
 
-            var deletedAttachment = await http.GetAsync($"/api/hatch/attachments/{pdfId}");
+            var deletedAttachment = await http.GetAsync($"/api/attachments/{pdfId}");
             Assert.Equal(HttpStatusCode.NotFound, deletedAttachment.StatusCode);
 
             await harness.ClickAsync(deadline, $"{DescriptionSection} button:text-is(\"Edit\")");
@@ -288,10 +288,10 @@ public class AttachmentListTests
         await db.SaveChangesAsync();
 
         var description =
-            $"![image](/api/hatch/images/{image1.Id})\n" +
-            $"[report.pdf](/api/hatch/attachments/{pdf.Id})\n" +
-            $"![image](/api/hatch/images/{image2.Id})\n" +
-            $"[gone](/api/hatch/attachments/{Guid.NewGuid()})";
+            $"![image](/api/images/{image1.Id})\n" +
+            $"[report.pdf](/api/attachments/{pdf.Id})\n" +
+            $"![image](/api/images/{image2.Id})\n" +
+            $"[gone](/api/attachments/{Guid.NewGuid()})";
 
         db.Issues.Add(new EfHatchIssue
         {

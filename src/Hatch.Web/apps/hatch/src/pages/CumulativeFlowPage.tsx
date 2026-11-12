@@ -7,6 +7,7 @@ import { Facet } from '../components/Facet';
 import { ProjectsFacet } from '../components/ProjectsFacet';
 import { isEmpty, resolveColourBy, withColourBy } from '../lib/cumulativeFlow';
 import type { ColourBy } from '../lib/cumulativeFlow';
+import type { ReportWindow } from '../lib/reportWindow';
 import { makeScale, noProjectWords, reportProjects, unresolvedPhrase, withProjects } from '../lib/timeline';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { useLoaded } from '../lib/useLoaded';
@@ -32,6 +33,7 @@ interface BodyProps {
   offsetMinutes: number;
   now: Date;
   locale?: string;
+  onFrame: (window: ReportWindow) => void;
 }
 
 /**
@@ -43,7 +45,7 @@ interface BodyProps {
  * Pure of the load and of the URL, so a test can render it from props - there
  * is no DOM runner to drive `useLoaded`.
  */
-export function CumulativeFlowBody({ answer, statuses, by, projects, offsetMinutes, now, locale }: BodyProps) {
+export function CumulativeFlowBody({ answer, statuses, by, projects, offsetMinutes, now, locale, onFrame }: BodyProps) {
   if (answer === null) return <EmptyState message={noProjectWords()} />;
 
   const unresolved = unresolvedPhrase(answer.unresolved);
@@ -64,6 +66,7 @@ export function CumulativeFlowBody({ answer, statuses, by, projects, offsetMinut
           offsetMinutes={offsetMinutes}
           now={now}
           locale={locale}
+          onFrame={onFrame}
         />
       )}
 
@@ -191,6 +194,7 @@ function CumulativeFlowReader({ keys }: { keys: string[] }) {
         projects={data.projects}
         offsetMinutes={offsetMinutes}
         now={now}
+        onFrame={move}
       />
     </div>
   );

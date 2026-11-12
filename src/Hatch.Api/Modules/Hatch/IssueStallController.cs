@@ -18,7 +18,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// inherits key acceptance from anything - each says its own.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueStallController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

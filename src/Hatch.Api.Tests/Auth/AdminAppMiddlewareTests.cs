@@ -124,7 +124,7 @@ public class AdminAppMiddlewareTests
     // The API - guarded separately, by an attribute, on the actions that want
     // it - and everything the wall itself already lets through unchallenged.
     [InlineData("/api/zones")]
-    [InlineData("/api/hatch/issues")]
+    [InlineData("/api/issues")]
     [InlineData("/health/ready")]
     [InlineData("/auth/")]
     [InlineData("/auth")]

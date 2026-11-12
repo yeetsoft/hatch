@@ -30,7 +30,7 @@ columns.
 1. **Read the brief.** `./scripts/hatch.sh show <KEY>`. The description is the
    brief and its acceptance criteria are the definition of done. If it has
    children, read them too (`./scripts/hatch.sh api GET
-   /api/hatch/issues?parentKey=<KEY>`) — a story's tasks are the actual work.
+   /api/issues?parentKey=<KEY>`) — a story's tasks are the actual work.
 
 2. **Say what you are doing, before doing it.** Move the ticket so the board is
    honest about what is being worked on right now:

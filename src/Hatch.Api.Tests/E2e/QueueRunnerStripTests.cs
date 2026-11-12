@@ -90,20 +90,20 @@ public class QueueRunnerStripTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("E2E", "E2E"));
         var issue = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "task", "Keep a runner busy", null, null, null, null));
-        var minted = await PostAsync<CreateRunnerRequest, RunnerMintedDto>(http, "/api/hatch/runners", new(Runner));
+            http, "/api/issues", new(project.Id, "task", "Keep a runner busy", null, null, null, null));
+        var minted = await PostAsync<CreateRunnerRequest, RunnerMintedDto>(http, "/api/runners", new(Runner));
 
         using var asRunner = new HttpClient { BaseAddress = new Uri(baseUrl) };
         asRunner.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", minted.Secret);
 
         await PostAsync<RunnerHeartbeatRequest, RunnerInstructionDto>(
-            asRunner, "/api/hatch/runners/sessions", new(Kind: "loop", Where: Where));
-        var taken = await PostAsync<ClaimRequest, ClaimTakenDto>(asRunner, $"/api/hatch/issues/{issue.Key}/claim", new(Where));
+            asRunner, "/api/runners/sessions", new(Kind: "loop", Where: Where));
+        var taken = await PostAsync<ClaimRequest, ClaimTakenDto>(asRunner, $"/api/issues/{issue.Key}/claim", new(Where));
 
         using var beat = await asRunner.PostAsJsonAsync(
-            $"/api/hatch/issues/{issue.Key}/claim/heartbeat", new ClaimHeartbeatRequest(taken.Token, Line), Web);
+            $"/api/issues/{issue.Key}/claim/heartbeat", new ClaimHeartbeatRequest(taken.Token, Line), Web);
         Assert.True(beat.IsSuccessStatusCode, $"the claim heartbeat answered {(int)beat.StatusCode}: {await beat.Content.ReadAsStringAsync()}");
 
         return issue.Key;

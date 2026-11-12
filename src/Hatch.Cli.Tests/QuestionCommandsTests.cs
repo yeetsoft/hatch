@@ -6,7 +6,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class QuestionCommandsTests
 {
-    private const string Comments = "/api/hatch/issues/AER-12/comments";
+    private const string Comments = "/api/issues/AER-12/comments";
 
     private static QuestionDto AQuestion(
         long id = 1, string key = "AER-12", string body = "Which way?",
@@ -136,7 +136,7 @@ public sealed class QuestionCommandsTests
     public async Task Nothing_open_is_a_sentence_naming_the_ticket_if_one_was_named()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12/questions", Array.Empty<QuestionDto>());
 
         Assert.Equal(0, await new QuestionCommands(h.Cli).QuestionsAsync(["AER-12"], default));
         Assert.Equal("hatch: nothing is waiting on an answer on AER-12", h.Said);
@@ -146,18 +146,18 @@ public sealed class QuestionCommandsTests
     public async Task With_no_key_it_asks_for_the_whole_house()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         await new QuestionCommands(h.Cli).QuestionsAsync([], default);
         Assert.Equal("hatch: nothing is waiting on an answer", h.Said);
-        Assert.Equal(1, h.Wire.Count("GET", "/api/hatch/questions"));
+        Assert.Equal(1, h.Wire.Count("GET", "/api/questions"));
     }
 
     [Fact]
     public async Task Open_questions_are_numbered_and_the_recommendation_is_marked()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/questions", new[]
+        h.Wire.Json("GET", "/api/questions", new[]
         {
             AQuestion(options:
             [
@@ -195,7 +195,7 @@ public sealed class QuestionCommandsTests
     public async Task A_bare_number_in_range_is_answered_as_that_options_label()
     {
         using var h = new CliHarness(replies: ["2"]);
-        h.Wire.Json("GET", "/api/hatch/questions", new[]
+        h.Wire.Json("GET", "/api/questions", new[]
         {
             AQuestion(options: [new QuestionOptionDto("Per-node"), new QuestionOptionDto("Global")]),
         });
@@ -221,7 +221,7 @@ public sealed class QuestionCommandsTests
     public async Task A_number_that_names_no_option_is_taken_literally(string typed)
     {
         using var h = new CliHarness(replies: [typed]);
-        h.Wire.Json("GET", "/api/hatch/questions", new[]
+        h.Wire.Json("GET", "/api/questions", new[]
         {
             AQuestion(options: [new QuestionOptionDto("Per-node"), new QuestionOptionDto("Global")]),
         });
@@ -245,7 +245,7 @@ public sealed class QuestionCommandsTests
     public async Task An_empty_reply_leaves_that_question_open_and_moves_on()
     {
         using var h = new CliHarness(replies: ["", "Because."]);
-        h.Wire.Json("GET", "/api/hatch/questions", new[] { AQuestion(1), AQuestion(2) });
+        h.Wire.Json("GET", "/api/questions", new[] { AQuestion(1), AQuestion(2) });
         h.Wire.Json("POST", Comments, Asked());
 
         await new QuestionCommands(h.Cli).AnswerAsync([], default);
@@ -261,7 +261,7 @@ public sealed class QuestionCommandsTests
     public async Task A_backslash_at_the_end_of_a_line_carries_on_to_the_next()
     {
         using var h = new CliHarness(replies: ["Because of the first thing,\\", "and the second."]);
-        h.Wire.Json("GET", "/api/hatch/questions", new[] { AQuestion() });
+        h.Wire.Json("GET", "/api/questions", new[] { AQuestion() });
         h.Wire.Json("POST", Comments, Asked());
 
         await new QuestionCommands(h.Cli).AnswerAsync([], default);
@@ -282,7 +282,7 @@ public sealed class QuestionCommandsTests
     public async Task End_of_input_stops_the_whole_session_rather_than_skipping_one_question()
     {
         using var h = new CliHarness(replies: [null]);
-        h.Wire.Json("GET", "/api/hatch/questions", new[] { AQuestion(1), AQuestion(2), AQuestion(3) });
+        h.Wire.Json("GET", "/api/questions", new[] { AQuestion(1), AQuestion(2), AQuestion(3) });
 
         Assert.Equal(0, await new QuestionCommands(h.Cli).AnswerAsync([], default));
 
@@ -299,7 +299,7 @@ public sealed class QuestionCommandsTests
     public async Task Each_answer_is_posted_before_the_next_question_is_asked()
     {
         using var h = new CliHarness(replies: ["One.", "Two.", null]);
-        h.Wire.Json("GET", "/api/hatch/questions", new[] { AQuestion(1), AQuestion(2), AQuestion(3) });
+        h.Wire.Json("GET", "/api/questions", new[] { AQuestion(1), AQuestion(2), AQuestion(3) });
         h.Wire.Json("POST", Comments, Asked());
 
         await new QuestionCommands(h.Cli).AnswerAsync([], default);
@@ -314,7 +314,7 @@ public sealed class QuestionCommandsTests
     public async Task Having_answered_something_it_says_the_ticket_can_now_be_worked()
     {
         using var h = new CliHarness(replies: ["Yes."]);
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/questions", new[] { AQuestion() });
+        h.Wire.Json("GET", "/api/issues/AER-12/questions", new[] { AQuestion() });
         h.Wire.Json("POST", Comments, Asked());
 
         await new QuestionCommands(h.Cli).AnswerAsync(["AER-12"], default);

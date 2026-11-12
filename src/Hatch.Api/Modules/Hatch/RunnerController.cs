@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// the root.
 /// </summary>
 [ApiController]
-[Route("api/hatch/runner")]
+[Route("api/runner")]
 [RequireRole(PersonRole.User)]
 public class RunnerController(IHatchRevision revision, IWebHostEnvironment env) : ControllerBase
 {
@@ -64,7 +64,7 @@ public class RunnerController(IHatchRevision revision, IWebHostEnvironment env) 
         revision.Revision,
         Platforms
             .Where(p => System.IO.File.Exists(PathFor(p)))
-            .Select(p => new RunnerDownloadDto(p.Rid, p.Platform, p.FileName, $"/api/hatch/runner/download/{p.Rid}"))
+            .Select(p => new RunnerDownloadDto(p.Rid, p.Platform, p.FileName, $"/api/runner/download/{p.Rid}"))
             .ToArray());
 
     /// <summary>

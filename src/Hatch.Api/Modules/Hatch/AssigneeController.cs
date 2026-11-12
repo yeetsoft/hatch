@@ -34,7 +34,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// tells it to leave the ticket alone.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch")]
+[Route("api")]
 public class AssigneeController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

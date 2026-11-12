@@ -305,11 +305,11 @@ public class OmittedRunnersTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("E2E", "E2E"));
         var parent = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "story", "Parent", null, null, null, null));
+            http, "/api/issues", new(project.Id, "story", "Parent", null, null, null, null));
         var child = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "task", "Child", null, parent.Key, null, null));
+            http, "/api/issues", new(project.Id, "task", "Child", null, parent.Key, null, null));
 
         await PutOk(http, parent.Key, AncestorRunner, AncestorReason);
         await PutOk(http, child.Key, OwnRunner, OwnReason);
@@ -344,7 +344,7 @@ public class OmittedRunnersTests(ITestOutputHelper output)
 
     private static async Task<string> PutAsync(HttpClient http, string key, string runner, string reason)
     {
-        using var response = await http.PutAsJsonAsync($"/api/hatch/issues/{key}/omitted-runners/{Uri.EscapeDataString(runner)}", new OmitRunnerRequest(reason), Web);
+        using var response = await http.PutAsJsonAsync($"/api/issues/{key}/omitted-runners/{Uri.EscapeDataString(runner)}", new OmitRunnerRequest(reason), Web);
         var answer = $"{(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}".Trim();
         return answer.Length <= 200 ? answer : answer[..200];
     }
@@ -353,7 +353,7 @@ public class OmittedRunnersTests(ITestOutputHelper output)
     private static async Task<IReadOnlyList<string>> ReadRunnersAsync(string baseUrl, string key)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        var issue = await http.GetFromJsonAsync<IssueDto>($"/api/hatch/issues/{key}", Web);
+        var issue = await http.GetFromJsonAsync<IssueDto>($"/api/issues/{key}", Web);
         return issue!.OmittedRunners.Select(o => o.Runner).ToList();
     }
 

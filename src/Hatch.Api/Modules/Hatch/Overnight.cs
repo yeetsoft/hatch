@@ -7,7 +7,7 @@ namespace Hatch.Api.Modules.Hatch;
 ///
 /// Pure and synchronous - no <see cref="HatchContext"/>, no query - because
 /// reading "an issue landed" off the database is a different job
-/// (<c>OvernightController</c>'s, wiring this to <c>GET /api/hatch/overnight</c>)
+/// (<c>OvernightController</c>'s, wiring this to <c>GET /api/overnight</c>)
 /// and this fold is tested without one.
 /// </summary>
 public static class Overnight
