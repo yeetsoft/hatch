@@ -2356,6 +2356,25 @@ button.hatch-chip {
   gap: var(--sp-4);
 }
 
+/* The shared paired-field row: two Fields side by side at half width, label
+   over control as Field already draws it, one per row below the breakpoint
+   .hatch-issue-controls uses. The New issue dialog's two levels sit in it;
+   the other forms under HA-2200 (the trunk-build bug, project edit) reuse the
+   class rather than copy it. minmax(0, 1fr) so a wide control cannot widen
+   its half; align-items: start so one open band does not stretch the other. */
+.hatch-field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4) var(--sp-5);
+  align-items: start;
+}
+
+@media (max-width: 40rem) {
+  .hatch-field-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .hatch-form-actions,
 .hatch-section-actions,
 .hatch-reorder {
