@@ -354,7 +354,7 @@ public sealed class Lifecycle(Runtime runtime)
         PreemptionInfo preempted, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, IReadOnlyList<string> tidyLines)
     {
         var origin = runtime.Board.Client.Origin;
-        var body = $"This runner was preempted by [{preempted.EmergencyKey}]({origin}/apps/hatch/issues/{preempted.EmergencyKey}) - {preempted.EmergencyTitle}.";
+        var body = $"This runner was preempted by [{preempted.EmergencyKey}]({origin}/issues/{preempted.EmergencyKey}) - {preempted.EmergencyTitle}.";
 
         return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, preempted.SessionId, runtime.Adapter);
     }
@@ -401,7 +401,7 @@ public sealed class Lifecycle(Runtime runtime)
         string key, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, HardLimitInfo hardLimit)
     {
         var origin = runtime.Board.Client.Origin;
-        var body = $"Continuing [{key}]({origin}/apps/hatch/issues/{key}) past the runner's hard limit, at {Format.Compact(hardLimit.Tokens)} tokens.";
+        var body = $"Continuing [{key}]({origin}/issues/{key}) past the runner's hard limit, at {Format.Compact(hardLimit.Tokens)} tokens.";
 
         foreach (var (path, result) in pushed)
         {

@@ -8320,3 +8320,786 @@ button.hatch-option.chosen {
   color: var(--success-ink);
   font-weight: 600;
 }
+
+/* ---- Design gallery ---- */
+
+/* The gallery's own chrome and the frames its specimens sit in.
+
+   Every color, radius, type step and spacing value here comes from
+   @hatch/ui/tokens.css. The literals that remain are the two kinds the token
+   file licenses: hairlines and small optical nudges, and the fixed dimensions
+   of an ornament - a swatch chip, a demo box - which are sized to what they
+   have to show and must not move when a later pass retunes the spacing ladder.
+   Those are named at the top rather than scattered, so they can be seen.
+
+   Every selector below carries the design- prefix: this is the board's own
+   stylesheet, not a second app's, and the prefix is what keeps a gallery rule
+   from ever reaching a board page by accident. */
+
+.design-page {
+  /* The rail is a layout dimension, not a rung on the spacing ladder: it is
+     set by the longest section name plus air, and retuning --sp-* must not
+     resize it. Named here so it is one edit rather than four. */
+  --rail: 232px;
+  /* The fixed sizes of the specimen ornaments, for the same reason. */
+  --chip: 56px;
+  --box: 72px;
+
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+}
+
+/* ---------------------------------------------------------------------------
+   The rail */
+
+.design-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--sp-4);
+  border-right: 1px solid var(--line);
+  background: var(--card);
+  overflow-y: auto;
+}
+
+.design-rail-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.design-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.design-nav-group-name {
+  margin-bottom: var(--sp-1);
+  padding-inline: var(--sp-2);
+  font-size: var(--t-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.design-nav-link {
+  padding: var(--sp-1-5) var(--sp-2);
+  border-radius: var(--r-ctl);
+  color: var(--ink);
+  font-size: var(--t-body);
+  text-decoration: none;
+  transition: background var(--transition), color var(--transition);
+}
+
+.design-nav-link:hover {
+  background: var(--bg);
+}
+
+.design-nav-link.active {
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+  font-weight: 600;
+}
+
+.design-nav-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   The content column */
+
+.design-content {
+  overflow-y: auto;
+  padding: var(--sp-8) var(--sp-6);
+}
+
+.design-gallery-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  max-width: var(--measure);
+  margin: 0 auto;
+}
+
+.design-gallery-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.design-gallery-note {
+  color: var(--muted);
+  font-size: var(--t-label);
+  max-width: 68ch;
+}
+
+.design-token-name {
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  color: var(--ink);
+}
+
+.design-token-value {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--muted);
+}
+
+.design-swatch-use {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Specimen arrangement
+
+   Two shapes cover almost every component page: a row of things side by side,
+   and a column of things above each other. They exist because a specimen page
+   has to put several instances of a component near each other, and that is
+   layout the gallery owns - the components themselves state no margins, which
+   is exactly what makes them usable anywhere.
+
+   Both use the same gaps as the rest of the app rather than inventing a
+   "specimen gap": what a designer judges spacing against has to be the ladder,
+   not a value only this app uses. */
+
+.design-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* The gap between two buttons that belong to the same row of a table - tighter
+   than the gap between unrelated controls, and admin's own value. */
+.design-row--tight {
+  gap: var(--sp-2);
+}
+
+/* A row of actions under the block it acts on. */
+.design-row--top {
+  margin-top: var(--sp-4);
+}
+
+.design-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.design-measure-cap {
+  max-width: 68ch;
+}
+
+/* Two specimens side by side for a before/after. Collapses to one column
+   rather than shrinking both past the point either can be read. */
+.design-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-4);
+}
+
+.design-compare-half {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* The page ground, so a --card surface can be judged against the --bg it
+   actually sits on rather than against the gallery's own column. */
+.design-ground-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-4);
+}
+
+.design-ground {
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg);
+}
+
+/* A checkbox with its own text, for the <Field as="div"> specimen. This is the
+   app's markup rather than a component because it is exactly what a page
+   writes at that call site. */
+.design-check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* A closing note inside a modal specimen, set away from the actions above it. */
+.design-modal-note {
+  margin-top: var(--sp-4);
+}
+
+/* ---------------------------------------------------------------------------
+   Specimen stages
+
+   A frame for a component that is normally the full width of an app: the bar
+   needs an edge to be flush against, and a page under it to be the chrome of.
+   The stage is the gallery's own furniture - it states nothing about the
+   component inside it. */
+
+.design-stage {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg);
+  /* The bar's shadow and the stage's corners both stop at the frame. */
+  overflow: hidden;
+}
+
+/* Narrow enough to force the bar's own narrow behaviour without resizing the
+   window, and a fixed dimension for that reason - not a spacing rung. */
+.design-stage--narrow {
+  max-width: 420px;
+}
+
+/* Narrows --measure on itself rather than the stage's own width, so a
+   `measure`-width bar visibly caps and centres inside a stage that otherwise
+   spans the same --measure the page column does - a literal for the same
+   reason .design-stage--narrow's 420px is one. */
+.design-stage--narrow-measure {
+  --measure: 600px;
+}
+
+/* A stage whose bar has its gear open: the panel hangs below the bar and the
+   frame clips it, so the frame is tall enough to hold the Theme row and the
+   palette line beneath it. Fixed, as .design-stage--narrow's 420px is. */
+.design-stage--gear-open {
+  min-height: 240px;
+}
+
+/* A genuine phone-width viewport, not a narrowed container - see the note on
+   ModalPage/TablePage. Modal and Table's phone rules are @media (max-width:
+   40rem), which reads this browsing context's width; only an iframe has one
+   narrower than the window behind it. */
+.design-gallery-phone-frame {
+  width: 390px;
+  height: 700px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.design-stage-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+}
+
+/* ---------------------------------------------------------------------------
+   Color and series swatches */
+
+.design-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-4);
+}
+
+.design-swatch {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+/* The chip's own frame is --card so a translucent wash reads against the
+   surface it is actually used on, with a hairline so a fill equal to --card
+   still has an edge. */
+.design-swatch-chip {
+  flex: none;
+  width: var(--chip);
+  height: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: var(--r-in);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.design-swatch-fill {
+  width: 100%;
+  height: 100%;
+}
+
+.design-swatch-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.design-accent-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.design-accent-block {
+  padding: var(--sp-2) var(--sp-5);
+  border-radius: var(--r-ctl);
+  font-size: var(--t-body);
+  font-weight: 500;
+}
+
+/* The bar's own ground, painted at its own angle - copied from TopBar.css so
+   the two cannot drift on colour, only (deliberately) on where else the angle
+   gets reused. Not a second literal copy of the stops: the tokens are the
+   single source, this rule only repeats the 135deg. */
+.design-chrome-ground {
+  padding: var(--sp-2) var(--sp-5);
+  border-radius: var(--r-ctl);
+  background: linear-gradient(135deg, var(--chrome) 0%, var(--chrome-end) 100%);
+  color: var(--on-chrome);
+  font-size: var(--t-body);
+  font-weight: 500;
+}
+
+.design-chrome-ground .design-swatch-use {
+  color: var(--on-chrome);
+}
+
+/* ---------------------------------------------------------------------------
+   Type specimens */
+
+.design-specimen-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.design-specimen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.design-specimen:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.design-specimen-line {
+  line-height: var(--lh-tight);
+}
+
+.design-specimen-face {
+  font-size: var(--t-heading);
+}
+
+.design-specimen-paragraph {
+  max-width: 68ch;
+}
+
+.design-specimen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ---------------------------------------------------------------------------
+   Spacing */
+
+.design-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.design-ladder-rung {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* Height is fixed and width is the token: the bar is a ruler, and a ruler that
+   changes in both directions cannot be compared down the column. */
+.design-ladder-bar {
+  flex: none;
+  height: 20px;
+  border-radius: var(--r-chip);
+  background: var(--primary);
+}
+
+.design-density-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--sp-4);
+}
+
+.design-density-sample {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.design-density-list {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.design-density-item {
+  padding-inline: var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.design-density-item:last-child {
+  border-bottom: none;
+}
+
+.design-measure-demo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.design-measure-track {
+  overflow: hidden;
+}
+
+.design-measure-bar {
+  width: var(--measure);
+  max-width: 100%;
+  height: 20px;
+  border-radius: var(--r-chip);
+  background: var(--primary-bg);
+  border: 1px solid var(--primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Radius */
+
+.design-radius-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+.design-radius-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  max-width: 200px;
+}
+
+.design-radius-box {
+  width: var(--box);
+  height: var(--box);
+  border: 1px solid var(--line-strong);
+  background: var(--primary-bg);
+}
+
+.design-radius-pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--success);
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-size: var(--t-label);
+  font-weight: 600;
+}
+
+.design-radius-nest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.design-radius-nest-control {
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--primary);
+  color: var(--on-accent);
+  font-size: var(--t-body);
+  font-weight: 500;
+}
+
+.design-radius-nest-inset {
+  flex: 1;
+  min-width: 160px;
+  padding: var(--sp-3);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: var(--t-label);
+}
+
+/* ---------------------------------------------------------------------------
+   Elevation and motion */
+
+.design-elevation-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.design-elevation-card {
+  padding: var(--sp-4) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+/* The stage is a page in miniature, so the scrim has something to sit over. */
+.design-scrim-stage {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg);
+  min-height: 180px;
+}
+
+.design-scrim-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+}
+
+.design-scrim {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background: var(--overlay);
+}
+
+.design-scrim-panel {
+  padding: var(--sp-4) var(--sp-6);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.design-motion-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: var(--box);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--t-label);
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.design-motion-block:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Series */
+
+/* Edge to edge with no gaps: the bands touch in a state timeline, which is the
+   adjacency the ramp was validated for. */
+.design-series-timeline {
+  display: flex;
+  height: 64px;
+  border-radius: var(--r-in);
+  overflow: hidden;
+}
+
+.design-series-band {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --on-series: white regardless of theme, since it labels the band's own
+   fill and those eight fills do not change enough between themes to want
+   two answers. */
+.design-series-band-label {
+  color: var(--on-series);
+  font-size: var(--t-micro);
+  font-weight: 600;
+}
+
+.design-series-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.design-series-line-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.design-series-line-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* Two pixels, the width a chart actually strokes at. */
+.design-series-line-rule {
+  flex: none;
+  width: 160px;
+  height: 2px;
+  border-radius: var(--r-pill);
+}
+
+/* ---------------------------------------------------------------------------
+   Project mark: the whole stock icon set, as a grid of slug and glyph - the
+   picker's own reference, so a slug this page cannot show is a slug the
+   picker cannot offer either. */
+
+.design-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--sp-4);
+}
+
+.design-icon-grid-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-in);
+  background: var(--card);
+}
+
+.design-icon-grid-glyph {
+  width: 24px;
+  height: 24px;
+  color: var(--ink);
+}
+
+.design-icon-grid-title {
+  color: var(--muted);
+  font-size: var(--t-micro);
+}
+
+/* ---------------------------------------------------------------------------
+   Narrow windows. The rail becomes a band above the content rather than
+   disappearing, at the board's own phone line rather than the gallery's old
+   720px: this is a workbench browsed on a laptop, and hiding the nav behind a
+   control would put one more thing between a designer and the page. Below the
+   line .design-content gives up its own scroll for the document's, the same
+   trade .hatch-page makes at the same line. */
+
+@media (max-width: 40rem) {
+  .design-page {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .design-rail {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    overflow-y: visible;
+  }
+
+  .design-nav-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .design-nav-group-name {
+    flex-basis: 100%;
+  }
+
+  .design-content {
+    overflow-y: visible;
+    padding: var(--sp-4);
+  }
+}
+
+/* Menu specimens: room under the trigger for a panel to open into, because the
+   panel is absolutely positioned and would otherwise overlap the next section. */
+.design-menu-stage {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  min-height: 160px;
+}
+
+.design-menu-stage--spread {
+  justify-content: space-between;
+}
+
+/* The gear's own case holds the Theme row and the palette line, and a panel
+   taller than the default stage would run over the next section. */
+.design-menu-stage--theme {
+  min-height: 260px;
+}
+
+.design-menu-stage__row {
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.design-menu-stage__check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+}
+
+/* Callout specimens: room beside the trigger for the callout to open into,
+   the same reason .design-menu-stage reserves it for a panel. */
+.design-callout-stage {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  min-height: 120px;
+}
+
+/* The four corner specimens anchor to the real viewport, not to a stage box -
+   proving placeCallout clamps against the window itself, which only a fixed
+   position (rather than a narrowed frame, as ModalPage's phone iframe uses)
+   can show. */
+.design-callout-corner {
+  position: fixed;
+  z-index: 1;
+}
+
+.design-callout-corner--top-left {
+  top: var(--sp-4);
+  left: var(--sp-4);
+}
+
+.design-callout-corner--top-right {
+  top: var(--sp-4);
+  right: var(--sp-4);
+}
+
+.design-callout-corner--bottom-left {
+  bottom: var(--sp-4);
+  left: var(--sp-4);
+}
+
+.design-callout-corner--bottom-right {
+  bottom: var(--sp-4);
+  right: var(--sp-4);
+}

@@ -1675,7 +1675,7 @@ public class WorkController(
     /// </summary>
     private string? IssueUrl(string key) =>
         HatchOptions.NormalizeBaseUrl(hatchOptions.Value.PublicBaseUrl) is { } origin
-            ? $"{origin}/apps/hatch/issues/{key}"
+            ? $"{origin}/issues/{key}"
             : null;
 
     // ---- Loading ----
