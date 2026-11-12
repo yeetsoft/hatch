@@ -23,7 +23,6 @@ internal sealed class StubSiteSettings(
 {
     public Task<SiteSettingsSnapshot> GetAsync(CancellationToken ct) => Task.FromResult(new SiteSettingsSnapshot(
         TimeZone: timeZone,
-        WeatherEntity: null,
         GoogleClientId: googleClientId,
         GoogleClientSecret: googleClientSecret,
         GoogleOAuthRedirectUri: googleOAuthRedirectUri,
