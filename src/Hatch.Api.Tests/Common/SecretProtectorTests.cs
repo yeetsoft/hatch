@@ -3,7 +3,7 @@ using Hatch.Api.Common;
 namespace Hatch.Api.Tests.Common;
 
 /// <summary>
-/// docs/camera-devices-architecture.md. The property these tests exist to pin is not
+/// docs/secrets-architecture.md. The property these tests exist to pin is not
 /// "XOR round-trips" - that was true before - but that the *format* can change
 /// under the callers: a value written by any scheme this build knows reads
 /// back, including the untagged ones written before the format existed.
@@ -88,9 +88,9 @@ public class SecretProtectorTests
     [Fact]
     public void Protecting_nothing_stores_nothing()
     {
-        // Rather than a tagged empty payload: "unset" is a state the settings
-        // UI and the camera form both have, and tagging it would turn every
-        // cleared field into a present value that decodes to nothing.
+        // Rather than a tagged empty payload: "unset" is a state every
+        // settings form has, and tagging it would turn every cleared field
+        // into a present value that decodes to nothing.
         Assert.Equal(string.Empty, SecretProtector.Protect(""));
         Assert.Equal(string.Empty, SecretProtector.Protect(null));
     }
@@ -106,10 +106,11 @@ public class SecretProtectorTests
     }
 
     [Fact]
-    public void Round_trips_a_password_full_of_url_metacharacters()
+    public void Round_trips_a_secret_full_of_url_metacharacters()
     {
-        // Camera passwords go into an RTSP URL, so the characters that break
-        // one are exactly the characters worth pinning here.
+        // A client secret or token can land in a URL (an OAuth exchange, an
+        // Authorization header), so the characters that break one are exactly
+        // the characters worth pinning here.
         const string awkward = "p@ss:w/rd?#&=%[]";
 
         Assert.Equal(awkward, SecretProtector.Unprotect(SecretProtector.Protect(awkward)));

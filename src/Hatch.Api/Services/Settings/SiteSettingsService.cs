@@ -8,7 +8,6 @@ namespace Hatch.Api.Services.Settings;
 /// <summary>Typed snapshot of the SiteSetting table.</summary>
 public record SiteSettingsSnapshot(
     string TimeZone,
-    string? WeatherEntity,
     string? GoogleClientId,
     string? GoogleClientSecret,
     string? GoogleOAuthRedirectUri,
@@ -75,7 +74,6 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
 
             var snapshot = new SiteSettingsSnapshot(
                 TimeZone: values.GetValueOrDefault(SiteSettingKeys.TimeZone, "America/New_York"),
-                WeatherEntity: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.WeatherEntity)),
                 GoogleClientId: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.GoogleClientId)),
                 // The read side has to hand back something usable, so the
                 // client secret is deobfuscated here.

@@ -34,8 +34,9 @@ public static class SecretObfuscator
     /// Deobfuscates a stored secret, treating one that won't decode - absent,
     /// blank, or hand-edited into something that isn't base64 - as absent
     /// rather than as an exception. Callers that hold obfuscated columns
-    /// (calendar tokens) want a missing value to cost that one account a
-    /// reconnect, not to throw out of every operation that touches it.
+    /// (an agent credential, a Google client secret) want a missing value to
+    /// cost that one setting a re-entry, not to throw out of every operation
+    /// that touches it.
     /// </summary>
     public static string? TryReveal(string? obfuscated)
     {

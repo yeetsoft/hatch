@@ -4,7 +4,7 @@ namespace Hatch.Api.Common;
 
 /// <summary>
 /// The one way a secret is written to Hatch's database, and the one way it is
-/// read back (docs/camera-devices-architecture.md).
+/// read back (docs/secrets-architecture.md).
 ///
 /// Every protected value carries the scheme that produced it:
 /// <c>v1:&lt;payload&gt;</c>. That prefix is the whole point of this type. The
@@ -49,8 +49,8 @@ public static class SecretProtector
     ///
     /// Null rather than an exception for the reason <see cref="SecretObfuscator.TryReveal"/>
     /// gives: a value that has been hand-edited in the database should cost the
-    /// one account or camera it belongs to a reconnect, not throw out of every
-    /// operation that happens to touch the row.
+    /// one setting it belongs to a re-entry, not throw out of every operation
+    /// that happens to touch the row.
     /// </summary>
     public static string? Unprotect(string? stored)
     {
