@@ -255,6 +255,14 @@ public class RunnersController(
         if (!(dto.ThrottledUntil > now) && Latest(live.Select(s => s.ThrottledUntil), now) is { } throttled)
             dto = dto with { ThrottledUntil = throttled };
 
+        // Copied whole from one session - never a kind from one session and a
+        // line from another - so the latest ahead of now wins all three.
+        if (!(dto.AgentDownUntil > now) &&
+            live.Where(s => s.AgentDownUntil > now).OrderByDescending(s => s.AgentDownUntil).FirstOrDefault() is { } agentDown)
+        {
+            dto = dto with { AgentDownUntil = agentDown.AgentDownUntil, AgentDownKind = agentDown.AgentDownKind, AgentDownLine = agentDown.AgentDownLine };
+        }
+
         return dto with
         {
             Sessions = own
@@ -1547,6 +1555,9 @@ public class RunnersController(
             Projects = keys.Count > 0 ? string.Join('\n', keys) : null,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
+            AgentDownUntil = request.AgentDown == true ? request.AgentDownUntil : null,
+            AgentDownKind = request.AgentDown == true ? NormaliseAgentDownKind(request.AgentDownKind) : null,
+            AgentDownLine = request.AgentDown == true ? Fits(request.AgentDownLine, EfHatchRunner.MaxAgentDownLineLength) : null,
             ThrottledUntil = request.ThrottledUntil,
             ForPersonId = forPersonId,
             Usage = Utilization.Serialise(request.Usage),
@@ -1633,6 +1644,20 @@ public class RunnersController(
         // it at once - the one way a loop overrides its own past heartbeat.
         if (request.Exhausted == true) row.ExhaustedUntil = request.ExhaustedUntil;
         else if (request.Exhausted == false) row.ExhaustedUntil = null;
+
+        // The same tri-state, for the agent rather than the account.
+        if (request.AgentDown == true)
+        {
+            row.AgentDownUntil = request.AgentDownUntil;
+            row.AgentDownKind = NormaliseAgentDownKind(request.AgentDownKind);
+            row.AgentDownLine = Fits(request.AgentDownLine, EfHatchRunner.MaxAgentDownLineLength);
+        }
+        else if (request.AgentDown == false)
+        {
+            row.AgentDownUntil = null;
+            row.AgentDownKind = null;
+            row.AgentDownLine = null;
+        }
 
         // Written on every loop beat, null clearing it the moment the runner
         // says it is no longer throttled - not a tri-state like Exhausted,
@@ -1725,6 +1750,9 @@ public class RunnersController(
             BuiltAt = request.BuiltAt,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
+            AgentDownUntil = request.AgentDown == true ? request.AgentDownUntil : null,
+            AgentDownKind = request.AgentDown == true ? NormaliseAgentDownKind(request.AgentDownKind) : null,
+            AgentDownLine = request.AgentDown == true ? Fits(request.AgentDownLine, EfHatchRunner.MaxAgentDownLineLength) : null,
             ThrottledUntil = request.ThrottledUntil,
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
@@ -1818,6 +1846,19 @@ public class RunnersController(
         if (request.Exhausted == true) session.ExhaustedUntil = request.ExhaustedUntil;
         else if (request.Exhausted == false) session.ExhaustedUntil = null;
 
+        if (request.AgentDown == true)
+        {
+            session.AgentDownUntil = request.AgentDownUntil;
+            session.AgentDownKind = NormaliseAgentDownKind(request.AgentDownKind);
+            session.AgentDownLine = Fits(request.AgentDownLine, EfHatchRunner.MaxAgentDownLineLength);
+        }
+        else if (request.AgentDown == false)
+        {
+            session.AgentDownUntil = null;
+            session.AgentDownKind = null;
+            session.AgentDownLine = null;
+        }
+
         // Loop-only, the same as Touch: a `once` beat shares the loop
         // session's (key, where) and must not clear its own wait.
         if (kind == EfHatchRunner.LoopKind) session.ThrottledUntil = request.ThrottledUntil;
@@ -1900,6 +1941,10 @@ public class RunnersController(
 
         return trimmed.Length > max ? trimmed[..max] : trimmed;
     }
+
+    /// <summary>One of <see cref="RunnerAgentDownKinds"/> - anything else, including absent, reads as <see cref="RunnerAgentDownKinds.NotStarting"/>.</summary>
+    private static string NormaliseAgentDownKind(string? kind) =>
+        kind == RunnerAgentDownKinds.SignedOut ? RunnerAgentDownKinds.SignedOut : RunnerAgentDownKinds.NotStarting;
 
     /// <summary>
     /// The remotes a beat named, canonicalised and newline-joined - or null

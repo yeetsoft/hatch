@@ -19,6 +19,14 @@ const SHAPES: Record<RunnerGlyphState, ReactElement> = {
   ),
   // A solid disc with a bar cut out of it: the way is shut until the cap resets.
   exhausted: <path fill="currentColor" fillRule="evenodd" d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0ZM7 10.75h10v2.5H7Z" />,
+  // A ring with an exclamation mark: the agent itself, not the account, is the problem.
+  'agent-down': (
+    <>
+      {RING}
+      <rect x="10.75" y="6.5" width="2.5" height="7" rx="1.25" fill="currentColor" />
+      <circle cx="12" cy="16.5" r="1.4" fill="currentColor" />
+    </>
+  ),
   // A half-filled disc: part of the way open, and it heals by itself.
   throttled: (
     <>

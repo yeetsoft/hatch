@@ -143,4 +143,14 @@ describe('RunnerRow', () => {
 
     expect(html).toContain('sam · mac-mini · ghcr.io/o/r:1');
   });
+
+  it('draws an agent-down session with its own glyph and words', () => {
+    const html = draw(
+      runner({ sessions: [session({ agentDownUntil: at(3_600_000), agentDownKind: 'not-starting', agentDownLine: 'npm not found' })] }),
+    );
+
+    expect(html).toContain('hatch-runner-glyph--agent-down');
+    expect(html).toContain('Agent not starting until');
+    expect(html).toContain('npm not found');
+  });
 });
