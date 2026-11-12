@@ -6009,9 +6009,17 @@ button.hatch-option.chosen {
    not because anything is measured. The pane is the only thing that scrolls
    sideways, and the track inside it is as wide as the chart, so the ticks and
    the today line resolve their `left: x%` against the chart and not against
-   whatever part of it is on screen. */
-.hatch-timeline {
+   whatever part of it is on screen.
+
+   The row height is declared on both charts, since the Cumulative flow reuses
+   the ruler and its pane without being inside .hatch-timeline: a reader outside
+   both would resolve it to nothing and lose its height. */
+.hatch-timeline,
+.hatch-cumulative-flow {
   --hatch-timeline-row: calc(var(--sp-6) + var(--sp-1));
+}
+
+.hatch-timeline {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--sp-2);
