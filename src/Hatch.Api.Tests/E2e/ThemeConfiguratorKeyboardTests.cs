@@ -319,11 +319,23 @@ public class ThemeConfiguratorKeyboardTests(ITestOutputHelper output)
         }
         Assert.True(after == before, $"{label}: the page is not as it was.{Environment.NewLine}before {before}{Environment.NewLine}after  {after}");
 
-        var active = await harness.EvaluateAsync<string>(
-            deadline, "reading focus after Escape",
-            "sel => document.activeElement && document.activeElement.matches(sel) ? 'the gear trigger' : (document.activeElement ? document.activeElement.tagName.toLowerCase() + ' ' + (document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent.trim().slice(0, 30)) : 'nothing')",
-            E2eHarness.GearSelector);
-        output.WriteLine($"{label}: focus is on {active}");
+        // The gear's panel closes on a visibility transition, and in WebKit the
+        // dialog's hand-back can land on Tune while that panel is still visible
+        // for a few frames; focus is read until it settles, and every place it
+        // sat on the way is logged.
+        var active = "";
+        var seen = new List<string>();
+        for (var i = 0; i < 20; i++)
+        {
+            active = await harness.EvaluateAsync<string>(
+                deadline, "reading focus after Escape",
+                "sel => document.activeElement && document.activeElement.matches(sel) ? 'the gear trigger' : (document.activeElement ? document.activeElement.tagName.toLowerCase() + ' ' + (document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent.trim().slice(0, 30)) : 'nothing')",
+                E2eHarness.GearSelector);
+            if (seen.Count == 0 || seen[^1] != active) seen.Add(active);
+            if (active == "the gear trigger") break;
+            await Task.Delay(100);
+        }
+        output.WriteLine($"{label}: focus is on {active} (it sat on: {string.Join(" > ", seen)})");
         if (active != "the gear trigger")
         {
             var where = await harness.EvaluateAsync<string>(deadline, "describing where focus went", """
