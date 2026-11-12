@@ -72,8 +72,8 @@ export function OnePrField({
 }
 
 /**
- * Filing an issue: a project, a type, the parent it hangs under, a title, and somewhere to
- * start writing.
+ * Filing an issue: a project, a type, the two levels (priority and pre-approval, on one
+ * row), a title, the parent it hangs under, and somewhere to start writing.
  * No status and no position - the server puts a new issue in the leftmost
  * column at the bottom, so there is nothing here to get wrong.
  */
@@ -226,6 +226,38 @@ export function NewIssueDialog({
                 onChange={setOnePr}
               />
 
+              {/* Two levels, one row: a classification decision taken with the type. */}
+              <div className="hatch-field-pair">
+                <Field label="Priority" as="div">
+                  <PriorityControl
+                    issueKey=""
+                    priority={priority}
+                    priorityOwn={priority}
+                    priorityFrom={null}
+                    directory={directory}
+                    busy={saving}
+                    onChange={setPriority}
+                  />
+                </Field>
+
+                <Field label="Pre-approval" as="div">
+                  <PreApprovalControl
+                    issueKey=""
+                    preApproval={clampedPreApproval}
+                    preApprovalOwn={clampedPreApproval}
+                    preApprovalFrom={null}
+                    directory={directory}
+                    canApprove={canApprove}
+                    busy={saving}
+                    onChange={setPreApproval}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Title">
+                <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+              </Field>
+
               {/* `as="div"` for the reason on the issue page's Parent field: the
                   popup would otherwise join the control's accessible name. */}
               <Field label="Parent" as="div" hint={parentHint(type)}>
@@ -236,10 +268,6 @@ export function NewIssueDialog({
                   emptyMessage={parentEmptyMessage(projectKey, type)}
                   onChange={async (key) => setParentKey(key || null)}
                 />
-              </Field>
-
-              <Field label="Title">
-                <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
               </Field>
 
               <Field label="Description" as="div" hint="Markdown, rendered on the issue page.">
@@ -270,31 +298,6 @@ export function NewIssueDialog({
                 onChange={setReadyAt}
               />
               <MomentField label="Due" value={dueAt} onChange={setDueAt} />
-
-              <Field label="Priority" as="div">
-                <PriorityControl
-                  issueKey=""
-                  priority={priority}
-                  priorityOwn={priority}
-                  priorityFrom={null}
-                  directory={directory}
-                  busy={saving}
-                  onChange={setPriority}
-                />
-              </Field>
-
-              <Field label="Pre-approval" as="div">
-                <PreApprovalControl
-                  issueKey=""
-                  preApproval={clampedPreApproval}
-                  preApprovalOwn={clampedPreApproval}
-                  preApprovalFrom={null}
-                  directory={directory}
-                  canApprove={canApprove}
-                  busy={saving}
-                  onChange={setPreApproval}
-                />
-              </Field>
 
               {error && <p className="text-danger">{error}</p>}
             </>
