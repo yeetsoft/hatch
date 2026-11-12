@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { ThemeProvider } from '@hatch/ui';
+import { ThemeProvider, applySharedSeed } from '@hatch/ui';
 import './theme.css';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -12,6 +12,10 @@ import { routerBasename } from './lib/basename';
 // unhandledrejection listeners as a side effect - this is the earliest
 // "lifecycle" log line main.tsx itself can produce.
 clientLogger.info('hatch main.tsx module evaluated');
+
+// Before the router mounts, so a shared link is stripped from the address
+// it sees and never ends up in a returnUrl.
+applySharedSeed();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

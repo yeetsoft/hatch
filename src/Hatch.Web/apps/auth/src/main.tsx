@@ -1,8 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ThemeProvider } from '@hatch/ui';
+import { ThemeProvider, applySharedSeed } from '@hatch/ui';
 import './theme.css';
 import { App } from './App';
+
+applySharedSeed();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

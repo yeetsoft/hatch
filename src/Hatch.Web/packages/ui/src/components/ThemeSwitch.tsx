@@ -2,7 +2,8 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent
 import { useTheme } from '../theme/useTheme';
 import type { ThemeChoice } from '../theme/themeContext';
 import { checkSeed, rollSeed } from '../theme/randomPalette';
-import { COPY_SHAPES, DIE_SHAPES, PICKER_ICON_VIEWBOX, type IconShape } from './themePickerIcons';
+import { shareLink } from '../theme/sharedSeed';
+import { COPY_SHAPES, DIE_SHAPES, LINK_SHAPES, PICKER_ICON_VIEWBOX, type IconShape } from './themePickerIcons';
 import './ThemeSwitch.css';
 
 /** The ground the switch is sitting on. `surface` is a page or a card - the
@@ -116,11 +117,11 @@ export function ThemeSwitch({
     copiedTimer.current = setTimeout(() => setCopied(''), COPIED_MS);
   };
 
-  const copy = () => {
+  const copy = (text: string, done: string, failMessage: string) => {
     /* Plain http has no clipboard, and a denied permission rejects. */
-    const failed = () => announce('Could not copy - select the seed and copy it by hand');
+    const failed = () => announce(failMessage);
     if (!navigator.clipboard) return failed();
-    navigator.clipboard.writeText(shown).then(() => announce('Seed copied'), failed);
+    navigator.clipboard.writeText(text).then(() => announce(done), failed);
   };
 
   return (
@@ -185,9 +186,19 @@ export function ThemeSwitch({
           aria-label="Copy seed"
           title="Copy seed"
           disabled={shown === ''}
-          onClick={copy}
+          onClick={() => copy(shown, 'Seed copied', 'Could not copy - select the seed and copy it by hand')}
         >
           <Icon shapes={COPY_SHAPES} />
+        </button>
+        <button
+          type="button"
+          className="hatch-theme-picker__button"
+          aria-label="Copy link"
+          title="Copy link"
+          disabled={shown === ''}
+          onClick={() => copy(shareLink(shown), 'Link copied', 'Could not copy the link')}
+        >
+          <Icon shapes={LINK_SHAPES} />
         </button>
       </div>
       {refusal !== null ? (

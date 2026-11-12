@@ -11,6 +11,11 @@ namespace Hatch.Api.Tests.E2e;
 /// the case's artifact directory, light and dark, for a person to look at - what
 /// the rolls look like is not something a case can assert.
 ///
+/// <para>HA-2261's shared link is a sibling case below: a tab opened with
+/// <c>?palette=</c> applies and keeps the seed and cleans the address, a seed
+/// the engine refuses is ignored and said in the console, and the Copy link
+/// button puts the address with the seed on the clipboard.</para>
+///
 /// <para>Chromium only: the phone profile's fit is measured by the bar cases,
 /// and WebKit does not open a page on macOS 14.</para>
 /// </summary>
@@ -27,6 +32,10 @@ public class ThemePickerTests(ITestOutputHelper output)
     private const string Dice = "button[aria-label=\"Roll a new theme\"]";
     private const string Seed = "input[aria-label=\"Theme seed\"]";
     private const string Copy = "button[aria-label=\"Copy seed\"]";
+    private const string Link = "button[aria-label=\"Copy link\"]";
+
+    /// <summary>A seed matching the engine's format, for the shared-link case - no particular colour is meant by it.</summary>
+    private const string SharedSeed = "hx1-AAAAAAAA";
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public async Task TheGear_TurnsRandomOnAndOff_RollsPastesAndRefuses()
@@ -131,6 +140,77 @@ public class ThemePickerTests(ITestOutputHelper output)
             await harness.WaitForVisibleAsync(deadline, Seed);
             Assert.Equal(first, await SeedValue(harness, deadline));
             Assert.True(await Checked(harness, deadline, Random));
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task ASharedLink_AppliesOnArrival_AndIsIgnoredWhenTheEngineRefusesIt()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness("ThemePickerSharedLink");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        var consoleMessages = new List<string>();
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+
+            // A tab opened with ?palette= applies the seed, turns Random on, keeps
+            // it, and cleans the parameter off the address.
+            await harness.OpenAsync(
+                deadline, baseUrl, $"/?palette={SharedSeed}",
+                context => context.GrantPermissionsAsync(["clipboard-read", "clipboard-write"]));
+            var page = harness.Page!;
+            page.Console += (_, message) => { lock (consoleMessages) consoleMessages.Add(message.Text); };
+
+            await harness.WaitForTopBarAsync(deadline);
+            await harness.WaitForFirstColumnAsync(deadline);
+            Assert.DoesNotContain("palette", page.Url);
+            Assert.Equal(SharedSeed, await Stored(harness, deadline, "hatch.palette"));
+            Assert.Equal(SharedSeed, await Stored(harness, deadline, "hatch.palette.last"));
+            Assert.Equal(1, await Count(harness, deadline, Palette));
+
+            await harness.ClickAsync(deadline, E2eHarness.GearSelector);
+            await harness.WaitForVisibleAsync(deadline, ".hatch-theme-picker__track");
+            Assert.True(await Checked(harness, deadline, Random));
+            output.WriteLine("shared link applied: " + await harness.ScreenshotAsync(deadline, "shared-link-applied"));
+
+            // The Copy link button puts the page's own address with the seed on the clipboard.
+            await harness.ClickAsync(deadline, Link);
+            var clipboard = await deadline.BoundAsync(
+                "reading the clipboard", () => page.EvaluateAsync<string>("() => navigator.clipboard.readText()"));
+            Assert.Contains($"palette={SharedSeed}", clipboard);
+
+            harness.AssertNoPageErrors();
+
+            // A seed the engine refuses is ignored, said in the console (not an
+            // uncaught error), and the address is still cleaned; the stored seed
+            // from above is untouched.
+            await harness.GoToAsync(deadline, "?palette=hx1-nope");
+            await harness.WaitForTopBarAsync(deadline);
+            await harness.WaitForFirstColumnAsync(deadline);
+            Assert.DoesNotContain("palette", page.Url);
+            Assert.Equal(SharedSeed, await Stored(harness, deadline, "hatch.palette"));
+            Assert.Contains(consoleMessages, m => m.Contains("Ignoring ?palette="));
+            output.WriteLine("bad link ignored: " + await harness.ScreenshotAsync(deadline, "bad-shared-link"));
 
             harness.AssertNoPageErrors();
         }

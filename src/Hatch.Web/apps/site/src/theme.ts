@@ -10,6 +10,8 @@
    switch - the stored choice is per-origin, so one made on somebody's own board
    does not reach this site, and the colour-scheme preference governs without it. */
 import { applyChoice, applyPalette, readChoice, readPalette } from '@hatch/ui/themeStore';
+import { applySharedSeed } from '@hatch/ui/sharedSeed';
 
+applySharedSeed();
 applyPalette(readPalette());
 applyChoice(readChoice());
