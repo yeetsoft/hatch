@@ -421,6 +421,16 @@ public sealed class Tally
             return;
         }
 
+        // And for an agent that never started: the ticket was never touched,
+        // so it is listed apart and neither resets the failure streak nor
+        // advances it. Whether a run of these should pause the runner is a
+        // separate decision.
+        if (report.Unstarted)
+        {
+            _interrupted.Add($"hatch:   unstarted  {report.Key}  {report.Outcome}");
+            return;
+        }
+
         // A sixth list, and not a failure: the board ordered this ticket put
         // down for an emergency, which says nothing about whether the
         // increment itself was going well - three of these in a row must not

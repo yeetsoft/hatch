@@ -189,6 +189,40 @@ public sealed class ClaimTests
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
     }
 
+    /// <summary>A Hatch too old to know the value 400s it; the lease is still given back, by the plain release.</summary>
+    [Fact]
+    public async Task An_unstarted_release_a_hatch_400s_is_asked_again_without_an_outcome()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.BadRequest);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Unstarted);
+
+        var released = h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim");
+        Assert.Equal(2, released.Count);
+        Assert.Contains("outcome=unstarted", released[0].Query, StringComparison.Ordinal);
+        Assert.Contains(Token.ToString(), released[1].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("outcome", released[1].Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_unstarted_release_a_hatch_accepts_is_sent_once()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Unstarted);
+
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+    }
+
     [Fact]
     public async Task A_dropped_release_answered_400_is_not_retried()
     {

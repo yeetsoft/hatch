@@ -46,6 +46,7 @@ public class LetGoTests
     [InlineData(ClaimOutcomes.Recused)]
     [InlineData(ClaimOutcomes.Unservable)]
     [InlineData(ClaimOutcomes.Abandoned)]
+    [InlineData(ClaimOutcomes.Unstarted)]
     [InlineData(null)]
     public void ANewerReleaseOfAnyOtherOutcome_ClearsTheRecord(string? outcome)
     {
@@ -137,6 +138,22 @@ public class LetGoTests
 
         // ...nor stopped at.
         Assert.Equal(1, Count(drop, abandoned, worked, drop));
+    }
+
+    [Fact]
+    public void Count_StepsOverAnUnstartedRelease()
+    {
+        var drop = Release(ClaimOutcomes.Dropped, "runner", 0);
+        var unstarted = Release(ClaimOutcomes.Unstarted, "runner", 1);
+        var worked = Release(ClaimOutcomes.Worked, "runner", 2);
+
+        // Neither counted...
+        Assert.Equal(2, Count(drop, unstarted, drop));
+
+        // ...nor stopped at: newest first, an unstarted before a worked counts zero
+        // and the walk ends at the worked.
+        Assert.Equal(0, Count(unstarted, worked, drop));
+        Assert.Equal(1, Count(drop, unstarted, worked, drop));
     }
 
     [Fact]

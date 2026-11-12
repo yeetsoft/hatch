@@ -129,11 +129,8 @@ nothing to set for that one.
 - **The `.env` beside `compose.yaml`.** Git-ignored (`.gitignore:13-17`).
 - **`src/Hatch.Api/.env.json`.** Bind-mounted at `/App/.env.json`
   (`compose.yaml:80`) and git-ignored (`.gitignore:12`). It loads after the
-  environment, so it wins (`Program.cs:56-62`). It holds `ha_host`, `ha_port`
-  and `ha_token`, imported once into site settings
-  (`Services/DeviceMapping/DeviceMappingSeeder.cs:131-146`), and
-  `vm_log_shipper_token` (`Controllers/VmConsoleLogsController.cs:29`). A board
-  needs none of them.
+  environment, so it wins (`Program.cs:56-62`). A board needs nothing
+  from it: it is a place for operator secrets in local development.
 - **Never the repository**, a commit, an issue or a plan (`docs/ethos.md`).
 - **In a cluster, a Secret:** see [Kubernetes](kubernetes).
 
@@ -180,8 +177,6 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `ConnectionStrings__Quartz` | `Host=localhost` | Where Quartz's tables live - created only by `containers/hatch-db/pginit.sql`. Also `Host=db` under `DOTNET_ENVIRONMENT=Docker`. |
 | **Everything else** | | |
 | `HATCH_MIGRATE` | unset | `1` makes the image run as the migration, which applies the schema and exits, instead of serving. |
-| `KioskFiles__BaseAddress` | `http://files/` | Where the kiosk app's signature checksum comes from. A board never calls it. |
-| `DOMAIN` | unset | The host the kiosk app's download link is built against. A board never calls it. |
 | `DOTNET_ENVIRONMENT` | | Any value but `Development` writes the log as JSON lines instead of the human-formatted default. |
 
 `Auth__SignInPath` cannot usefully move: the wall exempts the literal

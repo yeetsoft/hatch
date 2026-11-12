@@ -1,5 +1,5 @@
 using Hatch.Api.Ef;
-using Hatch.Api.Services.DeviceMapping;
+using Hatch.Api.Services.Settings;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 

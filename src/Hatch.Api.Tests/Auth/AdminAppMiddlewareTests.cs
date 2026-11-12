@@ -1,7 +1,6 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.Media;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -127,7 +126,6 @@ public class AdminAppMiddlewareTests
     [InlineData("/api/zones")]
     [InlineData("/api/hatch/issues")]
     [InlineData("/health/ready")]
-    [InlineData("/media/Beatles/Revolver/01.flac")]
     [InlineData("/auth/")]
     [InlineData("/auth")]
     [InlineData("/.well-known/assetlinks.json")]
@@ -142,26 +140,26 @@ public class AdminAppMiddlewareTests
 
     /// <summary>
     /// Canonicalised before either check: a dot-segment that collapses onto an
-    /// exempt prefix must not read as exempt (or /media/../apps/admin would
+    /// exempt prefix must not read as exempt (or /auth/../apps/admin would
     /// have reopened the hole this closes), and the same collapse must not read
     /// an ordinary path as exempt either, which is the case here - Kestrel
     /// hands this middleware an already percent-decoded, not yet
     /// dot-collapsed, Request.Path (a raw `%2e%2e` never reaches here as
-    /// such), and /media/../plan collapses to /plan, the board's own.
+    /// such), and /auth/../plan collapses to /plan, the board's own.
     /// </summary>
     [Fact]
     public async Task ATraversalOutOfAnExemptPrefixIsGated()
     {
         var gate = new StubRoleGate();
 
-        var (context, served) = await Run("/media/../plan", gate: gate);
+        var (context, served) = await Run("/auth/../plan", gate: gate);
 
         Assert.False(served);
         Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
         // Canonicalisation decides only whether to ask at all; the gate itself
         // is still asked about the request exactly as it arrived.
         Assert.Equal(1, gate.Evaluations);
-        Assert.Equal("/media/../plan", gate.LastAsked.Path);
+        Assert.Equal("/auth/../plan", gate.LastAsked.Path);
     }
 
     /// <summary>
@@ -201,7 +199,6 @@ public class AdminAppMiddlewareTests
     private static readonly IAuthGate Wall = new AuthGate(
         new StubAuthService(),
         Options.Create(new AuthOptions()),
-        Options.Create(new MediaLibraryOptions { RequestPath = "/media" }),
         NullLogger<AuthGate>.Instance);
 
     private static async Task<(HttpContext Context, bool Served)> Run(

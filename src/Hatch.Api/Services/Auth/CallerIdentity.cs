@@ -1,6 +1,6 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
-using Hatch.Api.Services.DeviceMapping;
+using Hatch.Api.Services.Settings;
 using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Services.Auth;
