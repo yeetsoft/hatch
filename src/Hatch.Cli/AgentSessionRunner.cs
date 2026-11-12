@@ -13,7 +13,8 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter, Action<string>? on
 {
     public bool CanSpawn(out string refusal) => adapter.CanSpawn(out refusal);
 
-    public async Task<SessionResult> RunAsync(SessionRequest request, Action<string>? onLine, CancellationToken ct)
+    public async Task<SessionResult> RunAsync(
+        SessionRequest request, Action<string>? onLine, CancellationToken ct, Action<int, DateTime>? onStarted = null)
     {
         var start = adapter.BuildHeadless(request);
 
@@ -26,6 +27,19 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter, Action<string>? on
         {
             using var process = new Process { StartInfo = start };
             process.Start();
+
+            if (onStarted is not null)
+            {
+                try
+                {
+                    onStarted(process.Id, process.StartTime.ToUniversalTime());
+                }
+                catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    // A child that exited at once has no start time to read,
+                    // and nothing left running to leave a record of.
+                }
+            }
 
             // The prompt goes in on stdin rather than as an argument - it is long,
             // and an argument list is the one place where "long" has a limit worth

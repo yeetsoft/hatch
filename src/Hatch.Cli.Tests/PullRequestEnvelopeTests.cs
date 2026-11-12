@@ -85,9 +85,11 @@ public sealed class PullRequestEnvelopeTests
     }
 
     [Theory]
+    [InlineData("AER-12 Auth: the first Admin", "[AER-12](https://hatch.example.com/issues/AER-12)", "AER-12", "hatch.example.com")]
+    [InlineData("AER-12 Auth: the first Admin", "[AER-12](https://hatch.example.com/install/issues/AER-12)", "AER-12", "hatch.example.com/install")]
     [InlineData("AER-12 Auth: the first Admin", "[AER-12](https://hatch.example.com/apps/hatch/issues/AER-12)", "AER-12", "hatch.example.com")]
     [InlineData("AER-12 Auth: the first Admin", "[AER-12](https://hatch.example.com/install/apps/hatch/issues/AER-12)", "AER-12", "hatch.example.com/install")]
-    public void TryReadVersionZero_OnTheOldShape_ReadsTheKeyAndInstance(string title, string body, string expectedKey, string expectedInstance)
+    public void TryReadVersionZero_OnTheRootShapeAndTheOldOne_ReadsTheKeyAndInstance(string title, string body, string expectedKey, string expectedInstance)
     {
         Assert.True(PullRequestEnvelopeReader.TryReadVersionZero(title, body, out var key, out var instance));
         Assert.Equal(expectedKey, key);

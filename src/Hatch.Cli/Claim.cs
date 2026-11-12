@@ -160,6 +160,14 @@ public sealed class Claim : IAsyncDisposable
     /// <summary>The line the heartbeat carries. Written by whoever is rendering the session.</summary>
     public Chatter Chatter { get; }
 
+    /// <summary>
+    /// The <see cref="SessionRecord"/> the increment wrote for this claim, once
+    /// it has - set by whoever spawns the session, and deleted by <see
+    /// cref="ReleaseAsync"/> on every outcome, since a claim that is let go has
+    /// no session left for another loop to end.
+    /// </summary>
+    public string? RecordPath { get; set; }
+
     /// <summary>The client clock, read just before the take's POST - never later than the server's own <c>ClaimedAt</c>.</summary>
     public DateTimeOffset TakenAt { get; }
 
@@ -477,6 +485,10 @@ public sealed class Claim : IAsyncDisposable
     public async Task ReleaseAsync(string? outcome = null, string? reason = null)
     {
         if (Interlocked.Exchange(ref _released, 1) == 1) return;
+
+        // Before the call, so a release that never reaches the board still
+        // leaves no record to be read as a dead loop's.
+        SessionRecord.Delete(RecordPath);
 
         await _stop.CancelAsync();
         if (_heartbeat is { } beat)

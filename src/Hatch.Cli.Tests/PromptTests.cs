@@ -18,14 +18,14 @@ public sealed class PromptTests
     [Fact]
     public void A_pull_request_is_told_to_name_the_ticket_in_its_title_and_first_line()
     {
-        var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "https://hatch.example.test/apps/hatch/issues/AER-12"));
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "https://hatch.example.test/issues/AER-12"));
 
         Assert.Contains("## Opening a pull request", prompt, StringComparison.Ordinal);
         Assert.Contains("Open one before this increment ends, if it pushes any commit meant for a person to", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("## If you open a pull request", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("Only if this increment opens one", prompt, StringComparison.Ordinal);
         Assert.Contains("**Title:** `AER-12 ` and then", prompt, StringComparison.Ordinal);
-        Assert.Contains("\n[AER-12](https://hatch.example.test/apps/hatch/issues/AER-12)\n", prompt, StringComparison.Ordinal);
+        Assert.Contains("\n[AER-12](https://hatch.example.test/issues/AER-12)\n", prompt, StringComparison.Ordinal);
         Assert.Contains("`hatch pr AER-12 <url>`", prompt, StringComparison.Ordinal);
         Assert.Contains("`hatch pr` also writes the ticket's chain into the pull request's body", prompt, StringComparison.Ordinal);
         Assert.Contains("Never write a relative link.", prompt, StringComparison.Ordinal);
@@ -113,7 +113,7 @@ public sealed class PromptTests
     [Fact]
     public void A_relative_link_is_never_handed_on()
     {
-        var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "/apps/hatch/issues/AER-12"));
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "/issues/AER-12"));
 
         Assert.DoesNotContain("](", prompt, StringComparison.Ordinal);
     }
@@ -626,7 +626,7 @@ public sealed class PromptTests
         var prompt = Prompt.Compose(work);
 
         Assert.Contains("feature announcement", prompt, StringComparison.Ordinal);
-        Assert.Contains("/apps/hatch/docs/...", prompt, StringComparison.Ordinal);
+        Assert.Contains("/docs/...", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -721,7 +721,7 @@ public sealed class PromptTests
     public void The_fixed_part_of_the_prompt_stays_under_five_thousand_characters()
     {
         var fixedPart = string.Join('\n', Prompt.Tail(
-            "AER-12", "In Review", "https://hatch.example.test/apps/hatch/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
+            "AER-12", "In Review", "https://hatch.example.test/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
         Assert.True(fixedPart.Length < 5500,
             $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 5,500.");

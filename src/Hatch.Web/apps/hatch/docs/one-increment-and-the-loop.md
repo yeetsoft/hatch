@@ -575,6 +575,38 @@ letter case) still take the same lock. A lock left by a process that is no
 longer running is cleared automatically, with one line on the terminal saying
 so, rather than refusing a loop nothing is actually holding the checkout for.
 
+### A loop that died
+
+A loop that dies mid-increment - a crash, a closed window - takes only itself
+with it. The agent it spawned keeps running in the checkout, and the claim
+sits out its lease on a ticket nobody is working. So while a session runs, the
+increment keeps a record of it beside the lock, under the system's temporary
+directory and named for the checkout - never in the tree: the agent's pid and
+when that process started, the ticket and the claim's token, the Hatch the
+claim was taken against, and the session's id once it has been said. The
+release deletes it on every outcome, and so does the loop's way out, so a
+`--once` run leaves none behind.
+
+The next `go-to-work` in that checkout reads the record as soon as it holds
+the lock and before its own first claim. A pid that is still running **and**
+started when the record says is the dead loop's session: the loop ends it and
+everything it spawned, and waits for it to go. A pid that is gone, or that now
+belongs to a process that started at another time (the number was reused), is
+left alone. Then it releases the claim as `abandoned`:
+
+- **released** - the claim was still the dead loop's, so the ticket gets one
+  comment saying a loop died, the session was ended and the claim released,
+  with the agent's resume command when the session had said its id;
+- **already gone** - the lease had lapsed, been taken or been cleared, so
+  nothing is said on the ticket.
+
+One terminal line says which, and the record is deleted either way. A record
+that names a different Hatch than this loop's is reported and left: it belongs
+to a checkout pointed at another board. Only the loop does any of this -
+`hatch work` writes and clears its own record and never acts on another's.
+`abandoned` is neither a drop nor work, so it does not move the ticket's
+let-go count.
+
 There is a second lock, on the workspace, named `hatch-workspace-<fingerprint>`
 for the workspace's canonical path and holding the pid and the standing
 checkout. `go-to-work` takes it for the night and `work` takes it for the

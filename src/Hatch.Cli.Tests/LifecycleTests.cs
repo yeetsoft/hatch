@@ -280,7 +280,7 @@ public sealed class LifecycleTests
 
         var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
         var comment = Assert.Single(comments);
-        Assert.Contains("preempted by [AER-9](https://hatch.example/apps/hatch/issues/AER-9) - Trunk is down", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("preempted by [AER-9](https://hatch.example/issues/AER-9) - Trunk is down", comment.Body, StringComparison.Ordinal);
         Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
         Assert.Contains("claude --resume s-1", comment.Body, StringComparison.Ordinal);
         Assert.DoesNotContain(comments, c => c.Body.StartsWith("The runner tidied", StringComparison.Ordinal));
