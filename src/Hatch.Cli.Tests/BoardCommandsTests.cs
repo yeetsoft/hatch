@@ -353,12 +353,12 @@ public sealed class BoardCommandsTests
         new([], 0, [], [], WaitingOnARunner: waiting);
 
     /// <summary>
-    /// The footer counts and groups the same way <see cref="Digest.Of"/> does,
+    /// The leading lines count and group the same way <see cref="Digest.Of"/> does,
     /// over <see cref="WaitingOnARunnerDto.Missing"/> rather than a fold reason -
-    /// and the rows above it print exactly as they did before this footer existed.
+    /// and the rows below them print exactly as they did before.
     /// </summary>
     [Fact]
-    public async Task The_queue_closes_with_one_line_per_distinct_missing_thing()
+    public async Task The_queue_opens_with_one_line_per_distinct_missing_thing()
     {
         using var h = new CliHarness();
         h.Wire.Json("GET", "/api/work/queue", new[]
@@ -377,8 +377,8 @@ public sealed class BoardCommandsTests
 
         Assert.Equal(
             """
-            AER-1  [task]  In Progress  -> In Review
             2 issues wait for a runner that offers fable
+            AER-1  [task]  In Progress  -> In Review
             """.ReplaceLineEndings("\n"),
             h.Said);
     }
@@ -402,8 +402,8 @@ public sealed class BoardCommandsTests
 
         Assert.Equal(
             """
-            AER-1  [task]  In Progress  -> In Review
             1 issue waits for a runner that has pwsh 7
+            AER-1  [task]  In Progress  -> In Review
             """.ReplaceLineEndings("\n"),
             h.Said);
     }
@@ -446,7 +446,7 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
-    public async Task Narrowed_by_an_ancestor_key_the_footer_counts_only_what_the_rows_show()
+    public async Task Narrowed_by_an_ancestor_key_the_waiting_lines_count_only_what_the_rows_show()
     {
         using var h = new CliHarness();
         h.Wire.Json("GET", "/api/work/queue", new[]
@@ -465,12 +465,50 @@ public sealed class BoardCommandsTests
 
         Assert.Equal(
             """
-            AER-1  [task]  In Progress  -> In Review
             1 issue waits for a runner that offers fable
+            AER-1  [task]  In Progress  -> In Review
             """.ReplaceLineEndings("\n"),
             h.Said);
     }
 
+    /// <summary>
+    /// A project locked out of every runner can have an empty queue because of it, so
+    /// the sentence that says why cannot wait for a row to hang off.
+    /// </summary>
+    [Fact]
+    public async Task An_empty_queue_still_opens_with_the_waiting_lines()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/attention", Attention(
+        [
+            new WaitingOnARunnerDto("AER-2", "AER-2's title", "task", "In Progress", "no live runner has postgres 18 or newer"),
+        ]));
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            1 issue waits for a runner that has postgres 18 or newer
+            hatch: nothing on the board is on the dispatcher's path
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task An_empty_queue_narrowed_to_mine_prints_no_waiting_lines()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/attention", Attention(
+        [
+            new WaitingOnARunnerDto("AER-2", "AER-2's title", "task", "In Progress", "no live runner has postgres 18 or newer"),
+        ]));
+
+        await new BoardCommands(h.Cli).QueueAsync(["--mine"], default);
+
+        Assert.Equal("hatch: nothing of yours is on the dispatcher's path", h.Said);
+    }
     /// <summary>
     /// The tag fold is a sentence the server writes; the queue prints it as it
     /// prints any other, in the column a blocked row's reason always takes.

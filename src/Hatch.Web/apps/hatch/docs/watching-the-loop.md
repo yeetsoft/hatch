@@ -433,7 +433,7 @@ failed, in a project that has not turned on **Runners work contributions**:
 the key links to the issue, the pull request opens on the forge, and a
 contribution mirrored from another instance names where it came from.
 **Waiting on a runner** lists every issue whose next move no live runner can
-take for want of a model or a tool, and links to the Runners page, where each runner shows what it offers
+take for want of a model, a tool, or a dependency its project declares - and links to the Runners page, where each runner shows what it offers
 ([the runner](the-runner#what-a-runner-advertises) covers what that is); like
 **Backups**, it lights the control and adds no pill to the bar. **Backups**
 appears only when the configured backup is failing or stale, and links to
@@ -464,7 +464,8 @@ that is the *no runner* condition, not this one - and neither does a split
 fleet, one runner lacking the model and another the tool, since no single
 sentence is true of all of them. With nothing to list, the section opens to
 *Nothing is waiting on a runner.* [hatch queue](cli-reference#queue) prints
-the same list at the terminal.
+the same list at the terminal, ahead of its rows, and the Runners page shows it
+above its list for as long as it is not empty.
 
 **Runner capacity** lists every project whose clear implementation steps no
 live runner, or only one, can take - a narrower question than **Waiting on a
