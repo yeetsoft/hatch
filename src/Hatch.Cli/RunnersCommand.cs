@@ -18,23 +18,41 @@ public sealed class RunnersCommand(Cli cli)
     public static readonly string[] RunnersUsage =
     [
         "usage: hatch runners [--json]",
+        "       hatch runners refuse [<model>...]",
+        "       hatch runners refuse --lift <model>...",
         "",
         "  One line per runner that has spoken to this Hatch lately, most recently",
         "  heard from first: its name, what it is doing, the ticket it holds (or",
         "  none), and how long ago it last heartbeat. A row closes with the projects",
-        "  it is bound to and the models it advertises, where it has any. The row",
-        "  is followed by one indented line per live session beneath it: where,",
-        "  agent, OS, state. A caller with nothing to see prints one sentence",
-        "  saying so.",
+        "  it is bound to, the models it advertises and, where it refuses any, the",
+        "  models it refuses. The row is followed by one indented line per live",
+        "  session beneath it: where, agent, OS, state. A caller with nothing to see",
+        "  prints one sentence saying so.",
         "",
         "  --json           the endpoint's own answer, and nothing else",
+        "",
+        "  hatch runners refuse               the calling key's own runner's refused models, one per line",
+        "  hatch runners refuse <model>...     add each to the list",
+        "  hatch runners refuse --lift <model>...  take each off the list",
+        "",
+        "  The runner is always the calling key's own name - there is no flag for it.",
+        "  Each model is its own argument; a comma inside one is refused the way",
+        "  config --models refuses it.",
     ];
 
     public const string EmptyWords = "No runner this caller can see has spoken to this Hatch lately.";
 
+    public const string RefusesNone = "This runner refuses no model.";
+
+    /// <summary>The wording mirrors <see cref="LoopKey.Refusal"/>: a refusal is a key's to hold, never a flag's.</summary>
+    public const string KeylessRefusal = "hatch: a refusal is a key's - run `hatch config` to create one.";
+
+    public const string NotAKeyRefusal = "hatch: a refusal is a key's - this call is not a key's.";
+
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, RunnersUsage);
+        if (args is ["refuse", .. var refuseArgs]) return await RefuseAsync(refuseArgs, ct);
 
         var json = false;
 
@@ -70,10 +88,88 @@ public sealed class RunnersCommand(Cli cli)
         return 0;
     }
 
+    /// <summary>
+    /// A runner's own refused models, read, set and lifted from a terminal -
+    /// the calling key's own row, never another's and never a flag's.
+    /// </summary>
+    private async Task<int> RefuseAsync(string[] args, CancellationToken ct)
+    {
+        var lift = args is ["--lift", ..];
+        var typed = lift ? args[1..] : args;
+
+        foreach (var arg in typed)
+        {
+            if (arg.StartsWith("--", StringComparison.Ordinal))
+                return Usage.Refuse(cli.Say, $"runners refuse does not take \"{arg}\"", RunnersUsage);
+        }
+
+        if (lift && typed.Length == 0)
+            return Usage.Refuse(cli.Say, "--lift needs a model", RunnersUsage);
+
+        if (string.IsNullOrWhiteSpace(cli.Settings.Key))
+        {
+            cli.Say.Complain(KeylessRefusal);
+            return 1;
+        }
+
+        var me = await cli.Board.MeAsync(ct);
+        if (me is not { Kind: "key" })
+        {
+            cli.Say.Complain(NotAKeyRefusal);
+            return 1;
+        }
+
+        var runner = me.Name;
+
+        if (typed.Length == 0)
+        {
+            var row = await cli.Board.RunnerAsync(runner, ct);
+            PrintRefused(row?.RefusedModels ?? []);
+            return 0;
+        }
+
+        if (RunnerModels.Normalise(typed, cli.Settings.Agent, out var kept) is { } sentence)
+        {
+            cli.Say.Complain($"hatch: {sentence}");
+            return 1;
+        }
+
+        var held = (await cli.Board.RunnerAsync(runner, ct))?.RefusedModels ?? [];
+
+        IReadOnlyList<string> next;
+        if (lift)
+        {
+            var missing = kept.Where(m => !held.Contains(m, StringComparer.Ordinal)).ToList();
+            if (missing.Count > 0)
+            {
+                foreach (var m in missing) cli.Say.Complain($"hatch: {m} is not on the list - nothing written");
+                return 1;
+            }
+
+            next = held.Where(m => !kept.Contains(m, StringComparer.Ordinal)).ToList();
+        }
+        else
+        {
+            var merged = new List<string>(held);
+            foreach (var m in kept.Where(m => !merged.Contains(m, StringComparer.Ordinal))) merged.Add(m);
+            next = merged;
+        }
+
+        var written = await cli.Board.WriteRefusedModelsAsync(runner, next, ct);
+        PrintRefused(written?.RefusedModels ?? []);
+        return 0;
+    }
+
+    private void PrintRefused(IReadOnlyList<string> models)
+    {
+        if (models.Count == 0) { cli.Say.Line(RefusesNone); return; }
+        foreach (var model in models) cli.Say.Line(model);
+    }
+
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Bound(r) + Models(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Bound(r) + Models(r) + Refuses(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -162,6 +258,13 @@ public sealed class RunnersCommand(Cli cli)
     /// </summary>
     private static string Models(RunnerDto row) =>
         row.Models.Count > 0 ? $"  models {string.Join(" ", row.Models)}" : "";
+
+    /// <summary>
+    /// The models a runner's key refuses, closing its row after the models
+    /// it advertises; nothing where it refuses none.
+    /// </summary>
+    private static string Refuses(RunnerDto row) =>
+        row.RefusedModels.Count > 0 ? $"  refuses {string.Join(", ", row.RefusedModels)}" : "";
 
     /// <summary>
     /// The state word, in the order <c>runnerActivity</c> reads it - silence
