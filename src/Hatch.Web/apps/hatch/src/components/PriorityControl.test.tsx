@@ -129,4 +129,23 @@ describe('PriorityControl', () => {
     expect(html).not.toContain('inherited from');
     expect(html).not.toContain('<button');
   });
+
+  it("draws the status bar's size only when asked for it", () => {
+    const draw = (size?: 'md' | 'lg') =>
+      renderToStaticMarkup(
+        <PriorityControl
+          issueKey="HA-14"
+          priority="expedited"
+          priorityOwn="expedited"
+          priorityFrom={null}
+          directory={directory()}
+          size={size}
+          onChange={() => {}}
+        />,
+      );
+
+    expect(draw('lg')).toContain('hatch-priority-pill-lg');
+    expect(draw('md')).not.toContain('hatch-priority-pill-lg');
+    expect(draw()).not.toContain('hatch-priority-pill-lg');
+  });
 });

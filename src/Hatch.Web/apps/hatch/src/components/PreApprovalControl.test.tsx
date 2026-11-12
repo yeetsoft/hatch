@@ -152,4 +152,24 @@ describe('PreApprovalControl', () => {
     expect(html).toContain('✓');
     expect(html).toContain('Pre-approved');
   });
+
+  it("draws the status bar's size only when asked for it", () => {
+    const draw = (size?: 'md' | 'lg') =>
+      renderToStaticMarkup(
+        <PreApprovalControl
+          issueKey="HA-14"
+          preApproval="express"
+          preApprovalOwn="express"
+          preApprovalFrom={null}
+          directory={directory()}
+          canApprove={false}
+          size={size}
+          onChange={() => {}}
+        />,
+      );
+
+    expect(draw('lg')).toContain('hatch-preapproval-pill-lg');
+    expect(draw('md')).not.toContain('hatch-preapproval-pill-lg');
+    expect(draw()).not.toContain('hatch-preapproval-pill-lg');
+  });
 });

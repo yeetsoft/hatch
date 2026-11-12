@@ -106,6 +106,12 @@ not set its own — read back as, for instance, "expedited (inherited from
 AER-12)". Raising a ticket's level this way is what the house calls
 *expediting* it.
 
+The level is a pill in the issue page's status band, beside Status and
+Pre-approval, and the same pill sits in the board's peek. Pressing it opens
+the six levels under the row; picking one sets it and folds the band. A
+key-holder sees the word, with where it was inherited from, and nothing to
+press.
+
 ## Dependencies
 
 An edge, shown as `depends` on the ticket that waits and `blocks` on the one
@@ -162,6 +168,13 @@ session, as long as it has no [unanswered question](questions-and-decisions).
 current, or once every child is done, the board carries it on by itself,
 with nobody reading the diff first — a move [the lifecycle of a
 ticket](the-lifecycle-of-a-ticket) calls the hop.
+
+The level is a pill in the issue page's status band, beside Status and
+Priority, and the same pill sits in the board's peek. Pressing it opens the
+three levels under the row. Only an owner or approver of the project may set
+or lower `preapproved`, and the band says so on the steps it locks. A
+key-holder sees the word, with where it was inherited from, and nothing to
+press.
 
 ## Finished with no code
 
@@ -303,7 +316,7 @@ that advertises none of what is required is skipped, the same way a
 dependency or a hold would be.
 
 The field sits on the issue page, in the Details card's edit view, right
-after Pre-approval, and opening it takes nothing beyond being able to open
+after Assignee, and opening it takes nothing beyond being able to open
 the ticket at all — the same as its title and description. Every tag it
 inherits is read out underneath, one sentence per source in the order the
 union itself is built: the project first, then each ancestor in turn, naming
