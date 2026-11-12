@@ -368,6 +368,7 @@ Two rules are deliberately **not** in `base.css`, and each app states its own:
 | Controls | `<Field>`, `<Button>` |
 | Text | `<Badge>`, `<Text>` |
 | Identity | `<ProjectMark>` |
+| Palette | `<PaletteBoard>` |
 | The exception | `<EmptyState>` |
 
 The ten primitives after the chrome are extracted from CSS conventions that

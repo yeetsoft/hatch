@@ -745,6 +745,11 @@
   transition: transform var(--transition);
 }
 
+.hatch-status-pill-lg .hatch-status-pill-caret {
+  width: 16px;
+  height: 16px;
+}
+
 .hatch-status-pill-press[aria-expanded='true'] .hatch-status-pill-caret {
   transform: rotate(180deg);
 }
@@ -2047,12 +2052,14 @@ button.hatch-card-stories:focus-visible {
   flex-wrap: wrap;
 }
 
-/* The status picker's band, on a line of its own under the meta row: flex-basis
-   100% forces the wrap regardless of what else sits in the row before it, and
-   order puts it after every chip whatever their own order. The same wash,
-   leading edge and radius as the issue page's status bar (.hatch-status-bar),
-   at a tighter padding for the peek's smaller frame. */
-.hatch-peek-status {
+/* The status picker's band, on a line of its own under the peek's meta row or
+   the issue page's status bar: flex-basis 100% forces the wrap regardless of
+   what else sits in the row before it, and order puts it after every chip
+   whatever their own order. The same wash, leading edge and radius as the
+   issue page's status bar (.hatch-status-bar), at a tighter padding for the
+   peek's smaller frame. Inside that bar it draws no box of its own (see
+   `.hatch-status-bar .hatch-status-band`). */
+.hatch-status-band {
   flex-basis: 100%;
   order: 1;
   display: flex;
@@ -2075,7 +2082,7 @@ button.hatch-card-stories:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hatch-peek-status {
+  .hatch-status-band {
     animation: none;
   }
 }
@@ -2322,7 +2329,7 @@ button.hatch-chip {
 }
 
 /* The conflict chip's file list, dropped to its own line under the button
-   that opens it - flex-basis: 100% is the same trick .hatch-peek-status
+   that opens it - flex-basis: 100% is the same trick .hatch-status-band
    uses. */
 .hatch-chip-files {
   flex-basis: 100%;
@@ -2387,6 +2394,25 @@ button.hatch-chip {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
+}
+
+/* The shared paired-field row: two Fields side by side at half width, label
+   over control as Field already draws it, one per row below the breakpoint
+   .hatch-issue-controls uses. The New issue dialog's two levels sit in it;
+   the other forms under HA-2200 (the trunk-build bug, project edit) reuse the
+   class rather than copy it. minmax(0, 1fr) so a wide control cannot widen
+   its half; align-items: start so one open band does not stretch the other. */
+.hatch-field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4) var(--sp-5);
+  align-items: start;
+}
+
+@media (max-width: 40rem) {
+  .hatch-field-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .hatch-form-actions,
@@ -2754,8 +2780,8 @@ button.hatch-chip {
 .hatch-status-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-5);
+  justify-content: flex-start;
+  gap: var(--sp-3);
   flex-wrap: wrap;
   padding: var(--sp-4) var(--sp-5);
   background: color-mix(in srgb, var(--status-color) 10%, var(--card));
@@ -2764,10 +2790,12 @@ button.hatch-chip {
   border-radius: var(--r);
 }
 
-.hatch-status-bar-now {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
+/* The bar already has the wash and the edge, so the picker's band opens onto
+   it without a second box. */
+.hatch-status-bar .hatch-status-band {
+  background: none;
+  border: 0;
+  padding: 0;
 }
 
 .hatch-status-bar-label {
@@ -5291,7 +5319,7 @@ input.hatch-inline-title-input {
 }
 
 /* The band under the pill: the same wash, leading edge and radius as the
-   status picker's (.hatch-peek-status, App.css:1044) and the issue page's
+   status picker's (.hatch-status-band, App.css:1044) and the issue page's
    status bar (.hatch-status-bar, App.css:1458), coloured by the effective
    level's own class rather than a per-instance variable - priority has no
    arbitrary colour the way a board column does. */
@@ -9528,4 +9556,26 @@ button.hatch-option.chosen {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
+}
+
+/* The Palette board section above the three layouts: <PaletteBoard> at the fixed
+   seed, one per block. The board paints its own ground; this only sets the two
+   side by side, wrapping rather than shrinking so each holds its own width. */
+.design-pc-boards {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-5);
+}
+
+.design-pc-board-block {
+  flex: 1 1 22rem;
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.design-pc-board-block-label {
+  color: var(--muted);
+  font-size: var(--t-label);
 }
