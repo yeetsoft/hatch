@@ -10,4 +10,7 @@ namespace Hatch.Api.Tests.E2e;
 internal sealed record DeviceProfile(string Device, string Engine)
 {
     public static readonly DeviceProfile IPhone14Pro = new("iPhone 14 Pro", "webkit");
+
+    /// <summary>WebKit at a desktop viewport with a mouse and a keyboard, for a case that presses keys: the phone profile's touch device is not what a keyboard user has.</summary>
+    public static readonly DeviceProfile DesktopSafari = new("Desktop Safari", "webkit");
 }

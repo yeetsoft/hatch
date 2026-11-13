@@ -75,13 +75,17 @@ export function ThemeSwitch({
   /* The configurator is portalled out of the gear's panel (which translates and clips, and would hold a fixed
      overlay inside itself), and focus moving into it closes the gear, so by the time the dialog hands focus back
      Tune is in a `visibility: hidden` panel and cannot take it. Where it could not, the gear's own trigger is the
-     nearest place the operator was. Runs after the dialog's own cleanup, which is where it tried. */
+     nearest place the operator was. Runs after the dialog's own cleanup, which is where it tried.
+
+     So it always lands there, Tune included: the gear's panel hides on a visibility transition, so the dialog's own
+     focus() can take Tune while the panel is still visible, and the browser then drops that focus to the body
+     when the panel hides - leaving the dialog's hand-back looking done and the operator nowhere. */
   useEffect(() => {
     if (wasTuning.current && !tuning) {
-      const tune = tuneRef.current;
-      if (tune && document.activeElement !== tune) {
-        tune.closest<HTMLElement>('.hatch-menu')?.querySelector<HTMLElement>('.hatch-menu__trigger')?.focus();
-      }
+      tuneRef.current
+        ?.closest<HTMLElement>('.hatch-menu')
+        ?.querySelector<HTMLElement>('.hatch-menu__trigger')
+        ?.focus();
     }
     wasTuning.current = tuning;
   }, [tuning]);
