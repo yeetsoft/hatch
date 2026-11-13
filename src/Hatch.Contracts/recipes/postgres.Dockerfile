@@ -3,7 +3,7 @@ ARG POSTGRES_VERSION=17
 RUN major=${POSTGRES_VERSION%%.*} \
  && mkdir -p -m 755 /etc/apt/keyrings \
  && . /etc/os-release \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 https://www.postgresql.org/media/keys/ACCC4CF8.asc \
       -o /etc/apt/keyrings/postgresql.asc \
  && chmod a+r /etc/apt/keyrings/postgresql.asc \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main" \

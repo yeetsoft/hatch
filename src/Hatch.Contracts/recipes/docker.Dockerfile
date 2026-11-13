@@ -1,7 +1,7 @@
 # docker: the client only (docker-ce-cli and the compose plugin) from Docker's own apt repo. No daemon: a container uses the host's socket.
 RUN mkdir -p -m 755 /etc/apt/keyrings \
  && . /etc/os-release \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 "https://download.docker.com/linux/$ID/gpg" \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 "https://download.docker.com/linux/$ID/gpg" \
       -o /etc/apt/keyrings/docker.asc \
  && chmod a+r /etc/apt/keyrings/docker.asc \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$ID $VERSION_CODENAME stable" \
