@@ -198,6 +198,10 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public static string BundleIndex() =>
         Path.Combine(WebRoot(), "apps", "hatch", "index.html");
 
+    /// <summary>The standalone bar apps/chrome builds for Swagger UI; absent until `npm run build -w apps/chrome` has run.</summary>
+    public static string ChromeBundle() =>
+        Path.Combine(WebRoot(), "apps", "chrome", "topbar.js");
+
     private static string WebRoot() =>
         Path.Combine(MinimalDatabases.RepositoryRoot(), "src", "Hatch.Api", "wwwroot");
 

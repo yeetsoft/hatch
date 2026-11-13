@@ -475,17 +475,36 @@ cannot reflow to a phone's width.
 ### Pages that are not React apps
 
 `@hatch/ui/standalone/topbar` is `<TopBar>` built with DOM calls instead of
-React, for a page that cannot import the React component — Swagger UI
+React, for a page that cannot import the React component. Swagger UI
 (Swashbuckle's own document, reached only through injected `<head>` content)
-is the one currently in the house, and a static export would be another. It is
-kept in the library even while nothing currently wires it up, for the next
-page that needs it:
+is the one in the house, and it takes the bar. `apps/chrome` is the build: a
+workspace whose whole source is `import '@hatch/ui/standalone/topbar'`, emitted
+by Vite into `wwwroot/apps/chrome/` as an IIFE `topbar.js`, one `topbar.css`
+(the token file plus the bar's own stylesheets) and the Manrope faces under
+`assets/`. The `BuildChrome` target in `Hatch.Api.csproj` runs it with
+`BuildAuth`. The names are fixed, not hashed, because `Program.cs` spells them
+into the `UseSwaggerUI` call; the `/apps` static mount serves them same-origin.
+
+`UseSwaggerUI` injects three things, in this order:
 
 ```html
-<link rel="stylesheet" href="topbar.css">
-<script>window.hatchTopBar = { appName: 'Hatch API', theme: 'switch' };</script>
-<script src="topbar.js"></script>
+<link rel="stylesheet" href="/apps/chrome/topbar.css">
+<link rel="stylesheet" href="/apps/chrome/swagger.css">
+<script>window.hatchTopBar = { appName: "Hatch API", theme: "switch" };</script>
+<script src="/apps/chrome/topbar.js"></script>
 ```
+
+The token file goes first because `swagger.css` (`apps/chrome/public/swagger.css`,
+copied verbatim) restates no colour: every value in it is a `var(--…)` from
+`tokens.css`, which already carries both themes and both guards. So the sheet
+needs no dark rules of its own and no palette logic. At evaluation the bar
+runs the same sequence an app does — `applySharedSeed`, then
+`applyPalette(readPalette())`, then `applyChoice` — and the Random palette's
+`<style data-theme-palette>` overrides those same tokens, so a stored
+`hatch.palette` (or a `?palette=<seed>` on arrival, which is stripped from the
+address) repaints Swagger in light and dark. The method colours and Swagger's
+own typeface are left as Swagger draws them. The config rides a global because
+Swashbuckle's `InjectJavascript` writes a `src` and nothing else.
 
 `theme` is `switch` (the page is themed — render the Auto/Light/Dark control) or
 `light`/`dark` (the page has one appearance — pin the root to it and render no

@@ -501,7 +501,32 @@ if (authShell is not null)
 }
 
 app.UseSwagger();
-app.UseSwaggerUI(c => c.DocumentTitle = "Hatch API");
+
+////////
+/// Swagger UI wears the same bar, and the same palette, as every other page in
+/// the house.
+///
+/// It is Swashbuckle's document, not one of the Vite apps, so it cannot render
+/// <TopBar> - it gets the standalone build of the same component instead
+/// (Hatch.Web/apps/chrome, served out of wwwroot/apps/chrome by the /apps static
+/// mount). Three injections, and the head content is the one that has to be a
+/// <script>: InjectJavascript writes a src and nothing else, so the bar's
+/// configuration cannot ride on the tag and arrives as a global the bundle reads
+/// instead.
+///
+/// topbar.css comes first because it is the token file: swagger.css dresses
+/// Swagger's own surfaces from those tokens, so Auto/Light/Dark and the Random
+/// palette move the whole page rather than a 48px strip above a white one. The
+/// two ship together or not at all.
+app.UseSwaggerUI(c =>
+{
+    c.DocumentTitle = "Hatch API";
+
+    c.InjectStylesheet("/apps/chrome/topbar.css");
+    c.InjectStylesheet("/apps/chrome/swagger.css");
+    c.InjectJavascript("/apps/chrome/topbar.js");
+    c.HeadContent = """<script>window.hatchTopBar = { appName: "Hatch API", theme: "switch" };</script>""";
+});
 app.MapSwagger();
 
 await app.RunAsync();

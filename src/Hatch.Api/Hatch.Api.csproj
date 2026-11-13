@@ -98,4 +98,19 @@
   <Target Name="BuildAuth" BeforeTargets="Build" DependsOnTargets="NpmInstall" Condition="'$(SkipAuthBuild)' != 'true'" Inputs="@(AuthSource)" Outputs="wwwroot/apps/auth/index.html">
     <Exec Command="npm run build -w apps/auth" WorkingDirectory="../Hatch.Web" />
   </Target>
+
+  <!--
+    The shared bar and the stylesheet that dresses Swagger UI from the tokens
+    (apps/chrome, loaded by the UseSwaggerUI call in Program.cs). It is a
+    script and two stylesheets rather than an index.html, so the output the
+    incremental check watches is topbar.js. The library under packages/ is in
+    the glob because the bar is that library's code and this app only builds it.
+  -->
+  <ItemGroup>
+    <ChromeSource Include="../Hatch.Web/apps/chrome/src/**/*.*;../Hatch.Web/apps/chrome/public/**/*.*;../Hatch.Web/apps/chrome/package.json;../Hatch.Web/apps/chrome/vite.config.ts;../Hatch.Web/packages/*/src/**/*.*;../Hatch.Web/packages/*/package.json" />
+  </ItemGroup>
+
+  <Target Name="BuildChrome" BeforeTargets="Build" DependsOnTargets="NpmInstall" Condition="'$(SkipChromeBuild)' != 'true'" Inputs="@(ChromeSource)" Outputs="wwwroot/apps/chrome/topbar.js">
+    <Exec Command="npm run build -w apps/chrome" WorkingDirectory="../Hatch.Web" />
+  </Target>
 </Project>
