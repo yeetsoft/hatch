@@ -1445,6 +1445,7 @@ public record SearchDto(int Total, IReadOnlyList<SearchHitDto> Hits);
 /// reads.
 /// </param>
 /// <param name="PlaybookFilePath">See <see cref="MergeCheckDto.PlaybookFilePath"/>, from the counted repositories' clean merge checks - <c>null</c> when none has named one. Defaults to <c>null</c> so an older client still reads.</param>
+/// <param name="DependencyFilePath">See <see cref="MergeCheckDto.DependencyFilePath"/>, from the counted repositories' clean merge checks - <c>null</c> when none has named one. Defaults to <c>null</c> so an older client still reads.</param>
 public record ReviewDto(
     string Key,
     string Title,
@@ -1454,7 +1455,8 @@ public record ReviewDto(
     bool? HoldsTrunk = null,
     string? Trunk = null,
     string? HeldSentence = null,
-    string? PlaybookFilePath = null);
+    string? PlaybookFilePath = null,
+    string? DependencyFilePath = null);
 
 /// <summary>
 /// The two things that stop a night, in one read: a pull request nobody has
@@ -3849,6 +3851,8 @@ public static class Landings
 /// branch.
 /// </param>
 /// <param name="PlaybookFilePath">The path of the project's playbook file (<c>.hatch/playbooks.yaml</c>) this branch's pull request changes, as the runner found it in the branch's diff. Null when it does not, or for <c>none</c> and <c>ambiguous</c>, which name no branch.</param>
+/// <param name="DependencyFilePath">The path of the project's dependency file (<see cref="DependencyDeclaration.Path"/>) this branch's pull request changes, as the runner found it in the branch's diff. Null when it does not, or for <c>none</c> and <c>ambiguous</c>, which name no branch.</param>
+/// <param name="DependencyFileContent">The branch's blob at <paramref name="DependencyFilePath"/>, as text. Null when <paramref name="DependencyFilePath"/> is null, when the blob could not be read, or when it is over 16 KB.</param>
 public record MergeCheckRequest(
     string Remote,
     string Trunk,
@@ -3859,7 +3863,9 @@ public record MergeCheckRequest(
     IReadOnlyList<string>? Files,
     string Runner,
     bool? HoldsTrunk = null,
-    string? PlaybookFilePath = null);
+    string? PlaybookFilePath = null,
+    string? DependencyFilePath = null,
+    string? DependencyFileContent = null);
 
 /// <summary>
 /// A runner reporting that the pull request recorded on an issue has merged.
@@ -3911,6 +3917,8 @@ public record PullRequestPushbackRequest(string Url, string Runner);
 /// <param name="CheckedAt">When the board took it.</param>
 /// <param name="CheckedBy">The name of the credential it arrived under.</param>
 /// <param name="PlaybookFilePath">See <see cref="MergeCheckRequest.PlaybookFilePath"/>.</param>
+/// <param name="DependencyFilePath">See <see cref="MergeCheckRequest.DependencyFilePath"/>.</param>
+/// <param name="DependencyFileContent">See <see cref="MergeCheckRequest.DependencyFileContent"/>.</param>
 public record MergeCheckDto(
     string Remote,
     string Canonical,
@@ -3924,7 +3932,9 @@ public record MergeCheckDto(
     DateTimeOffset CheckedAt,
     string Runner,
     string CheckedBy,
-    string? PlaybookFilePath = null);
+    string? PlaybookFilePath = null,
+    string? DependencyFilePath = null,
+    string? DependencyFileContent = null);
 
 /// <summary>
 /// A landing write, as a session's own report or a runner's poll of a

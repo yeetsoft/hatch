@@ -922,20 +922,66 @@ public sealed class Dispatch(
             }
             else
             {
-                var needed = new List<string>();
-                foreach (var need in requirement.Needs
-                             .OrderBy(n => n.Id, StringComparer.Ordinal)
-                             .ThenBy(n => n.Version, StringComparer.Ordinal))
-                {
-                    if (withHas.Any(d => d.Has.VersionsOf(need.Id).Any(v => DependencyVersion.Satisfies(need.Version, v)))) continue;
-                    needed.Add(NeedPhrase(need));
-                }
+                var needed = NeededPhrases(
+                    requirement.Needs.OrderBy(n => n.Id, StringComparer.Ordinal).ThenBy(n => n.Version, StringComparer.Ordinal)
+                        .Select(n => (n.Id, n.Version)),
+                    withHas);
 
                 if (needed.Count > 0) parts.Add($"no live runner has {Listed(needed)}");
             }
         }
 
         return parts.Count == 0 ? null : string.Join("; ", parts);
+    }
+
+    /// <summary>
+    /// Which of <paramref name="needs"/> no peer in <paramref name="withHas"/>
+    /// satisfies, each as a phrase naming the id and, where declared, the
+    /// minimum version - shared so <see cref="MissingAcrossFleetAsync"/> and
+    /// <see cref="FleetLacksAsync"/> judge a version the same way. The caller
+    /// orders <paramref name="needs"/>; this does not.
+    /// </summary>
+    private static List<string> NeededPhrases(IEnumerable<(string Id, string? Version)> needs, IReadOnlyList<RunnerDeclaration> withHas)
+    {
+        var needed = new List<string>();
+        foreach (var need in needs)
+        {
+            if (withHas.Any(d => d.Has.VersionsOf(need.Id).Any(v => DependencyVersion.Satisfies(need.Version, v)))) continue;
+            needed.Add(need.Version is null ? need.Id : $"{need.Id} {need.Version} or newer");
+        }
+
+        return needed;
+    }
+
+    /// <summary>
+    /// What no live peer has, of a set of dependencies parsed from a branch's
+    /// own edit to <see cref="DependencyDeclaration.Path"/> - not the trunk's,
+    /// which <see cref="MissingAcrossFleetAsync"/> reads instead. A peer that
+    /// declared which repositories it binds and does not bind
+    /// <paramref name="canonical"/> is never asked, the same restriction
+    /// <see cref="TakeableByAsync"/> scans under. Null where no live peer is
+    /// relevant, where none judges <c>Has</c> at all, or where every need is
+    /// met.
+    /// </summary>
+    public async Task<string?> FleetLacksAsync(
+        IReadOnlyList<DeclaredDependency> needs, string canonical, DateTimeOffset liveSince, CancellationToken ct)
+    {
+        if (needs.Count == 0) return null;
+
+        var fleet = (await LivePeersAsync(time.GetUtcNow(), liveSince, null, ct))
+            .Where(p => p.Declaration.Refusal is null
+                && (!p.Declaration.Repos.IsDeclared || p.Declaration.Repos.Match(canonical) is not null))
+            .ToList();
+
+        var withHas = fleet.Select(p => p.Declaration).Where(d => d.Has.Judged).ToList();
+        if (withHas.Count == 0) return null;
+
+        var needed = NeededPhrases(
+            needs.OrderBy(n => n.Id, StringComparer.Ordinal).ThenBy(n => n.Version, StringComparer.Ordinal)
+                .Select(n => (n.Id, n.Version)),
+            withHas);
+
+        return needed.Count == 0 ? null : $"no live runner has {Listed(needed)}";
     }
 
     private static string Minutes(int seconds)

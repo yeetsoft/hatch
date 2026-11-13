@@ -894,4 +894,54 @@ public sealed class PromptTests
             Assert.False(System.Text.RegularExpressions.Regex.IsMatch(text, @"docs/hatch[.]md(?!#)"),
                 $"a prompt points at the whole of docs/hatch.md:\n{text}");
     }
+
+    // ---- Changed since this brief ----
+
+    private static RepoSince Landed(string? where = null) =>
+        new(where, [new PathCommits(".hatch/dependencies.json",
+            [new TrunkCommit("abc1234", "2026-11-10", "Deps: drop postgres, docker covers it", "The database comes from compose.\nNot a dependency.")])]);
+
+    [Fact]
+    public void Commits_since_the_brief_are_shown_with_their_subject_and_body_and_a_question_not_an_order()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), since: [Landed()]);
+
+        Assert.Contains("## Changed since this brief", prompt, StringComparison.Ordinal);
+        Assert.Contains("- `.hatch/dependencies.json`", prompt, StringComparison.Ordinal);
+        Assert.Contains("  - abc1234  2026-11-10  Deps: drop postgres, docker covers it", prompt, StringComparison.Ordinal);
+        Assert.Contains("    The database comes from compose.", prompt, StringComparison.Ordinal);
+        Assert.Contains("    Not a dependency.", prompt, StringComparison.Ordinal);
+        Assert.Contains("The brief predates these commits", prompt, StringComparison.Ordinal);
+        Assert.Contains("ask with `hatch ask`", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Nothing_since_the_brief_adds_no_section()
+    {
+        Assert.DoesNotContain("## Changed since this brief", Prompt.Compose(Fixtures.Work("AER-12"), since: null), StringComparison.Ordinal);
+        Assert.DoesNotContain("## Changed since this brief", Prompt.Compose(Fixtures.Work("AER-12"), since: []), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_section_comes_after_the_branch_and_before_the_children()
+    {
+        var branches = new[] { new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x" } };
+        var work = Fixtures.Work("AER-12", children: [Fixtures.Card("AER-13")]);
+
+        var prompt = Prompt.Compose(work, branches: branches, since: [Landed()]);
+
+        var branch = prompt.IndexOf("## The branch", StringComparison.Ordinal);
+        var since = prompt.IndexOf("## Changed since this brief", StringComparison.Ordinal);
+        var children = prompt.IndexOf("## Its children", StringComparison.Ordinal);
+        Assert.True(branch >= 0 && branch < since && since < children, $"{branch} {since} {children}");
+    }
+
+    [Fact]
+    public void A_second_checkout_is_labelled_by_its_remote()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), since: [Landed("repo-a"), Landed("repo-b")]);
+
+        Assert.Contains("repo-a:", prompt, StringComparison.Ordinal);
+        Assert.Contains("repo-b:", prompt, StringComparison.Ordinal);
+    }
 }

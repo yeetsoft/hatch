@@ -25,6 +25,15 @@ public static class DependencyDeclaration
     /// <summary>Restates the playbooks file's cap, which <c>Hatch.Contracts</c> cannot reference; a test pins them equal.</summary>
     public const int MaxFileBytes = 512 * 1024;
 
+    /// <summary>
+    /// What a runner may carry back as <see cref="MergeCheckRequest.DependencyFileContent"/> -
+    /// past this it reports the path alone, with no content. Independent of
+    /// <see cref="MaxFileBytes"/>, which bounds what <see cref="Parse"/> itself
+    /// will decode; this one bounds what rides a merge check, which polls far
+    /// more often than a file this size is expected to be.
+    /// </summary>
+    public const int MaxReportedContentLength = 16 * 1024;
+
     private const string ListProblem = "needs a top-level \"dependencies\" key holding a list";
 
     private const string ShapeProblem = "a dependency is an id string or an object with \"id\" and an optional \"version\"";

@@ -87,6 +87,8 @@ public class MergeCheckController(
         var branchSha = hasBranch ? request.BranchSha?.Trim() : null;
         var holdsTrunk = hasBranch ? request.HoldsTrunk : null;
         var playbookFilePath = hasBranch ? request.PlaybookFilePath?.Trim() : null;
+        var dependencyFilePath = hasBranch ? request.DependencyFilePath?.Trim() : null;
+        var dependencyFileContent = hasBranch && dependencyFilePath is { Length: > 0 } ? request.DependencyFileContent : null;
         if (hasBranch && string.IsNullOrEmpty(branchSha))
             return BadRequest($"a {verdict} verdict names the sha the branch stood at");
         if (branch is { Length: > EfHatchMergeCheck.MaxRefLength })
@@ -95,6 +97,10 @@ public class MergeCheckController(
             return BadRequest($"a sha is at most {EfHatchMergeCheck.MaxShaLength} characters");
         if (playbookFilePath is { Length: > EfHatchMergeCheck.MaxRefLength })
             return BadRequest($"a playbook file path is at most {EfHatchMergeCheck.MaxRefLength} characters");
+        if (dependencyFilePath is { Length: > EfHatchMergeCheck.MaxRefLength })
+            return BadRequest($"a dependency file path is at most {EfHatchMergeCheck.MaxRefLength} characters");
+        if (dependencyFileContent is { Length: > DependencyDeclaration.MaxReportedContentLength })
+            return BadRequest($"a dependency file's content is at most {DependencyDeclaration.MaxReportedContentLength} characters");
 
         // Sorted, so that the same conflict listed in another order by another
         // runner's git is the same verdict and not a change.
@@ -150,6 +156,8 @@ public class MergeCheckController(
         row.BranchSha = branchSha;
         row.HoldsTrunk = holdsTrunk;
         row.PlaybookFilePath = playbookFilePath;
+        row.DependencyFilePath = dependencyFilePath;
+        row.DependencyFileContent = dependencyFileContent;
         row.Verdict = verdict;
         row.Files = EfHatchMergeCheck.JoinFiles(files);
         row.CheckedAt = now;
@@ -191,5 +199,6 @@ public static class IssueMergeChecks
 {
     public static MergeCheckDto Project(EfHatchMergeCheck m) => new(
         m.Remote, m.Canonical, m.Trunk, m.TrunkSha, m.Verdict, m.Branch, m.BranchSha,
-        EfHatchMergeCheck.SplitFiles(m.Files), m.HoldsTrunk, m.CheckedAt, m.Runner, m.CheckedBy, m.PlaybookFilePath);
+        EfHatchMergeCheck.SplitFiles(m.Files), m.HoldsTrunk, m.CheckedAt, m.Runner, m.CheckedBy, m.PlaybookFilePath,
+        m.DependencyFilePath, m.DependencyFileContent);
 }

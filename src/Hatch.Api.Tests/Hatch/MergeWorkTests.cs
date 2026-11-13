@@ -17,13 +17,16 @@ public class MergeWorkTests
     static EfHatchProjectRepository Repo(string remote = "https://example.com/o/r", int sortOrder = 0) =>
         new() { Remote = remote, Canonical = RemoteIdentity.Canonical(remote).Item1!, SortOrder = sortOrder, CreatedAt = Now };
 
-    static EfHatchMergeCheck Merge(string remote, string verdict, bool? holdsTrunk = null, string trunk = "main", string? playbookFilePath = null) => new()
+    static EfHatchMergeCheck Merge(
+        string remote, string verdict, bool? holdsTrunk = null, string trunk = "main", string? playbookFilePath = null,
+        string? dependencyFilePath = null) => new()
     {
         Remote = remote, Canonical = RemoteIdentity.Canonical(remote).Item1!, Trunk = trunk, TrunkSha = new string('a', 40),
         Verdict = verdict,
         Branch = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? "aer-1-thing" : null,
         BranchSha = verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted ? new string('b', 40) : null,
-        HoldsTrunk = holdsTrunk, PlaybookFilePath = playbookFilePath, CheckedAt = Now, Runner = "host:/checkout", CheckedBy = "runner",
+        HoldsTrunk = holdsTrunk, PlaybookFilePath = playbookFilePath, DependencyFilePath = dependencyFilePath,
+        CheckedAt = Now, Runner = "host:/checkout", CheckedBy = "runner",
     };
 
     static EfHatchBuildCheck Build(string remote, string verdict, string? sha = null) => new()
@@ -243,6 +246,48 @@ public class MergeWorkTests
         Assert.Equal(WorkKinds.Hold, judgement.Kind);
         Assert.Contains(".hatch/playbooks.yaml", judgement.Sentence);
         Assert.Contains("a person merges it on the forge after reading it", judgement.Sentence);
+    }
+
+    [Fact]
+    public void CleanHoldsTrunkBuildPassedDependencyFlagged_Holds()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true, dependencyFilePath: ".hatch/dependencies.json") };
+        var builds = new[] { Build(Remote, BuildVerdicts.Passed) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now);
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.Contains(".hatch/dependencies.json", judgement.Sentence);
+        Assert.Contains("a person merges it on the forge after reading it", judgement.Sentence);
+    }
+
+    [Fact]
+    public void CleanHoldsTrunkBuildPassedNoDependencyFlag_Merges()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.Passed) };
+
+        var judgement = MergeWork.Judge(bound, merges, builds, null, true, null, null, Now);
+
+        Assert.Equal(WorkKinds.Merge, judgement.Kind);
+    }
+
+    [Fact]
+    public void CleanHoldsTrunkBuildPassedDependencyFlaggedFleetLacks_SentenceNamesIt()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true, dependencyFilePath: ".hatch/dependencies.json") };
+        var builds = new[] { Build(Remote, BuildVerdicts.Passed) };
+
+        var judgement = MergeWork.Judge(
+            bound, merges, builds, null, true, null, null, Now, fleetLacks: "no live runner has postgres 18 or newer");
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.EndsWith(
+            "a person merges it on the forge after reading it - no live runner has postgres 18 or newer",
+            judgement.Sentence);
     }
 
     [Fact]

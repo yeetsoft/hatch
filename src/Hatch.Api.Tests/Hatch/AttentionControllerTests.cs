@@ -841,6 +841,51 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Attention_KeepsAPreApprovedReviewRowChangingDependencyFile_CarryingTheSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "re-adds postgres", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.CheckAsync(
+            issue, MergeVerdicts.Clean, holdsTrunk: true, dependencyFilePath: ".hatch/dependencies.json",
+            dependencyFileContent: "{\"dependencies\":[{\"id\":\"postgres\",\"version\":\"18\"}]}");
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+        await h.RunnerAsync("host:/one", null, has: ["postgres@18"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(".hatch/dependencies.json", row.DependencyFilePath);
+        Assert.Equal(
+            "its pull request changes .hatch/dependencies.json - a person merges it on the forge after reading it",
+            row.HeldSentence);
+    }
+
+    [Fact]
+    public async Task Attention_DependencyFileRowNamesWhatTheFleetLacksOnItsSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "re-adds postgres", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.CheckAsync(
+            issue, MergeVerdicts.Clean, holdsTrunk: true, dependencyFilePath: ".hatch/dependencies.json",
+            dependencyFileContent: "{\"dependencies\":[{\"id\":\"postgres\",\"version\":\"18\"}]}");
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+        await h.RunnerAsync("host:/one", null, has: ["dotnet@10"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(
+            "its pull request changes .hatch/dependencies.json - a person merges it on the forge after reading it - "
+            + "no live runner has postgres 18 or newer",
+            row.HeldSentence);
+    }
+
+    [Fact]
     public async Task Attention_DoesNotAnnotateAnOrdinaryCleanRow()
     {
         var h = await NewAsync();
@@ -1633,6 +1678,33 @@ public class AttentionControllerTests : IDisposable
         Assert.Equal("no live runner has playwright-browsers and pwsh 7 or newer", row.Missing);
 
         await h.RunnerAsync("host:/three", null, has: ["pwsh@7.4", "playwright-browsers"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ADeclarationWithNoLiveRunnerRaisesNothing()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", new DeclaredDependency("pwsh", "7"));
+        await h.FileAsync("task", "needs a toolchain", h.InProgress);
+
+        // Nobody is live, so that is the no-runner condition and not this one.
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ADeclarationOneOfTwoRunnersMeetsRaisesNothing()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", new DeclaredDependency("pwsh", "7"));
+        await h.FileAsync("task", "needs a toolchain", h.InProgress);
+        await h.RunnerAsync("host:/lacks", null, has: ["dotnet@10"]);
+        await h.RunnerAsync("host:/meets", null, has: ["pwsh@7.4"]);
 
         Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
     }
@@ -2721,7 +2793,8 @@ public class AttentionControllerTests : IDisposable
         /// </summary>
         public async Task CheckAsync(
             EfHatchIssue issue, string verdict, string[]? files = null, string remote = "forge.example/owner/repo",
-            string? branchSha = null, bool? holdsTrunk = null, string? playbookFilePath = null)
+            string? branchSha = null, bool? holdsTrunk = null, string? playbookFilePath = null,
+            string? dependencyFilePath = null, string? dependencyFileContent = null)
         {
             Db.MergeChecks.RemoveRange(
                 Db.MergeChecks.Where(m => m.IssueId == issue.Id && m.Remote == remote));
@@ -2740,6 +2813,8 @@ public class AttentionControllerTests : IDisposable
                 BranchSha = hasBranch ? branchSha ?? new string('2', 40) : null,
                 HoldsTrunk = hasBranch ? holdsTrunk : null,
                 PlaybookFilePath = hasBranch ? playbookFilePath : null,
+                DependencyFilePath = hasBranch ? dependencyFilePath : null,
+                DependencyFileContent = hasBranch ? dependencyFileContent : null,
                 Files = EfHatchMergeCheck.JoinFiles(files ?? []),
                 CheckedAt = Now,
                 Runner = "box:/work/repo",

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
@@ -326,6 +327,8 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 : clean.Count > 0 && clean.All(m => m.HoldsTrunk == true) ? true
                 : null;
             var playbookFilePath = clean.FirstOrDefault(m => m.PlaybookFilePath is not null)?.PlaybookFilePath;
+            var dependencyCheck = clean.FirstOrDefault(m => m.DependencyFilePath is not null);
+            var dependencyFilePath = dependencyCheck?.DependencyFilePath;
 
             // A pre-approved row the judge would carry on its own - merge
             // it, update its branch, or is still waiting on a runner to
@@ -335,14 +338,19 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             string? heldSentence = null;
             if (tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved)
             {
-                var judged = MergeWork.Judge(repos, issueMerges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name, pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.RecordedBranch);
+                string? fleetLacks = null;
+                if (dependencyCheck is { DependencyFileContent: { } content }
+                    && DependencyDeclaration.Parse(Encoding.UTF8.GetBytes(content)) is { Dependencies: { } needs })
+                    fleetLacks = await dispatch.FleetLacksAsync(needs, dependencyCheck.Canonical, runners.Cutoff(time.GetUtcNow()), ct);
+
+                var judged = MergeWork.Judge(repos, issueMerges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name, pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.RecordedBranch, fleetLacks: fleetLacks);
                 if (judged.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending) continue;
                 heldSentence = judged.Sentence;
             }
 
             reviews.Add(new ReviewDto(
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!,
-                buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk, heldSentence, playbookFilePath));
+                buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk, heldSentence, playbookFilePath, dependencyFilePath));
         }
 
         var closesTo = Columns.Closes(statuses, review);

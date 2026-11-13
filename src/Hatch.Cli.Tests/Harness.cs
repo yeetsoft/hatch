@@ -473,6 +473,12 @@ public sealed class FakeWorkspace
     /// <summary>What <c>DiffStat</c> answers, per checkout - null unless a test says.</summary>
     public Dictionary<string, string?> DiffStatFor { get; } = [];
 
+    /// <summary>What <c>Since</c> answers, per checkout - nothing unless a test says.</summary>
+    public Dictionary<string, IReadOnlyList<PathCommits>> SinceFor { get; } = [];
+
+    /// <summary>Every <c>Since</c>, as the paths it was asked about, in order.</summary>
+    public List<IReadOnlyList<string>> SinceAsked { get; } = [];
+
     /// <summary>What <c>ReadBlob</c> answers, per checkout/trunk/path - absent unless a test says.</summary>
     public Dictionary<(string Path, string Trunk, string BlobPath), BlobRead> BlobsFor { get; } = [];
 
@@ -574,6 +580,13 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"diff {path}");
             return owner.DiffStatFor.GetValueOrDefault(path);
+        }
+
+        public IReadOnlyList<PathCommits> Since(DateTimeOffset at, IReadOnlyList<string> paths)
+        {
+            owner.Calls.Add($"since {path}");
+            owner.SinceAsked.Add(paths);
+            return owner.SinceFor.GetValueOrDefault(path) ?? [];
         }
 
         public bool TreeUnchanged(string head)

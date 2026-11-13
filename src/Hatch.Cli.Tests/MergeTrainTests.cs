@@ -773,14 +773,16 @@ public sealed partial class MergeTrainTests
     /// </summary>
     private static ReviewCheckDto UpdateRow(
         string key, string branch, string? pullRequestUrl = PrUrl, string? kind = WorkKinds.Update, string? judgedSha = null,
-        bool isHead = true, string? playbookFilePath = null)
+        bool isHead = true, string? playbookFilePath = null, string? dependencyFilePath = null,
+        string? dependencyFileContent = null)
     {
         var sha = judgedSha ?? Tip;
         var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
         var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
         {
             Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = branch, BranchSha = sha,
-            PlaybookFilePath = playbookFilePath,
+            PlaybookFilePath = playbookFilePath, DependencyFilePath = dependencyFilePath,
+            DependencyFileContent = dependencyFileContent,
         };
 
         return Fixtures.Review(
@@ -898,7 +900,9 @@ public sealed partial class MergeTrainTests
     [Fact]
     public async Task A_successful_update_writes_its_own_merge_check_when_the_second_read_already_shows_the_new_head()
     {
-        using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing", playbookFilePath: ".hatch/playbooks.yaml"));
+        using var rig = new Rig().Board(UpdateRow(
+            "AER-1", "aer-1-thing", playbookFilePath: ".hatch/playbooks.yaml",
+            dependencyFilePath: ".hatch/dependencies.json", dependencyFileContent: "{\"dependencies\":[\"postgres\"]}"));
         rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
 
         // Before UpdateAsync runs, every read (including the pull request
@@ -920,6 +924,8 @@ public sealed partial class MergeTrainTests
         Assert.True(put.HoldsTrunk);
         Assert.Empty(put.Files!);
         Assert.Equal(".hatch/playbooks.yaml", put.PlaybookFilePath);
+        Assert.Equal(".hatch/dependencies.json", put.DependencyFilePath);
+        Assert.Equal("{\"dependencies\":[\"postgres\"]}", put.DependencyFileContent);
         Assert.Equal("main", put.Trunk);
         Assert.Equal(NewTrunk, put.TrunkSha);
         Assert.Empty(rig.H.Workspace.Calls);

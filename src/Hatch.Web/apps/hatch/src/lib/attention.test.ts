@@ -34,6 +34,7 @@ import {
   trunkIconWords,
   waitedWords,
   waitingOnARunnerEmptyWords,
+  waitingOnARunnerLines,
 } from './attention';
 import type { ApprovedHeld, ApprovedWaiting, Attention, BackupAttention, Conflict, ContributionHeld, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
@@ -50,6 +51,7 @@ const review = (over: Partial<Review> = {}): Review => ({
   holdsTrunk: null,
   trunk: null,
   playbookFilePath: null,
+  dependencyFilePath: null,
   ...over,
 });
 
@@ -645,6 +647,32 @@ describe('waitingOnARunnerEmptyWords', () => {
   });
 });
 
+describe('waitingOnARunnerLines', () => {
+  it('says nothing for an empty list', () => {
+    expect(waitingOnARunnerLines([])).toEqual([]);
+  });
+
+  it('groups by sentence, commonest first and then alphabetically', () => {
+    expect(
+      waitingOnARunnerLines([
+        waitingOnARunner({ key: 'AER-1', missing: 'no live runner has pwsh 7' }),
+        waitingOnARunner({ key: 'AER-2', missing: 'no live runner has postgres 18 or newer' }),
+        waitingOnARunner({ key: 'AER-3', missing: 'no live runner has postgres 18 or newer' }),
+        waitingOnARunner({ key: 'AER-4', missing: 'no live runner offers grok' }),
+      ]),
+    ).toEqual([
+      '2 issues wait for a runner that has postgres 18 or newer',
+      '1 issue waits for a runner that has pwsh 7',
+      '1 issue waits for a runner that offers grok',
+    ]);
+  });
+
+  it('says a compound sentence whole, after a colon', () => {
+    expect(
+      waitingOnARunnerLines([waitingOnARunner({ missing: 'no live runner offers fable; no live runner has pwsh 7' })]),
+    ).toEqual(['1 issue waits: no live runner offers fable; no live runner has pwsh 7']);
+  });
+});
 describe('runnerCapacityWords', () => {
   it('names the one taker, pluralising the step count', () => {
     expect(runnerCapacityWords(runnerCapacity({ steps: 3, takers: ['Nathan-PC'] }))).toBe('3 clear steps: only Nathan-PC can take them');
