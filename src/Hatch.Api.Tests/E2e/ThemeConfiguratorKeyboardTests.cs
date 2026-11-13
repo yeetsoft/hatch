@@ -21,7 +21,8 @@ namespace Hatch.Api.Tests.E2e;
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class ThemeConfiguratorKeyboardTests(ITestOutputHelper output)
 {
-    private const int CaseBudgetSeconds = 150;
+    /// <summary>Under the CI run's two-minute hang timeout, so a stalled phase fails by name here rather than taking the test host down.</summary>
+    private const int CaseBudgetSeconds = 100;
 
     /// <summary>A little past <see cref="CaseBudgetSeconds"/>, so it only fires if <see cref="Deadline"/> itself fails to bound something.</summary>
     private const int CaseTimeoutMs = (CaseBudgetSeconds + 10) * 1000;
@@ -393,10 +394,18 @@ public class ThemeConfiguratorKeyboardTests(ITestOutputHelper output)
             root.GetProperty("last").GetString());
     }
 
-    /// <summary>Opens the gear if it is not open: the gear is a toggle, so clicking it blind could close it.</summary>
+    /// <summary>
+    /// Opens the gear if it is not open: the gear is a toggle, so clicking it blind could close it. Whether it is open is the
+    /// trigger's <c>aria-expanded</c>, not whether Tune is visible: a panel that has just been closed stays visible for the
+    /// length of its visibility transition, and a click on Tune then waits for a button that is about to vanish.
+    /// </summary>
     private static async Task OpenGearAsync(E2eHarness harness, Deadline deadline)
     {
-        if (!await harness.IsVisibleAsync(deadline, Tune))
+        var expanded = await harness.EvaluateAsync<bool>(
+            deadline, "reading whether the gear is open",
+            "sel => document.querySelector(sel).getAttribute('aria-expanded') === 'true'",
+            E2eHarness.GearSelector);
+        if (!expanded)
             await harness.ClickAsync(deadline, E2eHarness.GearSelector);
         await harness.WaitForVisibleAsync(deadline, Tune);
     }
