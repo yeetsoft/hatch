@@ -143,7 +143,7 @@ RUN ok= ; for attempt in 1 2 3 4 5 6; do \
 # update and install are retried together, for the reason given on the first
 # apt step above; the keyring fetch and the .list write stay outside the loop.
 RUN mkdir -p -m 755 /etc/apt/keyrings \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -165,7 +165,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # to run, not whatever landed that morning.
 # Run from a file, not piped, for the reason the grok step gives below. Retried
 # like every fetch here: a transient 5xx should not fail the build.
-RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://claude.ai/install.sh -o /tmp/claude-install.sh \
+RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 https://claude.ai/install.sh -o /tmp/claude-install.sh \
  && bash /tmp/claude-install.sh stable \
  && rm /tmp/claude-install.sh
 
@@ -180,9 +180,17 @@ RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 30
 # GitHub's release assets answer 504 now and then, for up to five minutes
 # (--retry-max-time 300 is the governor; --retry and --retry-delay only need to
 # reach it). The earlier ~50s budget was too short on 2026-11-09, when a 504
-# outlasted all six attempts. The same flags are on every vendor fetch in this
-# file. It goes to a file rather than a pipe so a retry cannot hand tar a
-# corrupt stream; a 404 still fails.
+# outlasted all six attempts. --retry-max-time only bounds the time spent
+# retrying after a failed attempt - it never gets a chance to count against an
+# attempt that doesn't fail, just stalls, which is what hung main's build on
+# 2026-11-12 for 624s fetching dotnet-install.sh. --connect-timeout 15 bounds
+# the connect phase, and --speed-limit 1000 --speed-time 60 aborts an attempt
+# whose transfer drops under 1000 bytes/sec for 60s straight, so a stall like
+# that one fails in seconds and gets retried inside the 300s budget instead of
+# blowing past it; a large file that's genuinely still moving never trips it.
+# The same flags are on every vendor fetch in this file. It goes to a file
+# rather than a pipe so a retry cannot hand tar a corrupt stream; a 404 still
+# fails.
 # TARGETARCH is declared again because the build stage's does not carry over.
 ARG TARGETARCH
 ARG CODEX_VERSION=latest
@@ -196,7 +204,7 @@ RUN case "$TARGETARCH" in \
     else \
       url=https://github.com/openai/codex/releases/download/$CODEX_VERSION/codex-$triple.tar.gz; \
     fi \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 "$url" -o /tmp/codex.tar.gz \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 "$url" -o /tmp/codex.tar.gz \
  && tar -xzf /tmp/codex.tar.gz -C /usr/local/bin \
  && rm /tmp/codex.tar.gz \
  && mv /usr/local/bin/codex-$triple /usr/local/bin/codex \
@@ -210,7 +218,7 @@ RUN case "$TARGETARCH" in \
 # and swallows curl's. It installs under ~/.grok/bin, which the PATH below
 # carries. The grok adapter passes --no-auto-update, so what is installed here
 # is what runs.
-RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://x.ai/cli/install.sh -o /tmp/grok-install.sh \
+RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 https://x.ai/cli/install.sh -o /tmp/grok-install.sh \
  && bash /tmp/grok-install.sh \
  && rm /tmp/grok-install.sh \
  && /root/.grok/bin/grok --version

@@ -26,7 +26,7 @@ RUN ok= ; for attempt in 1 2 3 4 5 6; do \
 # docker: the client only (docker-ce-cli and the compose plugin) from Docker's own apt repo. No daemon: a container uses the host's socket.
 RUN mkdir -p -m 755 /etc/apt/keyrings \
  && . /etc/os-release \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 "https://download.docker.com/linux/$ID/gpg" \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 "https://download.docker.com/linux/$ID/gpg" \
       -o /etc/apt/keyrings/docker.asc \
  && chmod a+r /etc/apt/keyrings/docker.asc \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$ID $VERSION_CODENAME stable" \
@@ -51,10 +51,10 @@ RUN case "$TARGETARCH" in \
       *) echo "hatch recipe node: no build for TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
     esac \
  && base=https://nodejs.org/dist/latest-v${NODE_VERSION%%.*}.x \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 "$base/SHASUMS256.txt" -o /tmp/SHASUMS256.txt \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 "$base/SHASUMS256.txt" -o /tmp/SHASUMS256.txt \
  && file=$(awk -v arch="$arch" '$2 ~ "^node-v[0-9.]+-linux-" arch "\\.tar\\.gz$" {print $2}' /tmp/SHASUMS256.txt) \
  && [ -n "$file" ] \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 "$base/$file" -o "/tmp/$file" \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 "$base/$file" -o "/tmp/$file" \
  && (cd /tmp && grep " $file\$" SHASUMS256.txt | sha256sum -c -) \
  && tar -xzf "/tmp/$file" -C /usr/local --strip-components=1 --no-same-owner \
  && rm -f "/tmp/$file" /tmp/SHASUMS256.txt /usr/local/CHANGELOG.md /usr/local/LICENSE /usr/local/README.md
@@ -64,7 +64,7 @@ RUN case "$TARGETARCH" in \
 # dotnet: the .NET SDK from Microsoft's dotnet-install.sh, which picks the architecture itself. A channel for a major or major.minor, an exact version for three components.
 ARG DOTNET_VERSION=10.0
 ENV DOTNET_ROOT=/usr/share/dotnet DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
-RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
  && case "$DOTNET_VERSION" in \
       *.*.*) flag=--version; value=$DOTNET_VERSION ;; \
       *.*) flag=--channel; value=$DOTNET_VERSION ;; \
@@ -88,11 +88,11 @@ RUN case "$TARGETARCH" in \
  && case "$PWSH_VERSION" in \
       *.*.*) version=$PWSH_VERSION ;; \
       *.*) echo "hatch recipe pwsh: declare a major (7) or a full version (7.4.6), not $PWSH_VERSION" >&2; exit 1 ;; \
-      *) tag=$(curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 -o /dev/null -w '%{url_effective}' https://github.com/PowerShell/PowerShell/releases/latest) \
+      *) tag=$(curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 -o /dev/null -w '%{url_effective}' https://github.com/PowerShell/PowerShell/releases/latest) \
          && version=${tag##*/v} ;; \
     esac \
  && [ "${version%%.*}" = "$major" ] || { echo "hatch recipe pwsh: the newest release is $version, not a $major.x" >&2; exit 1; } \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 "https://github.com/PowerShell/PowerShell/releases/download/v$version/powershell-$version-linux-$arch.tar.gz" -o /tmp/pwsh.tar.gz \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 "https://github.com/PowerShell/PowerShell/releases/download/v$version/powershell-$version-linux-$arch.tar.gz" -o /tmp/pwsh.tar.gz \
  && mkdir -p /opt/microsoft/powershell/$major \
  && tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/$major --no-same-owner \
  && rm /tmp/pwsh.tar.gz \
@@ -122,7 +122,7 @@ ARG POSTGRES_VERSION=17
 RUN major=${POSTGRES_VERSION%%.*} \
  && mkdir -p -m 755 /etc/apt/keyrings \
  && . /etc/os-release \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 https://www.postgresql.org/media/keys/ACCC4CF8.asc \
       -o /etc/apt/keyrings/postgresql.asc \
  && chmod a+r /etc/apt/keyrings/postgresql.asc \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main" \

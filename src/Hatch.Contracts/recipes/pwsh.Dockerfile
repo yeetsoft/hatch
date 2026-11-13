@@ -10,11 +10,11 @@ RUN case "$TARGETARCH" in \
  && case "$PWSH_VERSION" in \
       *.*.*) version=$PWSH_VERSION ;; \
       *.*) echo "hatch recipe pwsh: declare a major (7) or a full version (7.4.6), not $PWSH_VERSION" >&2; exit 1 ;; \
-      *) tag=$(curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 -o /dev/null -w '%{url_effective}' https://github.com/PowerShell/PowerShell/releases/latest) \
+      *) tag=$(curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 -o /dev/null -w '%{url_effective}' https://github.com/PowerShell/PowerShell/releases/latest) \
          && version=${tag##*/v} ;; \
     esac \
  && [ "${version%%.*}" = "$major" ] || { echo "hatch recipe pwsh: the newest release is $version, not a $major.x" >&2; exit 1; } \
- && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 "https://github.com/PowerShell/PowerShell/releases/download/v$version/powershell-$version-linux-$arch.tar.gz" -o /tmp/pwsh.tar.gz \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 --connect-timeout 15 --speed-limit 1000 --speed-time 60 "https://github.com/PowerShell/PowerShell/releases/download/v$version/powershell-$version-linux-$arch.tar.gz" -o /tmp/pwsh.tar.gz \
  && mkdir -p /opt/microsoft/powershell/$major \
  && tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/$major --no-same-owner \
  && rm /tmp/pwsh.tar.gz \
