@@ -27,8 +27,14 @@ public class SwaggerPaletteTests(ITestOutputHelper output)
     /// <summary>Swagger's own bar, which the sheet hides: the house bar replaces it.</summary>
     private const string SwaggerTopBar = ".swagger-ui .topbar";
 
-    /// <summary>A seed matching the engine's format - no particular colour is meant by it.</summary>
-    private const string Seed = "hx1-AAAAAAAA";
+    /// <summary>
+    /// paletteSeed.test.ts's "mid-range" pin - not <c>hx1-AAAAAAAA</c> ("every
+    /// minimum"), whose tint of 0 derives every neutral, <c>--bg</c> included,
+    /// at zero chroma: the same hex the house block already carries, in both
+    /// themes. This seed's tint is non-zero, so the page the test asserts is
+    /// shifted actually is.
+    /// </summary>
+    private const string Seed = "hx1-M2aZzDNm";
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public async Task SwaggerUi_WearsTheBar_AndPaintsAStoredPalette_InLightAndDark()

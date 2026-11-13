@@ -518,14 +518,21 @@ app.UseSwagger();
 /// Swagger's own surfaces from those tokens, so Auto/Light/Dark and the Random
 /// palette move the whole page rather than a 48px strip above a white one. The
 /// two ship together or not at all.
+///
+/// HeadContent has to be set before any InjectStylesheet/InjectJavascript
+/// call, not after: both of those work by appending onto HeadContent
+/// themselves (there is nowhere else for them to put a <link> or <script>),
+/// so assigning it afterward overwrites what they just added instead of
+/// sitting ahead of it. Set first, it also lands ahead of topbar.js in the
+/// page, so window.hatchTopBar exists before the bundle reads it.
 app.UseSwaggerUI(c =>
 {
     c.DocumentTitle = "Hatch API";
 
+    c.HeadContent = """<script>window.hatchTopBar = { appName: "Hatch API", theme: "switch" };</script>""";
     c.InjectStylesheet("/apps/chrome/topbar.css");
     c.InjectStylesheet("/apps/chrome/swagger.css");
     c.InjectJavascript("/apps/chrome/topbar.js");
-    c.HeadContent = """<script>window.hatchTopBar = { appName: "Hatch API", theme: "switch" };</script>""";
 });
 app.MapSwagger();
 
