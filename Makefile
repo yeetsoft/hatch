@@ -171,7 +171,7 @@ browsers:
 test-e2e: db
 	bash -c 'export NVM_DIR="$$HOME/.nvm"; [ -s "$$NVM_DIR/nvm.sh" ] && \. "$$NVM_DIR/nvm.sh"; \
 	set -e; \
-	(cd ./src/Hatch.Web && if [ "$$(type -t nvm)" = function ]; then nvm use; fi && npm ci && npm run build -w apps/hatch); \
+	(cd ./src/Hatch.Web && if [ "$$(type -t nvm)" = function ]; then nvm use; fi && npm ci && npm run build -w apps/hatch && npm run build -w apps/chrome); \
 	HATCH_TEST_DATABASE_URL="Host=localhost;Port=5432;Database=hatch_test;Username=user;Password=password" \
 		dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj $(API_TEST_CLAMP) --filter "FullyQualifiedName~E2e"'
 
@@ -182,7 +182,7 @@ test-web:
 	bash -c 'export NVM_DIR="$$HOME/.nvm"; [ -s "$$NVM_DIR/nvm.sh" ] && \. "$$NVM_DIR/nvm.sh"; \
 	set -e; \
 	cd ./src/Hatch.Web && if [ "$$(type -t nvm)" = function ]; then nvm use; fi && npm ci; \
-	for app in auth hatch site; do \
+	for app in auth chrome hatch site; do \
 		echo "==> $$app"; \
 		npm run lint -w apps/$$app && npm run test --if-present -w apps/$$app && npm run build -w apps/$$app; \
 	done'

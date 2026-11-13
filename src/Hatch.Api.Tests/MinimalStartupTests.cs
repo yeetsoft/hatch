@@ -201,6 +201,19 @@ public class MinimalStartupTests
             {
             }
 
+            // The page itself carries the shared bar and the sheet that dresses
+            // it from the tokens: the token file first, so the sheet has
+            // something to read, then the bar's config and script.
+            var page = await deadline.BoundAsync("serving /swagger/index.html", () => client.GetAsync("/swagger/index.html"));
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+            var html = await page.Content.ReadAsStringAsync();
+            var tokens = html.IndexOf("/apps/chrome/topbar.css", StringComparison.Ordinal);
+            var sheet = html.IndexOf("/apps/chrome/swagger.css", StringComparison.Ordinal);
+            Assert.True(tokens >= 0, "the page does not link /apps/chrome/topbar.css");
+            Assert.True(sheet > tokens, "the page does not link /apps/chrome/swagger.css after the token file");
+            Assert.Contains("/apps/chrome/topbar.js", html);
+            Assert.Contains("window.hatchTopBar", html);
+
             await deadline.BoundAsync("letting the jobs' first firings finish", () => SettleFirstFiringAsync(factory.Services.GetRequiredService<IScheduler>()));
         }
         finally

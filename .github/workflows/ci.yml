@@ -167,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [auth, hatch, site]
+        app: [auth, chrome, hatch, site]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -274,6 +274,12 @@ jobs:
         working-directory: src/Hatch.Web
         run: npm run build -w apps/hatch
 
+      # The Swagger page's bar and stylesheet, which SwaggerPaletteTests opens.
+      # Built here, ahead of the dotnet build, for the same reason as above.
+      - name: Build the chrome bundle
+        working-directory: src/Hatch.Web
+        run: npm run build -w apps/chrome
+
       - name: Restore
         run: dotnet restore src/Hatch.Api.Tests/Hatch.Api.Tests.csproj
 
@@ -284,7 +290,7 @@ jobs:
         run: |
           dotnet build src/Hatch.Api.Tests/Hatch.Api.Tests.csproj \
             --no-restore --configuration Release \
-            -p:SkipAuthBuild=true
+            -p:SkipAuthBuild=true -p:SkipChromeBuild=true
 
       # After the build, because the installer is copied beside the test binary
       # by the Playwright package itself. Chromium and WebKit, as `make
