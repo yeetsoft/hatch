@@ -191,9 +191,9 @@ The column names below are the stock ones.
 
 | Transition | Types / shape | What it does | Edits or judges |
 |---|---|---|---|
-| Breakdown → Backlog | epics | Turns a captured idea into an epic: rewrites the description, files stories under it and sequences them | Judges |
-| Breakdown → Backlog | stories | Writes at most five acceptance criteria and cuts the plan into tasks; a story that needs more becomes an epic | Judges |
-| Breakdown → Backlog | tasks and bugs | Formalises a note: what is wrong, where the code is, a pattern to copy, one criterion | Judges |
+| Breakdown → Backlog | epics | Asks for a brief title and a summary, then turns a captured idea into an epic: rewrites the description, files stories under it and sequences them | Judges |
+| Breakdown → Backlog | stories | Asks for a brief title and a summary, then writes at most five acceptance criteria and cuts the plan into tasks; a story that needs more becomes an epic | Judges |
+| Breakdown → Backlog | tasks and bugs | Asks for a brief title, then formalises a note: what is wrong, where the code is, a pattern to copy, one criterion | Judges |
 | Breakdown → Review | reflections | Reads the board's own history for a window, writes the report, files each recommendation and hypothesis linked back to it, and declares no code | Judges, with denied tools |
 | To Do → In Progress | epics | Chooses which story starts | Judges |
 | To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam | Judges |
