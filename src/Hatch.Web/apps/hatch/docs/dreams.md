@@ -102,8 +102,10 @@ woven from the dreams - and takes you straight to it. A refusal shows beside
 the button and leaves every control as it was, ready to press again.
 
 What happens next happens off this page: the loop's epic-breakdown session
-reads the dreams the brief points at, rewrites the epic's own description
-quoting them, files its stories, and records which dreams it drew on - which
+reads the dreams the brief points at, gives the epic a title of its own in
+place of `Weave: <seed>`, rewrites its description to open with a summary and
+quote the dreams after it, files its stories, and records which dreams it drew
+on - which
 is what puts a **woven into** chip on each of them, the same chip a dream
 gets from any other issue drawing on it (see [above](#woven-into-an-issue)).
 Nothing on the Dream Board itself is edited by that session.

@@ -87,6 +87,8 @@ public static partial class DreamWeave
         sb.AppendLine();
         sb.AppendLine("Rewrite this description as the epic's own, quoting the dreams it rests on. A dream that bears on the epic but falls outside it becomes a story under it, or a comment on this ticket saying why not.");
         sb.AppendLine();
+        sb.AppendLine("Replace the `Weave: ` title with one of a handful of words that says the thing itself. Open the description with a summary of at most three short paragraphs, before any heading, and quote the dreams after it. The rules for both are under \"How a ticket reads\" on the Issues page of the docs.");
+        sb.AppendLine();
         sb.AppendLine("## Recording what you drew on");
         sb.AppendLine();
         sb.AppendLine("Before moving the ticket on, run `hatch api PUT /api/issues/<KEY>/dreams '{\"dreamIds\":[...]}'`, where `<KEY>` is this ticket's own key.");
