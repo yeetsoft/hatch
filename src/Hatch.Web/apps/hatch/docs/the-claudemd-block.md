@@ -161,8 +161,7 @@ ten minutes; `queue` is where the counts turn back into tickets.
   words: "Tickets in a human voice", not "Weave: more human voice". A story
   opens with one sentence saying who gets what; an epic opens with a short
   summary. Sentences are short and name no coined things. A comment leads with
-  the outcome, then the sha and branch. See [How a ticket
-  reads](issues#how-a-ticket-reads).
+  the outcome, then the sha and branch.
 - **Plan on the ticket, not in a chat log.** A planning session `PATCH`es
   acceptance criteria into the description and `POST`s the stories or tasks the
   work breaks into. An epic takes stories; a story takes tasks.
