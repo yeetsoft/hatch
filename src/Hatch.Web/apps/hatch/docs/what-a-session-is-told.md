@@ -181,6 +181,15 @@ current, so there is no `show`. Two things change it:
   moves on without a stall (see [Stalls](one-increment-and-the-loop#stalls)).
   A check's prompt carries it too.
 
+### How it should read
+
+Always, on every prompt, whatever the playbook row says. It states how a
+title, a summary, a comment and a work-log title should read, in no more than
+15 lines. It sits after *Reaching Hatch* and before the pull request or landing
+section, so the rule about writing comes before the rules about pushing. The
+rules are the ones in [how a ticket reads](issues#how-a-ticket-reads), quoted
+shorter.
+
 ### Landing on the trunk
 
 For a project that lands work straight on the trunk, in place of a pull request
@@ -289,7 +298,8 @@ Beyond the prompt, what the session knows is the repository's own `CLAUDE.md` or
 
 Every prompt ends by asking for a fenced `work-log` block: a title naming
 what the session did, a blank line, then a summary under 100 words.
-Written last, and once - the runner takes the *last* such block in whatever
+The title is a plain sentence, like a commit subject, and the summary leads with
+what landed. Written last, and once - the runner takes the *last* such block in whatever
 the session said, so quoting the shape earlier in its own prose does not talk
 it out of the one that counts, and a session that writes two is read by its
 second.

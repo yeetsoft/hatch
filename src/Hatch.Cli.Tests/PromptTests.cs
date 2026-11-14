@@ -31,6 +31,59 @@ public sealed class PromptTests
         Assert.Contains("Never write a relative link.", prompt, StringComparison.Ordinal);
     }
 
+    private const string HowItShouldRead = "## How it should read";
+
+    private static string WorkOf(string name) => name switch
+    {
+        "ordinary" => Prompt.Compose(Fixtures.Work("AER-12")),
+        "check" => Prompt.Compose(Fixtures.Work("AER-12", isCheck: true)),
+        "trunk" => Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk)),
+        "conflict" => Prompt.Compose(Fixtures.ConflictWork("AER-12")),
+        "build" => Prompt.Compose(Fixtures.BuildWork("AER-12")),
+        _ => Prompt.Compose(Fixtures.Work("AER-12") with { Playbook = Fixtures.Playbook(deniedTools: ["Bash(git push *)"]) }),
+    };
+
+    [Theory]
+    [InlineData("ordinary", "## Opening a pull request")]
+    [InlineData("check", "## Opening a pull request")]
+    [InlineData("trunk", "## Landing on the trunk")]
+    [InlineData("conflict", "## Opening a pull request")]
+    [InlineData("build", "## Opening a pull request")]
+    [InlineData("denied", "## No pull request from this row")]
+    public void Every_prompt_says_how_a_ticket_should_read_after_reaching_hatch_and_before_the_pull_request_section(
+        string prompt, string next)
+    {
+        var text = WorkOf(prompt);
+
+        var reaching = text.IndexOf("## Reaching Hatch", StringComparison.Ordinal);
+        var reading = text.IndexOf(HowItShouldRead, StringComparison.Ordinal);
+        var following = text.IndexOf(next, StringComparison.Ordinal);
+
+        Assert.True(reaching >= 0 && reaching < reading, "the section comes after Reaching Hatch");
+        Assert.True(reading < following, $"the section comes before {next}");
+        Assert.Equal(reading, text.LastIndexOf(HowItShouldRead, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void How_a_ticket_should_read_is_at_most_fifteen_lines()
+    {
+        var text = WorkOf("ordinary");
+        var start = text.IndexOf(HowItShouldRead, StringComparison.Ordinal);
+        var end = text.IndexOf("\n## ", start + 1, StringComparison.Ordinal);
+        var section = text[start..end].TrimEnd('\n');
+
+        Assert.True(section.Split('\n').Length <= 15, section);
+    }
+
+    [Fact]
+    public void The_work_log_template_asks_for_a_plain_sentence_and_a_summary_that_leads_with_what_landed()
+    {
+        var prompt = WorkOf("ordinary");
+
+        Assert.Contains("A plain sentence saying what this session did, like a commit subject", prompt, StringComparison.Ordinal);
+        Assert.Contains("It leads with what landed.", prompt, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_pull_request_section_tells_a_session_that_changed_nothing_to_declare_it_not_push_an_empty_branch()
     {
@@ -715,7 +768,7 @@ public sealed class PromptTests
         Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51, and to 5,500 for the playbook-proposals call, HA-1644) ----
+    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51, and to 5,500 for the playbook-proposals call, HA-1644, and to 6,200 for how a ticket should read, HA-2327) ----
 
     [Fact]
     public void The_fixed_part_of_the_prompt_stays_under_five_thousand_characters()
@@ -723,8 +776,8 @@ public sealed class PromptTests
         var fixedPart = string.Join('\n', Prompt.Tail(
             "AER-12", "In Review", "https://hatch.example.test/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
-        Assert.True(fixedPart.Length < 5500,
-            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 5,500.");
+        Assert.True(fixedPart.Length < 6200,
+            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 6,200.");
     }
 
     [Fact]

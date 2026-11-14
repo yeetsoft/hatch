@@ -657,6 +657,7 @@ public static class Prompt
             "order does not order them.",
             "",
         }),
+        ..HowItShouldRead,
         ..(deniesGitWrites ? NoPullRequest(key)
             : trunkLanding ? Landing(key)
             : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest ? issueType ?? "story" : null, offersNoCode)
@@ -717,14 +718,36 @@ public static class Prompt
         "Last of all, say what you did, in a fenced block:",
         "",
         "```work-log",
-        "A title naming what this session did",
+        "A plain sentence saying what this session did, like a commit subject",
         "",
-        "The summary, under 100 words.",
+        "The summary, under 100 words. It leads with what landed.",
         "```",
         "",
         $"That block becomes the work log row for this session on {key}, beside",
         "what the session cost. A run that writes none still gets a row marked as",
         "never having said what it did. Write it last, and write it once.",
+    ];
+
+    /// <summary>
+    /// How a title, a summary, a comment and a work-log title should read. The
+    /// same for every prompt, whatever the playbook row says, and kept to the
+    /// plainest text in the tail: a session mirrors the register it is given.
+    /// The rules are the ones in the issues docs page, quoted shorter.
+    /// </summary>
+    private static readonly string[] HowItShouldRead =
+    [
+        "## How it should read",
+        "",
+        "A person reads a ticket before anything else. Write what you file for them.",
+        "",
+        "- A title is a handful of words that name the thing. Five is plenty.",
+        "- A story opens with one sentence: who gets what once it lands.",
+        "- An epic opens with a short summary, before any heading.",
+        "- A comment leads with the outcome. The sha and branch follow.",
+        "- Sentences are short and say who does what. No coined names. Spell out an acronym once.",
+        "",
+        "The work-log title at the end says what you did, as a commit subject does.",
+        "",
     ];
 
     /// <summary>
