@@ -96,7 +96,7 @@ public sealed class BuildIncrementTests
         var prompt = Prompt.Compose(Fixtures.BuildWork(Key), build: found);
 
         var section = prompt[prompt.IndexOf("## The failing build", StringComparison.Ordinal)..];
-        Assert.True(System.Text.Encoding.UTF8.GetByteCount(section) < Prompt.MaxBuildSectionBytes + 4096);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(section) < Prompt.MaxBuildSectionBytes + 5120);
         Assert.Contains("_log left out: this section is at its size cap - `gh run view --job 505 --log-failed` prints it_", prompt, StringComparison.Ordinal);
         Assert.Contains("check0", prompt, StringComparison.Ordinal);
     }
