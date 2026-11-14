@@ -10188,6 +10188,12 @@ ten minutes; `queue` is where the counts turn back into tickets.
   line, then the summary. `<origin>` is the address Hatch was reached at
   (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
   AER-12 --dry-run` prints the exact line. Never write a relative link.
+- **Write the ticket the way a person would read it.** A title is a handful of
+  words: "Tickets in a human voice", not "Weave: more human voice". A story
+  opens with one sentence saying who gets what; an epic opens with a short
+  summary. Sentences are short and name no coined things. A comment leads with
+  the outcome, then the sha and branch. The rules are on the Issues docs page,
+  under "How a ticket reads".
 - **Plan on the ticket, not in a chat log.** A planning session `PATCH`es
   acceptance criteria into the description and `POST`s the stories or tasks the
   work breaks into. An epic takes stories; a story takes tasks.
