@@ -10007,9 +10007,10 @@ project or the board, the leftmost from-column, ties broken the way
 `Dispatch.MatchReflection` ranks (a project-specific row before a board-wide
 one, then specificity, then id) - Breakdown, on a stock board. Its description
 is a brief, built by `DreamWeave.Describe`, not the epic's own words; the
-breakdown session then does what any breakdown does: reads the brief, rewrites
-the description quoting the dreams it drew on, files the stories, moves the
-ticket on. See [`DreamWeave.cs`](../src/Hatch.Api/Modules/Hatch/DreamWeave.cs)
+breakdown session then does what any breakdown does: reads the brief, gives the
+epic a title of its own in place of `Weave: <seed>`, rewrites the description
+to open with a summary and quote the dreams it drew on after it, files the
+stories, moves the ticket on. See [`DreamWeave.cs`](../src/Hatch.Api/Modules/Hatch/DreamWeave.cs)
 and [`DreamWeaveController.cs`](../src/Hatch.Api/Modules/Hatch/DreamWeaveController.cs).
 
 **Why not a `weave` issue type with its own playbook row, as reflection has:**
