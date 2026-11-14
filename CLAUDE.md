@@ -166,6 +166,12 @@ one loads on every increment. Two rules from it matter enough to repeat:
   reached the trunk at, per repository (in this checkout's own origin remote
   unless `--repo` names another), and the prompt's `## Landing on the trunk`
   says when to run it.
+- **Write the ticket the way a person would read it.** A title is a handful of
+  words: "Tickets in a human voice", not "Weave: more human voice". A story
+  opens with one sentence saying who gets what; an epic opens with a short
+  summary. Sentences are short and name no coined things. A comment leads with
+  the outcome, then the sha and branch. The rules are in
+  `src/Hatch.Web/apps/hatch/docs/issues.md`, under "How a ticket reads".
 - **Never move a ticket to a terminal or deferred status** — only the
   operator does, or the board itself, carrying a pre-approved parent
   through with no session (the close hop); a deferred status stays the

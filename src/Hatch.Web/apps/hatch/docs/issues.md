@@ -21,6 +21,28 @@ taking tasks. The habit is a way of breaking work down, not a rule the model
 enforces — a task may hang directly under an epic, and a bug under either an
 epic or a story.
 
+## How a ticket reads
+
+A ticket is read by a person first. These rules say how it should read.
+
+- A title is a handful of words. Name the thing, not the ticket about the thing. Five words is plenty; ten is too many.
+- An epic opens with a summary: two or three short paragraphs, before any heading.
+- A story opens with one sentence: who gets what once it lands.
+- A task may be technical, but its title still reads as a sentence.
+- Sentences are short and say who does what. No stacked clauses. No coined names for things the repository already names. Spell out an acronym once.
+- A comment leads with the outcome; the sha and branch follow.
+- A work-log title says what the session did, like a commit subject.
+
+A title that passes: `Tickets in a human voice`. It names the thing, in four words.
+
+A title that does not: `Weave: more human voice`. `Weave` is a coined name, and the title says nothing a reader could picture.
+
+A story summary that passes: `A person reading a ticket can tell in one sentence what they will get.`
+
+A story summary that does not: `Weave unifies the title, summary and comment surfaces under a shared voice contract, so that every ticket, however filed, reads alike.` It names a coined thing, and the clauses stack.
+
+The API asks for these rules and never enforces them. A ticket that breaks one is still a ticket.
+
 ## Keys and numbering
 
 The key shown everywhere, `AER-12`, is **computed** — the project's own key
