@@ -111,6 +111,24 @@ public class DreamWeaveTests
     }
 
     [Fact]
+    public void Brief_SaysToRetitleAndToOpenWithASummary()
+    {
+        foreach (var brief in new[] { Brief("seed", "a seed"), Brief("pressing") })
+        {
+            var start = brief.IndexOf("## Writing the epic", StringComparison.Ordinal);
+            var end = brief.IndexOf("## Recording what you drew on", StringComparison.Ordinal);
+            var section = brief[start..end];
+
+            Assert.Contains("Replace the `Weave: ` title", section);
+            Assert.Contains("a handful of words", section);
+            Assert.Contains("summary of at most three short paragraphs", section);
+            Assert.Contains("before any heading", section);
+            Assert.Contains("quote the dreams after it", section);
+            Assert.Contains("How a ticket reads", section);
+        }
+    }
+
+    [Fact]
     public void NonSeedBrief_HasNoSeedQuoteAndNoQuery()
     {
         foreach (var mode in new[] { "pressing", "common", "next" })
