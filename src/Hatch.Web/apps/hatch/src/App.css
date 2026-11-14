@@ -708,10 +708,13 @@
 }
 
 /* The issue page's. Large enough to be the first thing read on the page, which
-   is the whole point of lifting status out of the row of pickers. */
+   is the whole point of lifting status out of the row of pickers. Drawn the
+   size of the priority and pre-approval pills beside it: 16px words at the
+   weight theirs are, so the three read as one row. */
 .hatch-status-pill-lg {
   padding: var(--sp-2) var(--sp-4);
-  font-size: var(--t-subhead);
+  font-size: var(--t-section);
+  font-weight: 600;
   letter-spacing: 0.01em;
 }
 
@@ -725,6 +728,16 @@
   cursor: pointer;
   gap: var(--sp-1);
   transition: box-shadow var(--transition), opacity var(--transition);
+}
+
+.hatch-status-pill-press.hatch-status-pill-lg {
+  /* `font: inherit` above wipes the large pill's size and weight, and it comes
+     later at the same specificity, so the large pill says them again. The
+     border is transparent, the fill running under it, so the box is the one
+     the priority and pre-approval pills have. */
+  border: 1px solid transparent;
+  font-size: var(--t-section);
+  font-weight: 600;
 }
 
 .hatch-status-pill-press:hover:not(:disabled) {
@@ -2810,7 +2823,7 @@ button.hatch-chip {
 /* A key-holder's words, at the size of the pills they stand in for. */
 .hatch-status-bar .hatch-priority-said,
 .hatch-status-bar .hatch-preapproval-said {
-  font-size: var(--t-subhead);
+  font-size: var(--t-section);
 }
 
 .hatch-status-bar-label {
@@ -5289,7 +5302,7 @@ input.hatch-inline-title-input {
    and so is drawn at its size. */
 .hatch-priority-pill-lg {
   padding: var(--sp-2) var(--sp-4);
-  font-size: var(--t-subhead);
+  font-size: var(--t-section);
 }
 
 .hatch-priority-pill-lg .hatch-priority-pill-caret {
@@ -5618,7 +5631,7 @@ input.hatch-inline-title-input {
 /* `.hatch-priority-pill-lg`, renamed. */
 .hatch-preapproval-pill-lg {
   padding: var(--sp-2) var(--sp-4);
-  font-size: var(--t-subhead);
+  font-size: var(--t-section);
 }
 
 .hatch-preapproval-pill-lg .hatch-preapproval-pill-caret {
