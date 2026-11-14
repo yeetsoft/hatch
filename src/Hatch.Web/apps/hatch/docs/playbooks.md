@@ -196,10 +196,10 @@ The column names below are the stock ones.
 | Breakdown → Backlog | tasks and bugs | Asks for a brief title, then formalises a note: what is wrong, where the code is, a pattern to copy, one criterion | Judges |
 | Breakdown → Review | reflections | Reads the board's own history for a window, writes the report, files each recommendation and hypothesis linked back to it, and declares no code | Judges, with denied tools |
 | To Do → In Progress | epics | Chooses which story starts | Judges |
-| To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam | Judges |
-| In Progress → In Review | any type, leaf | Writes the code, gets it green, pushes it and puts it up for review | **Edits** |
-| In Progress → In Review | any type, parent | Closeout: verifies the ticket against the trunk once its children are done | Judges |
-| In Progress → In Review | epics | Verifies the epic's own criteria against the trunk and files what is missing | Judges |
+| To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam, each titled in one short line, keeping the summary at the top first and plain | Judges |
+| In Progress → In Review | any type, leaf | Writes the code, gets it green, pushes it and puts it up for review with a comment opening in one sentence saying what landed | **Edits** |
+| In Progress → In Review | any type, parent | Closeout: verifies the ticket against the trunk once its children are done, and comments the verdict opening with one sentence saying whether it holds | Judges |
+| In Progress → In Review | epics | Verifies the epic's own criteria against the trunk, comments the verdict opening with one sentence saying whether it holds, and files what is missing | Judges |
 | In Review → In Review | every type | The review row: fixes a conflict or a failing build on the branch, and nothing else | **Edits** |
 
 The *Breakdown → Backlog, epics* row also searches [the Dream Board](dreams)
