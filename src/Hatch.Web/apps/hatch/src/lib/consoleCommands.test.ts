@@ -19,13 +19,15 @@ function env() {
   const themes: ThemeChoice[] = [];
   const filters: CardFilter[] = [];
   const filed = { count: 0 };
+  const queue = { opened: 0 };
   const fake: CommandEnv = {
     go: (p) => went.push(p),
     setTheme: (c) => themes.push(c),
     changeFilter: (next) => filters.push(next),
     newIssue: () => filed.count++,
+    openQueue: () => queue.opened++,
   };
-  return { fake, went, themes, filters, filed };
+  return { fake, went, themes, filters, filed, queue };
 }
 
 const made = (name: string, over: Partial<Command> = {}): Command => ({
@@ -44,11 +46,18 @@ describe('squash', () => {
 });
 
 describe('commandList', () => {
-  it('opens on Board, then the nav rows, then Settings, then New issue, then the themes', () => {
+  it('opens on Board, then the nav rows, then Settings, then New issue, then the queue, then the themes', () => {
     const list = names(commandList(admin));
     expect(list[0]).toBe('Go to Board');
     expect(list[1]).toBe('Go to Search');
-    expect(list.slice(-5)).toEqual(['Go to Settings', 'New issue', 'Theme → Auto', 'Theme → Light', 'Theme → Dark']);
+    expect(list.slice(-6)).toEqual([
+      'Go to Settings',
+      'New issue',
+      'Open the work queue',
+      'Theme → Auto',
+      'Theme → Light',
+      'Theme → Dark',
+    ]);
   });
 
   it('has a Go to for every row the nav lists, in its order', () => {
@@ -83,6 +92,19 @@ describe('commandList', () => {
     }
   });
 
+  it('offers Open the work queue to an admin and to everybody else', () => {
+    expect(names(commandList(admin))).toContain('Open the work queue');
+    expect(names(commandList(person))).toContain('Open the work queue');
+  });
+
+  it('runs Open the work queue once, and nothing else', () => {
+    const { fake, went, themes, queue } = env();
+    find(commandList(person), 'Open the work queue').run(fake);
+    expect(queue.opened).toBe(1);
+    expect(went).toEqual([]);
+    expect(themes).toEqual([]);
+  });
+
   it('runs each theme with its choice', () => {
     const { fake, themes } = env();
     for (const label of ['Auto', 'Light', 'Dark']) find(commandList(person), `Theme → ${label}`).run(fake);
@@ -111,6 +133,10 @@ describe('commandRows', () => {
     expect(names(commandRows(all, 'dark').rows)).toEqual(['Theme → Dark']);
     expect(names(commandRows(all, 'auto').rows)).toEqual(['Theme → Auto']);
     expect(names(commandRows(all, 'light').rows)).toEqual(['Theme → Light']);
+  });
+
+  it.each(['queue', 'work', 'Work Queue', 'open queue'])('reaches only Open the work queue for %j', (query) => {
+    expect(names(commandRows(all, query).rows)).toEqual(['Open the work queue']);
   });
 
   it('finds Users for an admin and nothing for anybody else', () => {

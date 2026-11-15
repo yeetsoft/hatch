@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useImperativeHandle, useState } from 'react';
+import type { Ref } from 'react';
 import { useQueue } from '../lib/useQueue';
 import { QueueModal } from './QueueModal';
 import type { IssueCard, Runner } from '../types';
+
+/** What the board holds on to, to open the modal without the button. */
+export interface QueueHandle {
+  open: () => void;
+}
 
 /**
  * The button and its modal, and the one place they meet - `NavUtilization`'s
@@ -18,13 +24,22 @@ export function QueueControl({
   cards,
   runners,
   onTake,
+  handle,
 }: {
   cards: readonly IssueCard[];
   runners: Runner[] | null;
   onTake: (card: IssueCard) => void;
+  /** The console's way in, and the arrival from another page's `>queue`. */
+  handle?: Ref<QueueHandle>;
 }) {
   const { status, queue, error, runner, load, choose } = useQueue();
   const [open, setOpen] = useState(false);
+
+  const openQueue = () => {
+    setOpen(true);
+    void load();
+  };
+  useImperativeHandle(handle, () => ({ open: openQueue }));
 
   return (
     <>
@@ -34,10 +49,7 @@ export function QueueControl({
         aria-haspopup="dialog"
         title="Open the work queue - the order the dispatcher would take the board in"
         aria-label="Open the work queue - the order the dispatcher would take the board in"
-        onClick={() => {
-          setOpen(true);
-          void load();
-        }}
+        onClick={openQueue}
       >
         <svg className="hatch-queue-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <rect x="3" y="5" width="18" height="2" rx="1" />

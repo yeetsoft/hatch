@@ -11,7 +11,9 @@ namespace Hatch.Api.Tests.E2e;
 /// real app: a bare <c>&gt;</c> shows the first eight with "8 of N", the
 /// matching reaches the same row however it is worded, Enter runs a page or a
 /// theme, <c>?</c> lists the prefixes and Enter on them does nothing, and Users
-/// is a command for an Admin only. The wall is off, which reads as a person with
+/// is a command for an Admin only. HA-2336's <c>&gt;queue</c> opens the work
+/// queue: from the plan it lands on the board with the queue open and a reload
+/// does not reopen it; on the board <c>&gt;work</c> opens it in place. The wall is off, which reads as a person with
 /// no role - the non-admin - and the admin is that same person with
 /// <c>/api/me</c> fulfilled as one. Screenshots of each state land in the case's
 /// artifact directory for a person to look at.
@@ -30,6 +32,7 @@ public class ConsoleCommandsTests(ITestOutputHelper output)
     private const string Verb = ".hatch-omni-verb";
     private const string Status = ".hatch-omni-status [aria-live]";
     private const string Options = ".hatch-omni [role=option]";
+    private const string QueueDialog = "[role=\"dialog\"]:has-text(\"The work queue\")";
     private const string ThemeKey = "hatch.theme";
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
@@ -69,6 +72,39 @@ public class ConsoleCommandsTests(ITestOutputHelper output)
             await harness.OpenAsync(deadline, baseUrl, "/plan", admin ? AsAdminAsync : null);
             await harness.WaitForTopBarAsync(deadline);
             var page = harness.Page!;
+
+            // `>queue` from the plan lands on the board with the work queue open.
+            await deadline.BoundAsync("opening the console", () => page.Keyboard.PressAsync("/"));
+            await harness.WaitForVisibleAsync(deadline, Prompt);
+            await Type(harness, deadline, ">queue");
+            Assert.Equal(["Open the work queue"], await Names(harness, deadline));
+            await deadline.BoundAsync("running Open the work queue", () => page.Keyboard.PressAsync("Enter"));
+            await harness.WaitForVisibleAsync(deadline, QueueDialog);
+            Assert.Equal(0, await Count(harness, deadline, ".hatch-omni"));
+            Assert.Equal("/", new Uri(page.Url).AbsolutePath);
+            output.WriteLine("queue from the plan: " + await harness.ScreenshotAsync(deadline, "queue-from-plan"));
+
+            // The flag is spent: a reload of the board does not open it again.
+            await deadline.BoundAsync("reloading the board", () => page.ReloadAsync());
+            await harness.WaitForVisibleAsync(deadline, E2eHarness.Column);
+            await harness.WaitForVisibleAsync(deadline, ".hatch-queue-control");
+            Assert.Equal(0, await Count(harness, deadline, QueueDialog));
+
+            // On the board, `>work` opens the same queue in place.
+            await deadline.BoundAsync("opening the console", () => page.Keyboard.PressAsync("/"));
+            await harness.WaitForVisibleAsync(deadline, Prompt);
+            await Type(harness, deadline, ">work");
+            Assert.Equal(["Open the work queue"], await Names(harness, deadline));
+            await deadline.BoundAsync("running Open the work queue", () => page.Keyboard.PressAsync("Enter"));
+            await harness.WaitForVisibleAsync(deadline, QueueDialog);
+            Assert.Equal(0, await Count(harness, deadline, ".hatch-omni"));
+            output.WriteLine("queue on the board: " + await harness.ScreenshotAsync(deadline, "queue-on-board"));
+            await deadline.BoundAsync("closing the queue", () => page.Keyboard.PressAsync("Escape"));
+            await harness.WaitForHiddenAsync(deadline, QueueDialog);
+
+            // Back to the plan for the rest, which goes to the board from there.
+            await deadline.BoundAsync("returning to the plan", () => page.GotoAsync(new Uri(new Uri(baseUrl), "/plan").ToString()));
+            await harness.WaitForTopBarAsync(deadline);
 
             // `/` opens it; a bare `>` shows eight commands and says so.
             await deadline.BoundAsync("opening the console", () => page.Keyboard.PressAsync("/"));

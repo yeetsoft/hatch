@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -25,6 +25,7 @@ import { GoToWorkStatus } from '../components/GoToWorkStatus';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
 import { QueueControl } from '../components/QueueControl';
+import type { QueueHandle } from '../components/QueueControl';
 import { ContributionMoveDialog } from '../components/ContributionMoveDialog';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { statusVars } from '../lib/color';
@@ -51,7 +52,7 @@ import {
   writeBoardTypes,
 } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
-import { cardsInScope } from '../lib/scope';
+import { OPEN_QUEUE, cardsInScope, withoutOpenQueue } from '../lib/scope';
 import { aimAt } from '../lib/aim';
 import { boardLoader } from '../lib/flowViz';
 import type { FlowBoard } from '../lib/flowViz';
@@ -164,6 +165,9 @@ export function BoardPage() {
   // Above the loader, which reads `filter.blocked`: a hook cannot be called
   // before the state it takes its argument from.
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queue = useRef<QueueHandle>(null);
   /* Only two halves of the filter outlive the page: the types and the
      project are both read from the browser's storage (readBoardTypes,
      initialProject) on the way into local state, rather than off `params`
@@ -668,10 +672,23 @@ export function BoardPage() {
           paused: dragUnderway,
           onTake,
           onNewIssue: () => setFiling(true),
+          openQueue: () => queue.current?.open(),
           filters: { filter: shown, projects: offered, onChange: changeFilter },
         }
       : null,
   );
+
+  /* The console's `>queue` from another page lands here with OPEN_QUEUE in the
+     location's state. Open the queue once the board - and so QueueControl - is
+     drawn, then take the flag off the entry, so a reload (the browser keeps
+     history.state across one), Back and a shared link do not open it again. */
+  const boardDrawn = board !== null;
+  useEffect(() => {
+    if (!boardDrawn || (location.state as Record<string, unknown> | null)?.[OPEN_QUEUE] !== true) return;
+    queue.current?.open();
+    navigate(location, { replace: true, state: withoutOpenQueue(location.state) });
+    // Keyed on the entry (`location.key`), so it runs once per entry that carries the flag.
+  }, [boardDrawn, location.key]);
 
   /* A take, one render on: the fold has opened and the card is in the DOM. Focus
      it before the peek opens, so Modal records the card as its opener and gives
@@ -756,7 +773,7 @@ export function BoardPage() {
         trailing={
           <>
             <GoToWorkControl plan={goToWork} status={status} reload={reloadRunners} isPhone={isPhone} />
-            <QueueControl cards={board.issues} runners={runners} onTake={onTake} />
+            <QueueControl cards={board.issues} runners={runners} onTake={onTake} handle={queue} />
             {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
             {isPhone ? (
               <button
