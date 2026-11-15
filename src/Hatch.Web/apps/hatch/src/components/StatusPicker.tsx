@@ -35,6 +35,7 @@ export function StatusPicker({
   busy = false,
   size = 'sm',
   onMove,
+  onRemand,
   blocked,
 }: {
   issueKey: string;
@@ -48,6 +49,9 @@ export function StatusPicker({
   busy?: boolean;
   size?: StatusPillSize;
   onMove: (statusId: number) => void;
+  /** Remand the issue to a dream in this deferred column. Forwarded to
+      StatusSteps, which draws the press beside each deferred column. */
+  onRemand?: (statusId: number) => void;
   /** Why a move into this column is refused, or null where it is allowed.
       Forwarded to StatusSteps untouched. */
   blocked?: (status: Status) => string | null;
@@ -87,6 +91,11 @@ export function StatusPicker({
     onMove(statusId);
   };
 
+  const handleRemand = (statusId: number) => {
+    fold();
+    onRemand?.(statusId);
+  };
+
   const label = `Status: ${status.name}. Move ${issueKey}`;
 
   return (
@@ -114,7 +123,15 @@ export function StatusPicker({
       {open && (
         <div id={bandId} className="hatch-status-band" style={statusVars(status.color)} onKeyDown={onEscape}>
           <span className="hatch-status-bar-label">Move to</span>
-          <StatusSteps statuses={statuses} statusId={status.id} onMove={handleMove} focus={landing} blocked={blocked} />
+          <StatusSteps
+            statuses={statuses}
+            statusId={status.id}
+            onMove={handleMove}
+            onRemand={onRemand && handleRemand}
+            issueKey={issueKey}
+            focus={landing}
+            blocked={blocked}
+          />
         </div>
       )}
     </>

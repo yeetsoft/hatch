@@ -1674,7 +1674,11 @@ pill. Both draw the board's own columns and then, after a divider, the deferred
 ones. The board itself cannot offer them as a drop target, because a drag can
 overshoot by a lane and work must not be parked by accident; a press in either
 list is deliberate in a way a drop is not, so both may offer the shelf that a
-drop may not.
+drop may not. Both lists also offer the remand beside the shelf: each deferred
+column carries a second press, "to a dream", that opens the dream cloud's
+dialog with that column chosen, so a remand does not need a drag. A board with
+no deferred column draws neither. This extends the cloud rather than replacing
+it.
 
 **Deferring cascades exactly as closing does**, through the same module and the
 same dialog — `closeOffer` fires on any column where work stops, and the dialog

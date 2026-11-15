@@ -43,6 +43,7 @@ import { IssueScopeNotice } from '../components/IssueScopeNotice';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
 import { Choice } from '../components/Choice';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
+import { RemandDialog } from '../components/RemandDialog';
 import { Command } from '../components/Command';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IssueFacts } from '../components/IssueFacts';
@@ -93,6 +94,8 @@ import { writeNoCode } from '../lib/noCode';
 import { writeReleaseNote } from '../lib/releaseNote';
 import { newestFirst } from '../lib/thread';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
+import { useRemand } from '../lib/useRemand';
+import { remandOffer } from '../lib/remand';
 import { useConsoleMoves } from '../lib/useConsole';
 import type { MoveResult } from '../lib/useConsole';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
@@ -617,6 +620,10 @@ export function IssuePage() {
   // hooks, above the guards below, because the rules of hooks are an error here.
   const closing = useCloseSubtree(load);
 
+  // The dialog a status-bar press on "to a dream" raises. Reloads on confirm,
+  // so the page shows where the dream went; there is no chicklet to raise here.
+  const remanding = useRemand(load);
+
   // The dialog a status-bar press into a full WIP section raises. No
   // `onLeave`: `moveStatus`'s own catch has already re-read the issue before asking.
   const wip = useWipOverride();
@@ -788,6 +795,7 @@ export function IssuePage() {
         priorityBusy={priorityBusy}
         preApprovalBusy={preApprovalBusy}
         onMove={(statusId) => void moveStatus(statusId)}
+        onRemand={(statusId) => remanding.ask(remandOffer(board, key, statusId))}
         blocked={(status) => moveBlocked(status, project, issue)}
         onPriority={(priority) => void savePriority(priority)}
         onPreApproval={(level) => void savePreApproval(level)}
@@ -1054,6 +1062,15 @@ export function IssuePage() {
         failures={closing.failures}
         onConfirm={closing.confirm}
         onClose={closing.close}
+      />
+
+      <RemandDialog
+        offer={remanding.offer}
+        busy={remanding.busy}
+        error={remanding.error}
+        onChoose={remanding.choose}
+        onConfirm={remanding.confirm}
+        onClose={remanding.close}
       />
 
       <WipOverrideDialog
