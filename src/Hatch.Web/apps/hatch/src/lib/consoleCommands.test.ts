@@ -187,16 +187,16 @@ describe('filterCommands', () => {
 
   it('offers nothing off the board', () => {
     expect(filterCommands(undefined)).toEqual([]);
-    expect(names(commandList(admin))).not.toContain('Filter  Blocked');
+    expect(names(commandList(admin))).not.toContain('Filter → Blocked');
   });
 
   it('offers Blocked and Needs me alone on a one-project board', () => {
-    expect(names(filterCommands(handle().filters))).toEqual(['Filter  Blocked', 'Filter  Needs me']);
+    expect(names(filterCommands(handle().filters))).toEqual(['Filter → Blocked', 'Filter → Needs me']);
   });
 
   it('comes after the themes in the global list', () => {
     const list = names(commandList({ ...admin, filters: handle().filters }));
-    expect(list.slice(-3)).toEqual(['Theme → Dark', 'Filter  Blocked', 'Filter  Needs me']);
+    expect(list.slice(-3)).toEqual(['Theme → Dark', 'Filter → Blocked', 'Filter → Needs me']);
   });
 
   it('reads on or off from the filter, not from the last take', () => {
@@ -209,8 +209,8 @@ describe('filterCommands', () => {
   it('hands over the flipped filter, and flips back from the result', () => {
     const { fake, filters: seen } = env();
     const { filters, given } = handle();
-    find(filterCommands(filters), 'Filter  Blocked').run(fake);
-    find(filterCommands(filters), 'Filter  Needs me').run(fake);
+    find(filterCommands(filters), 'Filter → Blocked').run(fake);
+    find(filterCommands(filters), 'Filter → Needs me').run(fake);
     expect(seen).toEqual([
       { ...DEFAULT_FILTER, blocked: true },
       { ...DEFAULT_FILTER, waiting: true },
@@ -227,15 +227,15 @@ describe('filterCommands', () => {
 
   it('offers a row per project when there are several, named as the picker is', () => {
     const rows = filterCommands(handle({}, two).filters);
-    expect(names(rows)).toEqual(['Filter  Blocked', 'Filter  Needs me', 'Filter  HA — Hatch', 'Filter  AER — Aerie']);
+    expect(names(rows)).toEqual(['Filter → Blocked', 'Filter → Needs me', 'Filter → HA — Hatch', 'Filter → AER — Aerie']);
     expect(rows.map((c) => c.id).slice(2)).toEqual(['filter:project:HA', 'filter:project:AER']);
   });
 
   it('sets the project when its row runs, and reads on for the current one', () => {
     const { fake, filters: seen } = env();
     const rows = filterCommands(handle({ project: 'AER' }, two).filters);
-    expect(rows.slice(2).map((c) => c.hint)).toEqual(['project', 'on']);
-    find(rows, 'Filter  HA — Hatch').run(fake);
+    expect(rows.slice(2, 4).map((c) => c.hint)).toEqual(['project', 'on']);
+    find(rows, 'Filter → HA — Hatch').run(fake);
     expect(seen).toEqual([{ ...DEFAULT_FILTER, project: 'HA' }]);
   });
 
@@ -262,9 +262,9 @@ describe('filterCommands', () => {
 
   it('is reached by its words', () => {
     const all = commandList({ ...admin, filters: handle({ blocked: true }, two).filters });
-    expect(commandRows(all, 'blocked').rows[0].name).toBe('Filter  Blocked');
-    expect(commandRows(all, 'needs me').rows[0].name).toBe('Filter  Needs me');
-    expect(commandRows(all, 'filter ha').rows[0].name).toBe('Filter  HA — Hatch');
+    expect(commandRows(all, 'blocked').rows[0].name).toBe('Filter → Blocked');
+    expect(commandRows(all, 'needs me').rows[0].name).toBe('Filter → Needs me');
+    expect(commandRows(all, 'filter ha').rows[0].name).toBe('Filter → HA — Hatch');
     expect(names(commandRows(all, 'clear').rows)).toEqual(['Clear filters']);
   });
 });

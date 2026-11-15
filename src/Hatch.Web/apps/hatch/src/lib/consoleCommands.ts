@@ -80,13 +80,13 @@ export function filterCommands(filters?: FilterHandle): Command[] {
   const commands: Command[] = [
     {
       id: 'filter:blocked',
-      name: 'Filter  Blocked',
+      name: 'Filter → Blocked',
       hint: onOff(filter.blocked),
       run: (env) => env.changeFilter(toggleBlocked(filter)),
     },
     {
       id: 'filter:waiting',
-      name: 'Filter  Needs me',
+      name: 'Filter → Needs me',
       hint: onOff(filter.waiting),
       run: (env) => env.changeFilter(toggleWaiting(filter)),
     },
@@ -97,7 +97,7 @@ export function filterCommands(filters?: FilterHandle): Command[] {
     for (const { key, name } of projects) {
       commands.push({
         id: `filter:project:${key}`,
-        name: `Filter  ${key} — ${name}`,
+        name: `Filter → ${key} — ${name}`,
         hint: filter.project === key ? 'on' : 'project',
         run: (env) => env.changeFilter({ ...filter, project: key }),
       });
