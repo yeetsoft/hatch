@@ -249,13 +249,22 @@ case and punctuation: `>board`, `>go board` and `>goto board` all find **Go to
 Board**. Names that start with what you typed come first. A bare `>` shows the
 first eight commands, with "8 of N" in the status line, until you type.
 **↑↓** move, **↵** runs the highlighted one and **esc** puts the prompt away.
-The first commands are:
+The commands are:
 
 - **Go to** each page the primary nav lists, plus **Board** and **Settings**.
   The tab's scope is kept. **Go to Users** is there for an Admin only, as it is
   in the nav.
 - **Theme → Auto**, **Theme → Light** and **Theme → Dark**, the three choices
   of the theme switch. You stay on the page you were on.
+- On the board only, the filter rows. **Filter Blocked** and **Filter Needs me**
+  each switch the same button in the filter row, and say **on** or **off** at
+  their right according to what the board shows now. When the board offers more
+  than one project there is a **Filter** row per project (`>filter ha`), named as
+  the Project picker names it; taking one sets the project and writes
+  `?project=`. **Clear filters** is there only while a filter is set, and
+  returns every filter to its default as the **×** in the filter row does. The
+  console closes when you take one, and the board changes under it. Off the
+  board none of these rows is offered.
 
 The console follows the tab's scope. In a tab scoped to projects, an issue
 outside the scope is not listed for a key prefix or for words from its title.

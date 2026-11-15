@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
+import type { FilterHandle } from './consoleCommands';
 import type { IssueCard, Status } from '../types';
 
 /**
@@ -23,6 +24,8 @@ export interface ConsoleHost {
   /** A row was taken. The console has closed and does not give focus back: the
       host is about to put it on the card. */
   onTake: (card: IssueCard) => void;
+  /** The board's filter, for the commands that set it. */
+  filters: FilterHandle;
 }
 
 export interface ConsoleControl {
@@ -35,8 +38,9 @@ export const ConsoleContext = createContext<ConsoleControl | null>(null);
 
 /**
  * Be the console's host while this page is on screen. `host` is null while the
- * page has no board to offer. The latest `onTake` is the one called, so a page
- * may pass a new function every render without re-offering its cards.
+ * page has no board to offer. The latest `onTake` and `filters.onChange` are the
+ * ones called, so a page may pass new functions every render without
+ * re-offering its cards.
  */
 export function useConsoleHost(host: ConsoleHost | null): void {
   const held = useContext(ConsoleContext);
@@ -49,18 +53,33 @@ export function useConsoleHost(host: ConsoleHost | null): void {
     take.current = onTake;
   }, [onTake]);
 
+  const change = useRef<FilterHandle['onChange'] | null>(null);
+  const onChange = host?.filters.onChange ?? null;
+  useEffect(() => {
+    change.current = onChange;
+  }, [onChange]);
+
   const cards = host?.cards;
   const statuses = host?.statuses;
   const visibleKeys = host?.visibleKeys;
   const paused = host?.paused;
+  const filter = host?.filters.filter;
+  const projects = host?.filters.projects;
 
   useEffect(() => {
-    if (!cards || !statuses || !visibleKeys || paused === undefined) {
+    if (!cards || !statuses || !visibleKeys || paused === undefined || !filter || !projects) {
       setHost(null);
       return;
     }
-    setHost({ cards, statuses, visibleKeys, paused, onTake: (card) => take.current?.(card) });
-  }, [setHost, cards, statuses, visibleKeys, paused]);
+    setHost({
+      cards,
+      statuses,
+      visibleKeys,
+      paused,
+      onTake: (card) => take.current?.(card),
+      filters: { filter, projects, onChange: (next) => change.current?.(next) },
+    });
+  }, [setHost, cards, statuses, visibleKeys, paused, filter, projects]);
 
   useEffect(() => () => setHost(null), [setHost]);
 }

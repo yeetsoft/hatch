@@ -102,13 +102,13 @@ export function OmniBar({
   const searchRowId = `${base}-row-search`;
 
   const { mode, query: asked } = parsePrompt(query);
-  const { isAdmin, pathname } = commandContext;
+  const { isAdmin, pathname, filters } = commandContext;
 
   const { rows, total } = useMemo(
     () => (mode === 'issues' ? goToRows(cards, asked, scopeKeys) : { rows: [], total: 0 }),
     [mode, cards, asked, scopeKeys],
   );
-  const commands = useMemo(() => commandList({ isAdmin, pathname }), [isAdmin, pathname]);
+  const commands = useMemo(() => commandList({ isAdmin, pathname, filters }), [isAdmin, pathname, filters]);
   const found = useMemo(
     () => (mode === 'commands' ? commandRows(commands, asked) : { rows: [] as Command[], total: 0 }),
     [mode, commands, asked],

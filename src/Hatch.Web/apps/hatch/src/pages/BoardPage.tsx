@@ -659,7 +659,18 @@ export function BoardPage() {
       setPeeking(card);
     }
   };
-  useConsoleHost(board ? { cards: board.issues, statuses: board.statuses, visibleKeys, paused: dragUnderway, onTake } : null);
+  useConsoleHost(
+    board
+      ? {
+          cards: board.issues,
+          statuses: board.statuses,
+          visibleKeys,
+          paused: dragUnderway,
+          onTake,
+          filters: { filter: shown, projects: offered, onChange: changeFilter },
+        }
+      : null,
+  );
 
   /* A take, one render on: the fold has opened and the card is in the DOM. Focus
      it before the peek opens, so Modal records the card as its opener and gives

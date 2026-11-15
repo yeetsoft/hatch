@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ThemeChoice } from '@hatch/ui';
-import { COMMAND_PREVIEW, commandList, commandRows, commandStatus, offered, squash } from './consoleCommands';
-import type { Command, CommandContext, CommandEnv } from './consoleCommands';
+import { COMMAND_PREVIEW, commandList, commandRows, commandStatus, filterCommands, offered, squash } from './consoleCommands';
+import type { Command, CommandContext, CommandEnv, FilterHandle } from './consoleCommands';
+import { DEFAULT_FILTER } from './filter';
+import type { CardFilter } from './filter';
 import { navRows } from './nav';
+import type { Project } from '../types';
 
 const admin: CommandContext = { isAdmin: true, pathname: '/' };
 const person: CommandContext = { isAdmin: false, pathname: '/' };
@@ -14,11 +17,13 @@ const find = (commands: Command[], name: string) => commands.find((c) => c.name 
 function env() {
   const went: string[] = [];
   const themes: ThemeChoice[] = [];
+  const filters: CardFilter[] = [];
   const fake: CommandEnv = {
     go: (p) => went.push(p),
     setTheme: (c) => themes.push(c),
+    changeFilter: (next) => filters.push(next),
   };
-  return { fake, went, themes };
+  return { fake, went, themes, filters };
 }
 
 const made = (name: string, over: Partial<Command> = {}): Command => ({
@@ -161,5 +166,105 @@ describe('commandStatus', () => {
     expect(commandStatus(0, 0)).toBe('no command matches');
     expect(commandStatus(1, 1)).toBe('1 command');
     expect(commandStatus(17, 17)).toBe('17 commands');
+  });
+});
+
+describe('filterCommands', () => {
+  const two = [
+    { key: 'HA', name: 'Hatch' },
+    { key: 'AER', name: 'Aerie' },
+  ] as Project[];
+  const one = [{ key: 'HA', name: 'Hatch' }] as Project[];
+  const handle = (over: Partial<CardFilter> = {}, projects: Project[] = one) => {
+    const given: CardFilter[] = [];
+    const filters: FilterHandle = {
+      filter: { ...DEFAULT_FILTER, ...over },
+      projects,
+      onChange: (next) => given.push(next),
+    };
+    return { filters, given };
+  };
+
+  it('offers nothing off the board', () => {
+    expect(filterCommands(undefined)).toEqual([]);
+    expect(names(commandList(admin))).not.toContain('Filter  Blocked');
+  });
+
+  it('offers Blocked and Needs me alone on a one-project board', () => {
+    expect(names(filterCommands(handle().filters))).toEqual(['Filter  Blocked', 'Filter  Needs me']);
+  });
+
+  it('comes after the themes in the global list', () => {
+    const list = names(commandList({ ...admin, filters: handle().filters }));
+    expect(list.slice(-3)).toEqual(['Theme → Dark', 'Filter  Blocked', 'Filter  Needs me']);
+  });
+
+  it('reads on or off from the filter, not from the last take', () => {
+    const off = filterCommands(handle().filters);
+    expect(off.map((c) => c.hint)).toEqual(['off', 'off']);
+    const on = filterCommands(handle({ blocked: true, waiting: true }).filters);
+    expect(on.slice(0, 2).map((c) => c.hint)).toEqual(['on', 'on']);
+  });
+
+  it('hands over the flipped filter, and flips back from the result', () => {
+    const { fake, filters: seen } = env();
+    const { filters, given } = handle();
+    find(filterCommands(filters), 'Filter  Blocked').run(fake);
+    find(filterCommands(filters), 'Filter  Needs me').run(fake);
+    expect(seen).toEqual([
+      { ...DEFAULT_FILTER, blocked: true },
+      { ...DEFAULT_FILTER, waiting: true },
+    ]);
+    expect(given).toEqual([]);
+
+    for (const flipped of seen.splice(0)) {
+      const { filters: back } = handle(flipped);
+      const row = filterCommands(back).find((c) => c.hint === 'on')!;
+      row.run(fake);
+    }
+    expect(seen).toEqual([DEFAULT_FILTER, DEFAULT_FILTER]);
+  });
+
+  it('offers a row per project when there are several, named as the picker is', () => {
+    const rows = filterCommands(handle({}, two).filters);
+    expect(names(rows)).toEqual(['Filter  Blocked', 'Filter  Needs me', 'Filter  HA — Hatch', 'Filter  AER — Aerie']);
+    expect(rows.map((c) => c.id).slice(2)).toEqual(['filter:project:HA', 'filter:project:AER']);
+  });
+
+  it('sets the project when its row runs, and reads on for the current one', () => {
+    const { fake, filters: seen } = env();
+    const rows = filterCommands(handle({ project: 'AER' }, two).filters);
+    expect(rows.slice(2).map((c) => c.hint)).toEqual(['project', 'on']);
+    find(rows, 'Filter  HA — Hatch').run(fake);
+    expect(seen).toEqual([{ ...DEFAULT_FILTER, project: 'HA' }]);
+  });
+
+  it('offers Clear filters only while a filter is set', () => {
+    expect(names(filterCommands(handle().filters))).not.toContain('Clear filters');
+    const set: Partial<CardFilter>[] = [
+      { blocked: true },
+      { waiting: true },
+      { project: 'HA' },
+      { types: [] },
+      { query: 'x' },
+    ];
+    for (const over of set) {
+      expect(names(filterCommands(handle(over, two).filters)).at(-1)).toBe('Clear filters');
+    }
+  });
+
+  it('returns every field to its default when Clear filters runs', () => {
+    const { fake, filters: seen } = env();
+    const { filters } = handle({ blocked: true, waiting: true, project: 'HA', types: [] }, two);
+    find(filterCommands(filters), 'Clear filters').run(fake);
+    expect(seen).toEqual([DEFAULT_FILTER]);
+  });
+
+  it('is reached by its words', () => {
+    const all = commandList({ ...admin, filters: handle({ blocked: true }, two).filters });
+    expect(commandRows(all, 'blocked').rows[0].name).toBe('Filter  Blocked');
+    expect(commandRows(all, 'needs me').rows[0].name).toBe('Filter  Needs me');
+    expect(commandRows(all, 'filter ha').rows[0].name).toBe('Filter  HA — Hatch');
+    expect(names(commandRows(all, 'clear').rows)).toEqual(['Clear filters']);
   });
 });

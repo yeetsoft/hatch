@@ -114,13 +114,18 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     navigate(path);
   };
 
-  const commandContext = useMemo<CommandContext>(() => ({ isAdmin, pathname }), [isAdmin, pathname]);
+  const filters = host?.filters;
+  const commandContext = useMemo<CommandContext>(() => ({ isAdmin, pathname, filters }), [isAdmin, pathname, filters]);
 
   // The prompt has already given focus back, so a theme change leaves the
   // person where they were; a page change then takes them away from it.
   const onRun = (command: Command) => {
     setOpen(false);
-    command.run({ go: (path) => navigate(scopedPath(path, scope.keys)), setTheme: setChoice });
+    command.run({
+      go: (path) => navigate(scopedPath(path, scope.keys)),
+      setTheme: setChoice,
+      changeFilter: (next) => host?.filters.onChange(next),
+    });
   };
 
   return (
