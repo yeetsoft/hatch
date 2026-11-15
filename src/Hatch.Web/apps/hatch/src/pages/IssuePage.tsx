@@ -10,6 +10,7 @@ import {
   getAssignees,
   getBoard,
   getComments,
+  getDreams,
   getEvents,
   getIssueDreams,
   getIssue,
@@ -84,6 +85,7 @@ import { deleteQuestion } from '../lib/deletion';
 import { firstLine } from '../lib/dreams';
 import { describe } from '../lib/events';
 import { message } from '../lib/errors';
+import { agoPhrase } from '../lib/claim';
 import { heldBy } from '../lib/stall';
 import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
 import { mayRefresh } from '../lib/refresh';
@@ -138,6 +140,7 @@ export function IssuePage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [events, setEvents] = useState<IssueEvent[]>([]);
   const [dreams, setDreams] = useState<Dream[]>([]);
+  const [remandedDreams, setRemandedDreams] = useState<Dream[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [rollup, setRollup] = useState<IssueRollup | null>(null);
   const [rollupError, setRollupError] = useState<string | null>(null);
@@ -227,18 +230,20 @@ export function IssuePage() {
     );
 
     try {
-      const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams] = await Promise.all([
+      const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams, loadedRemanded] = await Promise.all([
         getIssue(key),
         getBoard(),
         getComments(key),
         getEvents(key),
         getIssueDreams(key),
+        getDreams(new URLSearchParams({ remandedFromKey: key, limit: '50' })),
       ]);
       setIssue(loaded);
       setBoard(loadedBoard);
       setComments(loadedComments);
       setEvents(loadedEvents);
       setDreams(loadedDreams);
+      setRemandedDreams(loadedRemanded.dreams);
       setError(null);
     } catch (err) {
       setError(message(err));
@@ -1036,6 +1041,12 @@ export function IssuePage() {
 
       <DreamsDrawnOn dreams={dreams} issueKey={issue.key} />
 
+      <DreamsRemandedTo
+        dreams={remandedDreams}
+        issue={issue}
+        deferred={board.statuses.find((s) => s.id === issue.statusId)?.isDeferred ?? false}
+      />
+
       <Description issue={issue} onSave={(description) => save({ description })} />
 
       <ReleaseNote issue={issue} onSave={saveReleaseNote} error={releaseNoteError} />
@@ -1227,6 +1238,41 @@ function DreamsDrawnOn({ dreams, issueKey }: { dreams: Dream[]; issueKey: string
             <Link to={`/dreams?issue=${issueKey}`}>{firstLine(dream.body)}</Link>
           </li>
         ))}
+      </ul>
+    </IssueSection>
+  );
+}
+
+/** The dream this issue's tree was shelved to, when `GET /api/dreams` finds
+    one for it under `remandedFromKey`. Drawn whether the issue is still
+    deferred or has come back onto a lane - `deferred` says which, and the
+    sentence changes with it rather than the section disappearing. Omitted
+    entirely when no dream was remanded from this issue. */
+function DreamsRemandedTo({ dreams, issue, deferred }: { dreams: Dream[]; issue: Issue; deferred: boolean }) {
+  if (dreams.length === 0) return null;
+
+  const now = new Date();
+
+  return (
+    <IssueSection id="remanded-to" title="Remanded to a dream" count={dreams.length}>
+      <ul className="hatch-progress-list">
+        {dreams.map((dream) => {
+          const root = dream.remandedFrom[0];
+          return (
+            <li key={dream.id} className="hatch-progress-row">
+              <Link to={`/dreams?remandedFrom=${issue.key}`}>{firstLine(dream.body)}</Link>
+              <span className="text-muted" title={new Date(dream.createdAt).toLocaleString()}>
+                remanded {agoPhrase(dream.createdAt, now)} by {dream.author}
+              </span>
+              {root !== issue.key && (
+                <span className="text-muted">
+                  remanded with <Link to={`/issues/${root}`}>{root}</Link>
+                </span>
+              )}
+              <span className="text-muted">{deferred ? 'It is still in a deferred column.' : 'It is back on the board.'}</span>
+            </li>
+          );
+        })}
       </ul>
     </IssueSection>
   );
