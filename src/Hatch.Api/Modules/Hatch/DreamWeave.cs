@@ -83,6 +83,8 @@ public static partial class DreamWeave
         }
 
         sb.AppendLine();
+        sb.AppendLine("A dream whose `remandedFrom` is not empty was once an issue with work under it. The first key in `remandedFrom` is the root; the work is still filed in a deferred column. Read it with `hatch api GET /api/issues/<root>` and `hatch api GET \"/api/issues?ancestorKey=<root>\"` - the second leaves out the root itself. Treat what you read as the detail the dream's body summarizes, and say in the new epic's description which remanded tree it drew on.");
+        sb.AppendLine();
         sb.AppendLine("## Writing the epic");
         sb.AppendLine();
         sb.AppendLine("Rewrite this description as the epic's own, quoting the dreams it rests on. A dream that bears on the epic but falls outside it becomes a story under it, or a comment on this ticket saying why not.");
@@ -95,7 +97,8 @@ public static partial class DreamWeave
         sb.AppendLine();
         sb.AppendLine("## The Dream Board stays as it is");
         sb.AppendLine();
-        sb.Append("This session posts, edits and deletes no dream.");
+        sb.AppendLine("This session posts, edits and deletes no dream.");
+        sb.Append("It moves nothing out of a deferred column either: a remanded tree stays where it is.");
 
         return sb.ToString();
     }

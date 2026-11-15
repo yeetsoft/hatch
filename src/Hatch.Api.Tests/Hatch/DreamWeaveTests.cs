@@ -128,6 +128,37 @@ public class DreamWeaveTests
         }
     }
 
+    [Theory]
+    [InlineData("seed")]
+    [InlineData("pressing")]
+    [InlineData("common")]
+    [InlineData("next")]
+    public void Brief_TellsHowToReadARemandedDream(string mode)
+    {
+        foreach (var brief in new[] { Brief(mode, mode == "seed" ? "a seed" : null), Brief(mode, mode == "seed" ? "a seed" : null, 7, 12, 40) })
+        {
+            var start = brief.IndexOf("## Reading the dreams", StringComparison.Ordinal);
+            var end = brief.IndexOf("## Writing the epic", StringComparison.Ordinal);
+            var section = brief[start..end];
+
+            Assert.Contains("remandedFrom", section);
+            Assert.Contains("first key in `remandedFrom` is the root", section);
+            Assert.Contains("GET /api/issues/<root>", section);
+            Assert.Contains("GET \"/api/issues?ancestorKey=<root>\"", section);
+            Assert.Contains("the detail the dream's body summarizes", section);
+            Assert.Contains("which remanded tree", section);
+        }
+    }
+
+    [Fact]
+    public void Brief_SaysTheDeferredTreeStays()
+    {
+        var brief = Brief("pressing");
+        var section = brief[brief.IndexOf("## The Dream Board stays as it is", StringComparison.Ordinal)..];
+
+        Assert.Contains("nothing out of a deferred column", section);
+    }
+
     [Fact]
     public void NonSeedBrief_HasNoSeedQuoteAndNoQuery()
     {
