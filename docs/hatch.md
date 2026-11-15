@@ -718,8 +718,13 @@ not coming back on its own. Any number of columns may carry it, and it is
 independent of `IsTerminal`: the two answer different questions, and both boxes
 on one column is not refused (the reads that care take deferred first).
 
-**A deferred column is not drawn on the board, and has no drop target.** That is
-the whole of the feature and the reason it is a flag rather than a convention:
+**A deferred column is not drawn on the board, and has no drop target.** There is
+one exception, and it is a door that asks first: while a card is dragged, a
+cloud above the columns is a drop target that reaches a deferred column. It is
+safe because a drop on it commits nothing — it opens a dialog, and a remand
+(`POST /api/issues/{key}/remand`) is sent only once that dialog is answered
+**Remand**; escape, the scrim and **Leave it on the board** send nothing. Apart
+from the cloud, that is the whole of the feature and the reason it is a flag rather than a convention:
 parking a ticket is a decision somebody makes about a particular ticket, not a
 lane work drifts into, and a column nobody can drag to is a column nothing lands
 in by accident. The way in is a press, not a drag: the issue page's status bar,
@@ -9967,6 +9972,22 @@ morning still says what was asked, and when. Ctrl-C is unchanged, and works
 at any moment whether keys are on or off, including while a confirmation is
 outstanding — a second way to reach the same cancellation, never a
 replacement for it.
+
+**`a` is live only while a reset is stopped on a merge in progress** — the
+loop's own that would not abort, or somebody else's — and only then does the
+legend read `a abort the merge`. A reset that stops there without
+`--abort-merge` having already answered the question in advance prints a
+banner naming the checkout, whose merge it is, git's own words where there
+are any, and how many uncommitted files aborting it will discard; in colour
+it is orange (256-colour index 208, since the readout's own palette has none),
+and plain text under `NO_COLOR` or on a redirected output. `a` or `A` within
+30 seconds clears it the same way `--abort-merge` would, says what it did and
+discarded, and the pass carries on as if nothing had been in the way; nothing
+in 30 seconds is "no action", and the run ends the same way a tree that
+cannot be reset at all does. Where keys are off — a pipe, `--no-keys`,
+`TERM=dumb`, or redirected output — the banner still prints and the run falls
+through at once: the 30 seconds is for a person, and nobody can press a key
+on a pipe.
 
 ## The level above the board
 

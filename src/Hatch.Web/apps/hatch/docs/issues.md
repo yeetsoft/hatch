@@ -398,8 +398,11 @@ ticket](the-lifecycle-of-a-ticket).
 ## Deferring an issue
 
 Reached from the ticket's own status bar, or from the board's peek — never
-from a drag, since a drag can overshoot a lane and work should not be
-shelved by accident. Deferring a ticket with open work under it shelves that
+from a drag onto a column, since a drag can overshoot a lane and work should
+not be shelved by accident. The one drag that reaches the shelf is the dream
+cloud, a door that asks first: dropping a card on it moves nothing until the
+dialog it opens is answered, and answering it remands the card, and the open
+work under it, to a dream. Deferring a ticket with open work under it shelves that
 work too, in one step, the same way closing a subtree does below.
 
 Two things follow: a [deferred](the-board-and-its-columns) ticket does not

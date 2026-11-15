@@ -271,6 +271,7 @@ public static class Readout
         string Row(string text) => Clip(text, width);
         string Warn(string text) => color ? Yellow + Row(text) + Reset : Row(text);
 
+        if (controls.Confirming == Confirming.AbortMerge) return [Warn("a abort the merge")];
         if (controls.Confirming == Confirming.Cancel) return [Warn("cancel? y to confirm, any other key to go back")];
         if (controls.Confirming == Confirming.Skip) return [Warn("skip this increment? y to confirm, any other key to go back")];
         if (controls.StopArmed) return [Warn("stopping after this increment — s to undo")];

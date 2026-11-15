@@ -6,6 +6,12 @@ public enum Confirming
     None,
     Cancel,
     Skip,
+
+    /// <summary>
+    /// A merge-blocked banner is waiting on <c>a</c> - armed only by <see
+    /// cref="MergeAbort.AskAsync"/>, for the 30 seconds it waits.
+    /// </summary>
+    AbortMerge,
 }
 
 /// <summary>
@@ -25,6 +31,13 @@ public static class Keys
     public static (bool StopArmed, bool Paused, bool LongLegend, Confirming Confirming, bool CancelNow, bool SkipNow, bool CheckNow, string? Log) Decide(
         char key, bool stopArmed, bool paused, bool longLegend, Confirming confirming, bool incrementRunning, bool napping)
     {
+        if (confirming == Confirming.AbortMerge)
+        {
+            return key is 'a' or 'A'
+                ? (stopArmed, paused, longLegend, Confirming.None, CancelNow: false, SkipNow: false, CheckNow: false, Log: null)
+                : (stopArmed, paused, longLegend, confirming, CancelNow: false, SkipNow: false, CheckNow: false, Log: null);
+        }
+
         if (confirming == Confirming.Cancel)
         {
             return key is 'y' or 'Y'
@@ -123,6 +136,28 @@ public sealed class Controls(bool keysOn)
     /// </summary>
     public event Action? CheckNow;
 
+    /// <summary>
+    /// Raised by <see cref="Press"/>, after its lock is released, the moment
+    /// <c>a</c> or <c>A</c> clears an armed <see cref="Confirming.AbortMerge"/> -
+    /// <see cref="MergeAbort.AskAsync"/> subscribes for as long as it waits.
+    /// </summary>
+    public event Action? AbortMerge;
+
+    /// <summary>Arms <see cref="Confirming.AbortMerge"/> - called by <see cref="MergeAbort.AskAsync"/> while it waits on a key.</summary>
+    public void Arm()
+    {
+        lock (_gate) _confirming = Confirming.AbortMerge;
+    }
+
+    /// <summary>Unarms it again, whether or not a key ever came - a no-op once something else already has.</summary>
+    public void Disarm()
+    {
+        lock (_gate)
+        {
+            if (_confirming == Confirming.AbortMerge) _confirming = Confirming.None;
+        }
+    }
+
     public ControlsSnapshot Snapshot()
     {
         lock (_gate) return new ControlsSnapshot(keysOn, _stopArmed, _paused, _longLegend, _confirming);
@@ -151,9 +186,11 @@ public sealed class Controls(bool keysOn)
         bool cancelNow;
         bool skipNow;
         bool checkNow;
+        bool abortMergeNow;
 
         lock (_gate)
         {
+            var before = _confirming;
             var (stopArmed, paused, longLegend, confirming, cancel, skip, check, decided) =
                 Keys.Decide(key, _stopArmed, _paused, _longLegend, _confirming, _incrementRunning, _napping);
             _stopArmed = stopArmed;
@@ -164,10 +201,12 @@ public sealed class Controls(bool keysOn)
             skipNow = skip;
             checkNow = check;
             log = decided;
+            abortMergeNow = before == Confirming.AbortMerge && confirming == Confirming.None;
         }
 
         if (skipNow) Skipped?.Invoke();
         if (checkNow) CheckNow?.Invoke();
+        if (abortMergeNow) AbortMerge?.Invoke();
         return (log, cancelNow, skipNow);
     }
 }

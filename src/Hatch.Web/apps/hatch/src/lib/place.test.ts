@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { columnDroppableId, place, restorePoint, sendTo, targetStatusId } from './place';
+import { CLOUD, columnDroppableId, place, restorePoint, sendTo, targetStatusId } from './place';
 import type { IssueCard } from '../types';
 
 const INBOX = 1;
@@ -72,6 +72,13 @@ describe('targetStatusId', () => {
   it('has nothing to say about no target or an unknown one', () => {
     expect(targetStatusId(null, board)).toBeNull();
     expect(targetStatusId('AER-404', board)).toBeNull();
+  });
+});
+
+describe('the dream cloud', () => {
+  it('is no column, and places nothing', () => {
+    expect(targetStatusId(CLOUD, board)).toBeNull();
+    expect(place(board, board, 'AER-9', CLOUD)).toBeNull();
   });
 });
 

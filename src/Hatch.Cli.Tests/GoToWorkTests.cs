@@ -303,11 +303,83 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         OneTicket(h);
         h.Workspace.Answer = Reset.Merging;
+        h.Workspace.MergeBlockAnswer = new MergeBlock(OwnMarker: false, Why: null, Uncommitted: 1);
 
         Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Empty(h.Sessions.Spawned);
         Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("abort-merge ", StringComparison.Ordinal));
+
+        // Keys are off by default in the harness - the same "nobody can press a
+        // key on a pipe" door this command and `hatch work` both go through -
+        // so the banner still prints and the run falls through with no wait.
+        Assert.Contains(h.Say.Said, l => l.Contains("A MERGE IS IN THE WAY", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("no key in 30s", StringComparison.Ordinal) && l.Contains("--abort-merge", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Pressing_a_during_the_wait_aborts_the_merge_and_goes_to_work()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        var controls = new Controls(keysOn: true);
+        var runtime = h.Runtime with { Clock = clock, Controls = controls };
+
+        h.Workspace.PrepareAnswers.Enqueue(Reset.Merging);
+        h.Workspace.PrepareAnswers.Enqueue(Reset.Ready);
+        h.Workspace.MergeBlockAnswer = new MergeBlock(OwnMarker: false, Why: null, Uncommitted: 2);
+        h.Workspace.AbortMergeAnswer = new ForcedAbort(AbortOutcome.Aborted, OwnMarker: false, Discarded: 2, null, null);
+
+        var running = new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        await Harness.Eventually(
+            () => controls.Snapshot().Confirming == Confirming.AbortMerge,
+            "the merge-blocked wait armed");
+
+        controls.Press('a');
+
+        Assert.Equal(0, await running);
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Equal(
+            [$"prepare {h.Root}", $"abort-merge {h.Root}", $"prepare {h.Root}"],
+            h.Workspace.Calls.Where(c => c.StartsWith("prepare ", StringComparison.Ordinal) || c.StartsWith("abort-merge ", StringComparison.Ordinal)));
+        Assert.Contains(h.Say.Said, l => l.Contains("A MERGE IS IN THE WAY", StringComparison.Ordinal));
+        Assert.Contains(
+            h.Say.Said,
+            l => l.Contains("aborted a merge hatch did not start", StringComparison.Ordinal) &&
+                 l.Contains("2 uncommitted file(s) discarded", StringComparison.Ordinal));
+        Assert.Equal(Confirming.None, controls.Snapshot().Confirming);
+    }
+
+    [Fact]
+    public async Task No_press_during_the_wait_refuses_after_30_seconds_and_ends_the_night()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        var controls = new Controls(keysOn: true);
+        var runtime = h.Runtime with { Clock = clock, Controls = controls };
+
+        h.Workspace.Answer = Reset.Merging;
+        h.Workspace.MergeBlockAnswer = new MergeBlock(OwnMarker: true, Why: "fatal: no merge to abort", Uncommitted: 0);
+
+        var running = new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        await Harness.Eventually(
+            () => controls.Snapshot().Confirming == Confirming.AbortMerge,
+            "the merge-blocked wait armed");
+
+        clock.Advance(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(1, await running);
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("abort-merge ", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("no key in 30s", StringComparison.Ordinal));
+        Assert.Equal(Confirming.None, controls.Snapshot().Confirming);
     }
 
     [Fact]

@@ -1118,7 +1118,12 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
   progress, or a conflicted file. Clear it by hand, or run with
   `--abort-merge` to clear any merge in progress automatically and carry on -
   it discards whatever was uncommitted in that merge, so use it only when the
-  conflict is nobody's to keep.
+  conflict is nobody's to keep. At an interactive terminal with nothing
+  having answered that question in advance, a merge in the way prints an
+  orange banner naming it instead and waits 30 seconds for `a` to abort it
+  and carry on; a runner with keys off (a pipe, `--no-keys`, `TERM=dumb`, or
+  redirected output) refuses at once rather than waiting on a person who is
+  not there.
 - **`hatch: a go-to-work is already running in <path>, pid <n>`.** One loop
   per checkout. Join that one, stop it, or use another checkout.
 - **`hatch: the workspace <dir> is already served by pid <n>, from

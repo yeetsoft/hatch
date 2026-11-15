@@ -54,6 +54,8 @@ public sealed partial class LogTerminal : Terminal, IDisposable
     /// <summary>Where the copy is being written.</summary>
     public string Path { get; }
 
+    public override bool Colour => _inner.Colour;
+
     public override void Line(string line)
     {
         _inner.Line(line);

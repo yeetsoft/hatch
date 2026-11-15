@@ -494,9 +494,15 @@ public sealed class WorkspaceTests : RepoFixture
         Git(_work, "merge", "--no-edit", "origin/main");
         Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
 
-        Assert.Equal(Reset.Merging, Ws().Prepare());
+        var ws = Ws();
+        Assert.Equal(Reset.Merging, ws.Prepare());
         Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
         Assert.Contains(_complained, l => l.Contains("did not start it"));
+
+        // Somebody's own merge - git is never asked, so there is no reason to quote.
+        Assert.NotNull(ws.MergeBlocked);
+        Assert.False(ws.MergeBlocked!.OwnMarker);
+        Assert.Null(ws.MergeBlocked.Why);
     }
 
     [Fact]
@@ -535,10 +541,16 @@ public sealed class WorkspaceTests : RepoFixture
         var lockPath = Path.Combine(_work, ".git", "index.lock");
         File.WriteAllText(lockPath, "");
 
-        Assert.Equal(Reset.Merging, Ws().Prepare());
+        var blocked = Ws();
+        Assert.Equal(Reset.Merging, blocked.Prepare());
 
         Assert.True(File.Exists(lockPath));
         Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+
+        // The loop's own merge, so this reads git's own words back, not null.
+        Assert.NotNull(blocked.MergeBlocked);
+        Assert.True(blocked.MergeBlocked!.OwnMarker);
+        Assert.True(blocked.MergeBlocked.Why is { Length: > 0 });
     }
 
     [Fact]
@@ -553,13 +565,18 @@ public sealed class WorkspaceTests : RepoFixture
         var lockPath = Path.Combine(_work, ".git", "index.lock");
         File.WriteAllText(lockPath, "");
 
-        Assert.Equal(Reset.Merging, Ws().Prepare());
+        var blocked = Ws();
+        Assert.Equal(Reset.Merging, blocked.Prepare());
 
         Assert.Contains(_complained, l =>
             l.StartsWith("hatch: a merge the loop started was never finished, and would not abort - fatal: Unable to create", StringComparison.Ordinal)
             && l.Contains("index.lock", StringComparison.Ordinal));
         Assert.DoesNotContain(_said, l => l.Contains("aborted a merge", StringComparison.Ordinal));
         Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+
+        Assert.NotNull(blocked.MergeBlocked);
+        Assert.True(blocked.MergeBlocked!.OwnMarker);
+        Assert.StartsWith("fatal: Unable to create", blocked.MergeBlocked.Why, StringComparison.Ordinal);
     }
 
     [Theory]

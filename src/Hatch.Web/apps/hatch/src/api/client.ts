@@ -35,6 +35,8 @@ import type {
   IssueDependencyRequest,
   IssueEvent,
   IssueMoveRequest,
+  DreamRemandRequest,
+  DreamRemandResult,
   IssuePatchRequest,
   IssuePlaybookRequest,
   IssueRollup,
@@ -516,6 +518,9 @@ export const deleteIssue = (key: string) =>
   fetchJson<void>(`/api/issues/${seg(key)}`, { method: 'DELETE' });
 export const moveIssue = (key: string, request: IssueMoveRequest) =>
   fetchJson<Issue>(`/api/issues/${seg(key)}/move`, { method: 'POST', ...asJson(request) });
+/** Shelve an issue and the work under it into a deferred column, and post a dream from it. */
+export const remandIssue = (key: string, request: DreamRemandRequest) =>
+  fetchJson<DreamRemandResult>(`/api/issues/${seg(key)}/remand`, { method: 'POST', ...asJson(request) });
 
 // ---- Progress ----
 

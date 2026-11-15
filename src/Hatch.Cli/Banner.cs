@@ -16,6 +16,11 @@ public static class Banner
     private const string Chick = "🐣🐣🐣🐣🐣";
     private const string Pan = "🍳🍳🍳🍳🍳";
     private const string Siren = "🚨🚨🚨🚨🚨";
+    private const string Orange = "🟠🟠🟠🟠🟠";
+
+    /// <summary>256-colour index 208 - the readout's own palette (<c>Readout.cs</c>) has no orange to reuse.</summary>
+    private const string OrangeOn = "\x1b[38;5;208m";
+    private const string ColourOff = "\x1b[0m";
 
     /// <summary>
     /// Before a session is spawned: the ticket, what the increment is for, the
@@ -59,6 +64,30 @@ public static class Banner
         if (usageLine is { Length: > 0 }) lines.Add($"  {usageLine}");
 
         return lines;
+    }
+
+    /// <summary>
+    /// A reset stopped on a merge in progress - what <see cref="MergeAbort.AskAsync"/>
+    /// prints before it waits on <c>a</c>. Glyph row above and below, so it is
+    /// impossible to miss scrolling past; orange in colour, plain text under
+    /// <see cref="Terminal.Colour"/> false.
+    /// </summary>
+    public static IReadOnlyList<string> MergeBlocked(MergeBlock block, string path, bool color)
+    {
+        List<string> lines =
+        [
+            Orange,
+            $"  A MERGE IS IN THE WAY in {path}",
+            $"  {(block.OwnMarker ? "the loop started it, and it would not abort" : "hatch did not start it")}",
+        ];
+
+        if (block.Why is { Length: > 0 } why) lines.Add($"  git said: {why}");
+
+        lines.Add($"  aborting it will discard {block.Uncommitted} uncommitted file(s)");
+        lines.Add("  press a to abort it and carry on - nothing in 30 seconds ends the run");
+        lines.Add(Orange);
+
+        return color ? [.. lines.Select(line => $"{OrangeOn}{line}{ColourOff}")] : lines;
     }
 
     /// <summary>

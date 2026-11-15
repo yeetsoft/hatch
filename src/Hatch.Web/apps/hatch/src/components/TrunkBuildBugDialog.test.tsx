@@ -8,6 +8,7 @@ import { IssueConfirmationsContext, type IssueConfirmations } from '../lib/useIs
 const CONFIRMATIONS: IssueConfirmations = {
   confirm: () => undefined,
   moved: () => undefined,
+  remanded: () => undefined,
   cascaded: () => undefined,
   undo: () => undefined,
   undoNewest: () => false,

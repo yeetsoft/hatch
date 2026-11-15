@@ -2,7 +2,7 @@ import { closestCorners } from '@dnd-kit/core';
 import type { ClientRect, Collision, CollisionDetection, DroppableContainer } from '@dnd-kit/core';
 import { describe, expect, it } from 'vitest';
 import { aimAt } from './aim';
-import { columnDroppableId } from './place';
+import { CLOUD, columnDroppableId } from './place';
 import type { IssueCard } from '../types';
 
 const DRAFT = 1;
@@ -188,5 +188,41 @@ describe('aimAt, a keyboard drag', () => {
   it('falls through to closestCorners, unchanged - a keyboard drag has no pointer', () => {
     const args = argsFor(geometry, null, rect(8, 100, 174, 60));
     expect(aimAt([card('D-1', DRAFT)])(args)).toEqual(closestCorners(args));
+  });
+});
+
+describe('aimAt, the dream cloud', () => {
+  const cards = [card('B-1', BREAKDOWN)];
+
+  const withColumns = {
+    [CLOUD]: rect(0, 0, 380, 40),
+    [columnDroppableId(DRAFT)]: rect(0, 50, 190, 550),
+    [columnDroppableId(BREAKDOWN)]: rect(190, 50, 190, 550),
+    'B-1': rect(198, 90, 174, 60),
+  };
+
+  // The stacked layout has no column droppables at all.
+  const cloudOnly = { [CLOUD]: rect(0, 0, 380, 40), 'B-1': rect(198, 90, 174, 60) };
+
+  it('is the answer when the pointer is inside it, with columns on the board', () => {
+    expect(idsOf(aimAt(cards)(argsFor(withColumns, { x: 100, y: 20 })))).toEqual([CLOUD]);
+  });
+
+  it('is the answer when the pointer is inside it, with no columns to be in', () => {
+    expect(idsOf(aimAt(cards)(argsFor(cloudOnly, { x: 100, y: 20 })))).toEqual([CLOUD]);
+  });
+
+  it('is not the answer outside it, and nothing is when no column holds the pointer either', () => {
+    expect(idsOf(aimAt(cards)(argsFor(cloudOnly, { x: 100, y: 300 })))).toEqual([]);
+  });
+
+  it('leaves a pointer inside a column to the column', () => {
+    expect(idsOf(aimAt(cards)(argsFor(withColumns, { x: 285, y: 120 })))).toEqual(['B-1']);
+    expect(idsOf(aimAt(cards)(argsFor(withColumns, { x: 50, y: 300 })))).toEqual([columnDroppableId(DRAFT)]);
+  });
+
+  it('a keyboard drag, which has no pointer, keeps the answer it always had', () => {
+    const hits = aimAt(cards)(argsFor(withColumns, null));
+    expect(hits.length).toBeGreaterThan(0);
   });
 });
