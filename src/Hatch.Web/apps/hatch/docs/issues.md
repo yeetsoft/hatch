@@ -405,6 +405,12 @@ dialog it opens is answered, and answering it remands the card, and the open
 work under it, to a dream. Deferring a ticket with open work under it shelves that
 work too, in one step, the same way closing a subtree does below.
 
+Each deferred column in the status bar and in the peek's status picker has a
+second press beside it, **to a dream**. It opens the same dialog the cloud does,
+with that column chosen, and the same **Remand** confirms it. The issue page
+reloads and shows where the dream went. A press the move into that column
+would refuse, for a protected column, is refused here too.
+
 Two things follow: a [deferred](the-board-and-its-columns) ticket does not
 clear a dependency — only work that lands does — so everything waiting on it
 gets a comment saying the gate still holds; and a deferred ticket drops out

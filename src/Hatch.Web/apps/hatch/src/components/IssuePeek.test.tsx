@@ -100,6 +100,7 @@ const render = (onClose: () => void = noop, overCard: Partial<IssueCard> = {}) =
         directory={null}
         onExpedited={noop}
         onMove={() => Promise.resolve()}
+        onRemand={() => {}}
         onDelete={() => Promise.resolve()}
         onClose={onClose}
       />

@@ -403,8 +403,12 @@ There are nine, and a column carries whichever of them it needs.
   and it is refused while **Protected** or **Merges PR** is ticked on the
   column.
 - **Deferred** — parked work. A Deferred column is not drawn on the board and
-  has no drop target of its own; the issue page's status bar is the way in,
-  and the one drag that reaches it is the dream cloud. While a card is held,
+  has no drop target of its own; the issue page's status bar and the peek's
+  status picker are the way in, and the one drag that reaches it is the dream
+  cloud. Both lists also draw a second press, **to a dream**, beside each
+  Deferred column, which opens the same dialog as the cloud with that column
+  chosen: a remand without a drag. A board with no Deferred column draws
+  neither the column's press nor this one. While a card is held,
   and only when the board has a Deferred column, a cloud reading **Remand to a
   dream** is drawn above the columns. Dropping on it moves nothing: it opens a
   dialog naming the column, the open work under the card and the dream's first

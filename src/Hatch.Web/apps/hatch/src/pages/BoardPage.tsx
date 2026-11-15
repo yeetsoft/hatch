@@ -1020,6 +1020,7 @@ export function BoardPage() {
         onMove={async (key, statusId) => {
           await send(key, statusId);
         }}
+        onRemand={(key, statusId) => askRemand(remandOffer(board, key, statusId))}
         onDelete={remove}
         onClose={closePeek}
       />

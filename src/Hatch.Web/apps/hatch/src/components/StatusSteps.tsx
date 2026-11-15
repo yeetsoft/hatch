@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { statusVars } from '../lib/color';
 import { statusChoices } from '../lib/columns';
 import type { Status } from '../types';
@@ -23,12 +23,19 @@ export function StatusSteps({
   statuses,
   statusId,
   onMove,
+  onRemand,
+  issueKey,
   focus,
   blocked,
 }: {
   statuses: Status[];
   statusId: number;
   onMove: (statusId: number) => void;
+  /** Remand this issue to a dream in the given deferred column. Left off, or
+      with no deferred column, no second press is drawn beside the shelf. */
+  onRemand?: (statusId: number) => void;
+  /** The issue, for the second press's label. */
+  issueKey?: string;
   /** The column to focus once this mounts - the keyboard's landing spot when
       a picker opens. Left off, nothing is focused. */
   focus?: number | null;
@@ -70,6 +77,30 @@ export function StatusSteps({
     );
   };
 
+  // The second press beside a deferred column: the same destination, by way
+  // of the dialog that posts a dream from the issue and what is open under it.
+  // It is not disabled on the column the issue is already in - the route takes
+  // a root already there - but it copies the move's refusal, so the two
+  // presses agree about a protected column.
+  const remand = (status: Status) => {
+    const reason = blocked?.(status) ?? null;
+    const label = `Remand ${issueKey ?? 'this issue'} to a dream in ${status.name}`;
+    return (
+      <button
+        key={`remand-${status.id}`}
+        type="button"
+        className={`hatch-status-step hatch-status-remand${reason ? ' blocked' : ''}`}
+        style={statusVars(status.color)}
+        disabled={reason !== null}
+        title={reason ?? undefined}
+        aria-label={label}
+        onClick={() => onRemand?.(status.id)}
+      >
+        to a dream
+      </button>
+    );
+  };
+
   return (
     <div className="hatch-status-steps" role="group" aria-label="Move this issue">
       {lanes.map(step)}
@@ -83,7 +114,12 @@ export function StatusSteps({
           <span className="hatch-status-shelf-label" aria-hidden="true">
             or park it
           </span>
-          {shelf.map(step)}
+          {shelf.map((status) => (
+            <Fragment key={status.id}>
+              {step(status)}
+              {onRemand && remand(status)}
+            </Fragment>
+          ))}
         </>
       )}
     </div>

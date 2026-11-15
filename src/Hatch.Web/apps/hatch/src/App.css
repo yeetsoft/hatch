@@ -2892,6 +2892,17 @@ button.hatch-chip {
   background: color-mix(in srgb, var(--status-color) 18%, transparent);
 }
 
+/* The second press beside a deferred column: a smaller, plain dashed pill, so
+   it reads as an aside to the column's own press rather than a column of its
+   own. Above the coarse-pointer rule on purpose - that rule's 44px floor and
+   body size are the same ones this press needs, and the later rule wins. */
+.hatch-status-remand {
+  border-style: dashed;
+  padding: var(--sp-1) var(--sp-2-5);
+  font-weight: 500;
+  color: var(--muted);
+}
+
 /* The same 44px floor as the topbar's controls and .hatch-btn, reached here
    by its own rule because these buttons carry neither class - layout follows
    width, touch follows pointer, so the desk's row above is untouched. */
