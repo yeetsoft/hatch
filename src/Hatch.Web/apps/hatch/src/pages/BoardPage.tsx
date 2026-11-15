@@ -671,6 +671,7 @@ export function BoardPage() {
           visibleKeys,
           paused: dragUnderway,
           onTake,
+          onNewIssue: () => setFiling(true),
           openQueue: () => queue.current?.open(),
         }
       : null,

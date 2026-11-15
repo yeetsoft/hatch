@@ -25,6 +25,9 @@ export interface ConsoleHost {
   onTake: (card: IssueCard) => void;
   /** Open the work queue modal the board owns. */
   openQueue: () => void;
+  /** `>new` was run. The console has closed; the host opens its own New issue
+      dialog, with its own default project and what it does once filed. */
+  onNewIssue: () => void;
 }
 
 export interface ConsoleControl {
@@ -37,8 +40,9 @@ export const ConsoleContext = createContext<ConsoleControl | null>(null);
 
 /**
  * Be the console's host while this page is on screen. `host` is null while the
- * page has no board to offer. The latest `onTake` and `openQueue` are the ones called, so a page
- * may pass a new function every render without re-offering its cards.
+ * page has no board to offer. The latest `onTake`, `onNewIssue` and `openQueue` are the
+ * ones called, so a page may pass new functions every render without re-offering its
+ * cards.
  */
 export function useConsoleHost(host: ConsoleHost | null): void {
   const held = useContext(ConsoleContext);
@@ -54,6 +58,12 @@ export function useConsoleHost(host: ConsoleHost | null): void {
     queue.current = openQueue;
   }, [onTake, openQueue]);
 
+  const file = useRef<ConsoleHost['onNewIssue'] | null>(null);
+  const onNewIssue = host?.onNewIssue ?? null;
+  useEffect(() => {
+    file.current = onNewIssue;
+  }, [onNewIssue]);
+
   const cards = host?.cards;
   const statuses = host?.statuses;
   const visibleKeys = host?.visibleKeys;
@@ -66,6 +76,7 @@ export function useConsoleHost(host: ConsoleHost | null): void {
     }
     setHost({ cards, statuses, visibleKeys, paused,
       onTake: (card) => take.current?.(card),
+      onNewIssue: () => file.current?.(),
       openQueue: () => queue.current?.(),
     });
   }, [setHost, cards, statuses, visibleKeys, paused]);
