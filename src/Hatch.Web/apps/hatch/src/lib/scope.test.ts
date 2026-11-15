@@ -1,6 +1,7 @@
 import { createMemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import {
+  OPEN_QUEUE,
   SCOPE_CLEARED,
   cardsInScope,
   keepScope,
@@ -10,6 +11,7 @@ import {
   rawScope,
   scopeProjectIds,
   scopeSearch,
+  withoutOpenQueue,
   scopeTitle,
   scopeWithProject,
   scopedPath,
@@ -421,5 +423,20 @@ describe('keepScope in a router', () => {
 describe('scopeWithProject', () => {
   it('appends the key', () => {
     expect(scopeWithProject(['AER'], 'HA')).toEqual(['AER', 'HA']);
+  });
+});
+
+describe('withoutOpenQueue', () => {
+  it('takes the flag off and keeps the rest', () => {
+    expect(withoutOpenQueue({ [OPEN_QUEUE]: true, [SCOPE_CLEARED]: true })).toEqual({ [SCOPE_CLEARED]: true });
+  });
+
+  it('leaves a state without the flag as it was', () => {
+    expect(withoutOpenQueue({ [SCOPE_CLEARED]: true })).toEqual({ [SCOPE_CLEARED]: true });
+  });
+
+  it('turns no state into an empty one', () => {
+    expect(withoutOpenQueue(null)).toEqual({});
+    expect(withoutOpenQueue(undefined)).toEqual({});
   });
 });
