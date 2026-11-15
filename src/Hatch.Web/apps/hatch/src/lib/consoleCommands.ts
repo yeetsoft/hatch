@@ -11,6 +11,10 @@
 
 import type { ThemeChoice } from '@hatch/ui';
 import { HOME, HOME_LABEL, navRows } from './nav';
+import { PERMISSION_TITLE, PRE_APPROVAL_LEVELS, approvalLocked } from './preApproval';
+import type { PreApproval } from './preApproval';
+import { PRIORITY_LEVELS } from './priority';
+import type { Priority } from './priority';
 import { moveBlocked } from './protectedColumns';
 import type { IssueCard, Project, Status } from '../types';
 
@@ -31,10 +35,13 @@ export interface CommandContext {
   pathname: string;
   /** The issue in view, or null. */
   view: IssueView | null;
+  /** Whether the caller may set an issue's priority and pre-approval: the
+      controls draw a word, not a button, for anyone but a person. */
+  canSet: boolean;
 }
 
 /** The second lists a command can open. */
-export type CommandStep = 'status';
+export type CommandStep = 'status' | 'priority' | 'preapproval';
 
 export interface CommandEnv {
   /** Opens a page, keeping the tab's scope. */
@@ -42,6 +49,10 @@ export interface CommandEnv {
   setTheme: (choice: ThemeChoice) => void;
   /** Moves the issue in view to a column, as the status bar would. */
   move: (statusId: number) => void;
+  /** Sets the issue in view's priority, as the priority band would. */
+  setPriority: (level: Priority) => void;
+  /** Sets the issue in view's pre-approval, as the pre-approval band would. */
+  setPreApproval: (level: PreApproval) => void;
   /** Swaps the list for a second one. */
   openStep: (step: CommandStep) => void;
   /** Opens the work queue: on the board itself, or by landing on the board with it open. */
@@ -113,13 +124,56 @@ export function statusStepRows(view: IssueView): Command[] {
   return view.statuses.map((status) => statusRow(view, status, status.name, `step:status:${status.id}`));
 }
 
+/** A priority level's row. The issue's own level is listed and not takeable. */
+function priorityRow(view: IssueView, level: (typeof PRIORITY_LEVELS)[number], name: string, id: string): Command {
+  const current = level.name === view.card.priorityOwn;
+  return {
+    id,
+    name,
+    hint: current ? 'current' : 'priority',
+    stays: true,
+    disabled: current ? `Already ${level.word}` : undefined,
+    run: (env) => env.setPriority(level.name),
+  };
+}
+
+/** A pre-approval level's row: the own level is listed and not takeable, and
+    one the server would refuse says why in the band's own sentence. Current
+    wins over blocked, as in `statusRow`. A project the caller does not have
+    reads as not an approver. */
+function preApprovalRow(view: IssueView, level: (typeof PRE_APPROVAL_LEVELS)[number], name: string, id: string): Command {
+  const own = view.card.preApprovalOwn;
+  const current = level.name === own;
+  const blocked = approvalLocked(level.name, own, view.project?.canApprove ?? false);
+  return {
+    id,
+    name,
+    hint: current ? 'current' : blocked ? 'blocked' : 'pre-approval',
+    stays: true,
+    disabled: current ? `Already ${level.word}` : blocked ? PERMISSION_TITLE : undefined,
+    run: (env) => env.setPreApproval(level.name),
+  };
+}
+
+/** The priority step's rows: every level, in the band's order, by word alone. */
+export function priorityStepRows(view: IssueView): Command[] {
+  return PRIORITY_LEVELS.map((level) => priorityRow(view, level, level.word, `step:priority:${level.name}`));
+}
+
+/** The pre-approval step's rows: every level, in the band's order, by word alone. */
+export function preApprovalStepRows(view: IssueView): Command[] {
+  return PRE_APPROVAL_LEVELS.map((level) => preApprovalRow(view, level, level.word, `step:preapproval:${level.name}`));
+}
+
 /** Every command offered here, in declared order: Status where an issue is in
-    view, then the pages the primary nav lists for this person, Board first and
+    view, then Priority and Pre-approval where the caller is a person, then the pages the primary nav lists for this person, Board first and
     Settings last, then New issue, the queue and the themes, then a `Status → <Column>`
-    for each column. Those come last so the bare preview is not a screenful of
-    columns. */
+    for each column, and a `Priority → <Level>` and `Pre-approval → <Level>` for
+    each level. Those come last so the bare preview is not a screenful of
+    them. */
 export function commandList(ctx: CommandContext): Command[] {
   const { view } = ctx;
+  const setting = view !== null && ctx.canSet;
   return offered(
     [
       {
@@ -130,6 +184,24 @@ export function commandList(ctx: CommandContext): Command[] {
         stays: true,
         step: 'status',
         run: (env) => env.openStep('status'),
+      },
+      {
+        id: 'priority',
+        name: 'Priority',
+        hint: 'issue',
+        when: (c) => c.view !== null && c.canSet,
+        stays: true,
+        step: 'priority',
+        run: (env) => env.openStep('priority'),
+      },
+      {
+        id: 'preapproval',
+        name: 'Pre-approval',
+        hint: 'issue',
+        when: (c) => c.view !== null && c.canSet,
+        stays: true,
+        step: 'preapproval',
+        run: (env) => env.openStep('preapproval'),
       },
       goTo(HOME, HOME_LABEL),
       ...navRows(ctx.isAdmin).map((row) => goTo(row.to, row.label)),
@@ -144,6 +216,16 @@ export function commandList(ctx: CommandContext): Command[] {
       })),
       ...(view
         ? view.statuses.map((status) => statusRow(view, status, `Status → ${status.name}`, `status:${status.id}`))
+        : []),
+      ...(view && setting
+        ? [
+            ...PRIORITY_LEVELS.map((level) =>
+              priorityRow(view, level, `Priority → ${level.word}`, `priority:${level.name}`),
+            ),
+            ...PRE_APPROVAL_LEVELS.map((level) =>
+              preApprovalRow(view, level, `Pre-approval → ${level.word}`, `preapproval:${level.name}`),
+            ),
+          ]
         : []),
     ],
     ctx,

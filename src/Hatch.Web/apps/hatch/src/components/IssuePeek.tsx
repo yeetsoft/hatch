@@ -17,6 +17,7 @@ import { message } from '../lib/errors';
 import { moveBlocked } from '../lib/protectedColumns';
 import { fromQuestion } from '../lib/questions';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { preApprovalStamp, priorityStamp } from '../lib/peekLevels';
 import { scopedPath } from '../lib/scope';
 import { useScope } from '../lib/useScope';
 import { useStandalone } from '../lib/viewport';
@@ -162,6 +163,29 @@ export function IssuePeek({
      closed, so nothing here ever unmounts on its own and this is the only
      thing that clears it. */
   if (asked.key !== key) setAsked({ key });
+
+  /* A level the peek asked for is drawn in preference to the card's, so the
+     pill answers at once. It is stale once the card's own value moves - the
+     board reloaded after the press, or after the console set the level - and
+     the card is then the newer word. Cleared the same way, while rendering,
+     when what the card says about the level changes. */
+  const cardPriority = priorityStamp(card);
+  const cardPreApproval = preApprovalStamp(card);
+  const [seenPriority, setSeenPriority] = useState(cardPriority);
+  const [seenPreApproval, setSeenPreApproval] = useState(cardPreApproval);
+  if (seenPriority !== cardPriority) {
+    setSeenPriority(cardPriority);
+    setAsked((prev) => ({ ...prev, priority: undefined, priorityOwn: undefined, priorityFrom: undefined }));
+  }
+  if (seenPreApproval !== cardPreApproval) {
+    setSeenPreApproval(cardPreApproval);
+    setAsked((prev) => ({
+      ...prev,
+      preApproval: undefined,
+      preApprovalOwn: undefined,
+      preApprovalFrom: undefined,
+    }));
+  }
 
   /** Records an answer, if the card it was asked about is still the one on screen. */
   const apply = useCallback((about: string, answer: Partial<Asked>) => {

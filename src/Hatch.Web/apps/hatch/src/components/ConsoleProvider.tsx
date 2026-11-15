@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '@hatch/ui';
-import { getAssignees, getBoard } from '../api/client';
+import { getAssignees, getBoard, setPreApproval, setPriority } from '../api/client';
 import type { CommandContext, CommandEnv, IssueView } from '../lib/consoleCommands';
 import type { GoToLoad } from '../lib/goTo';
 import { focusedIssueKey, issueInView } from '../lib/issueInView';
@@ -18,7 +18,7 @@ import type { CloseOffer } from '../lib/closeSubtree';
 import type { AssigneeDirectory, IssueCard, Status } from '../types';
 import { NewIssueDialog } from './NewIssueDialog';
 import { OmniBar } from './OmniBar';
-import type { MoveOutcome } from './OmniBar';
+import type { MoveOutcome, SetChange } from './OmniBar';
 
 /** The marker on the board's peek, which the console may open over. */
 export const CONSOLE_OVER = 'data-console-over';
@@ -80,6 +80,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [filing, setFiling] = useState(false);
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
+  const directoryRead = useRef(false);
 
   const control = useMemo<ConsoleControl>(() => ({ setHost: setHostState, setMoves }), []);
   const paused = host?.paused ?? false;
@@ -134,13 +135,20 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     };
   }, [reading]);
 
-  // The dialog's assignee choices, read when it opens and kept for the next time.
+  // The assignee directory, read when the console opens or hands over to the
+  // New issue dialog, and kept for the next time. The dialog draws its choices
+  // from it; the console reads who the caller is, to offer Priority and
+  // Pre-approval to a person.
   useEffect(() => {
-    if (!filing) return;
+    if (!open && !filing) return;
+    if (directoryRead.current) return;
+    directoryRead.current = true;
     getAssignees().then(setDirectory).catch(() => {
-      // And without the directory: every control still draws, as on the board.
+      // And without the directory: every control still draws, as on the board,
+      // and the console offers nothing it cannot be sure the caller may do.
+      directoryRead.current = false;
     });
-  }, [filing]);
+  }, [open, filing]);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -188,6 +196,14 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     return result === 'asked' ? 'asked' : offered ? 'offered' : 'moved';
   };
 
+  /* The write the screen's own control sends, then the page's own reload, so
+     the console and the mouse cannot disagree about what the issue is now. */
+  const onSet = async (key: string, change: SetChange): Promise<void> => {
+    if (change.kind === 'priority') await setPriority(key, change.level);
+    else await setPreApproval(key, change.level);
+    await held.current?.reload();
+  };
+
   const onTake = (card: IssueCard) => {
     setOpen(false);
     if (host) host.onTake(card);
@@ -199,7 +215,11 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     navigate(path);
   };
 
-  const commandContext = useMemo<CommandContext>(() => ({ isAdmin, pathname, view }), [isAdmin, pathname, view]);
+  const canSet = directory?.me?.kind === 'person';
+  const commandContext = useMemo<CommandContext>(
+    () => ({ isAdmin, pathname, view, canSet }),
+    [isAdmin, pathname, view, canSet],
+  );
 
   // What a command that closes the console runs against. The prompt has already
   // given focus back, so a theme change leaves the person where they were; a
@@ -233,6 +253,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
           env={env}
           closing={closing}
           onMove={onMove}
+          onSet={onSet}
           onClose={close}
         />
       )}

@@ -269,6 +269,9 @@ The first commands are:
   of the theme switch. You stay on the page you were on.
 - **Status** and **Status → <Column>**, offered only where an issue is in
   view. See below.
+- **Priority**, **Pre-approval** and a **Priority → <Level>** and
+  **Pre-approval → <Level>** for each level, offered where an issue is in view
+  and you are a person, not an API key. See below.
 
 The console follows the tab's scope. In a tab scoped to projects, an issue
 outside the scope is not listed for a key prefix or for words from its title.
@@ -322,6 +325,38 @@ board `/` also opens the console over a peek that is already open. On every
 other page the row opens the issue's own page, with the tab's scope kept on
 the address. Off the board the console reads the board once as it opens, so
 its status line says **Loading…** until that lands; it does not poll.
+
+### Setting an issue's priority and pre-approval
+
+With an issue in view, `>priority` lists the six priority levels and
+`>pre-approval` lists the three pre-approval levels, in the order the
+controls on the issue's page and in the board's peek draw them. Taking one
+sets it, the same call those controls make, and the page then reloads, so the
+console and the mouse always agree. `>expedited` and **↵** on an issue page
+sets it Expedited and the status bar's pill shows it; on the board with a
+card peeked, `>paused` and **↵** sets it Paused, the card redraws, and the
+peek's pill agrees, even if you set a level in the peek by hand a moment
+before. Every level is also a command of its own, **Priority → <Level>** and
+**Pre-approval → <Level>**, so `>expedited`, `>paused`, `>express` and `>none`
+go straight there. **esc** in a level list goes back to `>`; a second **esc**
+puts the console away.
+
+The issue's own level is listed dimmed and marked **current**, and says
+**Already <Level>**; **↵** on it does nothing. An inherited level is not the
+issue's own, so it is not marked.
+
+Setting **Pre-approved**, or lowering out of it, is for an owner or approver of
+the issue's project. For anyone else those rows are dimmed and marked
+**blocked**, and the status line gives the sentence the pre-approval control
+gives: only an owner or approver of the project may set pre-approval. **↵** on
+one does nothing.
+
+Only a person is offered these rows. The controls draw a word instead of a
+button for an API key, since the server refuses the write, and the console
+follows. They are also absent where no issue is in view (see above).
+
+A refusal from the server shows in the status line in its own words and the
+console stays open. A set that works puts the console away.
 
 ## Go to Work and Pause
 
