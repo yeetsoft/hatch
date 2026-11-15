@@ -8224,6 +8224,21 @@ button.hatch-option.chosen {
   background: color-mix(in srgb, var(--console-glow) 12%, transparent);
 }
 
+/* A command listed and not takeable: the current column, or one the server would
+   refuse. Still reachable by the arrows, so its reason can be read. */
+.hatch-omni-row.is-disabled {
+  color: var(--console-dim);
+  cursor: not-allowed;
+}
+
+/* The question after a move is a sentence, and must be read whole: on a phone it
+   would otherwise be cut off at "Close its 2 open chi…". */
+.hatch-omni-row--question .hatch-omni-title {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .hatch-omni-marker {
   flex: none;
   width: 1ch;
