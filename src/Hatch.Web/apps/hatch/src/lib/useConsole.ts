@@ -24,6 +24,8 @@ export interface ConsoleHost {
   /** A row was taken. The console has closed and does not give focus back: the
       host is about to put it on the card. */
   onTake: (card: IssueCard) => void;
+  /** Open the work queue modal the board owns. */
+  openQueue: () => void;
   /** `>new` was run. The console has closed; the host opens its own New issue
       dialog, with its own default project and what it does once filed. */
   onNewIssue: () => void;
@@ -41,8 +43,8 @@ export const ConsoleContext = createContext<ConsoleControl | null>(null);
 
 /**
  * Be the console's host while this page is on screen. `host` is null while the
- * page has no board to offer. The latest `onTake` and `onNewIssue` are the ones
- * called, so a page may pass new functions every render without re-offering its
+ * page has no board to offer. The latest `onTake`, `onNewIssue` and `openQueue` are the
+ * ones called, so a page may pass new functions every render without re-offering its
  * cards.
  */
 export function useConsoleHost(host: ConsoleHost | null): void {
@@ -52,9 +54,12 @@ export function useConsoleHost(host: ConsoleHost | null): void {
 
   const take = useRef<ConsoleHost['onTake'] | null>(null);
   const onTake = host?.onTake ?? null;
+  const queue = useRef<ConsoleHost['openQueue'] | null>(null);
+  const openQueue = host?.openQueue ?? null;
   useEffect(() => {
     take.current = onTake;
-  }, [onTake]);
+    queue.current = openQueue;
+  }, [onTake, openQueue]);
 
   const file = useRef<ConsoleHost['onNewIssue'] | null>(null);
   const onNewIssue = host?.onNewIssue ?? null;
@@ -72,7 +77,11 @@ export function useConsoleHost(host: ConsoleHost | null): void {
       setHost(null);
       return;
     }
-    setHost({ cards, statuses, visibleKeys, paused, onTake: (card) => take.current?.(card), onNewIssue: () => file.current?.() });
+    setHost({ cards, statuses, visibleKeys, paused,
+      onTake: (card) => take.current?.(card),
+      onNewIssue: () => file.current?.(),
+      openQueue: () => queue.current?.(),
+    });
   }, [setHost, cards, statuses, visibleKeys, paused]);
 
   useEffect(() => () => setHost(null), [setHost]);

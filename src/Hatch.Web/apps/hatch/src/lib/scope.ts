@@ -26,6 +26,19 @@ export const SCOPE = 'scope';
     location it clears on, so a clear can never be re-applied. */
 export const SCOPE_CLEARED = 'hatchScopeCleared';
 
+/** The `location.state` flag a page other than the board sets when it sends
+    the person to the board to have the work queue open. One-shot: the board
+    clears it on arrival, so Back, a reload and a shared link do not reopen it.
+    Read with `=== true`, as SCOPE_CLEARED is. */
+export const OPEN_QUEUE = 'hatchOpenQueue';
+
+/** `state` with the OPEN_QUEUE flag removed and everything else - SCOPE_CLEARED
+    included - kept. */
+export function withoutOpenQueue(state: unknown): Record<string, unknown> {
+  const { [OPEN_QUEUE]: _opened, ...rest } = (state ?? {}) as Record<string, unknown>;
+  return rest;
+}
+
 /** The `scope` value split on `,`, trimmed, empties and duplicates dropped, in
     the order written. No project list is consulted: an unknown key stays. */
 export function rawScope(params: URLSearchParams): string[] {

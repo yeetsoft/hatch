@@ -6,7 +6,8 @@ import { getAssignees, getBoard } from '../api/client';
 import type { CommandContext, CommandEnv, IssueView } from '../lib/consoleCommands';
 import type { GoToLoad } from '../lib/goTo';
 import { focusedIssueKey, issueInView } from '../lib/issueInView';
-import { scopedPath } from '../lib/scope';
+import { HOME } from '../lib/nav';
+import { OPEN_QUEUE, scopedPath } from '../lib/scope';
 import { isGoToShortcut, isTypingTarget } from '../lib/shortcuts';
 import { ConsoleContext } from '../lib/useConsole';
 import type { ConsoleControl, ConsoleHost, HeldMoves } from '../lib/useConsole';
@@ -203,9 +204,16 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   // What a command that closes the console runs against. The prompt has already
   // given focus back, so a theme change leaves the person where they were; a
   // page change then takes them away from it.
-  const env: Pick<CommandEnv, 'go' | 'setTheme' | 'newIssue'> = {
+  const env: Pick<CommandEnv, 'go' | 'setTheme' | 'newIssue' | 'openQueue'> = {
     go: (path) => navigate(scopedPath(path, scope.keys)),
     setTheme: setChoice,
+    // Off the board there is no host, so land on the board with the flag it
+    // opens the queue on. On `/` with the board still loading that is the
+    // same page: replace, so Back is not handed a duplicate entry.
+    openQueue: () =>
+      host
+        ? host.openQueue()
+        : navigate(scopedPath(HOME, scope.keys), { replace: pathname === HOME, state: { [OPEN_QUEUE]: true } }),
     newIssue: () => (host ? host.onNewIssue() : setFiling(true)),
   };
 
