@@ -266,7 +266,11 @@ public class ThemeConfiguratorKeyboardTests(ITestOutputHelper output)
         return pixels;
     }
 
-    /// <summary>The control and ten pixels around it, once two frames in a row agree, so a transition has finished easing in or out.</summary>
+    /// <summary>
+    /// The control and ten pixels around it, once two frames in a row agree, so a transition has finished easing in or out.
+    /// Two equal frames can also mean the transition has not started painting (the first time WebKit composites an element
+    /// on a page), so the comparison only begins after a pause longer than the outline's 0.2s transition.
+    /// </summary>
     private static async Task<byte[]> ClipAsync(E2eHarness harness, Deadline deadline, string selector)
     {
         var box = await deadline.BoundAsync("measuring the control", () => harness.Page!.Locator(selector).First.BoundingBoxAsync());
@@ -276,6 +280,8 @@ public class ThemeConfiguratorKeyboardTests(ITestOutputHelper output)
         {
             X = Math.Max(0, box.X - pad), Y = Math.Max(0, box.Y - pad), Width = box.Width + 2 * pad, Height = box.Height + 2 * pad,
         };
+
+        await Task.Delay(250);
 
         byte[] last = [];
         for (var i = 0; i < 20; i++)
