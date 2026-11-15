@@ -371,6 +371,10 @@ public class AdminSurfaceTests
         "IssueDreamsController.PutIssueDreams",
         "IssueDreamsController.GetIssueDreams",
 
+        // Shelving a tree into a dream. Key-accepting like the module around
+        // it - see IssueRemandController.
+        "IssueRemandController.Remand",
+
         // The lease on an issue, and the one place in the module where a
         // key is accepted *because* the caller is a machine: a mutex only an
         // operator could operate would mutex nothing. All three carry the
@@ -817,6 +821,7 @@ public class AdminSurfaceTests
         "IssueNoCodeController.PutIssueNoCode",
         "IssueOnePrController.PutIssueOnePr",
         "IssueReleaseNoteController.PutIssueReleaseNote",
+        "IssueRemandController.Remand",
         "IssueRunnerOmissionsController.DeleteOmittedRunner",
         "IssueRunnerOmissionsController.PutOmittedRunner",
         "IssueRunnerTagsController.PutIssueRunnerTags",

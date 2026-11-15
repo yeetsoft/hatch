@@ -516,20 +516,25 @@ before 409ing.
 | DELETE | `/dreams/{id}` | Removes one |
 | PUT | `/issues/{key}/dreams` | Replaces the set of dreams this issue drew on |
 | GET | `/issues/{key}/dreams` | The dreams this issue drew on, newest first |
+| POST | `/issues/{key}/remand` | Shelves this issue and the open work under it into a deferred column, and posts a dream from it |
 | POST | `/dreams/weave` | Files an epic in the breakdown column, briefed to be woven from the dreams (a person's, not a key's) |
 
 A dream is a line somebody wanted said - leaning toward a project, or loose.
 `/dreams` takes `q` (any word, not every word - unlike `/search`), a repeatable
 `projectId` (omitted or empty matches every dream, leaning and loose alike), `includeNoProject` (`true` adds every dream with no project to a non-empty `projectId` list, in the same ordered, counted, paged answer; with no `projectId` it changes nothing; default `false`), `issueKey` (only
-dreams woven into that issue), `loose` (`true` for only dreams woven into no
+dreams woven into that issue), `remandedFromKey` (only dreams
+remanded from that issue), `loose` (`true` for only dreams woven into no
 issue at all), `limit` (1-200, default 50) and `offset`; with `q`, best match
 first, else newest first. `issueKey` and `loose` each AND with `q` and
 `projectId` as one more filter on the same query - each is a single
-`EXISTS`/`NOT EXISTS` against `DreamThreads`, not a lookup per dream. Its
+`EXISTS`/`NOT EXISTS` against `DreamThreads`, not a lookup per dream;
+`remandedFromKey` is the same `EXISTS`, against `DreamRemands`. Its
 answer is `DreamsPageDto(Dreams, Total)`, each a
-`DreamDto(Id, Body, Author, Source, ProjectId, ProjectKey, CreatedAt, UpdatedAt, WovenInto)` -
+`DreamDto(Id, Body, Author, Source, ProjectId, ProjectKey, CreatedAt, UpdatedAt, WovenInto, RemandedFrom)` -
 `WovenInto` the keys of the issues that drew on this dream, ordered by
-project key then issue number, empty where nothing has.
+project key then issue number, empty where nothing has. `RemandedFrom` the
+keys of the issues the dream was remanded from, the root first and then by
+project key and issue number, empty for a dream no remand made.
 POST's body is `DreamCreateRequest(Body, Source?, ProjectId?)`; `Author` is
 the caller. PATCH takes a raw JSON object rather than
 `DreamCreateRequest` - `{"body"?, "source"?, "projectId"?}` - so that a key
@@ -545,13 +550,32 @@ naming the set already there writes nothing, logs nothing and leaves
 docs/hatch.md) and answers the resulting `DreamDto[]`, newest first. `GET
 /issues/{key}/dreams` is the same read, with no write.
 
+`POST /issues/{key}/remand` takes `DreamRemandRequest(StatusId, Keys?)` and
+answers `201` with `DreamRemandResultDto(Dream, Changed, Unchanged)`. `{key}`
+is the root, read the way `POST /issues/{key}/move` reads one. `StatusId` is a
+deferred column; `Keys` are the root's descendants to shelve with it (none
+shelves the root alone, duplicates collapse, at most 500). It writes one dream -
+the root's title, a blank line, then its description, cut to a comment's
+length, with the root's key as `Source`, the root's project and the caller as
+author - and a `DreamRemands` row for the root and for each descendant that
+moves. The root and each of those descendants move the way a move moves them
+(`status_changed`, `ClosedAt`, no-code declaration, bottom of the column,
+and the deferral note on whatever waits on them), and each also gets a
+`remanded` issue event (see docs/hatch.md). A descendant already in a terminal
+or a deferred column stays where it is and is listed in `Unchanged`, as is a
+root already in the column - which is still remanded. `Changed` and
+`Unchanged` are display keys.
+
 **Refusals.** `/dreams` 400s a `limit` outside 1-200 or a negative `offset`,
-the same as `/search`, and a malformed `issueKey`. POST 400s a blank or
+the same as `/search`, and a malformed `issueKey` or `remandedFromKey`. POST 400s a blank or
 over-length `Body`, or a `Source` over 500 characters; both POST and PATCH
 404 an unknown `ProjectId`. PATCH and DELETE 404 an unknown `{id}`. `PUT
 /issues/{key}/dreams` and the `GET` beside it 404 an unparseable or unknown
 `{key}`; `PUT` 400s naming the first dream id in `DreamIds` that does not
-exist, writing nothing when it does.
+exist, writing nothing when it does. `POST /issues/{key}/remand` 404s an
+unparseable or unknown `{key}` and 400s, writing nothing, a `StatusId` that is
+no column, one that is not deferred (naming it), more than 500 `Keys`, and the
+first key that is not a descendant of `{key}` (`"{key} is not under {root}"`).
 
 `POST /dreams/weave` is the one route under `/dreams` that files an issue
 rather than a dream - a person's, never a key's. Its body is

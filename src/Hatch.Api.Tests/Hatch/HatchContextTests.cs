@@ -35,7 +35,7 @@ public class HatchContextTests
         using var db = NewContext();
 
         Assert.Equal(
-            ["Attachments", "BuildChecks", "Comments", "Contributions", "DependencyFiles", "DreamThreads", "Dreams", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "MergeChecks", "OvernightSeen", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
+            ["Attachments", "BuildChecks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "MergeChecks", "OvernightSeen", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 
@@ -229,6 +229,23 @@ public class HatchContextTests
         Assert.Equal(
             DeleteBehavior.Cascade,
             ForeignKeyOn(db, typeof(EfHatchDreamThread), foreignKey).DeleteBehavior);
+    }
+
+    /// <summary>
+    /// A remand has no meaning without either issue or dream, so deleting
+    /// either takes its row - and neither delete moves or removes the other
+    /// side. Pinned as model metadata, as <see cref="DreamThreadEdges_CascadeWithEitherSide"/> is.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(EfHatchDreamRemand.DreamId))]
+    [InlineData(nameof(EfHatchDreamRemand.IssueId))]
+    public void DreamRemandEdges_CascadeWithEitherSide(string foreignKey)
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.Cascade,
+            ForeignKeyOn(db, typeof(EfHatchDreamRemand), foreignKey).DeleteBehavior);
     }
 
     /// <summary>

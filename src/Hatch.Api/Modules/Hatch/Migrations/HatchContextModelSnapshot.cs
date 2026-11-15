@@ -377,6 +377,32 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("Dreams", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDreamRemand", b =>
+                {
+                    b.Property<long>("DreamId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Root")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("DreamId", "IssueId");
+
+                    b.HasIndex("IssueId");
+
+                    b.ToTable("DreamRemands", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDreamThread", b =>
                 {
                     b.Property<long>("DreamId")
@@ -2205,6 +2231,25 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDreamRemand", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchDream", "Dream")
+                        .WithMany()
+                        .HasForeignKey("DreamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Dream");
+
+                    b.Navigation("Issue");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDreamThread", b =>

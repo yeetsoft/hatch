@@ -1254,10 +1254,12 @@ public record CommentDto(
 
 /// <summary>One dream: a line somebody wanted said, leaning toward a project or loose.</summary>
 /// <param name="WovenInto">The keys of the issues that drew on this dream, ordered by project key then issue number. Never null.</param>
+/// <param name="RemandedFrom">The keys of the issues this dream was remanded from: the root first, then the rest by project key and issue number. Never null.</param>
 public record DreamDto(
     long Id, string Body, string Author, string? Source,
     int? ProjectId, string? ProjectKey, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    IReadOnlyList<string> WovenInto);
+    IReadOnlyList<string> WovenInto,
+    IReadOnlyList<string> RemandedFrom);
 
 /// <summary>What it takes to add a dream. <see cref="ProjectId"/> is the lean, and may be left out.</summary>
 public record DreamCreateRequest(string Body, string? Source = null, int? ProjectId = null);
@@ -2407,6 +2409,23 @@ public record IssueDependencyRequest(string DependsOnKey);
 
 /// <summary>Replaces the set of dreams an issue drew on, with the dream ids it should now carry.</summary>
 public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);
+
+/// <summary>
+/// Shelve an issue and some of the open work under it into a deferred column,
+/// and post a dream from it.
+/// </summary>
+/// <param name="StatusId">The deferred column to shelve into.</param>
+/// <param name="Keys">The descendants to shelve with the root. Null or empty shelves the root alone.</param>
+public record DreamRemandRequest(int StatusId, IReadOnlyList<string>? Keys = null);
+
+/// <summary>What a remand did.</summary>
+/// <param name="Dream">The dream it posted.</param>
+/// <param name="Changed">The keys that moved into the column.</param>
+/// <param name="Unchanged">The keys left where they were: already in the column, or in a terminal or a deferred one.</param>
+public record DreamRemandResultDto(
+    DreamDto Dream,
+    IReadOnlyList<string> Changed,
+    IReadOnlyList<string> Unchanged);
 
 // ---- Work ----
 

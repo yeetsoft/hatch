@@ -69,6 +69,37 @@ public class DreamsControllerDatabaseTests
         Assert.Equal([newest.Id, middle.Id, oldest.Id], result.Dreams.Select(d => d.Id));
     }
 
+    // ---- Remands ----
+
+    [SkippableFact]
+    public async Task DeletingARemandedDream_RemovesItsLinkRows_AndMovesNoIssue()
+    {
+        await using var h = await NewAsync();
+        var (dream, issue) = await h.RemandedAsync();
+
+        var controller = new DreamsController(h.Connect(), new StubCallerIdentity(), new FakeTimeProvider(Now));
+        Assert.IsType<NoContentResult>(await controller.DeleteDream(dream.Id, default));
+
+        var db = h.Connect();
+        Assert.Empty(await db.DreamRemands.ToListAsync());
+        Assert.Equal(issue.StatusId, (await db.Issues.SingleAsync(i => i.Id == issue.Id)).StatusId);
+    }
+
+    [SkippableFact]
+    public async Task DeletingARemandedIssue_RemovesItsRow_AndLeavesTheDream()
+    {
+        await using var h = await NewAsync();
+        var (dream, issue) = await h.RemandedAsync();
+
+        var db = h.Connect();
+        db.Issues.Remove(await db.Issues.SingleAsync(i => i.Id == issue.Id));
+        await db.SaveChangesAsync();
+
+        var after = h.Connect();
+        Assert.Empty(await after.DreamRemands.ToListAsync());
+        Assert.NotNull(await after.Dreams.SingleOrDefaultAsync(d => d.Id == dream.Id));
+    }
+
     // ---- Harness ----
 
     private static async Task<Harness> NewAsync()
@@ -120,6 +151,37 @@ public class DreamsControllerDatabaseTests
             db.Dreams.Add(dream);
             await db.SaveChangesAsync();
             return dream;
+        }
+
+        /// <summary>A dream remanded from one issue, placed directly.</summary>
+        public async Task<(EfHatchDream Dream, EfHatchIssue Issue)> RemandedAsync()
+        {
+            var db = Connect();
+            var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+            var status = new EfHatchStatus { Name = "shelved", SortOrder = 10, IsDeferred = true };
+            db.AddRange(project, status);
+            await db.SaveChangesAsync();
+
+            var issue = new EfHatchIssue
+            {
+                ProjectId = project.Id,
+                Number = 1,
+                Type = "epic",
+                Title = "an epic",
+                Rank = 1,
+                CreatedBy = "operator",
+                StatusId = status.Id,
+                CreatedAt = Now,
+                UpdatedAt = Now,
+            };
+            var dream = new EfHatchDream { Body = "an epic", Author = "operator", CreatedAt = Now, UpdatedAt = Now };
+            db.AddRange(issue, dream);
+            await db.SaveChangesAsync();
+
+            db.DreamRemands.Add(new EfHatchDreamRemand { DreamId = dream.Id, IssueId = issue.Id, Actor = "operator", At = Now, Root = true });
+            await db.SaveChangesAsync();
+
+            return (dream, issue);
         }
 
         /// <summary>

@@ -3133,6 +3133,26 @@ issue.
   threads with it, never the other side's data. Written by whoever did the
   reading — a breakdown session, a person on the issue page later — and
   never inferred from text; see `PUT /issues/{key}/dreams` under Issue.
+- **A remand is a link row too.** `EfHatchDreamRemand` — `DreamId`,
+  `IssueId`, `Actor`, `At`, `Root`, composite-keyed on the pair, each a
+  cascade-delete FK like a thread's: deleting the dream removes its rows and
+  moves no issue, and deleting an issue removes its row and leaves the dream.
+  It is its own table rather than a flag on the thread because the two say
+  different things — a thread is what an issue *drew on*, a remand is what an
+  issue was *shelved into* — and one dream can be both for the same issue.
+- **`POST /issues/{key}/remand` writes a remand.** It takes a deferred column
+  and the descendants to shelve, posts one dream from the root (its title, a
+  blank line, its description, cut to a comment's length; the root's key as
+  `Source`), links the dream to the root (`Root` set) and to each descendant
+  that moves, and moves them the way a move does — `status_changed`,
+  `ClosedAt`, the no-code declaration, the bottom of the column and the
+  [deferral note](#deferred-on-purpose) — writing a `remanded` event beside each. A
+  descendant already in a terminal or a deferred column stays where it is. A
+  root already in the column is still remanded. The dream's id is in each
+  event's payload, so the dream is saved first and everything else second,
+  inside one transaction: a second save that fails takes the dream with it.
+  `GET /dreams?remandedFromKey=` reads the dreams remanded from an issue, and
+  `DreamDto.RemandedFrom` reads the issues a dream was remanded from.
 - `ProjectId` is a lean, not a home: `SetNull` on delete, not `Restrict`.
 
 ### Issue event
@@ -3164,7 +3184,11 @@ at once](#stories-at-once) was set, changed or cleared - payload `{ from, to }`,
 either side null rather than the default), `dependency_added`,
 `dependency_removed`, `dreams_woven` (`PUT /issues/{key}/dreams` replaced the
 set of dreams this issue drew on - payload `{ from, to }`, both sides every
-dream id sorted ascending), `claim_taken`, `claim_lapsed` (a take found a lease that
+dream id sorted ascending), `remanded` (`POST /issues/{key}/remand` shelved
+this issue into a [dream](#dream) - payload `{ dreamId, to, toId, root }`, the
+column named and numbered as `status_changed` does, `root` true on the issue
+the remand was made from; written on the root and on every descendant that
+moved, beside its `status_changed`), `claim_taken`, `claim_lapsed` (a take found a lease that
 had already gone quiet past its terms and is taking it over — payload
 `{ from, heardAt }`, the previous holder and when it was last heard from,
 written immediately before the `claim_taken` for the runner taking over),

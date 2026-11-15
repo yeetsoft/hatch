@@ -1372,6 +1372,8 @@ export interface Dream {
   updatedAt: string;
   /** The keys of the issues that drew on this dream. Never null. */
   wovenInto: string[];
+  /** The keys of the issues this dream was remanded from, the root first. Never null. */
+  remandedFrom: string[];
 }
 
 /** A page of dreams, and how many matched before paging. Mirrors DreamsPageDto. */
