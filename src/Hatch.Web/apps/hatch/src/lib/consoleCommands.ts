@@ -22,6 +22,9 @@ export interface CommandEnv {
   /** Opens a page, keeping the tab's scope. */
   go: (path: string) => void;
   setTheme: (choice: ThemeChoice) => void;
+  /** Asks for the New issue dialog: the board's own on the board, the
+      console's elsewhere. */
+  newIssue: () => void;
 }
 
 export interface Command {
@@ -58,13 +61,14 @@ export function offered(commands: Command[], ctx: CommandContext): Command[] {
 }
 
 /** Every command offered here, in declared order: the pages the primary nav
-    lists for this person, Board first and Settings last, then the themes. */
+    lists for this person, Board first and Settings last, then New issue and the themes. */
 export function commandList(ctx: CommandContext): Command[] {
   return offered(
     [
       goTo(HOME, HOME_LABEL),
       ...navRows(ctx.isAdmin).map((row) => goTo(row.to, row.label)),
       goTo('/settings', 'Settings'),
+      { id: 'new-issue', name: 'New issue', hint: 'issue', run: (env) => env.newIssue() },
       ...THEMES.map(({ choice, label }): Command => ({
         id: `theme:${choice}`,
         name: `Theme → ${label}`,
