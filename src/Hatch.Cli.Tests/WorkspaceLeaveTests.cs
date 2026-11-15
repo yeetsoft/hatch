@@ -39,6 +39,29 @@ public sealed class WorkspaceLeaveTests : RepoFixture
     }
 
     [Fact]
+    public void Leaving_removes_a_stale_lock_past_a_refused_abort_and_says_so()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+        G(_work, "checkout", "--quiet", "-B", "ha-31-thing", "origin/ha-31-thing");
+        Git(_work, "merge", "--no-edit", "origin/main");
+
+        var lockPath = Path.Combine(_work, ".git", "index.lock");
+        File.WriteAllText(lockPath, "");
+        File.SetLastWriteTimeUtc(lockPath, DateTime.UtcNow.AddMinutes(-10));
+
+        var left = ws.Leave("HA-31", false);
+
+        Assert.Contains(left.Notes, n => n.Contains("merge was left in progress and has been aborted"));
+        Assert.Contains(_said, l => l.Contains("removed a lock the loop's own interrupted git left behind"));
+        Assert.False(File.Exists(lockPath));
+        Assert.False(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+        Assert.Equal("main", Current(_work));
+    }
+
+    [Fact]
     public void Leaving_pushes_commits_on_the_issue_branch_that_origin_lacks_and_says_so()
     {
         Publish("ha-31-thing", "x.txt", "x");

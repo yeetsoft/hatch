@@ -494,9 +494,89 @@ public sealed class WorkspaceTests : RepoFixture
         Git(_work, "merge", "--no-edit", "origin/main");
         Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
 
-        Assert.Equal(Reset.Never, Ws().Prepare());
+        Assert.Equal(Reset.Merging, Ws().Prepare());
         Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
         Assert.Contains(_complained, l => l.Contains("did not start it"));
+    }
+
+    [Fact]
+    public void A_stale_lock_past_a_refused_abort_is_removed_and_the_retry_clears_the_merge()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+        ws.Enter("HA-31", "Thing", null);
+        Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+
+        var lockPath = Path.Combine(_work, ".git", "index.lock");
+        File.WriteAllText(lockPath, "");
+        File.SetLastWriteTimeUtc(lockPath, DateTime.UtcNow.AddMinutes(-10));
+
+        Assert.Equal(Reset.Ready, Ws().Prepare());
+
+        Assert.False(File.Exists(lockPath));
+        Assert.False(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+        Assert.Equal("main", Current(_work));
+        Assert.Equal("", G(_work, "status", "--porcelain").Trim());
+        Assert.Contains(_said, l => l.Contains("removed a lock the loop's own interrupted git left behind"));
+    }
+
+    [Fact]
+    public void A_fresh_lock_past_a_refused_abort_still_ends_the_night_with_the_conflict_intact()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+        ws.Enter("HA-31", "Thing", null);
+        Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+
+        var lockPath = Path.Combine(_work, ".git", "index.lock");
+        File.WriteAllText(lockPath, "");
+
+        Assert.Equal(Reset.Merging, Ws().Prepare());
+
+        Assert.True(File.Exists(lockPath));
+        Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+    }
+
+    [Fact]
+    public void AbortMerge_clears_a_marked_merge_and_reports_its_own_marker_and_the_discarded_count()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+        ws.Enter("HA-31", "Thing", null);
+        Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+
+        var cleared = ws.AbortMerge();
+
+        Assert.Equal(AbortOutcome.Aborted, cleared.Outcome);
+        Assert.True(cleared.OwnMarker);
+        Assert.True(cleared.Discarded > 0);
+        Assert.False(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+        Assert.Equal("", G(_work, "status", "--porcelain").Trim());
+    }
+
+    [Fact]
+    public void AbortMerge_clears_an_unmarked_merge_and_reports_no_marker_of_its_own()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        Ws().Prepare();
+
+        G(_work, "checkout", "--quiet", "-B", "ha-31-thing", "origin/ha-31-thing");
+        Git(_work, "merge", "--no-edit", "origin/main");
+        Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+
+        var cleared = Ws().AbortMerge();
+
+        Assert.Equal(AbortOutcome.Aborted, cleared.Outcome);
+        Assert.False(cleared.OwnMarker);
+        Assert.True(cleared.Discarded > 0);
+        Assert.False(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
     }
 
     private const string WorktreeRefusal = "fatal: 'main' is already used by worktree at '/elsewhere/main'";

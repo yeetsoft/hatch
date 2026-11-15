@@ -488,6 +488,9 @@ public sealed class FakeWorkspace
     /// <summary>What <c>Presence</c> answers for one issue in one checkout. Absent is no branch on origin at all.</summary>
     public Dictionary<(string Path, string Key), BranchPresence> PresenceFor { get; } = [];
 
+    /// <summary>What <c>AbortMerge</c> answers, for every checkout - a clean abort unless a test says otherwise.</summary>
+    public ForcedAbort AbortMergeAnswer { get; set; } = new(AbortOutcome.Aborted, false, 0, null, null);
+
     public IWorkspace For(string path, string? baseBranch) => new Bound(this, path);
 
     private sealed class Bound(FakeWorkspace owner, string path) : IWorkspace
@@ -599,6 +602,12 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"read-blob {path} {trunk} {blobPath}");
             return owner.BlobsFor.GetValueOrDefault((path, trunk, blobPath), new BlobRead(BlobOutcome.Absent, null, null));
+        }
+
+        public ForcedAbort AbortMerge()
+        {
+            owner.Calls.Add($"abort-merge {path}");
+            return owner.AbortMergeAnswer;
         }
 
         private BranchEntry Answer(string key, string title, bool trunkLanding) =>

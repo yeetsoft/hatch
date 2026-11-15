@@ -2449,6 +2449,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 switch (runtime.Workspace(path, baseBranch).Prepare())
                 {
                     case Reset.Never:
+                    case Reset.Merging:
                         line.Line = "the workspace could not be reset";
                         // The one condition that ends a night without an
                         // increment having failed: a tree that cannot be made

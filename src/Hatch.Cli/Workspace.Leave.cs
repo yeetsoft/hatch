@@ -51,7 +51,11 @@ public sealed partial class Workspace
         {
             if (!present) continue;
 
-            if (Git(abort).Ok) Note($"a {what} was left in progress and has been aborted");
+            // A merge gets the same retry past the loop's own killed git that
+            // Prepare gives it; rebase and cherry-pick have no marker of their
+            // own and are left to the plain abort.
+            var cleared = what == "merge" ? TryAbortMerge() : Git(abort).Ok;
+            if (cleared) Note($"a {what} was left in progress and has been aborted");
             else Note($"a {what} was left in progress and would not abort - the tree needs a person", bad: true);
         }
 
@@ -106,7 +110,7 @@ public sealed partial class Workspace
 
     public void Return()
     {
-        if (BaseBranch() is not { Length: > 0 } trunk || !SettleMerge()) return;
+        if (BaseBranch() is not { Length: > 0 } trunk || SettleMerge() == MergeSettled.Blocked) return;
 
         // Not forced: a tree with changes in it is somebody's, and the next
         // increment's reset is where a stash is taken.
