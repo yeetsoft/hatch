@@ -24,6 +24,9 @@ export interface ConsoleHost {
   /** A row was taken. The console has closed and does not give focus back: the
       host is about to put it on the card. */
   onTake: (card: IssueCard) => void;
+  /** `>new` was run. The console has closed; the host opens its own New issue
+      dialog, with its own default project and what it does once filed. */
+  onNewIssue: () => void;
   /** The board's filter, for the commands that set it. */
   filters: FilterHandle;
 }
@@ -38,9 +41,9 @@ export const ConsoleContext = createContext<ConsoleControl | null>(null);
 
 /**
  * Be the console's host while this page is on screen. `host` is null while the
- * page has no board to offer. The latest `onTake` and `filters.onChange` are the
- * ones called, so a page may pass new functions every render without
- * re-offering its cards.
+ * page has no board to offer. The latest `onTake`, `onNewIssue` and
+ * `filters.onChange` are the ones called, so a page may pass new functions every
+ * render without re-offering its cards.
  */
 export function useConsoleHost(host: ConsoleHost | null): void {
   const held = useContext(ConsoleContext);
@@ -52,6 +55,12 @@ export function useConsoleHost(host: ConsoleHost | null): void {
   useEffect(() => {
     take.current = onTake;
   }, [onTake]);
+
+  const file = useRef<ConsoleHost['onNewIssue'] | null>(null);
+  const onNewIssue = host?.onNewIssue ?? null;
+  useEffect(() => {
+    file.current = onNewIssue;
+  }, [onNewIssue]);
 
   const change = useRef<FilterHandle['onChange'] | null>(null);
   const onChange = host?.filters.onChange ?? null;
@@ -77,6 +86,7 @@ export function useConsoleHost(host: ConsoleHost | null): void {
       visibleKeys,
       paused,
       onTake: (card) => take.current?.(card),
+      onNewIssue: () => file.current?.(),
       filters: { filter, projects, onChange: (next) => change.current?.(next) },
     });
   }, [setHost, cards, statuses, visibleKeys, paused, filter, projects]);

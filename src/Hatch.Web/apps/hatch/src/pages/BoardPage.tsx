@@ -667,6 +667,7 @@ export function BoardPage() {
           visibleKeys,
           paused: dragUnderway,
           onTake,
+          onNewIssue: () => setFiling(true),
           filters: { filter: shown, projects: offered, onChange: changeFilter },
         }
       : null,

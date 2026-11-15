@@ -38,6 +38,9 @@ export interface CommandEnv {
   setTheme: (choice: ThemeChoice) => void;
   /** Sets the board's filter, through the board's own `changeFilter`. */
   changeFilter: (next: CardFilter) => void;
+  /** Asks for the New issue dialog: the board's own on the board, the
+      console's elsewhere. */
+  newIssue: () => void;
 }
 
 export interface Command {
@@ -120,14 +123,15 @@ export function offered(commands: Command[], ctx: CommandContext): Command[] {
 }
 
 /** Every command offered here, in declared order: the pages the primary nav
-    lists for this person, Board first and Settings last, then the themes, then the board's filter
-    rows when there is a board. */
+    lists for this person, Board first and Settings last, then New issue and the themes, then the
+    board's filter rows when there is a board. */
 export function commandList(ctx: CommandContext): Command[] {
   return offered(
     [
       goTo(HOME, HOME_LABEL),
       ...navRows(ctx.isAdmin).map((row) => goTo(row.to, row.label)),
       goTo('/settings', 'Settings'),
+      { id: 'new-issue', name: 'New issue', hint: 'issue', run: (env) => env.newIssue() },
       ...THEMES.map(({ choice, label }): Command => ({
         id: `theme:${choice}`,
         name: `Theme → ${label}`,

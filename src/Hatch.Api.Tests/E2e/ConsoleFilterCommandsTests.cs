@@ -68,7 +68,7 @@ public class ConsoleFilterCommandsTests(ITestOutputHelper output)
 
             // One project: no project rows, and nothing set to clear.
             await OpenConsoleAsync(harness, deadline, ">filter");
-            Assert.Equal(["Filter Blocked", "Filter Needs me"], await Names(harness, deadline));
+            Assert.Equal(["Filter → Blocked", "Filter → Needs me"], await Names(harness, deadline));
             Assert.Equal(["off", "off"], await Hints(harness, deadline));
             output.WriteLine("one project: " + await harness.ScreenshotAsync(deadline, "one-project"));
             await Press(harness, deadline, "Escape");
@@ -80,7 +80,7 @@ public class ConsoleFilterCommandsTests(ITestOutputHelper output)
 
             // Blocked: a take lights it, the console closes, a second take turns it off.
             await OpenConsoleAsync(harness, deadline, ">blocked");
-            Assert.Equal(["Filter Blocked"], await Names(harness, deadline));
+            Assert.Equal(["Filter → Blocked"], await Names(harness, deadline));
             Assert.Equal(["off"], await Hints(harness, deadline));
             await Press(harness, deadline, "Enter");
             await harness.WaitForHiddenAsync(deadline, ".hatch-omni");
@@ -95,7 +95,7 @@ public class ConsoleFilterCommandsTests(ITestOutputHelper output)
 
             // Needs me, the same way.
             await OpenConsoleAsync(harness, deadline, ">needs me");
-            Assert.Equal(["Filter Needs me"], await Names(harness, deadline));
+            Assert.Equal(["Filter → Needs me"], await Names(harness, deadline));
             await Press(harness, deadline, "Enter");
             await harness.WaitForHiddenAsync(deadline, ".hatch-omni");
             Assert.Equal("true", await Pressed(harness, deadline, NeedsMe));
@@ -108,11 +108,11 @@ public class ConsoleFilterCommandsTests(ITestOutputHelper output)
             // A project: its row is there now, and a take writes ?project=.
             await OpenConsoleAsync(harness, deadline, ">filter");
             Assert.Equal(
-                ["Filter Blocked", "Filter Needs me", "Filter ONE — Alpha", "Filter TWO — Beta"],
+                ["Filter → Blocked", "Filter → Needs me", "Filter → ONE — Alpha", "Filter → TWO — Beta"],
                 await Names(harness, deadline));
             output.WriteLine("two projects: " + await harness.ScreenshotAsync(deadline, "two-projects"));
             await Type(harness, deadline, ">filter two");
-            Assert.Equal(["Filter TWO — Beta"], await Names(harness, deadline));
+            Assert.Equal(["Filter → TWO — Beta"], await Names(harness, deadline));
             await Press(harness, deadline, "Enter");
             await harness.WaitForHiddenAsync(deadline, ".hatch-omni");
             await harness.WaitForFunctionAsync(deadline, "waiting for ?project=TWO", "() => new URLSearchParams(location.search).get('project') === 'TWO'");
@@ -185,7 +185,7 @@ public class ConsoleFilterCommandsTests(ITestOutputHelper output)
     private static async Task<IReadOnlyList<string>> Texts(E2eHarness harness, Deadline deadline, string selector) =>
         await deadline.BoundAsync($"reading {selector}", () => harness.Page!.Locator(selector).AllInnerTextsAsync());
 
-    /// <summary>The command names listed, without the hint at each row's right. Read as rendered, so the two spaces after "Filter" in a name read as one.</summary>
+    /// <summary>The command names listed, without the hint at each row's right.</summary>
     private static Task<IReadOnlyList<string>> Names(E2eHarness harness, Deadline deadline) =>
         Texts(harness, deadline, $"{Options} .hatch-omni-title");
 
