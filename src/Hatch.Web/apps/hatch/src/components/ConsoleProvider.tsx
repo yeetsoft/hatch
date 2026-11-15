@@ -5,7 +5,8 @@ import { useTheme } from '@hatch/ui';
 import { getAssignees, getBoard } from '../api/client';
 import type { Command, CommandContext } from '../lib/consoleCommands';
 import type { GoToLoad } from '../lib/goTo';
-import { scopedPath } from '../lib/scope';
+import { OPEN_QUEUE, scopedPath } from '../lib/scope';
+import { HOME } from '../lib/nav';
 import { isGoToShortcut, isTypingTarget } from '../lib/shortcuts';
 import { ConsoleContext } from '../lib/useConsole';
 import type { ConsoleControl, ConsoleHost } from '../lib/useConsole';
@@ -139,6 +140,13 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     command.run({
       go: (path) => navigate(scopedPath(path, scope.keys)),
       setTheme: setChoice,
+      // Off the board there is no host, so land on the board with the flag it
+      // opens the queue on. On `/` with the board still loading that is the
+      // same page: replace, so Back is not handed a duplicate entry.
+      openQueue: () =>
+        host
+          ? host.openQueue()
+          : navigate(scopedPath(HOME, scope.keys), { replace: pathname === HOME, state: { [OPEN_QUEUE]: true } }),
       newIssue: () => (host ? host.onNewIssue() : setFiling(true)),
     });
   };

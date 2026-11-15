@@ -88,7 +88,8 @@ across every column and hop above, start to finish.
 On a desktop window the header is one row, left to right: **Search**,
 **Project**, **Types**, **Needs me**, **Blocked**, **Contributions**, **…** (More filters), the count
 (*N of M*) and **×** (Reset filters) while a filter is set, then Go to Work,
-the work queue, the flow view and **+** (New issue). **Search** rests narrow
+the work queue, the flow view and **+** (New issue). The work queue also opens
+from [the console](#the-console) with `>queue`. **Search** rests narrow
 and widens while you type in it. **Project** shows only its key (or **All**)
 when closed, and its open list keeps the full names. **Types** opens a checkbox per
 type, each with the number of cards it holds; hovering a row shows **Only**,
@@ -258,6 +259,10 @@ The first commands are:
   is the board's own, on the project the board's filter names. On any other
   page it opens over that page, on the tab's first project and offering only
   the tab's projects, and filing opens the new issue's page.
+- **Open the work queue**, found by `>queue` or `>work`. On the board it opens
+  the same queue the header button does. On any other page it lands on the
+  board, with the tab's scope kept, and the queue open; reloading the board or
+  coming back to it with Back does not open it again.
 - **Theme → Auto**, **Theme → Light** and **Theme → Dark**, the three choices
   of the theme switch. You stay on the page you were on.
 
