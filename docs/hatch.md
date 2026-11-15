@@ -10097,6 +10097,14 @@ back out of the description afterwards to find what it drew on - tracing is
 still the link row the session writes itself, with
 `PUT /api/issues/{key}/dreams`.
 
+The brief also tells the session that a dream with a `remandedFrom` was once
+planned work (see [a remand is a link row too](#dream)). It names the two
+reads that bring the tree back, `GET /api/issues/<root>` and `GET
+"/api/issues?ancestorKey=<root>"`, the root being the first key in
+`remandedFrom`; asks the session to say in the epic's description which
+remanded tree it drew on; and tells it to leave that tree in its deferred
+column, the way the Dream Board itself is left as it is.
+
 ## The importer
 
 A read-only upload that turns a markdown document into a tree: the doc becomes
