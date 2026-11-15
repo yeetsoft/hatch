@@ -703,6 +703,7 @@ export function BoardPage() {
           onTake,
           onNewIssue: () => setFiling(true),
           openQueue: () => queue.current?.open(),
+          filters: { filter: shown, projects: offered, onChange: changeFilter },
         }
       : null,
   );

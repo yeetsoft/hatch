@@ -10,13 +10,24 @@
    reach "Go to Board". Pure and tested in node. */
 
 import type { ThemeChoice } from '@hatch/ui';
+import { DEFAULT_FILTER, isFiltering, toggleBlocked, toggleWaiting } from './filter';
+import type { CardFilter } from './filter';
 import { HOME, HOME_LABEL, navRows } from './nav';
 import { PERMISSION_TITLE, PRE_APPROVAL_LEVELS, approvalLocked } from './preApproval';
 import type { PreApproval } from './preApproval';
 import { PRIORITY_LEVELS } from './priority';
 import type { Priority } from './priority';
 import { moveBlocked } from './protectedColumns';
+import { hasMultipleProjects } from './useProjects';
 import type { IssueCard, Project, Status } from '../types';
+
+/** What the board lends the console to set its filter: the filter as drawn, the
+    projects its picker offers, and the board's own `changeFilter`. */
+export interface FilterHandle {
+  filter: CardFilter;
+  projects: Project[];
+  onChange: (next: CardFilter) => void;
+}
 
 /** The issue the person is looking at, and what is needed to say where it may
     go. Absent from the context where no issue is in view - see
@@ -33,6 +44,8 @@ export interface CommandContext {
   isAdmin: boolean;
   /** The page the console was opened on. */
   pathname: string;
+  /** The board's filter; absent off the board, which offers no filter rows. */
+  filters?: FilterHandle;
   /** The issue in view, or null. */
   view: IssueView | null;
   /** Whether the caller may set an issue's priority and pre-approval: the
@@ -47,6 +60,8 @@ export interface CommandEnv {
   /** Opens a page, keeping the tab's scope. */
   go: (path: string) => void;
   setTheme: (choice: ThemeChoice) => void;
+  /** Sets the board's filter, through the board's own `changeFilter`. */
+  changeFilter: (next: CardFilter) => void;
   /** Moves the issue in view to a column, as the status bar would. */
   move: (statusId: number) => void;
   /** Sets the issue in view's priority, as the priority band would. */
@@ -96,6 +111,52 @@ function goTo(path: string, label: string): Command {
     hint: 'page',
     run: (env) => env.go(path),
   };
+}
+
+const onOff = (on: boolean) => (on ? 'on' : 'off');
+
+/** The board-only rows, `[]` off the board. Each hands the board a whole filter
+    through `changeFilter`, so `?project=` and the browser's memory follow as
+    they do from the filter row. */
+export function filterCommands(filters?: FilterHandle): Command[] {
+  if (!filters) return [];
+  const { filter, projects } = filters;
+
+  const commands: Command[] = [
+    {
+      id: 'filter:blocked',
+      name: 'Filter → Blocked',
+      hint: onOff(filter.blocked),
+      run: (env) => env.changeFilter(toggleBlocked(filter)),
+    },
+    {
+      id: 'filter:waiting',
+      name: 'Filter → Needs me',
+      hint: onOff(filter.waiting),
+      run: (env) => env.changeFilter(toggleWaiting(filter)),
+    },
+  ];
+  /* One row per project, drawn only when there is a choice, as the picker is,
+     and named with the picker's own option text. */
+  if (hasMultipleProjects(projects)) {
+    for (const { key, name } of projects) {
+      commands.push({
+        id: `filter:project:${key}`,
+        name: `Filter → ${key} — ${name}`,
+        hint: filter.project === key ? 'on' : 'project',
+        run: (env) => env.changeFilter({ ...filter, project: key }),
+      });
+    }
+  }
+  if (isFiltering(filter)) {
+    commands.push({
+      id: 'filter:clear',
+      name: 'Clear filters',
+      hint: 'filter',
+      run: (env) => env.changeFilter({ ...DEFAULT_FILTER }),
+    });
+  }
+  return commands;
 }
 
 /** The commands whose `when` allows them here. */
@@ -167,10 +228,10 @@ export function preApprovalStepRows(view: IssueView): Command[] {
 
 /** Every command offered here, in declared order: Status where an issue is in
     view, then Priority and Pre-approval where the caller is a person, then the pages the primary nav lists for this person, Board first and
-    Settings last, then New issue, the queue and the themes, then a `Status → <Column>`
-    for each column, and a `Priority → <Level>` and `Pre-approval → <Level>` for
-    each level. Those come last so the bare preview is not a screenful of
-    them. */
+    Settings last, then New issue, the queue and the themes, then the board's filter
+    rows when there is a board, then a `Status → <Column>` for each column, and a
+    `Priority → <Level>` and `Pre-approval → <Level>` for each level. Those come
+    last so the bare preview is not a screenful of them. */
 export function commandList(ctx: CommandContext): Command[] {
   const { view } = ctx;
   const setting = view !== null && ctx.canSet;
@@ -214,6 +275,7 @@ export function commandList(ctx: CommandContext): Command[] {
         hint: 'theme',
         run: (env) => env.setTheme(choice),
       })),
+      ...filterCommands(ctx.filters),
       ...(view
         ? view.statuses.map((status) => statusRow(view, status, `Status → ${status.name}`, `status:${status.id}`))
         : []),
