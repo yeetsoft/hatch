@@ -44,6 +44,9 @@ export interface CommandEnv {
   move: (statusId: number) => void;
   /** Swaps the list for a second one. */
   openStep: (step: CommandStep) => void;
+  /** Asks for the New issue dialog: the board's own on the board, the
+      console's elsewhere. */
+  newIssue: () => void;
 }
 
 export interface Command {
@@ -110,8 +113,9 @@ export function statusStepRows(view: IssueView): Command[] {
 
 /** Every command offered here, in declared order: Status where an issue is in
     view, then the pages the primary nav lists for this person, Board first and
-    Settings last, then the themes, then a `Status → <Column>` for each column.
-    Those come last so the bare preview is not a screenful of columns. */
+    Settings last, then New issue and the themes, then a `Status → <Column>`
+    for each column. Those come last so the bare preview is not a screenful of
+    columns. */
 export function commandList(ctx: CommandContext): Command[] {
   const { view } = ctx;
   return offered(
@@ -128,6 +132,7 @@ export function commandList(ctx: CommandContext): Command[] {
       goTo(HOME, HOME_LABEL),
       ...navRows(ctx.isAdmin).map((row) => goTo(row.to, row.label)),
       goTo('/settings', 'Settings'),
+      { id: 'new-issue', name: 'New issue', hint: 'issue', run: (env) => env.newIssue() },
       ...THEMES.map(({ choice, label }): Command => ({
         id: `theme:${choice}`,
         name: `Theme → ${label}`,

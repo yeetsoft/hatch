@@ -26,13 +26,15 @@ function env() {
   const themes: ThemeChoice[] = [];
   const moved: number[] = [];
   const steps: string[] = [];
+  const filed = { count: 0 };
   const fake: CommandEnv = {
     go: (p) => went.push(p),
     setTheme: (c) => themes.push(c),
     move: (id) => moved.push(id),
     openStep: (step) => steps.push(step),
+    newIssue: () => filed.count++,
   };
-  return { fake, went, themes, moved, steps };
+  return { fake, went, themes, moved, steps, filed };
 }
 
 const made = (name: string, over: Partial<Command> = {}): Command => ({
@@ -51,11 +53,11 @@ describe('squash', () => {
 });
 
 describe('commandList', () => {
-  it('opens on Board, then the nav rows, then Settings, then the themes', () => {
+  it('opens on Board, then the nav rows, then Settings, then New issue, then the themes', () => {
     const list = names(commandList(admin));
     expect(list[0]).toBe('Go to Board');
     expect(list[1]).toBe('Go to Search');
-    expect(list.slice(-4)).toEqual(['Go to Settings', 'Theme → Auto', 'Theme → Light', 'Theme → Dark']);
+    expect(list.slice(-5)).toEqual(['Go to Settings', 'New issue', 'Theme → Auto', 'Theme → Light', 'Theme → Dark']);
   });
 
   it('has a Go to for every row the nav lists, in its order', () => {
@@ -80,6 +82,16 @@ describe('commandList', () => {
     expect(went).toEqual(['/', '/plan', '/settings']);
   });
 
+  it('offers New issue to everybody on every page, and runs it by asking for the dialog', () => {
+    for (const ctx of [admin, person, { ...person, pathname: '/search' }]) {
+      const { fake, went, themes, filed } = env();
+      find(commandList(ctx), 'New issue').run(fake);
+      expect(filed.count).toBe(1);
+      expect(went).toEqual([]);
+      expect(themes).toEqual([]);
+    }
+  });
+
   it('runs each theme with its choice', () => {
     const { fake, themes } = env();
     for (const label of ['Auto', 'Light', 'Dark']) find(commandList(person), `Theme → ${label}`).run(fake);
@@ -98,6 +110,10 @@ describe('commandRows', () => {
     const board = names(commandRows(all, 'board').rows);
     expect(names(commandRows(all, 'go board').rows)).toEqual(board);
     expect(names(commandRows(all, 'goto board').rows)).toEqual(board);
+  });
+
+  it.each(['new', 'issue', 'new issue'])('reaches New issue for %j', (query) => {
+    expect(commandRows(all, query).rows[0].name).toBe('New issue');
   });
 
   it('reaches a theme by its choice', () => {

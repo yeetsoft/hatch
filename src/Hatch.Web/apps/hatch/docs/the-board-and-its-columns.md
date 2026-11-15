@@ -256,6 +256,10 @@ The first commands are:
 - **Go to** each page the primary nav lists, plus **Board** and **Settings**.
   The tab's scope is kept. **Go to Users** is there for an Admin only, as it is
   in the nav.
+- **New issue** opens the same dialog the board's **+** does. On the board it
+  is the board's own, on the project the board's filter names. On any other
+  page it opens over that page, on the tab's first project and offering only
+  the tab's projects, and filing opens the new issue's page.
 - **Theme → Auto**, **Theme → Light** and **Theme → Dark**, the three choices
   of the theme switch. You stay on the page you were on.
 - **Status** and **Status → <Column>**, offered only where an issue is in

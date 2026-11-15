@@ -69,7 +69,7 @@ export interface OmniBarProps {
   /** Where the person is and who they are, for which commands are offered. */
   commandContext: CommandContext;
   /** What a command that closes the console runs against. */
-  env: Pick<CommandEnv, 'go' | 'setTheme'>;
+  env: Pick<CommandEnv, 'go' | 'setTheme' | 'newIssue'>;
   /** The question after a move that closes work: its state, and what answering
       does. It lives above the console, so the move's own page can hand it an
       offer. */

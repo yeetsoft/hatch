@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '@hatch/ui';
-import { getBoard } from '../api/client';
+import { getAssignees, getBoard } from '../api/client';
 import type { CommandContext, CommandEnv, IssueView } from '../lib/consoleCommands';
 import type { GoToLoad } from '../lib/goTo';
 import { focusedIssueKey, issueInView } from '../lib/issueInView';
@@ -14,7 +14,8 @@ import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useMe } from '../lib/useMe';
 import { useScope } from '../lib/useScope';
 import type { CloseOffer } from '../lib/closeSubtree';
-import type { IssueCard, Status } from '../types';
+import type { AssigneeDirectory, IssueCard, Status } from '../types';
+import { NewIssueDialog } from './NewIssueDialog';
 import { OmniBar } from './OmniBar';
 import type { MoveOutcome } from './OmniBar';
 
@@ -45,10 +46,12 @@ const LOADING: Read = { state: 'loading', issues: [], statuses: [] };
  *
  * Above <Routes>, so one listener serves them all. The board is the one page
  * that holds the issues already, and it offers them as the console's host: a
- * take there rings the card and peeks it. Anywhere else there is no host, so the
- * console reads the board once, when it opens, and a take opens the issue's page
- * with the scope kept. It never polls: it is open for seconds, and the read it
- * made is as good as the person's next keystroke needs.
+ * take there rings the card and peeks it, and `>new` opens its own New issue
+ * dialog. Anywhere else there is no host, so the console reads the board once,
+ * when it opens, and a take opens the issue's page with the scope kept; `>new`
+ * mounts the dialog here, over the page, and filing opens the new issue's page.
+ * It never polls: it is open for seconds, and the read it made is as good as
+ * the person's next keystroke needs.
  *
  * A page that can move issues - the board, and the issue page - registers that
  * too, and the console then offers Status for the issue in view: the page's own,
@@ -74,6 +77,8 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const [moves, setMoves] = useState<HeldMoves | null>(null);
   /** The card that had keyboard focus as `/` was pressed, before the prompt took it. */
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [filing, setFiling] = useState(false);
+  const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
 
   const control = useMemo<ConsoleControl>(() => ({ setHost: setHostState, setMoves }), []);
   const paused = host?.paused ?? false;
@@ -104,10 +109,13 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     wasHosted.current = hosted;
   }, [hosted]);
 
-  // Off the board: one read, when the console opens. A console closed before it
-  // answers ignores the answer.
+  // Off the board: one read, when the console opens, or when it hands over to
+  // the New issue dialog - which needs the same issues as parent candidates, and
+  // must not cancel a read still in flight. A console closed before it answers
+  // ignores the answer.
+  const reading = (open || filing) && !hosted;
   useEffect(() => {
-    if (!open || hosted) return;
+    if (!reading) return;
 
     let live = true;
     getBoard().then(
@@ -123,7 +131,15 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     return () => {
       live = false;
     };
-  }, [open, hosted]);
+  }, [reading]);
+
+  // The dialog's assignee choices, read when it opens and kept for the next time.
+  useEffect(() => {
+    if (!filing) return;
+    getAssignees().then(setDirectory).catch(() => {
+      // And without the directory: every control still draws, as on the board.
+    });
+  }, [filing]);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -187,9 +203,10 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   // What a command that closes the console runs against. The prompt has already
   // given focus back, so a theme change leaves the person where they were; a
   // page change then takes them away from it.
-  const env: Pick<CommandEnv, 'go' | 'setTheme'> = {
+  const env: Pick<CommandEnv, 'go' | 'setTheme' | 'newIssue'> = {
     go: (path) => navigate(scopedPath(path, scope.keys)),
     setTheme: setChoice,
+    newIssue: () => (host ? host.onNewIssue() : setFiling(true)),
   };
 
   return (
@@ -211,6 +228,15 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
           onClose={close}
         />
       )}
+      <NewIssueDialog
+        open={filing}
+        projects={scope.projects}
+        candidates={read.issues}
+        defaultProjectKey={scope.keys[0] ?? ''}
+        directory={directory}
+        onClose={() => setFiling(false)}
+        onCreated={(created) => navigate(scopedPath(`/issues/${created.key}`, scope.keys))}
+      />
     </ConsoleContext.Provider>
   );
 }
