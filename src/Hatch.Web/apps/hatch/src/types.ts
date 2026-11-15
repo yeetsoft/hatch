@@ -1376,6 +1376,23 @@ export interface Dream {
   remandedFrom: string[];
 }
 
+/** What it takes to remand an issue to a dream. Mirrors DreamRemandRequest. */
+export interface DreamRemandRequest {
+  /** The deferred column the issue, and whatever `keys` names, goes to. */
+  statusId: number;
+  /** The descendants to take along - named, never expanded server-side. */
+  keys?: string[];
+}
+
+/** What a remand did. Mirrors DreamRemandResultDto. */
+export interface DreamRemandResult {
+  dream: Dream;
+  /** The keys that moved into the column, the root among them when it did. */
+  changed: string[];
+  /** The keys left where they were. */
+  unchanged: string[];
+}
+
 /** A page of dreams, and how many matched before paging. Mirrors DreamsPageDto. */
 export interface DreamsPage {
   dreams: Dream[];

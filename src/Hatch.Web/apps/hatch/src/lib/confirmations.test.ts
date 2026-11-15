@@ -12,6 +12,7 @@ import {
   newestUndoable,
   raise,
   raiseMove,
+  raiseRemand,
   settle,
   undoneNote,
   withCascade,
@@ -546,5 +547,33 @@ describe('the stack lives only in the page', () => {
     }
 
     expect(touched).toEqual([]);
+  });
+});
+
+describe('a remanded chicklet', () => {
+  const remand = { issueKey: 'AER-12', title: 'Drain retries', note: 'AER-12 remanded to a dream.', dreamHref: '/dreams?remandedFrom=AER-12' };
+
+  it('goes on the front with its own life, and says what it was given', () => {
+    const [c, older] = raiseRemand([filed(1, 'AER-11')], remand, 2, LIFE);
+
+    expect(c).toEqual({ ...remand, id: 2, kind: 'remanded', lifetime: LIFE, left: LIFE });
+    expect(older.id).toBe(1);
+  });
+
+  it('cannot be undone, and the keyboard passes over it for the move beneath', () => {
+    const [c] = raiseRemand([], remand, 2, LIFE);
+    expect(canUndo(c)).toBe(false);
+
+    const stack = raiseRemand(stacked('moved'), remand, 9, LIFE);
+    expect(newestUndoable(stack)?.id).toBe(1);
+    expect(newestUndoable(raiseRemand([], remand, 9, LIFE))).toBeNull();
+  });
+
+  it('is left alone by settle and expires by age like any other', () => {
+    const stack = raiseRemand([], remand, 2, LIFE);
+
+    expect(settle(stack, 2, 'undone', 'x')).toEqual(stack);
+    expect(age(stack, 4_000)[0].left).toBe(11_000);
+    expect(age(stack, LIFE)).toEqual([]);
   });
 });

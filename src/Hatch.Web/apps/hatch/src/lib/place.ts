@@ -18,6 +18,11 @@ import type { IssueCard } from '../types';
 /** Prefixes a column's droppable id, so an empty column is still a drop target. */
 export const COLUMN = 'column:';
 
+/** The dream cloud's droppable id. Not a column and not a card: `targetStatusId`
+    reads it as no column, so `place` places nothing on it, and a drop there is
+    the board's to answer with a question rather than a move. */
+export const CLOUD = 'remand-cloud';
+
 export const columnDroppableId = (statusId: number): string => `${COLUMN}${statusId}`;
 
 export interface Placement {

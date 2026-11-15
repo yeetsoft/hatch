@@ -11,6 +11,9 @@ internal sealed record DeviceProfile(string Device, string Engine)
 {
     public static readonly DeviceProfile IPhone14Pro = new("iPhone 14 Pro", "webkit");
 
+    /// <summary>The <c>iPhone 14 Pro</c> descriptor - its viewport, touch and mobile emulation - in Chromium, for a case that needs the phone's stacked board and a mouse drag on a machine where WebKit does not open a page.</summary>
+    public static readonly DeviceProfile IPhone14ProChromium = new("iPhone 14 Pro", "chromium");
+
     /// <summary>WebKit at a desktop viewport with a mouse and a keyboard, for a case that presses keys: the phone profile's touch device is not what a keyboard user has.</summary>
     public static readonly DeviceProfile DesktopSafari = new("Desktop Safari", "webkit");
 }

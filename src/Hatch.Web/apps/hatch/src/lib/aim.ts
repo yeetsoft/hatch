@@ -13,11 +13,19 @@
 import { closestCenter, closestCorners, pointerWithin } from '@dnd-kit/core';
 import type { ClientRect, Collision, CollisionDetection } from '@dnd-kit/core';
 import type { IssueCard } from '../types';
-import { COLUMN, targetStatusId } from './place';
+import { CLOUD, COLUMN, targetStatusId } from './place';
 
 export function aimAt(cards: IssueCard[]): CollisionDetection {
   return (args) => {
     const { pointerCoordinates, droppableContainers, droppableRects } = args;
+
+    // The dream cloud sits above the columns, and in the stacked layout there
+    // are no column droppables for the pointer to be inside at all, so it is
+    // asked first: a pointer inside it is over it and over nothing else.
+    if (pointerCoordinates) {
+      const [cloud] = pointerWithin({ ...args, droppableContainers: droppableContainers.filter((c) => c.id === CLOUD) });
+      if (cloud) return [cloud];
+    }
 
     // A keyboard drag has no pointer to read - dnd-kit only derives one from a
     // mouse or touch event - so it keeps the answer it always had.
