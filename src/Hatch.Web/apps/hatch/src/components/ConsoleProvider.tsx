@@ -3,18 +3,22 @@ import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '@hatch/ui';
 import { getAssignees, getBoard } from '../api/client';
-import type { Command, CommandContext } from '../lib/consoleCommands';
+import type { CommandContext, CommandEnv, IssueView } from '../lib/consoleCommands';
 import type { GoToLoad } from '../lib/goTo';
-import { OPEN_QUEUE, scopedPath } from '../lib/scope';
+import { focusedIssueKey, issueInView } from '../lib/issueInView';
 import { HOME } from '../lib/nav';
+import { OPEN_QUEUE, scopedPath } from '../lib/scope';
 import { isGoToShortcut, isTypingTarget } from '../lib/shortcuts';
 import { ConsoleContext } from '../lib/useConsole';
-import type { ConsoleControl, ConsoleHost } from '../lib/useConsole';
+import type { ConsoleControl, ConsoleHost, HeldMoves } from '../lib/useConsole';
+import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useMe } from '../lib/useMe';
 import { useScope } from '../lib/useScope';
+import type { CloseOffer } from '../lib/closeSubtree';
 import type { AssigneeDirectory, IssueCard, Status } from '../types';
 import { NewIssueDialog } from './NewIssueDialog';
 import { OmniBar } from './OmniBar';
+import type { MoveOutcome } from './OmniBar';
 
 /** The marker on the board's peek, which the console may open over. */
 export const CONSOLE_OVER = 'data-console-over';
@@ -24,7 +28,9 @@ export const CONSOLE_OVER = 'data-console-over';
     peek is found by the mark on its body, since Modal draws the panel and takes
     no attributes of its own. */
 function dialogOpen(): boolean {
-  return [...document.querySelectorAll('[aria-modal="true"]')].some((panel) => !panel.querySelector(`[${CONSOLE_OVER}]`));
+  return [...document.querySelectorAll('[aria-modal="true"]')].some(
+    (panel) => !panel.querySelector(`[${CONSOLE_OVER}]`),
+  );
 }
 
 /** The issues and columns read for a page that is not a host. */
@@ -48,6 +54,14 @@ const LOADING: Read = { state: 'loading', issues: [], statuses: [] };
  * It never polls: it is open for seconds, and the read it made is as good as
  * the person's next keystroke needs.
  *
+ * A page that can move issues - the board, and the issue page - registers that
+ * too, and the console then offers Status for the issue in view: the page's own,
+ * else the peeked card, else the card focused when `/` was pressed. The move is
+ * the page's own `send`, so a refusal, a full WIP section and a contribution
+ * about to be merged answer as they do from the status bar; and what the move
+ * offers to close under it is asked inline, by the console, rather than in the
+ * dialog the page would have opened.
+ *
  * `/` is left alone where text is being typed, under any dialog but the board's
  * peek, and mid-drag. preventDefault keeps the slash out of the prompt and
  * Firefox's find bar shut.
@@ -61,10 +75,13 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [host, setHostState] = useState<ConsoleHost | null>(null);
   const [read, setRead] = useState<Read>(LOADING);
+  const [moves, setMoves] = useState<HeldMoves | null>(null);
+  /** The card that had keyboard focus as `/` was pressed, before the prompt took it. */
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [filing, setFiling] = useState(false);
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
 
-  const control = useMemo<ConsoleControl>(() => ({ setHost: setHostState }), []);
+  const control = useMemo<ConsoleControl>(() => ({ setHost: setHostState, setMoves }), []);
   const paused = host?.paused ?? false;
   const hosted = host !== null;
 
@@ -76,6 +93,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
 
       e.preventDefault();
       setRead(LOADING);
+      setFocusedKey(focusedIssueKey(document.activeElement));
       setOpen(true);
     };
 
@@ -102,7 +120,13 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
 
     let live = true;
     getBoard().then(
-      (board) => live && setRead({ state: 'ready', issues: board.issues, statuses: board.statuses }),
+      (board) =>
+        live &&
+        setRead({
+          state: 'ready',
+          issues: board.issues,
+          statuses: board.statuses,
+        }),
       () => live && setRead({ state: 'failed', issues: [], statuses: [] }),
     );
     return () => {
@@ -120,6 +144,50 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
 
   const close = useCallback(() => setOpen(false), []);
 
+  /* The question after a move: the same hook the pages use, over the registered
+     page's own reload and bookkeeping through wrappers that never change. */
+  const held = useRef<HeldMoves | null>(null);
+  useEffect(() => {
+    held.current = moves;
+  }, [moves]);
+  const reload = useCallback(() => held.current?.reload() ?? Promise.resolve(), []);
+  const closed = useCallback((offer: CloseOffer, changed: string[]) => held.current?.onClosed(offer, changed), []);
+  const closing = useCloseSubtree(reload, closed);
+  const { close: dropQuestion } = closing;
+  // A question left standing when the console goes is not asked again next time.
+  useEffect(() => {
+    if (!open) dropQuestion();
+  }, [open, dropQuestion]);
+
+  const cards = host ? host.cards : read.issues;
+  const statuses = host ? host.statuses : read.statuses;
+  const viewKey = moves
+    ? issueInView({
+        pageKey: moves.pageKey,
+        peekedKey: moves.peekedKey,
+        focusedKey: open ? focusedKey : null,
+      })
+    : null;
+  const view = useMemo<IssueView | null>(() => {
+    const card = viewKey === null ? undefined : cards.find((c) => c.key === viewKey);
+    if (!card || !moves) return null;
+    return {
+      card,
+      statuses,
+      project: moves.projectsByKey.get(card.projectKey) ?? null,
+    };
+  }, [viewKey, cards, statuses, moves]);
+
+  const onMove = async (key: string, statusId: number): Promise<MoveOutcome> => {
+    if (!held.current) return 'moved';
+    let offered = false;
+    const result = await held.current.send(key, statusId, (offer) => {
+      offered = offer !== null;
+      closing.ask(offer);
+    });
+    return result === 'asked' ? 'asked' : offered ? 'offered' : 'moved';
+  };
+
   const onTake = (card: IssueCard) => {
     setOpen(false);
     if (host) host.onTake(card);
@@ -132,25 +200,26 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   };
 
   const filters = host?.filters;
-  const commandContext = useMemo<CommandContext>(() => ({ isAdmin, pathname, filters }), [isAdmin, pathname, filters]);
+  const commandContext = useMemo<CommandContext>(
+    () => ({ isAdmin, pathname, view, filters }),
+    [isAdmin, pathname, view, filters],
+  );
 
-  // The prompt has already given focus back, so a theme change leaves the
-  // person where they were; a page change then takes them away from it.
-  const onRun = (command: Command) => {
-    setOpen(false);
-    command.run({
-      go: (path) => navigate(scopedPath(path, scope.keys)),
-      setTheme: setChoice,
-      // Off the board there is no host, so land on the board with the flag it
-      // opens the queue on. On `/` with the board still loading that is the
-      // same page: replace, so Back is not handed a duplicate entry.
-      openQueue: () =>
-        host
-          ? host.openQueue()
-          : navigate(scopedPath(HOME, scope.keys), { replace: pathname === HOME, state: { [OPEN_QUEUE]: true } }),
-      changeFilter: (next) => host?.filters.onChange(next),
-      newIssue: () => (host ? host.onNewIssue() : setFiling(true)),
-    });
+  // What a command that closes the console runs against. The prompt has already
+  // given focus back, so a theme change leaves the person where they were; a
+  // page change then takes them away from it.
+  const env: Pick<CommandEnv, 'go' | 'setTheme' | 'changeFilter' | 'newIssue' | 'openQueue'> = {
+    go: (path) => navigate(scopedPath(path, scope.keys)),
+    setTheme: setChoice,
+    // Off the board there is no host, so land on the board with the flag it
+    // opens the queue on. On `/` with the board still loading that is the
+    // same page: replace, so Back is not handed a duplicate entry.
+    openQueue: () =>
+      host
+        ? host.openQueue()
+        : navigate(scopedPath(HOME, scope.keys), { replace: pathname === HOME, state: { [OPEN_QUEUE]: true } }),
+    changeFilter: (next) => host?.filters.onChange(next),
+    newIssue: () => (host ? host.onNewIssue() : setFiling(true)),
   };
 
   return (
@@ -158,15 +227,17 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       {children}
       {open && (
         <OmniBar
-          cards={host ? host.cards : read.issues}
-          statuses={host ? host.statuses : read.statuses}
+          cards={cards}
+          statuses={statuses}
           visibleKeys={host ? host.visibleKeys : null}
           scopeKeys={scope.keys}
           load={host ? 'ready' : read.state}
           onTake={onTake}
           onSearch={onSearch}
           commandContext={commandContext}
-          onRun={onRun}
+          env={env}
+          closing={closing}
+          onMove={onMove}
           onClose={close}
         />
       )}

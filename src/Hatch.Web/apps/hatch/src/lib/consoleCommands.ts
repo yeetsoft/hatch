@@ -13,8 +13,9 @@ import type { ThemeChoice } from '@hatch/ui';
 import { DEFAULT_FILTER, isFiltering, toggleBlocked, toggleWaiting } from './filter';
 import type { CardFilter } from './filter';
 import { HOME, HOME_LABEL, navRows } from './nav';
+import { moveBlocked } from './protectedColumns';
 import { hasMultipleProjects } from './useProjects';
-import type { Project } from '../types';
+import type { IssueCard, Project, Status } from '../types';
 
 /** What the board lends the console to set its filter: the filter as drawn, the
     projects its picker offers, and the board's own `changeFilter`. */
@@ -24,13 +25,29 @@ export interface FilterHandle {
   onChange: (next: CardFilter) => void;
 }
 
+/** The issue the person is looking at, and what is needed to say where it may
+    go. Absent from the context where no issue is in view - see
+    lib/issueInView.ts. */
+export interface IssueView {
+  card: IssueCard;
+  statuses: Status[];
+  /** The issue's own project, or null where it is not in the caller's list -
+      which `moveBlocked` reads as not an approver. */
+  project: Project | null;
+}
+
 export interface CommandContext {
   isAdmin: boolean;
   /** The page the console was opened on. */
   pathname: string;
   /** The board's filter; absent off the board, which offers no filter rows. */
   filters?: FilterHandle;
+  /** The issue in view, or null. */
+  view: IssueView | null;
 }
+
+/** The second lists a command can open. */
+export type CommandStep = 'status';
 
 export interface CommandEnv {
   /** Opens a page, keeping the tab's scope. */
@@ -38,6 +55,10 @@ export interface CommandEnv {
   setTheme: (choice: ThemeChoice) => void;
   /** Sets the board's filter, through the board's own `changeFilter`. */
   changeFilter: (next: CardFilter) => void;
+  /** Moves the issue in view to a column, as the status bar would. */
+  move: (statusId: number) => void;
+  /** Swaps the list for a second one. */
+  openStep: (step: CommandStep) => void;
   /** Opens the work queue: on the board itself, or by landing on the board with it open. */
   openQueue: () => void;
   /** Asks for the New issue dialog: the board's own on the board, the
@@ -52,6 +73,14 @@ export interface Command {
   hint: string;
   /** Where the command is offered; always, when absent. */
   when?: (ctx: CommandContext) => boolean;
+  /** Taking it does not close the console: it opens a step, or moves an issue
+      and may then ask about what is under it. */
+  stays?: boolean;
+  /** Why the command cannot be taken here, as a sentence. A row that has one is
+      listed and never run. */
+  disabled?: string;
+  /** The list this command opens. */
+  step?: CommandStep;
   run: (env: CommandEnv) => void;
 }
 
@@ -124,12 +153,45 @@ export function offered(commands: Command[], ctx: CommandContext): Command[] {
   return commands.filter((command) => command.when?.(ctx) ?? true);
 }
 
-/** Every command offered here, in declared order: the pages the primary nav
-    lists for this person, Board first and Settings last, then New issue, the queue and the themes,
-    then the board's filter rows when there is a board. */
+/** A column's row. Built from the columns the board sent, so nothing here
+    names one. The current column is listed and not takeable; one the server
+    would refuse says why in `moveBlocked`'s own words. */
+function statusRow(view: IssueView, status: Status, name: string, id: string): Command {
+  const current = status.id === view.card.statusId;
+  const blocked = current ? null : moveBlocked(status, view.project, view.card);
+  return {
+    id,
+    name,
+    hint: current ? 'current' : blocked ? 'blocked' : 'status',
+    stays: true,
+    disabled: current ? `Already in ${status.name}` : (blocked ?? undefined),
+    run: (env) => env.move(status.id),
+  };
+}
+
+/** The status step's rows: every column, deferred ones too, by name alone. */
+export function statusStepRows(view: IssueView): Command[] {
+  return view.statuses.map((status) => statusRow(view, status, status.name, `step:status:${status.id}`));
+}
+
+/** Every command offered here, in declared order: Status where an issue is in
+    view, then the pages the primary nav lists for this person, Board first and
+    Settings last, then New issue, the queue and the themes, then the board's filter
+    rows when there is a board, then a `Status → <Column>` for each column. Those
+    come last so the bare preview is not a screenful of columns. */
 export function commandList(ctx: CommandContext): Command[] {
+  const { view } = ctx;
   return offered(
     [
+      {
+        id: 'status',
+        name: 'Status',
+        hint: 'issue',
+        when: (c) => c.view !== null,
+        stays: true,
+        step: 'status',
+        run: (env) => env.openStep('status'),
+      },
       goTo(HOME, HOME_LABEL),
       ...navRows(ctx.isAdmin).map((row) => goTo(row.to, row.label)),
       goTo('/settings', 'Settings'),
@@ -142,6 +204,9 @@ export function commandList(ctx: CommandContext): Command[] {
         run: (env) => env.setTheme(choice),
       })),
       ...filterCommands(ctx.filters),
+      ...(view
+        ? view.statuses.map((status) => statusRow(view, status, `Status → ${status.name}`, `status:${status.id}`))
+        : []),
     ],
     ctx,
   );
@@ -153,21 +218,35 @@ export function squash(text: string): string {
 }
 
 /** The commands a query reaches, best first, and how many there were before
-    the preview cap. A bare query shows the first `COMMAND_PREVIEW` in declared
-    order; a typed one is ranked - names that start with it, then any-word
-    matches, then by name - and is not capped. */
-export function commandRows(commands: Command[], query: string): { rows: Command[]; total: number } {
+    the preview cap. A bare query shows the first `preview` in declared order; a
+    typed one is ranked and not capped. Three ranks: a name that starts with the
+    query; a name with a ` → ` part that does, so `todo` finds `Status → To Do`
+    before `Go to Docs`, whose letters only contain it; then any-word matches.
+    Within a rank, by name. */
+export function commandRows(
+  commands: Command[],
+  query: string,
+  preview = COMMAND_PREVIEW,
+): { rows: Command[]; total: number } {
   const words = query
     .split(/[^\p{L}\p{N}]+/u)
     .map(squash)
     .filter(Boolean);
-  if (words.length === 0) return { rows: commands.slice(0, COMMAND_PREVIEW), total: commands.length };
+  if (words.length === 0) return { rows: commands.slice(0, preview), total: commands.length };
 
   const whole = words.join('');
   const hits = commands
-    .map((command, order) => ({ command, order, name: squash(command.name) }))
+    .map((command, order) => ({
+      command,
+      order,
+      name: squash(command.name),
+      parts: command.name.split(' → ').map(squash),
+    }))
     .filter(({ name }) => words.every((word) => name.includes(word)))
-    .map((hit) => ({ ...hit, rank: hit.name.startsWith(whole) ? 0 : 1 }))
+    .map((hit) => ({
+      ...hit,
+      rank: hit.name.startsWith(whole) ? 0 : hit.parts.some((part) => part.startsWith(whole)) ? 1 : 2,
+    }))
     .sort((a, b) => a.rank - b.rank || a.command.name.localeCompare(b.command.name) || a.order - b.order);
   return { rows: hits.map((hit) => hit.command), total: hits.length };
 }

@@ -15,18 +15,37 @@
    `role="dialog"` and `aria-modal="true"`, which is what the Undo shortcut and
    the confirmation clock both look for, and it gives focus back on dismissal.
 
+   Status is the one command that does not close it. `>status` swaps the list for
+   the issue's columns, and a column moves the issue through the page's own
+   `send`; if that closes work, what is under the issue is asked as two rows,
+   Yes and No, where the status bar would have opened a dialog. A refusal is
+   said in the status line and the console stays.
+
    Mounted only while open, so the prompt starts empty every time - the rule
    IssuePicker states for the same reason. */
 
-import { useLayoutEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { StatusDot } from './StatusPill';
 import { boardColumns } from '../lib/columns';
 import { SEARCH_ROW, entryKeys, goToRows, goToStatus, whereOnBoard } from '../lib/goTo';
 import type { GoToLoad, Mark } from '../lib/goTo';
-import { commandList, commandRows, commandStatus } from '../lib/consoleCommands';
-import type { Command, CommandContext } from '../lib/consoleCommands';
+import { commandList, commandRows, commandStatus, statusStepRows } from '../lib/consoleCommands';
+import type { Command, CommandContext, CommandEnv, CommandStep } from '../lib/consoleCommands';
 import { MODE_LABEL, MODE_VERB, PREFIXES, parsePrompt } from '../lib/consolePrompt';
+import { closeQuestion, questionRows } from '../lib/consoleQuestion';
+import { message } from '../lib/errors';
+import { confirmMove } from '../lib/protectedColumns';
 import { searchPath } from '../lib/search';
+import type { CloseSubtree } from '../lib/useCloseSubtree';
 import type { IssueCard, Status } from '../types';
 
 export interface OmniBarProps {
@@ -49,12 +68,22 @@ export interface OmniBarProps {
   onSearch: (path: string) => void;
   /** Where the person is and who they are, for which commands are offered. */
   commandContext: CommandContext;
-  /** A command was taken. Focus has already gone back to where it was, since
-      what the command does may leave the person on this page. */
-  onRun: (command: Command) => void;
-  /** Dismissed without taking anything; focus has already gone back. */
+  /** What a command that closes the console runs against. */
+  env: Pick<CommandEnv, 'go' | 'setTheme' | 'changeFilter' | 'newIssue' | 'openQueue'>;
+  /** The question after a move that closes work: its state, and what answering
+      does. It lives above the console, so the move's own page can hand it an
+      offer. */
+  closing: CloseSubtree;
+  /** Moves the issue in view. Rejects with the server's refusal. */
+  onMove: (key: string, statusId: number) => Promise<MoveOutcome>;
+  /** The console is done. Focus has already gone back to where it was where the
+      person is still on this page - a command that runs, or a dismissal. */
   onClose: () => void;
 }
+
+/** How a move came out, from the console's side: nothing to ask, a question to
+    ask inline, or a dialog that took over. */
+export type MoveOutcome = 'moved' | 'offered' | 'asked';
 
 /** The text with its matched runs lit. */
 function Marked({ text, marks }: { text: string; marks: Mark[] }): ReactNode {
@@ -78,10 +107,22 @@ export function OmniBar({
   onTake,
   onSearch,
   commandContext,
-  onRun,
+  env,
+  closing,
+  onMove,
   onClose,
 }: OmniBarProps) {
   const [query, setQuery] = useState('');
+  /* The second list a command opened, or null. In one, the prompt's text only
+     narrows that list: there is no prefix to read. */
+  const [step, setStep] = useState<CommandStep | null>(null);
+  /* A move is on its way: what is moving and where, for the status line. The
+     ref is what the blur and the keys read, since they may fire before a
+     render has seen the state. */
+  const [moving, setMoving] = useState<{ key: string; column: string } | null>(null);
+  const movingNow = useRef(false);
+  /* The server's refusal, in its own words, until the person does anything else. */
+  const [failure, setFailure] = useState<string | null>(null);
   /* A key, not an index, and null for "the first row". Derived at render below
      rather than kept in step by an effect, so the board's refresh - which hands
      this fresh cards - cannot move it to a different issue. */
@@ -101,25 +142,41 @@ export function OmniBar({
   const rowId = (key: string) => `${base}-row-${key}`;
   const searchRowId = `${base}-row-search`;
 
-  const { mode, query: asked } = parsePrompt(query);
-  const { isAdmin, pathname, filters } = commandContext;
+  const parsed = parsePrompt(query);
+  const mode = step ? 'commands' : parsed.mode;
+  const asked = step ? query : parsed.query;
+  const { isAdmin, pathname, view, filters } = commandContext;
+  const offer = closing.offer;
 
   const { rows, total } = useMemo(
     () => (mode === 'issues' ? goToRows(cards, asked, scopeKeys) : { rows: [], total: 0 }),
     [mode, cards, asked, scopeKeys],
   );
-  const commands = useMemo(() => commandList({ isAdmin, pathname, filters }), [isAdmin, pathname, filters]);
+  const commands = useMemo(() => commandList({ isAdmin, pathname, view, filters }), [isAdmin, pathname, view, filters]);
+  const stepCommands = useMemo(() => (step && view ? statusStepRows(view) : []), [step, view]);
   const found = useMemo(
-    () => (mode === 'commands' ? commandRows(commands, asked) : { rows: [] as Command[], total: 0 }),
-    [mode, commands, asked],
+    () =>
+      step
+        ? commandRows(stepCommands, asked, Infinity)
+        : mode === 'commands'
+          ? commandRows(commands, asked)
+          : { rows: [] as Command[], total: 0 },
+    [step, stepCommands, mode, commands, asked],
   );
+  const answers = useMemo(() => questionRows(), []);
   const columns = useMemo(() => boardColumns(statuses), [statuses]);
   /* One order for every mode, so `move` and `take` stay one code path: help
      has no rows to take, and so no order. */
-  const order =
-    mode === 'issues' ? entryKeys(rows, asked) : mode === 'commands' ? found.rows.map((command) => command.id) : [];
+  const order = offer
+    ? answers.map((answer) => answer.id)
+    : mode === 'issues'
+      ? entryKeys(rows, asked)
+      : mode === 'commands'
+        ? found.rows.map((command) => command.id)
+        : [];
   const active = highlight !== null && order.includes(highlight) ? highlight : (order[0] ?? null);
   const activeIndex = order.indexOf(active ?? '');
+  const activeCommand = found.rows.find((command) => command.id === active);
 
   function dismiss() {
     if (done.current) return;
@@ -128,19 +185,111 @@ export function OmniBar({
     onClose();
   }
 
-  function take(index: number) {
-    if (done.current || index < 0 || index >= order.length) return;
-    done.current = true;
-    if (mode === 'commands') {
+  /* The question is over once its offer goes - answered either way, or closed. */
+  const asking = useRef(false);
+  const dismissNow = useRef(dismiss);
+  useEffect(() => {
+    dismissNow.current = dismiss;
+  });
+  useEffect(() => {
+    if (offer) asking.current = true;
+    else if (asking.current) {
+      asking.current = false;
+      dismissNow.current();
+    }
+  }, [offer]);
+
+  async function startMove(statusId: number) {
+    const target = view?.statuses.find((status) => status.id === statusId);
+    if (!view || !target || movingNow.current || done.current) return;
+    const { key } = view.card;
+
+    // A contribution going where its merge happens is asked about in a dialog
+    // over the page, and the move is known to need it already: the console goes
+    // first, so the dialog's opener is where the person was.
+    if (confirmMove(target, view.card)) {
+      done.current = true;
       if (opener.current instanceof HTMLElement) opener.current.focus();
-      onRun(found.rows[index]);
-    } else if (order[index] === SEARCH_ROW) onSearch(searchPath(asked)!);
+      onClose();
+      onMove(key, statusId).catch(() => {});
+      return;
+    }
+
+    movingNow.current = true;
+    setMoving({ key, column: target.name });
+    setFailure(null);
+    try {
+      const outcome = await onMove(key, statusId);
+      if (done.current) {
+        // Dismissed while it was on its way: an offer made since has nobody to ask.
+        if (outcome === 'offered') closing.close();
+      } else if (outcome === 'asked') {
+        // A dialog took focus, and is about to be where the person is: do not
+        // pull it back to where they were.
+        done.current = true;
+        onClose();
+      } else if (outcome === 'moved') dismiss();
+    } catch (err) {
+      if (!done.current) setFailure(message(err));
+    } finally {
+      movingNow.current = false;
+      setMoving(null);
+    }
+  }
+
+  function openStep(next: CommandStep) {
+    setStep(next);
+    setQuery('');
+    setHighlight(null);
+    setFailure(null);
+  }
+
+  function leaveStep() {
+    setStep(null);
+    setQuery('>');
+    setHighlight(null);
+    setFailure(null);
+  }
+
+  const commandEnv: CommandEnv = {
+    ...env,
+    move: (statusId) => void startMove(statusId),
+    openStep,
+  };
+
+  function take(index: number) {
+    if (done.current || movingNow.current || index < 0 || index >= order.length) return;
+    if (offer) {
+      if (closing.busy) return;
+      if (order[index] === 'yes') closing.confirm();
+      else closing.close();
+      return;
+    }
+    if (mode === 'commands') {
+      const command = found.rows[index];
+      // Listed so the person can see it is there, and why it cannot be taken.
+      if (command.disabled) return;
+      if (command.stays) {
+        command.run(commandEnv);
+        return;
+      }
+      done.current = true;
+      if (opener.current instanceof HTMLElement) opener.current.focus();
+      onClose();
+      command.run(commandEnv);
+      return;
+    }
+    done.current = true;
+    if (order[index] === SEARCH_ROW) onSearch(searchPath(asked)!);
     else onTake(rows[index].card);
   }
 
   function move(to: number) {
     const key = order[Math.min(Math.max(to, 0), order.length - 1)];
-    if (key !== undefined) setHighlight(key);
+    if (key !== undefined) {
+      setHighlight(key);
+      setFailure(null);
+    }
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -156,7 +305,11 @@ export function OmniBar({
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      dismiss();
+      // One step back each: out of the question, out of a list, out of the console.
+      if (offer) {
+        if (!closing.busy) closing.close();
+      } else if (step) leaveStep();
+      else dismiss();
     }
   }
 
@@ -165,6 +318,20 @@ export function OmniBar({
     activeRow.current?.scrollIntoView({ block: 'nearest' });
   }, [active, query]);
 
+  const dialogLabel = offer ? closeQuestion(offer) : step ? 'Set the status' : MODE_LABEL[mode];
+  const verb = offer ? 'ask' : step ? 'status' : MODE_VERB[mode];
+  const statusLine = moving
+    ? `moving ${moving.key} to ${moving.column}…`
+    : (failure ??
+      (offer
+        ? closing.busy
+          ? 'closing…'
+          : (closing.error ?? 'enter answers')
+        : mode === 'commands'
+          ? (activeCommand?.disabled ?? commandStatus(found.rows.length, found.total))
+          : mode === 'help'
+            ? PREFIXES.map((row) => `${row.prefix} ${row.mode === 'help' ? 'this list' : row.mode}`).join(' · ')
+            : goToStatus(asked, rows.length, total, load)));
   const rowKey = (key: string) => (key === SEARCH_ROW ? searchRowId : rowId(key));
 
   return (
@@ -180,10 +347,13 @@ export function OmniBar({
         className="hatch-omni"
         role="dialog"
         aria-modal="true"
-        aria-label={MODE_LABEL[mode]}
+        aria-label={dialogLabel}
         /* React's onBlur is focusout, so it bubbles: focus leaving for anywhere
-           outside the panel closes it. */
+           outside the panel closes it - except while a move is on its way, when
+           a dialog it raises takes focus and the move itself says what happens
+           to the console. */
         onBlur={(e) => {
+          if (movingNow.current) return;
           if (!e.currentTarget.contains(e.relatedTarget)) dismiss();
         }}
         /* A press on anything but the prompt must not take focus off it - a
@@ -193,7 +363,7 @@ export function OmniBar({
         }}
       >
         <div className="hatch-omni-prompt">
-          <span className="hatch-omni-verb">{MODE_VERB[mode]}</span>
+          <span className="hatch-omni-verb">{verb}</span>
           <span className="hatch-omni-chevron" aria-hidden="true">
             ❯
           </span>
@@ -208,7 +378,8 @@ export function OmniBar({
             autoCapitalize="off"
             spellCheck={false}
             value={query}
-            aria-label={MODE_LABEL[mode]}
+            aria-label={dialogLabel}
+            readOnly={offer !== null}
             role="combobox"
             aria-expanded="true"
             aria-controls={listId}
@@ -217,6 +388,7 @@ export function OmniBar({
             onChange={(e) => {
               setQuery(e.target.value);
               setHighlight(null);
+              setFailure(null);
             }}
             onKeyDown={onKeyDown}
           />
@@ -225,10 +397,43 @@ export function OmniBar({
         <ul
           className="hatch-omni-list"
           id={listId}
-          role={mode === 'help' ? 'list' : 'listbox'}
-          aria-label={mode === 'help' ? 'Prefixes' : mode === 'commands' ? 'Commands' : 'Issues'}
+          role={mode === 'help' && !offer ? 'list' : 'listbox'}
+          aria-label={offer ? 'Answers' : mode === 'help' ? 'Prefixes' : mode === 'commands' ? 'Commands' : 'Issues'}
         >
+          {offer && (
+            <li className="hatch-omni-row hatch-omni-row--help hatch-omni-row--question" role="presentation">
+              <span className="hatch-omni-marker" aria-hidden="true" />
+              <span className="hatch-omni-title">
+                <code>{offer.key}</code> is in {offer.column.name}. {closeQuestion(offer)}
+              </span>
+            </li>
+          )}
+          {offer &&
+            answers.map((answer) => {
+              const isActive = answer.id === active;
+              return (
+                <li
+                  key={answer.id}
+                  id={rowId(answer.id)}
+                  role="option"
+                  aria-selected={isActive}
+                  ref={isActive ? activeRow : null}
+                  className={`hatch-omni-row${isActive ? ' is-active' : ''}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => take(order.indexOf(answer.id))}
+                  onMouseMove={() => {
+                    if (!isActive) setHighlight(answer.id);
+                  }}
+                >
+                  <span className="hatch-omni-marker" aria-hidden="true">
+                    {isActive ? '❯' : ''}
+                  </span>
+                  <span className="hatch-omni-title">{answer.name}</span>
+                </li>
+              );
+            })}
           {mode === 'help' &&
+            !offer &&
             PREFIXES.map((row) => (
               <li key={row.prefix} className="hatch-omni-row hatch-omni-row--help">
                 <span className="hatch-omni-marker" aria-hidden="true" />
@@ -236,7 +441,7 @@ export function OmniBar({
                 <span className="hatch-omni-title">{row.line}</span>
               </li>
             ))}
-          {found.rows.map((command) => {
+          {(offer ? [] : found.rows).map((command) => {
             const isActive = command.id === active;
             return (
               <li
@@ -245,7 +450,9 @@ export function OmniBar({
                 role="option"
                 aria-selected={isActive}
                 ref={isActive ? activeRow : null}
-                className={`hatch-omni-row${isActive ? ' is-active' : ''}`}
+                className={`hatch-omni-row${isActive ? ' is-active' : ''}${command.disabled ? ' is-disabled' : ''}`}
+                aria-disabled={command.disabled ? true : undefined}
+                title={command.disabled}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => take(order.indexOf(command.id))}
                 onMouseMove={() => {
@@ -260,7 +467,7 @@ export function OmniBar({
               </li>
             );
           })}
-          {rows.map((row, index) => {
+          {(offer ? [] : rows).map((row, index) => {
             const { card } = row;
             const status = statuses.find((s) => s.id === card.statusId);
             const isActive = card.key === active;
@@ -306,7 +513,7 @@ export function OmniBar({
               </li>
             );
           })}
-          {mode === 'issues' && searchPath(asked) !== null && (
+          {!offer && mode === 'issues' && searchPath(asked) !== null && (
             <li
               id={searchRowId}
               role="option"
@@ -328,17 +535,12 @@ export function OmniBar({
         </ul>
 
         <div className="hatch-omni-status">
-          <span aria-live="polite">
-            {mode === 'commands'
-              ? commandStatus(found.rows.length, found.total)
-              : mode === 'help'
-                ? PREFIXES.map((row) => `${row.prefix} ${row.mode === 'help' ? 'this list' : row.mode}`).join(' · ')
-                : goToStatus(asked, rows.length, total, load)}
-          </span>
+          <span aria-live="polite">{statusLine}</span>
           <span className="hatch-omni-keys" aria-hidden="true">
-            {mode !== 'help' && (
+            {(mode !== 'help' || offer) && (
               <>
-                <kbd>↑↓</kbd> move <kbd>↵</kbd> {mode === 'commands' ? 'run' : 'open'}{' '}
+                <kbd>↑↓</kbd> move <kbd>↵</kbd>{' '}
+                {offer ? 'answer' : step ? 'set' : mode === 'commands' ? 'run' : 'open'}{' '}
               </>
             )}
             <kbd>esc</kbd>

@@ -75,6 +75,7 @@ import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
 import { originChain } from '../lib/contribution';
 import { confirmMove, moveBlocked } from '../lib/protectedColumns';
 import { closeOffer } from '../lib/closeSubtree';
+import type { CloseOffer } from '../lib/closeSubtree';
 import { isObviated, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { filedFromCandidates } from '../lib/filedFrom';
@@ -92,6 +93,8 @@ import { writeNoCode } from '../lib/noCode';
 import { writeReleaseNote } from '../lib/releaseNote';
 import { newestFirst } from '../lib/thread';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
+import { useConsoleMoves } from '../lib/useConsole';
+import type { MoveResult } from '../lib/useConsole';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useMoveProject } from '../lib/useMoveProject';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
@@ -621,6 +624,64 @@ export function IssuePage() {
   // The second look at a contribution moving into a column that merges pull requests.
   const contributionMove = useMoveConfirmation();
 
+  /* Declared above the guards, for hook order: the console moves this issue
+     through the same two, and registers them below. `onOffer` is the console
+     asking about what is under the issue its own way, and with it a refusal is
+     the console's to show rather than this page's. `asked` is returned where a
+     dialog took the move over. */
+  const sendStatus = async (
+    statusId: number,
+    onOffer?: (offer: CloseOffer | null) => void,
+  ): Promise<MoveResult> => {
+    if (!issue || !board) return 'moved';
+    // Computed before the patch, so it is the subtree the operator was looking
+    // at when they pressed; asked after it, so a refused move asks nothing.
+    const offer = closeOffer(board, key, issue.statusId, statusId);
+    try {
+      await patchIssue(key, { statusId });
+      await load();
+      (onOffer ?? closing.ask)(offer);
+      return 'moved';
+    } catch (err) {
+      const refusal = wipRefusal(err);
+      if (refusal) {
+        await load();
+        wip.ask(key, refusal, async () => {
+          await patchIssue(key, overridden({ statusId }));
+          await load();
+        });
+        return 'asked';
+      }
+      if (onOffer) throw err;
+      setError(message(err));
+      return 'moved';
+    }
+  };
+
+  const moveStatus = async (statusId: number, onOffer?: (offer: CloseOffer | null) => void): Promise<MoveResult> => {
+    if (!issue || !board) return 'moved';
+    // `moveBlocked` has already disabled a column that would be refused, so a
+    // press that reaches here is one the server will take; a contribution going
+    // where its merge happens is asked about first, and Leave it sends nothing.
+    const target = board.statuses.find((s) => s.id === statusId);
+    const sentence = target ? confirmMove(target, issue) : null;
+    if (sentence) {
+      contributionMove.ask(key, sentence, async () => {
+        await sendStatus(statusId);
+      });
+      return 'asked';
+    }
+    return sendStatus(statusId, onOffer);
+  };
+
+  useConsoleMoves({
+    pageKey: key,
+    peekedKey: null,
+    projectsByKey,
+    send: (_key, statusId, onOffer) => moveStatus(statusId, onOffer),
+    reload: load,
+  });
+
   if (error && !issue) return <p className="text-danger">{error}</p>;
   if (!issue || !board) return <p className="text-muted">Loading…</p>;
 
@@ -647,43 +708,6 @@ export function IssuePage() {
   // `stopped` on purpose - a deferred ticket is parked, not done, and a
   // question on it still holds the ticket up.
   const obviated = isObviated(board.statuses.find((s) => s.id === issue.statusId));
-
-  /* A const rather than a declaration, so it is written after the guards above
-     and `issue` and `board` are the narrowed ones. */
-  const sendStatus = async (statusId: number) => {
-    // Computed before the patch, so it is the subtree the operator was looking
-    // at when they pressed; asked after it, so a refused move asks nothing.
-    const offer = closeOffer(board, key, issue.statusId, statusId);
-    try {
-      await patchIssue(key, { statusId });
-      await load();
-      closing.ask(offer);
-    } catch (err) {
-      const refusal = wipRefusal(err);
-      if (refusal) {
-        await load();
-        wip.ask(key, refusal, async () => {
-          await patchIssue(key, overridden({ statusId }));
-          await load();
-        });
-        return;
-      }
-      setError(message(err));
-    }
-  };
-
-  const moveStatus = async (statusId: number) => {
-    // `moveBlocked` has already disabled a column that would be refused, so a
-    // press that reaches here is one the server will take; a contribution going
-    // where its merge happens is asked about first, and Leave it sends nothing.
-    const target = board.statuses.find((s) => s.id === statusId);
-    const sentence = target ? confirmMove(target, issue) : null;
-    if (sentence) {
-      contributionMove.ask(key, sentence, () => sendStatus(statusId));
-      return;
-    }
-    await sendStatus(statusId);
-  };
 
   async function remove() {
     if (!confirm(deleteQuestion(key))) return;
