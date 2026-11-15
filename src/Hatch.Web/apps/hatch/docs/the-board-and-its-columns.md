@@ -247,7 +247,9 @@ is on. A search for an issue cannot start with `>` or `?`.
 
 A command is a sentence you can find by any words in it, in any order, ignoring
 case and punctuation: `>board`, `>go board` and `>goto board` all find **Go to
-Board**. Names that start with what you typed come first. A bare `>` shows the
+Board**. Names that start with what you typed come first, then names with a part after
+an arrow that does (`>todo` finds **Status → To Do** before **Go to Docs**),
+then any other match. A bare `>` shows the
 first eight commands, with "8 of N" in the status line, until you type.
 **↑↓** move, **↵** runs the highlighted one and **esc** puts the prompt away.
 The first commands are:
@@ -265,11 +267,54 @@ The first commands are:
   coming back to it with Back does not open it again.
 - **Theme → Auto**, **Theme → Light** and **Theme → Dark**, the three choices
   of the theme switch. You stay on the page you were on.
+- **Status** and **Status → <Column>**, offered only where an issue is in
+  view. See below.
 
 The console follows the tab's scope. In a tab scoped to projects, an issue
 outside the scope is not listed for a key prefix or for words from its title.
 Type its whole key (`FIL-1`, not `FIL-`) and it is listed first, marked
 **[out of scope]**, because a whole key can only mean that issue.
+
+### Setting an issue's status
+
+With an issue in view, `>status` lists the board's columns, deferred ones
+included, with the issue's own column marked **current**. Taking one moves the
+issue there, exactly as the status bar on its page or the status picker in the
+board's peek would. A bare `>` offers **Status** first, and every column is
+also a command of its own, **Status → <Column>**, so `>done` and `>todo` go
+straight there. **esc** in the column list goes back to `>`; a second **esc**
+puts the console away.
+
+The issue in view is, in this order:
+
+1. the issue whose page you are on;
+2. the card the board's peek is open on;
+3. the card that had keyboard focus when you pressed `/` on the board. Tab to
+   a card, press `/`, type `>todo` and **↵**, and the card moves and the
+   **Undo** chicklet appears.
+
+On any other page, or on a board with no card focused or peeked, there is no
+issue in view and no Status row.
+
+A column you cannot move the issue to is listed dimmed and marked **blocked**,
+and the status line says why when you land on it: only an owner or approver may
+move work into a protected column, and a column that merges the pull request
+needs the issue to have one. **↵** on it does nothing. The current column says
+**Already in <Column>**. These are the same reasons the status bar gives.
+
+When the move closes or shelves an epic or story that has open work under it,
+the console asks, in place of the dialog the page would open:
+**Close its 3 open children too?** (**Shelve** for a deferred column), with
+**Yes** and **No**. **Yes** moves them too and the page's progress shows it;
+**No** and **esc** leave them where they are. A refusal for some of them is
+said in the status line and the question stays, and **Yes** again is safe.
+Either answer puts the console away.
+
+A refusal from the server shows in the status line in its own words and the
+console stays open. Two confirmations keep their own dialogs: a move into a
+column whose work-in-progress limit is full, and a contribution moving into a
+column that merges pull requests. The console closes and the dialog opens, as
+it does from the status bar.
 
 What opening a row does depends on the page. On the board the card is ringed
 and peeked, or peeked alone when the board's filter is hiding it, and on the

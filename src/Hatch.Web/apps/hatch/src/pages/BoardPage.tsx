@@ -74,7 +74,8 @@ import { isWaiting } from '../lib/schedule';
 import { lineage } from '../lib/lineage';
 import type { LineageCard } from '../lib/lineage';
 import { isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
-import { useConsoleHost } from '../lib/useConsole';
+import { useConsoleHost, useConsoleMoves } from '../lib/useConsole';
+import type { MoveResult } from '../lib/useConsole';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
@@ -485,16 +486,30 @@ export function BoardPage() {
    * uniformly rather than one getting a dialog and the other a bare inline
    * sentence.
    *
+   * `onOffer` is where the question about what is under the card goes in place
+   * of the board's own dialog: the console asks it inline. Returns `asked` when
+   * a WIP dialog took the move over, and `moved` otherwise.
+   *
    * The retry reaches `commit` through `commitRef` rather than by name, so the
    * override call sits inside `commit`'s own body without reading the `const`
    * while it is still being assigned.
    */
-  const commitRef = useRef<(placed: Placement, fromStatusId?: number, override?: boolean) => Promise<void>>(
-    () => Promise.resolve(),
-  );
+  const commitRef = useRef<
+    (
+      placed: Placement,
+      fromStatusId?: number,
+      override?: boolean,
+      onOffer?: (offer: CloseOffer | null) => void,
+    ) => Promise<MoveResult>
+  >(() => Promise.resolve('moved'));
   const commit = useCallback(
-    async (placed: Placement, fromStatusId?: number, override = false) => {
-      if (!board) return;
+    async (
+      placed: Placement,
+      fromStatusId?: number,
+      override = false,
+      onOffer?: (offer: CloseOffer | null) => void,
+    ): Promise<MoveResult> => {
+      if (!board) return 'moved';
 
       // Read off every card rather than off `visible`, and before the repaint:
       // a card the filter is hiding is still work under this issue, one folded
@@ -524,13 +539,16 @@ export function BoardPage() {
         await reload();
         // After the reload, so the board the chicklet sits over already shows the move.
         if (move) moved(move);
-        ask(offer);
+        (onOffer ?? ask)(offer);
+        return 'moved';
       } catch (err) {
         const refusal = wipRefusal(err);
         if (refusal && !override) {
           await reload();
-          wip.ask(placed.key, refusal, () => commitRef.current(placed, fromStatusId, true));
-          return;
+          wip.ask(placed.key, refusal, async () => {
+            await commitRef.current(placed, fromStatusId, true);
+          });
+          return 'asked';
         }
         throw err;
       } finally {
@@ -585,17 +603,23 @@ export function BoardPage() {
   /** The peek's status picker, sending a card to a column by a press rather
       than a drag. `fromStatusId` is the column the board currently holds the
       card in, so a peek left open on a board the loop has since moved the
-      card on gets the server's refusal rather than overwriting it. */
-  const send = useCallback(
-    async (key: string, statusId: number) => {
-      if (!board) return;
-      const placed = sendTo(board.issues, key, statusId);
-      if (!placed) return;
+      card on gets the server's refusal rather than overwriting it.
 
+      The console sends through it too, with `onOffer` to ask about what is
+      under the card its own way. `asked` is returned where a contribution's
+      confirmation or a WIP dialog took the move over; either then finishes it
+      with the board's own dialog, so `onOffer` is not carried into them. */
+  const send = useCallback(
+    async (key: string, statusId: number, onOffer?: (offer: CloseOffer | null) => void): Promise<MoveResult> => {
+      if (!board) return 'moved';
+      const placed = sendTo(board.issues, key, statusId);
+      if (!placed) return 'moved';
+
+      const sentence = contributionSentence(board, placed);
       const was = board.issues.find((i) => i.key === key)?.statusId;
-      const go = async () => {
+      const go = async (offer: ((offer: CloseOffer | null) => void) | undefined) => {
         try {
-          await commit(placed, was);
+          return await commit(placed, was, false, offer);
         } catch (err) {
           // Reloaded rather than shown here: this line is hidden behind the
           // peek, and the rethrow is what lets the dialog show it instead.
@@ -604,12 +628,13 @@ export function BoardPage() {
         }
       };
 
-      const sentence = contributionSentence(board, placed);
       if (sentence) {
-        askContribution(key, sentence, go);
-        return;
+        askContribution(key, sentence, async () => {
+          await go(undefined);
+        });
+        return 'asked';
       }
-      await go();
+      return go(onOffer);
     },
     [board, commit, reload, askContribution],
   );
@@ -663,6 +688,11 @@ export function BoardPage() {
       setPeeking(card);
     }
   };
+  useConsoleMoves(
+    board
+      ? { pageKey: null, peekedKey: peeking?.key ?? null, projectsByKey, send, reload, onClosed: closed }
+      : null,
+  );
   useConsoleHost(
     board
       ? {
@@ -946,7 +976,9 @@ export function BoardPage() {
         project={peeked && showProjectMark ? (projectsByKey.get(peeked.projectKey) ?? null) : null}
         projectsByKey={projectsByKey}
         onExpedited={() => void reload()}
-        onMove={send}
+        onMove={async (key, statusId) => {
+          await send(key, statusId);
+        }}
         onDelete={remove}
         onClose={closePeek}
       />

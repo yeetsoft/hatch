@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import type { ThemeChoice } from '@hatch/ui';
-import { COMMAND_PREVIEW, commandList, commandRows, commandStatus, offered, squash } from './consoleCommands';
-import type { Command, CommandContext, CommandEnv } from './consoleCommands';
+import {
+  COMMAND_PREVIEW,
+  commandList,
+  commandRows,
+  commandStatus,
+  offered,
+  squash,
+  statusStepRows,
+} from './consoleCommands';
+import type { Command, CommandContext, CommandEnv, IssueView } from './consoleCommands';
+import { moveBlocked } from './protectedColumns';
 import { navRows } from './nav';
+import type { IssueCard, Project, Status } from '../types';
 
-const admin: CommandContext = { isAdmin: true, pathname: '/' };
-const person: CommandContext = { isAdmin: false, pathname: '/' };
+const admin: CommandContext = { isAdmin: true, pathname: '/', view: null };
+const person: CommandContext = { isAdmin: false, pathname: '/', view: null };
 
 const names = (commands: Command[]) => commands.map((c) => c.name);
 const find = (commands: Command[], name: string) => commands.find((c) => c.name === name)!;
@@ -14,15 +24,19 @@ const find = (commands: Command[], name: string) => commands.find((c) => c.name 
 function env() {
   const went: string[] = [];
   const themes: ThemeChoice[] = [];
+  const moved: number[] = [];
+  const steps: string[] = [];
   const filed = { count: 0 };
   const queue = { opened: 0 };
   const fake: CommandEnv = {
     go: (p) => went.push(p),
     setTheme: (c) => themes.push(c),
+    move: (id) => moved.push(id),
+    openStep: (step) => steps.push(step),
     newIssue: () => filed.count++,
     openQueue: () => queue.opened++,
   };
-  return { fake, went, themes, filed, queue };
+  return { fake, went, themes, moved, steps, filed, queue };
 }
 
 const made = (name: string, over: Partial<Command> = {}): Command => ({
@@ -203,5 +217,151 @@ describe('commandStatus', () => {
     expect(commandStatus(0, 0)).toBe('no command matches');
     expect(commandStatus(1, 1)).toBe('1 command');
     expect(commandStatus(17, 17)).toBe('17 commands');
+  });
+});
+
+/* An issue in view, in a board with a protected column, a merging one and a
+   deferred one. The column names are the test's own; the code names none. */
+const column = (id: number, name: string, over: Partial<Status> = {}): Status =>
+  ({
+    id,
+    name,
+    sortOrder: id,
+    isTerminal: false,
+    isDeferred: false,
+    isProtected: false,
+    mergesPullRequest: false,
+    ...over,
+  }) as Status;
+
+const COLUMNS: Status[] = [
+  column(1, 'To Do'),
+  column(2, 'In Progress'),
+  column(3, 'In Review', { isProtected: true }),
+  column(4, 'Merging', { mergesPullRequest: true }),
+  column(5, 'Done', { isTerminal: true }),
+  column(6, 'Parked', { isDeferred: true }),
+];
+
+const issue = (over: Partial<IssueCard> = {}) =>
+  ({ key: 'AER-1', projectKey: 'AER', statusId: 2, pullRequestUrl: null, ...over }) as IssueCard;
+const project = (canApprove: boolean) => ({ key: 'AER', canApprove }) as Project;
+const viewOf = (over: Partial<IssueView> = {}): IssueView => ({
+  card: issue(),
+  statuses: COLUMNS,
+  project: project(false),
+  ...over,
+});
+const here = (view: IssueView | null): CommandContext => ({ ...person, view });
+
+describe('the Status commands', () => {
+  it('are not offered with no issue in view', () => {
+    expect(names(commandList(here(null))).filter((n) => n.startsWith('Status'))).toEqual([]);
+  });
+
+  it('open with Status, so a bare > offers it first', () => {
+    const list = commandList(here(viewOf()));
+    expect(list[0].name).toBe('Status');
+    expect(names(commandRows(list, '').rows)[0]).toBe('Status');
+    expect(list[0]).toMatchObject({ stays: true, step: 'status' });
+  });
+
+  it('list one flat row per column in board order, deferred included, after everything else', () => {
+    const list = commandList(here(viewOf()));
+    const rows = list.filter((c) => c.name.startsWith('Status → '));
+    expect(names(rows)).toEqual(COLUMNS.map((c) => `Status → ${c.name}`));
+    expect(list.slice(-COLUMNS.length)).toEqual(rows);
+    // So the eight-row preview is pages, not a screenful of columns.
+    expect(names(commandRows(list, '').rows).some((n) => n.startsWith('Status → '))).toBe(false);
+  });
+
+  it('mark the current column and never run it', () => {
+    const row = find(commandList(here(viewOf())), 'Status → In Progress');
+    expect(row).toMatchObject({ hint: 'current', disabled: 'Already in In Progress' });
+  });
+
+  it('disable a protected column with the sentence moveBlocked gives a non-approver', () => {
+    const view = viewOf();
+    const row = find(commandList(here(view)), 'Status → In Review');
+    expect(row.disabled).toBe(moveBlocked(COLUMNS[2], view.project, view.card));
+    expect(row.disabled).toMatch(/approver/i);
+    expect(row.hint).toBe('blocked');
+  });
+
+  it('enable a protected column for an approver', () => {
+    const row = find(commandList(here(viewOf({ project: project(true) }))), 'Status → In Review');
+    expect(row.disabled).toBeUndefined();
+  });
+
+  it('fail closed where the issue project is not known', () => {
+    const row = find(commandList(here(viewOf({ project: null }))), 'Status → In Review');
+    expect(row.disabled).toMatch(/approver/i);
+  });
+
+  it('disable a merging column for an issue with no pull request, and not with one', () => {
+    const without = find(commandList(here(viewOf())), 'Status → Merging');
+    expect(without.disabled).toMatch(/pull request/i);
+    const withPr = find(
+      commandList(here(viewOf({ card: issue({ pullRequestUrl: 'https://example.com/pr/1' }) }))),
+      'Status → Merging',
+    );
+    expect(withPr.disabled).toBeUndefined();
+  });
+
+  it('move to the column they name, and Status opens the step', () => {
+    const { fake, moved, steps } = env();
+    const list = commandList(here(viewOf()));
+    find(list, 'Status → To Do').run(fake);
+    find(list, 'Status → Parked').run(fake);
+    find(list, 'Status').run(fake);
+    expect(moved).toEqual([1, 6]);
+    expect(steps).toEqual(['status']);
+  });
+
+  it('give the step the same rows named by column alone', () => {
+    const view = viewOf();
+    const rows = statusStepRows(view);
+    expect(names(rows)).toEqual(COLUMNS.map((c) => c.name));
+    const flat = commandList(here(view)).filter((c) => c.name.startsWith('Status → '));
+    expect(rows.map((r) => [r.hint, r.disabled])).toEqual(flat.map((r) => [r.hint, r.disabled]));
+    expect(names(commandRows(rows, 'done', Infinity).rows)).toEqual(['Done']);
+  });
+
+  it('show every column in the step, with no preview cap', () => {
+    const many = Array.from({ length: 12 }, (_, i) => column(i + 1, `Column ${i + 1}`));
+    expect(commandRows(statusStepRows(viewOf({ statuses: many })), '', Infinity).rows).toHaveLength(12);
+  });
+});
+
+describe('ranking with Status', () => {
+  const list = commandList(here(viewOf()));
+
+  it('puts Status → To Do before Go to Docs for todo', () => {
+    // squash('Go to Docs') contains 'todo'; that must not outrank a column.
+    const found = names(commandRows(list, 'todo').rows);
+    expect(found.indexOf('Status → To Do')).toBeGreaterThanOrEqual(0);
+    expect(found.indexOf('Status → To Do')).toBeLessThan(found.indexOf('Go to Docs'));
+    expect(found[0]).toBe('Status → To Do');
+  });
+
+  it('finds Status → Done first for done', () => {
+    expect(names(commandRows(list, 'done').rows)[0]).toBe('Status → Done');
+  });
+
+  it('puts the opener first for status', () => {
+    const found = names(commandRows(list, 'status').rows);
+    expect(found[0]).toBe('Status');
+    // Then the columns, ahead of any page that merely mentions status.
+    expect(found.slice(1, 1 + COLUMNS.length).sort()).toEqual(COLUMNS.map((c) => `Status → ${c.name}`).sort());
+  });
+
+  it('ranks a part after → that starts with the query between a name that does and any word', () => {
+    const items = [made('Open the theme'), made('Theme → Dark'), made('Dark mode, theme'), made('Mode → Themes')];
+    expect(names(commandRows(items, 'theme').rows)).toEqual([
+      'Theme → Dark',
+      'Mode → Themes',
+      'Dark mode, theme',
+      'Open the theme',
+    ]);
   });
 });
