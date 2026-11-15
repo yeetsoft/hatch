@@ -59,4 +59,71 @@ describe('StatusSteps', () => {
     const openButton = html.match(/<button[^>]*>status-2<\/button>/)?.[0] ?? '';
     expect(openButton).not.toContain('disabled');
   });
+
+  describe('the remand press', () => {
+    const SHELF = status(3, 2, { isDeferred: true, name: 'Dreaming' });
+    const SECOND = status(4, 3, { isDeferred: true, name: 'Someday' });
+    const presses = (html: string) => html.match(/<button[^>]*hatch-status-remand[^>]*>to a dream<\/button>/g) ?? [];
+
+    it('draws one press per deferred column, and none beside a lane', () => {
+      const html = renderToStaticMarkup(
+        <StatusSteps
+          statuses={[HERE, OPEN, SHELF, SECOND]}
+          statusId={HERE.id}
+          issueKey="HA-1"
+          onMove={() => {}}
+          onRemand={() => {}}
+        />,
+      );
+
+      const found = presses(html);
+      expect(found).toHaveLength(2);
+      expect(found[0]).toContain('aria-label="Remand HA-1 to a dream in Dreaming"');
+      expect(found[1]).toContain('aria-label="Remand HA-1 to a dream in Someday"');
+      // Each follows its own column's press.
+      expect(html).toMatch(/>Dreaming<\/button><button[^>]*Remand HA-1 to a dream in Dreaming/);
+    });
+
+    it('is drawn when the issue is already in the deferred column', () => {
+      const html = renderToStaticMarkup(
+        <StatusSteps statuses={[HERE, SHELF]} statusId={SHELF.id} issueKey="HA-1" onMove={() => {}} onRemand={() => {}} />,
+      );
+
+      expect(presses(html)[0]).not.toContain('disabled');
+    });
+
+    it('is not drawn without onRemand', () => {
+      const html = renderToStaticMarkup(
+        <StatusSteps statuses={[HERE, OPEN, SHELF]} statusId={HERE.id} onMove={() => {}} />,
+      );
+
+      expect(html).not.toContain('to a dream');
+    });
+
+    it('is not drawn on a board with no deferred column', () => {
+      const html = renderToStaticMarkup(
+        <StatusSteps statuses={[HERE, OPEN]} statusId={HERE.id} onMove={() => {}} onRemand={() => {}} />,
+      );
+
+      expect(html).not.toContain('to a dream');
+    });
+
+    it('is disabled, with the same reason as its title, where the column is blocked', () => {
+      const html = renderToStaticMarkup(
+        <StatusSteps
+          statuses={[HERE, SHELF, SECOND]}
+          statusId={HERE.id}
+          issueKey="HA-1"
+          onMove={() => {}}
+          onRemand={() => {}}
+          blocked={(target) => (target.id === SHELF.id ? 'Only an owner may park work here' : null)}
+        />,
+      );
+
+      const [first, second] = presses(html);
+      expect(first).toContain('disabled=""');
+      expect(first).toContain('title="Only an owner may park work here"');
+      expect(second).not.toContain('disabled');
+    });
+  });
 });

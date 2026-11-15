@@ -28,6 +28,7 @@ export function IssueStatusBar({
   priorityBusy,
   preApprovalBusy,
   onMove,
+  onRemand,
   blocked,
   onPriority,
   onPreApproval,
@@ -42,6 +43,8 @@ export function IssueStatusBar({
   priorityBusy: boolean;
   preApprovalBusy: boolean;
   onMove: (statusId: number) => void;
+  /** Remand this issue to a dream in a deferred column. */
+  onRemand?: (statusId: number) => void;
   /** Why a move into this column is refused, or null where it is allowed. */
   blocked: (status: Status) => string | null;
   onPriority: (priority: Priority) => void;
@@ -62,6 +65,7 @@ export function IssueStatusBar({
           statuses={statuses}
           size="lg"
           onMove={onMove}
+          onRemand={onRemand}
           blocked={blocked}
         />
       ) : (

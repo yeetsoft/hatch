@@ -108,6 +108,7 @@ export function IssuePeek({
   projectsByKey,
   onExpedited,
   onMove,
+  onRemand,
   onDelete,
   onClose,
 }: {
@@ -136,6 +137,9 @@ export function IssuePeek({
   /** Move the card to another column, the same path a drag takes. Rejects with
       the server's own sentence on a refusal. */
   onMove: (key: string, statusId: number) => Promise<void>;
+  /** Ask to remand the card to a dream in a deferred column. The board opens
+      the dialog; the peek stays open under it. */
+  onRemand: (key: string, statusId: number) => void;
   /** Delete the card. The board closes the peek and reloads on success; rejects
       with the server's own sentence on a refusal. */
   onDelete: (key: string) => Promise<void>;
@@ -389,6 +393,7 @@ export function IssuePeek({
               statuses={statuses}
               busy={asked.moving ?? false}
               onMove={(statusId) => void move(statusId)}
+              onRemand={(statusId) => onRemand(card.key, statusId)}
               blocked={(target) => moveBlocked(target, moveProject, card)}
             />
           )}
