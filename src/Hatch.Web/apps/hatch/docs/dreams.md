@@ -110,6 +110,10 @@ is what puts a **woven into** chip on each of them, the same chip a dream
 gets from any other issue drawing on it (see [above](#woven-into-an-issue)).
 Nothing on the Dream Board itself is edited by that session.
 
+A remanded dream brings its tree with it. The session reads the shelved work
+through the issue routes, names that tree in the epic's description, and moves
+nothing out of its deferred column.
+
 It is a person's press, not a key's: weaving spends a breakdown session at
 the largest model, which is a person's call to spend, so an agent calling the
 route is refused. Pressing also does nothing if nobody has told the board
