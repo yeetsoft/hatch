@@ -15,11 +15,13 @@
    `role="dialog"` and `aria-modal="true"`, which is what the Undo shortcut and
    the confirmation clock both look for, and it gives focus back on dismissal.
 
-   Status is the one command that does not close it. `>status` swaps the list for
-   the issue's columns, and a column moves the issue through the page's own
-   `send`; if that closes work, what is under the issue is asked as two rows,
-   Yes and No, where the status bar would have opened a dialog. A refusal is
-   said in the status line and the console stays.
+   Status, Priority and Pre-approval are the commands that do not close it. Each
+   swaps the list for its own: `>status` for the issue's columns, `>priority` and
+   `>pre-approval` for the levels. A column moves the issue through the page's
+   own `send`; if that closes work, what is under the issue is asked as two rows,
+   Yes and No, where the status bar would have opened a dialog. A level sends
+   what the band sends, and the page reloads. A refusal is said in the status
+   line and the console stays.
 
    Mounted only while open, so the prompt starts empty every time - the rule
    IssuePicker states for the same reason. */
@@ -38,11 +40,22 @@ import { StatusDot } from './StatusPill';
 import { boardColumns } from '../lib/columns';
 import { SEARCH_ROW, entryKeys, goToRows, goToStatus, whereOnBoard } from '../lib/goTo';
 import type { GoToLoad, Mark } from '../lib/goTo';
-import { commandList, commandRows, commandStatus, statusStepRows } from '../lib/consoleCommands';
+import {
+  commandList,
+  commandRows,
+  commandStatus,
+  preApprovalStepRows,
+  priorityStepRows,
+  statusStepRows,
+} from '../lib/consoleCommands';
 import type { Command, CommandContext, CommandEnv, CommandStep } from '../lib/consoleCommands';
 import { MODE_LABEL, MODE_VERB, PREFIXES, parsePrompt } from '../lib/consolePrompt';
 import { closeQuestion, questionRows } from '../lib/consoleQuestion';
 import { message } from '../lib/errors';
+import { PRE_APPROVAL_LEVELS } from '../lib/preApproval';
+import type { PreApproval } from '../lib/preApproval';
+import { PRIORITY_LEVELS } from '../lib/priority';
+import type { Priority } from '../lib/priority';
 import { confirmMove } from '../lib/protectedColumns';
 import { searchPath } from '../lib/search';
 import type { CloseSubtree } from '../lib/useCloseSubtree';
@@ -76,6 +89,9 @@ export interface OmniBarProps {
   closing: CloseSubtree;
   /** Moves the issue in view. Rejects with the server's refusal. */
   onMove: (key: string, statusId: number) => Promise<MoveOutcome>;
+  /** Sets the issue in view's priority or pre-approval, then has the page
+      reload. Rejects with the server's refusal. */
+  onSet: (key: string, change: SetChange) => Promise<void>;
   /** The console is done. Focus has already gone back to where it was where the
       person is still on this page - a command that runs, or a dismissal. */
   onClose: () => void;
@@ -84,6 +100,17 @@ export interface OmniBarProps {
 /** How a move came out, from the console's side: nothing to ask, a question to
     ask inline, or a dialog that took over. */
 export type MoveOutcome = 'moved' | 'offered' | 'asked';
+
+/** What the prompt says it is doing in a step, and its verb. */
+const STEP_LABEL: Record<CommandStep, string> = {
+  status: 'Set the status',
+  priority: 'Set the priority',
+  preapproval: 'Set the pre-approval',
+};
+const STEP_VERB: Record<CommandStep, string> = { status: 'status', priority: 'priority', preapproval: 'pre-approval' };
+
+/** A level the console sets: what the band's own press sends. */
+export type SetChange = { kind: 'priority'; level: Priority } | { kind: 'preapproval'; level: PreApproval };
 
 /** The text with its matched runs lit. */
 function Marked({ text, marks }: { text: string; marks: Mark[] }): ReactNode {
@@ -110,16 +137,17 @@ export function OmniBar({
   env,
   closing,
   onMove,
+  onSet,
   onClose,
 }: OmniBarProps) {
   const [query, setQuery] = useState('');
   /* The second list a command opened, or null. In one, the prompt's text only
      narrows that list: there is no prefix to read. */
   const [step, setStep] = useState<CommandStep | null>(null);
-  /* A move is on its way: what is moving and where, for the status line. The
-     ref is what the blur and the keys read, since they may fire before a
+  /* A move or a set is on its way: what it is, as the status line's sentence.
+     The ref is what the blur and the keys read, since they may fire before a
      render has seen the state. */
-  const [moving, setMoving] = useState<{ key: string; column: string } | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
   const movingNow = useRef(false);
   /* The server's refusal, in its own words, until the person does anything else. */
   const [failure, setFailure] = useState<string | null>(null);
@@ -145,15 +173,21 @@ export function OmniBar({
   const parsed = parsePrompt(query);
   const mode = step ? 'commands' : parsed.mode;
   const asked = step ? query : parsed.query;
-  const { isAdmin, pathname, view, filters } = commandContext;
+  const { isAdmin, pathname, view, canSet, filters } = commandContext;
   const offer = closing.offer;
 
   const { rows, total } = useMemo(
     () => (mode === 'issues' ? goToRows(cards, asked, scopeKeys) : { rows: [], total: 0 }),
     [mode, cards, asked, scopeKeys],
   );
-  const commands = useMemo(() => commandList({ isAdmin, pathname, view, filters }), [isAdmin, pathname, view, filters]);
-  const stepCommands = useMemo(() => (step && view ? statusStepRows(view) : []), [step, view]);
+  const commands = useMemo(
+    () => commandList({ isAdmin, pathname, view, canSet, filters }),
+    [isAdmin, pathname, view, canSet, filters],
+  );
+  const stepCommands = useMemo(() => {
+    if (!step || !view) return [];
+    return step === 'status' ? statusStepRows(view) : step === 'priority' ? priorityStepRows(view) : preApprovalStepRows(view);
+  }, [step, view]);
   const found = useMemo(
     () =>
       step
@@ -216,7 +250,7 @@ export function OmniBar({
     }
 
     movingNow.current = true;
-    setMoving({ key, column: target.name });
+    setMoving(`moving ${key} to ${target.name}…`);
     setFailure(null);
     try {
       const outcome = await onMove(key, statusId);
@@ -229,6 +263,28 @@ export function OmniBar({
         done.current = true;
         onClose();
       } else if (outcome === 'moved') dismiss();
+    } catch (err) {
+      if (!done.current) setFailure(message(err));
+    } finally {
+      movingNow.current = false;
+      setMoving(null);
+    }
+  }
+
+  async function startSet(change: SetChange) {
+    if (!view || movingNow.current || done.current) return;
+    const { key } = view.card;
+    const word = change.kind === 'priority' ? 'priority' : 'pre-approval';
+    const level = (change.kind === 'priority' ? PRIORITY_LEVELS : PRE_APPROVAL_LEVELS).find(
+      (l) => l.name === change.level,
+    )?.word;
+
+    movingNow.current = true;
+    setMoving(`setting ${key} ${word} to ${level}…`);
+    setFailure(null);
+    try {
+      await onSet(key, change);
+      if (!done.current) dismiss();
     } catch (err) {
       if (!done.current) setFailure(message(err));
     } finally {
@@ -254,6 +310,8 @@ export function OmniBar({
   const commandEnv: CommandEnv = {
     ...env,
     move: (statusId) => void startMove(statusId),
+    setPriority: (level) => void startSet({ kind: 'priority', level }),
+    setPreApproval: (level) => void startSet({ kind: 'preapproval', level }),
     openStep,
   };
 
@@ -318,20 +376,20 @@ export function OmniBar({
     activeRow.current?.scrollIntoView({ block: 'nearest' });
   }, [active, query]);
 
-  const dialogLabel = offer ? closeQuestion(offer) : step ? 'Set the status' : MODE_LABEL[mode];
-  const verb = offer ? 'ask' : step ? 'status' : MODE_VERB[mode];
-  const statusLine = moving
-    ? `moving ${moving.key} to ${moving.column}…`
-    : (failure ??
-      (offer
-        ? closing.busy
-          ? 'closing…'
-          : (closing.error ?? 'enter answers')
-        : mode === 'commands'
-          ? (activeCommand?.disabled ?? commandStatus(found.rows.length, found.total))
-          : mode === 'help'
-            ? PREFIXES.map((row) => `${row.prefix} ${row.mode === 'help' ? 'this list' : row.mode}`).join(' · ')
-            : goToStatus(asked, rows.length, total, load)));
+  const dialogLabel = offer ? closeQuestion(offer) : step ? STEP_LABEL[step] : MODE_LABEL[mode];
+  const verb = offer ? 'ask' : step ? STEP_VERB[step] : MODE_VERB[mode];
+  const statusLine =
+    moving ??
+    failure ??
+    (offer
+      ? closing.busy
+        ? 'closing…'
+        : (closing.error ?? 'enter answers')
+      : mode === 'commands'
+        ? (activeCommand?.disabled ?? commandStatus(found.rows.length, found.total))
+        : mode === 'help'
+          ? PREFIXES.map((row) => `${row.prefix} ${row.mode === 'help' ? 'this list' : row.mode}`).join(' · ')
+          : goToStatus(asked, rows.length, total, load));
   const rowKey = (key: string) => (key === SEARCH_ROW ? searchRowId : rowId(key));
 
   return (

@@ -7,18 +7,24 @@ import {
   commandStatus,
   filterCommands,
   offered,
+  preApprovalStepRows,
+  priorityStepRows,
   squash,
   statusStepRows,
 } from './consoleCommands';
 import type { Command, CommandContext, CommandEnv, FilterHandle, IssueView } from './consoleCommands';
 import { DEFAULT_FILTER } from './filter';
 import type { CardFilter } from './filter';
+import { PERMISSION_TITLE, PRE_APPROVAL_LEVELS } from './preApproval';
+import type { PreApproval } from './preApproval';
+import { PRIORITY_LEVELS } from './priority';
+import type { Priority } from './priority';
 import { moveBlocked } from './protectedColumns';
 import { navRows } from './nav';
 import type { IssueCard, Project, Status } from '../types';
 
-const admin: CommandContext = { isAdmin: true, pathname: '/', view: null };
-const person: CommandContext = { isAdmin: false, pathname: '/', view: null };
+const admin: CommandContext = { isAdmin: true, pathname: '/', view: null, canSet: false };
+const person: CommandContext = { isAdmin: false, pathname: '/', view: null, canSet: false };
 
 const names = (commands: Command[]) => commands.map((c) => c.name);
 const find = (commands: Command[], name: string) => commands.find((c) => c.name === name)!;
@@ -29,6 +35,8 @@ function env() {
   const themes: ThemeChoice[] = [];
   const filters: CardFilter[] = [];
   const moved: number[] = [];
+  const priorities: Priority[] = [];
+  const approvals: PreApproval[] = [];
   const steps: string[] = [];
   const filed = { count: 0 };
   const queue = { opened: 0 };
@@ -37,11 +45,13 @@ function env() {
     setTheme: (c) => themes.push(c),
     changeFilter: (next) => filters.push(next),
     move: (id) => moved.push(id),
+    setPriority: (level) => priorities.push(level),
+    setPreApproval: (level) => approvals.push(level),
     openStep: (step) => steps.push(step),
     newIssue: () => filed.count++,
     openQueue: () => queue.opened++,
   };
-  return { fake, went, themes, filters, moved, steps, filed, queue };
+  return { fake, went, themes, filters, moved, priorities, approvals, steps, filed, queue };
 }
 
 const made = (name: string, over: Partial<Command> = {}): Command => ({
@@ -468,5 +478,133 @@ describe('ranking with Status', () => {
       'Dark mode, theme',
       'Open the theme',
     ]);
+  });
+});
+
+/* The two level steps. Their words and order are the controls' own, read here
+   from the shared tables, so the test names no level the code does not. */
+const levelled = (over: Partial<IssueCard> = {}, inProject: Project | null = project(false)): CommandContext => ({
+  ...person,
+  canSet: true,
+  view: viewOf({ card: issue({ priorityOwn: 'normal', preApprovalOwn: 'none', ...over }), project: inProject }),
+});
+const isLevelRow = (name: string) => name.startsWith('Priority') || name.startsWith('Pre-approval');
+
+describe('the Priority and Pre-approval commands', () => {
+  it('are not offered with no issue in view', () => {
+    expect(names(commandList({ ...person, canSet: true, view: null })).filter(isLevelRow)).toEqual([]);
+  });
+
+  it('are not offered to a caller who is not a person', () => {
+    expect(names(commandList({ ...levelled(), canSet: false })).filter(isLevelRow)).toEqual([]);
+  });
+
+  it('open with their own rows, right after Status', () => {
+    const list = commandList(levelled());
+    expect(names(list).slice(0, 3)).toEqual(['Status', 'Priority', 'Pre-approval']);
+    expect(find(list, 'Priority')).toMatchObject({ hint: 'issue', stays: true, step: 'priority' });
+    expect(find(list, 'Pre-approval')).toMatchObject({ hint: 'issue', stays: true, step: 'preapproval' });
+  });
+
+  it('list a flat row per level in the controls order, after the Status rows', () => {
+    const list = commandList(levelled());
+    const flat = names(list.filter((c) => c.name.includes(' → ') && !c.name.startsWith('Theme')));
+    expect(flat).toEqual([
+      ...COLUMNS.map((c) => `Status → ${c.name}`),
+      ...PRIORITY_LEVELS.map((l) => `Priority → ${l.word}`),
+      ...PRE_APPROVAL_LEVELS.map((l) => `Pre-approval → ${l.word}`),
+    ]);
+    expect(list.map((c) => c.id)).toEqual(expect.arrayContaining(['priority:paused', 'preapproval:express']));
+  });
+
+  it('keep the flat rows out of the bare preview', () => {
+    const shown = names(commandRows(commandList(levelled()), '').rows);
+    expect(shown.some((n) => n.includes(' → ') && !n.startsWith('Theme'))).toBe(false);
+  });
+
+  it('give each step the controls order, by word alone', () => {
+    const view = levelled().view!;
+    expect(names(priorityStepRows(view))).toEqual(PRIORITY_LEVELS.map((l) => l.word));
+    expect(names(preApprovalStepRows(view))).toEqual(PRE_APPROVAL_LEVELS.map((l) => l.word));
+    expect(priorityStepRows(view)[0].id).toBe('step:priority:emergency');
+    expect(preApprovalStepRows(view)[0].id).toBe('step:preapproval:none');
+  });
+
+  it('mark the own level current and never run it', () => {
+    const view = levelled({ priorityOwn: 'expedited', preApprovalOwn: 'express' }).view!;
+    expect(find(priorityStepRows(view), 'Expedited')).toMatchObject({ hint: 'current', disabled: 'Already Expedited' });
+    expect(find(preApprovalStepRows(view), 'Express')).toMatchObject({ hint: 'current', disabled: 'Already Express' });
+    expect(find(priorityStepRows(view), 'Paused').disabled).toBeUndefined();
+    const flat = commandList({ ...person, canSet: true, view });
+    expect(find(flat, 'Priority → Expedited').hint).toBe('current');
+    expect(find(flat, 'Pre-approval → Express').hint).toBe('current');
+  });
+
+  it('mark the own level, not the inherited one', () => {
+    const view = levelled({ priority: 'expedited', priorityOwn: 'normal', priorityFrom: 'AER-9' }).view!;
+    expect(find(priorityStepRows(view), 'Normal').hint).toBe('current');
+    expect(find(priorityStepRows(view), 'Expedited').hint).toBe('priority');
+  });
+
+  it('block Pre-approved with the permission sentence for a non-approver', () => {
+    const list = commandList(levelled());
+    expect(find(list, 'Pre-approval → Pre-approved')).toMatchObject({ hint: 'blocked', disabled: PERMISSION_TITLE });
+    expect(find(list, 'Pre-approval → Express').disabled).toBeUndefined();
+  });
+
+  it('read an unknown project as not an approver', () => {
+    expect(find(commandList(levelled({}, null)), 'Pre-approval → Pre-approved').disabled).toBe(PERMISSION_TITLE);
+  });
+
+  it('enable Pre-approved for an approver', () => {
+    const row = find(commandList(levelled({}, project(true))), 'Pre-approval → Pre-approved');
+    expect(row.disabled).toBeUndefined();
+    expect(row.hint).toBe('pre-approval');
+  });
+
+  it('lock lowering out of Pre-approved for a non-approver, and not for an approver', () => {
+    const locked = find(commandList(levelled({ preApprovalOwn: 'preapproved' })), 'Pre-approval → None');
+    expect(locked).toMatchObject({ hint: 'blocked', disabled: PERMISSION_TITLE });
+    const open = find(commandList(levelled({ preApprovalOwn: 'preapproved' }, project(true))), 'Pre-approval → None');
+    expect(open.disabled).toBeUndefined();
+  });
+
+  it('let current win over blocked', () => {
+    const row = find(commandList(levelled({ preApprovalOwn: 'preapproved' })), 'Pre-approval → Pre-approved');
+    expect(row).toMatchObject({ hint: 'current', disabled: 'Already Pre-approved' });
+  });
+
+  it('run with the level they name, and open their steps', () => {
+    const { fake, priorities, approvals, steps } = env();
+    const list = commandList(levelled({}, project(true)));
+    find(list, 'Priority → Expedited').run(fake);
+    find(list, 'Priority → Paused').run(fake);
+    find(list, 'Pre-approval → Express').run(fake);
+    find(list, 'Pre-approval → Pre-approved').run(fake);
+    find(list, 'Priority').run(fake);
+    find(list, 'Pre-approval').run(fake);
+    expect(priorities).toEqual(['expedited', 'paused']);
+    expect(approvals).toEqual(['express', 'preapproved']);
+    expect(steps).toEqual(['priority', 'preapproval']);
+  });
+
+  it('are reached by the level word first', () => {
+    const list = commandList(levelled());
+    expect(names(commandRows(list, 'expedited').rows)[0]).toBe('Priority → Expedited');
+    expect(names(commandRows(list, 'paused').rows)[0]).toBe('Priority → Paused');
+    expect(names(commandRows(list, 'express').rows)[0]).toBe('Pre-approval → Express');
+    expect(names(commandRows(list, 'none').rows)[0]).toBe('Pre-approval → None');
+  });
+
+  it('put the opener first for its own name', () => {
+    const list = commandList(levelled());
+    expect(names(commandRows(list, 'priority').rows)[0]).toBe('Priority');
+    expect(names(commandRows(list, 'preapproval').rows)[0]).toBe('Pre-approval');
+  });
+
+  it('put Priority before Status where a column shares a word', () => {
+    const shared = [column(1, 'Normal'), column(2, 'Paused')];
+    const list = commandList({ ...levelled(), view: viewOf({ statuses: shared, card: issue({ statusId: 1 }) }) });
+    expect(names(commandRows(list, 'paused').rows).slice(0, 2)).toEqual(['Priority → Paused', 'Status → Paused']);
   });
 });

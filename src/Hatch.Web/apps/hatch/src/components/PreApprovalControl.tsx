@@ -1,53 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { PERMISSION_TITLE, PRE_APPROVAL_LEVELS, approvalLocked } from '../lib/preApproval';
+import type { PreApproval, PreApprovalLevel } from '../lib/preApproval';
 import { priorityLandingFocus } from '../lib/priority';
 import type { AssigneeDirectory } from '../types';
 
-export type PreApproval = 'none' | 'express' | 'preapproved';
+/** What this file and its importers have always imported it from. */
+export type { PreApproval };
 
-interface PreApprovalLevel {
-  name: PreApproval;
-  word: string;
-  glyph: string;
-  class: string;
-  title: string;
-}
-
-/** Why a step is disabled for permission rather than for being current - the
-    exact sentence `IssuePreApprovalController.SetAsync` refuses the write
-    with, so a press this band offers never meets a 403 the server already
-    knew about. */
-const PERMISSION_TITLE =
-  "Only an owner or approver of the project may set pre-approval - it is the approve press given in advance";
-
-/** Every level the picker offers, in the order the band draws them - this is
-    the one place in the component that names a level. */
-const LEVELS: PreApprovalLevel[] = [
-  {
-    name: 'none',
-    word: 'None',
-    glyph: '',
-    class: '',
-    title: 'No approval banked: this issue asks for its own press at every gate, the same as any other.',
-  },
-  {
-    name: 'express',
-    word: 'Express',
-    glyph: '»',
-    class: 'express',
-    title:
-      'Carried past every column marked Express skips, with no session, whenever it holds no open question. Changes no gate but that one.',
-  },
-  {
-    name: 'preapproved',
-    word: 'Pre-approved',
-    glyph: '✓',
-    class: 'preapproved',
-    title:
-      'The approve press given in advance: carried past every column marked Express skips, and past the approval gate itself, whenever it holds no open question.',
-  },
-];
-
+const LEVELS = PRE_APPROVAL_LEVELS;
 const NONE = LEVELS.find((level) => level.name === 'none')!;
 const levelOf = (name: PreApproval): PreApprovalLevel => LEVELS.find((level) => level.name === name) ?? NONE;
 
@@ -89,7 +50,7 @@ function PreApprovalBand({
     <div className="hatch-preapproval-steps" role="group" aria-label="Set pre-approval">
       {LEVELS.map((level) => {
         const here = level.name === current;
-        const permissionLocked = !here && !canApprove && (level.name === 'preapproved' || current === 'preapproved');
+        const permissionLocked = approvalLocked(level.name, current, canApprove);
         const disabled = here || permissionLocked;
         const label =
           level.name === 'none' && preApprovalFrom ? `None (inherits ${inheritWord} from ${preApprovalFrom})` : level.word;

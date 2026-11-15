@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { priorityLandingFocus } from './priority';
+import { PRIORITY_LEVELS, priorityLandingFocus } from './priority';
 
 const levels = [{ name: 'emergency' }, { name: 'expedited' }, { name: 'normal' }];
 
@@ -18,5 +18,26 @@ describe('priorityLandingFocus', () => {
 
   it('has nowhere to land on an empty list', () => {
     expect(priorityLandingFocus([], 'normal')).toBeNull();
+  });
+});
+
+describe('PRIORITY_LEVELS', () => {
+  it('are in the band order, highest first', () => {
+    expect(PRIORITY_LEVELS.map((level) => level.name)).toEqual([
+      'emergency',
+      'expedited',
+      'normal',
+      'low',
+      'economy',
+      'paused',
+    ]);
+    expect(PRIORITY_LEVELS.map((level) => level.word)).toEqual([
+      'Emergency',
+      'Expedited',
+      'Normal',
+      'Low',
+      'Economy',
+      'Paused',
+    ]);
   });
 });

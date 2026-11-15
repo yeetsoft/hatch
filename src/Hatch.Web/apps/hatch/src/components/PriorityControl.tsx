@@ -1,67 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
-import { priorityLandingFocus } from '../lib/priority';
+import { PRIORITY_LEVELS, priorityLandingFocus } from '../lib/priority';
+import type { Priority, PriorityLevel } from '../lib/priority';
 import type { AssigneeDirectory } from '../types';
 
-export type Priority = 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused';
+/** What this file and its importers have always imported it from. */
+export type { Priority };
 
-interface PriorityLevel {
-  name: Priority;
-  word: string;
-  glyph: string;
-  class: string;
-  title: string;
-}
-
-/** Every level the picker offers, in the order the band draws them - this is
-    the one place in the component that names a level. */
-const LEVELS: PriorityLevel[] = [
-  {
-    name: 'emergency',
-    word: 'Emergency',
-    glyph: '🚨',
-    class: 'emergency',
-    title:
-      'The highest priority: goes first, above everything expedited, and the dispatcher considers it before anything else.',
-  },
-  {
-    name: 'expedited',
-    word: 'Expedited',
-    glyph: '↑',
-    class: 'expedited',
-    title: 'This one goes first: it floats to the top of its column and the dispatcher reaches for it before anything else.',
-  },
-  {
-    name: 'normal',
-    word: 'Normal',
-    glyph: '',
-    class: '',
-    title: 'No float: this one waits its turn in the column, in the usual order.',
-  },
-  {
-    name: 'low',
-    word: 'Low',
-    glyph: '↓',
-    class: 'low',
-    title: 'Low — reached after everything normal, and only while the session window is on pace.',
-  },
-  {
-    name: 'economy',
-    word: 'Economy',
-    glyph: '🌙',
-    class: 'economy',
-    title:
-      'Worked only with usage that would otherwise go spare - the dispatcher reaches for it last, and only when the account is ahead of pace.',
-  },
-  {
-    name: 'paused',
-    word: 'Paused',
-    glyph: '⏸',
-    class: 'paused',
-    title: 'Paused: a person set this aside; the loop leaves it where it stands until they set it back.',
-  },
-];
-
+const LEVELS = PRIORITY_LEVELS;
 const NORMAL = LEVELS.find((level) => level.name === 'normal')!;
 const levelOf = (name: Priority): PriorityLevel => LEVELS.find((level) => level.name === name) ?? NORMAL;
 
