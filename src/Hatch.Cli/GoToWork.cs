@@ -273,6 +273,14 @@ public sealed class Tally
     /// <summary>The sentence naming what ended the run.</summary>
     public string? StopWhy { get; set; }
 
+    /// <summary>
+    /// Set alongside <see cref="StopWhy"/> on the two ways a pass ends
+    /// <see cref="Pass.Fatal"/> - a workspace that cannot be reset, or a pick
+    /// the board refused outright - so <see cref="GoToWork.RunAsync"/> can
+    /// tell that end from an ordinary one and exit 1 for it.
+    /// </summary>
+    public bool Fatal { get; set; }
+
     // Everything the loop has to stop for, and none of them set by default. An
     // unattended run that stopped for a reason nobody asked for would be a run
     // somebody has to check on, which is the thing being built away from.
@@ -843,7 +851,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                        [--max-tokens-per-hour <count>]",
         "                        [--until <HH:MM>]",
         "                        [--stop-file <path>] [--no-keys]",
-        "                        [--restart-after <minutes> | --no-restart]",
+        "                        [--restart-after <minutes> | --no-restart] [--abort-merge]",
         "                        [--repo <path>]... [--workspace <dir>] [--runners <n>]",
         "",
         "  `work` in a circle: the next actionable issue, one increment, ask again -",
@@ -914,6 +922,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "  --restart-after 0 ...only when its own source actually changed",
         "  --no-restart      ...never",
         "",
+        "  --abort-merge     abort any merge in progress in a served checkout, the",
+        "                    loop's or not, and carry on - uncommitted edits in that",
+        "                    merge are discarded",
+        "",
         "  Exits 0 when the run ended; 1 on a refusal; 75 asking a supervisor to",
         "  rebuild and run it again; 130 on an interrupt.",
     ];
@@ -931,6 +943,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var mine = false;
         var restartAfter = RestartAfterMinutes;
         var noRestart = false;
+        var abortMerge = false;
         int? maxRuns = null;
         decimal? maxSpend = null;
         long? maxTokens = null;
@@ -1028,6 +1041,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                     break;
                 case "--no-restart": noRestart = true; break;
+                case "--abort-merge": abortMerge = true; break;
                 // Recognised so it is not refused as an unknown flag - Program.cs
                 // already acted on it, before this command was ever constructed.
                 case "--no-keys": break;
@@ -1281,7 +1295,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             try
             {
-                restarting = await LoopAsync(under, quiet, mine, once, interval, mergeInterval, tally, restart, ct);
+                restarting = await LoopAsync(under, quiet, mine, once, abortMerge, interval, mergeInterval, tally, restart, ct);
+                refused |= tally.Fatal;
 
                 // A restart that could not hand the night's totals over would be
                 // a fresh night: the budget back to nothing, the streak cleared,
@@ -1424,7 +1439,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     /// <summary>Answers whether the loop is asking to come back as a newer version of itself.</summary>
     private async Task<bool> LoopAsync(
-        string? under, bool quiet, bool mine, bool once, int interval, int mergeInterval, Tally tally,
+        string? under, bool quiet, bool mine, bool once, bool abortMerge, int interval, int mergeInterval, Tally tally,
         Restarts restart, CancellationToken ct)
     {
         var idle = new SaidOnce();
@@ -1624,7 +1639,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     continue;
                 }
 
-                var ordered = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, restart, line, ct,
+                var ordered = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, abortMerge, restart, line, ct,
                     orderedKey: ordering.Kind == RunnerOrderKinds.Work ? ordering.Key : null);
                 if (ordered == Pass.Worked) workedSinceProbe = true;
                 if (ordered == Pass.Fatal) return false;
@@ -1923,7 +1938,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // straight on asks git nothing more than one that waited.
             await poll.RunAsync(runtime, interval, ct);
 
-            var pass = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, restart, line, ct);
+            var pass = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, abortMerge, restart, line, ct);
             if (pass == Pass.Worked) workedSinceProbe = true;
             if (pass == Pass.Fatal) return false;
             if (pass == Pass.Restarting) return true;
@@ -2272,8 +2287,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     private async Task<Pass> PassAsync(
         string? under, bool quiet, bool mine, Tally tally,
-        SaidOnce idle, SaidOnce busy, Printed printed, int interval, bool once, Restarts restart, Chatter line, CancellationToken ct,
-        string? orderedKey = null)
+        SaidOnce idle, SaidOnce busy, Printed printed, int interval, bool once, bool abortMerge, Restarts restart, Chatter line,
+        CancellationToken ct, string? orderedKey = null)
     {
         // Hoisted so the catch below - which has to cover picking, claiming,
         // preparing the tree, the session, judging it and tidying up, in one
@@ -2389,6 +2404,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     // through the three-failures tally.
                     line.Line = "the board refused this pass";
                     tally.StopWhy = picked.Refusal;
+                    tally.Fatal = true;
                     return Pass.Fatal;
 
                 case Pick.Hopped:
@@ -2446,7 +2462,21 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // the pass.
             foreach (var (path, baseBranch) in chosen.Resets)
             {
-                switch (runtime.Workspace(path, baseBranch).Prepare())
+                var ws = runtime.Workspace(path, baseBranch);
+                var reset = ws.Prepare();
+
+                // --abort-merge answers in advance the question a merge in the
+                // way would otherwise stop the night to ask: clear it past what
+                // the plain abort above already tried, and ask again. A refusal
+                // leaves reset at Merging, so it falls into the same case below
+                // as a tree that was never forced at all.
+                if (reset == Reset.Merging && abortMerge)
+                {
+                    reset = MergeAbort.Clear(ws, path, () => ws.Prepare(), runtime.Say.Line, out var refusal);
+                    if (refusal is { Length: > 0 }) runtime.Say.Complain(refusal);
+                }
+
+                switch (reset)
                 {
                     case Reset.Never:
                     case Reset.Merging:
@@ -2456,6 +2486,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                         // current is a tree every ticket would be built wrong
                         // on, and the loop has no way to make it right.
                         tally.StopWhy = $"the workspace could not be reset ({path})";
+                        tally.Fatal = true;
                         return Pass.Fatal;
 
                     case Reset.Later:

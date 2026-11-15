@@ -1115,7 +1115,10 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
   not set in this clone. `git remote set-head origin -a` fixes it, or name
   the branch in `HATCH_BASE_BRANCH`.
 - **`hatch: the tree has changes in it that would not stash`.** A merge in
-  progress, or a conflicted file. Clear it by hand; the loop will not guess.
+  progress, or a conflicted file. Clear it by hand, or run with
+  `--abort-merge` to clear any merge in progress automatically and carry on -
+  it discards whatever was uncommitted in that merge, so use it only when the
+  conflict is nobody's to keep.
 - **`hatch: a go-to-work is already running in <path>, pid <n>`.** One loop
   per checkout. Join that one, stop it, or use another checkout.
 - **`hatch: the workspace <dir> is already served by pid <n>, from

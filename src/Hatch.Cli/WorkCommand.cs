@@ -16,6 +16,7 @@ public sealed class WorkCommand(Runtime runtime)
         "usage: hatch work [<issue key>] [--mine] [--under <epic key>] [-i] [--quiet]",
         "                  [--project <key>]...",
         "                  [--model <model>] [--effort <effort>] [--dry-run] [--no-keys]",
+        "                  [--abort-merge]",
         "                  [--repo <path>]... [--workspace <dir>]",
         "",
         "  One increment: claim a ticket, spawn one headless agent session with the",
@@ -40,6 +41,9 @@ public sealed class WorkCommand(Runtime runtime)
         "  --dry-run          print the prompt and exit: claims nothing, spawns nothing,",
         "                     and clones nothing even where a workspace is configured",
         "  --no-keys          read no keys from this terminal - Ctrl-C and --stop-file still work",
+        "  --abort-merge      abort any merge in progress in a served checkout, the",
+        "                     loop's or not, and carry on - uncommitted edits in that",
+        "                     merge are discarded",
         "  --repo <path>      also serve this checkout, repeatable - the whole list for this",
         "                     run, beside the standing checkout if there is one; HATCH_REPOS",
         "                     is not consulted when this is given",
@@ -62,6 +66,7 @@ public sealed class WorkCommand(Runtime runtime)
         var attach = false;
         var quiet = false;
         var mine = false;
+        var abortMerge = false;
         var repoFlags = new List<string>();
         var projectFlags = new List<string>();
         string? workspaceFlag = null;
@@ -79,6 +84,7 @@ public sealed class WorkCommand(Runtime runtime)
                 case "--under" when i + 1 < args.Length: under = args[++i]; break;
                 case "--dry-run": dry = true; break;
                 case "--quiet": quiet = true; break;
+                case "--abort-merge": abortMerge = true; break;
                 // Recognised so it is not refused as an unknown flag - Program.cs
                 // already acted on it, before this command was ever constructed.
                 case "--no-keys": break;
@@ -204,7 +210,7 @@ public sealed class WorkCommand(Runtime runtime)
         }
 
         runtime = served;
-        try { return await SpendAsync(key, under, mine, model, effort, attach, quiet, ct); }
+        try { return await SpendAsync(key, under, mine, model, effort, attach, quiet, abortMerge, ct); }
         finally { held?.Dispose(); }
     }
 
@@ -300,7 +306,7 @@ public sealed class WorkCommand(Runtime runtime)
         $"hatch: {key} - the project's repositories changed under us since this was read - try again";
 
     private async Task<int> SpendAsync(
-        string? key, string? under, bool mine, string? model, string? effort, bool attach, bool quiet,
+        string? key, string? under, bool mine, string? model, string? effort, bool attach, bool quiet, bool abortMerge,
         CancellationToken ct)
     {
         if (!runtime.Sessions.CanSpawn(out var missing))
@@ -552,7 +558,20 @@ public sealed class WorkCommand(Runtime runtime)
             // stashed, because somebody is sitting there and they are theirs.
             foreach (var (path, baseBranch) in chosen.Resets)
             {
-                switch (runtime.Workspace(path, baseBranch).Prepare(stash: false))
+                var ws = runtime.Workspace(path, baseBranch);
+                var reset = ws.Prepare(stash: false);
+
+                // --abort-merge answers in advance the question a merge in the
+                // way would otherwise refuse the run for: clear it past what the
+                // plain abort already tried, and ask again. A refusal leaves
+                // reset at Merging, so it falls into the same case below.
+                if (reset == Reset.Merging && abortMerge)
+                {
+                    reset = MergeAbort.Clear(ws, path, () => ws.Prepare(stash: false), runtime.Say.Line, out var abortRefusal);
+                    if (abortRefusal is { Length: > 0 }) runtime.Say.Complain(abortRefusal);
+                }
+
+                switch (reset)
                 {
                     case Reset.Never:
                     case Reset.Merging:

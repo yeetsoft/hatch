@@ -226,6 +226,75 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("the workspace could not be reset", StringComparison.Ordinal));
     }
 
+    // ---- --abort-merge ----
+
+    [Fact]
+    public async Task Abort_merge_clears_a_merge_somebody_else_started_and_goes_to_work()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Workspace.PrepareAnswers.Enqueue(Reset.Merging);
+        h.Workspace.PrepareAnswers.Enqueue(Reset.Ready);
+        h.Workspace.AbortMergeAnswer = new ForcedAbort(AbortOutcome.Aborted, OwnMarker: false, Discarded: 0, null, null);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--abort-merge"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Equal(
+            [$"prepare {h.Root}", $"abort-merge {h.Root}", $"prepare {h.Root}"],
+            h.Workspace.Calls.Where(c => c.StartsWith("prepare ", StringComparison.Ordinal) || c.StartsWith("abort-merge ", StringComparison.Ordinal)));
+        Assert.Contains(
+            h.Say.Said,
+            l => l.Contains("--abort-merge: aborted a merge hatch did not start", StringComparison.Ordinal) &&
+                 l.Contains("0 uncommitted file(s) discarded", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Abort_merge_names_the_loops_own_merge_differently()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Workspace.PrepareAnswers.Enqueue(Reset.Merging);
+        h.Workspace.PrepareAnswers.Enqueue(Reset.Ready);
+        h.Workspace.AbortMergeAnswer = new ForcedAbort(AbortOutcome.ResetHard, OwnMarker: true, Discarded: 3, null, null);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--abort-merge"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Contains(
+            h.Say.Said,
+            l => l.Contains("--abort-merge: aborted a merge the loop started", StringComparison.Ordinal) &&
+                 l.Contains("3 uncommitted file(s) discarded", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Abort_merge_that_still_refuses_ends_the_night_like_a_tree_that_cannot_reset()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Workspace.Answer = Reset.Merging;
+        h.Workspace.AbortMergeAnswer = new ForcedAbort(AbortOutcome.Refused, OwnMarker: true, Discarded: 1, "reset --hard", "fatal: could not reset");
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--abort-merge"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains(h.Say.Complained, l => l.Contains("--abort-merge", StringComparison.Ordinal) && l.Contains("reset --hard refused", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Without_the_flag_a_merge_in_the_way_still_ends_the_night()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Workspace.Answer = Reset.Merging;
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("abort-merge ", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_fetch_that_did_not_answer_is_a_wait_and_the_ticket_still_goes_back()
     {

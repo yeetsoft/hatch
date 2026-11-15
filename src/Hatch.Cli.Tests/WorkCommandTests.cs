@@ -1032,6 +1032,68 @@ public sealed class WorkCommandTests
         Assert.Contains(h.Say.Said, l => l.Contains("what is left is in a terminal column", StringComparison.Ordinal));
     }
 
+    // ---- --abort-merge ----
+
+    [Fact]
+    public async Task Abort_merge_clears_a_merge_in_the_way_and_the_increment_runs()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+        h.Workspace.PrepareAnswers.Enqueue(Reset.Merging);
+        h.Workspace.PrepareAnswers.Enqueue(Reset.Ready);
+        h.Workspace.AbortMergeAnswer = new ForcedAbort(AbortOutcome.Aborted, OwnMarker: false, Discarded: 0, null, null);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--abort-merge"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Equal(
+            [$"prepare {h.Root}", $"abort-merge {h.Root}", $"prepare {h.Root}"],
+            h.Workspace.Calls.Where(c => c.StartsWith("prepare ", StringComparison.Ordinal) || c.StartsWith("abort-merge ", StringComparison.Ordinal)));
+        Assert.Contains(
+            h.Say.Said,
+            l => l.Contains("--abort-merge: aborted a merge hatch did not start", StringComparison.Ordinal) &&
+                 l.Contains("0 uncommitted file(s) discarded", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Abort_merge_that_still_refuses_refuses_the_run()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+        h.Workspace.Answer = Reset.Merging;
+        h.Workspace.AbortMergeAnswer =
+            new ForcedAbort(AbortOutcome.Refused, OwnMarker: true, Discarded: 1, "reset --hard", "fatal: could not reset");
+
+        Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--abort-merge"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains(h.Say.Complained, l => l.Contains("--abort-merge", StringComparison.Ordinal) && l.Contains("reset --hard refused", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Without_the_flag_a_merge_in_the_way_still_refuses_the_run()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+        h.Workspace.Answer = Reset.Merging;
+
+        Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("abort-merge ", StringComparison.Ordinal));
+    }
+
     // ---- --repo: checkouts a person names, rather than the one standing in ----
 
     private static string Tree(Harness h, string name, string origin)

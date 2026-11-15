@@ -397,6 +397,14 @@ public sealed class FakeWorkspace
     /// <summary>What any checkout not named in <see cref="AnswerFor"/> resets to.</summary>
     public Reset Answer { get; set; } = Reset.Ready;
 
+    /// <summary>
+    /// Answers for the next calls to <see cref="IWorkspace.Prepare"/>, in
+    /// order - dequeued ahead of <see cref="AnswerFor"/> and <see cref="Answer"/>,
+    /// for a test where the same checkout is prepared more than once in a pass
+    /// (a merge cleared by <c>--abort-merge</c>, say, and then found ready).
+    /// </summary>
+    public Queue<Reset> PrepareAnswers { get; } = [];
+
     /// <summary>What one particular checkout resets to, overriding <see cref="Answer"/>.</summary>
     public Dictionary<string, Reset> AnswerFor { get; } = [];
 
@@ -502,6 +510,7 @@ public sealed class FakeWorkspace
             owner.Stashed.Add(stash);
             owner.Watching?.Invoke();
             if (owner.PrepareThrows is { } thrown) throw thrown;
+            if (owner.PrepareAnswers.Count > 0) return owner.PrepareAnswers.Dequeue();
             return owner.AnswerFor.GetValueOrDefault(path, owner.Answer);
         }
 
