@@ -13,6 +13,14 @@ public enum Reset
 
     /// <summary>Something that will not fix itself. Worth stopping for.</summary>
     Never,
+
+    /// <summary>
+    /// A merge in progress is why the tree could not be made current - the
+    /// runner's own that would not abort, or somebody else's. Worth stopping
+    /// for, same as <see cref="Never"/>, until a caller learns to tell the two
+    /// apart.
+    /// </summary>
+    Merging,
 }
 
 /// <summary>
@@ -141,6 +149,14 @@ public interface IWorkspace
     /// wherever git cannot say rather than thrown.
     /// </summary>
     IReadOnlyList<PathCommits> Since(DateTimeOffset at, IReadOnlyList<string> paths);
+
+    /// <summary>
+    /// Clears a merge in progress, trying <c>git merge --abort</c>, then
+    /// <c>git reset --merge</c>, then <c>git reset --hard</c> - stopping at the
+    /// first that takes. Never deletes a branch, moves a branch, or touches a
+    /// commit.
+    /// </summary>
+    ForcedAbort AbortMerge();
 }
 
 /// <summary>What came of pushing a session's work after its account ran out of usage.</summary>
@@ -304,7 +320,7 @@ public sealed partial class Workspace(
         // shows up there as a wall of conflicted files, and is not something a
         // stash can take. The runner's own is taken back; anybody else's is not
         // the runner's to abort.
-        if (!SettleMerge()) return Reset.Never;
+        if (SettleMerge() == MergeSettled.Blocked) return Reset.Merging;
 
         if (!(stash ? Stash() : Refuse())) return Reset.Never;
 
@@ -357,44 +373,6 @@ public sealed partial class Workspace(
 
         complain($"hatch: the tree has changes in it ({named}) - commit or stash them first; this is not stashing them for you");
         return false;
-    }
-
-    /// <summary>
-    /// A merge in progress, and whether it is the runner's: it wrote a marker
-    /// before it started one, so a merge that is there with the marker was
-    /// interrupted, and one that is there without was somebody's.
-    /// </summary>
-    /// <remarks>
-    /// The marker is cleared whenever no merge is in progress, so one that
-    /// outlived its merge - the session resolved it and committed - does not
-    /// make a later merge by a person look like the runner's.
-    /// </remarks>
-    private bool SettleMerge()
-    {
-        var marker = MarkerPath();
-        var merging = MergeInProgress();
-
-        if (!merging)
-        {
-            if (marker is not null && File.Exists(marker)) File.Delete(marker);
-            return true;
-        }
-
-        if (marker is null || !File.Exists(marker))
-        {
-            complain("hatch: a merge is in progress in the tree and hatch did not start it - finish it or abort it by hand");
-            return false;
-        }
-
-        if (!Git("merge", "--abort").Ok)
-        {
-            complain("hatch: a merge the loop started was never finished, and would not abort - abort it by hand");
-            return false;
-        }
-
-        File.Delete(marker);
-        say("hatch:   aborted a merge the loop started and never finished");
-        return true;
     }
 
     private bool MergeInProgress() => GitPath("MERGE_HEAD") is { } head && File.Exists(head);

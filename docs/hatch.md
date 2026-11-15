@@ -8267,6 +8267,14 @@ which is how it tells its own unfinished merge from somebody else's; a merge
 with no marker is a person's, and still ends the night, because it is not the
 runner's to abort.
 
+The same interrupt can kill `git` mid-write and leave an `index.lock` behind it,
+which refuses `git merge --abort` on its own. The loop clears a lock it can tell
+predates itself — one written before this process started, which can only be a
+dead process's — and retries the abort, unasked. A lock written since is
+somebody else's git, still running, and is left alone. A forced clear past
+that, through `git reset --merge` and then `git reset --hard`, exists on the
+workspace too, but nothing here reaches for it except by name.
+
 #### The issue's branch
 
 A ticket that comes back for more work has a branch, and usually a pull request

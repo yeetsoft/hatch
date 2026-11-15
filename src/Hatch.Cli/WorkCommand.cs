@@ -555,6 +555,7 @@ public sealed class WorkCommand(Runtime runtime)
                 switch (runtime.Workspace(path, baseBranch).Prepare(stash: false))
                 {
                     case Reset.Never:
+                    case Reset.Merging:
                         return 1;
 
                     case Reset.Later:
