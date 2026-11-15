@@ -499,6 +499,9 @@ public sealed class FakeWorkspace
     /// <summary>What <c>AbortMerge</c> answers, for every checkout - a clean abort unless a test says otherwise.</summary>
     public ForcedAbort AbortMergeAnswer { get; set; } = new(AbortOutcome.Aborted, false, 0, null, null);
 
+    /// <summary>What <c>MergeBlocked</c> reads, for every checkout - null unless a test says what the reset stopped on.</summary>
+    public MergeBlock? MergeBlockAnswer { get; set; }
+
     public IWorkspace For(string path, string? baseBranch) => new Bound(this, path);
 
     private sealed class Bound(FakeWorkspace owner, string path) : IWorkspace
@@ -618,6 +621,8 @@ public sealed class FakeWorkspace
             owner.Calls.Add($"abort-merge {path}");
             return owner.AbortMergeAnswer;
         }
+
+        public MergeBlock? MergeBlocked => owner.MergeBlockAnswer;
 
         private BranchEntry Answer(string key, string title, bool trunkLanding) =>
             owner.EntryFor.TryGetValue(path, out var one) ? one

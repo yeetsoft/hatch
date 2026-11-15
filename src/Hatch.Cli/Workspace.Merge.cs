@@ -29,6 +29,16 @@ public enum AbortOutcome
 public sealed record ForcedAbort(AbortOutcome Outcome, bool OwnMarker, int Discarded, string? Step, string? Why);
 
 /// <summary>
+/// A merge in progress that a reset stopped on - what <see cref="Workspace.MergeBlocked"/>
+/// reads after <see cref="Workspace.Prepare"/> answers <see cref="Reset.Merging"/>, and what
+/// <see cref="Banner.MergeBlocked"/> reads it into a banner from.
+/// </summary>
+/// <param name="OwnMarker">The loop started this merge - the <c>hatch-merge</c> marker was there before it ran. False is somebody's own.</param>
+/// <param name="Why">What git said, for the loop's own merge that would not abort. Null for somebody's, since git is never asked.</param>
+/// <param name="Uncommitted">How many files <c>git status --porcelain</c> held - what a forced abort would discard.</param>
+public sealed record MergeBlock(bool OwnMarker, string? Why, int Uncommitted);
+
+/// <summary>
 /// Clearing a merge, two ways: the narrow one <see cref="Workspace.Prepare"/> and
 /// <see cref="Workspace.Leave"/> already made - a plain <c>merge --abort</c>,
 /// retried once past a lock the loop's own killed git left behind - and the
@@ -37,6 +47,14 @@ public sealed record ForcedAbort(AbortOutcome Outcome, bool OwnMarker, int Disca
 /// </summary>
 public sealed partial class Workspace
 {
+    /// <summary>
+    /// What the last reset found blocking it, when it stopped on <see cref="Reset.Merging"/> -
+    /// cleared at the start of every <see cref="SettleMerge"/> and set again at
+    /// whichever <see cref="MergeSettled.Blocked"/> return answered it.
+    /// </summary>
+    public MergeBlock? MergeBlocked { get; private set; }
+
+
     /// <summary>
     /// When this process itself started - so a lock dated before it can only be
     /// somebody else's git, already dead, and not a merge still being written
@@ -65,6 +83,8 @@ public sealed partial class Workspace
     /// </remarks>
     private MergeSettled SettleMerge()
     {
+        MergeBlocked = null;
+
         var marker = MarkerPath();
         var merging = MergeInProgress();
 
@@ -77,6 +97,7 @@ public sealed partial class Workspace
         if (marker is null || !File.Exists(marker))
         {
             complain("hatch: a merge is in progress in the tree and hatch did not start it - finish it or abort it by hand");
+            MergeBlocked = new MergeBlock(OwnMarker: false, Why: null, CountUncommitted());
             return MergeSettled.Blocked;
         }
 
@@ -84,6 +105,7 @@ public sealed partial class Workspace
         if (!abort.Ok)
         {
             complain($"hatch: a merge the loop started was never finished, and would not abort{abort.Because}");
+            MergeBlocked = new MergeBlock(OwnMarker: true, Why: abort.Why is { Length: > 0 } ? abort.Why : null, CountUncommitted());
             return MergeSettled.Blocked;
         }
 
@@ -126,9 +148,7 @@ public sealed partial class Workspace
     public ForcedAbort AbortMerge()
     {
         var ownMarker = MarkerPath() is { } marker && File.Exists(marker);
-
-        var status = Git("status", "--porcelain");
-        var discarded = status.Ok && status.Out.Trim().Length > 0 ? status.Out.Trim().Split('\n').Length : 0;
+        var discarded = CountUncommitted();
 
         if (GitPath("index.lock") is { } lockPath && File.Exists(lockPath)) File.Delete(lockPath);
 
@@ -145,6 +165,13 @@ public sealed partial class Workspace
         }
 
         return new ForcedAbort(AbortOutcome.Refused, ownMarker, discarded, lastStep, last.Why);
+    }
+
+    /// <summary>How many files <c>git status --porcelain</c> holds right now - what a forced abort would discard.</summary>
+    private int CountUncommitted()
+    {
+        var status = Git("status", "--porcelain");
+        return status.Ok && status.Out.Trim().Length > 0 ? status.Out.Trim().Split('\n').Length : 0;
     }
 
     private static readonly (string Step, AbortOutcome Outcome, string[] Args)[] AbortSteps =

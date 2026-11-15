@@ -567,8 +567,17 @@ public sealed class WorkCommand(Runtime runtime)
                 // reset at Merging, so it falls into the same case below.
                 if (reset == Reset.Merging && abortMerge)
                 {
-                    reset = MergeAbort.Clear(ws, path, () => ws.Prepare(stash: false), runtime.Say.Line, out var abortRefusal);
+                    reset = MergeAbort.Clear(ws, path, () => ws.Prepare(stash: false), runtime.Say.Line, out var abortRefusal, "--abort-merge");
                     if (abortRefusal is { Length: > 0 }) runtime.Say.Complain(abortRefusal);
+                }
+                else if (reset == Reset.Merging)
+                {
+                    // Nothing has already said "abort it in advance" - the
+                    // banner, and up to 30 seconds on `a`, before the same
+                    // refusal a tree that cannot be reset at all gets.
+                    var (asked, complaint) = await MergeAbort.AskAsync(runtime, ws, path, () => ws.Prepare(stash: false), ct);
+                    reset = asked;
+                    if (complaint is { Length: > 0 }) runtime.Say.Complain(complaint);
                 }
 
                 switch (reset)
