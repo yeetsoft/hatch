@@ -217,11 +217,26 @@ public sealed class GoToWorkTests
         OneTicket(h);
         h.Workspace.Answer = Reset.Never;
 
-        await new GoToWorkCommand(h.Runtime).RunAsync([], default);
+        // A refusal, so exit 1 - a supervisor reading the code can tell this
+        // night from one that ended on its own.
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
 
         // Nothing was spawned onto a tree the loop could not make current, and
         // the lease did not sit there until its TTL.
         Assert.Empty(h.Sessions.Spawned);
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains(h.Say.Said, l => l.Contains("the workspace could not be reset", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_tree_that_will_not_reset_exits_1_under_once_too_and_still_prints_the_tally()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Workspace.Answer = Reset.Never;
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
         Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("the workspace could not be reset", StringComparison.Ordinal));
     }
@@ -1654,7 +1669,7 @@ public sealed class GoToWorkTests
         h.Wire.Reply("GET", Queue, HttpStatusCode.BadRequest,
             "\"this key belongs to nobody, so it has no tickets of its own\"");
 
-        await new GoToWorkCommand(h.Runtime).RunAsync(["--mine"], default);
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--mine"], default));
 
         Assert.Empty(h.Sessions.Spawned);
         Assert.Empty(h.Wire.Calls.Where(c => c.Path.EndsWith("/claim", StringComparison.Ordinal)));
@@ -1970,7 +1985,7 @@ public sealed class GoToWorkTests
         h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
         h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", repositories: repos));
 
-        await new GoToWorkCommand(runtime).RunAsync([], default);
+        Assert.Equal(1, await new GoToWorkCommand(runtime).RunAsync([], default));
 
         Assert.Equal([primary.Path, other.Path], h.Workspace.Prepared);
         Assert.Empty(h.Sessions.Spawned);

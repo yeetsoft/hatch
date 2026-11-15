@@ -542,6 +542,48 @@ public sealed class WorkspaceTests : RepoFixture
     }
 
     [Fact]
+    public void A_refused_abort_says_what_git_complained_of()
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+        ws.Enter("HA-31", "Thing", null);
+
+        var lockPath = Path.Combine(_work, ".git", "index.lock");
+        File.WriteAllText(lockPath, "");
+
+        Assert.Equal(Reset.Merging, Ws().Prepare());
+
+        Assert.Contains(_complained, l =>
+            l.StartsWith("hatch: a merge the loop started was never finished, and would not abort - fatal: Unable to create", StringComparison.Ordinal)
+            && l.Contains("index.lock", StringComparison.Ordinal));
+        Assert.DoesNotContain(_said, l => l.Contains("aborted a merge", StringComparison.Ordinal));
+        Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
+    }
+
+    [Theory]
+    [InlineData("fatal: a reason git gave\nhint: second line\n", "hatch: a merge the loop started was never finished, and would not abort - fatal: a reason git gave")]
+    [InlineData("", "hatch: a merge the loop started was never finished, and would not abort")]
+    [InlineData("\n", "hatch: a merge the loop started was never finished, and would not abort")]
+    public void A_refused_abort_ends_at_git_first_line_or_where_it_did_with_none(string stderr, string complaint)
+    {
+        Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Prepare();
+        ws.Enter("HA-31", "Thing", null);
+
+        var refusing = new Workspace(_work, "main", _said.Add, _complained.Add,
+            (dir, args) => args.Contains("merge") && args.Contains("--abort") ? (128, "", stderr) : Run(dir, args));
+
+        Assert.Equal(Reset.Merging, refusing.Prepare());
+
+        Assert.Contains(complaint, _complained);
+        Assert.DoesNotContain(_complained, l => l.Contains("hint:", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void AbortMerge_clears_a_marked_merge_and_reports_its_own_marker_and_the_discarded_count()
     {
         Publish("ha-31-thing", "a.txt", "one\nBRANCH\nthree\n");

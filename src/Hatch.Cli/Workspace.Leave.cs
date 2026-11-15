@@ -54,7 +54,7 @@ public sealed partial class Workspace
             // A merge gets the same retry past the loop's own killed git that
             // Prepare gives it; rebase and cherry-pick have no marker of their
             // own and are left to the plain abort.
-            var cleared = what == "merge" ? TryAbortMerge() : Git(abort).Ok;
+            var cleared = (what == "merge" ? TryAbortMerge() : Git(abort)).Ok;
             if (cleared) Note($"a {what} was left in progress and has been aborted");
             else Note($"a {what} was left in progress and would not abort - the tree needs a person", bad: true);
         }
