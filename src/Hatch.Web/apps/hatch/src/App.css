@@ -8274,6 +8274,27 @@ button.hatch-option.chosen {
   white-space: nowrap;
 }
 
+/* The phone: the key, the column and the mark do not fit on one line with a
+   title ("[out of scope]" is fourteen characters of its own), so the title drops
+   to a line under them, indented past the marker, and the type column - the one
+   thing a row can do without - is dropped. Same breakpoint PHONE_QUERY names. */
+@media (max-width: 40rem) {
+  .hatch-omni-row {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  .hatch-omni-type {
+    display: none;
+  }
+
+  .hatch-omni-key ~ .hatch-omni-title {
+    flex: 1 0 100%;
+    order: 1;
+    padding-left: calc(1ch + var(--sp-3));
+  }
+}
+
 .hatch-omni-status {
   display: flex;
   justify-content: space-between;

@@ -353,7 +353,8 @@ export function IssuePeek({
         </div>
       }
     >
-      <div className="hatch-peek">
+      {/* data-console-over: the console may open over this dialog (components/ConsoleProvider.tsx). */}
+      <div className="hatch-peek" data-console-over="">
         <div className="hatch-peek-meta">
           <TypeBadge type={card.type} />
           {status && (
