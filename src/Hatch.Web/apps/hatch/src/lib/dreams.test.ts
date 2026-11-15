@@ -4,12 +4,14 @@ import {
   EMPTY_DREAMS,
   WEAVE_MODES,
   countLine,
+  deleteDreamQuestion,
   dreamsRequest,
   firstLine,
   hasMore,
   isUrl,
   offeredProjectId,
   readDreams,
+  remandedMore,
   removeDream,
   replaceDream,
   scrubbedDreamProject,
@@ -64,6 +66,14 @@ describe('readDreams', () => {
   it('reads an absent issue as an empty issueKey', () => {
     expect(readDreams(params({})).issueKey).toBe('');
   });
+
+  it('reads remandedFrom=HA-2 as itself', () => {
+    expect(readDreams(params({ remandedFrom: 'HA-2' })).remandedFrom).toBe('HA-2');
+  });
+
+  it('reads an absent remandedFrom as empty', () => {
+    expect(readDreams(params({})).remandedFrom).toBe('');
+  });
 });
 
 describe('writeDreams', () => {
@@ -89,14 +99,22 @@ describe('writeDreams', () => {
     expect(written.has('issueKey')).toBe(false);
   });
 
-  it('writes a full filter in the fixed order', () => {
-    const full: DreamFilters = { q: 'needle', projectId: '1', loose: true, issueKey: 'HA-1' };
+  it('omits an empty remandedFrom', () => {
+    expect(writeDreams({ ...EMPTY_DREAMS, remandedFrom: '' }).has('remandedFrom')).toBe(false);
+  });
 
-    expect([...writeDreams(full).keys()]).toEqual(['q', 'projectId', 'loose', 'issue']);
+  it('writes remandedFrom under its own key', () => {
+    expect(writeDreams({ ...EMPTY_DREAMS, remandedFrom: 'HA-2' }).get('remandedFrom')).toBe('HA-2');
+  });
+
+  it('writes a full filter in the fixed order', () => {
+    const full: DreamFilters = { q: 'needle', projectId: '1', loose: true, issueKey: 'HA-1', remandedFrom: 'HA-2' };
+
+    expect([...writeDreams(full).keys()]).toEqual(['q', 'projectId', 'loose', 'issue', 'remandedFrom']);
   });
 
   it('round-trips a valid filter through readDreams', () => {
-    const full: DreamFilters = { q: 'needle', projectId: '1', loose: true, issueKey: 'HA-1' };
+    const full: DreamFilters = { q: 'needle', projectId: '1', loose: true, issueKey: 'HA-1', remandedFrom: 'HA-2' };
 
     expect(readDreams(writeDreams(full))).toEqual(full);
   });
@@ -121,8 +139,14 @@ describe('dreamsRequest', () => {
     expect(request.has('issue')).toBe(false);
   });
 
+  it('renames remandedFrom to remandedFromKey', () => {
+    const request = dreamsRequest({ ...EMPTY_DREAMS, remandedFrom: 'HA-2' }, 0, []);
+    expect(request.get('remandedFromKey')).toBe('HA-2');
+    expect(request.has('remandedFrom')).toBe(false);
+  });
+
   it('carries q, projectId and loose through unrenamed', () => {
-    const request = dreamsRequest({ q: 'needle', projectId: '1', loose: true, issueKey: '' }, 0, []);
+    const request = dreamsRequest({ q: 'needle', projectId: '1', loose: true, issueKey: '', remandedFrom: '' }, 0, []);
     expect(request.get('q')).toBe('needle');
     expect(request.get('projectId')).toBe('1');
     expect(request.get('loose')).toBe('true');
@@ -147,7 +171,7 @@ describe('dreamsRequest', () => {
   });
 
   it('still carries q, loose, issueKey, limit and offset with a scope', () => {
-    const request = dreamsRequest({ q: 'needle', projectId: '', loose: true, issueKey: 'HA-1' }, 50, [1, 2]);
+    const request = dreamsRequest({ q: 'needle', projectId: '', loose: true, issueKey: 'HA-1', remandedFrom: '' }, 50, [1, 2]);
     expect(request.get('q')).toBe('needle');
     expect(request.get('loose')).toBe('true');
     expect(request.get('issueKey')).toBe('HA-1');
@@ -230,6 +254,54 @@ describe('isUrl', () => {
   });
 });
 
+describe('remandedMore', () => {
+  it('is empty for no keys', () => {
+    expect(remandedMore([])).toBe('');
+  });
+
+  it('is empty for the root alone', () => {
+    expect(remandedMore(['HA-12'])).toBe('');
+  });
+
+  it('counts the keys past the root', () => {
+    expect(remandedMore(['HA-12', 'HA-13'])).toBe('and 1 more');
+  });
+
+  it('counts twelve keys as eleven more', () => {
+    expect(remandedMore(Array.from({ length: 12 }, (_, i) => `HA-${i}`))).toBe('and 11 more');
+  });
+});
+
+describe('deleteDreamQuestion', () => {
+  it('is the bare question for neither woven nor remanded', () => {
+    expect(deleteDreamQuestion({ wovenInto: [], remandedFrom: [] })).toBe('Delete this dream?');
+  });
+
+  it('names the woven issues, unchanged from before', () => {
+    expect(deleteDreamQuestion({ wovenInto: ['HA-1', 'HA-2'], remandedFrom: [] })).toBe(
+      'Delete this dream? It will also leave HA-1, HA-2\'s "Drew on".',
+    );
+  });
+
+  it('names the root and says the issues stay where they are, for one key', () => {
+    expect(deleteDreamQuestion({ wovenInto: [], remandedFrom: ['HA-12'] })).toBe(
+      'Delete this dream? The issues it was remanded from, HA-12, stay where they are.',
+    );
+  });
+
+  it('adds "and N more" for several keys', () => {
+    expect(deleteDreamQuestion({ wovenInto: [], remandedFrom: ['HA-12', 'HA-13', 'HA-14'] })).toBe(
+      'Delete this dream? The issues it was remanded from, HA-12 and 2 more, stay where they are.',
+    );
+  });
+
+  it('joins both sentences for a dream that is both woven and remanded', () => {
+    expect(deleteDreamQuestion({ wovenInto: ['HA-1'], remandedFrom: ['HA-12'] })).toBe(
+      'Delete this dream? It will also leave HA-1\'s "Drew on". The issues it was remanded from, HA-12, stay where they are.',
+    );
+  });
+});
+
 describe('countLine', () => {
   it('reads "0 results" for none', () => {
     expect(countLine(0, 0)).toBe('0 results');
@@ -269,6 +341,10 @@ describe('showsDream', () => {
 
   it('hides a dream under an issueKey', () => {
     expect(showsDream({ ...EMPTY_DREAMS, issueKey: 'HA-1' }, { projectId: null })).toBe(false);
+  });
+
+  it('hides a dream under a remandedFrom, since a fresh dream was remanded from nothing', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, remandedFrom: 'HA-2' }, { projectId: null })).toBe(false);
   });
 
   it('shows a dream whose project is the one filtered on', () => {

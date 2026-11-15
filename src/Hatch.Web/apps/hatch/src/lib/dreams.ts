@@ -13,6 +13,7 @@ export interface DreamFilters {
   projectId: string;
   loose: boolean;
   issueKey: string;
+  remandedFrom: string;
 }
 
 export const EMPTY_DREAMS: DreamFilters = {
@@ -20,6 +21,7 @@ export const EMPTY_DREAMS: DreamFilters = {
   projectId: '',
   loose: false,
   issueKey: '',
+  remandedFrom: '',
 };
 
 const POSITIVE_INTEGER = /^[1-9]\d*$/;
@@ -37,13 +39,14 @@ export function readDreams(params: URLSearchParams): DreamFilters {
     projectId: idOrEmpty(params.get('projectId')),
     loose: params.get('loose') === 'true',
     issueKey: params.get('issue') ?? '',
+    remandedFrom: params.get('remandedFrom') ?? '',
   };
 }
 
 /** The fixed order every written query string holds its fields in, so equal
     filters are equal links. `issueKey` is written under `issue`, the URL's
     own name for it. */
-const FIELD_ORDER: (keyof DreamFilters)[] = ['q', 'projectId', 'loose', 'issueKey'];
+const FIELD_ORDER: (keyof DreamFilters)[] = ['q', 'projectId', 'loose', 'issueKey', 'remandedFrom'];
 
 /** The filter, onto a URL. Only set fields are written, in `FIELD_ORDER`;
     `q` is trimmed and omitted when it trims to nothing; `loose` is written
@@ -59,8 +62,10 @@ export function writeDreams(filters: DreamFilters): URLSearchParams {
       if (filters.projectId) params.set('projectId', filters.projectId);
     } else if (field === 'loose') {
       if (filters.loose) params.set('loose', 'true');
-    } else {
+    } else if (field === 'issueKey') {
       if (filters.issueKey) params.set('issue', filters.issueKey);
+    } else {
+      if (filters.remandedFrom) params.set('remandedFrom', filters.remandedFrom);
     }
   }
 
@@ -86,6 +91,11 @@ export function dreamsRequest(filters: DreamFilters, offset: number, ids: number
   if (issue !== null) {
     params.delete('issue');
     params.set('issueKey', issue);
+  }
+  const remandedFrom = params.get('remandedFrom');
+  if (remandedFrom !== null) {
+    params.delete('remandedFrom');
+    params.set('remandedFromKey', remandedFrom);
   }
   if (filters.projectId === '' && ids.length > 0) {
     for (const id of ids) params.append('projectId', String(id));
@@ -132,6 +142,33 @@ export function isUrl(source: string): boolean {
   }
 }
 
+/** The "and N more" tail a chip of several keys adds after its root: empty
+    for zero or one keys, else `and N more` with N the keys past the root. */
+export function remandedMore(keys: string[]): string {
+  return keys.length > 1 ? `and ${keys.length - 1} more` : '';
+}
+
+/** The question a dream's Delete button asks. A woven dream keeps today's
+    wording; a remanded dream also says its issues stay where they are, named
+    by their root the way the chip names it; a dream that is both joins the
+    two sentences. Neither reads as the bare `Delete this dream?` once either
+    list is non-empty. */
+export function deleteDreamQuestion(dream: Pick<Dream, 'wovenInto' | 'remandedFrom'>): string {
+  const sentences: string[] = [];
+
+  if (dream.wovenInto.length > 0) {
+    sentences.push(`It will also leave ${dream.wovenInto.join(', ')}'s "Drew on".`);
+  }
+
+  if (dream.remandedFrom.length > 0) {
+    const [root] = dream.remandedFrom;
+    const more = remandedMore(dream.remandedFrom);
+    sentences.push(`The issues it was remanded from, ${root}${more ? ` ${more}` : ''}, stay where they are.`);
+  }
+
+  return sentences.length > 0 ? `Delete this dream? ${sentences.join(' ')}` : 'Delete this dream?';
+}
+
 /** The count line under the filters: "3 of 340", or "0 results" when nothing
     matched. Copied from search.ts, not imported - the two files are
     deliberately separate. */
@@ -149,7 +186,7 @@ export function hasMore(shown: number, total: number): boolean {
     excludes it (a new dream has no issue woven in). `q` is judged trimmed,
     the way `writeDreams` writes it. */
 export function showsDream(filters: DreamFilters, dream: Pick<Dream, 'projectId'>): boolean {
-  if (filters.q.trim() !== '' || filters.issueKey !== '') return false;
+  if (filters.q.trim() !== '' || filters.issueKey !== '' || filters.remandedFrom !== '') return false;
 
   return filters.projectId === '' || filters.projectId === String(dream.projectId);
 }

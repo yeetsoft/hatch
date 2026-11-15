@@ -77,6 +77,26 @@ woven into an issue shows a chip linking to that issue; a dream with no issue wo
 loose one. The call that writes the record is `PUT /issues/{key}/dreams`, described in the
 [API reference](api-reference).
 
+## Remanded from an issue
+
+Shelving an issue and its open tree ([the board and its columns](the-board-and-its-columns#column-flags)) writes a
+dream of its own: the issue's title and description, so the thought is not lost once the tickets are
+parked. A dream remanded from an issue shows a chip reading "remanded from" the root issue, linking
+to it, with "and N more" after it when the remand carried descendants along. That chip is a record,
+the same as a woven-into chip: the issues it names stay exactly where the remand left them, in their
+deferred column, whether or not they are ever picked back up. Deleting a remanded dream moves none of
+them - the question asks first and says so, naming the root the way the chip does.
+
+The issue page carries the other half of the record. An issue a dream was remanded from shows a
+**Remanded to a dream** section with the dream's first line, linking to the Dreams page filtered to
+it, and when and by whom it was remanded. The section stays once the issue is moved back onto a lane
+- it says "It is back on the board" in place of "It is still in a deferred column" - and only
+disappears if no dream was ever remanded from that issue.
+
+`remandedFrom=KEY` on the Dreams page's own URL is the filter behind that link - paste it to somebody
+and they see the same list, the way every other filter on this page does (see
+[above](#finding-one)); the page also offers a button to clear it.
+
 ## Weaving an epic
 
 **Weave an epic** sits closed, under the composer box, open by pressing its

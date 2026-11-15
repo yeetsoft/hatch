@@ -12,11 +12,13 @@ import {
   EMPTY_DREAMS,
   WEAVE_MODES,
   countLine,
+  deleteDreamQuestion,
   dreamsRequest,
   hasMore,
   isUrl,
   offeredProjectId,
   readDreams,
+  remandedMore,
   removeDream,
   replaceDream,
   scrubbedDreamProject,
@@ -351,6 +353,17 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
             Drew on {filters.issueKey} ×
           </button>
         )}
+
+        {filters.remandedFrom !== '' && (
+          <button
+            type="button"
+            className={facetClass(true)}
+            title="Show dreams no matter which issue they were remanded from"
+            onClick={() => setParams(writeDreams({ ...filters, remandedFrom: '' }))}
+          >
+            Remanded from {filters.remandedFrom} ×
+          </button>
+        )}
       </div>
 
       {loading && <p className="text-muted">Loading…</p>}
@@ -420,12 +433,9 @@ function DreamRow({
   const [saves, setSaves] = useState(0);
 
   async function remove() {
-    // Deleting a dream also drops it from the "Drew on" of every issue woven into.
-    const woven = dream.wovenInto.length > 0;
-    const question = woven
-      ? `Delete this dream? It will also leave ${dream.wovenInto.join(', ')}'s "Drew on".`
-      : 'Delete this dream?';
-    if (!confirm(question)) return;
+    // Deleting a dream also drops it from the "Drew on" of every issue woven
+    // into; the issues it was remanded from are untouched either way.
+    if (!confirm(deleteDreamQuestion(dream))) return;
     setError(null);
     try {
       await deleteDream(dream.id);
@@ -487,13 +497,20 @@ function DreamRow({
         />
       </div>
 
-      {dream.wovenInto.length > 0 && (
+      {(dream.wovenInto.length > 0 || dream.remandedFrom.length > 0) && (
         <div className="hatch-dream__woven">
           {dream.wovenInto.map((k) => (
             <Link key={k} className="hatch-chip" to={`/issues/${k}`}>
               {k}
             </Link>
           ))}
+
+          {dream.remandedFrom.length > 0 && (
+            <span className="hatch-chip">
+              remanded from <Link to={`/issues/${dream.remandedFrom[0]}`}>{dream.remandedFrom[0]}</Link>
+              {remandedMore(dream.remandedFrom) && ` ${remandedMore(dream.remandedFrom)}`}
+            </span>
+          )}
         </div>
       )}
     </li>
