@@ -6,9 +6,14 @@
    browser. What is left in OmniBar and BoardPage is state and events.
 
    Keys come first, then titles. Somebody who types a number wants the issue with
-   that number, and a title that happens to contain it must not take its place. */
+   that number, and a title that happens to contain it must not take its place.
+
+   The console follows the tab's scope: an issue outside it is not found by a
+   prefix or by words from its title. The one way in is typing its whole key,
+   which can only mean that issue, and the row says it is out of scope. */
 
 import { compareIssueKeys, matchesText, splitKey } from './issuePicker';
+import { cardsInScope } from './scope';
 import { searchPath } from './search';
 import type { IssueCard, Status } from '../types';
 
@@ -30,6 +35,9 @@ export interface GoToRow {
   /** Which of the card's two strings the marks index into. */
   field: 'key' | 'title';
   marks: Mark[];
+  /** The card is outside the tab's scope and listed only because its whole key
+      was typed. False on every other row. */
+  outOfScope: boolean;
 }
 
 export interface GoToResult {
@@ -101,10 +109,23 @@ function titleMarks(title: string, query: string): Mark[] {
  *   and ignoring case, so `HA-3`, `ha-3` and `ha3` agree and none is HA-13.
  * - Then every issue whose title holds every typed word, in any order, that the
  *   keys have not already listed.
+ *
+ * All of that on the cards inside `scopeKeys` (none: every card). A single word
+ * that is the whole key of a card outside them lists that card first, marked
+ * `outOfScope`: `fil-1` is FIL-1 and not FIL-10.
  */
-export function goToRows(cards: IssueCard[], query: string): GoToResult {
+export function goToRows(all: IssueCard[], query: string, scopeKeys: string[] = []): GoToResult {
   const typed = query.trim();
   if (!typed) return { rows: [], total: 0 };
+
+  const cards = cardsInScope(all, scopeKeys);
+  const outside: GoToRow[] = [];
+  if (cards !== all && !/\s/.test(typed)) {
+    const wanted = squash(typed);
+    const inside = new Set(cards);
+    const hit = wanted ? all.find((card) => !inside.has(card) && squash(card.key) === wanted) : undefined;
+    if (hit) outside.push({ card: hit, field: 'key', marks: prefixMarks(hit.key, wanted.length), outOfScope: true });
+  }
 
   const keyRows: GoToRow[] = [];
   const listed = new Set<string>();
@@ -115,14 +136,14 @@ export function goToRows(cards: IssueCard[], query: string): GoToResult {
       if (!parts || !String(parts.index).startsWith(typed)) continue;
 
       const tail = card.key.lastIndexOf('-') + 1;
-      keyRows.push({ card, field: 'key', marks: [{ start: tail, end: tail + typed.length }] });
+      keyRows.push({ card, field: 'key', marks: [{ start: tail, end: tail + typed.length }], outOfScope: false });
     }
   } else if (!/\s/.test(typed)) {
     const wanted = squash(typed);
     if (wanted) {
       for (const card of cards) {
         if (!squash(card.key).startsWith(wanted)) continue;
-        keyRows.push({ card, field: 'key', marks: prefixMarks(card.key, wanted.length) });
+        keyRows.push({ card, field: 'key', marks: prefixMarks(card.key, wanted.length), outOfScope: false });
       }
     }
   }
@@ -133,10 +154,10 @@ export function goToRows(cards: IssueCard[], query: string): GoToResult {
   const titleRows: GoToRow[] = cards
     .filter((card) => !listed.has(card.key) && matchesText(card.title, typed))
     .sort((a, b) => compareIssueKeys(a.key, b.key))
-    .map((card) => ({ card, field: 'title', marks: titleMarks(card.title, typed) }));
+    .map((card) => ({ card, field: 'title', marks: titleMarks(card.title, typed), outOfScope: false }));
 
-  const all = [...keyRows, ...titleRows];
-  return { rows: all.slice(0, GO_TO_LIMIT), total: all.length };
+  const found = [...outside, ...keyRows, ...titleRows];
+  return { rows: found.slice(0, GO_TO_LIMIT), total: found.length };
 }
 
 /**
@@ -150,8 +171,15 @@ export function keepHighlight(rows: GoToRow[], key: string | null): string | nul
   return rows[0]?.card.key ?? null;
 }
 
-/** The status line's left half. */
-export function goToStatus(query: string, shown: number, total: number): string {
+/** Where the issues the console lists come from: a host's, already in hand, or
+    a read of the board that may not have landed. */
+export type GoToLoad = 'ready' | 'loading' | 'failed';
+
+/** The status line's left half. A read still out, or failed, says so before
+    anything about the query: "no issue matches" would not be true yet. */
+export function goToStatus(query: string, shown: number, total: number, load: GoToLoad = 'ready'): string {
+  if (load === 'loading') return 'Loading…';
+  if (load === 'failed') return 'could not load issues';
   if (!query.trim()) return 'type a key, a number, or words from a title';
   if (total === 0) return 'no issue matches';
   if (shown < total) return `${shown} of ${total} — keep typing`;

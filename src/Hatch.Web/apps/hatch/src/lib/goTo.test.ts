@@ -181,6 +181,60 @@ describe('goToRows: the limit', () => {
   });
 });
 
+describe('goToRows: the tab scope', () => {
+  const board = [
+    card('AER-1', { title: 'Shared words here' }),
+    card('FIL-1', { title: 'Shared words there' }),
+    card('FIL-10', { title: 'Another one' }),
+    card('AER-2', { title: 'Only aer' }),
+  ];
+  const scoped = (query: string, scope = ['AER']) => goToRows(board, query, scope);
+
+  it('lists only in-scope issues for words from a title', () => {
+    expect(scoped('shared').rows.map((r) => r.card.key)).toEqual(['AER-1']);
+  });
+
+  it('lists only in-scope issues for a key prefix', () => {
+    expect(scoped('aer').rows.map((r) => r.card.key)).toEqual(['AER-1', 'AER-2']);
+    expect(scoped('fil').rows).toEqual([]);
+    expect(scoped('FIL-').rows).toEqual([]);
+  });
+
+  it('lists an out-of-scope issue first, marked, for its whole key', () => {
+    for (const typed of ['FIL-1', 'fil-1', 'fil1', ' FIL-1 ']) {
+      const result = scoped(typed);
+      expect(result.rows.map((r) => r.card.key)).toEqual(['FIL-1']);
+      expect(result.rows[0].outOfScope).toBe(true);
+      expect(result.total).toBe(1);
+    }
+  });
+
+  it('puts the out-of-scope exact key ahead of in-scope rows', () => {
+    const wide = [card('AER-1'), card('AER-2', { title: 'fil1 in a title' }), card('FIL-1')];
+    const rows = goToRows(wide, 'fil1', ['AER']).rows;
+    expect(rows.map((r) => [r.card.key, r.outOfScope])).toEqual([
+      ['FIL-1', true],
+      ['AER-2', false],
+    ]);
+  });
+
+  it('never takes the exception for a two-word query', () => {
+    expect(scoped('fil-1 shared').rows).toEqual([]);
+    expect(scoped('FIL 1').rows).toEqual([]);
+  });
+
+  it('does not mark an in-scope key', () => {
+    expect(scoped('AER-1').rows.map((r) => r.outOfScope)).toEqual([false]);
+  });
+
+  it('lists everything with no scope, and marks nothing', () => {
+    const rows = goToRows(board, 'shared', []).rows;
+    expect(rows.map((r) => r.card.key)).toEqual(['AER-1', 'FIL-1']);
+    expect(rows.every((r) => !r.outOfScope)).toBe(true);
+    expect(goToRows(board, 'fil-1').rows.every((r) => !r.outOfScope)).toBe(true);
+  });
+});
+
 describe('keepHighlight', () => {
   const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows;
 
@@ -229,6 +283,21 @@ describe('goToStatus', () => {
 
   it('says so when nothing matches', () => {
     expect(goToStatus('zzz', 0, 0)).toBe('no issue matches');
+  });
+
+  it('says Loading… while the board read is out, before anything about the query', () => {
+    expect(goToStatus('', 0, 0, 'loading')).toBe('Loading…');
+    expect(goToStatus('aer', 0, 0, 'loading')).toBe('Loading…');
+  });
+
+  it('says so when the board read failed', () => {
+    expect(goToStatus('', 0, 0, 'failed')).toBe('could not load issues');
+    expect(goToStatus('aer', 0, 0, 'failed')).toBe('could not load issues');
+  });
+
+  it('is unchanged once ready', () => {
+    expect(goToStatus('aer', 4, 4, 'ready')).toBe('4 issues');
+    expect(goToStatus('zzz', 0, 0, 'ready')).toBe('no issue matches');
   });
 });
 

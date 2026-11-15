@@ -1,4 +1,4 @@
-/* The console: `/` on the board opens a prompt and a list, and taking a row
+/* The console: `/` on any page opens a prompt and a list, and taking a row
    goes to that issue.
 
    Issues are the first thing it lists and will not be the last - the operator
@@ -21,18 +21,24 @@ import { useLayoutEffect, useId, useMemo, useRef, useState, type KeyboardEvent, 
 import { StatusDot } from './StatusPill';
 import { boardColumns } from '../lib/columns';
 import { SEARCH_ROW, entryKeys, goToRows, goToStatus, whereOnBoard } from '../lib/goTo';
-import type { Mark } from '../lib/goTo';
+import type { GoToLoad, Mark } from '../lib/goTo';
 import { searchPath } from '../lib/search';
 import type { IssueCard, Status } from '../types';
 
 export interface OmniBarProps {
-  /** Every issue the board holds, filtered or not - the console finds them all. */
+  /** Every issue the board holds, filtered or not - the console narrows them to
+      the scope itself. */
   cards: IssueCard[];
   statuses: Status[];
-  /** The keys the board's filter lets through, for saying which rows are hidden. */
-  visibleKeys: Set<string>;
-  /** A row was taken. The console does not give focus back: the board is about
-      to put it on the card. */
+  /** The keys the board's filter lets through, for saying which rows are hidden;
+      null off the board, where nothing is. */
+  visibleKeys: Set<string> | null;
+  /** The tab's scope: `[]` is every project. */
+  scopeKeys: string[];
+  /** Whether `cards` has landed. */
+  load: GoToLoad;
+  /** A row was taken. The console does not give focus back: whoever took it is
+      about to put it somewhere. */
   onTake: (card: IssueCard) => void;
   /** The trailing row was taken; the console does not give focus back, for the
       reason `onTake` does not. */
@@ -54,7 +60,7 @@ function Marked({ text, marks }: { text: string; marks: Mark[] }): ReactNode {
   return parts;
 }
 
-export function OmniBar({ cards, statuses, visibleKeys, onTake, onSearch, onClose }: OmniBarProps) {
+export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake, onSearch, onClose }: OmniBarProps) {
   const [query, setQuery] = useState('');
   /* A key, not an index, and null for "the first row". Derived at render below
      rather than kept in step by an effect, so the board's refresh - which hands
@@ -75,7 +81,7 @@ export function OmniBar({ cards, statuses, visibleKeys, onTake, onSearch, onClos
   const rowId = (key: string) => `${base}-row-${key}`;
   const searchRowId = `${base}-row-search`;
 
-  const { rows, total } = useMemo(() => goToRows(cards, query), [cards, query]);
+  const { rows, total } = useMemo(() => goToRows(cards, query, scopeKeys), [cards, query, scopeKeys]);
   const columns = useMemo(() => boardColumns(statuses), [statuses]);
   const order = entryKeys(rows, query);
   const active = highlight !== null && order.includes(highlight) ? highlight : (order[0] ?? null);
@@ -182,7 +188,7 @@ export function OmniBar({ cards, statuses, visibleKeys, onTake, onSearch, onClos
             const { card } = row;
             const status = statuses.find((s) => s.id === card.statusId);
             const isActive = card.key === active;
-            const filtered = whereOnBoard(card, visibleKeys, columns) === 'filtered';
+            const filtered = visibleKeys !== null && whereOnBoard(card, visibleKeys, columns) === 'filtered';
 
             return (
               <li
@@ -216,7 +222,11 @@ export function OmniBar({ cards, statuses, visibleKeys, onTake, onSearch, onClos
                     {status.name}
                   </span>
                 )}
-                {filtered && <span className="hatch-omni-filtered">[filtered]</span>}
+                {row.outOfScope ? (
+                  <span className="hatch-omni-filtered">[out of scope]</span>
+                ) : (
+                  filtered && <span className="hatch-omni-filtered">[filtered]</span>
+                )}
               </li>
             );
           })}
@@ -242,7 +252,7 @@ export function OmniBar({ cards, statuses, visibleKeys, onTake, onSearch, onClos
         </ul>
 
         <div className="hatch-omni-status">
-          <span aria-live="polite">{goToStatus(query, rows.length, total)}</span>
+          <span aria-live="polite">{goToStatus(query, rows.length, total, load)}</span>
           <span className="hatch-omni-keys" aria-hidden="true">
             <kbd>↑↓</kbd> move <kbd>↵</kbd> open <kbd>esc</kbd>
           </span>

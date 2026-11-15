@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -24,7 +24,6 @@ import { GoToWorkControl, GoToWorkNote } from '../components/GoToWorkControl';
 import { GoToWorkStatus } from '../components/GoToWorkStatus';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
-import { OmniBar } from '../components/OmniBar';
 import { QueueControl } from '../components/QueueControl';
 import { ContributionMoveDialog } from '../components/ContributionMoveDialog';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
@@ -73,7 +72,8 @@ import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { lineage } from '../lib/lineage';
 import type { LineageCard } from '../lib/lineage';
-import { isGoToShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
+import { isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
+import { useConsoleHost } from '../lib/useConsole';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
@@ -218,7 +218,6 @@ export function BoardPage() {
      which leaves the press unoffered and the state still drawn. */
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
   const [filing, setFiling] = useState(false);
-  const navigate = useNavigate();
 
   /* Wraps the plain setter so a change to the project also writes (or drops)
      `?project=` - replaced rather than pushed, exactly as PlanPage's picker
@@ -258,7 +257,6 @@ export function BoardPage() {
      outlives the peek by FOUND_LINGER_MS. `pending` is the card a take has
      chosen and not yet peeked, for the one render in which the board has
      opened its fold and can be asked where the card is. */
-  const [going, setGoing] = useState(false);
   const [found, setFound] = useState<string | null>(null);
   const [pending, setPending] = useState<IssueCard | null>(null);
   const linger = useRef<number | undefined>(undefined);
@@ -644,27 +642,24 @@ export function BoardPage() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [dragUnderway, undoNewest]);
 
-  /* `/` opens the console, on the same terms as Undo: not where text is being
-     typed, not under a dialog (the console is one to everything else), not
-     mid-drag. Mounted only while the board is the page on screen, which is what
-     keeps it off every other page. preventDefault keeps the slash out of the
-     prompt and Firefox's find bar shut. */
-  const hasBoard = board != null;
-  useEffect(() => {
-    if (dragUnderway || !hasBoard) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!isGoToShortcut(e) || e.defaultPrevented) return;
-      if (isTypingTarget(document.activeElement as HTMLElement | null)) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
-
-      e.preventDefault();
-      setGoing(true);
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [dragUnderway, hasBoard]);
+  /* The console is the app's, not the board's: `/` opens it from every page (see
+     components/ConsoleProvider.tsx). The board offers its issues, so it lists
+     them without a read of its own, and keeps what a take does - mark the card
+     and peek it - or, where the card is not on the board to be marked, peek it
+     and leave the filter, the folds and the scroll alone. Above the early
+     returns, for hook order; `onTake` is called by the console as the latest
+     one, so it may close over this render. */
+  const onTake = (card: IssueCard) => {
+    stopLinger();
+    if (whereOnBoard(card, visibleKeys, columns) === 'drawn') {
+      setFound(card.key);
+      setPending(card);
+    } else {
+      setFound(null);
+      setPeeking(card);
+    }
+  };
+  useConsoleHost(board ? { cards: board.issues, statuses: board.statuses, visibleKeys, paused: dragUnderway, onTake } : null);
 
   /* A take, one render on: the fold has opened and the card is in the DOM. Focus
      it before the peek opens, so Modal records the card as its opener and gives
@@ -700,26 +695,6 @@ export function BoardPage() {
   // own `queueError` instead - and only while the queue is being read, so a stale
   // queueError left over from before a press turned it off is not shown.
   const boardError = error ?? (queueing ? board.queueError ?? null : null);
-
-  // Marks the card and peeks it - or, where the card is not on the board to be
-  // marked, peeks it and leaves the filter, the folds and the scroll alone.
-  const onTake = (card: IssueCard) => {
-    setGoing(false);
-    stopLinger();
-    if (whereOnBoard(card, visibleKeys, columns) === 'drawn') {
-      setFound(card.key);
-      setPending(card);
-    } else {
-      setFound(null);
-      setPeeking(card);
-    }
-  };
-
-  const onSearch = (path: string) => {
-    setGoing(false);
-    stopLinger();
-    navigate(path);
-  };
 
   const onDragStart = ({ active }: DragStartEvent) => {
     stopLinger();
@@ -947,17 +922,6 @@ export function BoardPage() {
         onDelete={remove}
         onClose={closePeek}
       />
-
-      {going && (
-        <OmniBar
-          cards={board.issues}
-          statuses={board.statuses}
-          visibleKeys={visibleKeys}
-          onTake={onTake}
-          onSearch={onSearch}
-          onClose={() => setGoing(false)}
-        />
-      )}
 
       <CloseSubtreeDialog
         offer={closing.offer}

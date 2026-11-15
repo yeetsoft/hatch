@@ -223,6 +223,28 @@ scope. A `?projectId=` outside the scope is dropped from the address. See
 Each one's project control lists only the scope's projects, and is not drawn
 for a scope of one project. See [Reports](flow-wip-and-the-battery#reports).
 
+## The console
+
+Press `/` on any page and a prompt opens over it. Type an issue's key
+(`HA-3`, `ha-3` or `ha3`), its number (`3`), or words from its title, and the
+list narrows as you type. **↑↓** move, **↵** opens the highlighted row and
+**esc** puts it away. The last row, **Search everything**, carries what you
+typed to the Search page. It is not a shortcut while you are typing:
+`/` in a text box, a description editor, or the board's own search box is a
+slash.
+
+The console follows the tab's scope. In a tab scoped to projects, an issue
+outside the scope is not listed for a key prefix or for words from its title.
+Type its whole key (`FIL-1`, not `FIL-`) and it is listed first, marked
+**[out of scope]**, because a whole key can only mean that issue.
+
+What opening a row does depends on the page. On the board the card is ringed
+and peeked, or peeked alone when the board's filter is hiding it, and on the
+board `/` also opens the console over a peek that is already open. On every
+other page the row opens the issue's own page, with the tab's scope kept on
+the address. Off the board the console reads the board once as it opens, so
+its status line says **Loading…** until that lands; it does not poll.
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
