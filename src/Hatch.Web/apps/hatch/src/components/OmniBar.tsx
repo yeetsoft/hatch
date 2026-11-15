@@ -69,7 +69,7 @@ export interface OmniBarProps {
   /** Where the person is and who they are, for which commands are offered. */
   commandContext: CommandContext;
   /** What a command that closes the console runs against. */
-  env: Pick<CommandEnv, 'go' | 'setTheme' | 'newIssue' | 'openQueue'>;
+  env: Pick<CommandEnv, 'go' | 'setTheme' | 'changeFilter' | 'newIssue' | 'openQueue'>;
   /** The question after a move that closes work: its state, and what answering
       does. It lives above the console, so the move's own page can hand it an
       offer. */
@@ -145,14 +145,14 @@ export function OmniBar({
   const parsed = parsePrompt(query);
   const mode = step ? 'commands' : parsed.mode;
   const asked = step ? query : parsed.query;
-  const { isAdmin, pathname, view } = commandContext;
+  const { isAdmin, pathname, view, filters } = commandContext;
   const offer = closing.offer;
 
   const { rows, total } = useMemo(
     () => (mode === 'issues' ? goToRows(cards, asked, scopeKeys) : { rows: [], total: 0 }),
     [mode, cards, asked, scopeKeys],
   );
-  const commands = useMemo(() => commandList({ isAdmin, pathname, view }), [isAdmin, pathname, view]);
+  const commands = useMemo(() => commandList({ isAdmin, pathname, view, filters }), [isAdmin, pathname, view, filters]);
   const stepCommands = useMemo(() => (step && view ? statusStepRows(view) : []), [step, view]);
   const found = useMemo(
     () =>
