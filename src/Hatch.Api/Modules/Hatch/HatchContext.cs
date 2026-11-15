@@ -28,6 +28,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchIssueDependency> Dependencies => Set<EfHatchIssueDependency>();
     public DbSet<EfHatchIssueRunnerOmission> RunnerOmissions => Set<EfHatchIssueRunnerOmission>();
     public DbSet<EfHatchDreamThread> DreamThreads => Set<EfHatchDreamThread>();
+    public DbSet<EfHatchDreamRemand> DreamRemands => Set<EfHatchDreamRemand>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
@@ -266,6 +267,24 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.HasOne(t => t.Issue)
                 .WithMany()
                 .HasForeignKey(t => t.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Cascade both ways, as for a thread: a remand means nothing without
+        // the dream or the issue. Deleting the dream removes the rows and moves
+        // no issue; deleting an issue removes its row and leaves the dream.
+        modelBuilder.Entity<EfHatchDreamRemand>(e =>
+        {
+            e.HasKey(r => new { r.DreamId, r.IssueId });
+
+            e.HasOne(r => r.Dream)
+                .WithMany()
+                .HasForeignKey(r => r.DreamId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(r => r.Issue)
+                .WithMany()
+                .HasForeignKey(r => r.IssueId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

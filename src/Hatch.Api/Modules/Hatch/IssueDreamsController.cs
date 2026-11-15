@@ -98,13 +98,16 @@ public class IssueDreamsController(HatchContext db, ICallerIdentity caller, Time
             })
             .ToListAsync(ct);
 
-        var lookup = await DreamsController.WovenIntoAsync(db, page.Select(d => d.Id).ToList(), ct);
+        var ids = page.Select(d => d.Id).ToList();
+        var lookup = await DreamsController.WovenIntoAsync(db, ids, ct);
+        var remands = await DreamsController.RemandedFromAsync(db, ids, ct);
 
         return page
             .Select(d => new DreamDto(
                 d.Id, d.Body, d.Author, d.Source,
                 d.ProjectId, d.ProjectKey, d.CreatedAt, d.UpdatedAt,
-                lookup.GetValueOrDefault(d.Id, [])))
+                lookup.GetValueOrDefault(d.Id, []),
+                remands.GetValueOrDefault(d.Id, [])))
             .ToArray();
     }
 

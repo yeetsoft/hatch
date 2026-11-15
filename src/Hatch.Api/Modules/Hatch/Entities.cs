@@ -1611,6 +1611,33 @@ public class EfHatchDreamThread
 }
 
 /// <summary>
+/// One dream read as remanded from one issue - see docs/hatch.md, "Dream".
+/// </summary>
+/// <remarks>
+/// Its own table rather than a flag on <see cref="EfHatchDreamThread"/>: a
+/// thread says what an issue drew on, and a remand says what an issue was
+/// shelved into, and one dream can be both for the same issue. The same
+/// composite key and the same missing inverse navigations as the thread.
+/// </remarks>
+[Table("DreamRemands")]
+public class EfHatchDreamRemand
+{
+    public required long DreamId { get; set; }
+    public EfHatchDream? Dream { get; set; }
+
+    public required long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Actor { get; set; }
+
+    public required DateTimeOffset At { get; set; }
+
+    /// <summary>True for the issue the remand was made from; false for the descendants shelved with it.</summary>
+    public bool Root { get; set; }
+}
+
+/// <summary>
 /// What a runner found when it merged an issue's branch against the trunk of
 /// one repository, and what it was looking at when it did.
 ///
@@ -2427,6 +2454,15 @@ public class EfHatchIssueEvent
     /// id sorted ascending.
     /// </summary>
     public const string DreamsWoven = "dreams_woven";
+
+    /// <summary>
+    /// `POST /issues/{key}/remand` shelved this issue into a dream - see
+    /// HA-2347. Written on the root and on every descendant that moved, beside
+    /// the <see cref="StatusChanged"/>. The payload is `{ dreamId, to, toId,
+    /// root }`: the column named and numbered as a status change does, and
+    /// whether this was the issue the remand was made from.
+    /// </summary>
+    public const string Remanded = "remanded";
 
     /// <summary>
     /// A runner took the lease on this issue - see

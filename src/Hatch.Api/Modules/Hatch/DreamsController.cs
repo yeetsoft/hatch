@@ -28,6 +28,7 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
         [FromQuery] string? issueKey = null,
         [FromQuery] bool loose = false,
         [FromQuery] bool includeNoProject = false,
+        [FromQuery] string? remandedFromKey = null,
         CancellationToken ct = default)
     {
         if (limit is < 1 or > MaxLimit)
@@ -53,6 +54,17 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
             query = issueId == 0
                 ? query.Where(d => false)
                 : query.Where(d => db.DreamThreads.Any(t => t.DreamId == d.Id && t.IssueId == issueId));
+        }
+
+        if (remandedFromKey is not null)
+        {
+            if (!IssueKey.TryParse(remandedFromKey, out var remandProjectKey, out var remandNumber))
+                return BadRequest($"\"{remandedFromKey}\" is not an issue key");
+
+            var remandIssueId = await db.Issues.WithKey(remandProjectKey, remandNumber).Select(i => i.Id).FirstOrDefaultAsync(ct);
+            query = remandIssueId == 0
+                ? query.Where(d => false)
+                : query.Where(d => db.DreamRemands.Any(r => r.DreamId == d.Id && r.IssueId == remandIssueId));
         }
 
         if (loose) query = query.Where(d => !db.DreamThreads.Any(t => t.DreamId == d.Id));
@@ -81,13 +93,16 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
             })
             .ToListAsync(ct);
 
-        var lookup = await WovenIntoAsync(db, page.Select(d => d.Id).ToList(), ct);
+        var pageIds = page.Select(d => d.Id).ToList();
+        var lookup = await WovenIntoAsync(db, pageIds, ct);
+        var remands = await RemandedFromAsync(db, pageIds, ct);
 
         var rows = page
             .Select(d => new DreamDto(
                 d.Id, d.Body, d.Author, d.Source,
                 d.ProjectId, d.ProjectKey, d.CreatedAt, d.UpdatedAt,
-                lookup.GetValueOrDefault(d.Id, [])))
+                lookup.GetValueOrDefault(d.Id, []),
+                remands.GetValueOrDefault(d.Id, [])))
             .ToList();
 
         return new DreamsPageDto(rows, total);
@@ -108,6 +123,24 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
         return rows.GroupBy(r => r.DreamId).ToDictionary(
             g => g.Key,
             g => g.OrderBy(r => r.ProjectKey, StringComparer.Ordinal).ThenBy(r => r.Number)
+                .Select(r => IssueKey.Format(r.ProjectKey, r.Number)).ToArray());
+    }
+
+    /// <summary>
+    /// The same batch for the issues each dream was remanded from, the root
+    /// first and the rest by project key and number.
+    /// </summary>
+    internal static async Task<Dictionary<long, string[]>> RemandedFromAsync(
+        HatchContext db, IReadOnlyList<long> dreamIds, CancellationToken ct)
+    {
+        var rows = await db.DreamRemands.AsNoTracking()
+            .Where(r => dreamIds.Contains(r.DreamId))
+            .Select(r => new { r.DreamId, r.Root, ProjectKey = r.Issue!.Project!.Key, Number = r.Issue.Number })
+            .ToListAsync(ct);
+
+        return rows.GroupBy(r => r.DreamId).ToDictionary(
+            g => g.Key,
+            g => g.OrderByDescending(r => r.Root).ThenBy(r => r.ProjectKey, StringComparer.Ordinal).ThenBy(r => r.Number)
                 .Select(r => IssueKey.Format(r.ProjectKey, r.Number)).ToArray());
     }
 
@@ -143,7 +176,7 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
         db.Dreams.Add(dream);
         await db.SaveChangesAsync(ct);
 
-        var dto = new DreamDto(dream.Id, dream.Body, dream.Author, dream.Source, dream.ProjectId, projectKey, dream.CreatedAt, dream.UpdatedAt, WovenInto: []);
+        var dto = new DreamDto(dream.Id, dream.Body, dream.Author, dream.Source, dream.ProjectId, projectKey, dream.CreatedAt, dream.UpdatedAt, WovenInto: [], RemandedFrom: []);
         return Created($"/api/dreams/{dream.Id}", dto);
     }
 
@@ -232,8 +265,9 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
             : null;
 
         var wovenInto = (await WovenIntoAsync(db, [dream.Id], ct)).GetValueOrDefault(dream.Id, []);
+        var remandedFrom = (await RemandedFromAsync(db, [dream.Id], ct)).GetValueOrDefault(dream.Id, []);
 
-        return new DreamDto(dream.Id, dream.Body, dream.Author, dream.Source, dream.ProjectId, projectKey, dream.CreatedAt, dream.UpdatedAt, wovenInto);
+        return new DreamDto(dream.Id, dream.Body, dream.Author, dream.Source, dream.ProjectId, projectKey, dream.CreatedAt, dream.UpdatedAt, wovenInto, remandedFrom);
     }
 
     [HttpDelete("{id:long}")]

@@ -15,7 +15,7 @@ public sealed class DreamCommandTests
     private static DreamDto ADream()
     {
         var now = DateTimeOffset.UtcNow;
-        return new(7, "words", "Nathan-MBP", null, null, null, now, now, []);
+        return new(7, "words", "Nathan-MBP", null, null, null, now, now, [], []);
     }
 
     [Fact]
