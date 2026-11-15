@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
 import type { CloseOffer } from './closeSubtree';
+import type { FilterHandle } from './consoleCommands';
 import type { IssueCard, Project, Status } from '../types';
 
 /**
@@ -29,6 +30,8 @@ export interface ConsoleHost {
   /** `>new` was run. The console has closed; the host opens its own New issue
       dialog, with its own default project and what it does once filed. */
   onNewIssue: () => void;
+  /** The board's filter, for the commands that set it. */
+  filters: FilterHandle;
 }
 
 export interface ConsoleControl {
@@ -43,9 +46,9 @@ export const ConsoleContext = createContext<ConsoleControl | null>(null);
 
 /**
  * Be the console's host while this page is on screen. `host` is null while the
- * page has no board to offer. The latest `onTake`, `onNewIssue` and `openQueue` are the
- * ones called, so a page may pass new functions every render without re-offering its
- * cards.
+ * page has no board to offer. The latest `onTake`, `onNewIssue`, `openQueue` and
+ * `filters.onChange` are the ones called, so a page may pass new functions every
+ * render without re-offering its cards.
  */
 export function useConsoleHost(host: ConsoleHost | null): void {
   const held = useContext(ConsoleContext);
@@ -67,22 +70,35 @@ export function useConsoleHost(host: ConsoleHost | null): void {
     file.current = onNewIssue;
   }, [onNewIssue]);
 
+  const change = useRef<FilterHandle['onChange'] | null>(null);
+  const onChange = host?.filters.onChange ?? null;
+  useEffect(() => {
+    change.current = onChange;
+  }, [onChange]);
+
   const cards = host?.cards;
   const statuses = host?.statuses;
   const visibleKeys = host?.visibleKeys;
   const paused = host?.paused;
+  const filter = host?.filters.filter;
+  const projects = host?.filters.projects;
 
   useEffect(() => {
-    if (!cards || !statuses || !visibleKeys || paused === undefined) {
+    if (!cards || !statuses || !visibleKeys || paused === undefined || !filter || !projects) {
       setHost(null);
       return;
     }
-    setHost({ cards, statuses, visibleKeys, paused,
+    setHost({
+      cards,
+      statuses,
+      visibleKeys,
+      paused,
       onTake: (card) => take.current?.(card),
       onNewIssue: () => file.current?.(),
       openQueue: () => queue.current?.(),
+      filters: { filter, projects, onChange: (next) => change.current?.(next) },
     });
-  }, [setHost, cards, statuses, visibleKeys, paused]);
+  }, [setHost, cards, statuses, visibleKeys, paused, filter, projects]);
 
   useEffect(() => () => setHost(null), [setHost]);
 }

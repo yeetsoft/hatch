@@ -199,12 +199,16 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     navigate(path);
   };
 
-  const commandContext = useMemo<CommandContext>(() => ({ isAdmin, pathname, view }), [isAdmin, pathname, view]);
+  const filters = host?.filters;
+  const commandContext = useMemo<CommandContext>(
+    () => ({ isAdmin, pathname, view, filters }),
+    [isAdmin, pathname, view, filters],
+  );
 
   // What a command that closes the console runs against. The prompt has already
   // given focus back, so a theme change leaves the person where they were; a
   // page change then takes them away from it.
-  const env: Pick<CommandEnv, 'go' | 'setTheme' | 'newIssue' | 'openQueue'> = {
+  const env: Pick<CommandEnv, 'go' | 'setTheme' | 'changeFilter' | 'newIssue' | 'openQueue'> = {
     go: (path) => navigate(scopedPath(path, scope.keys)),
     setTheme: setChoice,
     // Off the board there is no host, so land on the board with the flag it
@@ -214,6 +218,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       host
         ? host.openQueue()
         : navigate(scopedPath(HOME, scope.keys), { replace: pathname === HOME, state: { [OPEN_QUEUE]: true } }),
+    changeFilter: (next) => host?.filters.onChange(next),
     newIssue: () => (host ? host.onNewIssue() : setFiling(true)),
   };
 
