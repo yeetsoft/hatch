@@ -17,6 +17,7 @@ import { deleteIssue, getAssignees, moveIssue } from '../api/client';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
+import { RemandDialog } from '../components/RemandDialog';
 import { ColumnHead } from '../components/ColumnHead';
 import { FlowArrows } from '../components/FlowArrows';
 import { FlowVizControl } from '../components/FlowVizControl';
@@ -61,7 +62,7 @@ import { planGoToWork, statusLine } from '../lib/goToWork';
 import { carried, readCollapsedEpics, toggleCollapsed, writeCollapsedEpics } from '../lib/storiesOnEpics';
 import { pinnedBoard, readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
 import type { BoardView } from '../lib/phoneBoard';
-import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
+import { CLOUD, columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
 import { columnBlocked, confirmMove } from '../lib/protectedColumns';
 import { flowBand, flowSentence } from '../lib/queue';
@@ -77,6 +78,9 @@ import { isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
 import { useConsoleHost, useConsoleMoves } from '../lib/useConsole';
 import type { MoveResult } from '../lib/useConsole';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
+import { useRemand } from '../lib/useRemand';
+import { dreamHref, remandOffer, remandedSentence, showCloud } from '../lib/remand';
+import type { RemandOffer } from '../lib/remand';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
 import { useRunners } from '../lib/useRunners';
@@ -153,6 +157,8 @@ export function BoardPage() {
   // the drop would land in. Above the loader, which pauses its refresh for both.
   const [dragging, setDragging] = useState<IssueCard | null>(null);
   const [over, setOver] = useState<number | null>(null);
+  // Whether the drag is over the dream cloud - which is no column, so `over` is null for it.
+  const [overCloud, setOverCloud] = useState(false);
   /* How many moves are on their way to the server. A drop paints the card in its
      new column before the request, and a refresh landing in that window would
      draw it back. A count and not a flag, so a second drop made while the first
@@ -286,7 +292,7 @@ export function BoardPage() {
 
   // The corner's chicklets: a drop raises one, and its Undo moves the card
   // back from wherever the operator is by then.
-  const { moved, cascaded, undoNewest, onUndone } = useIssueConfirmations();
+  const { moved, remanded, cascaded, undoNewest, onUndone } = useIssueConfirmations();
 
   /* Where each descendant of a card offered a close stood before the drop,
      held by the card's key until the operator answers. By then the board has
@@ -304,6 +310,24 @@ export function BoardPage() {
   // The offer to close everything under a card dropped into a terminal column.
   const closing = useCloseSubtree(reload, closed);
   const { ask } = closing;
+
+  // The offer to remand a card dropped on the dream cloud, and everything under
+  // it, to a dream. The drop moved nothing; the chicklet is raised once the
+  // server has said yes and the board has caught up.
+  const remanding = useRemand(
+    reload,
+    useCallback(
+      (offer: RemandOffer, result) =>
+        remanded({
+          issueKey: offer.key,
+          title: offer.title,
+          note: remandedSentence(offer.key, result),
+          dreamHref: dreamHref(offer.key),
+        }),
+      [remanded],
+    ),
+  );
+  const { ask: askRemand } = remanding;
 
   // The dialog a drop into a full WIP section raises. `reload` is its
   // `onLeave`: Leave it, or dismissing it, catches the board up with the card
@@ -567,7 +591,15 @@ export function BoardPage() {
     async (event: DragEndEvent) => {
       setDragging(null);
       setOver(null);
+      setOverCloud(false);
       if (!board) return;
+
+      // The cloud moves nothing: it asks, and the card stays where it is until
+      // the dialog is answered.
+      if (event.over?.id === CLOUD) {
+        askRemand(remandOffer(board, String(event.active.id)));
+        return;
+      }
 
       const placed = place(board.issues, visible, String(event.active.id), event.over ? String(event.over.id) : null);
       if (!placed) return;
@@ -597,7 +629,7 @@ export function BoardPage() {
       if (sentence) askContribution(placed.key, sentence, drop);
       else await drop();
     },
-    [board, visible, commit, setError, reload, zoneIds, askContribution],
+    [board, visible, commit, setError, reload, zoneIds, askContribution, askRemand],
   );
 
   /** The peek's status picker, sending a card to a column by a press rather
@@ -762,13 +794,19 @@ export function BoardPage() {
   };
 
   const onDragOver = ({ over: target }: DragOverEvent) => {
+    setOverCloud(target?.id === CLOUD);
     setOver(targetStatusId(target ? String(target.id) : null, board.issues));
   };
 
   const cancel = () => {
     setDragging(null);
     setOver(null);
+    setOverCloud(false);
   };
+
+  // Drawn in flow above the columns, only while a card is held and only when
+  // there is a deferred column for it to go to.
+  const cloud = dragging !== null && showCloud(board.statuses) ? <RemandCloud lit={overCloud} /> : null;
 
   return (
     <div className={`hatch-board-page${pinned ? ' hatch-board-page--pinned' : ''}`}>
@@ -857,6 +895,7 @@ export function BoardPage() {
           onDragCancel={cancel}
           onDragEnd={(e) => void onDragEnd(e)}
         >
+          {cloud}
           <div className="hatch-board hatch-board--stacked">
             {columns.map((status) => (
               <PhoneColumn
@@ -899,6 +938,7 @@ export function BoardPage() {
           onDragCancel={cancel}
           onDragEnd={(e) => void onDragEnd(e)}
         >
+          {cloud}
           <Callout.Group suspended={dragUnderway} onOpenChange={setHoveredKey}>
             <div
               className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}
@@ -993,6 +1033,15 @@ export function BoardPage() {
         onClose={closing.close}
       />
 
+      <RemandDialog
+        offer={remanding.offer}
+        busy={remanding.busy}
+        error={remanding.error}
+        onChoose={remanding.choose}
+        onConfirm={remanding.confirm}
+        onClose={remanding.close}
+      />
+
       <WipOverrideDialog
         asking={wip.asking}
         busy={wip.busy}
@@ -1014,6 +1063,22 @@ export function BoardPage() {
 
 /** The confirm a placement raises, or null: the card as the board holds it
     before the repaint, into the column it was placed in. */
+/**
+ * The cloud a card is dropped on to remand it to a dream. A droppable of its
+ * own, id `CLOUD`, that is no column: dropping on it moves nothing and asks
+ * first - see lib/remand.ts. It lights the way a column's drop label does
+ * while the drag is over it.
+ */
+function RemandCloud({ lit }: { lit: boolean }) {
+  const { setNodeRef } = useDroppable({ id: CLOUD });
+
+  return (
+    <div ref={setNodeRef} className={`hatch-remand-cloud${lit ? ' lit' : ''}`}>
+      Remand to a dream
+    </div>
+  );
+}
+
 function contributionSentence(board: Board, placed: Placement): string | null {
   const card = board.issues.find((i) => i.key === placed.key);
   const target = board.statuses.find((s) => s.id === placed.statusId);

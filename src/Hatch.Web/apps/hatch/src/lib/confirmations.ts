@@ -80,7 +80,20 @@ export interface MovedConfirmation extends Chicklet {
   note: string | null;
 }
 
-export type Confirmation = FiledConfirmation | MovedConfirmation;
+/**
+ * A card, and the open work under it, remanded to a dream. Nothing here can be
+ * taken back - a remand posts a dream and writes a link row, and neither has an
+ * undo - so it has no state, and `canUndo` and `newestUndoable` pass over it.
+ */
+export interface RemandedConfirmation extends Chicklet {
+  kind: 'remanded';
+  /** What it says: the key, and how many issues went with it. */
+  note: string;
+  /** Where the link goes, inside the app. */
+  dreamHref: string;
+}
+
+export type Confirmation = FiledConfirmation | MovedConfirmation | RemandedConfirmation;
 
 /** What raising a move takes: everything but what the stack owns. */
 export type MoveRaise = Pick<MovedConfirmation, 'issueKey' | 'title' | 'from' | 'to' | 'restore'>;
@@ -112,6 +125,16 @@ export function raise(
     taken back. */
 export function raiseMove(stack: Confirmation[], move: MoveRaise, id: number, lifetime: Lifetime): Confirmation[] {
   return [{ ...move, ...unsettled, id, kind: 'moved', lifetime, left: lifetime }, ...stack];
+}
+
+/** A remand that went through, on the front of the stack. */
+export function raiseRemand(
+  stack: Confirmation[],
+  remand: Pick<RemandedConfirmation, 'issueKey' | 'title' | 'note' | 'dreamHref'>,
+  id: number,
+  lifetime: Lifetime,
+): Confirmation[] {
+  return [{ ...remand, id, kind: 'remanded', lifetime, left: lifetime }, ...stack];
 }
 
 /** One chicklet closed, and every other one left exactly where it was. An id

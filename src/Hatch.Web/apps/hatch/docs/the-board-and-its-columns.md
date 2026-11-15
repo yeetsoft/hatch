@@ -403,7 +403,17 @@ There are nine, and a column carries whichever of them it needs.
   and it is refused while **Protected** or **Merges PR** is ticked on the
   column.
 - **Deferred** — parked work. A Deferred column is not drawn on the board and
-  has no drop target; the issue page's status bar is the only way in. No
+  has no drop target of its own; the issue page's status bar is the way in,
+  and the one drag that reaches it is the dream cloud. While a card is held,
+  and only when the board has a Deferred column, a cloud reading **Remand to a
+  dream** is drawn above the columns. Dropping on it moves nothing: it opens a
+  dialog naming the column, the open work under the card and the dream's first
+  line, and nothing is written until **Remand** is pressed. That is why it is
+  safe where a column drop is not — a drag can overshoot a lane, but a
+  slipped drop on the cloud only asks a question, and **Leave it on the
+  board**, escape or the scrim sends nothing. A remand cannot be undone: the
+  chicklet that follows names the card and what went with it, links to the
+  dream, and has no **Undo**. No
   session starts work there, and the rollup leaves it out of every total. No
   stock column ships with it, any number of columns may carry it, and a person
   or a key may tick it. It is refused while **Protected** or **Merges PR** is

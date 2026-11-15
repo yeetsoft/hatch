@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { CascadeEntry, MoveRaise } from './confirmations';
+import type { CascadeEntry, MoveRaise, RemandedConfirmation } from './confirmations';
 import type { Issue } from '../types';
 
 /**
@@ -21,6 +21,9 @@ export interface IssueConfirmations {
   /** Say that a card was just dropped into another column, with the request
       that would put it back. Raised once the server has accepted the move. */
   moved: (move: MoveRaise) => void;
+  /** Say that a card was just remanded to a dream, with the sentence and the
+      link. There is no undo to hand back: a remand has none. */
+  remanded: (remand: Pick<RemandedConfirmation, 'issueKey' | 'title' | 'note' | 'dreamHref'>) => void;
   /** Say that an accepted close offer moved these issues along with a card
       already confirmed, so its Undo takes them back too. */
   cascaded: (issueKey: string, entries: CascadeEntry[]) => void;
