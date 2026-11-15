@@ -273,6 +273,28 @@ public sealed class ReadoutTests
     }
 
     [Fact]
+    public void ConfirmingAbortMerge_ReadsAAbortTheMerge()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: false, LongLegend: false, Confirming.AbortMerge);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Equal("a abort the merge", row);
+    }
+
+    [Fact]
+    public void ConfirmingAbortMerge_OutranksStopArmed()
+    {
+        var controls = new ControlsSnapshot(KeysOn: true, StopArmed: true, Paused: false, LongLegend: false, Confirming.AbortMerge);
+        var snapshot = new ReadoutSnapshot(null, null, RunnerSnapshot.Empty, [], null, controls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[^1];
+
+        Assert.Equal("a abort the merge", row);
+    }
+
+    [Fact]
     public void ConfirmingCancel_AsksTheQuestion()
     {
         var controls = new ControlsSnapshot(KeysOn: true, StopArmed: false, Paused: false, LongLegend: false, Confirming.Cancel);

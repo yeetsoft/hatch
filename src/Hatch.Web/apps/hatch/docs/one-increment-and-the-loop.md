@@ -52,8 +52,11 @@ hatch work --workspace /clones           clone what the board binds, into /clone
 - `--no-keys` reads no keys from this terminal; [what it prints](#what-it-prints) has the keys.
 - `--abort-merge` clears any merge in progress in a checkout before resetting
   it - the loop's own interrupted one, or somebody else's - discarding
-  whatever was uncommitted in it, and carries on. Without it a merge in the
-  way refuses the run, as it always has (see "the workspace could not be
+  whatever was uncommitted in it, and carries on. Without it, at an
+  interactive terminal, a merge in the way prints an orange banner naming it
+  and waits 30 seconds for `a` to abort it and carry on the same way; with
+  keys off (a pipe, `--no-keys`, `TERM=dumb`, or redirected output) it
+  refuses the run at once, as it always has (see "the workspace could not be
   reset" [below](#bounds-timeouts-and-stopping)).
 - `--repo` and `--workspace` each replace their setting (`HATCH_REPOS`,
   `HATCH_WORKSPACE`) for the run rather than adding to it. `--workspace off`
@@ -500,11 +503,13 @@ An increment fails when its session exits non-zero, or a clone fails; one clean
 exit resets the streak. The run finishes by printing the night: why it
 stopped, how many increments and what they cost, what moved, and what stalled.
 
-A merge in the way is one cause of "the workspace could not be reset", and
-`--abort-merge` is the way around it: given at the start, it answers in
-advance the question a merge in the way would otherwise stop the night to
-ask, so a runner nobody is watching clears it and keeps going instead of
-ending the run there.
+A merge in the way is one cause of "the workspace could not be reset". At an
+interactive terminal it asks before it stops the night: an orange banner
+names the checkout and whose merge it is, and `a` within 30 seconds aborts it
+and carries on; nothing in 30 seconds is "no action", and the run ends the
+same way. `--abort-merge` is the way around asking at all - given at the
+start, it answers the question in advance, so a runner nobody is watching
+clears it and keeps going instead of ending the run there.
 
 ### Restarts
 

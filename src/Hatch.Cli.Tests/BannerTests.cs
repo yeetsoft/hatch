@@ -203,4 +203,55 @@ public sealed class BannerTests
         var without = Banner.Closing(Report(moved: true));
         Assert.DoesNotContain(without, l => l.Contains("session 42%", StringComparison.Ordinal));
     }
+
+    // ---- MergeBlocked (HA-2344) ----
+
+    [Fact]
+    public void MergeBlocked_HasAGlyphRowAboveAndBelow()
+    {
+        var lines = Banner.MergeBlocked(new MergeBlock(OwnMarker: false, Why: null, Uncommitted: 0), "/checkout", color: false);
+
+        Assert.Equal("🟠🟠🟠🟠🟠", lines[0]);
+        Assert.Equal("🟠🟠🟠🟠🟠", lines[^1]);
+        Assert.True(lines.Count > 2);
+    }
+
+    [Fact]
+    public void MergeBlocked_NamesTheCheckoutAndSomebodysMergeAndTheDiscardCount()
+    {
+        var lines = Banner.MergeBlocked(new MergeBlock(OwnMarker: false, Why: null, Uncommitted: 3), "/some/checkout", color: false);
+
+        Assert.Contains(lines, l => l.Contains("/some/checkout", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("hatch did not start it", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("discard 3 uncommitted file(s)", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("press a to abort it and carry on - nothing in 30 seconds ends the run", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, l => l.Contains("git said", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MergeBlocked_NamesTheLoopsOwnMergeDifferentlyAndQuotesGit()
+    {
+        var lines = Banner.MergeBlocked(
+            new MergeBlock(OwnMarker: true, Why: "fatal: no merge to abort", Uncommitted: 0), "/checkout", color: false);
+
+        Assert.Contains(lines, l => l.Contains("the loop started it", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("git said: fatal: no merge to abort", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MergeBlocked_InColour_Is256ColourIndex208()
+    {
+        var lines = Banner.MergeBlocked(new MergeBlock(OwnMarker: false, Why: null, Uncommitted: 0), "/checkout", color: true);
+
+        Assert.All(lines, l => Assert.StartsWith("\x1b[38;5;208m", l, StringComparison.Ordinal));
+        Assert.All(lines, l => Assert.EndsWith("\x1b[0m", l, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MergeBlocked_NoColour_HasNoEscapeCodes()
+    {
+        var lines = Banner.MergeBlocked(new MergeBlock(OwnMarker: false, Why: null, Uncommitted: 0), "/checkout", color: false);
+
+        Assert.All(lines, l => Assert.DoesNotContain('\x1b', l));
+    }
 }

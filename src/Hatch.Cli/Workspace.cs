@@ -157,6 +157,12 @@ public interface IWorkspace
     /// commit.
     /// </summary>
     ForcedAbort AbortMerge();
+
+    /// <summary>
+    /// What the last <see cref="Prepare"/> found blocking it, when it answered
+    /// <see cref="Reset.Merging"/> - null on every other answer.
+    /// </summary>
+    MergeBlock? MergeBlocked { get; }
 }
 
 /// <summary>What came of pushing a session's work after its account ran out of usage.</summary>

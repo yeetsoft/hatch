@@ -2473,8 +2473,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // as a tree that was never forced at all.
                 if (reset == Reset.Merging && abortMerge)
                 {
-                    reset = MergeAbort.Clear(ws, path, () => ws.Prepare(), runtime.Say.Line, out var refusal);
+                    reset = MergeAbort.Clear(ws, path, () => ws.Prepare(), runtime.Say.Line, out var refusal, "--abort-merge");
                     if (refusal is { Length: > 0 }) runtime.Say.Complain(refusal);
+                }
+                else if (reset == Reset.Merging)
+                {
+                    // Nothing has already said "abort it in advance" - the
+                    // banner, and up to 30 seconds on `a`, before the same
+                    // refusal a tree that cannot be reset at all gets.
+                    var (asked, complaint) = await MergeAbort.AskAsync(runtime, ws, path, () => ws.Prepare(), ct);
+                    reset = asked;
+                    if (complaint is { Length: > 0 }) runtime.Say.Complain(complaint);
                 }
 
                 switch (reset)
