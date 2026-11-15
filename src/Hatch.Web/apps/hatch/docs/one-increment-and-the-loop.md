@@ -50,6 +50,11 @@ hatch work --workspace /clones           clone what the board binds, into /clone
 - `--agent` beats `HATCH_AGENT` for this run: `claude`, `codex`, `grok` or
   `ollama`.
 - `--no-keys` reads no keys from this terminal; [what it prints](#what-it-prints) has the keys.
+- `--abort-merge` clears any merge in progress in a checkout before resetting
+  it - the loop's own interrupted one, or somebody else's - discarding
+  whatever was uncommitted in it, and carries on. Without it a merge in the
+  way refuses the run, as it always has (see "the workspace could not be
+  reset" [below](#bounds-timeouts-and-stopping)).
 - `--repo` and `--workspace` each replace their setting (`HATCH_REPOS`,
   `HATCH_WORKSPACE`) for the run rather than adding to it. `--workspace off`
   never clones.
@@ -251,7 +256,9 @@ hatch go-to-work --workspace /clones           clone what the board binds, into 
   is refused with exit 1. The interval is only what to do when a pass found
   nothing. The merge train keeps its own clock, so approved pull requests merge
   without waiting for it ([letting the loop merge for you](letting-the-loop-merge-for-you)).
-- `--quiet`, `--no-keys`, `--repo` and `--workspace` are as for `work`.
+- `--quiet`, `--no-keys`, `--abort-merge`, `--repo` and `--workspace` are as
+  for `work`, except that `--abort-merge` clears the merge with no banner and
+  no wait - a runner nobody is watching is told the answer in advance.
 - `--agent` is resolved once, before the loop starts, and carried the whole
   night, unlike the model and effort, which the playbook settles fresh each
   increment.
@@ -491,6 +498,12 @@ the night's totals could not be written for a restart
 An increment fails when its session exits non-zero, or a clone fails; one clean
 exit resets the streak. The run finishes by printing the night: why it
 stopped, how many increments and what they cost, what moved, and what stalled.
+
+A merge in the way is one cause of "the workspace could not be reset", and
+`--abort-merge` is the way around it: given at the start, it answers in
+advance the question a merge in the way would otherwise stop the night to
+ask, so a runner nobody is watching clears it and keeps going instead of
+ending the run there.
 
 ### Restarts
 

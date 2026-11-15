@@ -975,7 +975,7 @@ hatch:   run it inside a checkout, name one with --repo, set HATCH_REPOS, or giv
 hatch work [<issue key>] [--mine] [--under <epic key>] [-i] [--quiet]
            [--project <key>]...
            [--model <model>] [--effort <effort>] [--agent <id>] [--dry-run]
-           [--no-keys] [--repo <path>]... [--workspace <dir>]
+           [--no-keys] [--abort-merge] [--repo <path>]... [--workspace <dir>]
 ```
 
 One increment: claims a ticket, spawns one headless agent session with the
@@ -1006,6 +1006,10 @@ has what it prints and every exit code.
   and clones nothing even where a workspace is configured.
 - `--no-keys` reads no keys from this terminal. Ctrl-C and `--stop-file` still
   work.
+- `--abort-merge` clears any merge in progress in a served checkout before the
+  reset refuses for it - the loop's own interrupted one or somebody else's -
+  discarding whatever was uncommitted in it, and carries on. Without it a merge
+  in the way still refuses the run, as it always has.
 - `--repo <path>` also serves that checkout. It is repeatable, and the whole
   list is for this run; `HATCH_REPOS` is not consulted when it is given.
 - `--workspace <dir>` clones into `<dir>` every repository the board binds that
@@ -1020,7 +1024,7 @@ hatch go-to-work [--mine] [--under <epic key>] [--project <key>]... [--once] [--
                  [--agent <id>] [--max-runs <n>] [--max-spend <dollars>]
                  [--max-tokens <count>] [--until <HH:MM>] [--stop-file <path>] [--no-keys]
                  [--max-tokens-per-hour <count>]
-                 [--restart-after <minutes> | --no-restart]
+                 [--restart-after <minutes> | --no-restart] [--abort-merge]
                  [--repo <path>]... [--workspace <dir>] [--runners <n>]
 ```
 
@@ -1101,6 +1105,12 @@ restart appends to the same file and the next night starts a new one.
 - `--restart-after <minutes>` comes back as a newer build at least that often.
   `0` means only when the loop's own source actually changed.
 - `--no-restart` never comes back as a newer build.
+- `--abort-merge` is as for `work`: it clears any merge in progress in a
+  served checkout before the reset ends the night for it, discarding whatever
+  was uncommitted in it, and carries on - with no banner and no wait. The two
+  front scripts, `scripts/hatch.sh` and `scripts\hatch.ps1`, hand every
+  argument through to `go-to-work` whole and again on each restart, so neither
+  needed a change to carry it the whole night.
 
 None of the bounds, `--project` included, is set by default. Each is read
 between increments, so the increment in flight always finishes. The two restart flags do nothing in a
@@ -1113,7 +1123,8 @@ hatch do-my-work [every go-to-work flag]
 ```
 
 Exactly `go-to-work --mine`, every flag included, and `hatch do-my-work -h`
-prints `go-to-work`'s own usage block, so it takes `--runners` too. It exists for a smaller budget spent on
+prints `go-to-work`'s own usage block, so it takes `--runners` and
+`--abort-merge` too. It exists for a smaller budget spent on
 one person's own tickets: on a board shared with other people, plain
 `go-to-work` works the shared pool and skips every person's own, so one loop
 never has to work both. Run `go-to-work` for the pool and `do-my-work`

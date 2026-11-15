@@ -8273,7 +8273,9 @@ predates itself — one written before this process started, which can only be a
 dead process's — and retries the abort, unasked. A lock written since is
 somebody else's git, still running, and is left alone. A forced clear past
 that, through `git reset --merge` and then `git reset --hard`, exists on the
-workspace too, but nothing here reaches for it except by name.
+workspace too — `--abort-merge` is how a runner nobody watches is told the
+answer in advance, rather than ending the night on a merge it cannot know is
+safe to clear.
 
 #### The issue's branch
 
