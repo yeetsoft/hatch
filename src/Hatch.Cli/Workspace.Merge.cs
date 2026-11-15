@@ -80,9 +80,10 @@ public sealed partial class Workspace
             return MergeSettled.Blocked;
         }
 
-        if (!TryAbortMerge())
+        var abort = TryAbortMerge();
+        if (!abort.Ok)
         {
-            complain("hatch: a merge the loop started was never finished, and would not abort - abort it by hand");
+            complain($"hatch: a merge the loop started was never finished, and would not abort{abort.Because}");
             return MergeSettled.Blocked;
         }
 
@@ -96,19 +97,23 @@ public sealed partial class Workspace
     /// <c>index.lock</c> dated before this process started, which is nobody's
     /// to leave in the way and is removed unasked. A lock written after this
     /// process started is somebody else's doing right now, and is left alone.
+    /// Returns the last <c>git merge --abort</c> it ran, so a refusal can say
+    /// what git said.
     /// </summary>
-    private bool TryAbortMerge()
+    private Ran TryAbortMerge()
     {
-        if (Git("merge", "--abort").Ok) return true;
+        var first = Git("merge", "--abort");
+        if (first.Ok) return first;
 
-        if (GitPath("index.lock") is not { } lockPath || !File.Exists(lockPath)) return false;
-        if (File.GetLastWriteTimeUtc(lockPath) >= ProcessStartedAt) return false;
+        if (GitPath("index.lock") is not { } lockPath || !File.Exists(lockPath)) return first;
+        if (File.GetLastWriteTimeUtc(lockPath) >= ProcessStartedAt) return first;
 
         File.Delete(lockPath);
-        if (!Git("merge", "--abort").Ok) return false;
+        var retry = Git("merge", "--abort");
+        if (!retry.Ok) return retry;
 
         say("hatch:   removed a lock the loop's own interrupted git left behind");
-        return true;
+        return retry;
     }
 
     /// <summary>

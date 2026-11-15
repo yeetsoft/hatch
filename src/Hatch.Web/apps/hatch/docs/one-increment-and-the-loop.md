@@ -284,7 +284,7 @@ pool and your own tickets: run `go-to-work` for the pool and `do-my-work`
 separately for your own.
 
 A key that belongs to nobody has no tickets of its own, and is refused: the
-loop ends its night (exit 0) saying so, and `work --mine` exits 1. Who sets a
+loop ends its night (exit 1) saying so, and so does `work --mine`. Who sets a
 key's owner is in [people, roles and keys](people-roles-and-keys).
 
 ### One pass, in order
@@ -483,15 +483,16 @@ same, and so do `c` then `y`. A second Ctrl-C is not handled, so the process
 is killed at once and the ticket stays claimed until the lease ages out, five
 minutes by default.
 
-Other things end a run without a bound having been reached:
+Other things end a run without a bound having been reached, all with exit 0
+but the two marked, which exit 1:
 
 ```
 three increments in a row failed        whatever is broken is broken for every ticket
-the workspace could not be reset        every ticket after it would be built on the wrong tree
+the workspace could not be reset        every ticket after it would be built on the wrong tree (exit 1)
 the board asked this runner to stop     the Agents → Runners page, mid-night
 there is no agent CLI to spawn          nothing was ever going to run
 the keyboard asked (s)                  after the increment in flight
-a --mine pass the board refused         the key belongs to nobody
+a --mine pass the board refused         the key belongs to nobody (exit 1)
 the night's totals could not be written for a restart
 ```
 

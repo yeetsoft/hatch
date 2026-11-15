@@ -926,8 +926,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                    loop's or not, and carry on - uncommitted edits in that",
         "                    merge are discarded",
         "",
-        "  Exits 0 when the run ended; 1 on a refusal; 75 asking a supervisor to",
-        "  rebuild and run it again; 130 on an interrupt.",
+        "  Exits 0 when the run ended; 1 on a refusal, which includes a workspace",
+        "  that cannot be reset; 75 asking a supervisor to rebuild and run it",
+        "  again; 130 on an interrupt.",
     ];
 
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
