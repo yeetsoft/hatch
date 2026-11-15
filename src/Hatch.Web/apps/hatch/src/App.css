@@ -8244,6 +8244,17 @@ button.hatch-option.chosen {
   color: var(--console-dim);
 }
 
+/* The prefix a help row names, in the column an issue's key takes. */
+.hatch-omni-prefix {
+  flex: none;
+  min-width: 3ch;
+  color: var(--console-glow);
+}
+
+.hatch-omni-row--help {
+  cursor: default;
+}
+
 .hatch-omni-title {
   flex: 1;
   min-width: 0;

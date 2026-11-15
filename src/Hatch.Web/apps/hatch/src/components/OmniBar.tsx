@@ -1,11 +1,12 @@
 /* The console: `/` on any page opens a prompt and a list, and taking a row
-   goes to that issue.
+   goes to that issue, or runs that command.
 
-   Issues are the first thing it lists and will not be the last - the operator
-   asked for more to be added - so this is the shell: the prompt, the list, the
-   keys and the look. What a row is, and what typing finds, come from
-   lib/goTo.ts, which is where they are tested. What is here is state and
-   events.
+   The prompt's first character picks what it lists: nothing or `/` is issues,
+   `>` is commands, `?` says what the prompt understands. This is the shell:
+   the prompt, the list, the keys and the look. What a row is, and what typing
+   finds, come from lib/goTo.ts (issues), lib/consoleCommands.ts (commands) and
+   lib/consolePrompt.ts (the prefixes), which is where they are tested. What is
+   here is state and events.
 
    Not a <Modal>. Modal is a titled card with a close button and a body 720px
    wide; this is one prompt and a list, and its keyboard is IssuePicker's - the
@@ -22,6 +23,9 @@ import { StatusDot } from './StatusPill';
 import { boardColumns } from '../lib/columns';
 import { SEARCH_ROW, entryKeys, goToRows, goToStatus, whereOnBoard } from '../lib/goTo';
 import type { GoToLoad, Mark } from '../lib/goTo';
+import { commandList, commandRows, commandStatus } from '../lib/consoleCommands';
+import type { Command, CommandContext } from '../lib/consoleCommands';
+import { MODE_LABEL, MODE_VERB, PREFIXES, parsePrompt } from '../lib/consolePrompt';
 import { searchPath } from '../lib/search';
 import type { IssueCard, Status } from '../types';
 
@@ -43,6 +47,11 @@ export interface OmniBarProps {
   /** The trailing row was taken; the console does not give focus back, for the
       reason `onTake` does not. */
   onSearch: (path: string) => void;
+  /** Where the person is and who they are, for which commands are offered. */
+  commandContext: CommandContext;
+  /** A command was taken. Focus has already gone back to where it was, since
+      what the command does may leave the person on this page. */
+  onRun: (command: Command) => void;
   /** Dismissed without taking anything; focus has already gone back. */
   onClose: () => void;
 }
@@ -60,7 +69,18 @@ function Marked({ text, marks }: { text: string; marks: Mark[] }): ReactNode {
   return parts;
 }
 
-export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake, onSearch, onClose }: OmniBarProps) {
+export function OmniBar({
+  cards,
+  statuses,
+  visibleKeys,
+  scopeKeys,
+  load,
+  onTake,
+  onSearch,
+  commandContext,
+  onRun,
+  onClose,
+}: OmniBarProps) {
   const [query, setQuery] = useState('');
   /* A key, not an index, and null for "the first row". Derived at render below
      rather than kept in step by an effect, so the board's refresh - which hands
@@ -81,9 +101,23 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
   const rowId = (key: string) => `${base}-row-${key}`;
   const searchRowId = `${base}-row-search`;
 
-  const { rows, total } = useMemo(() => goToRows(cards, query, scopeKeys), [cards, query, scopeKeys]);
+  const { mode, query: asked } = parsePrompt(query);
+  const { isAdmin, pathname } = commandContext;
+
+  const { rows, total } = useMemo(
+    () => (mode === 'issues' ? goToRows(cards, asked, scopeKeys) : { rows: [], total: 0 }),
+    [mode, cards, asked, scopeKeys],
+  );
+  const commands = useMemo(() => commandList({ isAdmin, pathname }), [isAdmin, pathname]);
+  const found = useMemo(
+    () => (mode === 'commands' ? commandRows(commands, asked) : { rows: [] as Command[], total: 0 }),
+    [mode, commands, asked],
+  );
   const columns = useMemo(() => boardColumns(statuses), [statuses]);
-  const order = entryKeys(rows, query);
+  /* One order for every mode, so `move` and `take` stay one code path: help
+     has no rows to take, and so no order. */
+  const order =
+    mode === 'issues' ? entryKeys(rows, asked) : mode === 'commands' ? found.rows.map((command) => command.id) : [];
   const active = highlight !== null && order.includes(highlight) ? highlight : (order[0] ?? null);
   const activeIndex = order.indexOf(active ?? '');
 
@@ -95,9 +129,12 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
   }
 
   function take(index: number) {
-    if (done.current || index < 0) return;
+    if (done.current || index < 0 || index >= order.length) return;
     done.current = true;
-    if (order[index] === SEARCH_ROW) onSearch(searchPath(query)!);
+    if (mode === 'commands') {
+      if (opener.current instanceof HTMLElement) opener.current.focus();
+      onRun(found.rows[index]);
+    } else if (order[index] === SEARCH_ROW) onSearch(searchPath(asked)!);
     else onTake(rows[index].card);
   }
 
@@ -128,6 +165,8 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
     activeRow.current?.scrollIntoView({ block: 'nearest' });
   }, [active, query]);
 
+  const rowKey = (key: string) => (key === SEARCH_ROW ? searchRowId : rowId(key));
+
   return (
     <div
       className="hatch-omni-scrim"
@@ -141,7 +180,7 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
         className="hatch-omni"
         role="dialog"
         aria-modal="true"
-        aria-label="Go to an issue"
+        aria-label={MODE_LABEL[mode]}
         /* React's onBlur is focusout, so it bubbles: focus leaving for anywhere
            outside the panel closes it. */
         onBlur={(e) => {
@@ -154,7 +193,7 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
         }}
       >
         <div className="hatch-omni-prompt">
-          <span className="hatch-omni-verb">go</span>
+          <span className="hatch-omni-verb">{MODE_VERB[mode]}</span>
           <span className="hatch-omni-chevron" aria-hidden="true">
             ❯
           </span>
@@ -169,12 +208,12 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
             autoCapitalize="off"
             spellCheck={false}
             value={query}
-            aria-label="Go to an issue"
+            aria-label={MODE_LABEL[mode]}
             role="combobox"
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
-            aria-activedescendant={active === null ? undefined : active === SEARCH_ROW ? searchRowId : rowId(active)}
+            aria-activedescendant={active === null ? undefined : rowKey(active)}
             onChange={(e) => {
               setQuery(e.target.value);
               setHighlight(null);
@@ -183,7 +222,44 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
           />
         </div>
 
-        <ul className="hatch-omni-list" id={listId} role="listbox" aria-label="Issues">
+        <ul
+          className="hatch-omni-list"
+          id={listId}
+          role={mode === 'help' ? 'list' : 'listbox'}
+          aria-label={mode === 'help' ? 'Prefixes' : mode === 'commands' ? 'Commands' : 'Issues'}
+        >
+          {mode === 'help' &&
+            PREFIXES.map((row) => (
+              <li key={row.prefix} className="hatch-omni-row hatch-omni-row--help">
+                <span className="hatch-omni-marker" aria-hidden="true" />
+                <span className="hatch-omni-prefix">{row.prefix}</span>
+                <span className="hatch-omni-title">{row.line}</span>
+              </li>
+            ))}
+          {found.rows.map((command) => {
+            const isActive = command.id === active;
+            return (
+              <li
+                key={command.id}
+                id={rowId(command.id)}
+                role="option"
+                aria-selected={isActive}
+                ref={isActive ? activeRow : null}
+                className={`hatch-omni-row${isActive ? ' is-active' : ''}`}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => take(order.indexOf(command.id))}
+                onMouseMove={() => {
+                  if (!isActive) setHighlight(command.id);
+                }}
+              >
+                <span className="hatch-omni-marker" aria-hidden="true">
+                  {isActive ? '❯' : ''}
+                </span>
+                <span className="hatch-omni-title">{command.name}</span>
+                <span className="hatch-omni-type">{command.hint}</span>
+              </li>
+            );
+          })}
           {rows.map((row, index) => {
             const { card } = row;
             const status = statuses.find((s) => s.id === card.statusId);
@@ -230,7 +306,7 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
               </li>
             );
           })}
-          {searchPath(query) !== null && (
+          {mode === 'issues' && searchPath(asked) !== null && (
             <li
               id={searchRowId}
               role="option"
@@ -246,15 +322,26 @@ export function OmniBar({ cards, statuses, visibleKeys, scopeKeys, load, onTake,
               <span className="hatch-omni-marker" aria-hidden="true">
                 {active === SEARCH_ROW ? '❯' : ''}
               </span>
-              <span className="hatch-omni-title">Search everything for “{query.trim()}”</span>
+              <span className="hatch-omni-title">Search everything for “{asked.trim()}”</span>
             </li>
           )}
         </ul>
 
         <div className="hatch-omni-status">
-          <span aria-live="polite">{goToStatus(query, rows.length, total, load)}</span>
+          <span aria-live="polite">
+            {mode === 'commands'
+              ? commandStatus(found.rows.length, found.total)
+              : mode === 'help'
+                ? PREFIXES.map((row) => `${row.prefix} ${row.mode === 'help' ? 'this list' : row.mode}`).join(' · ')
+                : goToStatus(asked, rows.length, total, load)}
+          </span>
           <span className="hatch-omni-keys" aria-hidden="true">
-            <kbd>↑↓</kbd> move <kbd>↵</kbd> open <kbd>esc</kbd>
+            {mode !== 'help' && (
+              <>
+                <kbd>↑↓</kbd> move <kbd>↵</kbd> {mode === 'commands' ? 'run' : 'open'}{' '}
+              </>
+            )}
+            <kbd>esc</kbd>
           </span>
         </div>
       </div>

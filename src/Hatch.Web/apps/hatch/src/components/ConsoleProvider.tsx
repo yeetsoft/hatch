@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useTheme } from '@hatch/ui';
 import { getBoard } from '../api/client';
+import type { Command, CommandContext } from '../lib/consoleCommands';
 import type { GoToLoad } from '../lib/goTo';
 import { scopedPath } from '../lib/scope';
 import { isGoToShortcut, isTypingTarget } from '../lib/shortcuts';
 import { ConsoleContext } from '../lib/useConsole';
 import type { ConsoleControl, ConsoleHost } from '../lib/useConsole';
+import { useMe } from '../lib/useMe';
 import { useScope } from '../lib/useScope';
 import type { IssueCard, Status } from '../types';
 import { OmniBar } from './OmniBar';
@@ -47,6 +50,9 @@ const LOADING: Read = { state: 'loading', issues: [], statuses: [] };
  */
 export function ConsoleProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const { isAdmin } = useMe();
+  const { setChoice } = useTheme();
   const scope = useScope();
   const [open, setOpen] = useState(false);
   const [host, setHostState] = useState<ConsoleHost | null>(null);
@@ -108,6 +114,15 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     navigate(path);
   };
 
+  const commandContext = useMemo<CommandContext>(() => ({ isAdmin, pathname }), [isAdmin, pathname]);
+
+  // The prompt has already given focus back, so a theme change leaves the
+  // person where they were; a page change then takes them away from it.
+  const onRun = (command: Command) => {
+    setOpen(false);
+    command.run({ go: (path) => navigate(scopedPath(path, scope.keys)), setTheme: setChoice });
+  };
+
   return (
     <ConsoleContext.Provider value={control}>
       {children}
@@ -120,6 +135,8 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
           load={host ? 'ready' : read.state}
           onTake={onTake}
           onSearch={onSearch}
+          commandContext={commandContext}
+          onRun={onRun}
           onClose={close}
         />
       )}

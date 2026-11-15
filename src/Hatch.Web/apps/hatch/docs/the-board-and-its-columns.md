@@ -233,6 +233,30 @@ typed to the Search page. It is not a shortcut while you are typing:
 `/` in a text box, a description editor, or the board's own search box is a
 slash.
 
+The first character of the prompt says what it lists:
+
+| Prefix | Lists |
+| --- | --- |
+| none, or `/` | issues, as above (`/ha-3` is `ha-3`) |
+| `>` | commands |
+| `?` | this list of prefixes; **↵** does nothing on it |
+
+The prompt's verb (**go**, **run** or **help**) and the status line say which
+is on. A search for an issue cannot start with `>` or `?`.
+
+A command is a sentence you can find by any words in it, in any order, ignoring
+case and punctuation: `>board`, `>go board` and `>goto board` all find **Go to
+Board**. Names that start with what you typed come first. A bare `>` shows the
+first eight commands, with "8 of N" in the status line, until you type.
+**↑↓** move, **↵** runs the highlighted one and **esc** puts the prompt away.
+The first commands are:
+
+- **Go to** each page the primary nav lists, plus **Board** and **Settings**.
+  The tab's scope is kept. **Go to Users** is there for an Admin only, as it is
+  in the nav.
+- **Theme → Auto**, **Theme → Light** and **Theme → Dark**, the three choices
+  of the theme switch. You stay on the page you were on.
+
 The console follows the tab's scope. In a tab scoped to projects, an issue
 outside the scope is not listed for a key prefix or for words from its title.
 Type its whole key (`FIL-1`, not `FIL-`) and it is listed first, marked
