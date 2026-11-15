@@ -21,6 +21,7 @@ vi.mock('./MarkdownEditor', () => ({ MarkdownEditor: () => null }));
 const CONFIRMATIONS: IssueConfirmations = {
   confirm: () => undefined,
   moved: () => undefined,
+  remanded: () => undefined,
   cascaded: () => undefined,
   undo: () => undefined,
   undoNewest: () => false,

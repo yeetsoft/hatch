@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { moveIssue } from '../api/client';
 import { appHref } from '../lib/basename';
+import { scopedDreamHref } from '../lib/remand';
 import { scopedPath } from '../lib/scope';
 import { useScope } from '../lib/useScope';
 import { useStandalone } from '../lib/viewport';
@@ -18,11 +19,12 @@ import {
   newestUndoable,
   raise,
   raiseMove,
+  raiseRemand,
   settle,
   undoneNote,
   withCascade,
 } from '../lib/confirmations';
-import type { Confirmation, MovedConfirmation } from '../lib/confirmations';
+import type { Confirmation, MovedConfirmation, RemandedConfirmation } from '../lib/confirmations';
 import { readLifetime } from '../lib/confirmationLifetime';
 import { HttpError, message } from '../lib/errors';
 import { currentPlatform, undoShortcutLabel } from '../lib/shortcuts';
@@ -160,6 +162,16 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
     [change],
   );
 
+  const remanded = useCallback<IssueConfirmations['remanded']>(
+    (remand) => {
+      nextId.current += 1;
+      const id = nextId.current;
+      const lifetime = readLifetime();
+      change((prev) => raiseRemand(prev, remand, id, lifetime));
+    },
+    [change],
+  );
+
   const cascaded = useCallback<IssueConfirmations['cascaded']>(
     (issueKey, entries) => change((prev) => withCascade(prev, issueKey, entries)),
     [change],
@@ -222,8 +234,8 @@ export function ConfirmationsProvider({ children }: { children: ReactNode }) {
   // Steady across renders, so a surface holding any of these in a dependency
   // list is not re-running on every keystroke elsewhere.
   const value = useMemo(
-    () => ({ confirm, moved, cascaded, undo, undoNewest, onUndone }),
-    [confirm, moved, cascaded, undo, undoNewest, onUndone],
+    () => ({ confirm, moved, remanded, cascaded, undo, undoNewest, onUndone }),
+    [confirm, moved, remanded, cascaded, undo, undoNewest, onUndone],
   );
 
   return (
@@ -281,6 +293,7 @@ export function ConfirmationStack({
         {stack.map((c) => (
           <Chicklet key={c.id} c={c} onDismiss={onDismiss}>
             {c.kind === 'moved' && <MoveLine c={c} onUndo={onUndo} />}
+            {c.kind === 'remanded' && <RemandLine c={c} />}
           </Chicklet>
         ))}
       </ul>
@@ -374,6 +387,32 @@ function MoveLine({ c, onUndo }: { c: MovedConfirmation; onUndo: (id: number) =>
         >
           {undoing ? 'Undoing…' : 'Undo'}
         </button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * What a remand chicklet says under the title: what happened, and the way to
+ * the dream. No Undo - a remand has none - so the line is a sentence and a
+ * link and nothing to press but the link.
+ *
+ * The link is routed the way the key link above is: in place in the installed
+ * app, else an anchor in a new tab on the prefix this bundle answers at.
+ */
+function RemandLine({ c }: { c: RemandedConfirmation }) {
+  const standalone = useStandalone();
+  const { keys } = useScope();
+
+  return (
+    <span className="hatch-confirmation-move">
+      <span className="hatch-confirmation-note">{c.note}</span>
+      {standalone ? (
+        <Link to={c.dreamHref}>See the dream</Link>
+      ) : (
+        <a href={appHref(scopedDreamHref(c.dreamHref, keys))} target="_blank" rel="noreferrer">
+          See the dream ↗
+        </a>
       )}
     </span>
   );
