@@ -9977,6 +9977,22 @@ at any moment whether keys are on or off, including while a confirmation is
 outstanding — a second way to reach the same cancellation, never a
 replacement for it.
 
+**`a` is live only while a reset is stopped on a merge in progress** — the
+loop's own that would not abort, or somebody else's — and only then does the
+legend read `a abort the merge`. A reset that stops there without
+`--abort-merge` having already answered the question in advance prints a
+banner naming the checkout, whose merge it is, git's own words where there
+are any, and how many uncommitted files aborting it will discard; in colour
+it is orange (256-colour index 208, since the readout's own palette has none),
+and plain text under `NO_COLOR` or on a redirected output. `a` or `A` within
+30 seconds clears it the same way `--abort-merge` would, says what it did and
+discarded, and the pass carries on as if nothing had been in the way; nothing
+in 30 seconds is "no action", and the run ends the same way a tree that
+cannot be reset at all does. Where keys are off — a pipe, `--no-keys`,
+`TERM=dumb`, or redirected output — the banner still prints and the run falls
+through at once: the 30 seconds is for a person, and nobody can press a key
+on a pipe.
+
 ## The level above the board
 
 The board shows every card, which is the one thing it cannot do: say which of

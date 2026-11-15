@@ -17,6 +17,12 @@ public class Terminal
 {
     private readonly Lock _gate = new();
 
+    /// <summary>
+    /// Whether this terminal draws in colour - false by default, the plain-text
+    /// answer a redirected log and a test's <see cref="Transcript"/> both want.
+    /// </summary>
+    public virtual bool Colour => false;
+
     /// <summary>What a person reads. Standard output.</summary>
     public virtual void Line(string line)
     {
@@ -127,6 +133,8 @@ public sealed class LiveTerminal : Terminal, IDisposable
         var every = tickEvery ?? TimeSpan.FromMilliseconds(500);
         _timer = new Timer(_ => Redraw(), null, every, every);
     }
+
+    public override bool Colour => _color;
 
     public override void Line(string line)
     {

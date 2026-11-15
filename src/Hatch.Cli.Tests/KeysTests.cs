@@ -283,6 +283,124 @@ public sealed class KeysTests
         Assert.True(checkNow);
     }
 
+    // ---- a: abort a blocked merge (HA-2344) ----
+
+    [Fact]
+    public void A_WhileArmed_ClearsTheConfirmationAndLogsNothing()
+    {
+        var (stopArmed, paused, longLegend, confirming, cancelNow, skipNow, checkNow, log) =
+            Keys.Decide('a', stopArmed: false, paused: false, longLegend: false, Confirming.AbortMerge, incrementRunning: false, napping: false);
+
+        Assert.False(stopArmed);
+        Assert.False(paused);
+        Assert.False(longLegend);
+        Assert.Equal(Confirming.None, confirming);
+        Assert.False(cancelNow);
+        Assert.False(skipNow);
+        Assert.False(checkNow);
+        Assert.Null(log);
+    }
+
+    [Fact]
+    public void A_Capital_AlsoClearsTheConfirmation()
+    {
+        var (_, _, _, confirming, _, _, _, _) =
+            Keys.Decide('A', stopArmed: false, paused: false, longLegend: false, Confirming.AbortMerge, incrementRunning: false, napping: false);
+
+        Assert.Equal(Confirming.None, confirming);
+    }
+
+    [Theory]
+    [InlineData('s')]
+    [InlineData('c')]
+    [InlineData('p')]
+    [InlineData('k')]
+    [InlineData('n')]
+    [InlineData('y')]
+    [InlineData('?')]
+    [InlineData('q')]
+    public void AnythingElseWhileArmed_ChangesNothingAndLogsNothing(char key)
+    {
+        var (stopArmed, paused, longLegend, confirming, cancelNow, skipNow, checkNow, log) =
+            Keys.Decide(key, stopArmed: false, paused: false, longLegend: false, Confirming.AbortMerge, incrementRunning: true, napping: true);
+
+        Assert.False(stopArmed);
+        Assert.False(paused);
+        Assert.False(longLegend);
+        Assert.Equal(Confirming.AbortMerge, confirming);
+        Assert.False(cancelNow);
+        Assert.False(skipNow);
+        Assert.False(checkNow);
+        Assert.Null(log);
+    }
+
+    [Fact]
+    public void A_WhileNotArmed_ChangesNothingAndLogsNothing()
+    {
+        var (stopArmed, paused, longLegend, confirming, cancelNow, skipNow, checkNow, log) =
+            Keys.Decide('a', stopArmed: false, paused: false, longLegend: false, Confirming.None, incrementRunning: false, napping: false);
+
+        Assert.False(stopArmed);
+        Assert.False(paused);
+        Assert.False(longLegend);
+        Assert.Equal(Confirming.None, confirming);
+        Assert.False(cancelNow);
+        Assert.False(skipNow);
+        Assert.False(checkNow);
+        Assert.Null(log);
+    }
+
+    [Fact]
+    public void Controls_ArmArmsTheConfirmation()
+    {
+        var controls = new Controls(keysOn: true);
+
+        controls.Arm();
+
+        Assert.Equal(Confirming.AbortMerge, controls.Snapshot().Confirming);
+    }
+
+    [Fact]
+    public void Controls_DisarmClearsItEvenWithNoKeyPressed()
+    {
+        var controls = new Controls(keysOn: true);
+        controls.Arm();
+
+        controls.Disarm();
+
+        Assert.Equal(Confirming.None, controls.Snapshot().Confirming);
+    }
+
+    [Fact]
+    public void Controls_RaisesAbortMergeExactlyOnceWhenAClearsTheArmedConfirmation()
+    {
+        var controls = new Controls(keysOn: true);
+        controls.Arm();
+
+        var raised = 0;
+        controls.AbortMerge += () => raised++;
+
+        controls.Press('a');
+
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void Controls_DoesNotRaiseAbortMergeForAnyOtherKeyOrWhenNotArmed()
+    {
+        var controls = new Controls(keysOn: true);
+
+        var raised = 0;
+        controls.AbortMerge += () => raised++;
+
+        controls.Press('a');
+        Assert.Equal(0, raised);
+
+        controls.Arm();
+        controls.Press('x');
+        Assert.Equal(0, raised);
+    }
+
     // ---- Controls, not only the static table ----
 
     [Fact]

@@ -1008,8 +1008,11 @@ has what it prints and every exit code.
   work.
 - `--abort-merge` clears any merge in progress in a served checkout before the
   reset refuses for it - the loop's own interrupted one or somebody else's -
-  discarding whatever was uncommitted in it, and carries on. Without it a merge
-  in the way still refuses the run, as it always has.
+  discarding whatever was uncommitted in it, and carries on. Without it, at an
+  interactive terminal, a merge in the way prints an orange banner naming it
+  and waits 30 seconds for `a` to abort it and carry on the same way; with keys
+  off (a pipe, `--no-keys`, `TERM=dumb`, or redirected output) it refuses the
+  run at once, as it always has.
 - `--repo <path>` also serves that checkout. It is repeatable, and the whole
   list is for this run; `HATCH_REPOS` is not consulted when it is given.
 - `--workspace <dir>` clones into `<dir>` every repository the board binds that
@@ -1107,8 +1110,10 @@ restart appends to the same file and the next night starts a new one.
 - `--no-restart` never comes back as a newer build.
 - `--abort-merge` is as for `work`: it clears any merge in progress in a
   served checkout before the reset ends the night for it, discarding whatever
-  was uncommitted in it, and carries on - with no banner and no wait. The two
-  front scripts, `scripts/hatch.sh` and `scripts\hatch.ps1`, hand every
+  was uncommitted in it, and carries on - with no banner and no wait, since a
+  runner nobody is watching is told the answer in advance. Without it, the
+  same banner and 30-second wait on `a` that `work` prints applies here too.
+  The two front scripts, `scripts/hatch.sh` and `scripts\hatch.ps1`, hand every
   argument through to `go-to-work` whole and again on each restart, so neither
   needed a change to carry it the whole night.
 
