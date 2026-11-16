@@ -64,6 +64,9 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
 
     private const string Chip = ".hatch-scope-control__chip";
 
+    /// <summary>HA-2359: the expedited and paused projects, beside the trigger.</summary>
+    private const string Cluster = ".hatch-scope-cluster";
+
     private const string Panel = ".hatch-types-panel";
 
     private const string Row = ".hatch-types-item";
@@ -204,8 +207,13 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             await deadline.BoundAsync("filing the three projects and their levels", () => FileLeveledProjectsAsync(baseUrl));
             await harness.OpenAsync(deadline, baseUrl, "/");
             await harness.WaitForTopBarAsync(deadline);
+            await ClusterAsync(harness, deadline, violations, "desk", "light", scoped: false);
+            await harness.GoToAsync(deadline, "?scope=AAA");
+            await harness.WaitForTopBarAsync(deadline);
+            await ClusterAsync(harness, deadline, violations, "desk", "light", scoped: true);
             await OwnerLevelsAsync(harness, deadline, violations, "desk");
             await DarkLevelsAsync(harness, deadline, violations, "desk");
+            await DarkClusterAsync(harness, deadline, violations, "desk");
 
             Assert.True(
                 violations.Count == 0,
@@ -249,8 +257,13 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             await deadline.BoundAsync("filing the three projects and their levels", () => FileLeveledProjectsAsync(baseUrl));
             await harness.OpenAsync(deadline, baseUrl, "/");
             await harness.WaitForTopBarAsync(deadline);
+            await ClusterAsync(harness, deadline, violations, "phone", "light", scoped: false);
+            await harness.GoToAsync(deadline, "?scope=AAA");
+            await harness.WaitForTopBarAsync(deadline);
+            await ClusterAsync(harness, deadline, violations, "phone", "light", scoped: true);
             await OwnerLevelsAsync(harness, deadline, violations, "phone");
             await DarkLevelsAsync(harness, deadline, violations, "phone");
+            await DarkClusterAsync(harness, deadline, violations, "phone");
 
             Assert.True(
                 violations.Count == 0,
@@ -266,6 +279,183 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
         finally
         {
             await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// HA-2359: the cluster beside the trigger. Filed as AAA normal, BBB
+    /// expedited, CCC paused, so one pill leads each run. Reads the trigger and
+    /// the cluster and checks the cluster is the trigger's sibling, beside it on
+    /// the desk and under it on the phone, that each run is titled and led by
+    /// its glyph, that the pills carry their project's colour, that each pill is
+    /// 44px high on the phone, that the trigger carries the glyphs before its
+    /// caret, and that pressing one opens the panel. On the phone the board
+    /// must still fit under the taller strip.
+    /// </summary>
+    private async Task ClusterAsync(
+        E2eHarness harness, Deadline deadline, List<string> violations, string profile, string theme, bool scoped)
+    {
+        var state = $"{profile}, {theme}, {(scoped ? "scoped" : "unscoped")}";
+        await harness.WaitForVisibleAsync(deadline, Trigger);
+        await harness.WaitForVisibleAsync(deadline, Cluster);
+
+        var m = await ReadClusterAsync(harness, deadline);
+        output.WriteLine($"--- cluster, {state}: {m}");
+        CheckCluster(m, ["BBB"], ["CCC"], profile == "phone", violations, state);
+        output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, $"cluster-{profile}-{theme}-{(scoped ? "scoped" : "unscoped")}")}");
+
+        if (profile == "phone") await BoardFitsAsync(harness, deadline, $"cluster, {state}", violations);
+
+        await PressTheTriggerGlyphAsync(harness, deadline, state);
+    }
+
+    /// <summary>
+    /// The dark theme, after AAA was expedited by the arrow: two expedited
+    /// pills, so the overlap can be read, then an owner's x on BBB's pill sets
+    /// BBB back to normal with no reload and the pill goes.
+    /// </summary>
+    private async Task DarkClusterAsync(E2eHarness harness, Deadline deadline, List<string> violations, string profile)
+    {
+        var state = $"{profile}, dark";
+        await harness.WaitForVisibleAsync(deadline, Cluster);
+
+        var m = await ReadClusterAsync(harness, deadline);
+        output.WriteLine($"--- cluster, {state}: {m}");
+        CheckCluster(m, ["AAA", "BBB"], ["CCC"], profile == "phone", violations, state);
+        output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, $"cluster-{profile}-dark")}");
+
+        var pills = m.GetProperty("groups")[0].GetProperty("pills");
+        if (pills.GetArrayLength() == 2 && pills[1].GetProperty("left").GetDouble() >= pills[0].GetProperty("right").GetDouble() - Tolerance)
+            violations.Add($"{state}: the second pill does not overlap the first");
+
+        await harness.EvaluateAsync<bool>(deadline, "marking the page", "() => { window.__noReload = 1; return true; }");
+        // The x is held at no width until its pill is hovered or focused, and a click waits for it to be seen.
+        await harness.EvaluateAsync<bool>(
+            deadline,
+            "focusing BBB's x",
+            "() => { document.querySelector('.hatch-scope-cluster button[aria-label=\"Set BBB back to normal\"]').focus(); return true; }");
+        await harness.ClickAsync(deadline, "button[aria-label=\"Set BBB back to normal\"]");
+        await harness.WaitForFunctionAsync(
+            deadline,
+            "waiting for BBB's pill to go",
+            "() => !document.querySelector('button[aria-label=\"Set BBB back to normal\"]') && !!document.querySelector('button[aria-label=\"Set AAA back to normal\"]')");
+
+        var reload = await harness.EvaluateAsync<JsonElement>(deadline, "reading the reload marker", "() => window.__noReload ?? null");
+        if (reload.ValueKind != JsonValueKind.Number || reload.GetInt32() != 1)
+            violations.Add($"{state}: pressing the x reloaded the page (window.__noReload is gone)");
+
+        var after = await ReadClusterAsync(harness, deadline);
+        output.WriteLine($"--- cluster, {state}, after the x: {after}");
+        CheckCluster(after, ["AAA"], ["CCC"], profile == "phone", violations, $"{state}, after the x");
+    }
+
+    /// <summary>A press on the glyph inside the trigger opens the panel like the rest of the button; a second press closes it.</summary>
+    private async Task PressTheTriggerGlyphAsync(E2eHarness harness, Deadline deadline, string state)
+    {
+        await harness.ClickAsync(deadline, $"{Trigger} >> .hatch-scope-control__trigger-glyph >> nth=0");
+        await harness.WaitForVisibleAsync(deadline, Panel);
+        output.WriteLine($"--- {state}: pressing the glyph in the trigger opened the panel");
+        await harness.ClickAsync(deadline, Trigger);
+        await harness.WaitForHiddenAsync(deadline, Panel);
+    }
+
+    private static Task<JsonElement> ReadClusterAsync(E2eHarness harness, Deadline deadline) =>
+        harness.EvaluateAsync<JsonElement>(
+            deadline,
+            "measuring the cluster",
+            $$"""
+            () => {
+              const box = e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height }; };
+              const trigger = document.querySelector('{{Trigger}}');
+              const cluster = document.querySelector('{{Cluster}}');
+              const glyphs = [...trigger.querySelectorAll('.hatch-scope-control__trigger-glyph')];
+              const caret = trigger.querySelector('.hatch-menu__caret');
+              return {
+                trigger: box(trigger),
+                cluster: box(cluster),
+                insideTrigger: trigger.contains(cluster),
+                siblings: trigger.closest('.hatch-scope-control') === cluster.closest('.hatch-scope-control'),
+                triggerGlyphs: glyphs.length,
+                glyphsBeforeCaret: glyphs.every(g => !!(g.compareDocumentPosition(caret) & Node.DOCUMENT_POSITION_FOLLOWING)),
+                triggerLabel: trigger.getAttribute('aria-label'),
+                groups: [...cluster.querySelectorAll('.hatch-scope-cluster__group')].map(g => ({
+                  title: g.getAttribute('title'),
+                  glyph: !!g.querySelector('.hatch-scope-cluster__glyph svg'),
+                  glyphHidden: g.querySelector('.hatch-scope-cluster__glyph').getAttribute('aria-hidden') === 'true',
+                  pills: [...g.querySelectorAll('.hatch-scope-cluster__pill')].map(p => ({
+                    key: p.childNodes[0].textContent.trim(),
+                    color: getComputedStyle(p).backgroundColor,
+                    z: getComputedStyle(p).zIndex,
+                    clear: p.querySelector('button')?.getAttribute('aria-label') ?? null,
+                    ...box(p),
+                  })),
+                })),
+              };
+            }
+            """);
+
+    private static void CheckCluster(
+        JsonElement m, string[] expedited, string[] paused, bool phone, List<string> violations, string state)
+    {
+        if (m.GetProperty("insideTrigger").GetBoolean()) violations.Add($"{state}: the cluster is inside the trigger button");
+        if (!m.GetProperty("siblings").GetBoolean()) violations.Add($"{state}: the cluster is not beside the trigger in the same wrapper");
+        if (m.GetProperty("triggerGlyphs").GetInt32() != 2) violations.Add($"{state}: the trigger holds {m.GetProperty("triggerGlyphs").GetInt32()} glyphs, not 2");
+        if (!m.GetProperty("glyphsBeforeCaret").GetBoolean()) violations.Add($"{state}: a glyph in the trigger sits after the caret");
+        if (!(m.GetProperty("triggerLabel").GetString() ?? "").StartsWith("Projects in scope", StringComparison.Ordinal))
+            violations.Add($"{state}: the glyphs changed the trigger's label to \"{m.GetProperty("triggerLabel").GetString()}\"");
+
+        var trigger = m.GetProperty("trigger");
+        var cluster = m.GetProperty("cluster");
+        if (phone)
+        {
+            if (cluster.GetProperty("top").GetDouble() < trigger.GetProperty("bottom").GetDouble() - Tolerance)
+                violations.Add($"{state}: the cluster does not wrap under the trigger");
+        }
+        else
+        {
+            if (cluster.GetProperty("left").GetDouble() < trigger.GetProperty("right").GetDouble() - Tolerance)
+                violations.Add($"{state}: the cluster does not sit beside the trigger");
+            var gap = Math.Abs(
+                (cluster.GetProperty("top").GetDouble() + cluster.GetProperty("bottom").GetDouble()) / 2
+                - (trigger.GetProperty("top").GetDouble() + trigger.GetProperty("bottom").GetDouble()) / 2);
+            if (gap > CentreTolerance) violations.Add($"{state}: the cluster's centre is {gap}px off the trigger's");
+        }
+
+        var groups = m.GetProperty("groups");
+        if (groups.GetArrayLength() != 2)
+        {
+            violations.Add($"{state}: {groups.GetArrayLength()} runs in the cluster, not 2");
+            return;
+        }
+
+        CheckRun(groups[0], "Expedited projects: ", expedited, phone, violations, state);
+        CheckRun(groups[1], "Paused projects: ", paused, phone, violations, state);
+    }
+
+    private static void CheckRun(JsonElement group, string title, string[] keys, bool phone, List<string> violations, string state)
+    {
+        var want = title + string.Join(", ", keys);
+        var actual = group.GetProperty("title").GetString();
+        if (actual != want) violations.Add($"{state}: a run is titled \"{actual}\", not \"{want}\"");
+        if (!group.GetProperty("glyph").GetBoolean() || !group.GetProperty("glyphHidden").GetBoolean())
+            violations.Add($"{state}: the run \"{title}\" is not led by a decorative glyph");
+
+        var pills = group.GetProperty("pills");
+        var found = pills.EnumerateArray().Select(p => p.GetProperty("key").GetString()).ToArray();
+        if (!found.SequenceEqual(keys)) violations.Add($"{state}: the run \"{title}\" has pills {string.Join(", ", found)}, not {string.Join(", ", keys)}");
+
+        for (var i = 0; i < pills.GetArrayLength(); i++)
+        {
+            var pill = pills[i];
+            var key = pill.GetProperty("key").GetString();
+            if (pill.GetProperty("color").GetString() is null or "" or "rgba(0, 0, 0, 0)")
+                violations.Add($"{state}: {key}'s pill has no colour");
+            if (pill.GetProperty("clear").GetString() != $"Set {key} back to normal")
+                violations.Add($"{state}: {key}'s pill has the x labelled \"{pill.GetProperty("clear").GetString()}\"");
+            if (phone && pill.GetProperty("height").GetDouble() < 44 - Tolerance)
+                violations.Add($"{state}: {key}'s pill is {pill.GetProperty("height").GetDouble()}px high, under 44");
+            if (i > 0 && int.Parse(pills[i - 1].GetProperty("z").GetString()!) <= int.Parse(pill.GetProperty("z").GetString()!))
+                violations.Add($"{state}: the pill before {key} does not lie on top of it");
         }
     }
 
