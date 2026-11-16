@@ -9,6 +9,7 @@ import {
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
+  projectPriorityDiff,
   projectLandingDiff,
   projectReflectionDiff,
   projectRepoSourcedDiff,
@@ -16,7 +17,7 @@ import {
   reflectionWaitsForPerson,
   type ProjectDraft,
 } from './projectDraft';
-import type { OnePullRequestPolicy } from '../types';
+import type { OnePullRequestPolicy, Project, ProjectPriority } from '../types';
 
 describe('openProjectDraft', () => {
   it('seeds known and the working fields from a Project', () => {
@@ -1013,5 +1014,22 @@ describe('reflectionWaitsForPerson', () => {
 
   it('reads a padded number as set', () => {
     expect(reflectionWaitsForPerson(draft(' 5 ', false))).toBe(true);
+  });
+});
+
+describe('projectPriorityDiff', () => {
+  const at = (priority: ProjectPriority) => ({ priority }) as Project;
+
+  it('is null while the held level is the saved one', () => {
+    for (const level of ['paused', 'normal', 'expedited'] as const) {
+      expect(projectPriorityDiff(level, at(level))).toBeNull();
+    }
+  });
+
+  it('writes the held level once it differs', () => {
+    expect(projectPriorityDiff('paused', at('normal'))).toEqual({ priority: 'paused' });
+    expect(projectPriorityDiff('expedited', at('normal'))).toEqual({ priority: 'expedited' });
+    expect(projectPriorityDiff('normal', at('paused'))).toEqual({ priority: 'normal' });
+    expect(projectPriorityDiff('expedited', at('paused'))).toEqual({ priority: 'expedited' });
   });
 });

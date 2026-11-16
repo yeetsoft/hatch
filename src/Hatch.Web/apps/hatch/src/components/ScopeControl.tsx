@@ -2,60 +2,16 @@ import { useState } from 'react';
 import { Menu, MenuCaret, ProjectMark, markVars } from '@hatch/ui';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { toggleChoice } from '../lib/checklist';
-import { glyphState, leveled, levelAfterPress, setLevel } from '../lib/projectLevel';
+import { leveled, levelAfterPress, setLevel } from '../lib/projectLevel';
 import type { LevelGlyph } from '../lib/projectLevel';
 import { putProjectPriority } from '../api/client';
 import { message } from '../lib/errors';
 import { ExpediteGlyph } from './ExpediteGlyph';
 import { PauseGlyph } from './PauseGlyph';
+import { LevelButton } from './LevelButton';
 import type { Project, ProjectPriority } from '../types';
 
 const LEVEL_MARK: Record<'expedited' | 'paused', string> = { expedited: 'Expedited', paused: 'Paused' };
-
-/** A row's expedite or pause button, for an owner alone - holds its own
-    hover/focus state, since that is what half-fills the glyph before a
-    level actually changes. */
-function LevelButton({
-  project,
-  glyph,
-  busy,
-  onPress,
-}: {
-  project: Project;
-  glyph: LevelGlyph;
-  busy: boolean;
-  onPress: () => void;
-}) {
-  const [active, setActive] = useState(false);
-  const state = glyphState(project.priority, glyph, active);
-  const next = levelAfterPress(project.priority, glyph);
-  const text = `${project.key} — ${project.name}`;
-  const label =
-    glyph === 'expedite'
-      ? next === 'expedited'
-        ? `Expedite ${text}`
-        : `Stop expediting ${text}`
-      : next === 'paused'
-        ? `Pause ${text}`
-        : `Resume ${text}`;
-
-  return (
-    <button
-      type="button"
-      className={`hatch-scope-control__level hatch-scope-control__level--${glyph}`}
-      aria-pressed={state === 'filled'}
-      aria-label={label}
-      disabled={busy}
-      onMouseEnter={() => setActive(true)}
-      onMouseLeave={() => setActive(false)}
-      onFocus={() => setActive(true)}
-      onBlur={() => setActive(false)}
-      onClick={onPress}
-    >
-      {glyph === 'expedite' ? <ExpediteGlyph state={state} /> : <PauseGlyph state={state} />}
-    </button>
-  );
-}
 
 /** One run of the cluster: the level's glyph, then a pill per project, the
     first on top. An owner's pill carries an x that sets the project back to
@@ -266,13 +222,15 @@ export function ScopeControl({
                 {project.canAdminister ? (
                   <>
                     <LevelButton
-                      project={project}
+                      current={project.priority}
+                      name={text}
                       glyph="expedite"
                       busy={busyId === project.id}
                       onPress={() => void press(project, 'expedite')}
                     />
                     <LevelButton
-                      project={project}
+                      current={project.priority}
+                      name={text}
                       glyph="pause"
                       busy={busyId === project.id}
                       onPress={() => void press(project, 'pause')}

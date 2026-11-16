@@ -19,6 +19,8 @@ import type {
   ProjectOnePrPolicyWriteRequest,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
+  ProjectPriority,
+  ProjectPriorityWriteRequest,
   ProjectReflectionWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepositoryWriteRequest,
@@ -253,4 +255,10 @@ export function reflectionWaitsForPerson(draft: Pick<ProjectDraft, 'reflectionCa
 export function projectRunnerTagsDiff(draft: ProjectDraft): ProjectRunnerTagsWriteRequest | null {
   const tags = runnerTagsRequest(draft.runnerTags);
   return sameTags(tags, draft.known.runnerTags) ? null : { tags };
+}
+
+/** The level is held beside the draft, not in it, so it has its own diff: a
+    write only when the held level is not the one the project was opened at. */
+export function projectPriorityDiff(held: ProjectPriority, project: Project): ProjectPriorityWriteRequest | null {
+  return held === project.priority ? null : { priority: held };
 }

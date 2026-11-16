@@ -129,6 +129,16 @@ declaration, and that setting (or a pre-approval) is the only thing that closes
 such a ticket without one. Tick it and the line goes; nothing is refused either
 way, and the line follows the dialog as you edit, before you save.
 
+The dialog's **Level** part is two buttons, an up arrow and a pause. An owner
+presses the arrow to expedite the project, so its tickets are worked first, or
+the pause to set it aside, so none are worked; pressing the same one again
+returns it to normal. A glyph is outlined away from its level, filled at it,
+and half-filled while you hover or focus it. A press changes the dialog only:
+**Save** writes the level and **Cancel** drops it. This is the one place to set
+a level on an install with a single project, where the topbar's scope control is
+not drawn. Anyone who is not an owner reads it as a sentence, *Expedited.* or
+*Paused.*, and sees nothing at all for a normal project.
+
 ## Your first epic
 
 Press **+** (New issue) on the board, set **Type** to *epic* — it opens on *task* —
