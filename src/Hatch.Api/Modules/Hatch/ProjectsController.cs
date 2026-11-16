@@ -941,6 +941,42 @@ public class ProjectsController(
     }
 
     /// <summary>
+    /// Whether <see cref="EfHatchProject.FilesContributions"/> is on - the board
+    /// files its repositories' outside pull requests as contributions. Only an owner
+    /// may call this. It is accepted whatever the project binds or has
+    /// playbooks for, and writing the value a project already has changes
+    /// nothing, the audit columns included. This route is the only way to
+    /// write the flag; <c>PATCH</c> and <c>POST</c> do not reach it.
+    /// </summary>
+    [HttpPut("{id:int}/files-contributions")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutFilesContributions(int id, ProjectFilesContributionsWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change whether this board files outside pull requests") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (request.FilesContributions != project.FilesContributions)
+        {
+            project.FilesContributions = request.FilesContributions;
+            project.FilesContributionsBy = await caller.ActorNameAsync(ct);
+            project.FilesContributionsAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} files contributions set to {FilesContributions} by {Actor}", project.Key, project.FilesContributions, project.FilesContributionsBy);
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
+    /// <summary>
     /// Whether <see cref="EfHatchProject.NoCodeCloses"/> is on - a no-code
     /// declaration on an issue closes it outright, rather than leaving it for
     /// a person. Only an owner may call this. It is accepted whatever the
@@ -1147,7 +1183,8 @@ public class ProjectsController(
             project.NoCodeCloses, project.NoCodeClosesBy, project.NoCodeClosesAt,
             project.RunnersWorkContributions, project.RunnersWorkContributionsBy, project.RunnersWorkContributionsAt,
             project.OnePullRequestPolicy, project.OnePullRequestPolicyBy, project.OnePullRequestPolicyAt,
-            project.Priority, project.PriorityBy, project.PriorityAt);
+            project.Priority, project.PriorityBy, project.PriorityAt,
+            project.FilesContributions, project.FilesContributionsBy, project.FilesContributionsAt);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

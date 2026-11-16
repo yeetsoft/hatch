@@ -339,6 +339,29 @@ public class EfHatchProject
     public DateTimeOffset? RunnersWorkContributionsAt { get; set; }
 
     /// <summary>
+    /// Whether the board files its repositories' outside pull requests - ones
+    /// from a branch no issue here names - as contributions in its review
+    /// column. Off by default: a project that has never set it files nothing.
+    /// Nothing reads it yet.
+    /// Written only by <see cref="ProjectsController.PutFilesContributions"/>.
+    /// </summary>
+    public bool FilesContributions { get; set; }
+
+    /// <summary>
+    /// Who last changed <see cref="FilesContributions"/>, as a name rather
+    /// than a foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null
+    /// until the first change. Written only by <see cref="ProjectsController.PutFilesContributions"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? FilesContributionsBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="FilesContributions"/> was last changed. Null until the
+    /// first change. Written only by <see cref="ProjectsController.PutFilesContributions"/>.
+    /// </summary>
+    public DateTimeOffset? FilesContributionsAt { get; set; }
+
+    /// <summary>
     /// Whether this project binds the tracker's own repository - the project a
     /// session standing in some other project's repository reads to find the
     /// tracker's. At most one project on a board has it on, which the filtered

@@ -48,6 +48,9 @@ namespace Hatch.Contracts;
 /// <param name="Priority">How much the project matters to the loop - see <see cref="ProjectPriorities"/> and <see cref="EfHatchProject.Priority"/>. Normal by default.</param>
 /// <param name="PriorityBy">Who last changed <paramref name="Priority"/>, or null until the first change - see <see cref="EfHatchProject.PriorityBy"/>.</param>
 /// <param name="PriorityAt">When <paramref name="Priority"/> was last changed, or null until the first change - see <see cref="EfHatchProject.PriorityAt"/>.</param>
+/// <param name="FilesContributions">Whether the board files its repositories' outside pull requests as contributions - see <see cref="EfHatchProject.FilesContributions"/>. Off by default.</param>
+/// <param name="FilesContributionsBy">Who last changed <paramref name="FilesContributions"/>, or null until the first change - see <see cref="EfHatchProject.FilesContributionsBy"/>.</param>
+/// <param name="FilesContributionsAt">When <paramref name="FilesContributions"/> was last changed, or null until the first change - see <see cref="EfHatchProject.FilesContributionsAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -64,7 +67,8 @@ public record ProjectDto(
     bool NoCodeCloses = false, string? NoCodeClosesBy = null, DateTimeOffset? NoCodeClosesAt = null,
     bool RunnersWorkContributions = false, string? RunnersWorkContributionsBy = null, DateTimeOffset? RunnersWorkContributionsAt = null,
     string OnePullRequestPolicy = OnePullRequestPolicies.Optional, string? OnePullRequestPolicyBy = null, DateTimeOffset? OnePullRequestPolicyAt = null,
-    string Priority = ProjectPriorities.Normal, string? PriorityBy = null, DateTimeOffset? PriorityAt = null)
+    string Priority = ProjectPriorities.Normal, string? PriorityBy = null, DateTimeOffset? PriorityAt = null,
+    bool FilesContributions = false, string? FilesContributionsBy = null, DateTimeOffset? FilesContributionsAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -157,6 +161,9 @@ public record ProjectNoCodeClosesWriteRequest(bool NoCodeCloses);
 
 /// <summary>A write to whether runners work a contribution's branch - see <see cref="EfHatchProject.RunnersWorkContributions"/>.</summary>
 public record ProjectRunnersWorkContributionsWriteRequest(bool RunnersWorkContributions);
+
+/// <summary>A write to whether a project files outside pull requests as contributions - see <see cref="EfHatchProject.FilesContributions"/>.</summary>
+public record ProjectFilesContributionsWriteRequest(bool FilesContributions);
 
 /// <summary>A write to whether a project's one-PR default binds its stories - see <see cref="EfHatchProject.OnePullRequestPolicy"/>.</summary>
 public record ProjectOnePrPolicyWriteRequest(string Policy);
