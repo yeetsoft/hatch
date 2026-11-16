@@ -34,6 +34,12 @@ In order, left to right:
   whose **A passing check approves the merge** setting is on, and a declared
   no-code ticket under the same rule.
 
+A card's place within a column is its rank, floated first by its own
+priority tier (see [Rank and ordering](issues#rank-and-ordering) and
+[Priority](issues#priority)) — and, before that, by the level of the project
+it sits in: an expedited project's cards float above every other project's in
+each column, and a paused project's sink below them.
+
 ## Who moves work
 
 There are three answers to who moves a ticket out of a column:

@@ -78,6 +78,7 @@ const priorityClass = (card: IssueCard) => (card.priority === 'normal' ? '' : ` 
     with none of these carries no empty row. */
 const hasMarks = (card: IssueCard) =>
   card.priority !== 'normal' ||
+  card.projectPriority === 'paused' ||
   card.express ||
   !!card.dangerous ||
   !!card.claim ||
@@ -286,10 +287,19 @@ function CardFace({
       )}
       {hasMarks(card) && (
         <div className="hatch-card-marks">
-          {/* This one first - a fact about which card to read next. */}
-          {card.priority !== 'normal' && (
+          {/* This one first - a fact about which card to read next. A card
+              whose own priority is normal but whose project is paused wears
+              the pause mark too, drawn as the project's own doing rather
+              than this issue's. */}
+          {(card.priority !== 'normal' || card.projectPriority === 'paused') && (
             <span
-              className={`hatch-card-expedited${card.priority !== 'expedited' ? ` ${card.priority}` : ''}`}
+              className={`hatch-card-expedited${
+                card.priority === 'normal'
+                  ? ' paused'
+                  : card.priority !== 'expedited'
+                    ? ` ${card.priority}`
+                    : ''
+              }`}
               title={
                 card.priority === 'emergency'
                   ? 'Emergency - the highest priority, first above everything expedited'
@@ -299,7 +309,9 @@ function CardFace({
                       ? 'Low - reached after everything normal, and only while the session window is on pace'
                       : card.priority === 'economy'
                         ? 'Economy - worked only with usage that would otherwise go spare'
-                        : 'Paused - a person set this aside; the loop leaves it where it stands'
+                        : card.priority === 'normal'
+                          ? 'Paused - its project is paused; a person set it aside and the loop leaves it where it stands'
+                          : 'Paused - a person set this aside; the loop leaves it where it stands'
               }
             >
               {card.priority === 'emergency'

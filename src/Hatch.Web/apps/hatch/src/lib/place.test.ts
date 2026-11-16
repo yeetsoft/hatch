@@ -10,6 +10,7 @@ const card = (
   statusId: number,
   rank: number,
   priority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused' = 'normal',
+  projectPriority: 'normal' | 'expedited' | 'paused' = 'normal',
 ): IssueCard => ({
   key,
   projectKey: 'AER',
@@ -47,6 +48,7 @@ const card = (
   onePrOwn: null,
   onePrFrom: null,
   createdBy: 'Britta Perry',
+  projectPriority,
 });
 
 /* The board as the API hands it over: grouped by column, ranked within it. */
@@ -362,6 +364,45 @@ describe('place, with a paused card in the column', () => {
 
     expect(placed.afterKey).toBe('AER-7');
     expect(keysIn(placed.issues, INBOX)).toEqual(['AER-1', 'AER-2', 'AER-7']);
+  });
+});
+
+/* The same float, crossed with the project's own level - the browser-side
+   mirror of Dispatch.ProjectTiers()/BoardController's ten-tier order: an
+   expedited project's cards float above a higher-priority card in a normal
+   one, and a paused project's sink below a paused card in a normal one. */
+describe("place, with a project's level", () => {
+  const inAHurriedProject = [
+    card('AER-7', INBOX, 512, 'normal', 'expedited'),
+    card('AER-1', INBOX, 1024),
+    card('AER-2', INBOX, 2048),
+  ];
+
+  it('floats a card in an expedited project above a higher-priority card in a normal one', () => {
+    const higherPriority = [card('AER-7', INBOX, 512, 'normal', 'expedited'), card('AER-9', INBOX, 256, 'expedited')];
+
+    const placed = place(higherPriority, higherPriority, 'AER-9', 'AER-7')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-7', 'AER-9']);
+  });
+
+  it('rests a card dropped above the expedited project one below it', () => {
+    const placed = place(inAHurriedProject, inAHurriedProject, 'AER-2', 'AER-7')!;
+
+    expect(placed.beforeKey).toBe('AER-7');
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-7', 'AER-2', 'AER-1']);
+  });
+
+  it('sinks a card in a paused project below a paused-priority card in the default project', () => {
+    const cards = [
+      card('AER-1', INBOX, 1024),
+      card('AER-2', INBOX, 2048, 'paused'),
+      card('AER-9', INBOX, 4096, 'normal', 'paused'),
+    ];
+
+    const placed = place(cards, cards, 'AER-1', 'AER-2')!;
+
+    expect(keysIn(placed.issues, INBOX)).toEqual(['AER-1', 'AER-2', 'AER-9']);
   });
 });
 

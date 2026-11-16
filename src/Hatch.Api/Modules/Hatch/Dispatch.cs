@@ -333,21 +333,7 @@ public sealed class Dispatch(
         var hasFolded = false;
         var requirements = new Dictionary<int, DependencyRequirement>();
 
-        // Each tier is a test over an issue's own level and its project's. The
-        // project tier for "normal" takes any level that is neither of the
-        // others, so an unknown value could never drop a row from the scan.
-        var tiers = new List<(Func<int, string, bool> Holds, bool Emergency)>
-        {
-            ((l, p) => l == PriorityLevels.Emergency && p != ProjectPriorities.Paused, true),
-        };
-        foreach (var expeditedProject in new[] { true, false })
-            foreach (var issueLevel in new[] { PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy })
-                tiers.Add((
-                    (l, p) => l == issueLevel && p != ProjectPriorities.Paused && (p == ProjectPriorities.Expedited) == expeditedProject,
-                    false));
-        tiers.Add(((l, p) => l == PriorityLevels.Paused || p == ProjectPriorities.Paused, false));
-
-        foreach (var (tierHolds, tierIsEmergency) in tiers)
+        foreach (var (tierHolds, tierIsEmergency) in ProjectTiers())
         {
             string? firstClearThisTier = null;
             string? firstClearLevel = null;
@@ -1626,6 +1612,45 @@ public sealed class Dispatch(
             i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
             landings.TryGetValue(i.Id, out var l) ? l : [],
             trunkBuilds, i.Project.ChecksRequired, now));
+    }
+
+    /// <summary>
+    /// The ten-entry walk order the scan parks lower tiers behind: emergency
+    /// first, then each issue level crossed with its project's, expedited
+    /// project before normal, and paused - issue or project - last. Each tier
+    /// is a test over an issue's own level and its project's. The project
+    /// tier for "normal" takes any level that is neither of the others, so an
+    /// unknown value could never drop a row from the scan. The one list both
+    /// <see cref="ScanAsync"/> and <see cref="TierRank"/> read, so the walk
+    /// and the board can never disagree on the order.
+    /// </summary>
+    public static List<(Func<int, string, bool> Holds, bool Emergency)> ProjectTiers()
+    {
+        var tiers = new List<(Func<int, string, bool> Holds, bool Emergency)>
+        {
+            ((l, p) => l == PriorityLevels.Emergency && p != ProjectPriorities.Paused, true),
+        };
+        foreach (var expeditedProject in new[] { true, false })
+            foreach (var issueLevel in new[] { PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy })
+                tiers.Add((
+                    (l, p) => l == issueLevel && p != ProjectPriorities.Paused && (p == ProjectPriorities.Expedited) == expeditedProject,
+                    false));
+        tiers.Add(((l, p) => l == PriorityLevels.Paused || p == ProjectPriorities.Paused, false));
+        return tiers;
+    }
+
+    /// <summary>
+    /// The index into <see cref="ProjectTiers"/> of the first tier an issue at
+    /// <paramref name="issueLevel"/> in a project at <paramref name="projectLevel"/>
+    /// falls into - lower ranks first, matching the scan's own walk.
+    /// </summary>
+    public static int TierRank(int issueLevel, string projectLevel)
+    {
+        var tiers = ProjectTiers();
+        for (var i = 0; i < tiers.Count; i++)
+            if (tiers[i].Holds(issueLevel, projectLevel))
+                return i;
+        return tiers.Count;
     }
 
     /// <summary>
