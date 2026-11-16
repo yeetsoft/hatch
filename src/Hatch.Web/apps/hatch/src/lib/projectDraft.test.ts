@@ -29,7 +29,7 @@ describe('openProjectDraft', () => {
       color: '#6b7280',
       icon: 'rocket',
       logoUpdatedAt: null,
-      repositories: [{ remote: 'a', canonical: 'canonical-a', baseBranch: 'main' }],
+      repositories: [{ remote: 'a', canonical: 'canonical-a', baseBranch: 'main', changelog: false }],
       members: [],
       canApprove: false,
       canAdminister: false,
@@ -79,7 +79,7 @@ describe('openProjectDraft', () => {
       key: 'AER',
       color: '#6b7280',
       icon: 'rocket',
-      repositories: [{ remote: 'a', baseBranch: 'main' }],
+      repositories: [{ remote: 'a', baseBranch: 'main', changelog: false }],
       landing: 'pull-request',
       checksRequired: true,
       onePullRequest: false,
@@ -99,7 +99,7 @@ describe('openProjectDraft', () => {
     });
   });
 
-  it('maps repositories down to remote and baseBranch, dropping canonical', () => {
+  it('maps repositories down to remote, baseBranch and changelog, dropping canonical', () => {
     const project = {
       id: 1,
       key: 'AER',
@@ -109,7 +109,7 @@ describe('openProjectDraft', () => {
       color: null,
       icon: null,
       logoUpdatedAt: null,
-      repositories: [{ remote: 'a', canonical: 'canonical-a', baseBranch: null }],
+      repositories: [{ remote: 'a', canonical: 'canonical-a', baseBranch: null, changelog: false }],
       members: [],
       canApprove: false,
       canAdminister: false,
@@ -149,7 +149,7 @@ describe('openProjectDraft', () => {
 
     const draft = openProjectDraft(project);
 
-    expect(draft.repositories).toEqual([{ remote: 'a', baseBranch: null }]);
+    expect(draft.repositories).toEqual([{ remote: 'a', baseBranch: null, changelog: false }]);
   });
 });
 
@@ -159,7 +159,7 @@ describe('projectDraftDiff', () => {
     key: 'AER',
     color: '#6b7280',
     icon: 'rocket',
-    repositories: [{ remote: 'a', baseBranch: 'main' }],
+    repositories: [{ remote: 'a', baseBranch: 'main', changelog: false }],
     landing: 'pull-request' as const,
     checksRequired: true,
     onePullRequest: false,
@@ -260,6 +260,7 @@ describe('projectDraftDiff', () => {
     },
     { label: 'a removed entry', repositories: [] },
     { label: 'an edited baseBranch', repositories: [{ remote: 'a', baseBranch: 'develop' }] },
+    { label: 'a ticked changelog', repositories: [{ remote: 'a', baseBranch: 'main', changelog: true }] },
   ])('reports a change on $label', ({ repositories }) => {
     const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnersWorkContributions: false, onePullRequestPolicy: 'optional', runnerTags: '', reflectionCadenceDays: '' };
 

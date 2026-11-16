@@ -185,7 +185,7 @@ export function ProjectEditDialog({
   }
 
   function add() {
-    write(withRemote(list, { remote: remote.trim(), baseBranch: baseBranch.trim() || null }));
+    write(withRemote(list, { remote: remote.trim(), baseBranch: baseBranch.trim() || null, changelog: false }));
     setRemote('');
     setBaseBranch('');
   }
@@ -365,6 +365,20 @@ export function ProjectEditDialog({
                 write(list.map((entry, i) => (i === index ? { ...entry, baseBranch: e.target.value || null } : entry)))
               }
             />
+            {project.canAdminister ? (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={repo.changelog ?? false}
+                  onChange={(e) =>
+                    write(list.map((entry, i) => (i === index ? { ...entry, changelog: e.target.checked } : entry)))
+                  }
+                />
+                Writes a changelog
+              </label>
+            ) : (
+              repo.changelog && <span className="text-muted">writes a changelog</span>
+            )}
             <div className="hatch-reorder">
               <Button
                 disabled={index === 0}

@@ -105,13 +105,15 @@ public record ProjectPatchRequest(string? Name, string? Key = null, string? Colo
 /// The matching identity <c>RemoteIdentity.Canonical</c> folded <paramref name="Remote"/> to -
 /// what a second entry is checked against, never recomputed by a client.
 /// </param>
-public record ProjectRepositoryDto(string Remote, string Canonical, string? BaseBranch);
+/// <param name="Changelog">True when the repository takes a changelog file; false until an owner elects it.</param>
+public record ProjectRepositoryDto(string Remote, string Canonical, string? BaseBranch, bool Changelog = false);
 
 /// <summary>
 /// One entry in the ordered list a <c>PUT</c> replaces the whole set with -
 /// the first in the array is the primary.
 /// </summary>
-public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch);
+/// <param name="Changelog">True when the repository takes a changelog file. The list is replaced whole, so leaving it out writes false.</param>
+public record ProjectRepositoryWriteRequest(string Remote, string? BaseBranch, bool Changelog = false);
 
 /// <summary>One person's role on a project, as every client reads it back.</summary>
 public record ProjectMemberDto(Guid PersonId, string Name, string Role);

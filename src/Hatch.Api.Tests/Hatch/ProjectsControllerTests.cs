@@ -141,6 +141,42 @@ public class ProjectsControllerTests
     }
 
     [Fact]
+    public async Task ElectingAChangelog_ReadsBackOnThatRemoteAlone()
+    {
+        var h = await NewAsync();
+
+        var written = Value(await h.Projects.PutRepositories(h.ProjectId,
+        [
+            new ProjectRepositoryWriteRequest("https://example.com/owner/one.git", null, true),
+            new ProjectRepositoryWriteRequest("https://example.com/owner/two.git", null),
+        ], default));
+
+        Assert.Equal([true, false], written.Select(r => r.Changelog));
+        Assert.Equal([true, false], Value(await h.Projects.GetRepositories(h.ProjectId, default)).Select(r => r.Changelog));
+        var project = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == h.ProjectId);
+        Assert.Equal([true, false], project.Repositories.Select(r => r.Changelog));
+    }
+
+    [Fact]
+    public async Task ResendingTheSameListWithItsFlag_WritesNothing_ButAChangedFlagWrites()
+    {
+        var h = await NewAsync();
+        var request = new List<ProjectRepositoryWriteRequest> { new("https://example.com/owner/repo.git", "main", true) };
+        Value(await h.Projects.PutRepositories(h.ProjectId, request, default));
+        var idsBefore = await h.Db.ProjectRepositories.Select(r => r.Id).ToListAsync();
+
+        h.Time.Advance(TimeSpan.FromHours(1));
+        Value(await h.Projects.PutRepositories(h.ProjectId, request, default));
+        Assert.Equal(idsBefore, await h.Db.ProjectRepositories.Select(r => r.Id).ToListAsync());
+
+        var flipped = Value(await h.Projects.PutRepositories(h.ProjectId,
+            [new ProjectRepositoryWriteRequest("https://example.com/owner/repo.git", "main", false)], default));
+
+        Assert.False(Assert.Single(flipped).Changelog);
+        Assert.NotEqual(idsBefore, await h.Db.ProjectRepositories.Select(r => r.Id).ToListAsync());
+    }
+
+    [Fact]
     public async Task AKey_IsRefusedOnThePutAndAllowedOnTheGet()
     {
         var h = await NewAsync(program: true);

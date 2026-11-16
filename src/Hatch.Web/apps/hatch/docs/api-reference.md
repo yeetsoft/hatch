@@ -48,7 +48,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PATCH | `/projects/{id}` | key | Renames and/or rekeys; both optional, null leaves each alone |
 | DELETE | `/projects/{id}` | key | Deletes an empty project |
 | GET | `/projects/{id}/repositories` | key | The bound remotes, in order, primary first |
-| PUT | `/projects/{id}/repositories` | **person** | Replaces the whole ordered list |
+| PUT | `/projects/{id}/repositories` | **person** | Replaces the whole ordered list, each remote's `changelog` flag included |
 | GET | `/projects/{id}/logo` | key | The image bytes |
 | PUT | `/projects/{id}/logo` | **person** | Sets it (raw body, detected content-type) |
 | DELETE | `/projects/{id}/logo` | **person** | Clears it |
@@ -72,8 +72,10 @@ it on the machine it is working on. It carries the filing shapes in full -
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
 field alone on the patch, `""` clears `Color`/`Icon`. The repositories PUT
-body is a list of `ProjectRepositoryWriteRequest(Remote, BaseBranch?)` - the
-whole ordered set, not a delta. A members PUT body is
+body is a list of
+`ProjectRepositoryWriteRequest(Remote, BaseBranch?, Changelog)` - the whole ordered set, not a delta, so leaving out `changelog` writes false. Each
+entry reads back with `changelog`, true where the repository takes a changelog
+file. A members PUT body is
 `ProjectMemberWriteRequest(Role)`, `"owner"` or `"approver"`. The landing PUT
 body is `ProjectLandingWriteRequest`: `Landing?`, `ChecksRequired?`,
 `OnePullRequest?`, `AutoHealBugEnabled?`, `AutoHealBugPriority?`,

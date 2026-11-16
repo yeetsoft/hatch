@@ -132,6 +132,8 @@ export interface ProjectRepository {
   /** What RemoteIdentity.Canonical folded `remote` to - display only, never recomputed here. */
   canonical: string;
   baseBranch: string | null;
+  /** True when the repository takes a changelog file; an owner elects it. */
+  changelog: boolean;
 }
 
 /** One person's role on a project, as the server reads it back. */
@@ -145,6 +147,8 @@ export interface ProjectMember {
 export interface ProjectRepositoryWriteRequest {
   remote: string;
   baseBranch?: string | null;
+  /** Leaving it out writes false: the list is replaced whole. */
+  changelog?: boolean;
 }
 
 export interface Status {
