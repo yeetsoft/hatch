@@ -73,6 +73,7 @@ import type {
   ProjectCheckApprovesMergeWriteRequest,
   ProjectNoCodeClosesWriteRequest,
   ProjectRunnersWorkContributionsWriteRequest,
+  ProjectFilesContributionsWriteRequest,
   ProjectOnePrPolicyWriteRequest,
   ProjectPriorityWriteRequest,
   ProjectRepoSourcedWriteRequest,
@@ -186,6 +187,9 @@ export const putProjectNoCodeCloses = (id: number, request: ProjectNoCodeClosesW
 /** Sets whether runners work a contribution's branch. */
 export const putProjectRunnersWorkContributions = (id: number, request: ProjectRunnersWorkContributionsWriteRequest) =>
   fetchJson<Project>(`/api/projects/${id}/runners-work-contributions`, { method: 'PUT', ...asJson(request) });
+/** Sets whether outside pull requests are filed as contributions. */
+export const putProjectFilesContributions = (id: number, request: ProjectFilesContributionsWriteRequest) =>
+  fetchJson<Project>(`/api/projects/${id}/files-contributions`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a ticket's work must land in one pull request. */
 export const putProjectOnePrPolicy = (id: number, request: ProjectOnePrPolicyWriteRequest) =>
   fetchJson<Project>(`/api/projects/${id}/one-pr-policy`, { method: 'PUT', ...asJson(request) });
