@@ -179,4 +179,94 @@ describe('ScopeControl', () => {
     expect(rs[2]).toContain('title="Paused"');
     expect(rs[2]).toContain('aria-label="Paused"');
   });
+
+  describe('the cluster of expedited and paused projects', () => {
+    const level = (priority: string, canAdminister: boolean) =>
+      [
+        { key: 'HA', name: 'Hatch', priority: priority === 'mixed' ? 'expedited' : priority, canAdminister, color: '#112233' },
+        { key: 'AER', name: 'Aerie', priority: priority === 'mixed' ? 'paused' : priority, canAdminister, color: '#445566' },
+        { key: 'GL', name: 'glasshole', priority: 'normal', canAdminister },
+      ] as Project[];
+
+    /** What follows the trigger's own closing tag and ahead of the panel's. */
+    const cluster = (html: string) => html.match(/<div class="hatch-scope-cluster">[\s\S]*$/)?.[0] ?? '';
+
+    it('draws nothing, not an empty box, when no project is expedited or paused', () => {
+      const html = render(three, []);
+      expect(html).not.toContain('hatch-scope-cluster');
+      expect(html).not.toContain('hatch-scope-control__trigger-glyph');
+    });
+
+    it('draws a glyph and one pill for a single expedited project', () => {
+      const html = cluster(render([{ ...three[0], priority: 'expedited' }, ...three.slice(1)] as Project[], []));
+      expect(html).toContain('title="Expedited projects: HA"');
+      expect(html).toContain('hatch-scope-cluster__group--expedited');
+      expect(html).not.toContain('hatch-scope-cluster__group--paused');
+      expect([...html.matchAll(/hatch-scope-cluster__pill"/g)]).toHaveLength(1);
+    });
+
+    it('draws a run for each level, in the list order, titled with its keys', () => {
+      const projects = [
+        { key: 'A', name: 'Alpha', priority: 'expedited' },
+        { key: 'B', name: 'Beta', priority: 'paused' },
+        { key: 'C', name: 'Gamma', priority: 'expedited' },
+        { key: 'D', name: 'Delta', priority: 'normal' },
+      ] as Project[];
+      const html = cluster(render(projects, []));
+      expect(html).toContain('title="Expedited projects: A, C"');
+      expect(html).toContain('title="Paused projects: B"');
+      expect(html.indexOf('Expedited projects')).toBeLessThan(html.indexOf('Paused projects'));
+      expect(html.indexOf('>A')).toBeLessThan(html.indexOf('>C'));
+      expect(html).not.toContain('>D');
+    });
+
+    it('puts the first pill on top and tints each in its project colour', () => {
+      const html = cluster(render(level('expedited', false), []));
+      const pills = [...html.matchAll(/<span[^>]*hatch-scope-cluster__pill"[^>]*>/g)].map((m) => m[0]);
+      expect(pills).toHaveLength(2);
+      expect(pills[0]).toContain('z-index:2');
+      expect(pills[1]).toContain('z-index:1');
+      expect(pills[0]).toContain('--mark-color');
+      expect(pills[0]).toContain('#112233');
+      expect(pills[1]).toContain('#445566');
+    });
+
+    it('gives an owner an x on each pill, labelled to set the project back to normal', () => {
+      const html = cluster(render(level('mixed', true), []));
+      expect(html).toContain('aria-label="Set HA back to normal"');
+      expect(html).toContain('aria-label="Set AER back to normal"');
+      expect(html).not.toContain('aria-label="Set GL back to normal"');
+      expect(html).not.toContain('title="Hatch"');
+    });
+
+    it('gives a non-owner plain pills titled with the project name, and no x', () => {
+      const html = cluster(render(level('mixed', false), []));
+      expect(html).not.toContain('<button');
+      expect(html).not.toContain('back to normal');
+      expect(html).toContain('title="Hatch"');
+      expect(html).toContain('title="Aerie"');
+    });
+
+    it('draws the cluster after the trigger button, outside it', () => {
+      const html = render(level('mixed', true), ['GL']);
+      const ahead = html.slice(0, html.indexOf('hatch-types-panel'));
+      expect(ahead).not.toContain('hatch-scope-cluster');
+      expect(html.indexOf('hatch-scope-cluster')).toBeGreaterThan(html.indexOf('hatch-types-panel'));
+      expect(html.match(/^<div class="hatch-scope-control">/)).not.toBeNull();
+    });
+
+    it.each([[[]], [['GL']]])('rides the glyphs in the trigger, before the caret, for scope %j', (keys) => {
+      const ahead = trigger(render(level('mixed', false), keys));
+      const glyphs = [...ahead.matchAll(/<span class="hatch-scope-control__trigger-glyph[^"]*" aria-hidden="true">/g)];
+      expect(glyphs).toHaveLength(2);
+      expect(glyphs[1].index!).toBeLessThan(ahead.indexOf('hatch-menu__caret'));
+      expect(ahead.match(/<span class="hatch-scope-control__trigger-glyph[^>]*>/g)?.join('')).not.toContain('title=');
+    });
+
+    it('rides only the glyph of the level present', () => {
+      const ahead = trigger(render(level('paused', false), []));
+      expect(ahead).toContain('trigger-glyph--pause');
+      expect(ahead).not.toContain('trigger-glyph--expedite');
+    });
+  });
 });
