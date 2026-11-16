@@ -142,6 +142,17 @@ flowchart TD
   InReview -.->|board, close hop| Done
 ```
 
+### The changelog task
+
+Closing a top-level issue can make the board file one more ticket. When the
+project has a repository that keeps a changelog file, the board files a task
+called `Record <KEY> in the changelog`, in the column that feeds the one where
+code gets written, so the file is brought current with no one asking. This is
+not a hop: nothing is carried, and the task is a new ticket, filed by `the
+board`. One such task stands at a time per repository; a later close files
+another only once the first has been picked up. The task names the command to
+run, and finishes with no code when the command prints `unchanged`.
+
 ## What each move costs
 
 The three movers are not priced alike, and the difference is the reason hops

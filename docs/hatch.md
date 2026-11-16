@@ -3219,7 +3219,10 @@ reader must not assume them; the hop flags - `express`, `pulled`, `merged`,
 `verdict` and `playbookId` there too),
 `parent_changed`, `filed_from_changed` (the issue it was
 [filed from](#issue) changed - payload `{ from, to }`, display keys, either
-null, on the issue that changed alone), `ready_changed`, `due_changed`,
+null, on the issue that changed alone), `changelog_task_filed` (the board filed
+a [changelog task](#the-changelog-task) as this issue closed - payload
+`{ key, canonical }`, the task's display key and the repository it is for,
+written on the closed issue by the actor `the board`), `ready_changed`, `due_changed`,
 `pull_request_changed`,
 `no_code_changed` (an issue's [no-code declaration](#finished-with-no-code) was
 set, cleared by hand, or cleared by a move left of review - payload `{ from, to }`,
@@ -5080,6 +5083,57 @@ project key. A title or a release note is a double-quoted YAML scalar, with
 a line break folded to the two-character `\n` escape, so either stays one
 physical line in the file. The route is open to a person or to a key, the
 same as `ChangelogController`'s other route.
+
+### The changelog task
+
+The board files a task to keep a repository's changelog file current, the
+moment a parentless issue closes, so the file is brought up to date with no
+session reading the board. It is not a hop: nothing is carried, and the actor
+is `the board`, as for a reflection the cadence job files.
+
+**Trigger.** A write that lands a parentless issue in a terminal column, out of
+one that was not (`ChangelogTasks.JustClosed`, asked beside each
+`Columns.ClosedAt` line). For each repository its project binds with the
+`Changelog` flag on, one task is filed; a repository elected by two of the
+project's rows files once, by canonical remote.
+
+**The doors.** Every write that sets `ClosedAt` into a terminal column on a
+parentless issue calls the one helper, after its own save, so a close is never
+lost to a mint conflict here: the board's drag and a patch, a bulk edit, the
+`/merged` and `/landed` runner calls, the close [hop](#the-hop), a remand, a
+column made terminal on the Statuses page (every parentless issue standing in
+it), and a plan import. A move between two terminal columns is not a close.
+A parented issue closing files nothing; it is carried by its parent.
+
+**One stands at a time.** A recorded task for that remote that is still left of
+the column where code gets written, and neither terminal nor deferred, stands
+in for every later close: it will write the whole file when it is picked up.
+Once it has moved in, or is done, the next close files another. Closing a
+changelog task itself files nothing.
+
+**Where it is born.** The column that feeds the implementation column
+(`Columns.SendBack`), else the column an agent files into, else the leftmost.
+Titled `Record <KEY> in the changelog`, it is a task under the closed issue,
+or parentless where the closed issue is itself a task (a task cannot hang
+under a task), and in both cases `FiledFromId` names the closed issue. A task
+under the closed issue inherits its pre-approval; a parentless one takes the
+closed issue's effective level on its own row. The description is one fixed
+template naming the remote, the closed issue and the day it shipped, and
+telling the session to run `hatch changelog --file` in that remote's checkout,
+commit `.hatch/changelog.yml` alone, open a pull request, and declare the task
+finished with no code if the command prints `unchanged`.
+
+**The record.** Each task is recorded in `ChangelogTasks` (`IssueId`, unique
+and cascading; `SourceIssueId`, set null if the source is deleted;
+`Canonical`; `CreatedAt`), and `GET /api/changelog/file` never lists a recorded
+task, open or closed. The `changelog_task_filed` event lands on the closed
+issue.
+
+**Turning a repository on.** `PUT /api/projects/{id}/repositories` files one
+task for a repository that is new in the list, or whose flag went from off to
+on, from the project's latest-closed parentless issue; one task stands for all
+the history before it, because the file is regenerated whole. Nothing closed,
+nothing filed. Turning the flag off files nothing and deletes nothing.
 
 ### The consumption report
 

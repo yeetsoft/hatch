@@ -865,10 +865,12 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(target.Id, ct);
         issue.StatusId = target.Id;
         issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+        var closedNow = ChangelogTasks.JustClosed(from, target, issue);
         if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
             issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        if (closedNow) await ChangelogTasks.FileForAsync(db, ranks, time, [issue], ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
     }
@@ -1069,6 +1071,7 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
         issue.ClosedAt = Columns.ClosedAt(from, to, now, issue.ClosedAt);
+        var closedNow = ChangelogTasks.JustClosed(from, to, issue);
         if (NoCode.ClearOnMove(issue, to, statuses, actor, now) is { } cleared)
             issue.Events.Add(cleared);
         issue.UpdatedAt = now;
@@ -1120,6 +1123,7 @@ public class WorkController(
         }
 
         await db.SaveChangesAsync(ct);
+        if (closedNow) await ChangelogTasks.FileForAsync(db, ranks, time, [issue], ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
     }
@@ -1291,10 +1295,12 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
         issue.ClosedAt = Columns.ClosedAt(from, to, now, issue.ClosedAt);
+        var closedNow = ChangelogTasks.JustClosed(from, to, issue);
         if (NoCode.ClearOnMove(issue, to, statuses, actor, now) is { } cleared)
             issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        if (closedNow) await ChangelogTasks.FileForAsync(db, ranks, time, [issue], ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
     }

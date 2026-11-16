@@ -177,6 +177,110 @@ public class ProjectsControllerTests
     }
 
     [Fact]
+    public async Task TurningAChangelogOn_FilesOneTaskForThatRemote_FromTheLatestClosedIssue()
+    {
+        var h = await NewAsync();
+        var todo = await AddBoardAsync(h);
+        await ClosedParentlessAsync(h, todo.Done, number: 1, closedAt: Now.AddDays(-2));
+        await ClosedParentlessAsync(h, todo.Done, number: 2, closedAt: Now.AddDays(-1));
+
+        Value(await h.Projects.PutRepositories(h.ProjectId,
+            [new ProjectRepositoryWriteRequest("https://example.com/owner/one.git", null, true)], default));
+
+        var record = await h.Db.ChangelogTasks.SingleAsync();
+        Assert.Equal("example.com/owner/one", record.Canonical);
+        var task = await h.Db.Issues.SingleAsync(i => i.Id == record.IssueId);
+        Assert.Equal("Record AER-2 in the changelog", task.Title);
+        Assert.Equal(todo.Todo, task.StatusId);
+
+        // The same list sent again writes nothing, and files nothing more.
+        Value(await h.Projects.PutRepositories(h.ProjectId,
+            [new ProjectRepositoryWriteRequest("https://example.com/owner/one.git", null, true)], default));
+        Assert.Single(await h.Db.ChangelogTasks.ToListAsync());
+    }
+
+    [Fact]
+    public async Task TurningAChangelogOn_WithNothingClosed_FilesNothing()
+    {
+        var h = await NewAsync();
+        await AddBoardAsync(h);
+
+        Value(await h.Projects.PutRepositories(h.ProjectId,
+            [new ProjectRepositoryWriteRequest("https://example.com/owner/one.git", null, true)], default));
+
+        Assert.Empty(await h.Db.ChangelogTasks.ToListAsync());
+    }
+
+    [Fact]
+    public async Task TurningAChangelogOff_FilesNothing_AndDeletesNothing()
+    {
+        var h = await NewAsync();
+        var board = await AddBoardAsync(h);
+        await ClosedParentlessAsync(h, board.Done, number: 1, closedAt: Now.AddDays(-1));
+        Value(await h.Projects.PutRepositories(h.ProjectId,
+            [new ProjectRepositoryWriteRequest("https://example.com/owner/one.git", null, true)], default));
+        var issuesBefore = await h.Db.Issues.CountAsync();
+
+        Value(await h.Projects.PutRepositories(h.ProjectId,
+            [new ProjectRepositoryWriteRequest("https://example.com/owner/one.git", null, false)], default));
+
+        Assert.Single(await h.Db.ChangelogTasks.ToListAsync());
+        Assert.Equal(issuesBefore, await h.Db.Issues.CountAsync());
+    }
+
+    [Fact]
+    public async Task ARepositoryAlreadyElected_IsNotAFreshElection_WhenAnotherIsAdded()
+    {
+        var h = await NewAsync();
+        var board = await AddBoardAsync(h);
+        await ClosedParentlessAsync(h, board.Done, number: 1, closedAt: Now.AddDays(-1));
+        Value(await h.Projects.PutRepositories(h.ProjectId,
+            [new ProjectRepositoryWriteRequest("https://example.com/owner/one.git", null, true)], default));
+        // Its one task is picked up, so a second would be filed if the election were read as new.
+        var doing = await h.Db.Statuses.SingleAsync(s => s.Name == "doing");
+        (await h.Db.Issues.SingleAsync(i => i.Title.StartsWith("Record"))).StatusId = doing.Id;
+        await h.Db.SaveChangesAsync();
+
+        Value(await h.Projects.PutRepositories(h.ProjectId,
+        [
+            new ProjectRepositoryWriteRequest("https://example.com/owner/one.git", null, true),
+            new ProjectRepositoryWriteRequest("https://example.com/owner/two.git", null, false),
+        ], default));
+
+        Assert.Single(await h.Db.ChangelogTasks.ToListAsync());
+    }
+
+    private static async Task<(int Todo, int Done)> AddBoardAsync(Harness h)
+    {
+        var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
+        var doing = new EfHatchStatus { Name = "doing", SortOrder = 30, IsImplementation = true };
+        var done = new EfHatchStatus { Name = "done", SortOrder = 50, IsTerminal = true };
+        h.Db.AddRange(todo, doing, done);
+        await h.Db.SaveChangesAsync();
+        return (todo.Id, done.Id);
+    }
+
+    private static async Task ClosedParentlessAsync(Harness h, int doneId, int number, DateTimeOffset closedAt)
+    {
+        var project = await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId);
+        project.NextIssueNumber = number + 1;
+        h.Db.Issues.Add(new EfHatchIssue
+        {
+            ProjectId = h.ProjectId,
+            Number = number,
+            Type = "story",
+            Title = $"shipped {number}",
+            StatusId = doneId,
+            ClosedAt = closedAt,
+            Rank = 1024,
+            CreatedBy = "operator",
+            CreatedAt = Now,
+            UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
     public async Task AKey_IsRefusedOnThePutAndAllowedOnTheGet()
     {
         var h = await NewAsync(program: true);

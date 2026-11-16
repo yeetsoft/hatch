@@ -83,6 +83,14 @@ house. In a tab scoped to projects its own Project picker follows the same rule
 as the board's: see
 [Scoping a tab to projects](the-board-and-its-columns#scoping-a-tab-to-projects).
 
+## The changelog task
+
+When a top-level issue closes in a project with a repository that keeps a
+changelog file, the board files a task under it, `Record <KEY> in the
+changelog`, and the closed issue's history shows a `changelog_task_filed` event
+naming the task. The task never appears in the file itself. See
+[the lifecycle of a ticket](the-lifecycle-of-a-ticket#the-changelog-task).
+
 ## Rank and ordering
 
 A card's place in its column is a rank picked by the server, never the

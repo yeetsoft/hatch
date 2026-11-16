@@ -124,6 +124,40 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("BuildChecks", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChangelogTask", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("SourceIssueId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Canonical");
+
+                    b.HasIndex("IssueId")
+                        .IsUnique();
+
+                    b.HasIndex("SourceIssueId");
+
+                    b.ToTable("ChangelogTasks", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchComment", b =>
                 {
                     b.Property<long>("Id")
@@ -2208,6 +2242,24 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired();
 
                     b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChangelogTask", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "SourceIssue")
+                        .WithMany()
+                        .HasForeignKey("SourceIssueId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Issue");
+
+                    b.Navigation("SourceIssue");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchComment", b =>

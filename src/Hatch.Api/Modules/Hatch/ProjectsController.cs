@@ -319,6 +319,13 @@ public class ProjectsController(
 
         if (!unchanged)
         {
+            // Read before the rows are replaced: every write gives them new ids,
+            // so a repository is "turned on" by its remote, never by a row.
+            var turnedOn = parsed
+                .Where(p => p.Changelog && !current.Any(c => c.Canonical == p.Canonical && c.Changelog))
+                .Select(p => p.Canonical)
+                .ToList();
+
             db.ProjectRepositories.RemoveRange(current);
 
             var now = time.GetUtcNow();
@@ -334,6 +341,9 @@ public class ProjectsController(
             }));
 
             await db.SaveChangesAsync(ct);
+
+            foreach (var canonical in turnedOn)
+                await ChangelogTasks.FileForRepositoryAsync(db, ranks, time, id, canonical, ct, logger);
         }
 
         return await RepositoriesAsync(id, ct);
