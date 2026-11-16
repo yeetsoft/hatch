@@ -151,6 +151,14 @@ public sealed class IssueCommands(Cli cli)
             cli.Say.Line($"priority:  economy - worked only with usage that would otherwise go spare{inherited}");
         else if (issue.Priority == PriorityLevels.PausedName)
             cli.Say.Line($"priority:  paused - set aside; the loop leaves it where it stands{inherited}");
+
+        // The project's own level, which the issue carries only as a key. Read
+        // after the issue's lines so a Hatch without the route prints nothing.
+        var projectLevel = (await cli.Board.ProjectLevelsAsync(ct)).GetValueOrDefault(issue.ProjectKey);
+        if (projectLevel == ProjectPriorities.Expedited)
+            cli.Say.Line($"priority:  project {issue.ProjectKey} expedited - its tickets are taken before other projects'");
+        else if (projectLevel == ProjectPriorities.Paused)
+            cli.Say.Line($"priority:  project {issue.ProjectKey} paused - set aside; the loop leaves it where it stands");
         var preApprovalFrom = issue.PreApprovalFrom is { Length: > 0 } preApprovalAncestor ? $" (inherited from {preApprovalAncestor})" : "";
         if (issue.PreApproval == PreApprovalLevels.ExpressName)
             cli.Say.Line($"pre-approval:  express - carried past a column marked to skip, with no session{preApprovalFrom}");

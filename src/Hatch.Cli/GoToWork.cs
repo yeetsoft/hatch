@@ -2435,7 +2435,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // The row that outranked the ticket about to be spawned is
                 // named on its own line, not folded into a grouped count that
                 // would hide which key it was.
-                var above = Digest.Above(picked.Queue, work.Issue.Priority);
+                var spawnedProject = picked.Queue.FirstOrDefault(q => q.Issue.Key == work.Issue.Key)?.ProjectPriority;
+                var above = Digest.Above(picked.Queue, work.Issue.Priority, spawnedProject);
                 foreach (var row in above)
                 {
                     var sentence = $"{row.Issue.Key}  {row.Blocked}";
