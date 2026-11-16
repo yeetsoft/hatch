@@ -165,6 +165,7 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
             var bottoms = new Dictionary<int, long>();
             var results = new List<ImportedEpicDto>(docs.Count);
             var count = 0;
+            var closed = new List<EfHatchIssue>();
 
             async Task<EfHatchIssue> AddAsync(string type, string title, string description, PlanState state, string source, EfHatchIssue? parent)
             {
@@ -210,6 +211,7 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
 
                 db.Issues.Add(issue);
                 count++;
+                if (parent is null && ChangelogTasks.JustClosed(null, status, issue)) closed.Add(issue);
                 return issue;
             }
 
@@ -254,6 +256,8 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
             {
                 return Conflict("could not mint issue numbers for this import - try again");
             }
+
+            await ChangelogTasks.FileForAsync(db, ranks, time, closed, ct);
 
             return new ImportResultDto(results, count);
         }

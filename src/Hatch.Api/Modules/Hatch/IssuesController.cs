@@ -39,6 +39,14 @@ public class IssuesController(
     private const int MintAttempts = 5;
 
     /// <summary>
+    /// The parentless issues this request just closed, filled by
+    /// <see cref="StageEditAsync"/> and read after the save - see
+    /// <see cref="ChangelogTasks"/>. A controller lives for one request, and a
+    /// retried attempt clears it before staging again.
+    /// </summary>
+    private readonly List<EfHatchIssue> justClosed = [];
+
+    /// <summary>
     /// How many issues one bulk edit may name. Far past a board's worth of
     /// cards, and low enough that a request built by a loop somewhere cannot
     /// turn into a write nobody is watching.
@@ -502,6 +510,7 @@ public class IssuesController(
     [HttpPatch("{key}")]
     public async Task<ActionResult<IssueDto>> PatchIssue(string key, IssuePatchRequest request, CancellationToken ct)
     {
+        justClosed.Clear();
         var issue = await LoadAsync(key, ct);
         if (issue is null) return NotFound();
 
@@ -534,6 +543,7 @@ public class IssuesController(
             if (error is not null) return BadRequest(error);
 
             if (changed) await db.SaveChangesAsync(ct);
+            await ChangelogTasks.FileForAsync(db, ranks, time, justClosed, ct);
 
             return await ToDtoAsync(issue, ct);
         }
@@ -546,6 +556,7 @@ public class IssuesController(
         // inside the loop, not just the save.
         for (var attempt = 1; ; attempt++)
         {
+            justClosed.Clear();
             issue = await LoadAsync(key, ct);
             if (issue is null) return NotFound();
 
@@ -571,6 +582,7 @@ public class IssuesController(
                 return Conflict("could not mint an issue number - try again");
             }
 
+            await ChangelogTasks.FileForAsync(db, ranks, time, justClosed, ct);
             return await ToDtoAsync(issue, ct);
         }
     }
@@ -596,6 +608,7 @@ public class IssuesController(
     [HttpPost("bulk")]
     public async Task<ActionResult<IssueBulkResultDto>> BulkEdit(IssueBulkEditRequest request, CancellationToken ct)
     {
+        justClosed.Clear();
         if (await ProjectMoveRefusal(request.ProjectId, ct) is { } notAPersonMove) return notAPersonMove;
         if (request.ProjectId is { } targetId && !await db.Projects.AnyAsync(p => p.Id == targetId, ct))
             return BadRequest($"there is no project {targetId}");
@@ -633,6 +646,7 @@ public class IssuesController(
         // never sees a prior attempt's results.
         async Task<(List<string> Changed, List<string> Unchanged, List<IssueBulkFailureDto> Failures, List<(string From, string To)> Rekeyed)> ResolveAndStageAsync()
         {
+            justClosed.Clear();
             var changed = new List<string>();
             var unchanged = new List<string>();
             var failures = new List<IssueBulkFailureDto>();
@@ -732,6 +746,8 @@ public class IssuesController(
                 }
             }
         }
+
+        await ChangelogTasks.FileForAsync(db, ranks, time, justClosed, ct);
 
         return new IssueBulkResultDto(
             changed, unchanged, failures, rekeyedPairs.Select(p => new IssueBulkRekeyedDto(p.From, p.To)).ToList());
@@ -887,6 +903,7 @@ public class IssuesController(
 
             issue.StatusId = status.Id;
             issue.ClosedAt = Columns.ClosedAt(from, status, now, issue.ClosedAt);
+            if (ChangelogTasks.JustClosed(from, status, issue)) justClosed.Add(issue);
             if (NoCode.ClearOnMove(issue, status, await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct), actor, now) is { } cleared)
                 events.Add(cleared);
             // A column change through PATCH has no neighbours to sit between,
@@ -1101,6 +1118,7 @@ public class IssuesController(
     [HttpPost("{key}/move")]
     public async Task<ActionResult<IssueDto>> MoveIssue(string key, IssueMoveRequest request, CancellationToken ct)
     {
+        justClosed.Clear();
         var issue = await LoadAsync(key, ct);
         if (issue is null) return NotFound();
 
@@ -1141,6 +1159,7 @@ public class IssuesController(
             issue.UpdatedAt = now;
             issue.StatusId = status.Id;
             issue.ClosedAt = Columns.ClosedAt(from, status, now, issue.ClosedAt);
+            if (ChangelogTasks.JustClosed(from, status, issue)) justClosed.Add(issue);
             if (NoCode.ClearOnMove(issue, status, await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct), actor, now) is { } cleared)
                 issue.Events.Add(cleared);
 
@@ -1157,6 +1176,7 @@ public class IssuesController(
         // never land separately.
         issue.Rank = await ranks.PlaceAsync(status.Id, issue.Id, after, before, ct);
         await db.SaveChangesAsync(ct);
+        await ChangelogTasks.FileForAsync(db, ranks, time, justClosed, ct);
 
         return await ToDtoAsync(issue, ct);
     }

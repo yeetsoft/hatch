@@ -224,6 +224,24 @@ public class ChangelogControllerTests
     }
 
     [Fact]
+    public async Task ARecordedChangelogTask_IsNeverInTheFile_OpenOrClosed()
+    {
+        var h = await NewAsync();
+        await h.ElectChangelogAsync(h.ProjectId, "host/owner/repo");
+        await h.CloseAsync("task", "shipped work", Now - TimeSpan.FromMinutes(2));
+        var open = await h.FileAsync("task", "Record AER-1 in the changelog", h.InProgress);
+        var closed = await h.CloseAsync("task", "Record AER-1 in the changelog", Now - TimeSpan.FromMinutes(1));
+        h.Db.ChangelogTasks.AddRange(
+            new EfHatchChangelogTask { IssueId = open.Id, Canonical = "host/owner/repo", CreatedAt = Now },
+            new EfHatchChangelogTask { IssueId = closed.Id, Canonical = "host/owner/repo", CreatedAt = Now });
+        await h.Db.SaveChangesAsync();
+
+        var yaml = Yaml(await h.GetChangelogFileAsync("host/owner/repo"));
+
+        Assert.Equal(["AER-1"], Keys(yaml));
+    }
+
+    [Fact]
     public async Task TwoProjectsElectingTheSameRemote_InterleaveByShipped_EachCarryingItsOwnProjectKey()
     {
         var h = await NewAsync();

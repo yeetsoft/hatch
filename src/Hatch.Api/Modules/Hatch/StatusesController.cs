@@ -86,6 +86,8 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
         if (status is null) return NotFound();
 
+        var closedByTick = new List<EfHatchIssue>();
+
         if (request.Name is not null)
         {
             var name = request.Name.Trim();
@@ -115,6 +117,9 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
                 var now = time.GetUtcNow();
                 var affected = await db.Issues.Where(i => i.StatusId == id).ToListAsync(ct);
                 foreach (var i in affected) i.ClosedAt = terminal ? now : null;
+
+                // Every parentless issue standing in the column has just closed.
+                if (terminal) closedByTick = affected.Where(i => i.ParentId == null).ToList();
             }
 
             status.IsTerminal = terminal;
@@ -130,6 +135,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         }
 
         await db.SaveChangesAsync(ct);
+        await ChangelogTasks.FileForAsync(db, new RankService(db), time, closedByTick, ct, logger);
         return ToDto(status);
     }
 

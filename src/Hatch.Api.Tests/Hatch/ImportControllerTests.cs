@@ -114,6 +114,47 @@ public class ImportControllerTests
     }
 
     [Fact]
+    public async Task AnEpicImportedDone_FilesOneChangelogTask_AndItsFinishedChildrenFileNone()
+    {
+        var h = await NewAsync();
+        h.Db.ProjectRepositories.Add(new EfHatchProjectRepository
+        {
+            ProjectId = h.ProjectId,
+            Remote = "https://example.com/owner/repo.git",
+            Canonical = "example.com/owner/repo",
+            Changelog = true,
+            CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        await h.ImportAsync("pjm.md", "# Hatch" + Environment.NewLine + Environment.NewLine + "## Phase 0" + Environment.NewLine + Environment.NewLine + "- [x] Write the module" + Environment.NewLine + "- [x] Write the tests" + Environment.NewLine);
+
+        var epic = h.Issue("AER-1");
+        Assert.Equal(h.Done, epic.StatusId);
+        var record = await h.Db.ChangelogTasks.SingleAsync();
+        Assert.Equal(epic.Id, record.SourceIssueId);
+    }
+
+    [Fact]
+    public async Task AnImportThatLeavesTheEpicOpen_FilesNoChangelogTask()
+    {
+        var h = await NewAsync();
+        h.Db.ProjectRepositories.Add(new EfHatchProjectRepository
+        {
+            ProjectId = h.ProjectId,
+            Remote = "https://example.com/owner/repo.git",
+            Canonical = "example.com/owner/repo",
+            Changelog = true,
+            CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        await h.ImportAsync("pjm.md", Plan);
+
+        Assert.Empty(await h.Db.ChangelogTasks.ToListAsync());
+    }
+
+    [Fact]
     public async Task AnIssueImportedIntoATerminalColumn_IsStampedClosed()
     {
         var h = await NewAsync();

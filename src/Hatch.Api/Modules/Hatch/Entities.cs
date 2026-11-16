@@ -2119,6 +2119,41 @@ public class EfHatchPlaybookFile
 }
 
 /// <summary>
+/// A task the board filed to bring one repository's changelog file current,
+/// recorded so the file never lists it - see <see cref="ChangelogTasks"/>.
+/// One row per task, keyed on the task and on <see cref="Canonical"/> rather
+/// than on a binding, because a write of the repository list replaces every
+/// binding row with a new id.
+/// </summary>
+[Table("ChangelogTasks")]
+[Index(nameof(IssueId), IsUnique = true)]
+[Index(nameof(Canonical))]
+public class EfHatchChangelogTask
+{
+    public const int MaxRemoteLength = EfHatchProjectRepository.MaxRemoteLength;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>The task itself. The record goes with it.</summary>
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    /// <summary>
+    /// The issue whose close filed it. Null once that issue is deleted: the
+    /// record stays, so the task stays out of the file.
+    /// </summary>
+    public long? SourceIssueId { get; set; }
+    public EfHatchIssue? SourceIssue { get; set; }
+
+    /// <summary><see cref="RemoteIdentity.Canonical"/> of the repository the task brings current.</summary>
+    [MaxLength(MaxRemoteLength)]
+    public required string Canonical { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
 /// What a repository's trunk holds at <see cref="DependencyDeclaration.Path"/>,
 /// as of the last time something checked - the parsed entries, or why there
 /// are none. One row per repository per trunk, keyed on <see cref="Canonical"/>
@@ -2291,6 +2326,14 @@ public class EfHatchIssueEvent
     /// changed and on no other.
     /// </summary>
     public const string FiledFromChanged = "filed_from_changed";
+
+    /// <summary>
+    /// The board filed a task under this issue as it closed, to bring a
+    /// repository's changelog file current - see <see cref="ChangelogTasks"/>.
+    /// The payload's <c>key</c> is the task's display key and <c>canonical</c>
+    /// the repository it is for; written on the closed issue, by the board.
+    /// </summary>
+    public const string ChangelogTaskFiled = "changelog_task_filed";
 
     /// <summary>
     /// The issue moved to another project, carrying the subtree under it

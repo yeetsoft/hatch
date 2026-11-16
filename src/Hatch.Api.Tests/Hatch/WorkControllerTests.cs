@@ -7366,6 +7366,85 @@ public class WorkControllerTests
         Assert.True(payload.GetProperty("nocode").GetBoolean());
     }
 
+    // ---- The changelog task, filed as an issue closes ----
+
+    [Fact]
+    public async Task HopWork_ClosingAParentlessIssue_FilesTheChangelogTask()
+    {
+        var h = await NewAsync();
+        var repo = await h.BindRepositoryAsync("https://example.com/owner/repo.git");
+        repo.Changelog = true;
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        await AssertChangelogTaskFiledAsync(h, issue);
+    }
+
+    [Fact]
+    public async Task MergedWork_ClosingAParentlessIssue_FilesTheChangelogTask()
+    {
+        var h = await NewAsync();
+        var repo = await h.BindRepositoryAsync("https://example.com/owner/repo.git");
+        repo.Changelog = true;
+        var issue = await h.FileAsync("task", "waiting for a merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        await AssertChangelogTaskFiledAsync(h, issue);
+    }
+
+    [Fact]
+    public async Task LandedWork_ClosingAParentlessIssue_FilesTheChangelogTask()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r");
+        repo.Changelog = true;
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        Value(await h.Work.LandedWork(Key(issue), default));
+
+        await AssertChangelogTaskFiledAsync(h, issue, "example.com/o/r");
+    }
+
+    [Fact]
+    public async Task MergedWork_OnAStoryTheTasksItCarriesDone_FileNoChangelogTaskOfTheirOwn()
+    {
+        var h = await NewAsync();
+        var repo = await h.BindRepositoryAsync("https://example.com/owner/repo.git");
+        repo.Changelog = true;
+        var story = await h.FileAsync("story", "shared pull request", h.Review);
+        await h.SetPullRequestAsync(story, "https://example.com/o/r/pull/1");
+        await h.FileAsync("task", "a part", h.Review, parentId: story.Id);
+
+        await h.Work.MergedWork(
+            Key(story), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        var record = await h.Db.ChangelogTasks.SingleAsync();
+        Assert.Equal(story.Id, record.SourceIssueId);
+    }
+
+    private static async Task AssertChangelogTaskFiledAsync(Harness h, EfHatchIssue closed, string canonical = "example.com/owner/repo")
+    {
+        var record = await h.Db.ChangelogTasks.SingleAsync();
+        Assert.Equal(closed.Id, record.SourceIssueId);
+        Assert.Equal(canonical, record.Canonical);
+
+        var task = await h.Db.Issues.SingleAsync(i => i.Id == record.IssueId);
+        Assert.Equal($"Record {Key(closed)} in the changelog", task.Title);
+        Assert.Equal(ChangelogTasks.Actor, task.CreatedBy);
+
+        var filed = await h.Db.IssueEvents.SingleAsync(e => e.IssueId == closed.Id && e.Kind == EfHatchIssueEvent.ChangelogTaskFiled);
+        Assert.Equal(ChangelogTasks.Actor, filed.Actor);
+    }
+
     [Fact]
     public async Task HopWork_OnADeclaredNoCodeRow_NamesTheAncestorWhosePreApprovalCarriedIt()
     {

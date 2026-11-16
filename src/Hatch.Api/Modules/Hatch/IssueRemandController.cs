@@ -113,6 +113,7 @@ public class IssueRemandController(HatchContext db, RankService ranks, ICallerId
         var bottoms = new ColumnBottoms(ranks);
         var shelved = new List<long>();
         var changed = new List<string>();
+        var closed = new List<EfHatchIssue>();
 
         foreach (var issue in moving)
         {
@@ -121,6 +122,7 @@ public class IssueRemandController(HatchContext db, RankService ranks, ICallerId
 
             issue.StatusId = target.Id;
             issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+            if (ChangelogTasks.JustClosed(from, target, issue)) closed.Add(issue);
             if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
                 issue.Events.Add(cleared);
             issue.Rank = await bottoms.NextAsync(target.Id, ct);
@@ -135,6 +137,7 @@ public class IssueRemandController(HatchContext db, RankService ranks, ICallerId
 
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
+        await ChangelogTasks.FileForAsync(db, ranks, time, closed, ct);
 
         var remandedFrom = remanded
             .OrderByDescending(r => r.Root)

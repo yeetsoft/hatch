@@ -35,6 +35,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchLanding> Landings => Set<EfHatchLanding>();
     public DbSet<EfHatchContribution> Contributions => Set<EfHatchContribution>();
     public DbSet<EfHatchTrunkBuild> TrunkBuilds => Set<EfHatchTrunkBuild>();
+    public DbSet<EfHatchChangelogTask> ChangelogTasks => Set<EfHatchChangelogTask>();
     public DbSet<EfHatchPlaybookFile> PlaybookFiles => Set<EfHatchPlaybookFile>();
     public DbSet<EfHatchDependencyFile> DependencyFiles => Set<EfHatchDependencyFile>();
     public DbSet<EfHatchVerdict> Verdicts => Set<EfHatchVerdict>();
@@ -491,6 +492,21 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.SetNull);
 
             e.Property(t => t.Failing).HasColumnType("jsonb");
+        });
+
+        // The record goes with the task, but outlives the issue that filed it:
+        // SetNull, so a deleted source leaves the task out of the changelog file.
+        modelBuilder.Entity<EfHatchChangelogTask>(e =>
+        {
+            e.HasOne(t => t.Issue)
+                .WithMany()
+                .HasForeignKey(t => t.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(t => t.SourceIssue)
+                .WithMany()
+                .HasForeignKey(t => t.SourceIssueId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // A dream outlives the project it leaned toward - SetNull, the same

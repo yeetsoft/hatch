@@ -96,7 +96,8 @@ public class ChangelogController(HatchContext db, TimeProvider time, IOptions<Ha
             return NotFound($"no project elects {canonical} for a changelog - turn it on from the Projects page");
 
         var rows = await db.Issues.AsNoTracking()
-            .Where(i => i.ParentId == null && i.Status!.IsTerminal && i.ClosedAt != null && projectIds.Contains(i.ProjectId))
+            .Where(i => i.ParentId == null && i.Status!.IsTerminal && i.ClosedAt != null && projectIds.Contains(i.ProjectId)
+                        && !db.ChangelogTasks.Any(t => t.IssueId == i.Id))
             .Select(i => new
             {
                 i.Id,
