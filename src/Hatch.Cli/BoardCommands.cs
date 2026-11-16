@@ -91,6 +91,8 @@ public sealed class BoardCommands(Cli cli)
             .OrderBy(s => s.IsDeferred)
             .ToList();
 
+        var levels = await cli.Board.ProjectLevelsAsync(ct);
+
         foreach (var status in columns)
         {
             var terminal = status.IsDeferred ? " (deferred)" : status.IsTerminal ? " (terminal)" : "";
@@ -122,7 +124,15 @@ public sealed class BoardCommands(Cli cli)
             var approved = column.Count(i => i.PreApproval == PreApprovalLevels.PreApprovedName);
             var preapproved = approved > 0 ? $"  ({approved} pre-approved)" : "";
 
-            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{low}{economy}{aside}{carried}{preapproved}");
+            // The same two off-normal levels for the project a card sits in,
+            // which the card carries only as a key.
+            var inExpedited = column.Count(i => levels.GetValueOrDefault(i.ProjectKey) == ProjectPriorities.Expedited);
+            var hurriedProjects = inExpedited > 0 ? $"  ({inExpedited} in expedited projects)" : "";
+
+            var inPaused = column.Count(i => levels.GetValueOrDefault(i.ProjectKey) == ProjectPriorities.Paused);
+            var pausedProjects = inPaused > 0 ? $"  ({inPaused} in paused projects)" : "";
+
+            cli.Say.Line($"{status.Name}{terminal}: {column.Count}{emergency}{first}{low}{economy}{aside}{hurriedProjects}{pausedProjects}{carried}{preapproved}");
         }
 
         if (board.Wip is { } wip)
@@ -186,8 +196,11 @@ public sealed class BoardCommands(Cli cli)
             return 1;
         }
 
+        var levels = await cli.Board.ProjectLevelsAsync(ct);
+
         var card = board.Issues.FirstOrDefault(i =>
-            i.StatusId == column.Id && Columns.Ready(i.ReadyAt, cli.Now) && i.Priority != PriorityLevels.PausedName);
+            i.StatusId == column.Id && Columns.Ready(i.ReadyAt, cli.Now) && i.Priority != PriorityLevels.PausedName
+            && levels.GetValueOrDefault(i.ProjectKey) != ProjectPriorities.Paused);
         if (card is null)
         {
             cli.Say.Complain($"hatch: nothing workable in \"{want}\"");
@@ -203,13 +216,14 @@ public sealed class BoardCommands(Cli cli)
             PriorityLevels.EconomyName => "  (economy)",
             _ => "",
         };
+        var inProject = levels.GetValueOrDefault(card.ProjectKey) == ProjectPriorities.Expedited ? "  (project expedited)" : "";
         var carried = card.PreApproval switch
         {
             PreApprovalLevels.ExpressName => "  (express)",
             PreApprovalLevels.PreApprovedName => "  (pre-approved)",
             _ => "",
         };
-        cli.Say.Line($"{card.Key}  [{card.Type}]  {card.Title}{first}{carried}{due}");
+        cli.Say.Line($"{card.Key}  [{card.Type}]  {card.Title}{first}{inProject}{carried}{due}");
         return 0;
     }
 
@@ -364,7 +378,8 @@ public sealed class BoardCommands(Cli cli)
         var keyWidth = queue.Max(q => q.Issue.Key.Length);
         var typeWidth = queue.Max(q => q.Issue.Type.Length) + 2;
         var columnWidth = queue.Max(q => q.FromStatus.Name.Length);
-        var anyFirst = queue.Any(q => q.Issue.Priority != PriorityLevels.NormalName);
+        var anyFirst = queue.Any(q => q.Issue.Priority != PriorityLevels.NormalName
+            || q.ProjectPriority is ProjectPriorities.Expedited or ProjectPriorities.Paused);
 
         return queue.Select(q =>
             {
@@ -379,15 +394,7 @@ public sealed class BoardCommands(Cli cli)
                 var taken = TakersWords(q);
 
                 return (anyFirst
-                        ? q.Issue.Priority switch
-                        {
-                            PriorityLevels.EmergencyName => "!!",
-                            PriorityLevels.ExpeditedName => "! ",
-                            PriorityLevels.LowName => "- ",
-                            PriorityLevels.EconomyName => "~ ",
-                            PriorityLevels.PausedName => "||",
-                            _ => "  ",
-                        }
+                        ? Marker(q)
                         : "")
                     + q.Issue.Key.PadRight(keyWidth) + "  "
                     + $"[{q.Issue.Type}]".PadRight(typeWidth) + "  "
@@ -398,6 +405,26 @@ public sealed class BoardCommands(Cli cli)
             })
             .ToList();
     }
+
+    /// <summary>
+    /// The two characters that open a row, most to least specific, as the
+    /// dispatcher folds it: a paused project <c>|p</c> beats everything, since
+    /// the walk sets its rows aside before it looks at their own level; then
+    /// an emergency, a paused issue, an expedited project <c>!p</c>, and
+    /// otherwise the issue's own level.
+    /// </summary>
+    private static string Marker(QueueEntryDto q) =>
+        q.ProjectPriority == ProjectPriorities.Paused ? "|p"
+        : q.Issue.Priority == PriorityLevels.EmergencyName ? "!!"
+        : q.Issue.Priority == PriorityLevels.PausedName ? "||"
+        : q.ProjectPriority == ProjectPriorities.Expedited ? "!p"
+        : q.Issue.Priority switch
+        {
+            PriorityLevels.ExpeditedName => "! ",
+            PriorityLevels.LowName => "- ",
+            PriorityLevels.EconomyName => "~ ",
+            _ => "  ",
+        };
 
     /// <summary>
     /// What a row says about who could take its next step: nothing when the

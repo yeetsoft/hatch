@@ -23,9 +23,9 @@ public sealed class BoardCommandsTests
     private static IssueCardDto Card(
         string key, int statusId, string type = "task", string? readyAt = null, string? dueAt = null,
         bool expedited = false, bool express = false, string? priority = null,
-        string? preApproval = null, string? preApprovalFrom = null) =>
+        string? preApproval = null, string? preApprovalFrom = null, string project = "AER") =>
         new(
-            key, "AER", type, $"{key}'s title", statusId, 1000, null, readyAt, dueAt,
+            key, project, type, $"{key}'s title", statusId, 1000, null, readyAt, dueAt,
             Expedited: expedited, Express: express,
             Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName),
             PreApproval: preApproval ?? (express ? PreApprovalLevels.ExpressName : PreApprovalLevels.NoneName),
@@ -800,6 +800,87 @@ public sealed class BoardCommandsTests
             Done (terminal): 0
             """.ReplaceLineEndings("\n"),
             h.Said);
+    }
+
+    private static ProjectDto AProjectAt(string key, string level) =>
+        new(1, key, key, 0, DateTimeOffset.UnixEpoch, null, null, [], null, [], false, false, Priority: level);
+
+    [Fact]
+    public async Task The_board_says_how_many_of_a_column_sit_in_expedited_and_paused_projects()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/projects", new[] { AProjectAt("AER", ProjectPriorities.Expedited), AProjectAt("OTH", ProjectPriorities.Paused) });
+        h.Wire.Json("GET", "/api/board", ABoard(
+            Card("AER-1", 2), Card("AER-2", 2), Card("OTH-1", 2, project: "OTH"), Card("AER-3", 3)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.Equal(
+            """
+            Backlog: 0
+            To Do: 3  (2 in expedited projects)  (1 in paused projects)
+            In Progress: 1  (1 in expedited projects)
+            Done (terminal): 0
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task The_board_prints_what_it_always_did_when_the_projects_cannot_be_read()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.DoesNotContain("projects", h.Said);
+    }
+
+    [Fact]
+    public async Task Next_skipsACardInAPausedProject()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/projects", new[] { AProjectAt("OTH", ProjectPriorities.Paused) });
+        h.Wire.Json("GET", "/api/board", ABoard(Card("OTH-1", 2, project: "OTH"), Card("AER-2", 2)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
+        Assert.Equal("AER-2  [task]  AER-2's title", h.Said);
+    }
+
+    [Fact]
+    public async Task Next_endsAnExpeditedProjectsCardWithItsLevel()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/projects", new[] { AProjectAt("AER", ProjectPriorities.Expedited) });
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
+        Assert.Equal("AER-1  [task]  AER-1's title  (project expedited)", h.Said);
+    }
+
+    [Fact]
+    public void The_queue_marks_a_row_by_its_projects_level()
+    {
+        var lines = BoardCommands.Draw(
+        [
+            Fixtures.Row("AER-1", projectPriority: ProjectPriorities.Paused, priority: PriorityLevels.EmergencyName, blocked: "paused"),
+            Fixtures.Row("AER-2", priority: PriorityLevels.EmergencyName),
+            Fixtures.Row("AER-3", projectPriority: ProjectPriorities.Expedited),
+            Fixtures.Row("AER-4", projectPriority: ProjectPriorities.Expedited, priority: PriorityLevels.PausedName),
+            Fixtures.Row("AER-5", projectPriority: ProjectPriorities.Normal),
+        ]);
+
+        Assert.Equal(["|p", "!!", "!p", "||", "  "], lines.Select(l => l[..2]));
+    }
+
+    [Fact]
+    public void The_marker_column_switches_on_for_a_project_level_alone()
+    {
+        var lines = BoardCommands.Draw([Fixtures.Row("AER-1", projectPriority: ProjectPriorities.Expedited), Fixtures.Row("AER-2")]);
+        Assert.StartsWith("!pAER-1", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("  AER-2", lines[1], StringComparison.Ordinal);
+
+        Assert.StartsWith("AER-1", BoardCommands.Draw([Fixtures.Row("AER-1", projectPriority: ProjectPriorities.Normal)])[0], StringComparison.Ordinal);
     }
 
     [Fact]
