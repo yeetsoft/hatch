@@ -7556,6 +7556,65 @@ public class WorkControllerTests
         Assert.Equal(story.Id, record.SourceIssueId);
     }
 
+    /// <summary>
+    /// HA-2361's last acceptance, chained: each link has its own test, and this
+    /// one follows a single close from the close hop to a file the board reads
+    /// as current, so a seam between two of them is checked too.
+    /// </summary>
+    [Fact]
+    public async Task ChangelogLoop_APreApprovedEpicClosed_RunsToACurrentFile()
+    {
+        const string remote = "https://example.com/owner/repo.git";
+        const string origin = "https://hatch.test";
+        var h = await NewAsync();
+        var repo = await h.BindRepositoryAsync(remote);
+        repo.Changelog = true;
+        await h.Db.SaveChangesAsync();
+        var epic = await h.FileAsync("epic", "ready to close", h.Review);
+        await h.PreApprovedAsync(epic);
+        await h.FileAsync("story", "the only child", h.Done, parentId: epic.Id);
+
+        // The harness numbers what it files itself; the project's own counter, which the filed task takes, must come after them.
+        (await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).NextIssueNumber = 3;
+        await h.Db.SaveChangesAsync();
+
+        // The close hop files exactly one task, in the column that feeds implementation.
+        Value(await h.Work.HopWork(Key(epic), null, null, null, default));
+
+        Assert.Equal(h.Done, (await h.Db.Issues.SingleAsync(i => i.Id == epic.Id)).StatusId);
+        var record = await h.Db.ChangelogTasks.SingleAsync();
+        Assert.Equal(epic.Id, record.SourceIssueId);
+        var task = await h.Db.Issues.SingleAsync(i => i.Id == record.IssueId);
+        Assert.Equal(epic.Id, task.ParentId);
+        Assert.Equal($"Record {Key(epic)} in the changelog", task.Title);
+        Assert.Equal(h.Todo, task.StatusId);
+
+        // The board carries it into implementation, as the parent hop does.
+        await h.TickParentPullsAsync(h.Todo);
+        Value(await h.Work.HopWork(Key(task), [remote], null, null, default));
+        Assert.Equal(h.InProgress, (await h.Db.Issues.SingleAsync(i => i.Id == task.Id)).StatusId);
+
+        // The runner reads the file the board answers with and puts those bytes back.
+        var options = Options.Create(new HatchOptions { PublicBaseUrl = origin });
+        var served = await new ChangelogController(h.Db, h.Time, options).GetChangelogFile(remote, default);
+        var yaml = Assert.IsType<ContentResult>(served).Content!;
+        var issuesBefore = await h.Db.Issues.CountAsync();
+        var put = new ChangelogFileController(h.Db, h.Caller, h.Time, options, new RankService(h.Db), NullLogger<ChangelogFileController>.Instance);
+
+        var stored = Value(await put.PutChangelogFile(
+            new ChangelogFileRequest(
+                remote, "main", new string('1', 40), Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(yaml)), null, "box:/work/repo"),
+            default));
+
+        Assert.Equal(ChangelogFile.CurrentState, stored.State);
+        Assert.Null(stored.Behind);
+        Assert.Contains($"key: {Key(epic)}", yaml);
+        Assert.DoesNotContain(Key(task), yaml);
+        Assert.DoesNotContain(task.Title, yaml);
+        Assert.Equal(issuesBefore, await h.Db.Issues.CountAsync());
+        Assert.Single(await h.Db.ChangelogTasks.ToListAsync());
+    }
+
     private static async Task AssertChangelogTaskFiledAsync(Harness h, EfHatchIssue closed, string canonical = "example.com/owner/repo")
     {
         var record = await h.Db.ChangelogTasks.SingleAsync();
