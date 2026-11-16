@@ -1155,6 +1155,149 @@
   }
 }
 
+/* The scope control's wrapper: the trigger and, beside it, the cluster of
+   expedited and paused projects. The cluster is a sibling of the trigger, so
+   its pills are never inside the button that opens the panel. */
+.hatch-scope-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* The same glyphs, riding inside the trigger before the caret, so a press on
+   one opens the panel. Decorative: the trigger's own label says what it is. */
+.hatch-scope-control__trigger-glyph {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Both sit on the bar's gradient, where the row's own --level-up and --muted
+   are too dark in the light theme: the green is lifted toward the bar's ink,
+   and the pause mark takes that ink, a little quieter. */
+.hatch-scope-control__trigger-glyph--expedite,
+.hatch-scope-cluster__group--expedited .hatch-scope-cluster__glyph {
+  color: color-mix(in srgb, var(--level-up) 55%, var(--on-chrome));
+}
+
+.hatch-scope-control__trigger-glyph--pause,
+.hatch-scope-cluster__group--paused .hatch-scope-cluster__glyph {
+  color: var(--on-chrome);
+  opacity: 0.8;
+}
+
+/* Smaller than .hatch-scope-control__chip and led by its glyph, so the two
+   never read as one thing. Each pill overlaps the next; the first, with the
+   highest z-index set inline, lies on top. Left padding clears the overlap
+   from the pill before it, so its key is never covered. */
+.hatch-scope-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-scope-cluster__group {
+  display: inline-flex;
+  align-items: center;
+}
+
+.hatch-scope-cluster__glyph {
+  display: inline-flex;
+  margin-right: var(--sp-1);
+}
+
+.hatch-scope-cluster__glyph svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.hatch-scope-cluster__pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1) 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--mark-color, var(--muted));
+  color: var(--mark-ink, var(--on-accent));
+  font-size: var(--t-micro);
+  line-height: 1.25rem;
+  box-shadow: 0 0 0 1px var(--chrome);
+}
+
+.hatch-scope-cluster__pill + .hatch-scope-cluster__pill {
+  margin-left: -0.375rem;
+  padding-left: calc(var(--sp-1-5) + 0.375rem);
+}
+
+/* Held at no width until the pill is hovered or focused, so revealing it does
+   not move the pills beside it. */
+.hatch-scope-cluster__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.hatch-scope-cluster__pill:hover .hatch-scope-cluster__clear,
+.hatch-scope-cluster__pill:focus-within .hatch-scope-cluster__clear,
+.hatch-scope-cluster__clear:focus-visible {
+  width: 1rem;
+  margin-left: var(--sp-1);
+  opacity: 1;
+}
+
+.hatch-scope-cluster__clear:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* On the phone the strip is the control's whole row; the cluster wraps under
+   the trigger, and a finger needs 44px: the pill, and the x on it, which is
+   always drawn there since there is no hover to reveal it. */
+@media (max-width: 40rem) {
+  .hatch-scope-strip {
+    flex-wrap: wrap;
+  }
+
+  .hatch-scope-strip .hatch-scope-control {
+    flex: 1;
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  /* The wrapped cluster is a second row of 44px pills, which the board's
+     height above must give up as well as the strip's own first row. */
+  .hatch-app:has(.hatch-scope-strip .hatch-scope-cluster) .hatch-board-page {
+    min-height: calc(100dvh - 48px - 44px - 44px);
+  }
+
+  .hatch-scope-strip .hatch-scope-cluster {
+    flex-basis: 100%;
+  }
+}
+
+@media (pointer: coarse) {
+  .hatch-scope-cluster__pill {
+    min-height: 44px;
+  }
+
+  .hatch-scope-cluster__clear {
+    width: 44px;
+    align-self: stretch;
+    margin-left: var(--sp-1);
+    opacity: 1;
+  }
+}
+
 .hatch-scope-control__error {
   padding: var(--sp-1) var(--sp-3);
   color: var(--danger-ink);
