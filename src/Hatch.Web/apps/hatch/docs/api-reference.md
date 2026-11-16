@@ -299,7 +299,7 @@ not mint an issue number - try again".
 | omitted-runners | DELETE | `/issues/{key}/omitted-runners/{runner}` | key | Lifts the ticket's own omission of a runner; 404 for one only an ancestor carries |
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
 | contribution | PUT | `/issues/{key}/contribution` | key | That the issue came from outside: pull request URL, head branch, author login and association, origin. Write-once, unique per pull request URL; answers the `IssueDto` |
-| release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
+| release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue. A key may also write it under a changelog task's live claim |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
 | hold | PUT | `/issues/{key}/hold` | **person** | Parks/resumes a ticket; clears any stall mark |
 | playbook | PATCH | `/issues/{key}/playbook` | **person, at the browser** | Per-ticket model/effort override, beating every playbook |
@@ -321,7 +321,11 @@ anything the wall admits, person or key, which is deliberate: a dispatcher
 is exactly who leaves this mark.
 `release-note` is key-open but claim-gated: a person may write it any time, a
 program caller only while holding the issue's live claim, sent as
-`?heldToken=`, and is refused with a 409 otherwise.
+`?heldToken=`, and is refused with a 409 otherwise. One second claim is
+accepted: the live claim of the changelog task the board recorded for that
+issue, so the task's session may write a note nobody wrote earlier. The
+`release_note_changed` event then carries `via`, the task's key. No other
+issue's claim is accepted.
 
 `AssigneeRequest` is `Kind?` and `Id?` - both or neither, and neither clears.
 `PriorityRequest(Priority)` takes one of `paused`, `economy`, `low`,

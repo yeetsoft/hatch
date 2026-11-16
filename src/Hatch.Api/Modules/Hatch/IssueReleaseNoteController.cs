@@ -22,6 +22,12 @@ namespace Hatch.Api.Modules.Hatch;
 /// the ticket it is working on. The two refusals are
 /// <see cref="WorkController.VerdictWork"/>'s, and a lapsed claim counts as no
 /// claim at all.</para>
+///
+/// <para>One second claim is accepted, and no other: the live claim of the
+/// changelog task the board recorded for the issue
+/// (<see cref="EfHatchChangelogTask"/>), which writes the note of the issue it
+/// was filed for when nobody wrote it earlier. The event then carries
+/// <c>via</c>, the task's key.</para>
 /// </remarks>
 [ApiController]
 [Route("api/issues")]
@@ -51,12 +57,20 @@ public class IssueReleaseNoteController(
 
         var now = time.GetUtcNow();
 
+        string? via = null;
         if (await caller.IsProgramAsync(ct))
         {
-            if (!claims.IsLive(ClaimSnapshot.Of(issue), now))
-                return Conflict($"{key} holds no live claim, so there is nothing for this token to match");
-            if (issue.ClaimToken != heldToken)
-                return Conflict($"{key}'s live claim does not match this token");
+            var own = claims.IsLive(ClaimSnapshot.Of(issue), now) && issue.ClaimToken == heldToken;
+            if (!own)
+            {
+                via = await ChangelogTaskHoldingAsync(issue, heldToken, now, ct);
+                if (via is null)
+                {
+                    if (!claims.IsLive(ClaimSnapshot.Of(issue), now))
+                        return Conflict($"{key} holds no live claim, so there is nothing for this token to match");
+                    return Conflict($"{key}'s live claim does not match this token");
+                }
+            }
         }
 
         if (note != issue.ReleaseNote)
@@ -65,7 +79,9 @@ public class IssueReleaseNoteController(
             {
                 Actor = await caller.ActorNameAsync(ct),
                 Kind = EfHatchIssueEvent.ReleaseNoteChanged,
-                Payload = JsonSerializer.Serialize(new { from = issue.ReleaseNote, to = note }),
+                Payload = via is null
+                    ? JsonSerializer.Serialize(new { from = issue.ReleaseNote, to = note })
+                    : JsonSerializer.Serialize(new { from = issue.ReleaseNote, to = note, via }),
                 At = now,
             });
 
@@ -75,5 +91,24 @@ public class IssueReleaseNoteController(
         }
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
+    }
+
+    /// <summary>
+    /// The key of the changelog task the board recorded for
+    /// <paramref name="issue"/> whose live claim <paramref name="heldToken"/>
+    /// is, or null. The one claim besides the issue's own that may write its
+    /// note - see <see cref="ChangelogTasks"/>.
+    /// </summary>
+    private async Task<string?> ChangelogTaskHoldingAsync(EfHatchIssue issue, Guid? heldToken, DateTimeOffset now, CancellationToken ct)
+    {
+        if (heldToken is null) return null;
+
+        var tasks = await db.ChangelogTasks.AsNoTracking()
+            .Include(t => t.Issue).ThenInclude(i => i!.Project)
+            .Where(t => t.SourceIssueId == issue.Id)
+            .ToListAsync(ct);
+        var task = tasks.FirstOrDefault(t => t.Issue is not null
+            && t.Issue.ClaimToken == heldToken && claims.IsLive(ClaimSnapshot.Of(t.Issue), now));
+        return task?.Issue is null ? null : IssueKey.Format(task.Issue.Project!.Key, task.Issue.Number);
     }
 }

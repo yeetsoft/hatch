@@ -2586,6 +2586,13 @@ public record DreamRemandResultDto(
 /// the CLI has no access to <c>Columns.cs</c> to compute it itself (see
 /// <see cref="FailStatusName"/>'s own param for the same reasoning).
 /// </param>
+/// <param name="ReleaseNoteFor">
+/// The key of the issue this dispatch's changelog task was filed for, set
+/// where the dispatched issue is a changelog task the board recorded and that
+/// issue has no release note: the task's session writes it, in a
+/// <c>release-note</c> block whose fence line names the key. Null for any
+/// other dispatch, and where the note already exists.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -2615,7 +2622,8 @@ public record WorkDto(
     PlaybookFileReferenceDto? PlaybookFile = null,
     bool AsksReleaseNote = false,
     int? NextBriefLimit = null,
-    bool? OffersNoCode = null);
+    bool? OffersNoCode = null,
+    string? ReleaseNoteFor = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether

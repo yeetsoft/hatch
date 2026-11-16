@@ -1972,6 +1972,69 @@ public class WorkControllerTests
         Assert.False(work.AsksReleaseNote);
     }
 
+    // ---- HA-2366: ReleaseNoteFor ----
+
+    private static async Task<(EfHatchIssue Source, EfHatchIssue Task)> RecordChangelogTaskAsync(
+        Harness h, string? note, bool recorded = true)
+    {
+        var source = await h.FileAsync("epic", "what shipped", h.Todo);
+        source.ReleaseNote = note;
+        var task = await h.FileAsync("task", "bring the changelog current", h.InProgress);
+        if (recorded)
+            h.Db.ChangelogTasks.Add(new EfHatchChangelogTask
+            {
+                IssueId = task.Id, SourceIssueId = source.Id, Canonical = "host/owner/repo", CreatedAt = DateTimeOffset.UtcNow,
+            });
+        await h.Db.SaveChangesAsync();
+        return (source, task);
+    }
+
+    [Fact]
+    public async Task ReleaseNoteFor_NamesTheDeliveredIssue_WhenARecordedTasksSourceHasNoNote()
+    {
+        var h = await NewAsync();
+        var (source, task) = await RecordChangelogTaskAsync(h, note: null);
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal(Key(source), work.ReleaseNoteFor);
+    }
+
+    [Theory]
+    [InlineData("It shipped.")]
+    [InlineData("   ")]
+    public async Task ReleaseNoteFor_IsNullWhereTheNoteExists_AndNamedWhereItIsOnlyWhitespace(string note)
+    {
+        var h = await NewAsync();
+        var (source, task) = await RecordChangelogTaskAsync(h, note);
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal(string.IsNullOrWhiteSpace(note) ? Key(source) : null, work.ReleaseNoteFor);
+    }
+
+    [Fact]
+    public async Task ReleaseNoteFor_IsNullForATaskTheBoardDidNotRecord()
+    {
+        var h = await NewAsync();
+        var (_, task) = await RecordChangelogTaskAsync(h, note: null, recorded: false);
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Null(work.ReleaseNoteFor);
+    }
+
+    [Fact]
+    public async Task ReleaseNoteFor_IsNullForTheDeliveredIssueItself()
+    {
+        var h = await NewAsync();
+        var (source, _) = await RecordChangelogTaskAsync(h, note: null);
+
+        var work = Value(await h.Work.GetWork(Key(source), null, default));
+
+        Assert.Null(work.ReleaseNoteFor);
+    }
+
     // ---- HA-2198/HA-2199: OffersNoCode ----
 
     [Fact]

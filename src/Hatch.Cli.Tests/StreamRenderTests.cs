@@ -275,6 +275,44 @@ public sealed class StreamRenderTests
     }
 
     [Fact]
+    public void A_fence_line_may_name_the_issue_the_note_is_for()
+    {
+        var said = "```release-note AER-12\nShipped it.\n```";
+
+        Assert.Equal("Shipped it.", StreamRender.ReleaseNote(said));
+        Assert.Equal("AER-12", StreamRender.ReleaseNoteTarget(said));
+    }
+
+    [Fact]
+    public void A_plain_block_names_no_issue()
+    {
+        Assert.Null(StreamRender.ReleaseNoteTarget("```release-note\nShipped it.\n```"));
+        Assert.Null(StreamRender.ReleaseNoteTarget("```release-note some words\nShipped it.\n```"));
+        Assert.Null(StreamRender.ReleaseNoteTarget("nothing here"));
+    }
+
+    [Fact]
+    public void The_last_release_note_block_decides_both_the_note_and_the_issue()
+    {
+        var said = "```release-note AER-12\nFirst.\n```\n```release-note\nSecond.\n```";
+        Assert.Equal("Second.", StreamRender.ReleaseNote(said));
+        Assert.Null(StreamRender.ReleaseNoteTarget(said));
+
+        var reversed = "```release-note\nFirst.\n```\n```release-note AER-12\nSecond.\n```";
+        Assert.Equal("Second.", StreamRender.ReleaseNote(reversed));
+        Assert.Equal("AER-12", StreamRender.ReleaseNoteTarget(reversed));
+    }
+
+    [Fact]
+    public void The_result_event_carries_the_named_issue_into_the_facts()
+    {
+        var (facts, _) = Play(Fixtures.Result(said: "```release-note AER-12\nShipped it.\n```\n```work-log\nA title\n```"));
+
+        Assert.Equal("Shipped it.", facts.ReleaseNote);
+        Assert.Equal("AER-12", facts.ReleaseNoteFor);
+    }
+
+    [Fact]
     public void Anything_that_is_not_an_event_is_stepped_over()
     {
         // The CLI is entitled to say something on stdout that is not an event -

@@ -41,6 +41,9 @@ public sealed class RunFacts
     /// <summary>The session's <c>release-note</c> block, lifted for the runner to post under its claim; null when it wrote none.</summary>
     public string? ReleaseNote { get; set; }
 
+    /// <summary>The issue that block's fence line names, <c>```release-note AER-12</c>; null for a plain block, which is the session's own ticket's.</summary>
+    public string? ReleaseNoteFor { get; set; }
+
     /// <summary>
     /// The result event's own <c>result</c> field, raw - what <see cref="UsageLimit"/>
     /// reads, because a limit's sentence is not always inside the work-log fence
@@ -425,6 +428,7 @@ public sealed partial class StreamRender : IAgentStreamReader
         var resultText = Text(e, "result") ?? "";
         var (title, summary) = _facts.WorkLogFrom(resultText);
         _facts.ReleaseNote = ReleaseNote(resultText);
+        _facts.ReleaseNoteFor = ReleaseNoteTarget(resultText);
 
         _facts.ResultText = resultText;
         _facts.Result = new WorkLogEntryRequest(
@@ -545,7 +549,7 @@ public sealed partial class StreamRender : IAgentStreamReader
         var blocks = ReleaseNoteFence().Matches(said);
         if (blocks.Count == 0) return null;
 
-        var note = blocks[^1].Groups[1].Value.ReplaceLineEndings("\n").Trim();
+        var note = blocks[^1].Groups[2].Value.ReplaceLineEndings("\n").Trim();
         if (note.Length == 0) return null;
 
         return note.Length > ReleaseNoteRequest.MaxLength
@@ -556,7 +560,19 @@ public sealed partial class StreamRender : IAgentStreamReader
     [GeneratedRegex(@"```work-log[^\n]*\n(.*?)```", RegexOptions.Singleline)]
     private static partial Regex Fence();
 
-    [GeneratedRegex(@"```release-note[^\n]*\n(.*?)```", RegexOptions.Singleline)]
+    /// <summary>
+    /// The issue the last <c>release-note</c> block names on its fence line,
+    /// <c>```release-note AER-12</c>, or null when that block names none - a
+    /// plain block is the session's own ticket's. Read from the same block
+    /// <see cref="ReleaseNote"/> reads, so the two never disagree.
+    /// </summary>
+    internal static string? ReleaseNoteTarget(string said)
+    {
+        var blocks = ReleaseNoteFence().Matches(said);
+        return blocks.Count == 0 || !blocks[^1].Groups[1].Success ? null : blocks[^1].Groups[1].Value;
+    }
+
+    [GeneratedRegex(@"```release-note(?:[ \t]+([A-Za-z][A-Za-z0-9]*-\d+))?[^\n]*\n(.*?)```", RegexOptions.Singleline)]
     private static partial Regex ReleaseNoteFence();
 
     [GeneratedRegex(@"^title:\s*", RegexOptions.IgnoreCase)]

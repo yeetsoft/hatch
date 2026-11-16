@@ -3871,7 +3871,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/dangerous` | PUT | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. `{ reason }` — see [Dangerous](#dangerous). Trimmed; `""` or whitespace clears it. `400` if `reason` is absent, `400` over 200 characters after trimming, `404` on an unknown issue. Re-sending the value it already holds writes nothing; a change writes `dangerous_changed` |
 | `/issues/{key}/omitted-runners/{runner}` | PUT | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. `{ reason }` — see [Omitted runners](#omitted-runners). The runner name may carry a slash the same way `/runners/{name}` does — escaped to `%2F` in the route, decoded once here before it is trimmed. Trimmed; absent or blank stores none. `400` on a blank runner name or one over `EfHatchRunner.MaxNameLength`, `400` on a reason over 200 characters after trimming, `404` on an unknown issue. Re-sending the reason it already holds writes nothing; a change writes `runner_omitted` |
 | `/issues/{key}/omitted-runners/{runner}` | DELETE | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. Lifts the issue's own omission of the runner — see [Omitted runners](#omitted-runners). `404` on an unknown issue, and `404` naming the ancestor for a runner the issue does not itself omit; writes `runner_omission_lifted` |
-| `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptKey = true)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
+| `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptKey = true)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. The one second claim accepted is the live claim of the changelog task the board recorded for `{key}` ([why that one](#the-changelog-task)); a change under it writes `{ from, to, via }`, `via` the task's key, and no other issue's claim is taken. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
@@ -5201,6 +5201,22 @@ it. Known limits: two runners putting the same canonical in the same instant can
 file two tasks (the close has the same window), and a gap whose task is
 cancelled with no commit heals at the next trunk move, since the runner puts
 once per sha.
+
+**The release note it writes.** An issue that closed with no release note is
+the one case where the task's session is the first to look at it with the
+whole delivery in view. `WorkDto.ReleaseNoteFor` names that issue when the
+dispatched issue is a recorded task and its source has no note (blank counts
+as none), and the prompt asks for a ```` ```release-note AER-12 ```` block. The
+runner puts it to the named issue under the task's own claim, and
+`PUT /issues/{key}/release-note` accepts that token because the task is
+recorded for `{key}` and its claim is live. The event on the delivered issue
+carries `via`, the task's key. This is the one widening of who may write a
+note, and it is the board's own task for a reason: it is the only session the
+board itself asked to be in a closed issue's trail, with the source on a
+record the board wrote. A program claim on any other issue, a lapsed claim,
+and a task recorded for a different issue stay refused, so a session still
+writes only the note of the ticket it holds, or of the one the board sent it
+to finish.
 
 **Carried by the parent hop.** Where the column that feeds the implementation
 column is ticked **Parent pulls**, the [parent hop](#the-hop) carries a

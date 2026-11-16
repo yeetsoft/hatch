@@ -239,6 +239,7 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
 
         var (title, summary) = facts.WorkLogFrom(facts.LastAssistantText ?? "");
         facts.ReleaseNote = StreamRender.ReleaseNote(facts.LastAssistantText ?? "");
+        facts.ReleaseNoteFor = StreamRender.ReleaseNoteTarget(facts.LastAssistantText ?? "");
         facts.Result = new WorkLogEntryRequest(
             SessionId: facts.SessionId ?? "",
             StartedAt: default,

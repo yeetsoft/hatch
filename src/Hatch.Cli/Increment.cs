@@ -691,7 +691,7 @@ public sealed class Increment(
             // lose it - and never after the lease has gone, since it is a write
             // onto the ticket, unlike the meter reading.
             if (!claim.LostToOthers && facts.ReleaseNote is { } note)
-                await PostReleaseNoteAsync(report.Key, note, claim.Token, ct);
+                await PostReleaseNoteAsync(facts.ReleaseNoteFor ?? report.Key, note, claim.Token, ct);
 
             // Before the board is asked anything, so a row exists even when the
             // reads after it fail. Money was spent on that ticket either way, and

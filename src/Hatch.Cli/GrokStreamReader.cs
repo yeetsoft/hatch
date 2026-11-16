@@ -403,6 +403,7 @@ internal sealed class GrokStreamReader : IAgentStreamReader
 
         var (title, summary) = _facts.WorkLogFrom(resultText);
         _facts.ReleaseNote = StreamRender.ReleaseNote(resultText);
+        _facts.ReleaseNoteFor = StreamRender.ReleaseNoteTarget(resultText);
 
         _facts.Result = new WorkLogEntryRequest(
             SessionId: _facts.SessionId ?? "",
