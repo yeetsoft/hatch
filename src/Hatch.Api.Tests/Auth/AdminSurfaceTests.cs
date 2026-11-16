@@ -329,6 +329,11 @@ public class AdminSurfaceTests
         // ChangelogController.
         "ChangelogController.GetChangelog",
 
+        // The same shipped history, as the YAML file a repository keeps
+        // checked in - key-accepting and open to a person for the same
+        // reason as the route above. See ChangelogController.
+        "ChangelogController.GetChangelogFile",
+
         // The backup folder's truth and the last attempt's - key-accepting and
         // open to a person like OvernightController's read is. Running one is
         // the operator's own act, never a key's or a keyless runner's. See
@@ -800,6 +805,7 @@ public class AdminSurfaceTests
         "BroughtCurrentController.PutBroughtCurrent",
         "BuildCheckController.PutBuildCheck",
         "ChangelogController.GetChangelog",
+        "ChangelogController.GetChangelogFile",
         "DependencyFileController.GetDependencyFiles",
         "DependencyFileController.PutDependencyFile",
         "DreamsController.AddDream",

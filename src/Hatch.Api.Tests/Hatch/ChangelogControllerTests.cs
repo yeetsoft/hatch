@@ -2,8 +2,10 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Contracts;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -174,6 +176,97 @@ public class ChangelogControllerTests
         Assert.Empty(result.Days);
     }
 
+    // ---- GET /changelog/file ----
+
+    [Fact]
+    public async Task TwoCallsWithNoChangeToTheBoard_AnswerByteIdenticalYaml()
+    {
+        var h = await NewAsync();
+        await h.ElectChangelogAsync(h.ProjectId, "host/owner/repo");
+        await h.CloseAsync("task", "fixed it", Now - TimeSpan.FromMinutes(1));
+
+        var first = await h.GetChangelogFileAsync("host/owner/repo");
+        var second = await h.GetChangelogFileAsync("host/owner/repo");
+
+        Assert.Equal(Yaml(first), Yaml(second));
+    }
+
+    [Fact]
+    public async Task AReopenedIssue_LeavesTheFileOnTheNextCall()
+    {
+        var h = await NewAsync();
+        await h.ElectChangelogAsync(h.ProjectId, "host/owner/repo");
+        var issue = await h.CloseAsync("task", "fixed it", Now - TimeSpan.FromMinutes(1));
+
+        Assert.Contains("AER-1", Yaml(await h.GetChangelogFileAsync("host/owner/repo")));
+
+        issue.StatusId = h.InProgress;
+        issue.ClosedAt = null;
+        await h.Db.SaveChangesAsync();
+
+        Assert.DoesNotContain("AER-1", Yaml(await h.GetChangelogFileAsync("host/owner/repo")));
+    }
+
+    [Fact]
+    public async Task ADeferredIssue_AChildIssue_AndAnIssueInANonElectingProject_NeverAppear()
+    {
+        var h = await NewAsync();
+        await h.ElectChangelogAsync(h.ProjectId, "host/owner/repo");
+        await h.FileAsync("task", "parked", h.Deferred);
+        var parent = await h.CloseAsync("epic", "the epic", Now - TimeSpan.FromMinutes(1));
+        await h.CloseAsync("task", "a child", Now - TimeSpan.FromMinutes(1), parentId: parent.Id);
+        var other = await h.AddProjectAsync("OTH");
+        await h.CloseAsync("task", "in a project that never elects", Now - TimeSpan.FromMinutes(1), projectId: other);
+
+        var yaml = Yaml(await h.GetChangelogFileAsync("host/owner/repo"));
+
+        Assert.Equal(["AER-2"], Keys(yaml));
+    }
+
+    [Fact]
+    public async Task TwoProjectsElectingTheSameRemote_InterleaveByShipped_EachCarryingItsOwnProjectKey()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.ElectChangelogAsync(h.ProjectId, "host/owner/repo");
+        await h.ElectChangelogAsync(other, "host/owner/repo");
+        await h.CloseAsync("task", "older, in AER", Now - TimeSpan.FromHours(2));
+        await h.CloseAsync("task", "newer, in OTH", Now - TimeSpan.FromHours(1), projectId: other);
+
+        var yaml = Yaml(await h.GetChangelogFileAsync("host/owner/repo"));
+
+        Assert.Equal(["AER-1", "OTH-2"], Keys(yaml));
+        Assert.Contains("project: AER", yaml);
+        Assert.Contains("project: OTH", yaml);
+    }
+
+    [Fact]
+    public async Task ARemoteThatDoesNotCanonicalise_Answers400_WithRemoteIdentitysOwnSentence()
+    {
+        var h = await NewAsync();
+
+        var refused = Assert.IsType<BadRequestObjectResult>(await h.GetChangelogFileAsync(""));
+
+        Assert.Equal(RemoteIdentity.Canonical("").Error, refused.Value);
+    }
+
+    [Fact]
+    public async Task ARemoteNoProjectElects_Answers404_NamingTheProjectsPage()
+    {
+        var h = await NewAsync();
+
+        var refused = Assert.IsType<NotFoundObjectResult>(await h.GetChangelogFileAsync("host/owner/repo"));
+
+        Assert.Contains("Projects page", (string)refused.Value!);
+    }
+
+    private static string Yaml(ActionResult result) =>
+        Assert.IsType<ContentResult>(result).Content!;
+
+    private static List<string> Keys(string yaml) =>
+        yaml.Split('\n').Where(l => l.StartsWith("  - key: ", StringComparison.Ordinal))
+            .Select(l => l["  - key: ".Length..]).ToList();
+
     // ---- Who may read it ----
 
     [Fact]
@@ -207,7 +300,10 @@ public class ChangelogControllerTests
         return new Harness
         {
             Db = db,
-            Controller = new ChangelogController(db, time),
+            Controller = new ChangelogController(db, time, Options.Create(new HatchOptions()))
+            {
+                ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+            },
             ProjectId = project.Id,
             InProgress = inProgress.Id,
             Deferred = deferred.Id,
@@ -232,6 +328,20 @@ public class ChangelogControllerTests
             Db.Projects.Add(project);
             await Db.SaveChangesAsync();
             return project.Id;
+        }
+
+        public async Task ElectChangelogAsync(int projectId, string remote)
+        {
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            Db.ProjectRepositories.Add(new EfHatchProjectRepository
+            {
+                ProjectId = projectId,
+                Remote = remote,
+                Canonical = canonical!,
+                Changelog = true,
+                CreatedAt = Now,
+            });
+            await Db.SaveChangesAsync();
         }
 
         public async Task<EfHatchIssue> FileAsync(
@@ -270,6 +380,9 @@ public class ChangelogControllerTests
 
         public async Task<ChangelogDto> GetChangelogAsync(string? before = null, List<int>? projectId = null, int days = 14) =>
             Value(await Controller.GetChangelog(before, projectId, days));
+
+        public async Task<ActionResult> GetChangelogFileAsync(string remote) =>
+            await Controller.GetChangelogFile(remote, CancellationToken.None);
     }
 
     private static T Value<T>(Microsoft.AspNetCore.Mvc.ActionResult<T> result) =>

@@ -1227,6 +1227,7 @@ a key.
 | POST | `/overnight/seen` | **person** | Marks the night read, for the caller |
 | GET | `/activity` | key | The event trail across every issue, newest first, a page at a time |
 | GET | `/changelog` | key | What shipped, a window of days at a time |
+| GET | `/changelog/file` | key | What shipped, as the YAML file a repository keeps checked in |
 
 [Watching the loop](watching-the-loop) is what draws these on screen; this
 page is their shapes. `work-log`'s `POST` is the one write on this whole page
@@ -1275,6 +1276,17 @@ something, with every closed month's own count beside it for the jump
 control - this is the feed agents read (`hatch changelog`), unchanged; no
 page of the app draws from it any more, since the Changelog report under
 Reports reads `/reports/changelog` instead.
+
+`/changelog/file` takes `remote` and answers the same bytes every time
+nothing on the board has changed: every closed, parentless issue in a
+project that elects `remote` for a changelog, as the YAML file that
+project's repository keeps checked in. A `remote` that does not
+canonicalise is a `400` with `RemoteIdentity`'s own sentence; a `remote` no
+project elects is a `404` naming the Projects page.
+Entries are oldest first; two projects electing the same remote interleave
+their entries by close time, each carrying its own `project` key. It
+answers `text/yaml; charset=utf-8`, not JSON, since this route exists for a
+file on disk rather than a client reading a response body.
 
 **Refusals worth naming.** `work-log`'s `POST` 400s a missing session id.
 `history` 400s an offset outside +-1440 minutes, an unrecognised bucket
