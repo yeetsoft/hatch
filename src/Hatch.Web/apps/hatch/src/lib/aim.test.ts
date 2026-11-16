@@ -45,6 +45,7 @@ const card = (key: string, statusId: number): IssueCard => ({
   onePrOwn: null,
   onePrFrom: null,
   createdBy: 'Britta Perry',
+  projectPriority: 'normal',
 });
 
 const rect = (left: number, top: number, width: number, height: number): ClientRect => ({

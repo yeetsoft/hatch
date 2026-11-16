@@ -168,7 +168,7 @@ public class BoardController(
 
         List<CardRow> Sort(List<CardRow> rows) => rows
             .OrderBy(r => r.StatusId)
-            .ThenByDescending(r => priorities.Effective(r.Id).Level)
+            .ThenBy(r => Dispatch.TierRank(priorities.Effective(r.Id).Level, priorities.ProjectLevel(r.Id)))
             .ThenBy(r => r.Rank)
             .ThenBy(r => r.Id)
             .ToList();
@@ -230,7 +230,8 @@ public class BoardController(
                 DangerousFrom: dangerousFrom,
                 NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
                 Contribution: contributions.GetValueOrDefault(i.Id),
-                CreatedBy: i.CreatedBy);
+                CreatedBy: i.CreatedBy,
+                ProjectPriority: priorities.ProjectLevel(i.Id));
         }
 
         var cards = issues.Select(Card).ToList();

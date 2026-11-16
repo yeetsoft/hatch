@@ -285,6 +285,7 @@ describe('inScopeCards', () => {
     onePrOwn: null,
     onePrFrom: null,
     createdBy: 'Britta Perry',
+    projectPriority: 'normal',
   });
 
   const cards = [card('AER-1', 'AER'), card('FIL-1', 'FIL'), card('AER-2', 'AER')];

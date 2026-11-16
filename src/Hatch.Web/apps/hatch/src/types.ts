@@ -392,6 +392,9 @@ export interface IssueCard {
   /** Who filed this issue - a person's or an API key's name, never a person
       id. See IssueCardDto.CreatedBy. */
   createdBy: string;
+  /** The level of the project this issue sits in: `paused`, `normal` or
+      `expedited`. See IssueCardDto.ProjectPriority. */
+  projectPriority: ProjectPriority;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.

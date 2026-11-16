@@ -43,6 +43,7 @@ const card = (key: string, statusId: number, parentKey: string | null, rank = 10
   onePrOwn: null,
   onePrFrom: null,
   createdBy: 'Britta Perry',
+  projectPriority: 'normal',
 });
 
 const keys = (cards: IssueCard[]) => cards.map((c) => c.key);
