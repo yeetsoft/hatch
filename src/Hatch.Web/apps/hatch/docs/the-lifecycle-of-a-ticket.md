@@ -108,7 +108,10 @@ are seven kinds, and each is a condition and a landing column:
   carried to the column a session there would have been sent to. Out of the
   column that feeds the one where code gets written it carries only a task
   under a story, never a story under an epic, and never a child whose brief is
-  longer than the playbook there allows; those are analysed first.
+  longer than the playbook there allows; those are analysed first. A
+  changelog task the board filed itself is the exception: it is carried
+  whatever its parent's type and whatever its brief's length, since the board
+  wrote the brief. One with no parent is not carried, as nothing pulls it.
 - **sendback** — a childless issue standing right of the column that feeds the
   column where code gets written, whose brief is longer than its playbook
   allows. It is carried back to that feeding column.
