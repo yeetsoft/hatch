@@ -102,4 +102,21 @@ describe('tokens.css', () => {
     expect(darkAttr).not.toHaveProperty('--on-series');
     expect(darkMedia).not.toHaveProperty('--on-series');
   });
+
+  /* The scope control's expedite arrow (HA-2358): the glyph sits directly on
+     the panel's card ground, so this is the pairing that has to read, not
+     --level-up against --bg. */
+  it('declares --level-up on :root and in both dark blocks, clearing 3:1 against --card', () => {
+    for (const [name, block] of [['light', light], ['dark', darkAttr]] as const) {
+      expect(block, `--level-up is missing from ${name}`).toHaveProperty('--level-up');
+      expect(block, `--card is missing from ${name}`).toHaveProperty('--card');
+
+      const fillLuminance = luminance(block['--level-up']);
+      const cardLuminance = luminance(block['--card']);
+      const [hi, lo] = fillLuminance >= cardLuminance ? [fillLuminance, cardLuminance] : [cardLuminance, fillLuminance];
+      const ratio = (hi + 0.05) / (lo + 0.05);
+
+      expect(ratio, `--level-up on --card in ${name} is below 3:1`).toBeGreaterThanOrEqual(3);
+    }
+  });
 });

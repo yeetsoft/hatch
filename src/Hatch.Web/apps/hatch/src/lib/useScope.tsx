@@ -16,6 +16,9 @@ interface ScopeValue {
   setScope(keys: string[]): void;
   ids: number[];
   loaded: boolean;
+  /** Replaces one project in place, for the scope control's optimistic level
+      write and its revert. */
+  applyProject(project: Project): void;
 }
 
 const ScopeContext = createContext<ScopeValue>({
@@ -27,6 +30,7 @@ const ScopeContext = createContext<ScopeValue>({
   setScope: () => undefined,
   ids: [],
   loaded: true,
+  applyProject: () => undefined,
 });
 
 /**
@@ -39,7 +43,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigationType = useNavigationType();
   const navigate = useNavigate();
-  const { projects, loaded } = useProjects();
+  const { projects, loaded, applyProject } = useProjects();
 
   const [carried, setCarried] = useState<string[]>(() => rawScope(new URLSearchParams(location.search)));
 
@@ -78,6 +82,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
       inScope: (projectKey: string) => !isScoped || keys.includes(projectKey),
       ids,
       loaded,
+      applyProject,
       setScope: (next: string[]) => {
         const params = withScope(
           new URLSearchParams(location.search),
@@ -97,7 +102,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
         );
       },
     };
-  }, [keys, ids, projects, loaded, location, navigate]);
+  }, [keys, ids, projects, loaded, applyProject, location, navigate]);
 
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;
 }

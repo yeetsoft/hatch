@@ -175,6 +175,232 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// HA-2358: an owner's row carries an expedite arrow and a pause button,
+    /// each filled at the project's own level and outlined otherwise, and a
+    /// press flips the level at once, with no reload. <c>FileProjectsAsync</c>
+    /// makes the local person owner of everything it files, so every row here
+    /// is an owner's row.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task TheScopeControl_ExpeditesAndPausesOnTheDesk()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness("ScopeControlLevelsDesk");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+
+            var violations = new List<string>();
+
+            await deadline.BoundAsync("filing the three projects and their levels", () => FileLeveledProjectsAsync(baseUrl));
+            await harness.OpenAsync(deadline, baseUrl, "/");
+            await harness.WaitForTopBarAsync(deadline);
+            await OwnerLevelsAsync(harness, deadline, violations, "desk");
+            await DarkLevelsAsync(harness, deadline, violations, "desk");
+
+            Assert.True(
+                violations.Count == 0,
+                $"the scope control's levels do not render as asked ({violations.Count} violation(s)):{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>The same script on the phone (393x660), through the strip rather than the bar.</summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task TheScopeControl_ExpeditesAndPausesOnThePhone()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
+
+        var harness = new E2eHarness("ScopeControlLevelsPhone");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline, DeviceProfile.IPhone14Pro);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+
+            var violations = new List<string>();
+
+            await deadline.BoundAsync("filing the three projects and their levels", () => FileLeveledProjectsAsync(baseUrl));
+            await harness.OpenAsync(deadline, baseUrl, "/");
+            await harness.WaitForTopBarAsync(deadline);
+            await OwnerLevelsAsync(harness, deadline, violations, "phone");
+            await DarkLevelsAsync(harness, deadline, violations, "phone");
+
+            Assert.True(
+                violations.Count == 0,
+                $"the scope control's levels do not render as asked on the phone ({violations.Count} violation(s)):{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Three projects: AAA normal, BBB expedited, CCC paused - a colour apiece
+    /// so a screenshot can tell them apart at a glance.
+    /// </summary>
+    private static async Task FileLeveledProjectsAsync(string baseUrl)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+
+        var aaa = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("AAA", "Project AAA", null));
+        var bbb = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("BBB", "Project BBB", "#2f9e44"));
+        var ccc = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("CCC", "Project CCC", "#d6336c"));
+
+        await PutAsync<ProjectPriorityWriteRequest, ProjectDto>(http, $"/api/projects/{bbb.Id}/priority", new("expedited"));
+        await PutAsync<ProjectPriorityWriteRequest, ProjectDto>(http, $"/api/projects/{ccc.Id}/priority", new("paused"));
+    }
+
+    /// <summary>
+    /// Opens the panel and reads each row's glyph states against the
+    /// project's own level (AAA normal, BBB expedited, CCC paused, all owned
+    /// by the local person), then presses AAA's arrow and checks it fills at
+    /// once, with no reload.
+    /// </summary>
+    private async Task OwnerLevelsAsync(E2eHarness harness, Deadline deadline, List<string> violations, string profile)
+    {
+        await harness.ClickAsync(deadline, Trigger);
+        await harness.WaitForVisibleAsync(deadline, Panel);
+
+        var before = await ReadLevelsAsync(harness, deadline);
+        output.WriteLine($"--- {profile}: levels before a press: {before}");
+
+        CheckLevel(before, 0, "AAA", "false", "false", violations, profile, "before");
+        CheckLevel(before, 1, "BBB", "true", "false", violations, profile, "before");
+        CheckLevel(before, 2, "CCC", "false", "true", violations, profile, "before");
+
+        await WaitForPanelSettledAsync(harness, deadline);
+        output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, $"levels-{profile}-light")}");
+
+        var history = await harness.EvaluateAsync<int>(deadline, "reading the history length before a press", "() => history.length");
+        // From here a reload would be a failure: the row redraws from the write's own answer, in place.
+        await harness.EvaluateAsync<bool>(deadline, "marking the page", "() => { window.__noReload = 1; return true; }");
+
+        await harness.ClickAsync(deadline, $"{Panel} >> {Row} >> nth=0 >> .hatch-scope-control__level--expedite");
+        await harness.WaitForFunctionAsync(
+            deadline,
+            "waiting for AAA's arrow to read pressed",
+            $$"""() => document.querySelector('{{Panel}}')?.querySelectorAll('{{Row}}')[0]?.querySelector('.hatch-scope-control__level--expedite')?.getAttribute('aria-pressed') === 'true'""");
+
+        var after = await ReadLevelsAsync(harness, deadline);
+        output.WriteLine($"--- {profile}: levels after pressing AAA's arrow: {after}");
+        CheckLevel(after, 0, "AAA", "true", "false", violations, profile, "after the press");
+
+        var historyAfter = await harness.EvaluateAsync<int>(deadline, "reading the history length after a press", "() => history.length");
+        if (historyAfter != history)
+            violations.Add($"{profile}: pressing AAA's arrow changed history.length from {history} to {historyAfter}");
+
+        var reload = await harness.EvaluateAsync<JsonElement>(deadline, "reading the reload marker", "() => window.__noReload ?? null");
+        if (reload.ValueKind != JsonValueKind.Number || reload.GetInt32() != 1)
+            violations.Add($"{profile}: pressing AAA's arrow reloaded the page (window.__noReload is gone)");
+
+        output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, $"levels-{profile}-after-press-light")}");
+    }
+
+    /// <summary>The dark theme, the panel open again: legibility is the screenshot's own call.</summary>
+    private async Task DarkLevelsAsync(E2eHarness harness, Deadline deadline, List<string> violations, string profile)
+    {
+        await harness.EvaluateAsync<bool>(deadline, "choosing the dark theme", "() => { localStorage.setItem('hatch.theme', 'dark'); return true; }");
+        await harness.GoToAsync(deadline, "");
+        await harness.WaitForTopBarAsync(deadline);
+        await harness.WaitForVisibleAsync(deadline, Trigger);
+
+        await harness.ClickAsync(deadline, Trigger);
+        await harness.WaitForVisibleAsync(deadline, Panel);
+
+        var dark = await ReadLevelsAsync(harness, deadline);
+        output.WriteLine($"--- {profile}, dark: levels: {dark}");
+        CheckLevel(dark, 0, "AAA", "true", "false", violations, profile, "dark");
+        CheckLevel(dark, 1, "BBB", "true", "false", violations, profile, "dark");
+        CheckLevel(dark, 2, "CCC", "false", "true", violations, profile, "dark");
+
+        await WaitForPanelSettledAsync(harness, deadline);
+        output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, $"levels-{profile}-dark")}");
+    }
+
+    /// <summary>
+    /// Waits out the Menu's own open transition (<c>--transition</c>, 200ms) on
+    /// <c>.hatch-menu__panel</c>, the ancestor the opacity fade is actually on -
+    /// so a screenshot taken right after a click is not caught mid-fade.
+    /// </summary>
+    private static Task WaitForPanelSettledAsync(E2eHarness harness, Deadline deadline) =>
+        harness.WaitForFunctionAsync(
+            deadline,
+            "waiting for the panel's open transition to settle",
+            $$"""() => getComputedStyle(document.querySelector('{{Panel}}').closest('.hatch-menu__panel')).opacity === '1'""");
+
+    /// <summary>Reads each row's key and its arrow and pause buttons' <c>aria-pressed</c>, in panel order.</summary>
+    private static Task<JsonElement> ReadLevelsAsync(E2eHarness harness, Deadline deadline) =>
+        harness.EvaluateAsync<JsonElement>(
+            deadline,
+            "reading the arrow and pause states",
+            $$"""
+            () => [...document.querySelector('{{Panel}}').querySelectorAll('{{Row}}')].map(row => ({
+              key: row.querySelector('.hatch-scope-control__name').textContent.trim().split(' ')[0],
+              arrow: row.querySelector('.hatch-scope-control__level--expedite')?.getAttribute('aria-pressed') ?? null,
+              pause: row.querySelector('.hatch-scope-control__level--pause')?.getAttribute('aria-pressed') ?? null,
+            }))
+            """);
+
+    private static void CheckLevel(
+        JsonElement rows, int index, string key, string arrow, string pause, List<string> violations, string profile, string step)
+    {
+        var row = rows[index];
+        var actualKey = row.GetProperty("key").GetString();
+        var actualArrow = row.GetProperty("arrow").GetString();
+        var actualPause = row.GetProperty("pause").GetString();
+
+        if (actualKey != key)
+            violations.Add($"{profile}, {step}: row {index} is \"{actualKey}\", not \"{key}\"");
+        if (actualArrow != arrow)
+            violations.Add($"{profile}, {step}: {key}'s arrow reads aria-pressed=\"{actualArrow}\", not \"{arrow}\"");
+        if (actualPause != pause)
+            violations.Add($"{profile}, {step}: {key}'s pause reads aria-pressed=\"{actualPause}\", not \"{pause}\"");
+    }
+
+    private static async Task<TResponse> PutAsync<TRequest, TResponse>(HttpClient http, string path, TRequest body)
+    {
+        using var response = await http.PutAsJsonAsync(path, body, Web);
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, $"PUT {path} answered {(int)response.StatusCode}: {text}");
+        return JsonSerializer.Deserialize<TResponse>(text, Web)!;
+    }
+
+    /// <summary>
     /// Look 4. A negative assertion must not pass by outrunning the project
     /// fetch, so the page is held until the fetch has answered and two frames
     /// have been drawn after it.
