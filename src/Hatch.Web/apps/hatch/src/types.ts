@@ -112,6 +112,12 @@ export interface Project {
   runnersWorkContributionsBy: string | null;
   /** When runnersWorkContributions was last changed on this project, or null until the first write. */
   runnersWorkContributionsAt: string | null;
+  /** Whether this project's outside pull requests are filed as contributions on the board. See ProjectDto.FilesContributions. */
+  filesContributions: boolean;
+  /** Who last changed filesContributions, or null until the first write. */
+  filesContributionsBy: string | null;
+  /** When filesContributions was last changed on this project, or null until the first write. */
+  filesContributionsAt: string | null;
   /** Whether a ticket's work must land in one pull request, or may land in several. See ProjectDto.OnePullRequestPolicy. */
   onePullRequestPolicy: OnePullRequestPolicy;
   /** Who last changed onePullRequestPolicy, or null until the first write. See ProjectDto.OnePullRequestPolicyBy. */
@@ -1214,6 +1220,11 @@ export interface ProjectNoCodeClosesWriteRequest {
 /** A write to whether runners work a contribution's branch. See ProjectRunnersWorkContributionsWriteRequest (Hatch.Contracts). */
 export interface ProjectRunnersWorkContributionsWriteRequest {
   runnersWorkContributions: boolean;
+}
+
+/** A write to whether outside pull requests are filed as contributions. See ProjectFilesContributionsWriteRequest (Hatch.Contracts). */
+export interface ProjectFilesContributionsWriteRequest {
+  filesContributions: boolean;
 }
 
 /** A write to the one-pull-request policy. See ProjectOnePrPolicyWriteRequest (Hatch.Contracts). */

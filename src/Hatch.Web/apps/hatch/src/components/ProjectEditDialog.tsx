@@ -16,6 +16,7 @@ import {
   putProjectCheckApprovesMerge,
   putProjectNoCodeCloses,
   putProjectRunnersWorkContributions,
+  putProjectFilesContributions,
   putProjectOnePrPolicy,
   putProjectStoriesOnEpics,
   putProjectLanding,
@@ -38,6 +39,7 @@ import {
   projectCheckApprovesMergeDiff,
   projectNoCodeClosesDiff,
   projectRunnersWorkContributionsDiff,
+  projectFilesContributionsDiff,
   projectOnePrPolicyDiff,
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
@@ -232,6 +234,7 @@ export function ProjectEditDialog({
     const checkApprovesMergeDiff = projectCheckApprovesMergeDiff(draft!);
     const noCodeClosesDiff = projectNoCodeClosesDiff(draft!);
     const runnersWorkContributionsDiff = projectRunnersWorkContributionsDiff(draft!);
+    const filesContributionsDiff = projectFilesContributionsDiff(draft!);
     const onePrPolicyDiff = projectOnePrPolicyDiff(draft!);
     const storiesOnEpicsDiff = projectStoriesOnEpicsDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
@@ -247,6 +250,7 @@ export function ProjectEditDialog({
       checkApprovesMergeDiff === null &&
       noCodeClosesDiff === null &&
       runnersWorkContributionsDiff === null &&
+      filesContributionsDiff === null &&
       onePrPolicyDiff === null &&
       storiesOnEpicsDiff === null &&
       reflectionDiff === null &&
@@ -272,6 +276,7 @@ export function ProjectEditDialog({
       if (noCodeClosesDiff !== null) await putProjectNoCodeCloses(project!.id, noCodeClosesDiff);
       if (runnersWorkContributionsDiff !== null)
         await putProjectRunnersWorkContributions(project!.id, runnersWorkContributionsDiff);
+      if (filesContributionsDiff !== null) await putProjectFilesContributions(project!.id, filesContributionsDiff);
       if (storiesOnEpicsDiff !== null) await putProjectStoriesOnEpics(project!.id, storiesOnEpicsDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
@@ -688,6 +693,23 @@ export function ProjectEditDialog({
             <label>
               <input
                 type="checkbox"
+                checked={draft.filesContributions}
+                onChange={(e) => setDraft((d) => d && { ...d, filesContributions: e.target.checked })}
+              />
+              Files contributions
+            </label>
+            <p className="hatch-section-hint text-muted">
+              Files this project's outside pull requests as contributions on the board. Off, they are left alone.
+            </p>
+            {(project.filesContributionsBy || project.filesContributionsAt) && (
+              <p className="hatch-section-hint text-muted">
+                set by {project.filesContributionsBy} on{' '}
+                {project.filesContributionsAt ? new Date(project.filesContributionsAt).toLocaleDateString() : ''}
+              </p>
+            )}
+            <label>
+              <input
+                type="checkbox"
                 checked={draft.bindsTracker}
                 disabled={list.length === 0}
                 onChange={(e) => setDraft((d) => d && { ...d, bindsTracker: e.target.checked })}
@@ -748,6 +770,13 @@ export function ProjectEditDialog({
               {project.runnersWorkContributions ? 'Runners work contributions' : 'Runners do not work contributions'}
               {project.runnersWorkContributionsBy || project.runnersWorkContributionsAt
                 ? `, set by ${project.runnersWorkContributionsBy ?? 'unknown'} on ${project.runnersWorkContributionsAt ? new Date(project.runnersWorkContributionsAt).toLocaleDateString() : 'an unknown date'}`
+                : ''}
+              .
+            </p>
+            <p>
+              {project.filesContributions ? 'Files contributions' : 'Does not file contributions'}
+              {project.filesContributionsBy || project.filesContributionsAt
+                ? `, set by ${project.filesContributionsBy ?? 'unknown'} on ${project.filesContributionsAt ? new Date(project.filesContributionsAt).toLocaleDateString() : 'an unknown date'}`
                 : ''}
               .
             </p>
