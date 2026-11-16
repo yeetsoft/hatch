@@ -313,6 +313,41 @@ public static class Checkouts
     }
 
     /// <summary>
+    /// <c>git rev-parse --show-toplevel</c>: the root of the checkout
+    /// <paramref name="dir"/> lies in, or null where there is none to find - no
+    /// git on <c>PATH</c>, or not inside a checkout.
+    /// </summary>
+    internal static string? Toplevel(string dir)
+    {
+        var start = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = dir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        start.ArgumentList.Add("rev-parse");
+        start.ArgumentList.Add("--show-toplevel");
+
+        try
+        {
+            using var process = Process.Start(start);
+            if (process is null) return null;
+
+            var stdout = process.StandardOutput.ReadToEnd();
+            process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            return process.ExitCode == 0 && stdout.Trim().Length > 0 ? Path.GetFullPath(stdout.Trim()) : null;
+        }
+        catch (Exception e) when (e is Win32Exception or InvalidOperationException or IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// <c>git remote get-url origin</c>, swallowing every way that can fail: no
     /// git on <c>PATH</c>, no <c>.git</c> here, no remote named <c>origin</c>.
     /// A checkout without one is still a checkout - just not one a project's

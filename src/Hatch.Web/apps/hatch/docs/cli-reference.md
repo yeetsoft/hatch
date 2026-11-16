@@ -35,7 +35,7 @@ without the flag.
 | `board` | No | No |
 | `next` | No | No |
 | `queue` | No | No |
-| `changelog` | No | No |
+| `changelog` | Only with `--file`, unless `--repo` names the remote | No: `--file` writes one local file only |
 | `runners` | No | Only with `refuse` and a model, or `--lift` |
 | `show` | No | No |
 | `comments` | No | No |
@@ -498,19 +498,32 @@ judge.
 
 ```
 hatch changelog [--days <n>] [--before <date>] [--project <KEY>] [--json]
+hatch changelog --file [<path>] [--repo <remote>]
 ```
 
 What shipped, as markdown: a heading per day, a bullet per feature carrying how
 much shipped beneath it, and an *Also* list of that day's fixes. A window with
-nothing in it prints one sentence saying so. It writes nothing. This is the
-agent-facing feed, unchanged; the web view is the Changelog report under
-Reports.
+nothing in it prints one sentence saying so. Without `--file` it writes
+nothing. This is the agent-facing feed, unchanged; the web view is the
+Changelog report under Reports.
 
 - `--days <n>` is the newest *n* days that shipped something, not the last *n*
   calendar days. Seven by default.
 - `--before <date>` moves the window back to end before that date.
 - `--project <KEY>` narrows it to one project, and refuses a key nobody has.
 - `--json` prints the endpoint's own answer and nothing else.
+- `--file [<path>]` writes the repository's changelog file instead of the feed:
+  the bytes the server serves, unchanged, to `.hatch/changelog.yml` under the
+  checkout's root, or to `<path>` where one is given, creating any missing
+  directory. It asks about the checkout's own `origin`. It prints one line,
+  `written .hatch/changelog.yml` or `unchanged .hatch/changelog.yml`, and exits
+  0 either way. Where nobody elects a changelog for that remote, it exits
+  non-zero and prints the server's own sentence. Outside a checkout, without
+  `--repo`, it refuses in a sentence and writes nothing. It does not mix with
+  `--days`, `--before`, `--project` or `--json`.
+- `--repo <remote>` goes with `--file` and names the remote to ask about in
+  place of the checkout's origin, so it needs no checkout. The file then goes
+  under the working directory unless `<path>` says otherwise.
 
 ### activity
 
