@@ -1556,6 +1556,7 @@ public class WorkController(
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
             && rowTo is not null && rowTo.Id == review?.Id;
+        var releaseNoteFor = await ReleaseNoteForAsync(issue.Id, ct);
         var offersNoCode = rowTo is null ? (bool?)null : rowTo.IsTerminal || rowTo.IsDeferred || Columns.AtOrPastReview(statuses, rowTo.Id);
 
         int? nextBriefLimit = null;
@@ -1621,7 +1622,24 @@ public class WorkController(
             match?.File is null ? null : new PlaybookFileReferenceDto(match.File.Path, match.File.Canonical, match.File.Trunk, match.File.Sha, match.File.Hash),
             asksReleaseNote,
             nextBriefLimit,
-            offersNoCode);
+            offersNoCode,
+            releaseNoteFor);
+    }
+
+    /// <summary>
+    /// The key of the issue <paramref name="issueId"/>, a changelog task the
+    /// board recorded, was filed for - when that issue has no release note, so
+    /// the task's session is the one to write it. Null for anything else.
+    /// </summary>
+    private async Task<string?> ReleaseNoteForAsync(long issueId, CancellationToken ct)
+    {
+        var source = await db.ChangelogTasks.AsNoTracking()
+            .Where(t => t.IssueId == issueId && t.SourceIssue != null)
+            .Select(t => new { ProjectKey = t.SourceIssue!.Project!.Key, t.SourceIssue.Number, t.SourceIssue.ReleaseNote })
+            .FirstOrDefaultAsync(ct);
+        return source is not null && string.IsNullOrWhiteSpace(source.ReleaseNote)
+            ? IssueKey.Format(source.ProjectKey, source.Number)
+            : null;
     }
 
     /// <summary>

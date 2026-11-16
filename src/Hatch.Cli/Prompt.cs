@@ -215,7 +215,7 @@ public static class Prompt
             sharesPullRequest: issue.Type is "story" or "bug" && issue.OnePr,
             isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
             trunkLanding: trunkLanding,
-            asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type,
+            asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type, releaseNoteFor: work.ReleaseNoteFor,
             startsHere: BoundForImplementation(work), deniesGitWrites: deniesGitWrites,
             offersNoCode: work.OffersNoCode ?? true));
         return string.Join('\n', lines);
@@ -603,7 +603,7 @@ public static class Prompt
         string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
         bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
         bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
-        bool deniesGitWrites = false, bool offersNoCode = true) =>
+        bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null) =>
     [
         "## Reaching Hatch",
         "",
@@ -714,7 +714,8 @@ public static class Prompt
         $"Say on {key} that it was proposed, and stop. A person applies it on the",
         "Playbooks page.",
         "",
-        ..(asksReleaseNote ? ReleaseNote(key, issueType) : Array.Empty<string>()),
+        ..(asksReleaseNote && releaseNoteFor is null ? ReleaseNote(key, issueType) : Array.Empty<string>()),
+        ..(releaseNoteFor is null ? Array.Empty<string>() : ReleaseNoteFor(key, releaseNoteFor)),
         "Last of all, say what you did, in a fenced block:",
         "",
         "```work-log",
@@ -818,6 +819,27 @@ public static class Prompt
             "back to the title.",
             "",
         ];
+
+    /// <summary>
+    /// The ask handed to a changelog task's session for the issue it was filed
+    /// for, when that issue has no release note. The fence line names the
+    /// issue, so the runner puts the block to it and not to the task. The type
+    /// of the delivered issue is not on the work, so both shapes are worded.
+    /// </summary>
+    private static string[] ReleaseNoteFor(string key, string delivered) =>
+    [
+        $"{delivered} has no release note, so write one for it before you run the command, as a customer would read it.",
+        "If it is an epic, write a sentence announcing what shipped, and a short paragraph beneath it.",
+        "Anything else is one line, no body. Name the issue on the fence line:",
+        "",
+        $"```release-note {delivered}",
+        "One sentence a user would read in a changelog.",
+        "```",
+        "",
+        $"The loop puts that block to {delivered}, not to {key}. It shows on the changelog and the",
+        "issue page, where a person may edit or correct it. The last such block wins.",
+        "",
+    ];
 
     /// <summary>
     /// Which checkout "the repository root" means, said only once there is more

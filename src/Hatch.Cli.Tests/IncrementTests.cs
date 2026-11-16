@@ -3060,6 +3060,32 @@ public sealed class IncrementTests
     }
 
     [Fact]
+    public async Task A_release_note_block_naming_an_issue_is_put_to_that_issue_under_the_tasks_claim()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        StubTheBoard(h);
+        h.Wire.Json("PUT", "/api/issues/AER-2/release-note", Fixtures.Issue("AER-2"));
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: "```release-note AER-2\nShipped it.\n```\n```work-log\nDid a thing\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", releaseNoteFor: "AER-2"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        var put = Assert.Single(h.Wire.To("PUT", "/api/issues/AER-2/release-note"));
+        Assert.Equal("Shipped it.", put.Read<ReleaseNoteRequest>().Note);
+        Assert.Contains($"heldToken={token}", put.Query, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(h.Wire.To("PUT", ReleaseNotePath));
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
     public async Task A_session_that_wrote_no_release_note_posts_none()
     {
         using var h = new Harness();
