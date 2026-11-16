@@ -115,7 +115,9 @@ holds every project, and a project only says which numbers its tickets carry.
 Then find the project's row and press **Edit**. The dialog's **Repositories**
 part is where you bind it to a git repository: add a remote and, if you want
 one, a base branch; use the arrows to reorder them (the first is the primary);
-**Remove** takes one off. Nothing is stored until **Save**. Binding is how the
+tick **Writes a changelog** beside a remote to say its repository takes a
+changelog file (only an owner sees the box); **Remove** takes one off.
+Nothing is stored until **Save**. Binding is how the
 board knows which repository a project's tickets are about.
 
 The dialog also has **Reflects every N day(s)**: a cadence at which the project

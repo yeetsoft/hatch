@@ -420,6 +420,9 @@ public class EfHatchProjectRepository
     [MaxLength(MaxBaseBranchLength)]
     public string? BaseBranch { get; set; }
 
+    /// <summary>True when this repository takes a changelog file; an owner elects it, and it is off until then.</summary>
+    public bool Changelog { get; set; }
+
     /// <summary>
     /// Position in the list; the first is the primary. A plain 0-based index
     /// is enough - the whole list is replaced together on every write, so

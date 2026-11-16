@@ -96,7 +96,7 @@ describe('ProjectEditDialog', () => {
     const html = render(
       project({
         canAdminister: true,
-        repositories: [{ remote: 'git@forge.example:owner/repo.git', canonical: 'forge.example/owner/repo', baseBranch: null }],
+        repositories: [{ remote: 'git@forge.example:owner/repo.git', canonical: 'forge.example/owner/repo', baseBranch: null, changelog: false }],
       }),
     );
 
@@ -106,13 +106,43 @@ describe('ProjectEditDialog', () => {
   it('hints each reorder arrow in the words its label carries', () => {
     const remote = 'git@forge.example:owner/repo.git';
     const html = render(
-      project({ canAdminister: true, repositories: [{ remote, canonical: 'forge.example/owner/repo', baseBranch: null }] }),
+      project({ canAdminister: true, repositories: [{ remote, canonical: 'forge.example/owner/repo', baseBranch: null, changelog: false }] }),
     );
 
     for (const way of ['up', 'down']) {
       expect(html).toContain(`aria-label="Move ${remote} ${way}"`);
       expect(html).toContain(`title="Move ${remote} ${way}"`);
     }
+  });
+
+  describe('a repository electing a changelog', () => {
+    const repositories = [
+      { remote: 'git@forge.example:owner/one.git', canonical: 'forge.example/owner/one', baseBranch: null, changelog: true },
+      { remote: 'git@forge.example:owner/two.git', canonical: 'forge.example/owner/two', baseBranch: null, changelog: false },
+    ];
+
+    it('gives an owner a box per remote, ticked on the elected one alone', () => {
+      const html = render(project({ canAdminister: true, repositories }));
+
+      expect(html.match(/Writes a changelog/g)).toHaveLength(2);
+      expect(html.match(/<input type="checkbox"[^>]*checked=""[^>]*\/>Writes a changelog/g)).toHaveLength(1);
+      expect(html).not.toContain('>writes a changelog<');
+    });
+
+    it('tells a person who is not an owner which remote writes one, with no box', () => {
+      const html = render(project({ canAdminister: false, repositories }));
+
+      expect(html.match(/>writes a changelog</g)).toHaveLength(1);
+      expect(html).not.toContain('Writes a changelog');
+    });
+
+    it('says nothing to a person who is not an owner where no remote is elected', () => {
+      const html = render(
+        project({ canAdminister: false, repositories: repositories.map((r) => ({ ...r, changelog: false })) }),
+      );
+
+      expect(html).not.toMatch(/writes a changelog/i);
+    });
   });
 
   it('says nothing about a declaration where the project binds no repository', () => {
