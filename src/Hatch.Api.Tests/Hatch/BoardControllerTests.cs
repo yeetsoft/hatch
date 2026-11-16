@@ -364,6 +364,41 @@ public class BoardControllerTests
         Assert.Equal("rall-runner", Assert.Single(board.PastHorizon, i => i.Key == storyKey).CreatedBy);
     }
 
+    [Fact]
+    public async Task ACard_FloatsByItsProjectsLevel_BeatingIssuePriorityOnlyAcrossTheExpeditedOrPausedBoundary()
+    {
+        var h = await NewAsync();
+        var expeditedProject = await h.AddProjectAsync("EXP");
+        var pausedProject = await h.AddProjectAsync("PSD");
+        await h.SetProjectLevelAsync(ProjectPriorities.Expedited, expeditedProject);
+        await h.SetProjectLevelAsync(ProjectPriorities.Paused, pausedProject);
+
+        var inExpeditedProject = await h.IssueAsync("bug", h.InProgress, closedAt: null, projectId: expeditedProject);
+        var inDefaultProject = await h.IssueAsync("bug", h.InProgress, closedAt: null);
+        var inPausedProject = await h.IssueAsync("bug", h.InProgress, closedAt: null, projectId: pausedProject);
+        var higherPriorityInDefaultProject = await h.IssueAsync("bug", h.InProgress, closedAt: null);
+        higherPriorityInDefaultProject.Priority = PriorityLevels.Expedited;
+        await h.Db.SaveChangesAsync();
+
+        var board = Value(await h.Board.GetBoard(default));
+        var inColumn = board.Issues.Where(i => i.StatusId == h.InProgress).ToList();
+
+        Assert.Equal(
+            new[]
+            {
+                IssueKey.Format("EXP", inExpeditedProject.Number),
+                IssueKey.Format(h.ProjectKey, higherPriorityInDefaultProject.Number),
+                IssueKey.Format(h.ProjectKey, inDefaultProject.Number),
+                IssueKey.Format("PSD", inPausedProject.Number),
+            },
+            inColumn.Select(i => i.Key));
+
+        Assert.Equal(ProjectPriorities.Expedited, Assert.Single(inColumn, i => i.Key == IssueKey.Format("EXP", inExpeditedProject.Number)).ProjectPriority);
+        Assert.Equal(ProjectPriorities.Normal, Assert.Single(inColumn, i => i.Key == IssueKey.Format(h.ProjectKey, inDefaultProject.Number)).ProjectPriority);
+        Assert.Equal(ProjectPriorities.Normal, Assert.Single(inColumn, i => i.Key == IssueKey.Format(h.ProjectKey, higherPriorityInDefaultProject.Number)).ProjectPriority);
+        Assert.Equal(ProjectPriorities.Paused, Assert.Single(inColumn, i => i.Key == IssueKey.Format("PSD", inPausedProject.Number)).ProjectPriority);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
@@ -382,12 +417,13 @@ public class BoardControllerTests
         public required int Deferred { get; init; }
 
         public async Task<EfHatchIssue> IssueAsync(
-            string type, int statusId, DateTimeOffset? closedAt, long? parentId = null, string createdBy = "hatch")
+            string type, int statusId, DateTimeOffset? closedAt, long? parentId = null, string createdBy = "hatch",
+            int? projectId = null)
         {
-            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
             var issue = new EfHatchIssue
             {
-                ProjectId = ProjectId,
+                ProjectId = project.Id,
                 Number = project.NextIssueNumber++,
                 Type = type,
                 Title = $"a {type}",
@@ -406,6 +442,23 @@ public class BoardControllerTests
 
         public async Task<string> BugAsync(int statusId, DateTimeOffset? closedAt) =>
             IssueKey.Format(ProjectKey, (await IssueAsync("bug", statusId, closedAt)).Number);
+
+        /// <summary>A second project on the same board, for a test about a card in a project with its own level.</summary>
+        public async Task<int> AddProjectAsync(string key)
+        {
+            var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+            Db.Add(project);
+            await Db.SaveChangesAsync();
+            return project.Id;
+        }
+
+        /// <summary>The project's level, written straight onto the row - see <see cref="ProjectPriorities"/>.</summary>
+        public async Task SetProjectLevelAsync(string level, int? projectId = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
+            project.Priority = level;
+            await Db.SaveChangesAsync();
+        }
     }
 
     private static async Task<Harness> NewAsync(int horizonHours = 48)

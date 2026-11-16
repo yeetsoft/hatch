@@ -128,6 +128,11 @@ export function place(
  * or placing by the order on screen rather than by rank, gives a different
  * answer the moment a column holds a card above normal - and a card that has
  * to jump once the refetch arrives is a board the operator stops trusting.
+ *
+ * The float itself is ten tiers, `Dispatch.ProjectTiers()`/`BoardController.Sort`'s
+ * own order: emergency in an unpaused project; then, for an expedited project
+ * and then a normal one, expedited, normal, low and economy; then paused -
+ * an issue's own level or its project's, either one.
  */
 function reorder(
   all: IssueCard[],
@@ -146,16 +151,22 @@ function reorder(
 
   ranked.splice(insertionIndex(ranked, afterKey, beforeKey), 0, moved);
 
-  // And then the float, exactly as the board read applies it: emergency
-  // first, then expedited, then normal, then low, then economy, then paused -
-  // (rank, id) within each tier, mirroring the server's (Priority desc, Rank, Id).
+  // And then the float, exactly as the board read applies it: emergency in an
+  // unpaused project first, then each issue level crossed with its project's -
+  // expedited project before normal - then paused, issue or project, last -
+  // (rank, id) within each tier, mirroring the server's
+  // (Dispatch.TierRank, Rank, Id).
   const ordered = [
-    ...ranked.filter((i) => i.priority === 'emergency'),
-    ...ranked.filter((i) => i.priority === 'expedited'),
-    ...ranked.filter((i) => i.priority === 'normal'),
-    ...ranked.filter((i) => i.priority === 'low'),
-    ...ranked.filter((i) => i.priority === 'economy'),
-    ...ranked.filter((i) => i.priority === 'paused'),
+    ...ranked.filter((i) => i.priority === 'emergency' && i.projectPriority !== 'paused'),
+    ...ranked.filter((i) => i.priority === 'expedited' && i.projectPriority === 'expedited'),
+    ...ranked.filter((i) => i.priority === 'normal' && i.projectPriority === 'expedited'),
+    ...ranked.filter((i) => i.priority === 'low' && i.projectPriority === 'expedited'),
+    ...ranked.filter((i) => i.priority === 'economy' && i.projectPriority === 'expedited'),
+    ...ranked.filter((i) => i.priority === 'expedited' && i.projectPriority === 'normal'),
+    ...ranked.filter((i) => i.priority === 'normal' && i.projectPriority === 'normal'),
+    ...ranked.filter((i) => i.priority === 'low' && i.projectPriority === 'normal'),
+    ...ranked.filter((i) => i.priority === 'economy' && i.projectPriority === 'normal'),
+    ...ranked.filter((i) => i.priority === 'paused' || i.projectPriority === 'paused'),
   ];
 
   /* Written back into the slots the column already occupies, so the array stays
