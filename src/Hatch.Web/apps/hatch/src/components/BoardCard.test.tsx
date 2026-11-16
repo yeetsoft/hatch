@@ -45,6 +45,7 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   onePrOwn: null,
   onePrFrom: null,
   createdBy: 'Britta Perry',
+  projectPriority: 'normal',
   ...over,
 });
 
@@ -220,6 +221,28 @@ describe('BoardCard CardFace', () => {
     const marks = between(html, '<div class="hatch-card-marks">');
     expect(marks).toContain('hatch-card-preapproved');
     expect(marks).toContain('hatch-card-nocode');
+  });
+
+  it('wears the pause mark for its paused project, with the project-paused title, even at normal priority', () => {
+    const inAPausedProject = card({ priority: 'normal', projectPriority: 'paused' });
+    const html = renderToStaticMarkup(
+      <CardPreview card={inAPausedProject} waiting={false} terminal={false} project={project()} />,
+    );
+
+    const marks = between(html, '<div class="hatch-card-marks">');
+    expect(marks).toContain('hatch-card-expedited paused');
+    expect(marks).toContain(
+      'title="Paused - its project is paused; a person set it aside and the loop leaves it where it stands"',
+    );
+  });
+
+  it('draws the marks row for a card with nothing set but a paused project', () => {
+    const inAPausedProject = card({ priority: 'normal', projectPriority: 'paused' });
+    const html = renderToStaticMarkup(
+      <CardPreview card={inAPausedProject} waiting={false} terminal={false} project={null} />,
+    );
+
+    expect(html).toContain('hatch-card-marks');
   });
 
   it('draws every enhancer together on the marks row, in order, ending in the assignee', () => {

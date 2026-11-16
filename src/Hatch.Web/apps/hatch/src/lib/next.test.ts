@@ -40,6 +40,7 @@ const child = (key: string, waiting: number): ChildRollup => ({
     onePrOwn: null,
     onePrFrom: null,
     createdBy: 'Britta Perry',
+    projectPriority: 'normal',
   },
   isLeaf: true,
   rollup: { leaves: 1, done: 0, waiting, slices: [] },
