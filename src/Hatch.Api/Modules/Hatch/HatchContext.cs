@@ -38,6 +38,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchChangelogTask> ChangelogTasks => Set<EfHatchChangelogTask>();
     public DbSet<EfHatchPlaybookFile> PlaybookFiles => Set<EfHatchPlaybookFile>();
     public DbSet<EfHatchDependencyFile> DependencyFiles => Set<EfHatchDependencyFile>();
+    public DbSet<EfHatchChangelogFile> ChangelogFiles => Set<EfHatchChangelogFile>();
     public DbSet<EfHatchVerdict> Verdicts => Set<EfHatchVerdict>();
 
     /// <summary>

@@ -51,6 +51,8 @@ the next heading of the same level and stop.
     `.hatch/playbooks.yaml`?
   - [Dependency file](#dependency-file) - What does a repository's trunk hold at
     `.hatch/dependencies.json`?
+  - [Changelog file](#changelog-file) - What does a repository's trunk hold at
+    `.hatch/changelog.yml`?
   - [Comment, question and answer](#comment-question-and-answer) - Which
     comments are more than notes, and how are they bound?
   - [Search](#search) - How are issues, comments and work logs searched?
@@ -2982,6 +2984,59 @@ answers every stored row, ordered by canonical then trunk, with the path
 itself (`.hatch/dependencies.json`) alongside them, each entry's id resolved
 to its current label.
 
+### Changelog file
+
+`EfHatchChangelogFile` — `Remote`, `Canonical`, `Trunk`, `Sha`, `State`, `Hash`,
+`Behind`, `Problem`, `Url`, `CheckedAt`, `Runner`, `CheckedBy`. What a
+repository's trunk holds at `.hatch/changelog.yml`, as of the last time a
+runner's poll checked, judged against [the changelog file](#the-changelog-file)
+the board would write itself. Like a [dependency file](#dependency-file), it is
+a fact about a repository's trunk and nobody's issue, so it is keyed on
+`(Canonical, Trunk)`, unique: one row per repository per trunk.
+
+`State` is one of:
+
+- `current` — the bytes are exactly the board's own.
+- `behind` — a file Hatch wrote, parsed with the same parser the projection is,
+  and compared entry by entry on `key`, `url`, `project`, `type`, `title`,
+  `note`, `shipped` and `beneath`. `Behind` is the count of entries the board
+  has that the file lacks, plus entries both have that differ, plus entries the
+  file has that the board no longer lists (an issue reopened). Bytes that
+  differ but count none (order or whitespace only) are `Behind` 1, so a row
+  never reads "behind by 0".
+- `absent` — the trunk has nothing at the path.
+- `foreign` — the bytes exist but are not a file Hatch wrote: not valid UTF-8,
+  a first line that does not open with `Changelog.HeaderPrefix`, YAML that does
+  not parse, a root that is not a mapping with `version: 1` and an `entries`
+  list, or an entry that is not a mapping with a `key`, or repeats one.
+  `Problem` is one sentence naming the sha: `.hatch/changelog.yml at <sha> is
+  not a file Hatch wrote (<why>) - move or remove it before Hatch will write
+  there`. The Projects page lists it as the repository's own problem to put
+  right.
+
+`Hash`, the SHA-256 in lower hex, is set whenever bytes were read; `Behind`
+only for `behind`; `Problem` only for `foreign`.
+
+`PUT /api/changelog-files` takes `{ remote, trunk, sha, content?, url?, runner }`
+and a key may call it for the reason it may put a playbook file. `content` is
+the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the
+path. The server compares them with its own projection (`ChangelogFiles.ProjectAsync`,
+the same read `GET /api/changelog/file` renders, with the same origin rule) and
+stores the verdict; it trusts none from its caller. It takes the dependency
+file's refusals, content over 2 MB, and a `404` for a canonical no project
+elects. **No event, no question.** `GET /api/changelog-files` answers every row
+with the path, `.hatch/changelog.yml`, and the canonicals currently elected; a
+runner sending its checkouts' remotes as `remote` also gets, in
+`ElectedRemotes`, the ones that are elected, since a runner canonicalises
+nothing. **Origin caveat:** the origin is inside every `url:` line, so a Hatch
+with no `PublicBaseUrl`, whose runner reaches it by a different address than
+the session that wrote the file, reads `behind`. Setting `PublicBaseUrl` is the
+fix.
+
+The runner's poll reads the file off the trunk of every checkout whose
+repository is elected, once per sha; see [how the poll heals a
+gap](#the-changelog-task).
+
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
@@ -3847,6 +3902,8 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/playbook-files` | PUT | Keeps a runner's [playbook file](#playbook-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/dependency-files` | GET | Every stored [dependency file](#dependency-file), ordered by canonical then trunk, with the path itself alongside them, each entry's id resolved to its current label |
 | `/dependency-files` | PUT | Keeps a runner's [dependency file](#dependency-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict via `DependencyDeclaration.Parse`. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
+| `/changelog-files` | GET | Every stored [changelog file](#changelog-file), ordered by canonical then trunk, with the path itself and the canonicals currently elected; `?remote=` (repeatable) is answered in `ElectedRemotes` |
+| `/changelog-files` | PUT | Keeps a runner's [changelog file](#changelog-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Judges the bytes against the board's own projection rather than trusting a client-sent verdict; where the state is `behind` or `absent` and no [changelog task](#the-changelog-task) for that canonical is open in any column, files one. `404` for a remote no project elects. No event and no question |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck`, `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise) and `maxRunSeconds` (null means no limit; `POST`/`PATCH` take it as a string, the same three states, 400 *a run limit is a whole number of one or more, in seconds* otherwise - a claim copies it as its run cap, see [Claim](#claim)); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/playbook-proposals` | GET | The queue for one [playbook proposal](#playbook-proposal) state, oldest first — pending by default, or `?state=approved`, `rejected` or `all` |
@@ -5128,6 +5185,22 @@ and cascading; `SourceIssueId`, set null if the source is deleted;
 `Canonical`; `CreatedAt`), and `GET /api/changelog/file` never lists a recorded
 task, open or closed. The `changelog_task_filed` event lands on the closed
 issue.
+
+**Healed by the poll.** A close files the task above, but a file can fall
+behind with none standing: a task cancelled with no commit, a file deleted, a
+repository elected before anything closed under it. The runner's poll puts each
+elected trunk's file once per sha, and where the stored [changelog
+file](#changelog-file) is `behind` or `absent` the put files one task
+through the same helper (`ChangelogTasks.FileForGapAsync`), from the newest
+entry the file lacks, or the newest entry at all where it has only extras. An
+empty projection files nothing, and a `foreign` or `current` file files
+nothing. Unlike the close, the poll is held by a recorded task standing in *any*
+non-terminal column, deferred ones included, since a task somebody parked on
+purpose must not be refiled every poll; a done or cancelled one does not hold
+it. Known limits: two runners putting the same canonical in the same instant can
+file two tasks (the close has the same window), and a gap whose task is
+cancelled with no commit heals at the next trunk move, since the runner puts
+once per sha.
 
 **The release note it writes.** An issue that closed with no release note is
 the one case where the task's session is the first to look at it with the

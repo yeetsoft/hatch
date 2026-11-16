@@ -891,6 +891,42 @@ dependency id is not one of these refusals: `DependencyDeclaration.Parse`
 folds it into the same `Problem` any other shape failure produces, so it
 reaches the stored row as `state: invalid`, not a 400.
 
+### Changelog files
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/changelog-files` | key | Every stored verdict of what a repository's trunk carries at `.hatch/changelog.yml`, the path itself, and the canonical remotes some project currently elects for a changelog |
+| PUT | `/changelog-files` | key | Judges the bytes a runner read off one repository's trunk against the board's own file, stores the verdict, and files a task where the file is behind or absent |
+
+`PUT` takes `{ remote, trunk, sha, content?, url?, runner }`, `content` the
+blob's exact bytes, base64-encoded and absent for a trunk with nothing at the
+path. The board compares those bytes with the file it would write itself
+([the changelog file](the-runner#the-changelog-file)) and trusts no verdict from
+the caller; like `/dependency-files`, it is a fact a key reports about a file,
+so both routes stay key-open.
+
+`GET` answers `Path`, `Elected` (the canonicals some project elects),
+`Files` (ordered by canonical then trunk) and `ElectedRemotes`: of the
+`remote` query values the caller sent (repeatable), the ones whose repository
+is elected, spelled as sent. A runner holds its origin as its checkout spells
+it and canonicalises nothing, so this is how it learns which checkouts to
+read.
+
+`ChangelogFileDto` carries `Remote`, `Canonical`, `Trunk`, `Sha`, `State`
+(`current`, `behind`, `absent` or `foreign`), `Hash` (the bytes' SHA-256, null
+for `absent`), `Behind` (for `behind`, the count of entries the file lacks,
+holds differently, or holds that the board no longer does), `Problem` (for
+`foreign`, the sentence naming the sha and saying to move or remove the file),
+`Url`, `CheckedAt`, `Runner` and `CheckedBy`.
+
+**Refusals worth naming.** `PUT` 400s an empty remote, trunk, sha or runner,
+non-base64 content, or content over 2 MB, and `404`s a remote no project
+elects for a changelog, naming the Projects page. It writes no event and asks
+no question. Where the stored state is `behind` or `absent` and no recorded
+changelog task for that canonical is open in any column, a deferred one
+included, it files one task, from the newest entry the file lacks; a `foreign`
+file files none.
+
 ### Playbook proposals
 
 | Method | Path | Who | What it does |

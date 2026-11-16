@@ -99,6 +99,7 @@ public sealed class Poll
     private readonly Dictionary<string, string> _seenTrunk = [];
     private readonly Dictionary<string, string> _seenPlaybookFile = [];
     private readonly Dictionary<string, string> _seenDependencyFile = [];
+    private readonly Dictionary<string, string> _seenChangelogFile = [];
     private DateTimeOffset? _last;
     private HashSet<string> _saidBefore = [];
 
@@ -252,6 +253,11 @@ public sealed class Poll
         // (HA-1915): every checkout with an origin, whether or not any
         // project reads it.
         await ReadDependencyFilesAsync(runtime, complain, headsByPath, ct);
+
+        // The changelog-file half (HA-2367): only the checkouts whose
+        // repository some project elects for a changelog, since the board
+        // files a task for a gap it finds there.
+        await ReadChangelogFilesAsync(runtime, complain, headsByPath, ct);
     }
 
     /// <summary>The merge half for one checkout: fetch once if anything moved, and report the verdicts that are due.</summary>
@@ -880,6 +886,110 @@ public sealed class Poll
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 complain($"hatch: could not check the dependency file in {name} - {e.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The changelog half: for every checkout whose repository a project elects
+    /// for a changelog, reads <c>.hatch/changelog.yml</c> off the trunk and
+    /// puts its exact bytes - once per sha. The board judges them against its
+    /// own projection and, where the file is behind, files the task.
+    /// </summary>
+    /// <remarks>
+    /// The same shape as <see cref="ReadDependencyFilesAsync"/>, narrowed to
+    /// the elected checkouts. Throws nothing out of the poll: every failure is
+    /// one line and nothing more, and a put the board refused is asked again
+    /// next poll.
+    /// </remarks>
+    private async Task ReadChangelogFilesAsync(
+        Runtime runtime, Action<string> complain, Dictionary<string, RemoteHeads?> headsByPath,
+        CancellationToken ct)
+    {
+        var checkouts = runtime.Checkouts.Where(c => c.Remote is not null).ToList();
+        if (checkouts.Count == 0) return;
+
+        ChangelogFilesDto stored;
+        try
+        {
+            stored = await runtime.QuietBoard.ChangelogFilesAsync(checkouts.Select(c => c.Remote!), ct);
+        }
+        catch (HatchException e)
+        {
+            complain($"hatch: could not read the board's changelog files - {e.Message}");
+            return;
+        }
+
+        var elected = (stored.ElectedRemotes ?? []).ToHashSet();
+
+        foreach (var checkout in checkouts.Where(c => elected.Contains(c.Remote!)))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var name = Path.GetFileName(checkout.Path.TrimEnd('/', '\\'));
+
+            try
+            {
+                var workspace = runtime.Workspace(checkout.Path, runtime.Settings.BaseBranch);
+
+                RemoteHeads? heads;
+                if (!headsByPath.TryGetValue(checkout.Path, out heads))
+                {
+                    heads = workspace.Heads();
+                    headsByPath[checkout.Path] = heads;
+                    if (heads is null)
+                    {
+                        complain($"hatch: origin did not answer for {name}, so its changelog file was not checked");
+                        continue;
+                    }
+                }
+
+                if (heads?.TrunkSha is not { } sha) continue;
+
+                if (_seenChangelogFile.TryGetValue(checkout.Path, out var seen) && seen == sha) continue;
+
+                var matched = stored.Files.FirstOrDefault(f => f.Remote == checkout.Remote && f.Trunk == heads.Trunk);
+
+                if (matched?.Sha == sha)
+                {
+                    _seenChangelogFile[checkout.Path] = sha;
+                    continue;
+                }
+
+                if (!workspace.Fetch())
+                {
+                    complain($"hatch: could not fetch from origin for {name}, so its changelog file was not checked");
+                    continue;
+                }
+
+                var blob = workspace.ReadBlob(heads.Trunk, stored.Path);
+                if (blob.Outcome == BlobOutcome.Failed)
+                {
+                    complain($"hatch: could not read {stored.Path} in {name} - {blob.Why}");
+                    continue;
+                }
+
+                var content = blob.Outcome == BlobOutcome.Found ? Convert.ToBase64String(blob.Content!) : null;
+                var url = await runtime.Forge(checkout.Path, matched?.Canonical).FileUrlAsync(stored.Path, heads.Trunk, ct);
+
+                try
+                {
+                    await runtime.QuietBoard.ChangelogFileAsync(
+                        new ChangelogFileRequest(checkout.Remote!, heads.Trunk, sha, content, url, runtime.RunnerName), ct);
+                }
+                catch (HatchException e)
+                {
+                    // Not remembered: a write the board refused is asked
+                    // again next interval.
+                    complain($"hatch: could not put the changelog file in {name} - {e.Message}");
+                    continue;
+                }
+
+                _seenChangelogFile[checkout.Path] = sha;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                complain($"hatch: could not check the changelog file in {name} - {e.Message}");
             }
         }
     }

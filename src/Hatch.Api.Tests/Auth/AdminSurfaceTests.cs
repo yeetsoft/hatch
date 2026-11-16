@@ -270,6 +270,8 @@ public class AdminSurfaceTests
         // writes it the same way. See DependencyDeclaration.
         "DependencyFileController.GetDependencyFiles",
         "DependencyFileController.PutDependencyFile",
+        "ChangelogFileController.GetChangelogFiles",
+        "ChangelogFileController.PutChangelogFile",
 
         // Who is at the browser, so the nav strip can say so and know the
         // role. Guarded like the rest of the module, and key-accepting for
@@ -808,6 +810,8 @@ public class AdminSurfaceTests
         "ChangelogController.GetChangelogFile",
         "DependencyFileController.GetDependencyFiles",
         "DependencyFileController.PutDependencyFile",
+        "ChangelogFileController.GetChangelogFiles",
+        "ChangelogFileController.PutChangelogFile",
         "DreamsController.AddDream",
         "DreamsController.DeleteDream",
         "DreamsController.EditDream",

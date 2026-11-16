@@ -966,6 +966,12 @@ public sealed class Harness : IDisposable
             return JsonSerializer.Serialize(new DependencyFilesDto(".hatch/dependencies.json", files), Fixtures.Json);
         });
 
+        // A board that elects no repository for a changelog, so the changelog
+        // half reads nothing and the tests above it are undisturbed; a test
+        // about the changelog file itself overrides this.
+        Wire.Serve("GET", "/api/changelog-files", _ =>
+            JsonSerializer.Serialize(new ChangelogFilesDto(".hatch/changelog.yml", [], [], []), Fixtures.Json));
+
         Runtime = new Runtime(
             Settings: settings,
             Board: new Board(_client, refusesDangerous: settings.RefusesDangerous) { Has = settings.Has, Tags = tags ?? [] },

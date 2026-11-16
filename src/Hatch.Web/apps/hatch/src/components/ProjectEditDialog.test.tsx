@@ -136,6 +136,30 @@ describe('ProjectEditDialog', () => {
       expect(html).not.toContain('Writes a changelog');
     });
 
+    // The changelog-files load is a useEffect renderToStaticMarkup never runs, so
+    // only the "nothing stored yet" state is reachable here; the four sentences
+    // are proven by lib/changelogFiles.test.ts.
+    it('says no runner has read its changelog yet beside the elected remote alone', () => {
+      const html = render(project({ canAdminister: true, repositories }));
+
+      expect(html.match(/no runner has read its changelog yet/g)).toHaveLength(1);
+      expect(html).toMatch(/Writes a changelog<\/label><span class="text-muted">no runner has read its changelog yet/);
+    });
+
+    it('says it to a person who is not an owner too', () => {
+      const html = render(project({ canAdminister: false, repositories }));
+
+      expect(html.match(/no runner has read its changelog yet/g)).toHaveLength(1);
+    });
+
+    it('says nothing about a changelog beside a remote that does not elect one', () => {
+      const html = render(
+        project({ canAdminister: true, repositories: repositories.map((r) => ({ ...r, changelog: false })) }),
+      );
+
+      expect(html).not.toContain('no runner has read its changelog yet');
+    });
+
     it('says nothing to a person who is not an owner where no remote is elected', () => {
       const html = render(
         project({ canAdminister: false, repositories: repositories.map((r) => ({ ...r, changelog: false })) }),

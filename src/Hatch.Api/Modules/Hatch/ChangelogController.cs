@@ -88,38 +88,10 @@ public class ChangelogController(HatchContext db, TimeProvider time, IOptions<Ha
         var (canonical, error) = RemoteIdentity.Canonical(remote ?? "");
         if (canonical is null) return BadRequest(error);
 
-        var projectIds = await db.ProjectRepositories.AsNoTracking()
-            .Where(r => r.Canonical == canonical && r.Changelog)
-            .Select(r => r.ProjectId).Distinct().ToListAsync(ct);
-
-        if (projectIds.Count == 0)
+        var entries = await ChangelogFiles.ProjectAsync(db, canonical, ct);
+        if (entries is null)
             return NotFound($"no project elects {canonical} for a changelog - turn it on from the Projects page");
 
-        var rows = await db.Issues.AsNoTracking()
-            .Where(i => i.ParentId == null && i.Status!.IsTerminal && i.ClosedAt != null && projectIds.Contains(i.ProjectId)
-                        && !db.ChangelogTasks.Any(t => t.IssueId == i.Id))
-            .Select(i => new
-            {
-                i.Id,
-                ProjectKey = i.Project!.Key,
-                i.Number,
-                i.Type,
-                i.Title,
-                i.ReleaseNote,
-                ClosedAt = i.ClosedAt!.Value,
-            })
-            .ToListAsync(ct);
-
-        var tree = await Rollup.LoadAsync(db, ct);
-
-        var entries = rows
-            .Select(r => new Changelog.Entry(
-                r.Id, IssueKey.Format(r.ProjectKey, r.Number), r.Number, r.Title, r.Type, r.ProjectKey,
-                r.ReleaseNote, r.ClosedAt, tree.DescendantCount(r.Id)))
-            .ToList();
-
-        var origin = HatchOptions.NormalizeBaseUrl(hatchOptions.Value.PublicBaseUrl) ?? $"{Request.Scheme}://{Request.Host}";
-
-        return Content(Changelog.RenderFile(entries, origin), "text/yaml; charset=utf-8");
+        return Content(Changelog.RenderFile(entries, ChangelogFiles.Origin(hatchOptions.Value, Request)), "text/yaml; charset=utf-8");
     }
 }

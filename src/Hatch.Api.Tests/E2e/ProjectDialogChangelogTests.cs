@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Tests.Hatch;
 using Hatch.Contracts;
@@ -143,6 +144,136 @@ public class ProjectDialogChangelogTests(ITestOutputHelper output)
         {
             await harness.DisposeAsync();
         }
+    }
+
+    private const string ThirdRemote = "https://example.com/owner/three.git";
+
+    private const string FourthRemote = "https://example.com/owner/four.git";
+
+    /// <summary>Runs against the dialog: each bound remote with the muted sentences drawn beside it, in order.</summary>
+    private const string SentencesScript =
+        """
+        (dialog) => Array.from(dialog.querySelectorAll('.hatch-inline-form'))
+          .filter(row => row.querySelector('code'))
+          .map(row => row.querySelector('code').textContent + ' => ' +
+            Array.from(row.querySelectorAll('span.text-muted'))
+              .map(s => s.textContent.trim())
+              .filter(t => /changelog/i.test(t) && t !== 'writes a changelog')
+              .join(' | '))
+        """;
+
+    /// <summary>
+    /// HA-2367: the four things a runner's read of a trunk's changelog file can say, drawn beside
+    /// each remote that elects one - seeded by the real <c>PUT /api/changelog-files</c>, with the
+    /// board's own bytes, the same cut by two entries, no file, and a file whose first line is
+    /// another's. A remote nobody has put reads that no runner has read it.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task TheDialog_SaysWhatARunnerFoundOnEachTrunk_BesideEachElectedRemote()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness("ProjectDialogChangelogFiles");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            await deadline.BoundAsync("seeding four remotes and their changelog files", () => SeedFilesAsync(baseUrl, harness.Services));
+
+            await harness.OpenAsync(deadline, baseUrl, ProjectsPath);
+
+            var dialog = await OpenDialogAsync(harness, deadline, "CHF");
+            var sentences = await harness.EvaluateOnAsync<string[]>(deadline, "reading the sentences", dialog, SentencesScript);
+            await harness.EvaluateOnAsync<bool>(deadline, "scrolling the repositories into view", $"{dialog} .hatch-inline-form:has(code)", ScrollIntoViewScript);
+            var path = await harness.ScreenshotAsync(deadline, "changelog-files");
+            output.WriteLine($"--- [{string.Join("; ", sentences)}], screenshot {path}");
+
+            Assert.Equal(5, sentences.Length);
+            Assert.Matches($"^{System.Text.RegularExpressions.Regex.Escape(FirstRemote)} => .*changelog current at [0-9a-f]{{7}}$", sentences[0]);
+            Assert.Equal($"{SecondRemote} => changelog behind by 2 entries", sentences[1]);
+            Assert.Equal($"{ThirdRemote} => no changelog on trunk yet", sentences[2]);
+            Assert.Contains("is not a file Hatch wrote", sentences[3]);
+            Assert.Contains("move or remove it before Hatch will write there", sentences[3]);
+            Assert.Matches("at [0-9a-f]{7} is not a file", sentences[3]);
+            Assert.Equal($"{UnreadRemote} => no runner has read its changelog yet", sentences[4]);
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    private const string UnreadRemote = "https://example.com/owner/five.git";
+
+    private const string TrunkSha = "0123456789abcdef0123456789abcdef01234567";
+
+    /// <summary>
+    /// A project electing five remotes, three issues closed in it, and a runner's put for the
+    /// first four: the board's own bytes, the same cut by two entries, nothing, and a file of
+    /// someone else's. The fifth has none.
+    /// </summary>
+    private static async Task SeedFilesAsync(string baseUrl, IServiceProvider services)
+    {
+        var remotes = new[] { FirstRemote, SecondRemote, ThirdRemote, FourthRemote, UnreadRemote };
+
+        using (var scope = services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<HatchContext>();
+            var now = DateTimeOffset.UtcNow;
+
+            var project = new EfHatchProject { Key = "CHF", Name = "Changelog files", CreatedAt = now, NextIssueNumber = 4 };
+            db.Projects.Add(project);
+            await db.SaveChangesAsync();
+
+            var done = db.Statuses.First(s => s.IsTerminal);
+            for (var n = 1; n <= 3; n++)
+                db.Issues.Add(new EfHatchIssue
+                {
+                    ProjectId = project.Id, Number = n, Type = "story", Title = $"Ships {n}", Description = "", StatusId = done.Id,
+                    Rank = n, CreatedBy = "operator", CreatedAt = now, UpdatedAt = now, ClosedAt = now.AddHours(n - 4),
+                });
+
+            db.ProjectRepositories.AddRange(remotes.Select((remote, i) => new EfHatchProjectRepository
+            {
+                ProjectId = project.Id, Remote = remote, Canonical = RemoteIdentity.Canonical(remote).Canonical!,
+                Changelog = true, SortOrder = i, CreatedAt = now,
+            }));
+            await db.SaveChangesAsync();
+        }
+
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+
+        var file = await http.GetStringAsync($"/api/changelog/file?remote={Uri.EscapeDataString(FirstRemote)}");
+        var lines = file.Split('\n');
+        var firstEntry = Array.FindIndex(lines, l => l.StartsWith("  - key:", StringComparison.Ordinal));
+        var cut = string.Join('\n', lines.Take(firstEntry + 8)) + "\n";
+
+        async Task PutAsync(string remote, string? content)
+        {
+            var request = new ChangelogFileRequest(
+                remote, "main", TrunkSha, content is null ? null : Convert.ToBase64String(Encoding.UTF8.GetBytes(content)), null, "e2e:/runner");
+            using var response = await http.PutAsJsonAsync("/api/changelog-files", request);
+            Assert.True(response.IsSuccessStatusCode, $"PUT /api/changelog-files answered {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        }
+
+        await PutAsync(FirstRemote, file);
+        await PutAsync(SecondRemote, cut);
+        await PutAsync(ThirdRemote, null);
+        await PutAsync(FourthRemote, "# mine\nversion: 1\nentries: []\n");
     }
 
     /// <summary>Reads each remote's row, takes the screenshot with the list in view, and leaves the dialog open.</summary>
