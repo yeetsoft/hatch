@@ -680,7 +680,8 @@ a person's photo. Deleting a project takes its logo with it.
 ### Repository
 
 `EfHatchProjectRepository` — `ProjectId` (FK, cascade), `Remote` (as typed),
-`Canonical`, `BaseBranch` (nullable), `SortOrder`, `CreatedAt`. Unique on
+`Canonical`, `BaseBranch` (nullable), `Changelog` (bool, default false: the
+repository takes a changelog file), `SortOrder`, `CreatedAt`. Unique on
 `(ProjectId, Canonical)`.
 
 A project carries an ordered list of git remotes rather than one: the first is

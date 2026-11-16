@@ -46,7 +46,7 @@ public class ProjectsController(
             .GroupBy(r => r.ProjectId)
             .ToDictionary(
                 g => g.Key,
-                g => (IReadOnlyList<ProjectRepositoryDto>)g.Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch)).ToList());
+                g => (IReadOnlyList<ProjectRepositoryDto>)g.Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, r.Changelog)).ToList());
 
         var logosByProject = await db.ProjectLogos.AsNoTracking()
             .Select(l => new { l.ProjectId, l.UpdatedAt })
@@ -278,7 +278,7 @@ public class ProjectsController(
 
         // Every entry validated before anything is touched, so a request
         // naming one good entry and one bad one changes neither.
-        var parsed = new List<(string Remote, string Canonical, string? BaseBranch)>(request.Count);
+        var parsed = new List<(string Remote, string Canonical, string? BaseBranch, bool Changelog)>(request.Count);
         for (var i = 0; i < request.Count; i++)
         {
             var position = i + 1;
@@ -296,7 +296,7 @@ public class ProjectsController(
             var (canonical, error) = RemoteIdentity.Canonical(remote);
             if (canonical is null) return BadRequest($"entry {position}: {error}");
 
-            parsed.Add((remote, canonical, baseBranch));
+            parsed.Add((remote, canonical, baseBranch, request[i].Changelog));
         }
 
         for (var i = 1; i < parsed.Count; i++)
@@ -314,7 +314,8 @@ public class ProjectsController(
             .ToListAsync(ct);
 
         var unchanged = current.Count == parsed.Count &&
-            current.Zip(parsed).All(pair => pair.First.Remote == pair.Second.Remote && pair.First.BaseBranch == pair.Second.BaseBranch);
+            current.Zip(parsed).All(pair => pair.First.Remote == pair.Second.Remote && pair.First.BaseBranch == pair.Second.BaseBranch
+                && pair.First.Changelog == pair.Second.Changelog);
 
         if (!unchanged)
         {
@@ -327,6 +328,7 @@ public class ProjectsController(
                 Remote = r.Remote,
                 Canonical = r.Canonical,
                 BaseBranch = r.BaseBranch,
+                Changelog = r.Changelog,
                 SortOrder = i,
                 CreatedAt = now,
             }));
@@ -1180,7 +1182,7 @@ public class ProjectsController(
         await db.ProjectRepositories.AsNoTracking()
             .Where(r => r.ProjectId == projectId)
             .OrderBy(r => r.SortOrder)
-            .Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch))
+            .Select(r => new ProjectRepositoryDto(r.Remote, r.Canonical, r.BaseBranch, r.Changelog))
             .ToListAsync(ct);
 
     private Task<DateTimeOffset?> LogoUpdatedAtAsync(int projectId, CancellationToken ct) =>
