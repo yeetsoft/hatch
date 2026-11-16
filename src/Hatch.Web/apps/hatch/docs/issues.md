@@ -94,7 +94,9 @@ is handled the same way — the server either reaches past the end or
 renumbers the column first, without the client ever seeing a rank.
 
 Within a column, the dispatcher reads cards in rank order, so dragging a card
-up in its column is what gets it worked sooner.
+up in its column is what gets it worked sooner. The float that reads a card's
+own level ahead of rank — see [Priority](#priority) — carries its project's
+level too, in the order that section already names.
 
 ## Ready and due dates
 
