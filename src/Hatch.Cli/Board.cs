@@ -132,6 +132,9 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         return $"/api/changelog?days={days}{beforeQ}{projectQ}";
     }
 
+    /// <summary>The route that serves a repository's changelog file, for the remote as typed - the route canonicalises it.</summary>
+    public static string ChangelogFilePath(string remote) => $"/api/changelog/file?remote={Uri.EscapeDataString(remote)}";
+
     /// <summary>
     /// One actor's rundown over a window, per <c>GET /api/reports/activity</c>.
     /// <c>offsetMinutes</c>, <c>gap</c>, <c>lead</c> and <c>window</c> are never sent:

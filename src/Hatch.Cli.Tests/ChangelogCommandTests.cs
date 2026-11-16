@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using System.Text.Json;
 
 namespace Hatch.Cli.Tests;
@@ -219,5 +221,173 @@ public sealed class ChangelogCommandTests
         Assert.Equal(1, await new ChangelogCommand(h.Cli).RunAsync(["--days", "0"], default));
         Assert.Contains("--days takes a whole number of at least one", h.Complained);
         Assert.Empty(h.Wire.Calls);
+    }
+}
+
+/// <summary>
+/// <c>changelog --file</c> - the repository's changelog file, written as the
+/// server serves it, against a real checkout.
+/// </summary>
+public sealed class ChangelogFileTests : RepoFixture
+{
+    private const string Yaml = "days:\r\n  - date: 2026-10-13\r\n    note: café — shipped\r\n";
+
+    private string Target => Path.Combine(_work, ".hatch", "changelog.yml");
+
+    [Fact]
+    public async Task The_first_run_writes_the_file_and_the_second_says_unchanged()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.OK, Yaml);
+
+        Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync(["--file"], _work, default));
+        Assert.Equal(Yaml, File.ReadAllText(Target));
+        Assert.Equal("written .hatch/changelog.yml", h.Said);
+        Assert.Equal("?remote=" + Uri.EscapeDataString(_origin), h.Wire.To("GET", "/api/changelog/file").Single().Query);
+
+        var stamp = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(Target, stamp);
+
+        using var again = new CliHarness();
+        again.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.OK, Yaml);
+        Assert.Equal(0, await new ChangelogCommand(again.Cli).RunAsync(["--file"], _work, default));
+        Assert.Equal("unchanged .hatch/changelog.yml", again.Said);
+        Assert.Equal(stamp, File.GetLastWriteTimeUtc(Target));
+    }
+
+    [Fact]
+    public async Task A_changed_answer_is_written_over_the_old_file()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.OK, Yaml);
+        Directory.CreateDirectory(Path.GetDirectoryName(Target)!);
+        File.WriteAllText(Target, "old\n");
+
+        Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync(["--file"], _work, default));
+        Assert.Equal("written .hatch/changelog.yml", h.Said);
+        Assert.Equal(Yaml, File.ReadAllText(Target));
+    }
+
+    [Fact]
+    public async Task From_a_subdirectory_the_file_lands_under_the_root()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.OK, Yaml);
+        var sub = Path.Combine(_work, "deep", "down");
+        Directory.CreateDirectory(sub);
+
+        Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync(["--file"], sub, default));
+        Assert.True(File.Exists(Target));
+        Assert.False(File.Exists(Path.Combine(sub, ".hatch", "changelog.yml")));
+        Assert.Equal($"written {Target}", h.Said);
+    }
+
+    [Fact]
+    public async Task Repo_names_the_remote_asked_about_in_place_of_the_origin()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.OK, Yaml);
+
+        Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync(["--file", "--repo", "git@example.test:acme/widgets.git"], _work, default));
+        Assert.Equal("?remote=" + Uri.EscapeDataString("git@example.test:acme/widgets.git"), h.Wire.To("GET", "/api/changelog/file").Single().Query);
+    }
+
+    [Fact]
+    public async Task Repo_needs_no_checkout()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.OK, Yaml);
+        var bare = Directory.CreateTempSubdirectory("hatch-nowhere-").FullName;
+
+        try
+        {
+            Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync(["--file", "--repo", "acme/widgets"], bare, default));
+            Assert.Equal(Yaml, File.ReadAllText(Path.Combine(bare, ".hatch", "changelog.yml")));
+        }
+        finally
+        {
+            Directory.Delete(bare, true);
+        }
+    }
+
+    [Fact]
+    public async Task A_remote_nobody_elects_prints_the_servers_sentence_and_writes_nothing()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.NotFound, "No project elects a changelog for that repository.");
+
+        Assert.Equal(1, await new ChangelogCommand(h.Cli).RunAsync(["--file"], _work, default));
+        Assert.Contains("No project elects a changelog for that repository.", h.Complained);
+        Assert.DoesNotContain("no such issue or route", h.Complained);
+        Assert.False(File.Exists(Target));
+    }
+
+    [Fact]
+    public async Task Outside_a_checkout_without_repo_it_refuses_and_calls_nothing()
+    {
+        using var h = new CliHarness();
+        var bare = Directory.CreateTempSubdirectory("hatch-nowhere-").FullName;
+
+        try
+        {
+            Assert.Equal(1, await new ChangelogCommand(h.Cli).RunAsync(["--file"], bare, default));
+            Assert.Contains("needs a checkout", h.Complained);
+            Assert.Empty(h.Wire.Calls);
+            Assert.Empty(Directory.GetFileSystemEntries(bare));
+        }
+        finally
+        {
+            Directory.Delete(bare, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("--days", "3")]
+    [InlineData("--before", "x")]
+    [InlineData("--project", "AER")]
+    [InlineData("--json")]
+    public async Task File_does_not_mix_with_the_feeds_flags(params string[] flag)
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new ChangelogCommand(h.Cli).RunAsync(["--file", .. flag], _work, default));
+        Assert.Contains("--file does not mix", h.Complained);
+        Assert.Contains("usage: hatch changelog", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+        Assert.False(File.Exists(Target));
+    }
+
+    [Fact]
+    public async Task Repo_without_file_is_refused()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new ChangelogCommand(h.Cli).RunAsync(["--repo", "acme/widgets"], _work, default));
+        Assert.Contains("--repo goes with --file", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_path_is_written_to_and_its_missing_directories_made()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.OK, Yaml);
+        var target = Path.Combine(_work, "out", "nested", "log.yml");
+
+        Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync(["--file", target], _work, default));
+        Assert.Equal(Yaml, File.ReadAllText(target));
+        Assert.Equal("written out/nested/log.yml", h.Said);
+        Assert.False(File.Exists(Target));
+    }
+
+    [Fact]
+    public async Task The_bytes_are_the_servers_with_no_bom_and_no_newline_translation()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/changelog/file", HttpStatusCode.OK, Yaml);
+
+        await new ChangelogCommand(h.Cli).RunAsync(["--file"], _work, default);
+
+        Assert.Equal(new UTF8Encoding(false).GetBytes(Yaml), File.ReadAllBytes(Target));
     }
 }

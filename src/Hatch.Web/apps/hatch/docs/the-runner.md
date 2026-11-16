@@ -651,6 +651,7 @@ hatch questions                   everything waiting on an answer
 hatch questions AER-12            ...or just this ticket's
 hatch changelog                   what shipped, as markdown
 hatch changelog --days 30 --before 2026-09-01 --project AER --json
+hatch changelog --file            write .hatch/changelog.yml, and say whether it changed
 ```
 
 `hatch queue` is the dry run for the loop, and the answer to "why did it not
@@ -667,6 +668,10 @@ shipped something, not the last *n* calendar days; seven by default. `--before`
 moves the window back to end before a date, `--project` narrows it to one key
 and refuses a key nobody has, and `--json` prints the endpoint's own answer and
 nothing else. A window with nothing in it prints one sentence saying so.
+`hatch changelog --file` writes the repository's changelog file, exactly as the
+server serves it, to `.hatch/changelog.yml` under the checkout's root, and
+prints `written` or `unchanged` and the path. It does not mix with the flags
+above.
 
 Columns are found by name rather than by id, on the letters and digits alone,
 so `todo` reaches the column the board calls `To Do`. `hatch next` takes the

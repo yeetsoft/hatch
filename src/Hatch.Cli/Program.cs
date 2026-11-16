@@ -613,6 +613,7 @@ internal partial class Program
         "  hatch queue --mine           ...only your own",
         "  hatch changelog              what shipped, as markdown - the newest 7 days that shipped something",
         "  hatch changelog --days 30 --before 2026-09-01 --project AER --json",
+        "  hatch changelog --file       write .hatch/changelog.yml, and say whether it changed",
         "  hatch activity               one actor's rundown, as markdown - the key's owner, the last 14 days",
         "  hatch activity --actor <name> --days 7 --before 2026-09-12T17:00:00Z --project AER --json",
         "  hatch runners                one line per runner that has spoken lately, most recently heard from first",
