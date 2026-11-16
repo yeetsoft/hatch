@@ -1231,14 +1231,36 @@ rather than sorted in the browser, so the board, the plan and the queue cannot
 disagree about where a card sits — a card dropped above an emergency or
 expedited one comes to rest below it, and a card dropped below a paused one
 comes to rest above it, because the float and the sink both win over the
-rank. In the dispatcher it is [six walks of the columns](#the-dispatcher)
-rather than a sort of the finished rows — low walked fourth, economy walked
-fifth and paused walked last. Paused is always folded there, so it never
+rank. In the dispatcher it is [one walk of the columns per tier](#the-dispatcher)
+rather than a sort of the finished rows — an expedited project's work before
+any other project's, then low, then economy, and paused walked last. Paused is always folded there, so it never
 changes which issue `next` or a hop picks, only that `queue` can report it;
 low and economy are each gated rather than always folded, so unlike every
 other walk, a row reached on either pass can still be skipped by its own pace
 check for `next` and `queue` alike — a hop is exempt from both gates, the same
 way it is exempt from needing a playbook.
+
+**A project has a level of its own: paused, normal or expedited.** An owner
+sets it on the project (`PUT /api/projects/{id}/priority`), and it reaches
+every issue in the project — it is not inherited down a tree, because a
+project is not an issue's ancestor. An **expedited** project's clear work is
+picked up before any other project's, whatever column it stands in and
+whatever level its issues sit at: an expedited project's *normal* row goes
+before another project's *expedited* row. An emergency issue in any unpaused
+project still goes before an expedited project's work. Another project's clear
+rows read as parked, naming the expedited project and the project level they
+wait on — and only while the expedited project has a clear row. A runner that
+cannot work the expedited project at all (bound to another project, short of a
+runner tag, short of a declared dependency) folds every row in it with the
+usual sentence, so those rows are not clear, park nothing, and the runner is
+handed the next-best project's work. A **paused** project is set aside whole:
+every row in it is folded for `work/next`, `work/queue`, `work/{key}` and every
+hop with *project HA is paused - a person set it aside, and nothing in it picks
+up until they set it back*, kind `person`, an emergency issue included. The
+merge column's own judgement still comes first, so a merge-column row in a
+paused project keeps the merge judge's sentence. A paused project's rows also
+stop counting against the [WIP section](#wip), the way a paused issue's do.
+`QueueEntryDto.ProjectPriority` carries each row's project level.
 
 Setting it is closed to an API key; see [The one edge that is deliberately
 cut](#the-one-edge-that-is-deliberately-cut). It follows that there is no
@@ -5358,28 +5380,26 @@ furthest along over the line before it opens anything new. The second is what a
 person does when they mean to ship.
 
 **Except for what somebody marked off normal**, which is considered first or
-last wherever it sits. The scan walks the columns six times — every
-[emergency](#expedite) candidate right to left, then every
-[expedited](#expedite) candidate right to left, then everything else right to
-left, then every [low](#expedite) candidate right to left, then every
-[economy](#expedite) candidate right to left, then every
-[paused](#expedite) candidate right to left — so an emergency bug in the
-leftmost column is reached before an expedited story in the rightmost one,
-which is reached before a normal one in the rightmost one, which is reached
-before a low one wherever it sits, which is reached before an economy one
-wherever it sits, and inside each tier the order is the
-board's own. The level that puts a candidate in the first, second, fourth,
-fifth or sixth walk may be its own or inherited from an ancestor — the walk
-does not care which. The paused walk is always last and always folded, so it
+last wherever it sits. The scan walks the columns once per tier, each tier
+right to left: every [emergency](#expedite) candidate in a project that is not
+paused; then, for an expedited project and then for every other unpaused one,
+its expedited candidates, its normal ones, its low ones and its economy ones;
+last, every candidate that is paused itself or sits in a paused project. So an
+emergency bug in the leftmost column of any project is reached before an
+expedited project's economy story in the rightmost one, which is reached
+before another project's expedited one, and inside each tier the order is the
+board's own. The level that puts a candidate in a tier may be its own or
+inherited from an ancestor — the walk does not care which — and the project's
+level is [its own](#expedite). The last tier is always folded, so it
 never changes which issue `next` or a hop picks — only that `queue` can report
-it. The low and economy walks, unlike every other, are each gated rather than
+it. The low and economy tiers, unlike the others, are each gated rather than
 always folded: a row reached on either can still be folded by [its own pace
-check](#expedite), so unlike emergency, expedited or normal, reaching one of
-those two walks does not guarantee the row is clear. Since HA-239, every tier
+check](#expedite), so reaching one of those tiers does not guarantee the row
+is clear. Since HA-239, every tier
 below the first one with a clear candidate is parked instead: the first clear
 row seen, top down, names itself on every clear row in a strictly lower tier,
 and `queue` reports the park rather than reporting the lower tier as available
-when it is not. Six passes rather
+when it is not. One pass per tier rather
 than a sort of the finished rows, because the
 [published scan](#what-a-pass-skipped) is the explanation of what `next`
 picked, and a comparator applied afterwards would be a second opinion about
@@ -6967,6 +6987,14 @@ spawn or refuses, or a
 clean, checked review row a passing check would carry into the merge column
 but no check playbook covers the move for, among them: no new kind.
 
+**Two sentences come from a project's level.** A row in a paused project
+reads *project HA is paused - a person set it aside, and nothing in it picks up
+until they set it back*, kind `person`. A clear row in a project at normal,
+while an expedited project has a clear row, reads *HA-216 is in expedited
+project HA and is clear - nothing in a project at normal is picked up while an
+expedited project has work available*, kind `turn`. Each row's own project
+level is `QueueEntryDto.ProjectPriority`.
+
 **A ticket this runner let go of is folded for it while another could take
 it.** Send `?runner=<name>` (or `?asRunner=`) and a row whose newest claim
 outcome is that runner's `dropped` release reads `<runner> let this go N
@@ -7665,10 +7693,15 @@ which one it failed is what `work/queue` reports:
    window — until a person moves it, once `letGo` has reached `Hatch:StallResumeLimit`
    (naming the count and the limit). A fact about the issue like the claim and
    the hold before it, so `work/{key}` asks it too.
-5. **It is not paused, on its own row or on an ancestor's.** The nearest level
-   other than normal, found the same walk the board and `hatch show` read — a
+5. **It is not paused, on its own row, on an ancestor's, or by its project.**
+   The nearest level other than normal, found the same walk the board and
+   `hatch show` read — a
    person set it aside, and nothing picks it up until they set it back, named
-   with the ancestor when the level is inherited. A fact about the issue like
+   with the ancestor when the level is inherited. A paused *project* folds
+   every row in it, an emergency issue's included, with *project HA is paused -
+   a person set it aside, and nothing in it picks up until they set it back*,
+   kind `person`; it is asked after the merge column's judgement, the claim
+   and the stall, so a merge-column row keeps the judge's sentence. A fact about the issue like
    the claim before it, so `work/{key}` asks it too — unlike the ready date,
    [economy's and low's own gates](#expedite) and the assignee after them,
    which are the loop's own policy and are not.
@@ -7915,8 +7948,11 @@ which one it failed is what `work/queue` reports:
     8,000 - cut it into tasks first
     ```
 24. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
-    six levels are walked top down, once each, across every row the walk
-    reaches; the first *clear* row the walk sees is remembered, and every row
+    tiers are walked top down, once each, across every row the walk
+    reaches: emergency in an unpaused project; then an expedited project's
+    expedited, normal, low and economy rows; then every other unpaused
+    project's, in the same four; last what is paused. The first *clear* row the
+    walk sees is remembered, and every row
     in a tier strictly below that one that would otherwise be clear is folded
     instead, with a sentence naming that row and its level — so `work/queue`
     reports the park rather than listing a lower tier as available when it is
@@ -7928,6 +7964,17 @@ which one it failed is what `work/queue` reports:
     ```
     HA-216 ranks normal and is clear - nothing at economy is picked up while higher-ranking work is available
     ```
+
+    Where the row doing the parking sits in a project of a higher level than
+    the row it parks, and is not an emergency, the sentence names the project
+    instead:
+
+    ```
+    HA-216 is in expedited project HA and is clear - nothing in a project at normal is picked up while an expedited project has work available
+    ```
+
+    A caller that cannot work the expedited project is not parked: every row in
+    it is folded, and a folded row parks nothing.
 
     **A folded row parks nothing, whatever folds it** — a live claim, a
     running or unread build, an unmet dependency, open children that are the

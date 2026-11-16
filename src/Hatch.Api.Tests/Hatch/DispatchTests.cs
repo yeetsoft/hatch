@@ -164,6 +164,39 @@ public class DispatchTests
         Assert.Null(playbook);
     }
 
+    // ---- Tiers: a project's level orders the walk (HA-2355) ----
+
+    [Fact]
+    public async Task ScanAsync_WalksEmergencyThenAnExpeditedProjectThenTheRestThenWhatIsPaused()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet");
+        var fast = await h.AddProjectAsync("FST");
+        var held = await h.AddProjectAsync("HLD");
+        (await h.Db.Projects.SingleAsync(p => p.Id == fast)).Priority = global::Hatch.Contracts.ProjectPriorities.Expedited;
+        (await h.Db.Projects.SingleAsync(p => p.Id == held)).Priority = global::Hatch.Contracts.ProjectPriorities.Paused;
+        await h.Db.SaveChangesAsync();
+
+        var pausedProjectsRow = await h.FileAsync("story", "in the paused project", h.Todo, projectId: held);
+        var normalProjectsExpedited = await h.FileAsync("story", "expedited, normal project", h.Todo);
+        var expeditedProjectsNormal = await h.FileAsync("story", "normal, expedited project", h.Todo, projectId: fast);
+        var emergency = await h.FileAsync("bug", "emergency, normal project", h.Todo);
+        normalProjectsExpedited.Priority = global::Hatch.Contracts.PriorityLevels.Expedited;
+        emergency.Priority = global::Hatch.Contracts.PriorityLevels.Emergency;
+        await h.Db.SaveChangesAsync();
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Equal(
+            new[] { emergency, expeditedProjectsNormal, normalProjectsExpedited, pausedProjectsRow }.Select(i => i.Id),
+            scan.Rows.Select(r => r.Issue.Id));
+        Assert.Contains("ranks emergency", RowFor(scan, expeditedProjectsNormal).Blocked);
+        // The emergency is the first clear row, so it is the one both below it name.
+        Assert.Contains("ranks emergency", RowFor(scan, normalProjectsExpedited).Blocked);
+        Assert.Equal(global::Hatch.Contracts.ProjectPriorities.Paused, RowFor(scan, pausedProjectsRow).ProjectLevel);
+        Assert.StartsWith("project HLD is paused", RowFor(scan, pausedProjectsRow).Blocked);
+    }
+
     // ---- Folding: a bad resolution folds every move ----
 
     [Fact]

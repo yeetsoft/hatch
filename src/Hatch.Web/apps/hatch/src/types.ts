@@ -1715,6 +1715,9 @@ export interface QueueEntry {
       where `takers` has fewer than two names; null or absent where not judged.
       As on `QueueEntryDto`. */
   untaken?: RunnerReason[] | null;
+  /** The level of the project this row's issue sits in: `paused`, `normal` or
+      `expedited`. As on `QueueEntryDto`. */
+  projectPriority?: ProjectPriority | null;
 }
 
 /** A live runner and the one reason it cannot take a step. Mirrors

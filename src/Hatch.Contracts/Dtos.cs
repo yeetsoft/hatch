@@ -2829,6 +2829,11 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// can take it. Null alongside a null <paramref name="Takers"/>; empty when
 /// two or more can.
 /// </param>
+/// <param name="ProjectPriority">
+/// The level of the project the issue sits in - one of
+/// <see cref="ProjectPriorities.All"/>. The dispatcher works an expedited
+/// project's clear rows first and never picks up a paused project's.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -2845,7 +2850,8 @@ public record QueueEntryDto(
     bool Deadlocked = false,
     IReadOnlyList<string>? Takers = null,
     IReadOnlyList<RunnerReasonDto>? Untaken = null,
-    string? TrainNote = null);
+    string? TrainNote = null,
+    string? ProjectPriority = null);
 
 /// <summary>
 /// One live runner that cannot take a queue row right now, and why - see
