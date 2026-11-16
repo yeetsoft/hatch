@@ -308,6 +308,11 @@ public static class OutsidePullRequests
             foreach (var checkout in checkouts)
             {
                 if (Resolve(checkout.Remote, trunks, projects) is not { } home) continue;
+                if (!home.Project.FilesContributions)
+                {
+                    lines.Add($"hatch: {home.Project.Key} does not file outside pull requests");
+                    continue;
+                }
 
                 var canonical = trunks.First(t => t.Remote == checkout.Remote).Canonical;
                 var forge = cli.Forge(checkout.Path, canonical);
@@ -409,6 +414,7 @@ public sealed class OutsideFiler
 
             if (OutsidePullRequests.Resolve(checkout.Remote, trunks, projects) is not { } home) continue;
             if (!runtime.Readout.Drives(home.Project.Key)) continue;
+            if (!home.Project.FilesContributions) continue;
 
             var canonical = trunks.First(t => t.Remote == checkout.Remote).Canonical;
             var name = Path.GetFileName(checkout.Path.TrimEnd('/', '\\'));

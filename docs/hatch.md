@@ -1795,7 +1795,10 @@ with a record naming the origin and no pull request, the pull request's own
 ticket under the nearest — which is what makes [an epic-level
 approval](#the-approval-column) possible. `RunnersWorkContributions` on the
 project decides whether a runner works a contribution's branch when it
-conflicts or its build fails; by default it does not.
+conflicts or its build fails; by default it does not. `FilesContributions` on
+the project decides whether the filer creates one at all for an outside pull
+request on that project's repositories, and `hatch queue` says so in one line
+rather than listing what it passed over; off by default.
 
 ### Dependency
 
