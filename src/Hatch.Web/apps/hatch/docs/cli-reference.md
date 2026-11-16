@@ -481,10 +481,13 @@ filed - it is a draft`. The reasons are too young (under ten minutes), a draft,
 a fork, a branch named for an issue of any project on the board, a base other
 than the bound one, and an author who is not a member, owner or collaborator
 ([the merge train](review-pull-requests-and-the-merge-train#the-merge-train)
-has the filing itself). They print after the empty-board sentence too. It is
-best effort and files nothing: a board or a forge that will not say prints
-nothing extra, and it reads the author's relationship to the repository only
-for a pull request that passes every other check.
+has the filing itself). Run inside a checkout of a repository whose project
+does not file (`filesContributions` off), `queue` instead prints one line
+saying so and reads no pull request from the forge. They print after the
+empty-board sentence too. It is best effort and files nothing: a board or a
+forge that will not say prints nothing extra, and it reads the author's
+relationship to the repository only for a pull request that passes every
+other check.
 
 `queue` asks the board which live runners could take each clear row right
 now - `next` and `work` do not - so a row's own line can end with a second

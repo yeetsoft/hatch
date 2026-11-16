@@ -1439,7 +1439,11 @@ public sealed class BoardCommandsTests
             "feature/x", "octocat", false, "Fix", "Body", new DateTimeOffset(2026, 9, 27, 0, 0, 0, TimeSpan.Zero));
 
     /// <summary>A checkout of a bound repository, a forge that lists one draft pull request in it, and the board's side of that.</summary>
-    private static (CliHarness H, FakeForge Forge, Cli Cli) InACheckout(params QueueEntryDto[] queue)
+    private static (CliHarness H, FakeForge Forge, Cli Cli) InACheckout(params QueueEntryDto[] queue) =>
+        InACheckout(true, queue);
+
+    /// <summary>A checkout of a bound repository, a forge that lists one draft pull request in it, and the board's side of that.</summary>
+    private static (CliHarness H, FakeForge Forge, Cli Cli) InACheckout(bool filesContributions, params QueueEntryDto[] queue)
     {
         var h = new CliHarness(clock: new FrozenClock(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero)));
         var forge = new FakeForge
@@ -1453,7 +1457,8 @@ public sealed class BoardCommandsTests
         {
             new ProjectDto(
                 1, "AER", "Aerie", 0, DateTimeOffset.UnixEpoch, null, null,
-                [new ProjectRepositoryDto("https://example.test/repo.git", Fixtures.MergeCanonical, null)], null, [], false, false),
+                [new ProjectRepositoryDto("https://example.test/repo.git", Fixtures.MergeCanonical, null)], null, [], false, false,
+                FilesContributions: filesContributions),
         });
         h.Wire.Json("GET", "/api/issues", Array.Empty<IssueCardDto>());
 
@@ -1478,6 +1483,21 @@ public sealed class BoardCommandsTests
             $"AER-1  [task]  In Progress  -> In Review\nhatch: pull request #50 ({OutsideUrl}) is not filed - it is a draft",
             h.Said);
         Assert.Empty(forge.AssociationReads);
+    }
+
+    [Fact]
+    public async Task A_queue_run_for_a_project_with_files_contributions_off_says_so_once_and_reads_no_pull_request()
+    {
+        var (h, forge, cli) = InACheckout(
+            false, new QueueEntryDto(Fixtures.Issue("AER-1"), Fixtures.Status(3, "In Progress"), Fixtures.Status(4, "In Review"), null));
+        using var _ = h;
+
+        Assert.Equal(0, await new BoardCommands(cli).QueueAsync([], default));
+
+        Assert.Equal(
+            "AER-1  [task]  In Progress  -> In Review\nhatch: AER does not file outside pull requests",
+            h.Said);
+        Assert.Empty(forge.PullRequestListReads);
     }
 
     [Fact]

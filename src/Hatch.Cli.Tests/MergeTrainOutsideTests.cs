@@ -18,9 +18,12 @@ public sealed partial class MergeTrainTests
     private const string FiledComments = "/api/issues/AER-50/comments";
 
     private static ProjectDto AProject(int id, string key, params string[] canonicals) =>
+        AProject(id, key, true, canonicals);
+
+    private static ProjectDto AProject(int id, string key, bool filesContributions, params string[] canonicals) =>
         new(id, key, key, 0, DateTimeOffset.UnixEpoch, null, null,
             [.. canonicals.Select(c => new ProjectRepositoryDto($"https://{c}.git", c, null))],
-            null, [], false, false);
+            null, [], false, false, FilesContributions: filesContributions);
 
     /// <summary>A pull request the forge lists, opened an hour and a half before the rig's clock by default.</summary>
     private static PullRequestAnswer Outsider(
@@ -366,6 +369,22 @@ public sealed partial class MergeTrainTests
         Assert.Empty(rig.H.Wire.To("POST", Issues));
         Assert.Empty(rig.H.Forge.AssociationReads);
         Assert.Empty(rig.H.Forge.PullRequestListReads);
+    }
+
+    [Fact]
+    public async Task A_project_with_files_contributions_off_files_nothing_and_reads_no_pull_request()
+    {
+        using var rig = Outside(Outsider());
+        rig.H.Wire.Replace("GET", Projects, HttpStatusCode.OK, AsJson(new[]
+        {
+            AProject(1, "AER", false, Fixtures.MergeCanonical),
+        }));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("POST", Issues));
+        Assert.Empty(rig.H.Forge.PullRequestListReads);
+        Assert.Empty(rig.H.Say.Said);
     }
 
     [Fact]
