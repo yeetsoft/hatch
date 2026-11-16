@@ -175,6 +175,21 @@ refusal's own sentence. Anyone who is not an owner sees a plain mark
 instead — one filled glyph, for a project already expedited or
 paused — and nothing for a project at its normal level.
 
+Beside the trigger, never inside it, a small cluster says which projects are
+expedited or paused without opening the panel. A green up arrow leads a run
+of pills, one for each expedited project; a pause mark leads a second run for
+the paused ones. Each pill is in its project's own colour and carries its key,
+and the pills overlap slightly, the first on top. Hovering a run names it, as
+*Expedited projects: …* or *Paused projects: …*. Nothing is drawn when no
+project is expedited or paused. The same glyphs also sit inside the trigger,
+before its caret, so pressing one opens the panel like the rest of the
+trigger. An owner sees an **×** on a pill when the pointer or focus is on it
+(always, on a touch screen, which has no hover); pressing it sets that
+project back to normal and the pill goes at once, with no reload. Anyone who
+is not an owner sees plain pills, each titled with the project's name, and no
+×. On the phone the cluster wraps onto its own line under the trigger, and
+each pill is at least 44px tall to press.
+
 The scope lives in the address bar, as `?scope=KEY,KEY` — project keys,
 comma-separated. A link you click carries the tab's own scope forward; a
 link you paste or are sent means exactly what it says, with no
