@@ -29,6 +29,9 @@ const FLOW_KINDS = ['turn', 'family', 'person', 'other'] as const;
 /** `--success-fill` takes `--success`'s final hue plus its authored hue offset; it is no family of its own. */
 export const SUCCESS_FILL = '--success-fill';
 
+/** The scope control's expedite arrow: authored from `--success-fill`, the same way and for the same reason - no family of its own. */
+export const LEVEL_UP = '--level-up';
+
 export const CHROME = '--chrome';
 export const CHROME_END = '--chrome-end';
 export const CHROME_GLOW = '--chrome-glow';
@@ -94,7 +97,7 @@ const DERIVED = [
 
 const table: [string, Role][] = [
   ...NEUTRALS.map((token): [string, Role] => [token, 'neutral']),
-  ...[...ACCENTS, SUCCESS_FILL].map((token): [string, Role] => [token, 'accent']),
+  ...[...ACCENTS, SUCCESS_FILL, LEVEL_UP].map((token): [string, Role] => [token, 'accent']),
   ...DERIVED.map((token): [string, Role] => [token, 'derived']),
   ...FIXED.map((token): [string, Role] => [token, 'fixed']),
 ];

@@ -159,6 +159,22 @@ project as a checkbox — ticking or unticking one writes the scope
 immediately, and unticking the last one means every project again, same
 as never scoping at all.
 
+Each row also carries that project's level, next to its name. An owner of
+the project sees two buttons: a green up arrow that expedites it, and a
+pause mark that pauses it. A glyph is outlined when the project is not at
+its level and filled solid when it is; it half-fills while the pointer or
+the keyboard focus sits on it, before anything has changed. Pressing the
+arrow on a normal or paused project expedites it; pressing it again on an
+expedited one sets it back to normal. Pressing pause on a normal or
+expedited project pauses it; pressing it again on a paused one sets it
+back to normal. Only one level holds at a time, so expediting a paused
+project or pausing an expedited one moves it straight to the new level,
+with no stop at normal in between. The row redraws at once on a press, and
+if the write is refused the row goes back and the panel shows the
+refusal's own sentence. Anyone who is not an owner sees a plain mark
+instead — one filled glyph, for a project already expedited or
+paused — and nothing for a project at its normal level.
+
 The scope lives in the address bar, as `?scope=KEY,KEY` — project keys,
 comma-separated. A link you click carries the tab's own scope forward; a
 link you paste or are sent means exactly what it says, with no

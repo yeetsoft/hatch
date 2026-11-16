@@ -80,11 +80,20 @@ export interface ProjectDraftDiff {
 
 function sameRepositories(a: ProjectRepositoryWriteRequest[], b: ProjectRepositoryWriteRequest[]): boolean {
   if (a.length !== b.length) return false;
-  return a.every((entry, i) => entry.remote === b[i].remote && entry.baseBranch === b[i].baseBranch);
+  return a.every(
+    (entry, i) =>
+      entry.remote === b[i].remote &&
+      entry.baseBranch === b[i].baseBranch &&
+      (entry.changelog ?? false) === (b[i].changelog ?? false),
+  );
 }
 
 export function openProjectDraft(project: Project): ProjectDraft {
-  const repositories = project.repositories.map(({ remote, baseBranch }) => ({ remote, baseBranch }));
+  const repositories = project.repositories.map(({ remote, baseBranch, changelog }) => ({
+    remote,
+    baseBranch,
+    changelog,
+  }));
   const runnerTags = project.runnerTags ?? [];
   return {
     known: {

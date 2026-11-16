@@ -1418,6 +1418,37 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public void A_row_in_an_expedited_project_is_above_a_normal_spawn()
+    {
+        var queue = new[] { Fixtures.Row("AER-1", "Blocked", projectPriority: ProjectPriorities.Expedited) };
+
+        Assert.Equal(["AER-1"], Digest.Above(queue, PriorityLevels.NormalName).Select(q => q.Issue.Key));
+    }
+
+    [Fact]
+    public void A_normal_row_is_below_a_spawn_in_an_expedited_project()
+    {
+        var queue = new[]
+        {
+            Fixtures.Row("AER-1", "Blocked", priority: PriorityLevels.ExpeditedName),
+            Fixtures.Row("AER-2", "Blocked", projectPriority: ProjectPriorities.Expedited),
+            Fixtures.Row("AER-3", "Blocked", priority: PriorityLevels.EmergencyName),
+        };
+
+        // A normal row of an expedited project is level with the spawn, and an
+        // expedited issue in a normal project is below it.
+        Assert.Equal(["AER-3"], Digest.Above(queue, PriorityLevels.NormalName, ProjectPriorities.Expedited).Select(q => q.Issue.Key));
+    }
+
+    [Fact]
+    public void A_row_in_a_paused_project_is_never_above()
+    {
+        var queue = new[] { Fixtures.Row("AER-1", "Blocked", priority: PriorityLevels.EmergencyName, projectPriority: ProjectPriorities.Paused) };
+
+        Assert.Empty(Digest.Above(queue, PriorityLevels.EconomyName));
+    }
+
+    [Fact]
     public void A_clear_row_is_never_returned_regardless_of_priority()
     {
         var queue = new[] { Fixtures.Row("AER-1", blocked: null, priority: PriorityLevels.EmergencyName) };

@@ -398,9 +398,12 @@ is, where a limit is set. Takes nothing and writes nothing.
 Each column is one line, `<Name>: <count>`, with ` (terminal)` or ` (deferred)`
 after the name on a column that is one. Past the count it marks the cards that
 are not ordinary, and only the marks that have any: `(n emergency)`,
-`(n expedited)`, `(n low)`, `(n economy)` and `(n paused)` for priority, then
+`(n expedited)`, `(n low)`, `(n economy)` and `(n paused)` for priority, then `(n in expedited projects)`
+and `(n in paused projects)` for cards whose project carries that level, then
 `(n express)` and `(n pre-approved)` for a card that carries its approval in
 advance. A stock board has none of these, so its lines are a name and a number.
+The project counts come from the project list; a Hatch that cannot give it
+prints the line without them.
 
 ### next
 
@@ -411,6 +414,8 @@ hatch next [<column>]
 Prints the top workable card of a column, `todo` by default. The column is
 found by its letters and digits alone, so `todo` reaches `To Do`. Cards whose
 ready date has not arrived are folded past, the way the board folds them.
+A card of a paused project is folded past too, as a paused card is, and a card
+of an expedited project ends with `  (project expedited)`.
 
 ### queue
 
@@ -444,6 +449,11 @@ A row's marker says where the pass puts it:
   considered last of all.
 - `||` is paused. A person set it aside, and nothing picks it up until they
   set it back.
+- `!p` is a row in an expedited project, taken before other projects' rows
+  at the same level, and `|p` is a row in a paused project, which nothing picks
+  up whatever its own level. `|p` is shown ahead of `!!`, since the pass sets a
+  paused project aside before it looks at a row's level. The marker column
+  shows when any row has a level, or a project, off normal.
 - A runner bound to projects folds past an issue in any other project, in a
   sentence such as `AER-12 is in project AER - this runner is bound to FIL and
   HA`. Hops are folded too: a runner does not carry a ticket on in a project it
@@ -622,7 +632,9 @@ and absent where they do not apply. The
 description is markdown and goes to the terminal as it was written. A ticket
 that is expedited, emergency, low, economy, paused, express or pre-approved
 says so, and a level it holds only because an ancestor carries it names that
-ancestor. A ticket that requires a runner tag says so too, naming the project or
+ancestor. A ticket in an expedited or paused project also gets a
+`priority:  project <KEY> expedited` or `paused` line after its own, and a
+normal project prints nothing. A ticket that requires a runner tag says so too, naming the project or
 the ancestor issue each tag beyond its own came from. A ticket with omitted runners lists each one with its reason, who omitted it and how long ago, in the shape `hatch omit AER-12` reads, with `(from AER-3)` on one an ancestor carries, and says nothing of them when there are none. None of those can be set from here: the key is a key, and each is a
 person's write. A ticket a live runner holds says so on a `runner:` line - who
 holds it, since when, and how long ago it was last heard from, with what it

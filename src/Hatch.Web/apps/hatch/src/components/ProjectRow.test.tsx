@@ -68,8 +68,8 @@ describe('ProjectRow', () => {
     const project: Project = {
       ...BASE,
       repositories: [
-        { remote: 'git@github.com:yeetsoft/aer.git', canonical: 'github.com/yeetsoft/aer', baseBranch: null },
-        { remote: 'git@github.com:yeetsoft/aer2.git', canonical: 'github.com/yeetsoft/aer2', baseBranch: null },
+        { remote: 'git@github.com:yeetsoft/aer.git', canonical: 'github.com/yeetsoft/aer', baseBranch: null, changelog: false },
+        { remote: 'git@github.com:yeetsoft/aer2.git', canonical: 'github.com/yeetsoft/aer2', baseBranch: null, changelog: false },
       ],
     };
     const html = renderToStaticMarkup(<ProjectRow project={project} onEdit={noop} onDelete={noop} onClaim={noop} />);

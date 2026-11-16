@@ -157,6 +157,11 @@
   --success-bg: rgba(56, 142, 60, 0.08);
   --success-ink: #1b5e20;
   --success-fill: #2e7d32;
+  /* The scope control's expedite arrow alone - everything else that means
+     "good" uses --success. Starts from --success-fill, authored per theme
+     like the flow-viz tokens below; apps/hatch/src/lib/tokens.test.ts checks
+     it clears 3:1 against --card in both. */
+  --level-up: #2e7d32;
   /* The fourth accent: something is not wrong yet and wants looking at before
      it is. Amber rather than orange so it is not mistaken for --danger at a
      glance down a column, and dark enough in light mode that --warn-ink on
@@ -314,6 +319,7 @@
     --success-bg: rgba(102, 187, 106, 0.12);
     --success-ink: #99e699;
     --success-fill: #66bb6a;
+    --level-up: #66bb6a;
     --warn: #ffb74d;
     --warn-bg: rgba(255, 183, 77, 0.14);
     --warn-ink: #ffd08a;
@@ -377,6 +383,7 @@
   --success-bg: rgba(102, 187, 106, 0.12);
   --success-ink: #99e699;
   --success-fill: #66bb6a;
+  --level-up: #66bb6a;
   --warn: #ffb74d;
   --warn-bg: rgba(255, 183, 77, 0.14);
   --warn-ink: #ffd08a;

@@ -113,8 +113,8 @@ describe('shortSha', () => {
 describe('boundCanonicals', () => {
   it('collects every repository across every project', () => {
     const projects = [
-      project({ repositories: [{ remote: 'r1', canonical: 'forge.example/owner/one', baseBranch: null }] }),
-      project({ repositories: [{ remote: 'r2', canonical: 'forge.example/owner/two', baseBranch: null }] }),
+      project({ repositories: [{ remote: 'r1', canonical: 'forge.example/owner/one', baseBranch: null, changelog: false }] }),
+      project({ repositories: [{ remote: 'r2', canonical: 'forge.example/owner/two', baseBranch: null, changelog: false }] }),
     ];
 
     expect(boundCanonicals(projects)).toEqual(
@@ -165,7 +165,7 @@ describe('projectsReading', () => {
   it('returns a repo-sourced project whose primary baseBranch names the file trunk', () => {
     const p = project({
       repoSourced: true,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main', changelog: false }],
     });
 
     expect(projectsReading(f, [p], [f])).toEqual([p]);
@@ -174,7 +174,7 @@ describe('projectsReading', () => {
   it('excludes a project whose primary baseBranch names a different trunk', () => {
     const p = project({
       repoSourced: true,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'develop' }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'develop', changelog: false }],
     });
 
     expect(projectsReading(f, [p], [f])).toEqual([]);
@@ -183,7 +183,7 @@ describe('projectsReading', () => {
   it('returns a project with no baseBranch when it is the only loaded file for its canonical', () => {
     const p = project({
       repoSourced: true,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null, changelog: false }],
     });
 
     expect(projectsReading(f, [p], [f])).toEqual([p]);
@@ -193,7 +193,7 @@ describe('projectsReading', () => {
     const other = file({ canonical: f.canonical, trunk: 'develop' });
     const p = project({
       repoSourced: true,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null, changelog: false }],
     });
 
     expect(projectsReading(f, [p], [f, other])).toEqual([]);
@@ -202,7 +202,7 @@ describe('projectsReading', () => {
   it('excludes a project that is not repo-sourced, regardless of its repositories', () => {
     const p = project({
       repoSourced: false,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main', changelog: false }],
     });
 
     expect(projectsReading(f, [p], [f])).toEqual([]);
@@ -217,7 +217,7 @@ describe('projectsReading', () => {
   it('excludes a project whose primary canonical does not match the file at all', () => {
     const p = project({
       repoSourced: true,
-      repositories: [{ remote: 'r', canonical: 'forge.example/owner/other', baseBranch: 'main' }],
+      repositories: [{ remote: 'r', canonical: 'forge.example/owner/other', baseBranch: 'main', changelog: false }],
     });
 
     expect(projectsReading(f, [p], [f])).toEqual([]);
@@ -230,7 +230,7 @@ describe('fileForProject', () => {
   it("returns the file matching a repo-sourced project's canonical and base branch", () => {
     const p = project({
       repoSourced: true,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main', changelog: false }],
     });
 
     expect(fileForProject(p, [f])).toEqual(f);
@@ -239,7 +239,7 @@ describe('fileForProject', () => {
   it('falls back to the one file for the canonical when the project has no base branch', () => {
     const p = project({
       repoSourced: true,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: null, changelog: false }],
     });
 
     expect(fileForProject(p, [f])).toEqual(f);
@@ -248,7 +248,7 @@ describe('fileForProject', () => {
   it('returns null for a project that is not repo-sourced', () => {
     const p = project({
       repoSourced: false,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main', changelog: false }],
     });
 
     expect(fileForProject(p, [f])).toBeNull();
@@ -257,7 +257,7 @@ describe('fileForProject', () => {
   it.each(['absent', 'invalid'])('returns null when the project\'s file is %s', (state) => {
     const p = project({
       repoSourced: true,
-      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main' }],
+      repositories: [{ remote: 'r', canonical: f.canonical, baseBranch: 'main', changelog: false }],
     });
     const bad = file({ canonical: f.canonical, trunk: 'main', state });
 

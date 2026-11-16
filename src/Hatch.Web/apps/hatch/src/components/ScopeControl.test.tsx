@@ -6,13 +6,13 @@ import type { Project } from '../types';
 const noop = () => {};
 const one = [{ key: 'HA', name: 'Hatch' }] as Project[];
 const three = [
-  { key: 'HA', name: 'Hatch' },
-  { key: 'AER', name: 'Aerie' },
-  { key: 'GL', name: 'glasshole' },
+  { key: 'HA', name: 'Hatch', priority: 'normal' },
+  { key: 'AER', name: 'Aerie', priority: 'normal' },
+  { key: 'GL', name: 'glasshole', priority: 'normal' },
 ] as Project[];
 
 function render(projects: Project[], keys: string[]) {
-  return renderToStaticMarkup(<ScopeControl projects={projects} keys={keys} onChange={noop} />);
+  return renderToStaticMarkup(<ScopeControl projects={projects} keys={keys} onChange={noop} onApply={noop} />);
 }
 
 /** Just the trigger, ahead of the panel - so a check for a key's chip markup
@@ -134,5 +134,49 @@ describe('ScopeControl', () => {
   it('draws no global None beside All, since None would just mean every project again', () => {
     const html = render(three, ['AER']);
     expect(html).not.toContain('>None<');
+  });
+
+  it('gives an owner an expedite arrow and a pause button, between the name and Only', () => {
+    const owner = [{ key: 'HA', name: 'Hatch', priority: 'normal', canAdminister: true }, ...three.slice(1)] as Project[];
+    const row = rows(render(owner, []))[0];
+    const label = row.match(/<label[\s\S]*?<\/label>/)![0];
+    const afterLabel = row.slice(row.indexOf(label) + label.length);
+    const onlyIndex = afterLabel.indexOf('hatch-types-only');
+    expect(afterLabel.indexOf('hatch-scope-control__level--expedite')).toBeGreaterThan(-1);
+    expect(afterLabel.indexOf('hatch-scope-control__level--pause')).toBeGreaterThan(-1);
+    expect(afterLabel.indexOf('hatch-scope-control__level--expedite')).toBeLessThan(onlyIndex);
+    expect(afterLabel.indexOf('hatch-scope-control__level--pause')).toBeLessThan(onlyIndex);
+  });
+
+  it.each(['normal', 'expedited', 'paused'] as const)(
+    'shows the right pair of glyph states for an owner at %s',
+    (priority) => {
+      const owner = [{ key: 'HA', name: 'Hatch', priority, canAdminister: true }, ...three.slice(1)] as Project[];
+      const row = rows(render(owner, []))[0];
+      const arrow = row.match(/<button[^>]*hatch-scope-control__level--expedite[^>]*>[\s\S]*?<\/button>/)![0];
+      const pause = row.match(/<button[^>]*hatch-scope-control__level--pause[^>]*>[\s\S]*?<\/button>/)![0];
+
+      expect(arrow).toContain(priority === 'expedited' ? 'aria-pressed="true"' : 'aria-pressed="false"');
+      expect(pause).toContain(priority === 'paused' ? 'aria-pressed="true"' : 'aria-pressed="false"');
+      expect(arrow).toContain(priority === 'expedited' ? 'Stop expediting HA — Hatch' : 'Expedite HA — Hatch');
+      expect(pause).toContain(priority === 'paused' ? 'Resume HA — Hatch' : 'Pause HA — Hatch');
+    },
+  );
+
+  it('draws no level button for a non-owner, marking only a project already at a level', () => {
+    const viewer = [
+      { key: 'HA', name: 'Hatch', priority: 'normal', canAdminister: false },
+      { key: 'AER', name: 'Aerie', priority: 'expedited', canAdminister: false },
+      { key: 'GL', name: 'glasshole', priority: 'paused', canAdminister: false },
+    ] as Project[];
+    const rs = rows(render(viewer, []));
+
+    for (const row of rs) expect(row).not.toContain('hatch-scope-control__level ');
+
+    expect(rs[0]).not.toContain('hatch-scope-control__level-mark');
+    expect(rs[1]).toContain('title="Expedited"');
+    expect(rs[1]).toContain('aria-label="Expedited"');
+    expect(rs[2]).toContain('title="Paused"');
+    expect(rs[2]).toContain('aria-label="Paused"');
   });
 });
