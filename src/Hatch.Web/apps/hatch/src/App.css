@@ -1111,6 +1111,56 @@
   white-space: nowrap;
 }
 
+/* The two level buttons, between the name and Only - always visible, unlike
+   Only, since a glyph already at outline is itself the "nothing to notice"
+   state. Both are bare: no border or background, just the glyph in its
+   colour. The arrow takes --level-up, the one green in the row; pause takes
+   the ordinary ink, since the brief gives colour to expedite alone. */
+.hatch-scope-control__level,
+.hatch-scope-control__level-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.hatch-scope-control__level {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.hatch-scope-control__level--expedite {
+  color: var(--level-up);
+}
+
+.hatch-scope-control__level:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hatch-scope-control__level-mark {
+  color: var(--muted);
+}
+
+/* A finger's height, the same 44px floor as .hatch-types-only. */
+@media (pointer: coarse) {
+  .hatch-scope-control__level {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+.hatch-scope-control__error {
+  padding: var(--sp-1) var(--sp-3);
+  color: var(--danger-ink);
+  font-size: var(--t-micro);
+}
+
 /* A card's assignee, claim mark and the rest, in a one-line row of their
    own so they never push the head into a second line the way the old
    single flex row did. Drawn only when the card carries at least one. */
