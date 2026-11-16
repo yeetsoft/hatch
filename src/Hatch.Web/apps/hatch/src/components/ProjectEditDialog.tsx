@@ -21,6 +21,7 @@ import {
   putProjectLogo,
   putProjectMember,
   putProjectPlaybooksSource,
+  putProjectPriority,
   putProjectReflection,
   putProjectRepositories,
   putProjectRunnerTags,
@@ -39,6 +40,7 @@ import {
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
+  projectPriorityDiff,
   projectLandingDiff,
   projectReflectionDiff,
   reflectionWaitsForPerson,
@@ -46,6 +48,7 @@ import {
   projectRunnerTagsDiff,
   type ProjectDraft,
 } from '../lib/projectDraft';
+import { levelAfterPress } from '../lib/projectLevel';
 import { runnerTagsSentence } from '../lib/runnerTags';
 import {
   hasOwner,
@@ -63,7 +66,8 @@ import { pullRequestWords } from '../lib/pullRequest';
 import { hasMergeColumn } from '../lib/protectedColumns';
 import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/repositories';
 import { useLoaded } from '../lib/useLoaded';
-import type { Project } from '../types';
+import type { Project, ProjectPriority } from '../types';
+import { LevelButton } from './LevelButton';
 import { PreApprovalControl } from './PreApprovalControl';
 import { PriorityControl } from './PriorityControl';
 import { ProjectIconPicker } from './ProjectIconPicker';
@@ -97,6 +101,7 @@ export function ProjectEditDialog({
   const [remote, setRemote] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
   const [logoPending, setLogoPending] = useState<LogoPending>(null);
+  const [level, setLevel] = useState<ProjectPriority>('normal');
   const [saving, setSaving] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [reflecting, setReflecting] = useState(false);
@@ -129,6 +134,7 @@ export function ProjectEditDialog({
     setRemote('');
     setBaseBranch('');
     setLogoPending(null);
+    setLevel(project.priority);
     setError(null);
     setReflectError(null);
   }
@@ -202,6 +208,7 @@ export function ProjectEditDialog({
     const storiesOnEpicsDiff = projectStoriesOnEpicsDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
     const runnerTagsDiff = projectRunnerTagsDiff(draft!);
+    const levelDiff = projectPriorityDiff(level, project!);
     const membersDiff = projectMembersDiff(membersDraft!);
     if (
       diff.patch === null &&
@@ -216,6 +223,7 @@ export function ProjectEditDialog({
       storiesOnEpicsDiff === null &&
       reflectionDiff === null &&
       runnerTagsDiff === null &&
+      levelDiff === null &&
       logoPending === null &&
       membersDiff.puts.length === 0 &&
       membersDiff.deletes.length === 0
@@ -239,6 +247,7 @@ export function ProjectEditDialog({
       if (storiesOnEpicsDiff !== null) await putProjectStoriesOnEpics(project!.id, storiesOnEpicsDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
+      if (levelDiff !== null) await putProjectPriority(project!.id, levelDiff);
       for (const put of membersDiff.puts) await putProjectMember(project!.id, put.personId, put.role);
       for (const personId of membersDiff.deletes) await deleteProjectMember(project!.id, personId);
       if (logoPending === 'removed') await deleteProjectLogo(project!.id);
@@ -742,6 +751,35 @@ export function ProjectEditDialog({
           </>
         ) : (
           <p>Stories {project.storiesOnEpics ? 'shown on their epics' : 'shown on the board'}.</p>
+        )}
+
+        {(project.canAdminister || project.priority !== 'normal') && (
+          <>
+            <h2 className="hatch-section-title">Level</h2>
+            {project.canAdminister ? (
+              <>
+                <div className="hatch-dialog-level">
+                  <LevelButton
+                    current={level}
+                    name={`${project.key} — ${project.name}`}
+                    glyph="expedite"
+                    onPress={() => setLevel(levelAfterPress(level, 'expedite'))}
+                  />
+                  <LevelButton
+                    current={level}
+                    name={`${project.key} — ${project.name}`}
+                    glyph="pause"
+                    onPress={() => setLevel(levelAfterPress(level, 'pause'))}
+                  />
+                </div>
+                <p className="hatch-section-hint text-muted">
+                  An expedited project's tickets are worked first; a paused one's are not worked at all.
+                </p>
+              </>
+            ) : (
+              <p>{project.priority === 'expedited' ? 'Expedited.' : 'Paused.'}</p>
+            )}
+          </>
         )}
 
         <h2 className="hatch-section-title">Members</h2>

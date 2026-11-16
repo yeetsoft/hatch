@@ -514,4 +514,42 @@ describe('ProjectEditDialog', () => {
       expect(html.slice(start, start + 60)).toContain('disabled=""');
     });
   });
+
+  describe('the project level', () => {
+    const button = (html: string) => html.match(/<button[^>]*hatch-scope-control__level[^>]*>/g) ?? [];
+    const pressed = (html: string) => button(html).filter((b) => b.includes('aria-pressed="true"'));
+
+    it('gives an owner at normal both buttons under Level, neither pressed', () => {
+      const html = render(project({ canAdminister: true, priority: 'normal' }));
+
+      expect(html).toContain('>Level</h2>');
+      expect(button(html)).toHaveLength(2);
+      expect(pressed(html)).toHaveLength(0);
+    });
+
+    it('presses pause for an owner at paused', () => {
+      const html = render(project({ canAdminister: true, priority: 'paused' }));
+
+      expect(pressed(html)).toHaveLength(1);
+      expect(pressed(html)[0]).toContain('hatch-scope-control__level--pause');
+    });
+
+    it('reads a paused or expedited project to a non-owner as a sentence, with no button', () => {
+      const paused = render(project({ canAdminister: false, priority: 'paused' }));
+      const expedited = render(project({ canAdminister: false, priority: 'expedited' }));
+
+      expect(paused).toContain('<p>Paused.</p>');
+      expect(expedited).toContain('<p>Expedited.</p>');
+      expect(button(paused)).toHaveLength(0);
+      expect(button(expedited)).toHaveLength(0);
+    });
+
+    it('shows a non-owner a normal project neither the heading nor a sentence', () => {
+      const html = render(project({ canAdminister: false, priority: 'normal' }));
+
+      expect(html).not.toContain('>Level</h2>');
+      expect(html).not.toContain('Paused.');
+      expect(html).not.toContain('Expedited.');
+    });
+  });
 });

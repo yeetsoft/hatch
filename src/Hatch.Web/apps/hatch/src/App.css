@@ -3786,6 +3786,14 @@ input.hatch-inline-title-input {
   font-size: var(--t-small);
 }
 
+/* The project dialog's Level part: the same two buttons the scope control
+   draws, side by side on a line of their own. */
+.hatch-dialog-level {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
 /* The omitted-runners section: one row per runner, wrapping so a long reason
    drops under the name rather than pushing the Lift button off a narrow
    screen, then the add form, whose inputs share the line until they cannot. */
