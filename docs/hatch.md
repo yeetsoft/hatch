@@ -406,7 +406,12 @@ and
 story or bug may carry a one-pull-request setting of its own, see [One pull
 request](#one-pull-request)), with `OnePullRequestPolicyBy` and
 `OnePullRequestPolicyAt` beside it - who changed it last and when, a name and
-an instant, null until the first change.
+an instant, null until the first change,
+and
+`Priority` (`"normal"` by default, or `"paused"` or `"expedited"` - how much
+the project matters to the loop), with `PriorityBy` and `PriorityAt` beside it -
+who changed it last and when, a name and an instant, null until the first
+change. Nothing dispatches on it yet.
 A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
@@ -506,6 +511,17 @@ and `404` on an unknown project. Anything but `optional` or `enforced` is
 project already holds writes nothing, the stamp included. `PATCH` and `POST`
 do not reach it. Tightening it reconciles the overrides that already exist, see
 [One pull request](#one-pull-request).
+
+`Priority` is written through its own route too, `PUT /projects/{id}/priority`
+(`ProjectsController.PutPriority`), guarded the same way - `[RequireRole(User)]`,
+`NotAPerson` checked again in the action, then an owner check answering `403`
+naming the project's key (*"only an owner of `<KEY>` may set its level"*) to
+anyone else, a key included, and `404` on an unknown project. Anything but
+`paused`, `normal` or `expedited` is `400`, naming the bad value and the three
+good ones. A change stamps `PriorityBy` and `PriorityAt`; re-sending the level
+the project already holds writes nothing, the stamp included. `PATCH` and `POST`
+do not reach it. Nothing reads the level yet: dispatch, the board and the web
+UI are unchanged.
 The dispatcher reads the list on every move a runner is handed - in every
 column, hops included - except a review self-move its own verdict already
 folds, folding a caller whose runner does not advertise every tag it holds - see

@@ -154,6 +154,27 @@ public class EfHatchProject
     public DateTimeOffset? OnePullRequestPolicyAt { get; set; }
 
     /// <summary>
+    /// How much the project matters to the loop: paused, normal or
+    /// expedited. Normal for a project nobody has set it on. Nothing reads it
+    /// yet; later work does. Written only by <see cref="ProjectsController.PutPriority"/>.
+    /// </summary>
+    public string Priority { get; set; } = ProjectPriorities.Normal;
+
+    /// <summary>
+    /// Who last changed <see cref="Priority"/>, as a name rather than a foreign
+    /// key - the same shape as <see cref="OnePullRequestPolicyBy"/>. Null until
+    /// the first change. Written only by <see cref="ProjectsController.PutPriority"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? PriorityBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="Priority"/> was last changed. Null until the first
+    /// change. Written only by <see cref="ProjectsController.PutPriority"/>.
+    /// </summary>
+    public DateTimeOffset? PriorityAt { get; set; }
+
+    /// <summary>
     /// Whether a trunk failure files a bug at all - off, which is today's
     /// behaviour, so a project nobody has touched this setting on keeps
     /// filing exactly as it always has. Written only by

@@ -81,7 +81,8 @@ project rather than globally.
   approver test, but only where that column is itself Protected.
 - **Owner alone.** A project's landing and auto-heal settings, whether its
   playbooks come from its repository or the board, and its one-pull-request
-  policy, are an owner's call; an approver has no say in either.
+  policy, and its level (paused, normal or expedited), are an owner's call; an
+  approver has no say in either.
 - **Keys never count.** A program — an API key — is refused a Protected move
   regardless of membership. With the wall off, the one local person is a real
   person rather than a program, and may move work into a Protected column
@@ -175,6 +176,7 @@ to sign-in instead.
     - `only an owner of <KEY> may add or remove its members`
     - `only an owner of <KEY> may change how its work lands`
     - `only an owner of <KEY> may change whether its playbooks are sourced from its repository`
+    - `only an owner of <KEY> may set its level`
     - `only an owner or approver of <KEY> may set pre-approval - it is the approve press given in advance`
     - `setting an issue's pre-approval level is a person's call, not an agent's`
     - `moving work into a protected column is an owner's or approver's call, not an agent's`

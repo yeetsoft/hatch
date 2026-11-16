@@ -356,6 +356,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(p => p.ChecksRequired).HasDefaultValue(true);
             e.Property(p => p.OnePullRequest).HasDefaultValue(false);
             e.Property(p => p.OnePullRequestPolicy).HasDefaultValue(global::Hatch.Contracts.OnePullRequestPolicies.Optional);
+            e.Property(p => p.Priority).HasDefaultValue(global::Hatch.Contracts.ProjectPriorities.Normal);
 
             // At most one project binds the tracker's own repository. The
             // controller clears the old holder first; this is what makes a race

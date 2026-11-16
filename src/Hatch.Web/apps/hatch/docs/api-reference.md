@@ -67,6 +67,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/no-code-closes` | **person** | Sets `noCodeCloses` |
 | PUT | `/projects/{id}/runners-work-contributions` | **person** | Sets `runnersWorkContributions` |
 | PUT | `/projects/{id}/one-pr-policy` | **person** | Sets `onePullRequestPolicy`, returning overrides nothing has started under to inherit on a tightening |
+| PUT | `/projects/{id}/priority` | **person** | Sets `priority` to `paused`, `normal` or `expedited` |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
@@ -101,7 +102,10 @@ resending the value a project already holds writes nothing, the audit fields inc
 (`runnersWorkContributionsBy`, `runnersWorkContributionsAt` on the `ProjectDto`). The one-pr-policy PUT body is
 `ProjectOnePrPolicyWriteRequest(Policy)`, `optional` or `enforced` and nothing else (a `400` names
 the bad value), owner only, and resending the value a project already holds writes nothing, the audit
-fields included. Every other answer is a `ProjectDto`
+fields included. The priority PUT body is
+`ProjectPriorityWriteRequest(Priority)`, `paused`, `normal` or `expedited` and nothing else (a `400`
+names the bad value), owner only, and resending the level a project already holds writes nothing, the
+audit fields included (`priorityBy`, `priorityAt` on the `ProjectDto`). Every other answer is a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
 
@@ -122,7 +126,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The runners-work-contributions PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The runners-work-contributions PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`. The priority PUT 403s if the caller is not an owner, and 400s on anything but `paused`, `normal` or `expedited`.
 
 ## Columns
 
@@ -1379,7 +1383,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **43** person-only paths on this page,
+on this page with both) - there are **44** person-only paths on this page,
 across both halves together:
 
 ```
@@ -1397,6 +1401,7 @@ PUT    /projects/{id}/check-approves-merge
 PUT    /projects/{id}/no-code-closes
 PUT    /projects/{id}/runners-work-contributions
 PUT    /projects/{id}/one-pr-policy
+PUT    /projects/{id}/priority
 PUT    /projects/{id}/reflection
 POST   /projects/{id}/reflect
 PUT    /statuses/{id}/express-skips

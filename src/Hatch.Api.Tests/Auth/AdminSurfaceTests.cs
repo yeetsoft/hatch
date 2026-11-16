@@ -617,6 +617,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutNoCodeCloses",
         "ProjectsController.PutRunnersWorkContributions",
         "ProjectsController.PutOnePrPolicy",
+        "ProjectsController.PutPriority",
 
         // A weave press spends a breakdown session at the largest model -
         // a person's to press, not an agent's. See DreamWeaveController.
@@ -768,6 +769,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutNoCodeCloses",
         "ProjectsController.PutRunnersWorkContributions",
         "ProjectsController.PutOnePrPolicy",
+        "ProjectsController.PutPriority",
 
         // A weave press spends a breakdown session at the largest model -
         // a person's to press, not an agent's. See DreamWeaveController.

@@ -1021,6 +1021,43 @@ public class ProjectsController(
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
+    /// <summary>
+    /// Sets <see cref="EfHatchProject.Priority"/> to paused, normal or expedited.
+    /// Only an owner may call this; a key, an approver and a plain member are
+    /// refused. Writing the level a project already has changes nothing, the
+    /// audit columns included. Nothing dispatches on the level yet.
+    /// </summary>
+    [HttpPut("{id:int}/priority")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutPriority(int id, ProjectPriorityWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may set its level") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (!ProjectPriorities.All.Contains(request.Priority))
+            return BadRequest($"\"{request.Priority}\" is not a project level - {ProjectPriorities.Paused}, {ProjectPriorities.Normal} or {ProjectPriorities.Expedited}");
+
+        if (request.Priority != project.Priority)
+        {
+            project.Priority = request.Priority;
+            project.PriorityBy = await caller.ActorNameAsync(ct);
+            project.PriorityAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} level set to {Priority} by {Actor}", project.Key, project.Priority, project.PriorityBy);
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
@@ -1097,7 +1134,8 @@ public class ProjectsController(
             project.CheckApprovesMerge, project.CheckApprovesMergeBy, project.CheckApprovesMergeAt,
             project.NoCodeCloses, project.NoCodeClosesBy, project.NoCodeClosesAt,
             project.RunnersWorkContributions, project.RunnersWorkContributionsBy, project.RunnersWorkContributionsAt,
-            project.OnePullRequestPolicy, project.OnePullRequestPolicyBy, project.OnePullRequestPolicyAt);
+            project.OnePullRequestPolicy, project.OnePullRequestPolicyBy, project.OnePullRequestPolicyAt,
+            project.Priority, project.PriorityBy, project.PriorityAt);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {
