@@ -3,6 +3,7 @@ using Hatch.Api.Ef;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -14,7 +15,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/changelog")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class ChangelogController(HatchContext db, TimeProvider time) : ControllerBase
+public class ChangelogController(HatchContext db, TimeProvider time, IOptions<HatchOptions> hatchOptions) : ControllerBase
 {
     /// <summary>The window when a caller resizes nothing: the newest fourteen days that shipped something.</summary>
     private const int DefaultDays = 14;
@@ -68,10 +69,56 @@ public class ChangelogController(HatchContext db, TimeProvider time) : Controlle
 
         var entries = rows
             .Select(r => new Changelog.Entry(
-                r.Id, IssueKey.Format(r.ProjectKey, r.Number), r.Title, r.Type, r.ProjectKey,
+                r.Id, IssueKey.Format(r.ProjectKey, r.Number), r.Number, r.Title, r.Type, r.ProjectKey,
                 r.ReleaseNote, r.ClosedAt, tree.DescendantCount(r.Id)))
             .ToList();
 
         return new ChangelogDto(Changelog.Days(entries), window.HasOlder, window.Oldest, months);
+    }
+
+    /// <summary>
+    /// The same bytes every time nothing on the board has changed: every
+    /// closed, parentless issue in a project that elects <paramref
+    /// name="remote"/> for a changelog, rendered as the YAML a repository
+    /// keeps checked in alongside its code.
+    /// </summary>
+    [HttpGet("file")]
+    public async Task<ActionResult> GetChangelogFile([FromQuery] string? remote, CancellationToken ct)
+    {
+        var (canonical, error) = RemoteIdentity.Canonical(remote ?? "");
+        if (canonical is null) return BadRequest(error);
+
+        var projectIds = await db.ProjectRepositories.AsNoTracking()
+            .Where(r => r.Canonical == canonical && r.Changelog)
+            .Select(r => r.ProjectId).Distinct().ToListAsync(ct);
+
+        if (projectIds.Count == 0)
+            return NotFound($"no project elects {canonical} for a changelog - turn it on from the Projects page");
+
+        var rows = await db.Issues.AsNoTracking()
+            .Where(i => i.ParentId == null && i.Status!.IsTerminal && i.ClosedAt != null && projectIds.Contains(i.ProjectId))
+            .Select(i => new
+            {
+                i.Id,
+                ProjectKey = i.Project!.Key,
+                i.Number,
+                i.Type,
+                i.Title,
+                i.ReleaseNote,
+                ClosedAt = i.ClosedAt!.Value,
+            })
+            .ToListAsync(ct);
+
+        var tree = await Rollup.LoadAsync(db, ct);
+
+        var entries = rows
+            .Select(r => new Changelog.Entry(
+                r.Id, IssueKey.Format(r.ProjectKey, r.Number), r.Number, r.Title, r.Type, r.ProjectKey,
+                r.ReleaseNote, r.ClosedAt, tree.DescendantCount(r.Id)))
+            .ToList();
+
+        var origin = HatchOptions.NormalizeBaseUrl(hatchOptions.Value.PublicBaseUrl) ?? $"{Request.Scheme}://{Request.Host}";
+
+        return Content(Changelog.RenderFile(entries, origin), "text/yaml; charset=utf-8");
     }
 }

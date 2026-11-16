@@ -5058,6 +5058,29 @@ is the older feed, not this report); a script reaches the same answer with
 `hatch api GET /api/reports/changelog?...`, which is the
 [API surface](#api-surface)'s row for it.
 
+### The changelog file
+
+```
+GET /api/changelog/file?remote=
+```
+
+A reader asks for a repository's changelog file and gets the same bytes
+every time the board has not changed. `remote` is canonicalised the same
+way a landing is (`RemoteIdentity`); one that does not canonicalise is a
+`400` with that type's own sentence. A canonical remote no project elects
+for a changelog (the `Changelog` flag on its `ProjectRepositories` row,
+turned on from the Projects page) is a `404` naming the Projects page.
+
+The answer is `text/yaml; charset=utf-8`, not JSON - every closed,
+parentless issue in a project that elects the remote, oldest shipped first,
+ties broken on project key then issue number so two calls over an unchanged
+board answer byte-identical bytes. Two projects electing the same remote
+interleave their entries by when each shipped, each entry carrying its own
+project key. A title or a release note is a double-quoted YAML scalar, with
+a line break folded to the two-character `\n` escape, so either stays one
+physical line in the file. The route is open to a person or to a key, the
+same as `ChangelogController`'s other route.
+
 ### The consumption report
 
 ```

@@ -1,3 +1,4 @@
+using System.Text;
 using Hatch.Api.Modules.Hatch;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -12,8 +13,9 @@ public class ChangelogTests
     private static readonly DateTimeOffset Base = new(2026, 10, 13, 0, 0, 0, TimeSpan.Zero);
 
     private static Changelog.Entry Entry(
-        long id, DateTimeOffset closedAt, string type = "task", int descendantCount = 0, string? key = null) =>
-        new(id, key ?? $"AER-{id}", $"Issue {id}", type, "AER", null, closedAt, descendantCount);
+        long id, DateTimeOffset closedAt, string type = "task", int descendantCount = 0, string? key = null,
+        int? number = null, string projectKey = "AER", string? releaseNote = null) =>
+        new(id, key ?? $"AER-{id}", number ?? (int)id, $"Issue {id}", type, projectKey, releaseNote, closedAt, descendantCount);
 
     // ---- ResolveWindow ----
 
@@ -169,5 +171,111 @@ public class ChangelogTests
         var days = Changelog.Days([older, newer]);
 
         Assert.Equal([Base.ToString("yyyy-MM-dd"), Base.AddDays(-1).ToString("yyyy-MM-dd")], days.Select(d => d.Date));
+    }
+
+    // ---- RenderFile ----
+
+    private const string Origin = "https://hatch.example";
+
+    [Fact]
+    public void RenderFile_IsByteIdentical_AcrossTwoCallsOnTheSameInput()
+    {
+        var entries = new[] { Entry(1, Base), Entry(2, Base.AddHours(-1)) };
+
+        Assert.Equal(Changelog.RenderFile(entries, Origin), Changelog.RenderFile(entries, Origin));
+    }
+
+    [Fact]
+    public void RenderFile_OrdersOldestFirst_TiesBrokenOnProjectKeyThenNumber()
+    {
+        var newer = Entry(1, Base, number: 5, projectKey: "AER");
+        var olderOtherProject = Entry(2, Base.AddHours(-1), number: 1, projectKey: "OTH");
+        var olderSameInstantLowerNumber = Entry(3, Base.AddHours(-1), number: 1, projectKey: "AER");
+        var olderSameInstantHigherNumber = Entry(4, Base.AddHours(-1), number: 9, projectKey: "AER");
+
+        var yaml = Changelog.RenderFile(
+            [newer, olderOtherProject, olderSameInstantLowerNumber, olderSameInstantHigherNumber], Origin);
+
+        Assert.Equal(["AER-1", "AER-9", "OTH-1", "AER-5"], Keys(yaml));
+    }
+
+    [Fact]
+    public void RenderFile_AMultiLineNote_ParsesBackToTheExactOriginalString()
+    {
+        var note = "line one\nline two\nline three";
+        var entries = new[] { Entry(1, Base, releaseNote: note) };
+
+        var yaml = Changelog.RenderFile(entries, Origin);
+
+        Assert.Equal(note, Deserialize(yaml).Entries[0].Note);
+    }
+
+    [Theory]
+    [InlineData("a: title, with a colon")]
+    [InlineData("a \"quoted\" title")]
+    [InlineData("-a title with a leading dash")]
+    public void RenderFile_ATitleHoldingAColonAQuoteOrALeadingDash_ParsesBackToTheExactOriginalString(string title)
+    {
+        var entries = new[] { Entry(1, Base) with { Title = title } };
+
+        var yaml = Changelog.RenderFile(entries, Origin);
+
+        Assert.Equal(title, Deserialize(yaml).Entries[0].Title);
+    }
+
+    [Fact]
+    public void RenderFile_NoEntries_IsAnEmptyList()
+    {
+        var yaml = Changelog.RenderFile([], Origin);
+
+        Assert.Contains("entries: []\n", yaml);
+        Assert.DoesNotContain("- key:", yaml);
+    }
+
+    [Fact]
+    public void RenderFile_FirstByteIsAHash_SoThereIsNoByteOrderMark()
+    {
+        var yaml = Changelog.RenderFile([], Origin);
+
+        Assert.Equal((byte)'#', Encoding.UTF8.GetBytes(yaml)[0]);
+    }
+
+    [Fact]
+    public void RenderFile_HasNoCarriageReturnAnywhere_AndExactlyOneTrailingNewline()
+    {
+        var entries = new[] { Entry(1, Base, releaseNote: "a\r\nnote") };
+
+        var yaml = Changelog.RenderFile(entries, Origin);
+
+        Assert.DoesNotContain('\r', yaml);
+        Assert.EndsWith("\n", yaml, StringComparison.Ordinal);
+        Assert.False(yaml.EndsWith("\n\n", StringComparison.Ordinal));
+    }
+
+    private static RenderedFile Deserialize(string yaml) =>
+        new YamlDotNet.Serialization.DeserializerBuilder()
+            .WithNamingConvention(YamlDotNet.Serialization.NamingConventions.CamelCaseNamingConvention.Instance)
+            .Build()
+            .Deserialize<RenderedFile>(yaml);
+
+    private static List<string> Keys(string yaml) =>
+        Deserialize(yaml).Entries.Select(e => e.Key).ToList();
+
+    private sealed class RenderedFile
+    {
+        public int Version { get; set; }
+        public List<RenderedEntry> Entries { get; set; } = [];
+    }
+
+    private sealed class RenderedEntry
+    {
+        public string Key { get; set; } = "";
+        public string Url { get; set; } = "";
+        public string Project { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string? Note { get; set; }
+        public DateTimeOffset Shipped { get; set; }
+        public int Beneath { get; set; }
     }
 }
