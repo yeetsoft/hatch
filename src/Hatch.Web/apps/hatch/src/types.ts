@@ -8,6 +8,9 @@
 /** Whether a ticket's work must land in one pull request. See OnePullRequestPolicies (Hatch.Contracts). */
 export type OnePullRequestPolicy = 'optional' | 'enforced';
 
+/** How much a project matters to the loop. See ProjectPriorities (Hatch.Contracts). */
+export type ProjectPriority = 'paused' | 'normal' | 'expedited';
+
 export type IssueType = 'epic' | 'reflection' | 'story' | 'task' | 'bug';
 
 /** The five types, in the order a picker offers them. Mirrors EfHatchIssue.Types. */
@@ -115,6 +118,12 @@ export interface Project {
   onePullRequestPolicyBy: string | null;
   /** When onePullRequestPolicy was last changed on this project, or null until the first write. See ProjectDto.OnePullRequestPolicyAt. */
   onePullRequestPolicyAt: string | null;
+  /** How much the project matters to the loop. See ProjectDto.Priority. */
+  priority: ProjectPriority;
+  /** Who last changed priority, or null until the first write. See ProjectDto.PriorityBy. */
+  priorityBy: string | null;
+  /** When priority was last changed on this project, or null until the first write. See ProjectDto.PriorityAt. */
+  priorityAt: string | null;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -1178,6 +1187,11 @@ export interface ProjectRunnersWorkContributionsWriteRequest {
 /** A write to the one-pull-request policy. See ProjectOnePrPolicyWriteRequest (Hatch.Contracts). */
 export interface ProjectOnePrPolicyWriteRequest {
   policy: OnePullRequestPolicy;
+}
+
+/** A write to a project's level. See ProjectPriorityWriteRequest (Hatch.Contracts). */
+export interface ProjectPriorityWriteRequest {
+  priority: ProjectPriority;
 }
 
 /** The answer to a ProjectBindsTrackerWriteRequest: the project as written, and

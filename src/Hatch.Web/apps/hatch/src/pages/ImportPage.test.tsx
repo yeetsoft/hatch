@@ -53,6 +53,9 @@ function project(overrides: Partial<Project>): Project {
     onePullRequestPolicy: 'optional',
     onePullRequestPolicyBy: null,
     onePullRequestPolicyAt: null,
+    priority: 'normal',
+    priorityBy: null,
+    priorityAt: null,
     ...overrides,
   };
 }

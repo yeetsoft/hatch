@@ -45,6 +45,9 @@ const BASE: Project = {
   onePullRequestPolicy: 'optional',
   onePullRequestPolicyBy: null,
   onePullRequestPolicyAt: null,
+  priority: 'normal',
+  priorityBy: null,
+  priorityAt: null,
 };
 
 const noop = () => undefined;

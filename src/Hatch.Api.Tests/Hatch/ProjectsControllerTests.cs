@@ -2333,6 +2333,142 @@ public class ProjectsControllerTests
         Assert.Equal(todo.Id, patched.AutoHealBugStatusId);
     }
 
+    // ---- Project level ----
+
+    private static async Task<ProjectDto> PutLevel(Harness h, int id, string level) =>
+        Value(await h.Projects.PutPriority(id, new ProjectPriorityWriteRequest(level), default));
+
+    [Fact]
+    public async Task AFreshProject_StartsNormalWithNoByOrAt()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.Equal(ProjectPriorities.Normal, created.Priority);
+        Assert.Null(created.PriorityBy);
+        Assert.Null(created.PriorityAt);
+        var fresh = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Equal(ProjectPriorities.Normal, fresh.Priority);
+        Assert.Null(fresh.PriorityBy);
+        Assert.Null(fresh.PriorityAt);
+    }
+
+    [Fact]
+    public async Task AnOwner_RoundTripsNormalToExpeditedToPausedToNormal()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        h.Time.SetUtcNow(Now.AddMinutes(1));
+        var expedited = await PutLevel(h, created.Id, ProjectPriorities.Expedited);
+        Assert.Equal(ProjectPriorities.Expedited, expedited.Priority);
+        Assert.Equal(h.Nathan.Name, expedited.PriorityBy);
+        Assert.Equal(Now.AddMinutes(1), expedited.PriorityAt);
+
+        h.Time.SetUtcNow(Now.AddMinutes(2));
+        var paused = await PutLevel(h, created.Id, ProjectPriorities.Paused);
+        Assert.Equal(ProjectPriorities.Paused, paused.Priority);
+        Assert.Equal(Now.AddMinutes(2), paused.PriorityAt);
+
+        h.Time.SetUtcNow(Now.AddMinutes(3));
+        var normal = await PutLevel(h, created.Id, ProjectPriorities.Normal);
+        Assert.Equal(ProjectPriorities.Normal, normal.Priority);
+        Assert.Equal(h.Nathan.Name, normal.PriorityBy);
+        Assert.Equal(Now.AddMinutes(3), normal.PriorityAt);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Equal(ProjectPriorities.Normal, read.Priority);
+        Assert.Equal(Now.AddMinutes(3), read.PriorityAt);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutPriorityNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutPriority(created.Id, new ProjectPriorityWriteRequest(ProjectPriorities.Expedited), default);
+
+        Assert.Contains("403", Reason(result.Result));
+        Assert.Contains("only an owner of TST may set its level", Reason(result.Result));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.Equal(ProjectPriorities.Normal, row.Priority);
+        Assert.Null(row.PriorityBy);
+        Assert.Null(row.PriorityAt);
+    }
+
+    [Fact]
+    public async Task ASomeoneWithNoRoleOnTheProject_Is403OnPutPriority()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        h.Actors.Me = h.Actors.AddPerson("Bob");
+
+        var result = await h.Projects.PutPriority(created.Id, new ProjectPriorityWriteRequest(ProjectPriorities.Paused), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Equal(ProjectPriorities.Normal, (await h.Db.Projects.FindAsync(created.Id))!.Priority);
+    }
+
+    [Fact]
+    public async Task AKey_Is403OnPutPriority()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutPriority(h.ProjectId, new ProjectPriorityWriteRequest(ProjectPriorities.Expedited), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Equal(ProjectPriorities.Normal, (await h.Db.Projects.FindAsync(h.ProjectId))!.Priority);
+    }
+
+    [Fact]
+    public async Task ANonsenseLevel_Is400NamingAllThreeAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutPriority(created.Id, new ProjectPriorityWriteRequest("nonsense"), default);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var reason = Reason(result.Result);
+        Assert.Contains("nonsense", reason);
+        Assert.All(ProjectPriorities.All, level => Assert.Contains(level, reason));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.Equal(ProjectPriorities.Normal, row.Priority);
+        Assert.Null(row.PriorityBy);
+    }
+
+    [Fact]
+    public async Task PutPriority_OnAnUnknownProject_IsNotFound()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PutPriority(h.ProjectId + 1000, new ProjectPriorityWriteRequest(ProjectPriorities.Paused), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task ResendingTheLevelAlreadyHeld_KeepsByAndAt()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.Priority = ProjectPriorities.Expedited;
+        row.PriorityBy = "someone earlier";
+        row.PriorityAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var result = await PutLevel(h, created.Id, ProjectPriorities.Expedited);
+
+        Assert.Equal(ProjectPriorities.Expedited, result.Priority);
+        Assert.Equal("someone earlier", result.PriorityBy);
+        Assert.Equal(Now.AddDays(-1), result.PriorityAt);
+    }
+
     // ---- The project's one-PR default, and stories that have started ----
     //
     // A story with no setting of its own reads the project's default, so

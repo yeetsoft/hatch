@@ -90,6 +90,9 @@ const TABLE_PROJECT: Project = {
   onePullRequestPolicy: 'optional',
   onePullRequestPolicyBy: null,
   onePullRequestPolicyAt: null,
+  priority: 'normal',
+  priorityBy: null,
+  priorityAt: null,
 };
 
 const REPO_PROJECT: Project = { ...TABLE_PROJECT, repoSourced: true };

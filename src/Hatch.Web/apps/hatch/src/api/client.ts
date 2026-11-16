@@ -73,6 +73,7 @@ import type {
   ProjectNoCodeClosesWriteRequest,
   ProjectRunnersWorkContributionsWriteRequest,
   ProjectOnePrPolicyWriteRequest,
+  ProjectPriorityWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepository,
   ProjectRepositoryWriteRequest,
@@ -187,6 +188,9 @@ export const putProjectRunnersWorkContributions = (id: number, request: ProjectR
 /** Sets whether a ticket's work must land in one pull request. */
 export const putProjectOnePrPolicy = (id: number, request: ProjectOnePrPolicyWriteRequest) =>
   fetchJson<Project>(`/api/projects/${id}/one-pr-policy`, { method: 'PUT', ...asJson(request) });
+/** Sets how much a project matters to the loop. */
+export const putProjectPriority = (id: number, request: ProjectPriorityWriteRequest) =>
+  fetchJson<Project>(`/api/projects/${id}/priority`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember =(id: number, personId: string, role: string) =>
   fetchJson<ProjectMember[]>(`/api/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
 export const deleteProjectMember = (id: number, personId: string) =>

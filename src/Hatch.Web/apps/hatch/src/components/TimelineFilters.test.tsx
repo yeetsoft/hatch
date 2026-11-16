@@ -45,6 +45,9 @@ const projectOf = (key: string, name: string): Project => ({
   onePullRequestPolicy: 'optional',
   onePullRequestPolicyBy: null,
   onePullRequestPolicyAt: null,
+  priority: 'normal',
+  priorityBy: null,
+  priorityAt: null,
 });
 
 const ONE = [projectOf('AER', 'Aero')];

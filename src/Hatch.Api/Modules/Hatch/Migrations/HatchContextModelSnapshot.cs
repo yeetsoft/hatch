@@ -1250,6 +1250,19 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
 
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("normal");
+
+                    b.Property<DateTimeOffset?>("PriorityAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PriorityBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<long?>("ReflectNowIssueId")
                         .HasColumnType("bigint");
 

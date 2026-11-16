@@ -45,6 +45,9 @@ namespace Hatch.Contracts;
 /// <param name="OnePullRequestPolicy">Whether the project's one-PR default binds its stories - see <see cref="OnePullRequestPolicies"/> and <see cref="EfHatchProject.OnePullRequestPolicy"/>. Optional by default.</param>
 /// <param name="OnePullRequestPolicyBy">Who last changed <paramref name="OnePullRequestPolicy"/>, or null until the first change - see <see cref="EfHatchProject.OnePullRequestPolicyBy"/>.</param>
 /// <param name="OnePullRequestPolicyAt">When <paramref name="OnePullRequestPolicy"/> was last changed, or null until the first change - see <see cref="EfHatchProject.OnePullRequestPolicyAt"/>.</param>
+/// <param name="Priority">How much the project matters to the loop - see <see cref="ProjectPriorities"/> and <see cref="EfHatchProject.Priority"/>. Normal by default.</param>
+/// <param name="PriorityBy">Who last changed <paramref name="Priority"/>, or null until the first change - see <see cref="EfHatchProject.PriorityBy"/>.</param>
+/// <param name="PriorityAt">When <paramref name="Priority"/> was last changed, or null until the first change - see <see cref="EfHatchProject.PriorityAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -60,7 +63,8 @@ public record ProjectDto(
     bool CheckApprovesMerge = false, string? CheckApprovesMergeBy = null, DateTimeOffset? CheckApprovesMergeAt = null,
     bool NoCodeCloses = false, string? NoCodeClosesBy = null, DateTimeOffset? NoCodeClosesAt = null,
     bool RunnersWorkContributions = false, string? RunnersWorkContributionsBy = null, DateTimeOffset? RunnersWorkContributionsAt = null,
-    string OnePullRequestPolicy = OnePullRequestPolicies.Optional, string? OnePullRequestPolicyBy = null, DateTimeOffset? OnePullRequestPolicyAt = null)
+    string OnePullRequestPolicy = OnePullRequestPolicies.Optional, string? OnePullRequestPolicyBy = null, DateTimeOffset? OnePullRequestPolicyAt = null,
+    string Priority = ProjectPriorities.Normal, string? PriorityBy = null, DateTimeOffset? PriorityAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -154,6 +158,9 @@ public record ProjectRunnersWorkContributionsWriteRequest(bool RunnersWorkContri
 
 /// <summary>A write to whether a project's one-PR default binds its stories - see <see cref="EfHatchProject.OnePullRequestPolicy"/>.</summary>
 public record ProjectOnePrPolicyWriteRequest(string Policy);
+
+/// <summary>A write to a project's level - see <see cref="EfHatchProject.Priority"/>.</summary>
+public record ProjectPriorityWriteRequest(string Priority);
 
 /// <summary>The answer to a <see cref="ProjectBindsTrackerWriteRequest"/>: the project as written, and which project the flag was taken from.</summary>
 /// <param name="Project">The project written.</param>
@@ -3836,6 +3843,21 @@ public static class OnePullRequestPolicies
     public const string Enforced = "enforced";
 
     public static readonly IReadOnlyList<string> All = [Optional, Enforced];
+}
+
+/// <summary>How much a project matters to the loop (<see cref="EfHatchProject.Priority"/>).</summary>
+public static class ProjectPriorities
+{
+    /// <summary>The project's work is set aside.</summary>
+    public const string Paused = "paused";
+
+    /// <summary>The project as nobody has touched it.</summary>
+    public const string Normal = "normal";
+
+    /// <summary>The project's work comes first.</summary>
+    public const string Expedited = "expedited";
+
+    public static readonly IReadOnlyList<string> All = [Paused, Normal, Expedited];
 }
 
 /// <summary>
