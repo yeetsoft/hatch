@@ -108,12 +108,14 @@ public static class Wip
             var typeSet = types.ToHashSet();
             var ofType = rows.Where(r => typeSet.Contains(r.Type)).ToList();
 
-            // An effectively-paused row - its own level or inherited - frees
-            // the slot it would otherwise hold: a pause is a person setting a
-            // ticket aside, not the section's business to keep room for.
+            // An effectively-paused row - its own level or inherited - or a
+            // row in a paused project frees the slot it would otherwise hold:
+            // a pause is a person setting work aside, not the section's
+            // business to keep room for.
             var counted = ofType
                 .Where(r => (sectionIds.Contains(r.StatusId) || claims.IsLive(r.Claim, now))
-                    && tree.Effective(r.Id).Level != PriorityLevels.Paused)
+                    && tree.Effective(r.Id).Level != PriorityLevels.Paused
+                    && tree.ProjectLevel(r.Id) != ProjectPriorities.Paused)
                 .Select(r => r.Id)
                 .ToHashSet();
 

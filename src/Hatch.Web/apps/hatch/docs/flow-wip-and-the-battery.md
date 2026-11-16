@@ -31,6 +31,10 @@ A limit is measured as that slice's load across the whole WIP section, not per
 column: five stories and bugs spread over three WIP columns are five against
 the one limit.
 
+A pause frees the slot it would have held. A paused issue, or one in a paused
+project, is not counted in the section's load: a person set it aside, and the
+section does not keep room for it.
+
 An epic also carries a limit of its own, over its direct stories and bugs — how
 many of them may be in the WIP section at once. It is held beside the
 section-wide limit, not instead of it, and it is off by default: an epic with no

@@ -128,6 +128,14 @@ not set its own — read back as, for instance, "expedited (inherited from
 AER-12)". Raising a ticket's level this way is what the house calls
 *expediting* it.
 
+A project has a level too: paused, normal or expedited. An expedited project's
+clear work is picked up before any other project's, whatever level its tickets
+sit at, though an emergency ticket in any project still goes first; the other
+projects' clear tickets read as parked, naming it. A paused project is set
+aside whole: nothing in it is picked up, an emergency ticket included, and its
+tickets read "project AER is paused". A runner that cannot work the expedited
+project is handed the next project's work instead.
+
 The level is a pill in the issue page's status band, beside Status and
 Pre-approval, and the same pill sits in the board's peek. Pressing it opens
 the six levels under the row; picking one sets it and folds the band. A
