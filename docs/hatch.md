@@ -5129,6 +5129,14 @@ and cascading; `SourceIssueId`, set null if the source is deleted;
 task, open or closed. The `changelog_task_filed` event lands on the closed
 issue.
 
+**Carried by the parent hop.** Where the column that feeds the implementation
+column is ticked **Parent pulls**, the [parent hop](#the-hop) carries a
+recorded task into the implementation column with no session, whatever its
+parent's type and whatever its brief's length: the board wrote the brief, so
+there is nothing to analyse. A recorded task with no parent has nothing to
+pull from and stays a session's, as any parentless task does. Every other task
+and story under an epic is held for analysis as before.
+
 **Turning a repository on.** `PUT /api/projects/{id}/repositories` files one
 task for a repository that is new in the list, or whose flag went from off to
 on, from the project's latest-closed parentless issue; one task stands for all
@@ -5808,7 +5816,11 @@ exactly as they are from a review self-move.
    type that runs children (a task under a story, not a story under an epic)
    and the child is not over the `BriefLimit` the implementation column's
    playbook would send it back on; either is analysed instead, so the
-   sendback hop never carries a pulled child straight back (AR-52). Out of any
+   sendback hop never carries a pulled child straight back (AR-52). A
+   [changelog task](#the-changelog-task) the board filed (`FamilyGate.IsChangelogTask`)
+   is neither analysed nor narrowed: it is carried whatever its parent's type
+   and whatever its brief's length (`PullWithheld`). One with no parent is not
+   carried, since a pull needs a parent already started. Out of any
    other `ParentPulls` column nothing narrows it.
 5. **sendback** — a childless issue standing in a column, to the right
    (strictly, in board order) of `Columns.SendBack` — the column whose own

@@ -2460,7 +2460,9 @@ public sealed class Dispatch(
     /// epic is analysed, not carried (a task under a story was already planned
     /// by that story's own pass); and so is a child whose brief is over the
     /// limit that would send it straight back from the implementation column,
-    /// which a pull would only carry it into and out of again. Every other
+    /// which a pull would only carry it into and out of again. A changelog task
+    /// the board filed itself is neither: its brief is written, so it is carried
+    /// whatever its parent's type and whatever its brief's length. Every other
     /// ParentPulls column pulls as it always has.
     /// </summary>
     private static bool PullWithheld(
@@ -2468,6 +2470,7 @@ public sealed class Dispatch(
         List<EfHatchStatus> statuses, EfHatchPlaybook? implementationPlaybook)
     {
         if (Columns.SendBack(statuses)?.Id != from.Id) return false;
+        if (family.IsChangelogTask(issue.Id)) return false;
         if (parent is { } p && IssueTypeKinds.RunsChildren(p.Type)) return true;
 
         return Columns.Implementation(statuses) is { } implementation
@@ -3670,7 +3673,7 @@ public sealed record UnmetEdge(string BlockerKey, string? HolderKey, long Blocke
 public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
-    public static readonly FamilyGate None = new([], [], [], [], [], []);
+    public static readonly FamilyGate None = new([], [], [], [], [], [], []);
 
     /// <summary>
     /// The sentence for an issue with nothing filed under it at all - shared
@@ -3687,11 +3690,12 @@ public sealed class FamilyGate
     private readonly Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> _byId;
     private readonly HashSet<long> _waiting;
     private readonly Dictionary<long, long> _sharedStory;
+    private readonly HashSet<long> _changelogTasks;
 
     private FamilyGate(
         Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById,
         Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> byId, HashSet<long> waiting,
-        Dictionary<long, long> sharedStory)
+        Dictionary<long, long> sharedStory, HashSet<long> changelogTasks)
     {
         _children = children;
         _open = open;
@@ -3699,6 +3703,7 @@ public sealed class FamilyGate
         _byId = byId;
         _waiting = waiting;
         _sharedStory = sharedStory;
+        _changelogTasks = changelogTasks;
     }
 
     public static async Task<FamilyGate> ForAsync(
@@ -3738,8 +3743,18 @@ public sealed class FamilyGate
         foreach (var id in byId.Keys)
             if (tree.SharedStoryOf(id) is { } story) sharedStory[id] = story;
 
-        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory);
+        // Every task the board filed for a changelog, found once for the pass:
+        // its brief is the board's own, so a parent pull carries it unanalysed.
+        var changelogTasks = (await db.ChangelogTasks.AsNoTracking().Select(t => t.IssueId).ToListAsync(ct)).ToHashSet();
+
+        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks);
     }
+
+    /// <summary>
+    /// Whether the board filed this issue itself as a changelog task - see
+    /// <c>ChangelogTasks</c>.
+    /// </summary>
+    public bool IsChangelogTask(long issueId) => _changelogTasks.Contains(issueId);
 
     /// <summary>
     /// Whether this issue is a task waiting on its story's pull request - see

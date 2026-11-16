@@ -1473,6 +1473,68 @@ public class WorkControllerTests
         Assert.Equal(h.Todo, (await h.Db.Issues.FirstAsync(i => i.Id == story.Id)).StatusId);
     }
 
+    // A changelog task the board filed itself has its brief written, so the
+    // analysis the feeder column runs has nothing to add to it.
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ParentPull_OutOfTheFeederColumn_CarriesARecordedChangelogTaskUnderAClosedEpic(bool overTheLimit)
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "task", "sonnet", briefLimit: 1000));
+        var epic = await h.FileAsync("epic", "the epic", h.Done);
+        var task = await h.FileAsync("task", "Record the epic in the changelog", h.Todo, parentId: epic.Id);
+        if (overTheLimit) task.Description = new string('x', 1001);
+        h.Db.ChangelogTasks.Add(new EfHatchChangelogTask
+        {
+            IssueId = task.Id, SourceIssueId = epic.Id, Canonical = "host/owner/repo", CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await h.Db.SaveChangesAsync();
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+
+        var moved = Value(await h.Work.HopWork(Key(task), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_DoesNotCarryAnUnrecordedTaskUnderAClosedEpic()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.Done);
+        var task = await h.FileAsync("task", "Record the epic in the changelog", h.Todo, parentId: epic.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.False(entry.Hop);
+        Assert.Null(entry.HopKind);
+    }
+
+    [Fact]
+    public async Task ParentPull_ForARecordedChangelogTask_NeedsTheFeederColumnTicked()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.Done);
+        var task = await h.FileAsync("task", "Record the epic in the changelog", h.Todo, parentId: epic.Id);
+        h.Db.ChangelogTasks.Add(new EfHatchChangelogTask
+        {
+            IssueId = task.Id, SourceIssueId = epic.Id, Canonical = "host/owner/repo", CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.False(entry.Hop);
+        Assert.Null(entry.HopKind);
+    }
+
     [Fact]
     public async Task ParentPull_OutOfBacklog_StillCarriesAStoryUnderARunningEpic_AndATaskOverTheLimit()
     {
