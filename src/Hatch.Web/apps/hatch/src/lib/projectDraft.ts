@@ -16,6 +16,7 @@ import type {
   OnePullRequestPolicy,
   ProjectNoCodeClosesWriteRequest,
   ProjectRunnersWorkContributionsWriteRequest,
+  ProjectFilesContributionsWriteRequest,
   ProjectOnePrPolicyWriteRequest,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
@@ -47,6 +48,7 @@ export interface ProjectDraft {
     checkApprovesMerge: boolean;
     noCodeCloses: boolean;
     runnersWorkContributions: boolean;
+    filesContributions: boolean;
     onePullRequestPolicy: OnePullRequestPolicy;
     runnerTags: string[];
     reflectionCadenceDays: number | null;
@@ -69,6 +71,7 @@ export interface ProjectDraft {
   checkApprovesMerge: boolean;
   noCodeCloses: boolean;
   runnersWorkContributions: boolean;
+  filesContributions: boolean;
   onePullRequestPolicy: OnePullRequestPolicy;
   runnerTags: string;
   /** Held as text, so a blank box reads as off rather than as 0. */
@@ -117,6 +120,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       checkApprovesMerge: project.checkApprovesMerge,
       noCodeCloses: project.noCodeCloses,
       runnersWorkContributions: project.runnersWorkContributions,
+      filesContributions: project.filesContributions,
       onePullRequestPolicy: project.onePullRequestPolicy,
       runnerTags,
       reflectionCadenceDays: project.reflectionCadenceDays,
@@ -139,6 +143,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     checkApprovesMerge: project.checkApprovesMerge,
     noCodeCloses: project.noCodeCloses,
     runnersWorkContributions: project.runnersWorkContributions,
+    filesContributions: project.filesContributions,
     onePullRequestPolicy: project.onePullRequestPolicy,
     runnerTags: runnerTagsDraft(runnerTags),
     reflectionCadenceDays: project.reflectionCadenceDays === null ? '' : String(project.reflectionCadenceDays),
@@ -215,6 +220,13 @@ export function projectNoCodeClosesDiff(draft: ProjectDraft): ProjectNoCodeClose
 export function projectRunnersWorkContributionsDiff(draft: ProjectDraft): ProjectRunnersWorkContributionsWriteRequest | null {
   return draft.runnersWorkContributions !== draft.known.runnersWorkContributions
     ? { runnersWorkContributions: draft.runnersWorkContributions }
+    : null;
+}
+
+/** Whether outside pull requests are filed as contributions, or null when it was not changed. */
+export function projectFilesContributionsDiff(draft: ProjectDraft): ProjectFilesContributionsWriteRequest | null {
+  return draft.filesContributions !== draft.known.filesContributions
+    ? { filesContributions: draft.filesContributions }
     : null;
 }
 

@@ -50,6 +50,9 @@ function project(overrides: Partial<Project>): Project {
     runnersWorkContributions: false,
     runnersWorkContributionsBy: null,
     runnersWorkContributionsAt: null,
+    filesContributions: false,
+    filesContributionsBy: null,
+    filesContributionsAt: null,
     onePullRequestPolicy: 'optional',
     onePullRequestPolicyBy: null,
     onePullRequestPolicyAt: null,
@@ -407,6 +410,48 @@ describe('ProjectEditDialog', () => {
 
     expect(html).toContain('Runners do not work contributions');
     expect(html).not.toContain('Lets runners resolve conflicts and fix failing builds');
+  });
+
+  it('shows an owner the files-contributions checkbox and its hint', () => {
+    const html = render(project({ canAdminister: true }));
+
+    expect(html).toContain('Files contributions');
+    expect(html).toContain('outside pull requests as contributions on the board');
+  });
+
+  it('shows an owner who set the files-contributions flag, and when', () => {
+    const html = render(
+      project({
+        canAdminister: true,
+        filesContributions: true,
+        filesContributionsBy: 'Dana',
+        filesContributionsAt: '2026-03-09T00:00:00Z',
+      }),
+    );
+
+    expect(html).toContain(`set by Dana on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}`);
+  });
+
+  it('shows an owner no set-by line when the files-contributions flag has never been written', () => {
+    const html = render(
+      project({ canAdminister: true, filesContributionsBy: null, filesContributionsAt: null }),
+    );
+
+    expect(html).not.toContain('set by');
+  });
+
+  it('shows anyone else a sentence, and no control, where contributions are filed', () => {
+    const html = render(project({ canAdminister: false, filesContributions: true }));
+
+    expect(html).toContain('Files contributions');
+    expect(html).not.toContain('outside pull requests as contributions on the board');
+  });
+
+  it('shows anyone else a sentence where contributions are not filed', () => {
+    const html = render(project({ canAdminister: false, filesContributions: false }));
+
+    expect(html).toContain('Does not file contributions');
+    expect(html).not.toContain('outside pull requests as contributions on the board');
   });
 
   it('shows an owner the Board heading and the stories-on-epics checkbox', () => {

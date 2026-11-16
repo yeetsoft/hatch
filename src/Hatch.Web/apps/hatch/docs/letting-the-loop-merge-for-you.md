@@ -95,6 +95,11 @@ by default, so no runner pushes to somebody else's branch unless an owner opted
 in; while it is off, such a contribution is listed under **Contributions
 runners will not work** in the attention panel.
 
+A fourth flag, **Files contributions**, sits beside it on **Manage →
+Projects** and decides whether a project's outside pull requests are filed as
+contributions on the board. Only an owner can change it, and it is off by
+default, so outside pull requests are left alone until an owner opts in.
+
 **4. `HATCH_GH_TOKEN`.** The same `.env` beside `compose.yaml` as *Putting a
 front door on it*, above it on this page. Compose turns it into `GH_TOKEN`
 for `gh`, and without it the runner's own entrypoint already says so once:
