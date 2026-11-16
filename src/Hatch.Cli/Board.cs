@@ -157,6 +157,26 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         await Client.GetAsync<List<ProjectDto>>("/api/projects", ct) ?? [];
 
     /// <summary>
+    /// Each project's level, by key, for the commands whose own answer carries
+    /// only the project's key. Empty when the read fails - a Hatch too old to
+    /// have the level, or a route refusing - so those commands print what they
+    /// always printed.
+    /// </summary>
+    public async Task<Dictionary<string, string>> ProjectLevelsAsync(CancellationToken ct)
+    {
+        try
+        {
+            return (await ProjectsAsync(ct))
+                .Where(p => p.Priority is { Length: > 0 })
+                .ToDictionary(p => p.Key, p => p.Priority, StringComparer.Ordinal);
+        }
+        catch (HatchException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
     /// Every runner that has spoken to this Hatch lately, for a person to look
     /// at - <c>hatch config</c>'s own listing. Throws on a Hatch too old to
     /// have the route, the same as every other read here; the caller decides
@@ -758,14 +778,39 @@ public static class Digest
     }
 
     /// <summary>
-    /// The folded rows whose effective priority outranks the ticket the pass is
+    /// The folded rows that sit in a higher tier than the ticket the pass is
     /// about to spawn, in queue order - the ones a grouped count would hide the
-    /// one name that matters out of.
+    /// one name that matters out of. The tiers are the dispatcher's own walk:
+    /// see <see cref="Rank"/>.
     /// </summary>
-    public static IReadOnlyList<QueueEntryDto> Above(IReadOnlyList<QueueEntryDto> queue, string spawnedPriority)
+    public static IReadOnlyList<QueueEntryDto> Above(
+        IReadOnlyList<QueueEntryDto> queue, string spawnedPriority, string? spawnedProjectPriority = null)
     {
-        var floor = Level(spawnedPriority);
-        return queue.Where(q => q.Blocked is { Length: > 0 } && Level(q.Issue.Priority) > floor).ToList();
+        var floor = Rank(spawnedPriority, spawnedProjectPriority);
+        return queue.Where(q => q.Blocked is { Length: > 0 } && Rank(q.Issue.Priority, q.ProjectPriority) < floor).ToList();
+    }
+
+    /// <summary>
+    /// A row's place in the dispatcher's walk, lowest first: an emergency in an
+    /// unpaused project; then an expedited project's rows at expedited, normal,
+    /// low and economy; then every other project's at the same four; then a
+    /// paused issue or a paused project's row, which is never worked. A null
+    /// or unknown level on either side reads as normal.
+    /// </summary>
+    private static int Rank(string priority, string? projectPriority)
+    {
+        var level = Level(priority);
+        if (level == PriorityLevels.Paused || projectPriority == ProjectPriorities.Paused) return 9;
+        if (level == PriorityLevels.Emergency) return 0;
+
+        var within = level switch
+        {
+            PriorityLevels.Expedited => 0,
+            PriorityLevels.Low => 2,
+            PriorityLevels.Economy => 3,
+            _ => 1,
+        };
+        return 1 + (projectPriority == ProjectPriorities.Expedited ? 0 : 4) + within;
     }
 
     private static int Level(string name) => PriorityLevels.TryParse(name, out var level) ? level : PriorityLevels.Normal;

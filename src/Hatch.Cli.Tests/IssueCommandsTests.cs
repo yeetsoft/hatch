@@ -285,7 +285,7 @@ public sealed class IssueCommandsTests
 
         Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/runners");
         Assert.Equal(
-            new[] { "/api/issues/AER-12", "/api/statuses", "/api/issues/AER-12/comments" },
+            new[] { "/api/issues/AER-12", "/api/statuses", "/api/projects", "/api/issues/AER-12/comments" },
             h.Wire.Calls.Select(c => c.Path));
     }
 
@@ -379,6 +379,43 @@ public sealed class IssueCommandsTests
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
         Assert.Contains("priority:  paused - set aside; the loop leaves it where it stands", h.Said);
+    }
+
+    [Theory]
+    [InlineData(ProjectPriorities.Expedited, "priority:  project AER expedited - its tickets are taken before other projects'")]
+    [InlineData(ProjectPriorities.Paused, "priority:  project AER paused - set aside; the loop leaves it where it stands")]
+    public async Task Show_says_the_level_of_a_project_off_normal(string level, string line)
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { Priority = PriorityLevels.ExpeditedName });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/projects", new[]
+        {
+            new ProjectDto(1, "AER", "Aerie", 0, DateTimeOffset.UnixEpoch, null, null, [], null, [], false, false, Priority: level),
+        });
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        var lines = h.Said.Split('\n').ToList();
+        Assert.Equal(lines.FindIndex(l => l.StartsWith("priority:  expedited", StringComparison.Ordinal)) + 1, lines.IndexOf(line));
+    }
+
+    [Fact]
+    public async Task Show_says_nothing_of_a_normal_project()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/projects", new[]
+        {
+            new ProjectDto(1, "AER", "Aerie", 0, DateTimeOffset.UnixEpoch, null, null, [], null, [], false, false),
+        });
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.DoesNotContain("project AER", h.Said);
     }
 
     [Fact]
