@@ -1,3 +1,4 @@
+using System.Text;
 using Hatch.Contracts;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -18,7 +19,7 @@ public static class Changelog
 
     /// <summary>One closed, parentless issue, as the fold reads it.</summary>
     public readonly record struct Entry(
-        long IssueId, string Key, string Title, string Type, string ProjectKey,
+        long IssueId, string Key, int Number, string Title, string Type, string ProjectKey,
         string? ReleaseNote, DateTimeOffset ClosedAt, int DescendantCount);
 
     /// <summary>
@@ -95,4 +96,62 @@ public static class Changelog
             .ToList();
 
     private static int FixRank(Entry e) => Array.IndexOf(FixTypeOrder, e.Type) is var i and >= 0 ? i : FixTypeOrder.Length;
+
+    /// <summary>
+    /// <paramref name="entries"/> as the YAML a repository's own changelog
+    /// file reads - oldest first, ties broken on <c>ProjectKey</c> then
+    /// <c>Number</c> so two calls over the same board answer the same bytes.
+    /// <paramref name="exclude"/> is unused today; it exists so a later story
+    /// can drop entries (the board's own changelog tasks) without this
+    /// signature changing again.
+    /// </summary>
+    public static string RenderFile(IReadOnlyList<Entry> entries, string origin, Func<Entry, bool>? exclude = null)
+    {
+        var ordered = entries
+            .Where(e => exclude is null || !exclude(e))
+            .OrderBy(e => e.ClosedAt)
+            .ThenBy(e => e.ProjectKey, StringComparer.Ordinal)
+            .ThenBy(e => e.Number)
+            .ToList();
+
+        var sb = new StringBuilder();
+        sb.Append("# Written by Hatch from the board. Do not edit by hand; run `hatch changelog --file` to bring it current.\n");
+        sb.Append("version: 1\n");
+        sb.Append("entries:");
+
+        if (ordered.Count == 0)
+        {
+            sb.Append(" []\n");
+            return sb.ToString();
+        }
+
+        sb.Append('\n');
+        foreach (var e in ordered)
+        {
+            var key = IssueKey.Format(e.ProjectKey, e.Number);
+            sb.Append($"  - key: {key}\n");
+            sb.Append($"    url: {origin}/issues/{key}\n");
+            sb.Append($"    project: {e.ProjectKey}\n");
+            sb.Append($"    type: {e.Type}\n");
+            sb.Append($"    title: {QuotedScalar(e.Title)}\n");
+            sb.Append($"    note: {(e.ReleaseNote is null ? "null" : QuotedScalar(e.ReleaseNote))}\n");
+            sb.Append($"    shipped: {e.ClosedAt.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}\n");
+            sb.Append($"    beneath: {e.DescendantCount}\n");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> as a double-quoted YAML scalar: <c>\</c> and
+    /// <c>"</c> escaped, and a line break folded to the two-character
+    /// <c>\n</c> escape, so a multi-line note or a title holding a colon, a
+    /// quote or a leading dash each stay one physical line.
+    /// </summary>
+    private static string QuotedScalar(string value)
+    {
+        var escaped = value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        escaped = escaped.Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");
+        return $"\"{escaped}\"";
+    }
 }
