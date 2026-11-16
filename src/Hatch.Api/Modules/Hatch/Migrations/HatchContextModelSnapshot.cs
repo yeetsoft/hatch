@@ -1299,6 +1299,18 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("FilesContributions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTimeOffset?>("FilesContributionsAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FilesContributionsBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<string>("Icon")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");

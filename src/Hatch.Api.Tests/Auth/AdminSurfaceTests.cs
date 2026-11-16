@@ -623,6 +623,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutCheckApprovesMerge",
         "ProjectsController.PutNoCodeCloses",
         "ProjectsController.PutRunnersWorkContributions",
+        "ProjectsController.PutFilesContributions",
         "ProjectsController.PutOnePrPolicy",
         "ProjectsController.PutPriority",
 
@@ -775,6 +776,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutCheckApprovesMerge",
         "ProjectsController.PutNoCodeCloses",
         "ProjectsController.PutRunnersWorkContributions",
+        "ProjectsController.PutFilesContributions",
         "ProjectsController.PutOnePrPolicy",
         "ProjectsController.PutPriority",
 

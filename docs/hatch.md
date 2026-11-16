@@ -413,7 +413,11 @@ and
 `Priority` (`"normal"` by default, or `"paused"` or `"expedited"` - how much
 the project matters to the loop), with `PriorityBy` and `PriorityAt` beside it -
 who changed it last and when, a name and an instant, null until the first
-change. Nothing dispatches on it yet.
+change. Nothing dispatches on it yet, and
+`FilesContributions` (`bool`, default `false` - whether the board files its
+repositories' outside pull requests as contributions), with `FilesContributionsBy` and
+`FilesContributionsAt` beside it - who changed it last and when, a name and an
+instant, null until the first change. Nothing reads it yet.
 A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
@@ -501,6 +505,16 @@ dispatch as conflict or build work, is folded for a person
 [what is waiting on you](#what-is-waiting-on-you)'s `contributionsHeld`
 instead of `conflicts` and `failingBuilds`; a row the judge folds anyway, or a
 record with no pull request, is untouched.
+
+`FilesContributions` is written through its own route, `PUT
+/projects/{id}/files-contributions` (`ProjectsController.PutFilesContributions`),
+guarded the same way - `[RequireRole(User)]`, `NotAPerson` checked again in the
+action, then an owner check answering `403` naming the project's key (*"only an
+owner of `<KEY>` may change whether this board files outside pull requests"*)
+to anyone else, and `404` on an unknown project. A change stamps
+`FilesContributionsBy` and `FilesContributionsAt`; re-sending the value the
+project already holds writes nothing, the stamp included. Nothing reads the flag
+yet.
 
 `OnePullRequestPolicy` is written through its own route too, `PUT
 /projects/{id}/one-pr-policy` (`ProjectsController.PutOnePrPolicy`), guarded
@@ -3834,6 +3848,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/projects/{id}/stories-on-epics` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ storiesOnEpics }` — whether the project's stories show on their epics' cards instead of as cards of their own; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
 | `/projects/{id}/runners-work-contributions` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ runnersWorkContributions }` — whether a runner works a contribution's branch when it conflicts or its build fails; this route is the only way to write the flag, and the answer is the `ProjectDto`. A change stamps `runnersWorkContributionsBy`/`runnersWorkContributionsAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
+| `/projects/{id}/files-contributions` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ filesContributions }` — whether the board files its repositories' outside pull requests as contributions; nothing reads it yet, this route is the only way to write the flag, and the answer is the `ProjectDto`. A change stamps `filesContributionsBy`/`filesContributionsAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/no-code-closes` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ noCodeCloses }` — whether a no-code declaration on an issue closes it outright; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `noCodeClosesBy`/`noCodeClosesAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
