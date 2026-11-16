@@ -4311,6 +4311,26 @@ public record DependencyFileDto(
 
 public record DependencyFilesDto(string Path, IReadOnlyList<DependencyFileDto> Files);
 
+/// <param name="Content">The blob's exact bytes, base64-encoded; null means the trunk has no file at this path.</param>
+/// <param name="Url">The forge link the runner reported for the path on this trunk, or null where it has none.</param>
+public record ChangelogFileRequest(
+    string Remote, string Trunk, string Sha, string? Content, string? Url, string Runner);
+
+/// <param name="State">One of <see cref="ChangelogFile.States"/>.</param>
+/// <param name="Behind">For <c>behind</c>, how many entries the file lacks or holds differently from the board's own; null otherwise.</param>
+/// <param name="Problem">For <c>foreign</c>, the sentence saying why and what to do; null otherwise.</param>
+public record ChangelogFileDto(
+    long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,
+    int? Behind, string? Problem, string? Url, DateTimeOffset CheckedAt, string Runner, string CheckedBy);
+
+/// <param name="Path">Where the file lives in a checkout, <see cref="ChangelogFile.Path"/>.</param>
+/// <param name="Elected">Every canonical remote some project currently elects for a changelog.</param>
+/// <param name="Files">Every stored verdict, ordered by canonical then trunk.</param>
+/// <param name="ElectedRemotes">Of the <c>remote</c> query values the caller sent, the ones whose repository is elected, spelled as the caller sent them - a runner holds its origin as its own checkout spells it and canonicalises nothing, so this is how it learns which checkouts to read. Empty when none were sent.</param>
+public record ChangelogFilesDto(
+    string Path, IReadOnlyList<string> Elected, IReadOnlyList<ChangelogFileDto> Files,
+    IReadOnlyList<string>? ElectedRemotes = null);
+
 /// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and
 /// stop.

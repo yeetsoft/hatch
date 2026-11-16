@@ -117,6 +117,52 @@ public static class ChangelogTasks
     {
         if (await StandsAsync(db, statuses, canonical, ct)) return;
 
+        await MintAsync(db, ranks, time, statuses, closed, canonical, log, ct);
+    }
+
+    /// <summary>
+    /// Files one task for <paramref name="canonical"/> when its trunk's file
+    /// has been read and found behind or absent - the poll healing a gap no
+    /// close left a task for (a task cancelled with no commit, a file deleted,
+    /// a repository elected before the poll could read it). The task is filed
+    /// from the newest entry of <paramref name="projection"/> the file lacks
+    /// (<paramref name="lacking"/>, as <see cref="ChangelogFileState.Judge"/>
+    /// names them), or the newest entry at all where the file only has extras.
+    /// An empty projection has nothing to record and files nothing.
+    /// </summary>
+    /// <remarks>
+    /// Held by a recorded task standing in <em>any</em> non-terminal column,
+    /// deferred ones included (<see cref="OpenAsync"/>), unlike the close's own
+    /// <see cref="StandsAsync"/>: a close may file another once the first has
+    /// moved into implementation, but a poll runs every interval, and a task
+    /// somebody parked on purpose must not be refiled each time. Two runners
+    /// putting the same canonical in the same instant can still file two; the
+    /// close has the same window.
+    /// </remarks>
+    public static async Task FileForGapAsync(
+        HatchContext db, RankService ranks, TimeProvider time, string canonical,
+        IReadOnlyList<Changelog.Entry> projection, IReadOnlySet<string> lacking, CancellationToken ct, ILogger? log = null)
+    {
+        if (projection.Count == 0) return;
+
+        var statuses = await LoadStatusesAsync(db, ct);
+        if (await OpenAsync(db, canonical, ct)) return;
+
+        var newest = projection
+            .Where(e => lacking.Contains(IssueKey.Format(e.ProjectKey, e.Number)))
+            .DefaultIfEmpty(projection.MaxBy(e => (e.ClosedAt, e.IssueId)))
+            .MaxBy(e => (e.ClosedAt, e.IssueId));
+
+        var closed = await db.Issues.FirstOrDefaultAsync(i => i.Id == newest.IssueId, ct);
+        if (closed is null) return;
+
+        await MintAsync(db, ranks, time, statuses, closed, canonical, log, ct);
+    }
+
+    private static async Task MintAsync(
+        HatchContext db, RankService ranks, TimeProvider time, List<EfHatchStatus> statuses,
+        EfHatchIssue closed, string canonical, ILogger? log, CancellationToken ct)
+    {
         var column = Columns.SendBack(statuses)
             ?? statuses.FirstOrDefault(s => s.AgentFiles && !s.IsDeferred && !s.IsTerminal)
             ?? statuses.FirstOrDefault();
@@ -223,6 +269,11 @@ public static class ChangelogTasks
         return standing.Any(id =>
             byId.TryGetValue(id, out var s) && !s.IsTerminal && !s.IsDeferred && !Columns.AtOrPastImplementation(statuses, id));
     }
+
+    /// <summary>Whether a recorded task for this remote stands in any column that is not terminal - deferred ones too.</summary>
+    private static Task<bool> OpenAsync(HatchContext db, string canonical, CancellationToken ct) =>
+        db.ChangelogTasks.AsNoTracking()
+            .AnyAsync(t => t.Canonical == canonical && !t.Issue!.Status!.IsTerminal, ct);
 
     private static EfHatchIssueEvent Event(string actor, string kind, object? payload, DateTimeOffset at) => new()
     {

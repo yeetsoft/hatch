@@ -673,6 +673,36 @@ server serves it, to `.hatch/changelog.yml` under the checkout's root, and
 prints `written` or `unchanged` and the path. It does not mix with the flags
 above.
 
+### The changelog file
+
+The runner's poll reads the file for you. For every checkout whose repository
+some project elects for a changelog (the **Writes a changelog** box on the
+Projects page), it reads `.hatch/changelog.yml` off the trunk and puts the
+exact bytes to the board, once per sha and again when the trunk moves. A
+repository nobody elects is not read. A refusal from the board is one line on
+the runner's terminal and is asked again next poll.
+
+The board compares the bytes with the file it would write and the Projects
+page says which of four things it found, beside the remote:
+
+- *changelog current at* a sha: the trunk holds exactly the board's bytes.
+- *changelog behind by N entries*: the file is Hatch's, but N entries are
+  missing, differ, or are ones the board no longer lists (an issue reopened).
+  Bytes that differ only in order or spacing read *behind by 1 entry*.
+- *no changelog on trunk yet*: nothing is at the path.
+- A sentence naming the sha: the bytes are not a file Hatch wrote, because
+  the header is another's or the body is not the shape Hatch writes. Move or
+  remove the file before Hatch will write there. Hatch files nothing for it.
+
+Where a repository is behind or has no file, and no changelog task for it is
+open in any column (a deferred one included, so a task somebody parked is not
+filed again every poll), the board files one, from the newest entry the file
+lacks. A task cancelled with no commit heals at the next trunk move, since
+the runner puts once per sha. Each entry carries an address built from the
+board's `PublicBaseUrl`, or from the address the request came in by where none
+is set; a Hatch with none set, reached by a runner at a different address than
+the session that wrote the file, reads *behind* until `PublicBaseUrl` is set.
+
 Columns are found by name rather than by id, on the letters and digits alone,
 so `todo` reaches the column the board calls `To Do`. `hatch next` takes the
 same.

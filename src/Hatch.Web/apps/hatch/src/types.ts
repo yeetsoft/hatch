@@ -608,6 +608,31 @@ export interface DependencyFilesDto {
   files: DependencyFileDto[];
 }
 
+/** Mirrors ChangelogFileDto. state is current, behind, absent or foreign. */
+export interface ChangelogFileDto {
+  id: number;
+  remote: string;
+  canonical: string;
+  trunk: string;
+  sha: string;
+  state: string;
+  hash: string | null;
+  behind: number | null;
+  problem: string | null;
+  url: string | null;
+  checkedAt: string;
+  runner: string;
+  checkedBy: string;
+}
+
+/** Mirrors ChangelogFilesDto. */
+export interface ChangelogFilesDto {
+  path: string;
+  elected: string[];
+  files: ChangelogFileDto[];
+  electedRemotes: string[] | null;
+}
+
 /** One runner's verdict on one repository. Mirrors MergeCheckDto. */
 export interface MergeCheck {
   /** The remote as the runner spelled it. */

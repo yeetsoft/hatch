@@ -331,6 +331,28 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         Client.WriteAsync<DependencyFileDto>(HttpMethod.Put, "/api/dependency-files", request, ct);
 
     /// <summary>
+    /// The path the changelog file lives at, every verdict the board holds for
+    /// it, and which of <paramref name="remotes"/> - spelled as this runner's
+    /// checkouts have them - some project elects for a changelog. This runner
+    /// canonicalises nothing, so it asks the board which checkouts to read.
+    /// </summary>
+    public async Task<ChangelogFilesDto> ChangelogFilesAsync(IEnumerable<string> remotes, CancellationToken ct)
+    {
+        var query = string.Join("&", remotes.Distinct().Select(r => $"remote={Uri.EscapeDataString(r)}"));
+        return await Client.GetAsync<ChangelogFilesDto>($"/api/changelog-files{(query.Length == 0 ? "" : "?" + query)}", ct)
+               ?? new ChangelogFilesDto("", [], []);
+    }
+
+    /// <summary>
+    /// The exact bytes one elected repository's trunk holds for the changelog
+    /// file - see <see cref="ChangelogFileRequest"/>. The board judges them
+    /// itself and, where the file is behind, files the task. The remote is
+    /// spelled the way this runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<ChangelogFileDto?> ChangelogFileAsync(ChangelogFileRequest request, CancellationToken ct) =>
+        Client.WriteAsync<ChangelogFileDto>(HttpMethod.Put, "/api/changelog-files", request, ct);
+
+    /// <summary>
     /// Files the bug HA-95's button would have filed for this trunk build. A
     /// key sends no body - express, the priority and the column are the
     /// project's own standing permission (HA-792), not this call's to name. A

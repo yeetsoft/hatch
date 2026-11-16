@@ -231,6 +231,14 @@ public static class Fixtures
             1, remote, canonical, trunk, sha ?? new string('a', 40), "parsed", "hash",
             [], null, null, null, url, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
+    /// <summary>A changelog-file row as the board would hold it, behind by two at the same default remote and sha.</summary>
+    public static ChangelogFileDto ChangelogFile(
+        string remote = "https://example.test/repo.git", string canonical = "example.test/repo",
+        string trunk = "main", string? sha = null, string state = "behind", int? behind = 2) =>
+        new(
+            1, remote, canonical, trunk, sha ?? new string('a', 40), state, "hash",
+            behind, null, null, DateTimeOffset.UnixEpoch, "runner", "hatch");
+
     /// <summary>
     /// The repo copy a dispatch was judged against - carried on <see
     /// cref="WorkDto.PlaybookFile"/>, read by <see cref="Increment.RunAsync"/>'s

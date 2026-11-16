@@ -2223,6 +2223,48 @@ public class EfHatchDependencyFile
 }
 
 /// <summary>
+/// What a repository's trunk holds at <see cref="ChangelogFile.Path"/>, as the
+/// board judged it against its own projection the last time something
+/// checked. One row per repository per trunk, keyed on <see cref="Canonical"/>
+/// and <see cref="Trunk"/>, the same shape <see cref="EfHatchDependencyFile"/> is.
+/// </summary>
+[Table("ChangelogFiles")]
+[Index(nameof(Canonical), nameof(Trunk), IsUnique = true)]
+public class EfHatchChangelogFile
+{
+    public const int MaxRemoteLength = EfHatchTrunkBuild.MaxRemoteLength;
+    public const int MaxRefLength = EfHatchTrunkBuild.MaxRefLength;
+    public const int MaxShaLength = EfHatchTrunkBuild.MaxShaLength;
+    public const int MaxHashLength = 64; // lower-hex SHA-256
+    public const int MaxUrlLength = EfHatchTrunkBuild.MaxCheckUrlLength;
+    public const int MaxProblemLength = 2000;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    [MaxLength(MaxRemoteLength)] public required string Remote { get; set; }
+    [MaxLength(MaxRemoteLength)] public required string Canonical { get; set; }
+    [MaxLength(MaxRefLength)] public required string Trunk { get; set; }
+    [MaxLength(MaxShaLength)] public required string Sha { get; set; }
+
+    [MaxLength(10)] public required string State { get; set; } // one of ChangelogFile.States
+
+    [MaxLength(MaxHashLength)] public string? Hash { get; set; }
+
+    /// <summary>For <c>behind</c>: the entries missing or differing. Null in every other state.</summary>
+    public int? Behind { get; set; }
+
+    /// <summary>For <c>foreign</c>: the sentence saying why and what to do.</summary>
+    [MaxLength(MaxProblemLength)] public string? Problem { get; set; }
+
+    [MaxLength(MaxUrlLength)] public string? Url { get; set; }
+
+    public required DateTimeOffset CheckedAt { get; set; }
+    [MaxLength(ClaimRequest.MaxRunnerLength)] public required string Runner { get; set; }
+    [MaxLength(Common.PersonName.MaxChars)] public required string CheckedBy { get; set; }
+}
+
+/// <summary>
 /// The verdict a check session wrote about an issue - pass or fail, and
 /// whatever findings came with it. One row per claim: a second write under the
 /// same <see cref="ClaimToken"/> replaces the first, the way a merge or build

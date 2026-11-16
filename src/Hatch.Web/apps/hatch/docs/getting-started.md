@@ -116,7 +116,9 @@ Then find the project's row and press **Edit**. The dialog's **Repositories**
 part is where you bind it to a git repository: add a remote and, if you want
 one, a base branch; use the arrows to reorder them (the first is the primary);
 tick **Writes a changelog** beside a remote to say its repository takes a
-changelog file (only an owner sees the box); **Remove** takes one off.
+changelog file (only an owner sees the box), and the dialog then says whether a
+runner has found that file current, behind, missing or not Hatch's own;
+**Remove** takes one off.
 Nothing is stored until **Save**. Binding is how the
 board knows which repository a project's tickets are about.
 

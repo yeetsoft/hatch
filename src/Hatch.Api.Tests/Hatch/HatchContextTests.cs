@@ -35,7 +35,7 @@ public class HatchContextTests
         using var db = NewContext();
 
         Assert.Equal(
-            ["Attachments", "BuildChecks", "ChangelogTasks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "MergeChecks", "OvernightSeen", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
+            ["Attachments", "BuildChecks", "ChangelogFiles", "ChangelogTasks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "MergeChecks", "OvernightSeen", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 

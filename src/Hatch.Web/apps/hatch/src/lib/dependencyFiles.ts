@@ -23,11 +23,13 @@ export function invalidSentence(file: DependencyFileDto): string {
 /** The one stored file a repository's declaration was read from, if any - the
     per-repository form of playbookFiles.ts's projectsReading. A set base
     branch picks the file read on that trunk; an unset one picks the sole file
-    for the canonical, and is ambiguous (null) where two trunks were read. */
-export function fileForRepository(
+    for the canonical, and is ambiguous (null) where two trunks were read.
+    Takes any stored row with a canonical and a trunk, so the changelog file
+    on the same page is found by the same rule. */
+export function fileForRepository<T extends { canonical: string; trunk: string }>(
   repo: { canonical: string; baseBranch: string | null },
-  files: DependencyFileDto[],
-): DependencyFileDto | null {
+  files: T[],
+): T | null {
   const forCanonical = files.filter((f) => f.canonical === repo.canonical);
   if (repo.baseBranch !== null) return forCanonical.find((f) => f.trunk === repo.baseBranch) ?? null;
   return forCanonical.length === 1 ? forCanonical[0] : null;

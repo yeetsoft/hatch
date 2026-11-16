@@ -55,6 +55,7 @@ import type {
   Playbook,
   PlaybookCreateRequest,
   PlaybookFilesDto,
+  ChangelogFilesDto,
   DependencyFilesDto,
   PlaybookPatchRequest,
   PlaybookProposal,
@@ -317,6 +318,7 @@ export const deletePlaybook = (id: number) =>
 export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/playbook-files');
 
 export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/dependency-files');
+export const getChangelogFiles = () => fetchJson<ChangelogFilesDto>('/api/changelog-files');
 
 // ---- Runners ----
 //

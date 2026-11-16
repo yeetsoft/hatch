@@ -7,6 +7,7 @@ import {
   deleteProjectMember,
   fileProjectReflection,
   getAssignees,
+  getChangelogFiles,
   getDependencyFiles,
   getPeople,
   getStatuses,
@@ -28,6 +29,7 @@ import {
 } from '../api/client';
 import { message } from '../lib/errors';
 import { boardColumns } from '../lib/columns';
+import { changelogSentence } from '../lib/changelogFiles';
 import { declarationSentence, fileForRepository, invalidSentence } from '../lib/dependencyFiles';
 import { fileReflection } from '../lib/projectReflect';
 import {
@@ -115,6 +117,7 @@ export function ProjectEditDialog({
   const { data: directory } = useLoaded(getAssignees);
   const { data: statuses } = useLoaded(getStatuses);
   const { data: dependencyFiles } = useLoaded(getDependencyFiles);
+  const { data: changelogFiles } = useLoaded(getChangelogFiles);
 
   // Reset whenever a different project is picked, so a half-typed
   // confirmation and a stale draft cannot be carried from one project to
@@ -170,6 +173,31 @@ export function ProjectEditDialog({
       <>
         <span className="text-muted">{invalidSentence(row)}</span>
         {row.url !== null && (
+          <a className="hatch-chip hatch-chip-link" href={row.url} target="_blank" rel="noreferrer noopener">
+            <span className="hatch-chip-kind">File</span>
+            {pullRequestWords(row.url)}
+          </a>
+        )}
+      </>
+    );
+  }
+
+  // What a runner has read of the changelog file on a repository that writes
+  // one, resolved from the saved project for the same reason declaration() is:
+  // a box just ticked has nothing stored yet, and shows nothing.
+  function changelogStatus(remote: string) {
+    const original = project!.repositories.find((r) => r.remote === remote);
+    if (!original?.changelog) return null;
+    const files = changelogFiles?.files ?? [];
+    const row = fileForRepository(original, files);
+    if (row === null) {
+      if (files.some((f) => f.canonical === original.canonical)) return null;
+      return <span className="text-muted">no runner has read its changelog yet</span>;
+    }
+    return (
+      <>
+        <span className="text-muted">{changelogSentence(row)}</span>
+        {row.state === 'foreign' && row.url !== null && (
           <a className="hatch-chip hatch-chip-link" href={row.url} target="_blank" rel="noreferrer noopener">
             <span className="hatch-chip-kind">File</span>
             {pullRequestWords(row.url)}
@@ -388,6 +416,7 @@ export function ProjectEditDialog({
             ) : (
               repo.changelog && <span className="text-muted">writes a changelog</span>
             )}
+            {changelogStatus(repo.remote)}
             <div className="hatch-reorder">
               <Button
                 disabled={index === 0}

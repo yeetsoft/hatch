@@ -23,6 +23,7 @@ public sealed class PollTests
     private const string TrunkBuilds = "/api/trunk-builds";
     private const string PlaybookFiles = "/api/playbook-files";
     private const string DependencyFiles = "/api/dependency-files";
+    private const string ChangelogFiles = "/api/changelog-files";
 
     private static RemoteHeads Heads(string? trunk = null, params (string Name, string Sha)[] branches) =>
         new("main", new Dictionary<string, string>(
@@ -99,6 +100,21 @@ public sealed class PollTests
         public Rig KeepsDependencyFile(DependencyFileDto held)
         {
             H.Wire.Replace("PUT", DependencyFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
+            return this;
+        }
+
+        /// <summary>What the board says it holds for every changelog file, and which of this runner's remotes some project elects.</summary>
+        public Rig ElectsChangelog(params ChangelogFileDto[] rows)
+        {
+            H.Wire.Replace("GET", ChangelogFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+                new ChangelogFilesDto(".hatch/changelog.yml", ["example.test/repo"], rows, ["https://example.test/repo.git"]), Fixtures.Json));
+            return this;
+        }
+
+        /// <summary>What the board answers a changelog file put with: the row it now holds.</summary>
+        public Rig KeepsChangelogFile(ChangelogFileDto held)
+        {
+            H.Wire.Replace("PUT", ChangelogFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
             return this;
         }
 
@@ -641,10 +657,10 @@ public sealed class PollTests
 
         await rig.RunAsync();
 
-        // The review read, and the trunk, playbook-file and dependency-file
-        // halves' own - all run whether or not anything is in review, so a
-        // quiet board is not a poll that never gets there.
-        Assert.Equal(4, rig.H.Wire.Calls.Count);
+        // The review read, and the trunk, playbook-file, dependency-file and
+        // changelog-file halves' own - all run whether or not anything is in
+        // review, so a quiet board is not a poll that never gets there.
+        Assert.Equal(5, rig.H.Wire.Calls.Count);
         Assert.Equal([$"heads {rig.H.Root}"], rig.H.Workspace.Calls);
         Assert.Empty(rig.H.Say.Said);
         Assert.Empty(rig.H.Say.Complained);
@@ -1539,6 +1555,142 @@ public sealed class PollTests
         await rig.Later().RunAsync();
 
         Assert.Equal(2, rig.Count("fetch"));
+        Assert.Equal(2, rig.Count("read-blob"));
+    }
+
+    // ---- The changelog file (HA-2367) ----
+
+    private const string ChangelogPath = ".hatch/changelog.yml";
+
+    /// <summary>A checkout with an origin a project elects for a changelog, whose file the board does not hold at any sha.</summary>
+    private static Rig ElectedWithNoStoredChangelogFile()
+    {
+        var rig = new Rig().Board();
+        rig.ElectsChangelog();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        return rig;
+    }
+
+    [Fact]
+    public async Task An_elected_checkouts_changelog_file_is_fetched_read_and_put_with_its_exact_bytes()
+    {
+        using var rig = ElectedWithNoStoredChangelogFile();
+        var bytes = "# Written by Hatch from the board.\nversion: 1\nentries: []\n"u8.ToArray();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ChangelogPath)] = new BlobRead(BlobOutcome.Found, bytes, null);
+        rig.H.Forge.FileUrlFor[ChangelogPath] = "https://example.test/repo/blob/main/.hatch/changelog.yml";
+        rig.KeepsChangelogFile(Fixtures.ChangelogFile());
+
+        await rig.RunAsync();
+
+        Assert.Contains($"read-blob {rig.H.Root} main {ChangelogPath}", rig.H.Workspace.Calls);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", ChangelogFiles)).Read<ChangelogFileRequest>();
+        Assert.Equal("https://example.test/repo.git", put.Remote);
+        Assert.Equal("main", put.Trunk);
+        Assert.Equal(Trunk, put.Sha);
+        Assert.Equal(Convert.ToBase64String(bytes), put.Content);
+        Assert.Equal("https://example.test/repo/blob/main/.hatch/changelog.yml", put.Url);
+        Assert.Equal("test:/checkout", put.Runner);
+    }
+
+    [Fact]
+    public async Task The_board_is_asked_which_of_the_checkouts_remotes_are_elected()
+    {
+        using var rig = ElectedWithNoStoredChangelogFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ChangelogPath)] = new BlobRead(BlobOutcome.Absent, null, null);
+        rig.KeepsChangelogFile(Fixtures.ChangelogFile());
+
+        await rig.RunAsync();
+
+        var asked = Assert.Single(rig.H.Wire.To("GET", ChangelogFiles));
+        Assert.Contains("remote=" + Uri.EscapeDataString("https://example.test/repo.git"), asked.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_checkout_no_project_elects_for_a_changelog_is_not_read()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+
+        await rig.RunAsync();
+
+        Assert.DoesNotContain($"read-blob {rig.H.Root} main {ChangelogPath}", rig.H.Workspace.Calls);
+        Assert.Empty(rig.H.Wire.To("PUT", ChangelogFiles));
+    }
+
+    [Fact]
+    public async Task A_changelog_file_the_board_already_holds_at_the_trunks_sha_is_not_put()
+    {
+        using var rig = new Rig().Board();
+        rig.ElectsChangelog(Fixtures.ChangelogFile(sha: Trunk));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", ChangelogFiles));
+        Assert.DoesNotContain($"read-blob {rig.H.Root} main {ChangelogPath}", rig.H.Workspace.Calls);
+    }
+
+    [Fact]
+    public async Task A_trunk_is_put_once_per_sha_and_again_when_it_moves()
+    {
+        using var rig = ElectedWithNoStoredChangelogFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ChangelogPath)] = new BlobRead(BlobOutcome.Absent, null, null);
+        rig.KeepsChangelogFile(Fixtures.ChangelogFile());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Single(rig.H.Wire.To("PUT", ChangelogFiles));
+
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(Moved);
+
+        await rig.Later().RunAsync();
+
+        var puts = rig.H.Wire.To("PUT", ChangelogFiles);
+        Assert.Equal(2, puts.Count);
+        Assert.Equal(Moved, puts[1].Read<ChangelogFileRequest>().Sha);
+    }
+
+    [Fact]
+    public async Task A_trunk_with_no_changelog_file_is_put_with_null_content()
+    {
+        using var rig = ElectedWithNoStoredChangelogFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ChangelogPath)] = new BlobRead(BlobOutcome.Absent, null, null);
+        rig.KeepsChangelogFile(Fixtures.ChangelogFile());
+
+        await rig.RunAsync();
+
+        Assert.Null(Assert.Single(rig.H.Wire.To("PUT", ChangelogFiles)).Read<ChangelogFileRequest>().Content);
+    }
+
+    [Fact]
+    public async Task A_board_that_would_not_take_the_changelog_file_is_a_line_and_is_asked_again_next_interval()
+    {
+        using var rig = ElectedWithNoStoredChangelogFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ChangelogPath)] = new BlobRead(BlobOutcome.Absent, null, null);
+        rig.H.Wire.Replace("PUT", ChangelogFiles, HttpStatusCode.NotFound, "\"no project elects it\"");
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Wire.To("PUT", ChangelogFiles).Count);
+        Assert.Contains("changelog file", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_failed_changelog_file_read_is_one_complaint_and_is_asked_again_next_interval()
+    {
+        using var rig = ElectedWithNoStoredChangelogFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ChangelogPath)] = new BlobRead(BlobOutcome.Failed, null, "some git error");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", ChangelogFiles));
+        Assert.Contains("some git error", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+
+        await rig.Later().RunAsync();
+
         Assert.Equal(2, rig.Count("read-blob"));
     }
 

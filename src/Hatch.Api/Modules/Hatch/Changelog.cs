@@ -17,6 +17,16 @@ public static class Changelog
     /// Deliberately not <see cref="EfHatchIssue.Types"/>, which is a picker's order.</summary>
     private static readonly string[] FixTypeOrder = ["story", "bug", "task"];
 
+    /// <summary>
+    /// What a file Hatch wrote opens with - what the judge of a stored file
+    /// (<see cref="ChangelogFileState"/>) tells it from somebody else's by, so
+    /// the two cannot drift.
+    /// </summary>
+    public const string HeaderPrefix = "# Written by Hatch from the board.";
+
+    /// <summary>The whole first line of the file.</summary>
+    public const string Header = HeaderPrefix + " Do not edit by hand; run `hatch changelog --file` to bring it current.";
+
     /// <summary>One closed, parentless issue, as the fold reads it.</summary>
     public readonly record struct Entry(
         long IssueId, string Key, int Number, string Title, string Type, string ProjectKey,
@@ -115,7 +125,7 @@ public static class Changelog
             .ToList();
 
         var sb = new StringBuilder();
-        sb.Append("# Written by Hatch from the board. Do not edit by hand; run `hatch changelog --file` to bring it current.\n");
+        sb.Append(Header).Append('\n');
         sb.Append("version: 1\n");
         sb.Append("entries:");
 
