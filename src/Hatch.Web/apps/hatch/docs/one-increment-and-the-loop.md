@@ -316,7 +316,11 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
 6. **Review poll.** On the interval, pull requests in review are read for a
    failing build or a conflict, which become work of their own.
 7. **Pick and claim.** The first issue the dispatcher clears, folding past
-   everything it does not, and a claim on it. No claim, no spawn, which is what
+   everything it does not, and a claim on it. The order is an emergency issue
+   in any project that is not paused, then an expedited project's work, then
+   every other project's, and last what is paused; a paused project's work is
+   never picked, and a loop that cannot work an expedited project is handed the
+   next project's. No claim, no spawn, which is what
    keeps two runners off one ticket. If the ticket binds a repository this loop
    has no checkout of, it is cloned here, with the lease already held. A ticket
    that a hop carries across a column with no session is not an increment:

@@ -69,6 +69,21 @@ public class WipTests
     }
 
     [Fact]
+    public async Task AStoryInAPausedProject_FreesItsSlot()
+    {
+        var h = await NewAsync();
+        await h.WipAsync(3, h.InProgress, h.InReview);
+        await h.IssueAsync("story", h.InProgress);
+        await h.IssueAsync("story", h.InReview);
+        (await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).Priority = ProjectPriorities.Paused;
+        await h.Db.SaveChangesAsync();
+
+        var wip = (await h.BoardAsync()).Wip;
+
+        Assert.Equal(0, wip!.Slices[0].Load);
+    }
+
+    [Fact]
     public async Task ABugInTheSection_CountsAsAStoryDoes()
     {
         var h = await NewAsync();

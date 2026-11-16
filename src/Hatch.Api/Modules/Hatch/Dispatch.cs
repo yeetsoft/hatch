@@ -241,19 +241,18 @@ public sealed class Dispatch(
 
         var implementation = Columns.Implementation(statuses);
 
-        // The whole walk, six times: every emergency candidate right to
-        // left, then every expedited candidate right to left, then every
-        // normal one right to left, then every low one right to left, then
-        // every economy one right to left, then every paused one right to
-        // left. So an emergency bug in the leftmost column is listed above an
-        // expedited story in the rightmost one, which is listed above a
-        // normal one in the rightmost one, which is listed above a low one
-        // wherever it sits, which is listed above an economy one wherever it
-        // sits, which is listed above a paused one wherever it sits, while
-        // inside each tier the order is the board's own - rightmost column
-        // first, and (Rank, Id) within a column.
+        // The whole walk, once per tier, each tier right to left: first every
+        // emergency candidate in a project that is not paused; then, for an
+        // expedited project and then for every other unpaused one, its
+        // expedited candidates, its normal ones, its low ones and its economy
+        // ones; last, every candidate that is paused itself or sits in a
+        // paused project. So an emergency bug in the leftmost column of any
+        // project is listed above an expedited project's economy story in the
+        // rightmost one, which is listed above a normal project's expedited
+        // one, while inside each tier the order is the board's own -
+        // rightmost column first, and (Rank, Id) within a column.
         //
-        // Six passes over the same columns rather than a sort of the
+        // One pass per tier over the same columns rather than a sort of the
         // finished rows, because the published scan is the explanation of
         // what `next` picked: a comparator applied afterwards would be a
         // second opinion about the order, and passes that could disagree is
@@ -318,6 +317,9 @@ public sealed class Dispatch(
         // is a tier that never runs (HA-312).
         string? parkedByKey = null;
         string? parkedByLevel = null;
+        string? parkedByProjectKey = null;
+        string? parkedByProjectLevel = null;
+        var parkedByEmergency = false;
 
         // Whether any row was folded on its model: the fold precedes the
         // dependency and family folds, so such a row loses its WaitsOn and
@@ -331,9 +333,26 @@ public sealed class Dispatch(
         var hasFolded = false;
         var requirements = new Dictionary<int, DependencyRequirement>();
 
-        foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy, PriorityLevels.Paused })
+        // Each tier is a test over an issue's own level and its project's. The
+        // project tier for "normal" takes any level that is neither of the
+        // others, so an unknown value could never drop a row from the scan.
+        var tiers = new List<(Func<int, string, bool> Holds, bool Emergency)>
+        {
+            ((l, p) => l == PriorityLevels.Emergency && p != ProjectPriorities.Paused, true),
+        };
+        foreach (var expeditedProject in new[] { true, false })
+            foreach (var issueLevel in new[] { PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy })
+                tiers.Add((
+                    (l, p) => l == issueLevel && p != ProjectPriorities.Paused && (p == ProjectPriorities.Expedited) == expeditedProject,
+                    false));
+        tiers.Add(((l, p) => l == PriorityLevels.Paused || p == ProjectPriorities.Paused, false));
+
+        foreach (var (tierHolds, tierIsEmergency) in tiers)
         {
             string? firstClearThisTier = null;
+            string? firstClearLevel = null;
+            string? firstClearProjectKey = null;
+            string? firstClearProjectLevel = null;
 
             foreach (var status in Enumerable.Reverse(statuses))
             {
@@ -342,7 +361,7 @@ public sealed class Dispatch(
 
                 foreach (var issue in column)
                 {
-                    if (effective[issue.Id].Level != level) continue;
+                    if (!tierHolds(effective[issue.Id].Level, gate.ProjectLevel(issue.Id))) continue;
 
                     if (!repoSourced.TryGetValue(issue.ProjectId, out var projectRepoSourced))
                     {
@@ -425,8 +444,14 @@ public sealed class Dispatch(
                     // parks the tiers below it.
                     if (blocked is null && !hop && parkedByKey is not null)
                     {
-                        sentence = $"{parkedByKey} ranks {parkedByLevel} and is clear - " +
-                                   $"nothing at {PriorityLevels.Name(level)} is picked up while higher-ranking work is available";
+                        // Across projects the sentence names the project; within
+                        // one, or under an emergency, it names the level.
+                        var rowProjectLevel = gate.ProjectLevel(issue.Id);
+                        sentence = !parkedByEmergency && parkedByProjectLevel != rowProjectLevel
+                            ? $"{parkedByKey} is in {parkedByProjectLevel} project {parkedByProjectKey} and is clear - " +
+                              $"nothing in a project at {rowProjectLevel} is picked up while an {parkedByProjectLevel} project has work available"
+                            : $"{parkedByKey} ranks {parkedByLevel} and is clear - " +
+                              $"nothing at {PriorityLevels.Name(effective[issue.Id].Level)} is picked up while higher-ranking work is available";
                         kind = BlockedKinds.Turn;
                     }
 
@@ -435,7 +460,12 @@ public sealed class Dispatch(
                     // replaced its sentence, and still counts as clear for the
                     // tier below it.
                     if (firstClearThisTier is null && blocked is null)
+                    {
                         firstClearThisTier = IssueKey.Format(issue.Project!.Key, issue.Number);
+                        firstClearLevel = PriorityLevels.Name(effective[issue.Id].Level);
+                        firstClearProjectKey = issue.Project!.Key;
+                        firstClearProjectLevel = gate.ProjectLevel(issue.Id);
+                    }
 
                     rows.Add(new ScanRow(
                         issue, status, rowTo, sentence, kind,
@@ -455,14 +485,18 @@ public sealed class Dispatch(
                         Model: issue.ModelOverride ?? playbook?.Model,
                         DeniedTools: playbook is null ? null : EfHatchPlaybook.ReadDeniedTools(playbook.DeniedTools) ?? [],
                         WaitsOn: blocking.WaitsOn,
-                        AnyOf: blocking.AnyOf));
+                        AnyOf: blocking.AnyOf,
+                        ProjectLevel: gate.ProjectLevel(issue.Id)));
                 }
             }
 
             if (parkedByKey is null && firstClearThisTier is not null)
             {
                 parkedByKey = firstClearThisTier;
-                parkedByLevel = PriorityLevels.Name(level);
+                parkedByLevel = firstClearLevel;
+                parkedByProjectKey = firstClearProjectKey;
+                parkedByProjectLevel = firstClearProjectLevel;
+                parkedByEmergency = tierIsEmergency;
             }
         }
 
@@ -2028,6 +2062,12 @@ public sealed class Dispatch(
                 claimed.Claims!.StallResumeSeconds, claimed.Claims!.StallResumeLimit, claimed.Now) is { } stalled)
             return stalled;
 
+        // A person paused the whole project. Beside the issue fold, after the
+        // merge judge, claim and stall folds, so a hop still holds and a
+        // merge-column row keeps the judge's sentence.
+        if (gate.ProjectLevel(issue.Id) == ProjectPriorities.Paused)
+            return new Blocking($"project {issue.Project!.Key} is paused - a person set it aside, and nothing in it picks up until they set it back", BlockedKinds.Person);
+
         var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
         if (pausedLevel == PriorityLevels.Paused)
             return new Blocking(pausedFrom is null
@@ -2808,7 +2848,8 @@ public sealed record ScanRow(
     string? HopKind = null, string? HopUnder = null, string? ClearNote = null,
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
     string? Model = null, IReadOnlyList<string>? DeniedTools = null,
-    IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false);
+    IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false,
+    string? ProjectLevel = null);
 
 /// <summary>
 /// <see cref="Dispatch.BlockedWithKind"/>'s answer: the sentence and its kind,
@@ -3093,6 +3134,10 @@ public sealed class PriorityTree
     // beside _rows rather than widening its tuple, as _runnerTags is.
     private readonly Dictionary<long, string?> _dangerous;
 
+    // Each issue's project's level - ProjectPriorities. Kept beside _dangerous
+    // rather than widening _rows; an issue with no entry reads as normal.
+    private readonly Dictionary<long, string> _projectLevels;
+
     // Each issue's own runner omissions - one-to-many, so loaded by a second
     // query rather than riding the single-row projection _dangerous does.
     private readonly Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>> _omissions;
@@ -3107,9 +3152,11 @@ public sealed class PriorityTree
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
         Dictionary<long, (IReadOnlyList<string>, IReadOnlyList<string>)>? runnerTags = null,
         Dictionary<long, string?>? dangerous = null,
-        Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>>? omissions = null)
+        Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>>? omissions = null,
+        Dictionary<long, string>? projectLevels = null)
     {
         _rows = rows;
+        _projectLevels = projectLevels ?? new();
         _onePr = onePr ?? new();
         _runnerTags = runnerTags ?? new();
         _dangerous = dangerous ?? new();
@@ -3128,7 +3175,7 @@ public sealed class PriorityTree
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
-                i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous,
+                i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous, ProjectPriority = i.Project!.Priority,
             })
             .ToListAsync(ct);
 
@@ -3148,10 +3195,19 @@ public sealed class PriorityTree
                 .ToDictionary(
                     g => g.Key,
                     g => (IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>)
-                        g.Select(o => (o.RunnerName, o.Reason, o.By, o.At)).ToList()));
+                        g.Select(o => (o.RunnerName, o.Reason, o.By, o.At)).ToList()),
+            rows.ToDictionary(r => r.Id, r => r.ProjectPriority));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
+
+    /// <summary>
+    /// The level of the project this issue sits in - one of
+    /// <see cref="ProjectPriorities.All"/>. Not inherited: a project's level is
+    /// its own, and an issue and its parent always share one project.
+    /// </summary>
+    public string ProjectLevel(long issueId) =>
+        _projectLevels.TryGetValue(issueId, out var level) ? level : ProjectPriorities.Normal;
 
     /// <summary>
     /// The priority live on this issue: its own, if set, or the nearest
@@ -3542,6 +3598,9 @@ public sealed class DependencyGate
 
     /// <summary>The priority live on this issue - see <see cref="PriorityTree.Effective"/>.</summary>
     public (int Level, string? FromKey) Effective(long issueId) => _tree.Effective(issueId);
+
+    /// <summary>The level of this issue's project - see <see cref="PriorityTree.ProjectLevel"/>.</summary>
+    public string ProjectLevel(long issueId) => _tree.ProjectLevel(issueId);
 
     /// <summary>The pre-approval live on this issue - see <see cref="PriorityTree.EffectivePreApproval"/>.</summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId) => _tree.EffectivePreApproval(issueId);

@@ -213,9 +213,12 @@ public class WorkController(
     /// returns for the same arguments, because it is the same walk. The
     /// arguments mean exactly what they mean there.</para>
     ///
-    /// <para>The rows arrive in the dispatcher's order: every expedited
-    /// candidate first, whatever column each sits in, and then everything else.
-    /// Inside each half it is the rightmost column first and the board's own
+    /// <para>The rows arrive in the dispatcher's order: every emergency
+    /// candidate in an unpaused project first, whatever column each sits in;
+    /// then an expedited project's candidates, and then every other unpaused
+    /// project's, each by issue level from expedited down to economy; and last
+    /// whatever is paused itself or sits in a paused project. Inside each tier
+    /// it is the rightmost column first and the board's own
     /// <c>(Rank, Id)</c> within a column - the same tuple
     /// <see cref="BoardController"/> serves. So a card's position in the queue
     /// is its position in its column on the board, and nothing between the two
@@ -405,7 +408,8 @@ public class WorkController(
             r.Deadlocked,
             taken?.GetValueOrDefault(r.Issue.Id)?.Takers,
             taken?.GetValueOrDefault(r.Issue.Id)?.Untaken,
-            notes.GetValueOrDefault(r.Issue.Id))).ToList();
+            notes.GetValueOrDefault(r.Issue.Id),
+            r.ProjectLevel)).ToList();
     }
 
     /// <summary>

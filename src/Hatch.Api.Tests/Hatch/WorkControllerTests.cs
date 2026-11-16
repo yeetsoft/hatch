@@ -5312,6 +5312,169 @@ public class WorkControllerTests
         Assert.Null(queue.Single(e => e.Issue.Key == Key(normal)).Blocked);
     }
 
+    // ---- A project's level: expedited first, paused never (HA-2355) ----
+
+    private const string ParkedByProject =
+        "{0} is in expedited project {1} and is clear - nothing in a project at normal is picked up while an expedited project has work available";
+
+    private const string ProjectPaused =
+        "project {0} is paused - a person set it aside, and nothing in it picks up until they set it back";
+
+    [Fact]
+    public async Task AnExpeditedProject_IsWorkedFirst_AndTheOthersClearRowsAreParkedNamingIt()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var own = await h.FileAsync("story", "in the normal project, further along", h.InProgress);
+        var theirs = await h.FileAsync("story", "in the expedited project, further left", h.Todo, projectId: other);
+        await h.SetProjectLevelAsync(ProjectPriorities.Expedited, other);
+
+        Assert.Equal(Key("OTH", theirs), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        var first = queue.First(e => e.Blocked is null);
+        Assert.Equal(Key("OTH", theirs), first.Issue.Key);
+        Assert.Equal(ProjectPriorities.Expedited, first.ProjectPriority);
+
+        var parked = queue.Single(e => e.Issue.Key == Key(own));
+        Assert.Equal(string.Format(ParkedByProject, Key("OTH", theirs), "OTH"), parked.Blocked);
+        Assert.Equal(BlockedKinds.Turn, parked.BlockedKind);
+        Assert.Equal(ProjectPriorities.Normal, parked.ProjectPriority);
+    }
+
+    [Fact]
+    public async Task AnExpeditedProjectsNormalRow_BeatsAnotherProjectsExpeditedRow_AndAnEmergencyBeatsBoth()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var hurried = await h.FileAsync("bug", "expedited, in the normal project", h.Review);
+        await h.ExpediteAsync(hurried);
+        var theirs = await h.FileAsync("story", "normal, in the expedited project", h.Inbox, projectId: other);
+        await h.SetProjectLevelAsync(ProjectPriorities.Expedited, other);
+
+        Assert.Equal(
+            new[] { Key("OTH", theirs), Key(hurried) },
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+
+        var alarm = await h.FileAsync("bug", "emergency, in the normal project", h.Todo);
+        await h.EmergencyAsync(alarm);
+
+        Assert.Equal(
+            new[] { Key(alarm), Key("OTH", theirs), Key(hurried) },
+            Value(await h.Work.GetQueue(0, null, default)).Select(e => e.Issue.Key));
+        Assert.Equal(Key(alarm), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task AnExpeditedProject_ARunnerBoundElsewhere_IsHandedTheOtherProjectsClearRow()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var own = await h.FileAsync("story", "in the normal project", h.Todo);
+        await h.FileAsync("story", "in the expedited project", h.Todo, projectId: other);
+        await h.SetProjectLevelAsync(ProjectPriorities.Expedited);
+
+        Assert.Equal(Key(own), Value(await h.Work.GetNextWork(0, null, null, default, project: ["AER"])).Issue.Key);
+        AssertNothingParked(Value(await h.Work.GetQueue(0, null, default, project: ["AER"])));
+    }
+
+    [Fact]
+    public async Task AnExpeditedProject_ARunnerMissingItsTag_IsHandedTheOtherProjectsClearRow()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.FileAsync("story", "in the expedited project, which needs a tag", h.InProgress);
+        var theirs = await h.FileAsync("story", "in the normal project", h.Todo, projectId: other);
+        await h.SetProjectLevelAsync(ProjectPriorities.Expedited);
+        await h.RequireTagsAsync("macos");
+
+        Assert.Equal(Key("OTH", theirs), Value(await h.Work.GetNextWork(0, null, null, default, tag: ["linux"])).Issue.Key);
+        AssertNothingParked(Value(await h.Work.GetQueue(0, null, default, tag: ["linux"])));
+    }
+
+    [Fact]
+    public async Task AnExpeditedProject_ARunnerMissingADeclaredDependency_IsHandedTheOtherProjectsClearRow()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        await h.FileAsync("task", "in the expedited project, which needs dotnet 10", h.InProgress);
+        var theirs = await h.FileAsync("task", "in the normal project", h.Todo, projectId: other);
+        await h.SetProjectLevelAsync(ProjectPriorities.Expedited);
+
+        Assert.Equal(Key("OTH", theirs), Value(await h.Work.GetNextWork(0, null, null, default, has: ["dotnet@8"])).Issue.Key);
+        AssertNothingParked(Value(await h.Work.GetQueue(0, null, default, has: ["dotnet@8"])));
+    }
+
+    private static void AssertNothingParked(IReadOnlyList<QueueEntryDto> queue)
+    {
+        Assert.Contains(queue, e => e.Blocked is null);
+        Assert.DoesNotContain(queue, e => e.BlockedKind == BlockedKinds.Turn);
+    }
+
+    [Fact]
+    public async Task APausedProject_IsFoldedOnEveryReadWithTheProjectSentence()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var paused = await h.FileAsync("story", "in the paused project", h.Todo);
+        var live = await h.FileAsync("story", "in the other project", h.Todo, projectId: other);
+        await h.SetProjectLevelAsync(ProjectPriorities.Paused);
+        var sentence = string.Format(ProjectPaused, "AER");
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(paused));
+        Assert.Equal(sentence, entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+        Assert.Equal(Key("OTH", live), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+
+        var named = Value(await h.Work.GetWork(Key(paused), null, default));
+        Assert.Equal(sentence, named.Blocked);
+    }
+
+    [Fact]
+    public async Task AnEmergencyInAPausedProject_IsStillFolded_AndParksNothing()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var alarm = await h.FileAsync("bug", "emergency, in the paused project", h.Todo);
+        await h.EmergencyAsync(alarm);
+        var live = await h.FileAsync("story", "in the other project", h.Todo, projectId: other);
+        await h.SetProjectLevelAsync(ProjectPriorities.Paused);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(string.Format(ProjectPaused, "AER"), queue.Single(e => e.Issue.Key == Key(alarm)).Blocked);
+        Assert.Null(queue.Single(e => e.Issue.Key == Key("OTH", live)).Blocked);
+    }
+
+    [Fact]
+    public async Task APausedProject_IsNotHopped()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "would otherwise be carried on", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.SetProjectLevelAsync(ProjectPriorities.Paused);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(string.Format(ProjectPaused, "AER"), entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task APausedProjects_MergeColumnRow_KeepsTheMergeJudgesSentence()
+    {
+        var h = await NewAsync();
+        await MergingRowAsync(h);
+
+        var before = Only(await h.Work.GetQueue(0, null, remote: ["git@example.com:o/r.git"], ct: default)).Blocked;
+        await h.SetProjectLevelAsync(ProjectPriorities.Paused);
+        var after = Only(await h.Work.GetQueue(0, null, remote: ["git@example.com:o/r.git"], ct: default)).Blocked;
+
+        Assert.NotNull(before);
+        Assert.Equal(before, after);
+    }
+
     // ---- Models: a move the runner cannot spawn is folded ----
 
     private static string NotOffered(EfHatchIssue issue, string column, string model, string? agent) =>
@@ -14635,6 +14798,14 @@ public class WorkControllerTests
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
             project.RepoSourced = on;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The project's level, written straight onto the row - see <see cref="ProjectPriorities"/>.</summary>
+        public async Task SetProjectLevelAsync(string level, int? projectId = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
+            project.Priority = level;
             await Db.SaveChangesAsync();
         }
 
