@@ -201,6 +201,112 @@ public class IssueReleaseNoteControllerTests
         Assert.Null((await h.RowAsync(issue.Key)).ReleaseNote);
     }
 
+    // ---- The changelog task's claim ----
+
+    [Fact]
+    public async Task ARecordedChangelogTasksLiveClaim_MayWriteTheNoteOfItsIssue_AndTheEventNamesTheTask()
+    {
+        var h = await NewAsync();
+        var delivered = await h.FileAsync();
+        var task = await h.RecordTaskAsync(delivered.Key);
+        var token = Guid.NewGuid();
+        await h.ClaimAsync(task, token);
+        h.BecomeAKey();
+
+        var set = await h.SetAsync(delivered.Key, "Shipped faster.", token);
+
+        Assert.Equal("Shipped faster.", set.ReleaseNote);
+        var written = Assert.Single(await h.EventsAsync(delivered.Key));
+        Assert.Equal("a key", written.Actor);
+        Assert.Equal((null, "Shipped faster."), Sides(written));
+        Assert.Equal(task, written.Payload!.Value.GetProperty("via").GetString());
+    }
+
+    [Fact]
+    public async Task AWriteUnderTheIssuesOwnClaim_CarriesNoVia()
+    {
+        var h = await NewAsync();
+        var delivered = await h.FileAsync();
+        await h.RecordTaskAsync(delivered.Key);
+        var token = Guid.NewGuid();
+        await h.ClaimAsync(delivered.Key, token);
+        h.BecomeAKey();
+
+        await h.SetAsync(delivered.Key, "its own", token);
+
+        var written = Assert.Single(await h.EventsAsync(delivered.Key));
+        Assert.False(written.Payload!.Value.TryGetProperty("via", out _));
+    }
+
+    [Fact]
+    public async Task AnotherIssuesClaim_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var delivered = await h.FileAsync();
+        var other = await h.FileAsync();
+        var token = Guid.NewGuid();
+        await h.ClaimAsync(other.Key, token);
+        h.BecomeAKey();
+
+        var refused = await h.Notes.PutIssueReleaseNote(delivered.Key, new ReleaseNoteRequest("x"), token, default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Contains($"{delivered.Key} holds no live claim", conflict.Value!.ToString());
+        Assert.Null((await h.RowAsync(delivered.Key)).ReleaseNote);
+        Assert.Empty(await h.EventsAsync(delivered.Key));
+    }
+
+    [Fact]
+    public async Task ATasksLapsedClaim_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var delivered = await h.FileAsync();
+        var task = await h.RecordTaskAsync(delivered.Key);
+        var token = Guid.NewGuid();
+        await h.ClaimAsync(task, token, heartbeatAt: Now.AddSeconds(-TestClaims.Ttl - 1));
+        h.BecomeAKey();
+
+        var refused = await h.Notes.PutIssueReleaseNote(delivered.Key, new ReleaseNoteRequest("x"), token, default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Contains("holds no live claim", conflict.Value!.ToString());
+        Assert.Null((await h.RowAsync(delivered.Key)).ReleaseNote);
+    }
+
+    [Fact]
+    public async Task ATaskRecordedForADifferentIssue_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var delivered = await h.FileAsync();
+        var elsewhere = await h.FileAsync();
+        var task = await h.RecordTaskAsync(elsewhere.Key);
+        var token = Guid.NewGuid();
+        await h.ClaimAsync(task, token);
+        h.BecomeAKey();
+
+        var refused = await h.Notes.PutIssueReleaseNote(delivered.Key, new ReleaseNoteRequest("x"), token, default);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Null((await h.RowAsync(delivered.Key)).ReleaseNote);
+    }
+
+    [Fact]
+    public async Task ATasksLiveClaim_WithTheWrongToken_IsAMismatch()
+    {
+        var h = await NewAsync();
+        var delivered = await h.FileAsync();
+        var task = await h.RecordTaskAsync(delivered.Key);
+        await h.ClaimAsync(delivered.Key, Guid.NewGuid());
+        await h.ClaimAsync(task, Guid.NewGuid());
+        h.BecomeAKey();
+
+        var refused = await h.Notes.PutIssueReleaseNote(delivered.Key, new ReleaseNoteRequest("x"), Guid.NewGuid(), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Contains($"{delivered.Key}'s live claim does not match this token", conflict.Value!.ToString());
+        Assert.Null((await h.RowAsync(delivered.Key)).ReleaseNote);
+    }
+
     // ---- The trail ----
 
     [Fact]
@@ -321,6 +427,21 @@ public class IssueReleaseNoteControllerTests
             return created.Result is CreatedAtActionResult c
                 ? (IssueDto)c.Value!
                 : created.Value ?? throw new InvalidOperationException($"expected a created issue, got {created.Result}");
+        }
+
+        /// <summary>Files a second issue and records it as the changelog task filed for <paramref name="sourceKey"/>; returns its key.</summary>
+        public async Task<string> RecordTaskAsync(string sourceKey)
+        {
+            var task = await FileAsync();
+            IssueKey.TryParse(sourceKey, out var projectKey, out var number);
+            var source = await Db.Issues.AsNoTracking().WithKey(projectKey, number).FirstAsync();
+            var row = await RowAsync(task.Key);
+            Db.ChangelogTasks.Add(new EfHatchChangelogTask
+            {
+                IssueId = row.Id, SourceIssueId = source.Id, Canonical = "host/owner/repo", CreatedAt = Now,
+            });
+            await Db.SaveChangesAsync();
+            return task.Key;
         }
 
         public async Task<IssueDto> SetAsync(string key, string? note, Guid? heldToken = null) =>

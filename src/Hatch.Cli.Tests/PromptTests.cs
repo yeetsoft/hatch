@@ -660,6 +660,38 @@ public sealed class PromptTests
             < prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal));
     }
 
+    // ---- HA-2366: the changelog task's release-note ask ----
+
+    [Fact]
+    public void A_changelog_task_is_asked_for_the_note_of_the_issue_it_was_filed_for()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-13", releaseNoteFor: "AER-12"));
+
+        Assert.Contains("```release-note AER-12", prompt, StringComparison.Ordinal);
+        Assert.Contains("AER-12 has no release note", prompt, StringComparison.Ordinal);
+        Assert.Contains("as a customer would read it", prompt, StringComparison.Ordinal);
+        Assert.True(
+            prompt.IndexOf("```release-note AER-12", StringComparison.Ordinal)
+            < prompt.IndexOf("```work-log", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_changelog_task_is_never_asked_for_a_plain_note_as_well()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-13", asksReleaseNote: true, releaseNoteFor: "AER-12"));
+
+        Assert.DoesNotContain("```release-note\n", prompt, StringComparison.Ordinal);
+        Assert.Contains("```release-note AER-12", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Where_no_issue_is_named_the_prompt_carries_no_named_fence()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-13"));
+
+        Assert.DoesNotContain("```release-note", prompt, StringComparison.Ordinal);
+    }
+
     // ---- HA-1036: the release-note ask ----
 
     [Fact]

@@ -336,6 +336,16 @@ the [changelog](/reports/changelog) then falls back to showing the
 ticket's title, and either way a person can edit or correct the note from the
 issue page.
 
+A session on the board's changelog task is told something different, because
+it is the one place a note nobody wrote can still be written. Where the
+issue the task was filed for has no release note, the prompt says so and asks
+for one, as a customer would read it: an epic gets a sentence announcing what
+shipped with a short paragraph beneath, anything else one line. The fence line
+names the issue, ` ```release-note AER-12 `, and the runner puts that block
+to `AER-12` under the task's own claim. A plain `release-note` block on the
+task still writes the task's own note. Where the note already exists, the
+prompt carries nothing, and the task is not asked for a plain note as well.
+
 ## Hooks
 
 A headless session runs under a settings file the runner writes outside
