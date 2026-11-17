@@ -3195,9 +3195,18 @@ public sealed class PriorityTree
             .ToHashSet();
     }
 
-    public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
+    /// <param name="ignoreFilters">
+    /// Read every project, not the caller's. Only the house-wide counts in
+    /// <see cref="Wip"/> and <see cref="DependencyGate"/> ask for it: they
+    /// judge rows their own query already read across the house, and a tree
+    /// missing a hidden issue would read it as unpaused and unblocked.
+    /// </param>
+    public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct, bool ignoreFilters = false)
     {
-        var rows = await db.Issues.AsNoTracking()
+        var issues = ignoreFilters ? db.Issues.IgnoreQueryFilters() : db.Issues;
+        var omissions = ignoreFilters ? db.RunnerOmissions.IgnoreQueryFilters() : db.RunnerOmissions;
+
+        var rows = await issues.AsNoTracking()
             .Select(i => new
             {
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
@@ -3207,7 +3216,7 @@ public sealed class PriorityTree
             })
             .ToListAsync(ct);
 
-        var omissionRows = await db.RunnerOmissions.AsNoTracking()
+        var omissionRows = await omissions.AsNoTracking()
             .Select(o => new { o.IssueId, o.RunnerName, o.Reason, o.By, o.At })
             .ToListAsync(ct);
 
@@ -3564,13 +3573,15 @@ public sealed class DependencyGate
         // The unmet edges, and nothing else. Ordered by the blocker's key
         // so the sentence a fold prints is stable between two passes over
         // an unchanged board.
-        var unmet = await db.Dependencies.AsNoTracking()
+        // Every edge in the house: a blocker in a project the caller cannot see
+        // still blocks. What leaves is an id and a key, as before.
+        var unmet = await db.Dependencies.IgnoreQueryFilters().AsNoTracking()
             .Where(d => !terminal.Contains(d.DependsOn!.StatusId))
             .OrderBy(d => d.DependsOn!.Project!.Key).ThenBy(d => d.DependsOn!.Number)
             .Select(d => new { d.IssueId, d.DependsOnId, ProjectKey = d.DependsOn!.Project!.Key, d.DependsOn!.Number })
             .ToListAsync(ct);
 
-        tree ??= await PriorityTree.ForAsync(db, ct);
+        tree ??= await PriorityTree.ForAsync(db, ct, ignoreFilters: true);
 
         // The one exception to "satisfied means done": a task under a story or
         // bug that shares one pull request, waiting on its pull request,

@@ -43,7 +43,11 @@ public class RankService(HatchContext db)
     public async Task<long> PlaceAsync(
         int statusId, long? movingIssueId, long? afterIssueId, long? beforeIssueId, CancellationToken ct)
     {
-        var column = await db.Issues
+        // The whole column, hidden projects' cards included: a column is shared
+        // by every project, so a rank placed against only the visible cards
+        // could land on a hidden card's rank, and a renumber would reorder the
+        // two sets against each other. What leaves is a rank, never a row.
+        var column = await db.Issues.IgnoreQueryFilters()
             .Where(i => i.StatusId == statusId && (movingIssueId == null || i.Id != movingIssueId))
             .OrderBy(i => i.Rank)
             .ThenBy(i => i.Id)

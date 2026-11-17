@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -6,9 +7,42 @@ namespace Hatch.Api.Modules.Hatch;
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
 /// migration history, thirty-five tables.
 /// </summary>
-public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
+public class HatchContext : DbContext, IModuleContext
 {
     public const string Schema = "hatch";
+
+    private readonly RequestScope? request;
+
+    /// <summary>
+    /// A context with no scope at all, unbounded explicitly: what the tests,
+    /// the design-time factory and anything else that builds one by hand get.
+    /// A second constructor rather than an optional parameter because
+    /// <see cref="ModuleDesignTimeFactory{TContext}"/> builds it by reflection
+    /// with the options alone.
+    /// </summary>
+    public HatchContext(DbContextOptions<HatchContext> options) : base(options)
+    {
+    }
+
+    /// <summary>
+    /// A context that belongs to a request, or to a job with no request: it
+    /// reads <paramref name="request"/> for the caller's scope. With a request
+    /// behind it and no scope resolved, its first query on a filtered table
+    /// throws - see <see cref="RequestScope.Effective"/>.
+    /// </summary>
+    public HatchContext(DbContextOptions<HatchContext> options, RequestScope? request) : base(options)
+    {
+        this.request = request;
+    }
+
+    // What the query filters below read. Instance members, because EF turns a
+    // member of the context into a parameter it re-reads at each execution,
+    // which is how one cached model serves every caller. They are the only way
+    // a filter reaches the scope, and neither does I/O: the answer was put on
+    // the request by ScopeResolutionFilter before the action ran.
+    private VisibleProjects Scope => request?.Effective() ?? VisibleProjects.Everything;
+    private bool Unbounded => Scope.Unbounded;
+    private int[] Visible => Scope.Ids;
 
     public DbSet<EfHatchProject> Projects => Set<EfHatchProject>();
     public DbSet<EfHatchProjectRepository> ProjectRepositories => Set<EfHatchProjectRepository>();
@@ -58,6 +92,19 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     /// </summary>
     public DbSet<EfHatchRunnerConfig> RunnerConfigs => Set<EfHatchRunnerConfig>();
     public DbSet<EfHatchRunnerSession> RunnerSessions => Set<EfHatchRunnerSession>();
+
+    /// <summary>
+    /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
+    /// end of a relationship to a filtered <c>Projects</c>. It is the one table
+    /// left unfiltered on purpose: the people-and-scopes routes read and rewrite
+    /// it, and a filter would let an admin whose own scope is narrowed drop other
+    /// people's entries for projects they cannot see. The warning is silenced
+    /// because the guard is <c>QueryFilterModelAuditTests</c>, which names that
+    /// table with the reason and fails on any other that reaches a project bare.
+    /// </summary>
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.ConfigureWarnings(w =>
+            w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -540,6 +587,82 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         {
             e.Property(f => f.Entries).HasColumnType("jsonb");
         });
+
+        // ---- Scope: no row that belongs to a project leaves this context for a
+        // caller whose scope does not hold that project. One place, so the model
+        // audit can fail on an entity that reaches a project and says nothing.
+        //
+        // Every predicate opens with Unbounded, so a caller with everything - and
+        // a job, a test, the design-time factory - reads exactly what it did
+        // before. A hidden project reads as one that does not exist.
+        //
+        // Through-issue predicates are written on the issue's own ProjectId
+        // rather than leaning on the Issue filter being applied to the
+        // navigation: the rule should read the same whichever way EF composes
+        // it.
+        //
+        // Deliberately unfiltered: Statuses, WipLimits, OvernightSeen,
+        // Attachments (its own story), the runner tables, PersonScopes and
+        // PersonScopeProjects (the resolver reads them), and the core schema.
+        modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
+        modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
+        modelBuilder.Entity<EfHatchProjectRepository>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
+        modelBuilder.Entity<EfHatchProjectMember>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
+        modelBuilder.Entity<EfHatchProjectLogo>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
+
+        // A global playbook, and a dream leaning toward no project, are visible to everyone.
+        modelBuilder.Entity<EfHatchPlaybook>().HasQueryFilter(e =>
+            Unbounded || e.ProjectId == null || Visible.Contains(e.ProjectId.Value));
+        modelBuilder.Entity<EfHatchDream>().HasQueryFilter(e =>
+            Unbounded || e.ProjectId == null || Visible.Contains(e.ProjectId.Value));
+
+        modelBuilder.Entity<EfHatchComment>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchIssueEvent>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchWorkLogEntry>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchMergeCheck>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchBuildCheck>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchLanding>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchVerdict>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchContribution>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchIssueRunnerOmission>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchIssueDependency>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchDreamThread>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchDreamRemand>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchChangelogTask>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+
+        // A proposal belongs to its issue; with no issue, to the playbooks its
+        // changes edit. One with neither is nobody's, and only an unbounded
+        // caller reads it.
+        //
+        // The changes are read with IgnoreQueryFilters, and that is the one
+        // opt-out inside the model itself: a change's filter reads its proposal
+        // and the proposal's filter reads its changes, and EF applies each
+        // target's filter without a guard against the loop - it overflows the
+        // stack. The playbook rule is written out here instead, so nothing
+        // hidden is let through by the opt-out.
+        modelBuilder.Entity<EfHatchPlaybookProposal>().HasQueryFilter(e =>
+            Unbounded
+            || (e.IssueId != null
+                ? Visible.Contains(e.Issue!.ProjectId)
+                : PlaybookProposalChanges.IgnoreQueryFilters().Any(c => c.ProposalId == e.Id && c.Playbook != null
+                    && (c.Playbook.ProjectId == null || Visible.Contains(c.Playbook.ProjectId.Value)))));
+        modelBuilder.Entity<EfHatchPlaybookProposalChange>().HasQueryFilter(e =>
+            Unbounded
+            || (e.Proposal!.IssueId != null
+                ? Visible.Contains(e.Proposal.Issue!.ProjectId)
+                : e.Playbook != null && (e.Playbook.ProjectId == null || Visible.Contains(e.Playbook.ProjectId.Value))));
+
+        // Keyed on a repository rather than a project: visible when any
+        // visible project binds that canonical.
+        modelBuilder.Entity<EfHatchTrunkBuild>().HasQueryFilter(e =>
+            Unbounded || ProjectRepositories.Any(r => r.Canonical == e.Canonical && Visible.Contains(r.ProjectId)));
+        modelBuilder.Entity<EfHatchPlaybookFile>().HasQueryFilter(e =>
+            Unbounded || ProjectRepositories.Any(r => r.Canonical == e.Canonical && Visible.Contains(r.ProjectId)));
+        modelBuilder.Entity<EfHatchDependencyFile>().HasQueryFilter(e =>
+            Unbounded || ProjectRepositories.Any(r => r.Canonical == e.Canonical && Visible.Contains(r.ProjectId)));
+        modelBuilder.Entity<EfHatchChangelogFile>().HasQueryFilter(e =>
+            Unbounded || ProjectRepositories.Any(r => r.Canonical == e.Canonical && Visible.Contains(r.ProjectId)));
+
 
         // Search documents, each a STORED generated tsvector column. These
         // carry a weight per source column, which HasGeneratedTsVectorColumn

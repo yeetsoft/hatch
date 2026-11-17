@@ -25,15 +25,21 @@ public static class ChangelogFiles
     /// <paramref name="canonical"/> for a changelog, less the board's own
     /// changelog tasks. Null when no project elects it.
     /// </summary>
+    /// <remarks>
+    /// Reads every project, whoever the caller is. The file is the same bytes
+    /// for every caller - a trunk's own file is judged against it, and a
+    /// scoped caller who got fewer entries would see a file that is forever
+    /// behind - so what leaves is entries for a file, never a row the caller can read back.
+    /// </remarks>
     public static async Task<List<Changelog.Entry>?> ProjectAsync(HatchContext db, string canonical, CancellationToken ct)
     {
-        var projectIds = await db.ProjectRepositories.AsNoTracking()
+        var projectIds = await db.ProjectRepositories.IgnoreQueryFilters().AsNoTracking()
             .Where(r => r.Canonical == canonical && r.Changelog)
             .Select(r => r.ProjectId).Distinct().ToListAsync(ct);
 
         if (projectIds.Count == 0) return null;
 
-        var rows = await db.Issues.AsNoTracking()
+        var rows = await db.Issues.IgnoreQueryFilters().AsNoTracking()
             .Where(i => i.ParentId == null && i.Status!.IsTerminal && i.ClosedAt != null && projectIds.Contains(i.ProjectId)
                         && !db.ChangelogTasks.Any(t => t.IssueId == i.Id))
             .Select(i => new
@@ -48,7 +54,13 @@ public static class ChangelogFiles
             })
             .ToListAsync(ct);
 
-        var tree = await Rollup.LoadAsync(db, ct);
+        var tree = Rollup.ShapeOf(
+            (await db.Issues.IgnoreQueryFilters().AsNoTracking()
+                .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+                .Select(i => new { i.Id, i.ParentId, i.StatusId })
+                .ToListAsync(ct))
+            .Select(i => new Rollup.Node(i.Id, i.ParentId, i.StatusId))
+            .ToList());
 
         return rows
             .Select(r => new Changelog.Entry(

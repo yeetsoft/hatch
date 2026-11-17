@@ -63,6 +63,14 @@ public static class Rollup
     public static async Task<List<long>> DescendantIdsAsync(HatchContext db, long rootId, CancellationToken ct) =>
         Descend(ChildIndex(await NodesAsync(db, ct)), rootId);
 
+    /// <summary>
+    /// A tree of just the shape, from nodes the caller read itself - enough for
+    /// <see cref="Tree.DescendantCount"/> and <see cref="Tree.ChildrenOf"/>, with no
+    /// statuses and nothing waiting. For the one reader that must fold every
+    /// project whatever the caller's scope and says why where it reads.
+    /// </summary>
+    internal static Tree ShapeOf(List<Node> nodes) => new([], nodes, []);
+
     // ---- Loading ----
 
     /// <summary>

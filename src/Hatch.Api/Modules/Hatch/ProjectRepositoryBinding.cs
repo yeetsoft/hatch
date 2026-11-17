@@ -14,7 +14,10 @@ public static class ProjectRepositoryBinding
     public static async Task<IReadOnlyDictionary<string, (int Id, string Key)>> WinnersAsync(
         HatchContext db, IReadOnlyCollection<string> canonicals, CancellationToken ct)
     {
-        var rows = await db.ProjectRepositories.AsNoTracking()
+        // Every project's bindings: the winner is the same project whoever asks,
+        // or two callers would file the same outage's bug under different
+        // projects. What leaves is an id and a key.
+        var rows = await db.ProjectRepositories.IgnoreQueryFilters().AsNoTracking()
             .Where(r => canonicals.Contains(r.Canonical))
             .Select(r => new { r.Canonical, r.SortOrder, r.ProjectId, Key = r.Project!.Key })
             .ToListAsync(ct);

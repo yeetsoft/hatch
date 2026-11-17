@@ -82,7 +82,10 @@ public static class Wip
             .ToList();
         var everyType = sliceTypes.SelectMany(t => t).ToHashSet();
 
-        var rows = await db.Issues.AsNoTracking()
+        // Every project, not the caller's: the limit is the house's, and a
+        // count that left out a hidden project's cards would let a scoped
+        // caller push past it. Only counts leave this method.
+        var rows = await db.Issues.IgnoreQueryFilters().AsNoTracking()
             .Where(i => everyType.Contains(i.Type) && (sectionIds.Contains(i.StatusId) || feeders.Contains(i.StatusId)))
             .Select(i => new
             {
@@ -96,11 +99,11 @@ public static class Wip
             })
             .ToListAsync(ct);
 
-        var parents = await db.Issues.AsNoTracking()
+        var parents = await db.Issues.IgnoreQueryFilters().AsNoTracking()
             .Select(i => new { i.Id, i.ParentId })
             .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
 
-        var tree = await PriorityTree.ForAsync(db, ct);
+        var tree = await PriorityTree.ForAsync(db, ct, ignoreFilters: true);
 
         var slices = new List<WipSlice>();
         foreach (var types in sliceTypes)
@@ -191,7 +194,8 @@ public static class Wip
         if (ids.Count == 0) return new Dictionary<long, EpicLimit>();
 
         var runsChildren = IssueTypeKinds.RunsChildrenTypes;
-        var rows = await db.Issues.AsNoTracking()
+        // An epic's limit is the same number whoever asks.
+        var rows = await db.Issues.IgnoreQueryFilters().AsNoTracking()
             .Where(i => ids.Contains(i.Id) && runsChildren.Contains(i.Type) && i.WipLimit != null)
             .Select(i => new { i.Id, i.Project!.Key, i.Number, i.WipLimit })
             .ToListAsync(ct);
