@@ -5731,6 +5731,234 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* The type pill on the issue page's Details card, and the band it opens onto -
+   the priority pill's shapes (above) with one face per type instead of per
+   level. Each face is filled with the colour `.hatch-type-glyph--{type}`
+   already gives that type, so a card's corner and this pill agree. The glyph
+   inside takes `currentColor`, which in a filled pill or step is the text
+   colour. */
+.hatch-type-pill {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hatch-type-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hatch-type-pill.epic {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-accent);
+}
+
+.hatch-type-pill.reflection {
+  border-color: var(--series-6);
+  background: var(--series-6);
+  color: var(--on-accent);
+}
+
+.hatch-type-pill.story {
+  border-color: var(--series-7);
+  background: var(--series-7);
+  color: var(--on-accent);
+}
+
+.hatch-type-pill.task {
+  border-color: var(--series-3);
+  background: var(--series-3);
+  color: var(--on-accent);
+}
+
+.hatch-type-pill.bug {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+/* Reflection's orange and task's pink are the two light fills white cannot
+   carry (about 3.3:1 and 2.7:1 on the light theme), so those faces take the
+   page's own ink instead - 5.6:1 and 6.7:1 there, and no worse than
+   --on-accent on the dark theme's fills. The glyph keeps the type's colour on
+   a card; only the ink on this face changes. */
+.hatch-type-pill.reflection,
+.hatch-type-pill.task,
+.hatch-type-pill-step.reflection.here,
+.hatch-type-pill-step.task.here {
+  color: var(--ink);
+}
+
+.hatch-type-pill-press {
+  transition:
+    box-shadow var(--transition),
+    opacity var(--transition);
+}
+
+.hatch-type-pill-press:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-type-pill-press[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hatch-type-pill-caret {
+  transition: transform var(--transition);
+}
+
+.hatch-type-pill-press[aria-expanded='true'] .hatch-type-pill-caret {
+  transform: rotate(180deg);
+}
+
+.hatch-type-pill-glyph {
+  display: inline-flex;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+}
+
+.hatch-type-pill-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* The band under the pill: the priority band's wash and leading edge, in the
+   current type's colour. */
+.hatch-type-pill-band {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: var(--r);
+  animation: hatch-peek-status-in var(--transition) both;
+}
+
+.hatch-type-pill-band.epic {
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  border-left-color: var(--primary);
+}
+
+.hatch-type-pill-band.reflection {
+  background: color-mix(in srgb, var(--series-6) 10%, var(--card));
+  border-left-color: var(--series-6);
+}
+
+.hatch-type-pill-band.story {
+  background: color-mix(in srgb, var(--series-7) 10%, var(--card));
+  border-left-color: var(--series-7);
+}
+
+.hatch-type-pill-band.task {
+  background: color-mix(in srgb, var(--series-3) 10%, var(--card));
+  border-left-color: var(--series-3);
+}
+
+.hatch-type-pill-band.bug {
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
+  border-left-color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-type-pill-band {
+    animation: none;
+  }
+}
+
+.hatch-type-pill-steps {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hatch-type-pill-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hatch-type-pill-step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-strong) 18%, transparent);
+}
+
+/* The type this issue already is. Disabled rather than merely marked:
+   pressing it would write an event saying the type moved from story to story. */
+.hatch-type-pill-step.here {
+  color: var(--on-accent);
+  cursor: default;
+  opacity: 1;
+}
+
+.hatch-type-pill-step.epic {
+  border-color: var(--primary);
+}
+
+.hatch-type-pill-step.epic.here {
+  background: var(--primary);
+}
+
+.hatch-type-pill-step.reflection {
+  border-color: var(--series-6);
+}
+
+.hatch-type-pill-step.reflection.here {
+  background: var(--series-6);
+}
+
+.hatch-type-pill-step.story {
+  border-color: var(--series-7);
+}
+
+.hatch-type-pill-step.story.here {
+  background: var(--series-7);
+}
+
+.hatch-type-pill-step.task {
+  border-color: var(--series-3);
+}
+
+.hatch-type-pill-step.task.here {
+  background: var(--series-3);
+}
+
+.hatch-type-pill-step.bug {
+  border-color: var(--danger);
+}
+
+.hatch-type-pill-step.bug.here {
+  background: var(--danger);
+}
+
 /* Carried past a column marked Express skips, with no session.
  *
  * No stripe on the card - that is expedite's, and a card marked both would

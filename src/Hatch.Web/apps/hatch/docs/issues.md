@@ -10,7 +10,7 @@ page is about the fields that travel with it along the way.
 
 ## Types, and what may hang under what
 
-Four types: epic, story, task, bug. Any of them may have no parent at all —
+Five types: epic, reflection, story, task, bug. On the issue page the type is a pill in the Details card's edit mode; pressing it opens the five types under it, each with its shape and colour. Picking one sets it and folds the band, as the Priority and Pre-approval sections say of theirs. Any of them may have no parent at all —
 the ordinary state of a freshly captured bug, or an epic with nothing broken
 out of it yet. Where one does have a parent, the model allows exactly this:
 an epic hangs under an epic, a story hangs under an epic, a task hangs under
