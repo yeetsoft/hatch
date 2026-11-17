@@ -22,6 +22,7 @@ export function AttachmentDropZone({
   editor,
   onAppend,
   disabled,
+  projectId,
   children,
 }: {
   /** Where a focused caret would take the uploaded markdown, if there is one. */
@@ -29,6 +30,9 @@ export function AttachmentDropZone({
   /** Where the markdown goes when no editor has the caret. */
   onAppend: (markdown: string) => void;
   disabled?: boolean;
+  /** The project a dropped file's upload is sent against, so the attachment
+      it creates can be linked. */
+  projectId?: number | null;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -45,6 +49,10 @@ export function AttachmentDropZone({
   const onAppendRef = useRef(onAppend);
   useEffect(() => {
     onAppendRef.current = onAppend;
+  });
+  const projectIdRef = useRef(projectId);
+  useEffect(() => {
+    projectIdRef.current = projectId;
   });
 
   useEffect(() => {
@@ -95,7 +103,9 @@ export function AttachmentDropZone({
       setNote(`Uploading ${files.length} file${files.length === 1 ? '' : 's'}…`);
 
       markdownForDrop(files, (f) =>
-        (LOGO_ACCEPTED_TYPES.includes(f.type) ? shrink(f) : Promise.resolve(f)).then((blob) => uploadAttachment(blob, f.name)),
+        (LOGO_ACCEPTED_TYPES.includes(f.type) ? shrink(f) : Promise.resolve(f)).then((blob) =>
+          uploadAttachment(blob, f.name, projectIdRef.current),
+        ),
       ).then(
         (text) => {
           busy.current = false;

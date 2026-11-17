@@ -1622,6 +1622,7 @@ function Description({ issue, onSave }: { issue: Issue; onSave: (description: st
         onSave={onSave}
         editorClassName="hatch-grows"
         clampTo={coarse ? 3 : null}
+        projectId={issue.projectId}
       />
     </IssueSection>
   );
