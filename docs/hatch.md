@@ -802,6 +802,30 @@ reason above. `ScopeEnforcementTests` (in-memory) and
 `ScopeEnforcementDatabaseTests` (Postgres) read every filtered table as a
 `some`, a `none`, an `all` and an unbounded caller.
 
+**The matrix.** The filters are held at the data; `ScopeRouteMatrixTests` holds
+the routes. It runs on the wall-up host, `WalledHost`: the real server over
+migrated scratch databases with `Auth:Enabled=true`, the scope seed with marker
+text in each project, and three people made in the database - a user scoped to
+`none`, an admin who owns project A scoped to `some [A]`, and a user scoped to
+`all`. A person acts through a real grant (`IAuthService.CreateInviteAsync`,
+then `RedeemAsync`, sent as the cookie) and a key through a real secret, so the
+role gate and the scope filter run as they do for a browser and a runner. Every
+Hatch action is on exactly one of two lists in the test: `ProjectBearing`, with a
+probe, or `ProjectFree`, with the reason it names no project. An action on
+neither fails the build, which is how a new route is made to answer the
+question. It needs no database.
+
+A probe is a *lookup* or a *list*. A lookup names a project or an issue: for a
+caller who cannot see it, the status must equal the status for an id nothing has,
+and never be a 2xx or a 403. Its visible twin, the same request at a project the
+caller sees, must differ from that status, or a probe that is `404` everywhere
+would pass. A list's body must hold neither the hidden project's text nor its
+key. The matrix runs four times, for a person and a key owned by a `none` person
+and by a `some` person, each on its own database. A key refused by the role gate
+(`key_not_accepted`) is refused for all three targets before scope is read, and
+the probe says so. A probe known to fail is listed with its ticket and not sent.
+It runs in the Postgres lane: `make test-api-db`.
+
 ### Logo
 
 `EfHatchProjectLogo` — `ProjectId` (PK, cascading FK), `Bytes`, `ContentType`,

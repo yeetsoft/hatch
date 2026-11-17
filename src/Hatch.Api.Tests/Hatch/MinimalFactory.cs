@@ -17,7 +17,13 @@ namespace Hatch.Api.Tests.Hatch;
 /// <see cref="MinimalStartupTests"/> asserts against, so a caller that wants
 /// that absence is a caller that passes nothing.
 /// </param>
-internal sealed class MinimalFactory(string hatch, string quartz, CapturedLogs logs, string? webRoot = null)
+/// <param name="walled">
+/// Sets <c>Auth:Enabled</c>. False, the default, is the install a friend's
+/// <c>docker run</c> gives and what <see cref="MinimalStartupTests"/> asserts;
+/// true puts the wall up, which is how <see cref="WalledHost"/> reaches the
+/// Hatch routes as a scoped person or a key.
+/// </param>
+internal sealed class MinimalFactory(string hatch, string quartz, CapturedLogs logs, string? webRoot = null, bool walled = false)
     : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -27,7 +33,7 @@ internal sealed class MinimalFactory(string hatch, string quartz, CapturedLogs l
 
         builder.UseSetting("ConnectionStrings:Hatch", hatch);
         builder.UseSetting("ConnectionStrings:Quartz", quartz);
-        builder.UseSetting("Auth:Enabled", "false");
+        builder.UseSetting("Auth:Enabled", walled ? "true" : "false");
 
         builder.ConfigureLogging(logging => logging.AddProvider(logs));
     }
