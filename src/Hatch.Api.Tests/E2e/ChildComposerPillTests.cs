@@ -104,9 +104,12 @@ public class ChildComposerPillTests(ITestOutputHelper output)
 
             await harness.ClickAsync(deadline, Pill);
             await harness.WaitForVisibleAsync(deadline, Band);
+            // Settles the band's fade-in before reading its box - read any
+            // earlier and the geometry is still mid translateY(-4px), which
+            // reads as the band sitting a few px short of the pill's own row.
+            await harness.EvaluateAsync<JsonElement?>(deadline, "settling the band", SettleScript);
             var read = await harness.EvaluateAsync<JsonElement>(deadline, "reading the band", ReadScript);
             output.WriteLine(read.ToString());
-            await harness.EvaluateAsync<JsonElement?>(deadline, "settling the band", SettleScript);
             await harness.ScreenshotAsync(deadline, $"{name}-epic-open");
             Assert.Equal(["epic", "reflection", "story", "task", "bug"], Steps(read));
             Assert.Equal("epic", read.GetProperty("pill").GetString());
@@ -144,9 +147,9 @@ public class ChildComposerPillTests(ITestOutputHelper output)
             Assert.Equal("task", (await page.Locator(Pill).InnerTextAsync()).Trim());
             await harness.ClickAsync(deadline, Pill);
             await harness.WaitForVisibleAsync(deadline, Band);
+            await harness.EvaluateAsync<JsonElement?>(deadline, "settling the band", SettleScript);
             var underStory = await harness.EvaluateAsync<JsonElement>(deadline, "reading the band under a story", ReadScript);
             output.WriteLine(underStory.ToString());
-            await harness.EvaluateAsync<JsonElement?>(deadline, "settling the band", SettleScript);
             await harness.ScreenshotAsync(deadline, $"{name}-story-open");
             Assert.Equal(["task", "bug"], Steps(underStory));
             Assert.Equal(0, underStory.GetProperty("overflow").GetInt32());
