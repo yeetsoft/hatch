@@ -138,6 +138,44 @@ role and project membership, and it grants nothing: it only narrows.
   numbers, such as how many cards are in progress, still count every project:
   the limit is the house's, and they show a number, never a card.
 
+## What a scoped person sees
+
+The [scope](#scope) above says what a person is allowed. This is what that is
+like from the other side: the same pages and the same calls, with some
+projects not there.
+
+- **`all` sees what it always did.** Every project, every issue, every list.
+  So does a person with no scope row.
+- **`none` sees nothing of any project.** The board has its columns and no
+  cards. Search finds nothing. The Projects page is empty. A list answers
+  empty, not with an error.
+- **`some` sees the chosen projects, and only those.** Their issues, comments,
+  events, dreams, playbooks and reports read as they do for `all`. Everything
+  of any other project is left out.
+- **A hidden project reads as one that does not exist.** A call that names it
+  answers `404`, or, where a filter or a bulk change names it, the usual `400`
+  saying there is no such project. It never answers `403`, which would say it
+  is there, and it never answers differently from a project nobody made. The
+  call to create an issue in a hidden project is a `404`, and in a visible one
+  a `201`.
+- **A link to a hidden issue opens a `404`.** Someone sent a link to `BBB-1`
+  and cannot see project BBB: they get the same `404` they would for an issue
+  nobody filed.
+- **A key reads through its owner.** It sees what the person who owns it sees,
+  on the same routes and with the same answers. A key with no owner is
+  unbounded: it sees every project, as the wall being off does. A route a key
+  may not call at all, such as every playbook edit, answers `403 key_not_accepted`
+  to it whatever the project, before scope is read.
+- **The Runners page leaves out what the caller cannot see.** A runner may hold
+  a claim on an issue of a project the caller is scoped out of. That claim is
+  dropped from the caller's view of the runner, so the page does not name an
+  issue the caller cannot open.
+
+One test holds this for every route. `ScopeRouteMatrixTests` boots the real
+server with the wall up and asks every Hatch route as a person and as a key, for
+a scope of `none` and a scope of `some`. A route added without being listed in
+it fails the build.
+
 ## Runners and their keys
 
 A runner is a key: the credential a program carries instead of a person,
