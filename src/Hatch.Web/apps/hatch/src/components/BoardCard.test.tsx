@@ -28,6 +28,9 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   preApproval: 'none',
   preApprovalOwn: 'none',
   preApprovalFrom: null,
+  localModel: 'none',
+  localModelOwn: 'none',
+  localModelFrom: null,
   runnerTags: [],
   runnerTagsOwn: [],
   runnerTagsFrom: [],
@@ -182,6 +185,24 @@ describe('BoardCard CardFace', () => {
 
     const marks = between(html, '<div class="hatch-card-marks">');
     expect(marks).toContain('hatch-card-preapproved');
+  });
+
+  it('wears the local-model mark at prefer and require, naming the ancestor, and none at none', () => {
+    const draw = (over: Partial<IssueCard>) =>
+      between(
+        renderToStaticMarkup(
+          <CardPreview card={card(over)} waiting={false} terminal={false} project={project()} />,
+        ),
+        '<div class="hatch-card-marks">',
+      );
+
+    const prefer = draw({ localModel: 'prefer', localModelFrom: 'HA-5' });
+    expect(prefer).toContain('hatch-card-localmodel prefer');
+    expect(prefer).toContain('title="Local model: prefer, inherited from HA-5"');
+    const require = draw({ localModel: 'require', localModelOwn: 'require' });
+    expect(require).toContain('hatch-card-localmodel require');
+    expect(require).toContain('title="Local model: require"');
+    expect(draw({ preApproval: 'preapproved', express: true })).not.toContain('hatch-card-localmodel');
   });
 
   it('wears the dangerous mark, with the reason in its title, when dangerous', () => {

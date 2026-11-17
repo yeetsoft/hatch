@@ -28,6 +28,7 @@ import type {
   ImportRequest,
   ImportResult,
   Issue,
+  LocalModel,
   IssueBulkEditRequest,
   IssueBulkResult,
   IssueCard,
@@ -467,6 +468,16 @@ export const setReleaseNote = (key: string, note: string) =>
     `setPriority` sends one. */
 export const setPreApproval = (key: string, level: 'none' | 'express' | 'preapproved') =>
   fetchJson<Issue>(`/api/issues/${seg(key)}/pre-approval`, {
+    method: 'PUT',
+    ...asJson({ level }),
+  });
+
+/** How far an issue leans on a local model. Its own route rather than a field
+    on the patch, and for the same reason pre-approval has one: the level is
+    walked live down the tree and is sent by name, and writing it is closed to
+    an API key - see IssueLocalModelController. */
+export const setLocalModel = (key: string, level: LocalModel) =>
+  fetchJson<Issue>(`/api/issues/${seg(key)}/local-model`, {
     method: 'PUT',
     ...asJson({ level }),
   });

@@ -284,6 +284,11 @@ export interface ContributionRecord {
   envelopeNote?: string | null;
 }
 
+/** How far an issue leans on a local model rather than the cloud one: `none` runs
+    as it always has, `prefer` uses a local model where one can do the work,
+    `require` runs on nothing else. */
+export type LocalModel = 'none' | 'prefer' | 'require';
+
 /** A card on the board. No description and no comments - see IssueCardDto. */
 export interface IssueCard {
   key: string;
@@ -344,6 +349,16 @@ export interface IssueCard {
       effective level is this issue's own, or none. See
       IssueCardDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** The local-model level in effect - `'none'`, `'prefer'` or `'require'` -
+      walked live to the nearest ancestor that is not none. Recorded and shown
+      only: the loop does not act on it yet. See IssueCardDto.LocalModel. */
+  localModel: LocalModel;
+  /** The level this issue's own row carries, regardless of what it inherits.
+      See IssueCardDto.LocalModelOwn. */
+  localModelOwn: LocalModel;
+  /** The ancestor `localModel` was inherited from, or null when the effective
+      level is this issue's own, or none. See IssueCardDto.LocalModelFrom. */
+  localModelFrom: string | null;
   /** The runner tags effective for this issue, walked live to the nearest
       ancestor (or project) that carries any. See IssueCardDto.RunnerTags. */
   runnerTags: string[];
@@ -770,6 +785,16 @@ export interface Issue {
       effective level is this issue's own, or none. See
       IssueCard.preApprovalFrom and IssueDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** The local-model level in effect - see IssueCard.localModel and
+      IssueDto.LocalModel. */
+  localModel: LocalModel;
+  /** The level this issue's own row carries, regardless of what it inherits.
+      See IssueCard.localModelOwn and IssueDto.LocalModelOwn. */
+  localModelOwn: LocalModel;
+  /** The ancestor `localModel` was inherited from, or null when the effective
+      level is this issue's own, or none. See IssueCard.localModelFrom and
+      IssueDto.LocalModelFrom. */
+  localModelFrom: string | null;
   /** The runner tags effective for this issue, walked live to the nearest
       ancestor (or project) that carries any. See IssueCard.runnerTags and
       IssueDto.RunnerTags. */
@@ -925,6 +950,7 @@ export type IssueEventKind =
   | 'priority_changed'
   | 'express_changed'
   | 'pre_approval_changed'
+  | 'local_model_changed'
   | 'one_pr_changed'
   | 'runner_tags_changed'
   | 'dangerous_changed'

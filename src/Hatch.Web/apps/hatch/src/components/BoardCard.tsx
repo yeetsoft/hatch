@@ -10,6 +10,7 @@ import { ContributionBadge, ContributionMark } from './ContributionMark';
 import { TypeGlyph } from './TypeGlyph';
 import { statusVars } from '../lib/color';
 import { dangerousTitle } from '../lib/dangerous';
+import { localModelLevel } from '../lib/localModel';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick, type ClickIntent } from '../lib/pointer';
 import type { FlowBandKind } from '../lib/queue';
@@ -80,6 +81,7 @@ const hasMarks = (card: IssueCard) =>
   card.priority !== 'normal' ||
   card.projectPriority === 'paused' ||
   card.express ||
+  card.localModel !== 'none' ||
   !!card.dangerous ||
   !!card.claim ||
   card.openQuestions > 0 ||
@@ -347,6 +349,14 @@ function CardFace({
               title="Pre-approved - the approve press given in advance: carried into the merge column, or closed, with no session"
             >
               ✓
+            </span>
+          )}
+          {card.localModel !== 'none' && (
+            <span
+              className={`hatch-card-localmodel ${card.localModel}`}
+              title={`Local model: ${card.localModel}${card.localModelFrom ? `, inherited from ${card.localModelFrom}` : ''}`}
+            >
+              {localModelLevel(card.localModel).glyph}
             </span>
           )}
           {card.noCode && (
