@@ -494,6 +494,60 @@ public class EfHatchProjectMember
     public required DateTimeOffset CreatedAt { get; set; }
 }
 
+/// <summary>The three things a person's scope can be, and nothing else.</summary>
+public static class PersonScopeMode
+{
+    public const string None = "none";
+    public const string All = "all";
+    public const string Some = "some";
+
+    public static bool IsKnown(string? mode) => mode is None or All or Some;
+}
+
+/// <summary>
+/// What one person may see of the projects. A person with no row sees every
+/// project, which is what <see cref="CallerScope"/> reads and what makes the
+/// table safe to add to an installation that has people already.
+/// </summary>
+[Table("PersonScopes")]
+public class EfHatchPersonScope
+{
+    /// <summary>
+    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
+    /// <see cref="EfHatchProjectMember.PersonId"/> is one.
+    /// </summary>
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public Guid PersonId { get; set; }
+
+    /// <summary>One of <see cref="PersonScopeMode"/>.</summary>
+    [MaxLength(10)]
+    public required string Mode { get; set; }
+
+    /// <summary>Who last set it, by the name the audit trail carries.</summary>
+    [MaxLength(240)]
+    public required string UpdatedBy { get; set; }
+
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// One project a <see cref="PersonScopeMode.Some"/> scope names. Only rows for a
+/// person whose mode is <c>some</c> exist: writing <c>all</c> or <c>none</c> deletes them.
+/// </summary>
+[Table("PersonScopeProjects")]
+[Index(nameof(PersonId), nameof(ProjectId), IsUnique = true)]
+public class EfHatchPersonScopeProject
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    /// <summary>A bare <see cref="Guid"/>, as <see cref="EfHatchPersonScope.PersonId"/> is.</summary>
+    public Guid PersonId { get; set; }
+
+    public int ProjectId { get; set; }
+    public EfHatchProject? Project { get; set; }
+}
+
 /// <summary>
 /// The last instant one reader read the Overnight page - one row per person,
 /// never a browser's cookie, so a badge cleared on a phone is cleared on the

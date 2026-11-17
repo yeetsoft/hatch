@@ -479,6 +479,13 @@ public class AdminSurfaceTests
         "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
 
+        // What each person may see of the projects: an admin's, and a person's
+        // alone, since a key that could write a scope could widen its own
+        // owner's view. See ScopesController.
+        "ScopesController.GetScopes",
+        "ScopesController.GetScope",
+        "ScopesController.PutScope",
+
         // A related edge, cut the same way and for a different reason: under
         // the loop's "people only" rule an assignee is a dispatch gate, so a
         // key that could write one could clear a person's name off a ticket and
@@ -724,6 +731,13 @@ public class AdminSurfaceTests
         "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
 
+        // What each person may see of the projects: an admin's, and a person's
+        // alone, since a key that could write a scope could widen its own
+        // owner's view. See ScopesController.
+        "ScopesController.GetScopes",
+        "ScopesController.GetScope",
+        "ScopesController.PutScope",
+
         // Marking the night as seen is a person's own mark, never a key's or
         // a keyless runner's. See OvernightController.PostSeen.
         "OvernightController.PostSeen",
@@ -922,6 +936,9 @@ public class AdminSurfaceTests
         "RunnersController.RevokeRunner",
         "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
+        "ScopesController.GetScopes",
+        "ScopesController.GetScope",
+        "ScopesController.PutScope",
     ];
 
     private static readonly string[] UserOutsideHatch =

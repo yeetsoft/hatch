@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty-eight tables.
+/// migration history, thirty-five tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -13,6 +13,8 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchProject> Projects => Set<EfHatchProject>();
     public DbSet<EfHatchProjectRepository> ProjectRepositories => Set<EfHatchProjectRepository>();
     public DbSet<EfHatchProjectMember> ProjectMembers => Set<EfHatchProjectMember>();
+    public DbSet<EfHatchPersonScope> PersonScopes => Set<EfHatchPersonScope>();
+    public DbSet<EfHatchPersonScopeProject> PersonScopeProjects => Set<EfHatchPersonScopeProject>();
     public DbSet<EfHatchOvernightSeen> OvernightSeen => Set<EfHatchOvernightSeen>();
     public DbSet<EfHatchProjectLogo> ProjectLogos => Set<EfHatchProjectLogo>();
     public DbSet<EfHatchAttachment> Attachments => Set<EfHatchAttachment>();
@@ -417,6 +419,14 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         // inverse navigation - the read path is a plain query against
         // db.ProjectMembers, the same shape EfHatchProjectLogo above uses.
         modelBuilder.Entity<EfHatchProjectMember>()
+            .HasOne(m => m.Project)
+            .WithMany()
+            .HasForeignKey(m => m.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // A deleted project leaves every chosen list it was on, the same
+        // cascade ProjectMembers takes. No inverse navigation, for the same reason.
+        modelBuilder.Entity<EfHatchPersonScopeProject>()
             .HasOne(m => m.Project)
             .WithMany()
             .HasForeignKey(m => m.ProjectId)
