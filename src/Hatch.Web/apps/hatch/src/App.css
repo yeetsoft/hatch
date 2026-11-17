@@ -1929,6 +1929,78 @@ button.hatch-card-stories:focus-visible {
   flex: 1 1 100%;
 }
 
+/* The gradient ink: text painted with the --gradient-ink-* pair, clipped to
+   the glyphs. Reused wherever a page wants the accent; it sets no size or
+   weight, the line it sits in does.
+
+   The solid colour comes first so the words are readable wherever clipping is
+   missing, and the clip and the transparent fill sit inside @supports so a
+   browser without them never ends up with invisible text. Forced colours drop
+   author backgrounds, which would leave a transparent fill over nothing - so
+   there the ink goes back to the system's text colour. */
+.hatch-gradient-ink {
+  color: var(--gradient-ink-from);
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .hatch-gradient-ink {
+    background-image: linear-gradient(90deg, var(--gradient-ink-from), var(--gradient-ink-to));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+@media (forced-colors: active) {
+  .hatch-gradient-ink {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+    color: CanvasText;
+  }
+}
+
+/* Dreams' title and the three lines under it, one block so the page's own gap
+   (the column's row gap) falls where it always did: below the lot, down to the
+   composer. Inside, the lines sit under the title the way the header's
+   description did. The header's own bottom margin is zeroed here because, no
+   longer a direct child of .hatch-page, it would otherwise apply. */
+.hatch-dream-intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.hatch-dream-intro > .hatch-page-header {
+  margin-bottom: 0;
+}
+
+/* 1em above and below: the flow margin of the <p> this list stands in for, so
+   the room around the lines is what the description's was. */
+.hatch-dream-lines {
+  list-style: none;
+  margin: 1em 0;
+  padding: 0;
+}
+
+.hatch-dream-lines > li {
+  display: block;
+  min-width: 0;
+  font-size: var(--t-body);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.hatch-dream-lines__n {
+  margin-right: var(--sp-2);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-dream-lines__lead {
+  font-weight: 600;
+}
+
 /* The Dreams list: one card-like row per dream, stacked. */
 .hatch-dream-list {
   list-style: none;

@@ -9,6 +9,12 @@ The **Dreams** screen, at `/dreams` and first in the Track group of the primary 
 lines somebody wanted said before they are work. An [issue](issues) is work with a status; a dream
 is what comes before one.
 
+Under the title, the page says in three lines what it is for:
+
+1. **Drop in** snippets of ideas that are not epics yet.
+2. **Recycle** epics that are not ready.
+3. **Weave** new work out of the cloud of the undefined.
+
 ## What a dream is
 
 A dream is a line somebody wanted said - an idea, a complaint, a want - captured with no ceremony.

@@ -241,6 +241,26 @@
   --on-chrome-wash: rgba(255, 255, 255, 0.15);
   --chrome-glow: #f0edff;
 
+  /* The gradient ink: page text set in a blue-to-violet gradient (App.css,
+     .hatch-gradient-ink). Text only, never a fill - a fill would need an
+     ink of its own on top.
+
+     Hex, not var(--chrome) aliases, so the stops stay pinned to the figures
+     below and nothing that moves --chrome can change them unmeasured. Light
+     takes the bar's own two stops. Dark cannot: the bar stays dark there, and
+     its stops are dark on a dark page. Dark takes --primary and --chrome-glow,
+     the two light ends.
+
+     A fixed role in the palette engine (theme/palette/roles.ts), on purpose: a
+     custom palette leaves the ink as authored, blue to violet, rather than
+     moving it through the hue engine.
+
+     Measured against --bg:
+       light  --gradient-ink-from 7.04:1   --gradient-ink-to 7.70:1  (on #f5f5f5)
+       dark   --gradient-ink-from 7.84:1   --gradient-ink-to 9.45:1  (on #1a1a1a) */
+  --gradient-ink-from: #0052a3;
+  --gradient-ink-to: #4b2fc4;
+
   /* The letterbox behind a video or an image whose aspect is not the frame's.
      Black in both themes - it is the absence of picture, not a surface. */
   --letterbox: #000000;
@@ -349,6 +369,10 @@
     --on-chrome-wash: rgba(230, 239, 255, 0.14);
     --chrome-glow: #c4b5ff;
 
+    /* The gradient ink, dark pair: see the note on :root. */
+    --gradient-ink-from: #66b3ff;
+    --gradient-ink-to: #c4b5ff;
+
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     --overlay: rgba(0, 0, 0, 0.65);
 
@@ -412,6 +436,10 @@
   --on-chrome: #e6efff;
   --on-chrome-wash: rgba(230, 239, 255, 0.14);
   --chrome-glow: #c4b5ff;
+
+  /* The gradient ink, dark pair: see the note on :root. */
+  --gradient-ink-from: #66b3ff;
+  --gradient-ink-to: #c4b5ff;
 
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   --overlay: rgba(0, 0, 0, 0.65);

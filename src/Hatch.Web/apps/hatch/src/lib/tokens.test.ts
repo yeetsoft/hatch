@@ -119,4 +119,34 @@ describe('tokens.css', () => {
       expect(ratio, `--level-up on --card in ${name} is below 3:1`).toBeGreaterThanOrEqual(3);
     }
   });
+
+  /* The gradient ink paints text straight on the page, so each stop is held
+     against that block's own --bg. */
+  it('declares the gradient ink stops on :root and in both dark blocks, each clearing 4.5:1 on --bg', () => {
+    for (const token of ['--gradient-ink-from', '--gradient-ink-to']) {
+      for (const [name, block] of [['light', light], ['dark', darkAttr], ['dark (media)', darkMedia]] as const) {
+        expect(block, `${token} is missing from ${name}`).toHaveProperty(token);
+        expect(block[token], `${token} in ${name} is not an opaque 6-digit hex`).toMatch(/^#[0-9a-f]{6}$/i);
+        expect(block, `--bg is missing from ${name}`).toHaveProperty('--bg');
+
+        const inkLuminance = luminance(block[token]);
+        const bgLuminance = luminance(block['--bg']);
+        const [hi, lo] = inkLuminance >= bgLuminance ? [inkLuminance, bgLuminance] : [bgLuminance, inkLuminance];
+        const ratio = (hi + 0.05) / (lo + 0.05);
+
+        expect(ratio, `${token} on --bg in ${name} is below 4.5:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  /* Read as text, as designCss.test.ts reads App.css: there is no DOM here to
+     force colours in. */
+  it('paints .hatch-gradient-ink by clipping to the text, and gives forced colours a plain ink', () => {
+    const css = readFileSync(new URL('../App.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(css).toMatch(/\.hatch-gradient-ink\s*\{[^}]*color:\s*var\(--gradient-ink-from\)/);
+    expect(css).toMatch(/@supports[^{]*background-clip:\s*text[^{]*\{\s*\.hatch-gradient-ink\s*\{[^}]*background-clip:\s*text/);
+    expect(css).toMatch(
+      /@media\s*\(forced-colors:\s*active\)\s*\{\s*\.hatch-gradient-ink\s*\{[^}]*background-image:\s*none[^}]*-webkit-text-fill-color:\s*currentColor/,
+    );
+  });
 });
