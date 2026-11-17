@@ -900,6 +900,41 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("Landings", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchLocalModel", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ContextLengthTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<long>("MemoryFootprintBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OllamaId")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OllamaId")
+                        .IsUnique();
+
+                    b.ToTable("LocalModels", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchMergeCheck", b =>
                 {
                     b.Property<long>("Id")

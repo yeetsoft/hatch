@@ -212,11 +212,13 @@ public sealed class RunnerSessions(Runners runners)
     /// </remarks>
     public static RunnerInstructionDto Instruct(
         EfHatchRunnerSession session, EfHatchRunnerConfig? ceiling, string runnerName, string? forName,
-        IReadOnlyList<string> drives, long? siteMaxTokens = null, long? siteMaxTokensPerHour = null)
+        IReadOnlyList<string> drives, long? siteMaxTokens = null, long? siteMaxTokensPerHour = null,
+        IReadOnlyList<EfHatchLocalModel>? localModels = null)
     {
         var bounds = Effective(ceiling, session, siteMaxTokens, siteMaxTokensPerHour);
         var tags = ceiling is not null ? RunnerTagColumn.Read(ceiling.Tags).Order(StringComparer.Ordinal).ToArray() : [];
         var refusedModels = ceiling is not null ? RunnerTagColumn.Read(ceiling.RefusedModels).Order(StringComparer.Ordinal).ToArray() : [];
+        var hold = LocalModelFit.Hold(localModels ?? [], session.Agent, session.AcceleratorMemoryBytes, refusedModels);
 
         return new RunnerInstructionDto(
             session.State, bounds.Under, bounds.MaxRuns.Value, bounds.MaxSpend.Value, bounds.UntilAt.Value, forName,
@@ -227,7 +229,8 @@ public sealed class RunnerSessions(Runners runners)
             MaxTokensPerHour: bounds.MaxTokensPerHour.Value,
             RunnerName: runnerName,
             SessionId: session.Id,
-            RefusedModels: refusedModels);
+            RefusedModels: refusedModels,
+            Hold: hold);
     }
 
     /// <summary>

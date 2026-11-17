@@ -353,6 +353,15 @@ public class AdminSurfaceTests
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
 
+        // The board-wide table of local models, guarded the same way: reading
+        // it is key-accepting, since a runner's own heartbeat has to know the
+        // table to be told which ids it holds; writing it accepts no key at
+        // all, the same three-line guard PlaybooksController's own writes
+        // carry. See LocalModelsController.
+        "LocalModelsController.GetLocalModels",
+        "LocalModelsController.CreateLocalModel",
+        "LocalModelsController.DeleteLocalModel",
+
         // What a session proposed changing about a playbook, read back, and
         // the submission that files one - both key-accepting, since the same
         // key that cannot write to /playbooks directly can still ask for a
@@ -718,6 +727,8 @@ public class AdminSurfaceTests
         "PlaybooksController.CreatePlaybook",
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
+        "LocalModelsController.CreateLocalModel",
+        "LocalModelsController.DeleteLocalModel",
         "PlaybookProposalsController.RejectAll",
         "PlaybookProposalsController.ApproveAll",
         "IssuePlaybookController.PatchIssuePlaybook",
@@ -872,6 +883,7 @@ public class AdminSurfaceTests
         "IssuesController.PatchIssue",
         "IssuesController.SearchIssues",
         "LandingController.PutLanding",
+        "LocalModelsController.GetLocalModels",
         "MeController.GetMe",
         "MergeCheckController.PutMergeCheck",
         "OvernightController.GetOvernight",

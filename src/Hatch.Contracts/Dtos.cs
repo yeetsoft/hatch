@@ -2089,6 +2089,28 @@ public record PlaybookDto(
 public record PlaybookFileReferenceDto(string Path, string Canonical, string Trunk, string Sha, string Hash);
 
 /// <summary>
+/// One row of the board-wide local-models table: an Ollama id, and what it
+/// costs to run. <c>GET /api/runners</c> and a heartbeat's own answer each
+/// read the table to say which ids fit an Ollama runner's own machine - see
+/// <c>Hatch.Api.Modules.Hatch.LocalModelFit</c>.
+/// </summary>
+/// <param name="ContextLengthTokens">How many tokens of context this model holds.</param>
+/// <param name="MemoryFootprintBytes">How much accelerator memory a copy of this model takes, in bytes.</param>
+public record LocalModelDto(
+    int Id,
+    string OllamaId,
+    int ContextLengthTokens,
+    long MemoryFootprintBytes,
+    string CreatedBy,
+    DateTimeOffset CreatedAt);
+
+/// <summary>A new row for the local-models table - <see cref="LocalModelDto"/>'s own fields, before they are given.</summary>
+public record LocalModelCreateRequest(
+    string OllamaId,
+    int ContextLengthTokens,
+    long MemoryFootprintBytes);
+
+/// <summary>
 /// How many millions of tokens this row budgets. Null means no budget (on
 /// create) or leaves it alone (on patch); <c>""</c> or whitespace clears it;
 /// a parsed positive integer sets it - the same three states
@@ -4716,6 +4738,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// </param>
 /// <param name="AcceleratorDeviceCount">How many accelerator devices this runner reports, on the same terms as <see cref="AcceleratorMemoryBytes"/>.</param>
 /// <param name="AcceleratorBackend">The accelerator's backend - <c>cuda</c>, <c>metal</c>, <c>rocm</c> or <c>none</c> - on the same terms as <see cref="AcceleratorMemoryBytes"/>.</param>
+/// <param name="Hold">
+/// The local-models table's own ids this runner's own machine fits, in the
+/// table's order - <c>Hatch.Api.Modules.Hatch.LocalModelFit.Hold</c>. Empty
+/// unless this runner's agent is Ollama and it has reported accelerator
+/// memory. Never null.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -4781,7 +4809,8 @@ public record RunnerDto(
     string? AgentDownLine = null,
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
-    string? AcceleratorBackend = null)
+    string? AcceleratorBackend = null,
+    IReadOnlyList<string> Hold = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4791,6 +4820,7 @@ public record RunnerDto(
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
     public IReadOnlyList<RunnerSessionDto> Sessions { get; init; } = Sessions ?? [];
     public IReadOnlyList<string> RefusedModels { get; init; } = RefusedModels ?? [];
+    public IReadOnlyList<string> Hold { get; init; } = Hold ?? [];
 }
 
 /// <summary>
@@ -5162,6 +5192,11 @@ public record RunnerUsageWindowDto(
 /// tells "unanswered" from "empty"; a loop that sees null leaves its own
 /// list alone rather than clearing it.
 /// </param>
+/// <param name="Hold">
+/// <see cref="RunnerDto.Hold"/>, answered back on the same beat - null for a
+/// Hatch too old to answer it, the same way <see cref="RefusedModels"/> tells
+/// "unanswered" from "empty".
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -5176,7 +5211,8 @@ public record RunnerInstructionDto(
     long? MaxTokensPerHour = null,
     string? RunnerName = null,
     int? SessionId = null,
-    IReadOnlyList<string>? RefusedModels = null);
+    IReadOnlyList<string>? RefusedModels = null,
+    IReadOnlyList<string>? Hold = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds

@@ -911,6 +911,36 @@ state rather than a stall.
 A `PUT` naming a repository only a project outside the caller's scope
 binds answers as one nobody binds does, and stores nothing.
 
+### Local models
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/local-models` | key | Every row, in creation order |
+| POST | `/local-models` | **person, at the browser** | Adds one |
+| DELETE | `/local-models/{id}` | **person, at the browser** | Removes one |
+
+The board-wide table of Ollama models: an id, its context length and its
+memory footprint. Guarded the same way playbooks are, and for the same
+reason - reading is open to a key because a runner's own heartbeat has to
+know the table to be told which ids fit its own machine; writing is a
+person's alone, at the browser, with the same `Sec-Fetch-Mode` check the
+three playbook writes make.
+
+`LocalModelDto` carries `Id`, `OllamaId`, `ContextLengthTokens`,
+`MemoryFootprintBytes`, `CreatedBy` and `CreatedAt`. `POST` takes
+`LocalModelCreateRequest` (`OllamaId`, `ContextLengthTokens`,
+`MemoryFootprintBytes`); a context length or a memory footprint that is not
+a positive number is `400`, an id that is not an Ollama id - an alias or
+another agent's pinned id - is `400`, and a duplicate id is `409`. `DELETE`
+is `404` for an id nothing holds.
+
+`GET /runners` and a heartbeat's own `RunnerInstructionDto` each carry
+`hold`: the `OllamaId` of every row that fits that runner's own machine, in
+the table's own order. Empty unless the runner's agent is `ollama` and it
+has reported accelerator memory; a row holds when its own footprint is no
+larger than the memory reported and the runner does not refuse it. See
+"Runners and settings" below for where it sits on `RunnerDto`.
+
 ### Dependency files
 
 | Method | Path | Who | What it does |
@@ -1180,6 +1210,16 @@ field leaves the stored value alone, except that a fresh `loop` beat writes the
 row's exactly as sent, so a restart that reports none clears the last process's.
 Both `RunnerSessionDto` and the `GET /runners` row carry all three, and a
 config ceiling on the row does not hide them.
+
+Both the `GET /runners` row and a heartbeat's own `RunnerInstructionDto`
+also carry `hold`: the "Local models" section's own table, filtered to the
+`OllamaId` of every row that fits this runner's own machine, in the table's
+order. Empty unless the runner's `agent` is `ollama` and it has reported
+`acceleratorMemoryBytes` - a beat-less key with no legacy row falls back to
+its newest live loop session's own agent and accelerator memory, the same
+fallback `PUT /refused-models` makes. A row holds when its own memory
+footprint is no larger than the memory reported and this runner's held
+`refusedModels` does not refuse it.
 
 `PATCH /runners/{name}/sessions/{id}` sets one session's state
 (`RunnerSessionPatchRequest { state }`) without touching any sibling session
