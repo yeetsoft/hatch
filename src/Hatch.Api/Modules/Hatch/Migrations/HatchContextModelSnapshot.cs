@@ -997,6 +997,53 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("OvernightSeen", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPersonScope", b =>
+                {
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.HasKey("PersonId");
+
+                    b.ToTable("PersonScopes", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPersonScopeProject", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("PersonId", "ProjectId")
+                        .IsUnique();
+
+                    b.ToTable("PersonScopeProjects", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPlaybook", b =>
                 {
                     b.Property<int>("Id")
@@ -2514,6 +2561,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired();
 
                     b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPersonScopeProject", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchProject", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPlaybook", b =>

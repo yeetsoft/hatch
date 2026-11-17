@@ -125,6 +125,19 @@ public record ProjectMemberDto(Guid PersonId, string Name, string Role);
 /// <summary>A role to set a member to - <c>"owner"</c> or <c>"approver"</c>, nothing else.</summary>
 public record ProjectMemberWriteRequest(string Role);
 
+/// <summary>
+/// What one person may see of the projects: <c>none</c>, <c>all</c>, or <c>some</c>, with the
+/// project ids it names. <c>all</c> carries every project id, the same as a person who has
+/// never been given a scope, so a client never branches on the mode to draw the list.
+/// </summary>
+public record PersonScopeDto(Guid PersonId, string Mode, IReadOnlyList<int> ProjectIds);
+
+/// <summary>
+/// A scope to give a person. <c>ProjectIds</c> is required under <c>some</c> and ignored
+/// under <c>none</c> and <c>all</c>.
+/// </summary>
+public record PersonScopeWriteRequest(string? Mode, IReadOnlyList<int>? ProjectIds);
+
 /// <summary>A write to a project's landing settings - <c>null</c> on a field leaves it alone.</summary>
 /// <param name="Landing">One of <see cref="Landings"/>.</param>
 /// <param name="OnePullRequest">The project default for whether a story's tasks share its branch and one pull request - see <see cref="EfHatchProject.OnePullRequest"/>. Null leaves it alone.</param>

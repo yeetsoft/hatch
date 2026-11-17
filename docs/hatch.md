@@ -22,6 +22,8 @@ the next heading of the same level and stop.
     land its work?
   - [Project Member](#project-member) - Who owns or approves a project, and
     why is the person a bare Guid?
+  - [Person scope](#person-scope) - Which projects may a person see, and how
+    does the server say so for a caller?
   - [Logo](#logo) - How is a project's logo stored and its type decided?
   - [Repository](#repository) - How does a project bind its git remotes?
   - [Status](#status) - What is a board column, and which flags make it
@@ -225,13 +227,17 @@ absence starts to hurt:
   required — the answer is the operator's, and "leave them" is one of the two.
   Nor is `fromStatusId` on a move: it is a precondition on what the caller last
   saw, not a rule about which columns may follow which.
-- **One granular permission.** A project's `EfHatchProjectMember` role
-  (`Owner` or `Approver`, from HA-290) grants exactly one additional thing
+- **One granular permission, and one scope.** A project's `EfHatchProjectMember`
+  role (`Owner` or `Approver`, from HA-290) grants exactly one additional thing
   beyond the global role — moving an issue into a protected column, read
   through `IProjectAccess.CanApproveAsync`/`HasRoleAsync`. Beside that one
   permission, reaching Hatch at all means trusted to do everything else in it.
-  Which routes a key may take is still a statement about *which surface*,
-  never about which verb.
+  A [person's scope](#person-scope) is the second thing beside the role, and it
+  grants nothing: it only narrows which projects the person sees. It is set by
+  an admin, held per person, and read through `ICallerScope`; it is not
+  enforced yet, so today every route still answers as if everyone saw every
+  project. Which routes a key may take is still a statement about *which
+  surface*, never about which verb.
 - **No swimlanes or sprints.**
 - **No GitHub integration beyond one read and two writes.** A commit sha in a
   comment is the link, and it is written by whoever did the work. What is read
@@ -669,6 +675,45 @@ owner** — every guard above exists to keep from reaching that state any
 other way, and this is the one door back out of it: whoever calls it
 becomes an owner, refused with `409` ("{key} already has an owner") the
 moment one already exists.
+
+### Person scope
+
+What a person may see of the projects, set by an admin. Two tables in the
+`hatch` schema. `EfHatchPersonScope` (`PersonScopes`) — `PersonId` (the
+primary key, a bare `Guid` with no foreign key, for the reason
+[`ProjectMembers.PersonId`](#project-member) is one), `Mode` (`none`, `all` or
+`some`, from `PersonScopeMode`), `UpdatedBy`, `UpdatedAt`.
+`EfHatchPersonScopeProject` (`PersonScopeProjects`) — `PersonId`, `ProjectId`
+(a cascading foreign key to `Projects`), unique on the pair.
+
+**No row is `all`.** A person who has never been given a scope sees every
+project, so adding the tables changes nothing for anyone. `none` is the empty
+set; `some` is the rows in `PersonScopeProjects`. Writing `all` or `none`
+deletes the person's project rows, so no list is left behind to come back if
+the mode changes again. Deleting a project drops it from every chosen list,
+through the cascade; the reads also join to `Projects`, so a deleted project
+never shows even where a provider does not enforce the cascade.
+
+**The routes are an admin's, and a person's alone — no key takes any of
+them,** since a key that could write a scope could widen its own owner's view.
+
+- `GET /api/scopes` answers every live person's scope,
+  `[{ personId, mode, projectIds }]`. A person with no row reads as `all` with
+  every project id, and so does one written `all`, so a client never branches
+  on the mode to draw the list.
+- `GET /api/scopes/{personId}` answers one, `404` for a person who does not
+  exist.
+- `PUT /api/scopes/{personId}` takes `{ mode, projectIds }`. `projectIds` is
+  required under `some` (an empty list is a real, empty scope) and ignored
+  otherwise. An unknown or missing mode, a missing list under `some`, or a
+  project id with no project is `400`; an unknown person is `404`, checked
+  first. Nothing is written unless all of it is valid. An admin may write
+  their own. The write is logged: who set whose scope to what.
+
+**The resolver is `ICallerScope`**, scoped, beside `IProjectAccess` and, like
+it, answering about the caller and never an arbitrary person. See
+[the resolver's rules](#the-callers-scope). **Nothing reads it yet:** this
+story is the fact and the routes; the filter that reads the fact is the next.
 
 ### Logo
 
@@ -3562,7 +3607,29 @@ grants the one permission a person can hold beyond their global role —
 moving an issue into a protected column, read through
 `IProjectAccess.CanApproveAsync`. It is the single exception to the rule the
 rest of this section runs on; see [One granular permission](#non-goals) for
-why it stops at exactly one.
+why it stops at exactly one. A person's [scope](#person-scope) sits beside it
+but grants nothing: it narrows what is seen, never what may be done.
+
+### The caller's scope
+
+`ICallerScope.ResolveAsync` answers one question about the caller: sees every
+project (`Unbounded`), or only a set of project ids. The rules, in order, the
+first that applies winning:
+
+1. **No HTTP context is unbounded** — work the server starts itself.
+2. **A wall that is off is unbounded**, before any row is read: with the wall
+   off there is one local person, and a row left from when it was up does not
+   narrow them.
+3. **A person reads their own row**, and no row is `all`.
+4. **A key reads its live owner's row**, through `IActorDirectory.PrincipalAsync`
+   (the owner resolved live, as it is for a key's other questions). A key with
+   no live owner — none was set, or the owner was deleted — is unbounded.
+
+`none` is the empty set. `some` is the rows that remain after any cascade. The
+answer is read once per request. A wall that is up with no person and no key
+never reaches a Hatch route, so a missing principal here is only a key without
+a live owner. The filter that applies the answer is not built yet; see
+[Person scope](#person-scope).
 
 ### The key
 
