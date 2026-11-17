@@ -87,6 +87,8 @@ function fieldValue(field: string, p: Playbook, statuses: Status[]) {
   switch (field) {
     case 'model':
       return p.model;
+    case 'localModel':
+      return p.localModel ?? 'none';
     case 'effort':
       return p.effort;
     case 'shape':

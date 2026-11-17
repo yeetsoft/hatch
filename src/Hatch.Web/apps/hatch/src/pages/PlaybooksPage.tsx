@@ -503,7 +503,14 @@ export function PlaybookFileRowLine({
           <Text tone="muted" as="span">any</Text>
         )}
       </td>
-      <td>{row.model}</td>
+      <td>
+        {row.model}
+        {row.localModel && (
+          <div>
+            <Text tone="muted" as="span">local: {row.localModel}</Text>
+          </div>
+        )}
+      </td>
       <td>{row.effort}</td>
       {label !== undefined && <td />}
     </tr>
