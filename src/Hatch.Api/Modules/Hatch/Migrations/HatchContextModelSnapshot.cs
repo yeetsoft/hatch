@@ -2318,6 +2318,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool>("Described")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("DispatchModel")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
                     b.Property<long>("DurationMs")
                         .HasColumnType("bigint");
 
@@ -2336,6 +2340,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("IssueType")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ModelDigest")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ModelPlacement")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
 
                     b.Property<string>("ModelUsage")
                         .HasColumnType("jsonb");

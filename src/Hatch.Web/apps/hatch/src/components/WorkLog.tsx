@@ -12,6 +12,7 @@ import {
   errorPhrase,
   hasDescendantSpend,
   modelEffortPhrase,
+  modelRunPhrase,
   ownPhrase,
   playbookFileShowCommand,
   playbookSourcePhrase,
@@ -95,6 +96,7 @@ function Entry({ entry, statuses }: { entry: WorkLogEntry; statuses: Status[] })
   const resume = resumeCommand(entry.agent, entry.sessionId);
   const transition = transitionPhrase(entry, statuses);
   const modelEffort = modelEffortPhrase(entry);
+  const modelRun = modelRunPhrase(entry);
 
   return (
     <li className={`hatch-worklog-entry${mark ? ` hatch-worklog-${mark}` : ''}`}>
@@ -125,6 +127,11 @@ function Entry({ entry, statuses }: { entry: WorkLogEntry; statuses: Status[] })
       {playbookSourcePhrase(entry) && <p className="text-muted hatch-worklog-source">{playbookSourcePhrase(entry)}</p>}
       {transition && <p className="text-muted hatch-worklog-transition">{transition}</p>}
       {modelEffort && <p className="text-muted hatch-worklog-model">{modelEffort}</p>}
+      {modelRun && (
+        <p className="text-muted hatch-worklog-model-run" title={entry.modelDigest ?? undefined}>
+          {modelRun}
+        </p>
+      )}
 
       {/* The session id in the form it is used in, rather than as an id
           somebody has to assemble a command around. */}

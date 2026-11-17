@@ -646,6 +646,62 @@ public sealed class OllamaAdapterTests : IDisposable
     private static string Tags(params string[] names) =>
         "{\"models\":[" + string.Join(",", names.Select(n => $"{{\"name\":\"{n}\"}}")) + "]}";
 
+    private static string TagsWithDigests(params (string Name, string? Digest)[] models) =>
+        "{\"models\":[" + string.Join(",", models.Select(m =>
+            m.Digest is null ? $"{{\"name\":\"{m.Name}\"}}" : $"{{\"name\":\"{m.Name}\",\"digest\":\"{m.Digest}\"}}")) + "]}";
+
+    [Fact]
+    public void Digest_is_the_one_the_list_reported_for_a_pulled_tag()
+    {
+        var adapter = Adapter(wire: new TagsWire(body: TagsWithDigests((Pinned, "abc123"), ("a:1b", "def456"))));
+
+        Assert.Equal("abc123", adapter.Digest(Pinned));
+        Assert.Equal("def456", adapter.Digest("a:1b"));
+    }
+
+    [Fact]
+    public void Digest_follows_an_alias_through_the_tiers_as_CanServe_does()
+    {
+        var tiers = new Dictionary<string, string?> { ["sonnet"] = Pinned };
+        var adapter = Adapter(tiers: tiers, wire: new TagsWire(body: TagsWithDigests((Pinned, "abc123"))));
+
+        Assert.Equal("abc123", adapter.Digest("sonnet"));
+    }
+
+    [Fact]
+    public void Digest_is_null_for_a_tag_not_in_the_list_an_unmapped_alias_and_no_model()
+    {
+        var adapter = Adapter(wire: new TagsWire(body: TagsWithDigests(("a:1b", "def456"))));
+
+        Assert.Null(adapter.Digest(Pinned));
+        Assert.Null(adapter.Digest("opus"));
+        Assert.Null(adapter.Digest(null));
+        Assert.Null(adapter.Digest(""));
+    }
+
+    [Fact]
+    public void Digest_is_null_when_the_list_gave_none_for_that_entry()
+    {
+        var adapter = Adapter(wire: new TagsWire(body: TagsWithDigests((Pinned, null))));
+
+        Assert.True(adapter.CanServe(Pinned, out _));
+        Assert.Null(adapter.Digest(Pinned));
+    }
+
+    [Fact]
+    public void Refresh_replaces_the_digest_when_a_tag_is_pushed_again()
+    {
+        var adapter = Adapter(wire: new SequenceWire(
+            TagsWithDigests((Pinned, "old")), TagsWithDigests((Pinned, "new"))));
+        Assert.Equal("old", adapter.Digest(Pinned));
+
+        // Only a refresh reads the server: the digest in hand is the one the session started under.
+        Assert.Equal("old", adapter.Digest(Pinned));
+        adapter.Refresh();
+
+        Assert.Equal("new", adapter.Digest(Pinned));
+    }
+
     [Fact]
     public void Refresh_makes_Models_follow_the_second_list()
     {

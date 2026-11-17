@@ -289,6 +289,21 @@ public sealed class IncrementReport
     public string? RecusedReason { get; set; }
 
     /// <summary>
+    /// The model this increment ran locally, under a ticket that prefers one
+    /// and stalled on it - null for every other increment. Set with
+    /// <see cref="SteppedOff"/> in the stall guard.
+    /// </summary>
+    public string? LocalModelRan { get; set; }
+
+    /// <summary>
+    /// The runner wrote its own omission onto the ticket after a stalled local
+    /// attempt, so the next attempt finds no free local runner and runs on the
+    /// ordinary model. Not <see cref="Recused"/>: the session did not ask for
+    /// it, and it still counts as a stall.
+    /// </summary>
+    public bool SteppedOff { get; set; }
+
+    /// <summary>
     /// The keys under the ticket after the session that were not there at
     /// dispatch - progress, though the ticket did not move.
     /// </summary>
@@ -1009,6 +1024,8 @@ public sealed class Increment(
                     }
                     else if (work.LetGo == 0)
                     {
+                        await StepOffAsync(report, work, model, runnerName, ct);
+
                         // The first increment in a row to leave this ticket
                         // where it found it is let go of quietly rather than
                         // flagged: most of the time whatever happened is
@@ -1028,7 +1045,8 @@ public sealed class Increment(
 
                         await LetGo.LeftAsync(
                             board, say, adapter, report.Key, why, report.SessionId, ct,
-                            kept: report.Kept.Length > 0 ? report.Kept : null);
+                            kept: report.Kept.Length > 0 ? report.Kept : null,
+                            steppedOff: report.SteppedOff ? SteppedOffSentence(report, runnerName) : null);
                         report.LetGo = true;
                         report.Flag = "let go";
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
@@ -1036,6 +1054,7 @@ public sealed class Increment(
                         else if (report.RunTimeStopped) report.ReleaseReason = ClaimLostReasons.RunTime;
                         say.Line("");
                         say.Line($"hatch: {report.Key} moved nothing - let go, and going on to the next");
+                        if (report.SteppedOff) say.Line($"hatch: {report.Key} - {runnerName} stepped off it after a stalled local attempt on {report.LocalModelRan}");
                     }
                     else
                     {
@@ -1043,7 +1062,8 @@ public sealed class Increment(
                         // whatever the first one quietly let go of has
                         // repeated, and that is worth a person's eye - flagged
                         // exactly as every stall used to be, before this ticket.
-                        await FlagStallAsync(report, open, work.LetGo, ct);
+                        await StepOffAsync(report, work, model, runnerName, ct);
+                        await FlagStallAsync(report, open, work.LetGo, runnerName, ct);
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
                         if (report.QuietStopped) report.ReleaseReason = ClaimLostReasons.Quiet;
                         else if (report.RunTimeStopped) report.ReleaseReason = ClaimLostReasons.RunTime;
@@ -1807,6 +1827,17 @@ public sealed class Increment(
         // which is the smaller number and the honest answer to "how long did
         // this take".
         var source = work.Playbook?.Source;
+
+        // What dispatch chose, and where it ran. An ollama runner is local by
+        // definition, so an issue override naming a local id is not mislabelled
+        // cloud. The digest is looked up from the list the adapter last read,
+        // which is the one this session started under: it is only re-read between
+        // increments, so a tag pushed again during the run is not recorded. A
+        // fallback ran the ordinary model, so it carries no digest.
+        var dispatchModel = work.Model ?? work.Playbook?.Model;
+        var placement = work.ModelIsLocal || adapter.Id == "ollama" ? "local"
+            : work.ModelFellBack ? "fallback"
+            : "cloud";
         var row = entry with
         {
             StartedAt = started,
@@ -1824,6 +1855,9 @@ public sealed class Increment(
             // differ exactly when `--model`/`--effort` overrode it.
             PlaybookModel = model.Length > 0 ? model : null,
             PlaybookEffort = effort.Length > 0 ? effort : null,
+            DispatchModel = string.IsNullOrEmpty(dispatchModel) ? null : dispatchModel,
+            ModelPlacement = placement,
+            ModelDigest = placement == "local" ? adapter.Digest(dispatchModel) : null,
         };
 
         try
@@ -1875,6 +1909,43 @@ public sealed class Increment(
     // ---- The stall guard ----
 
     /// <summary>
+    /// A stalled attempt that ran on the ticket's local model under
+    /// <c>prefer</c> takes this runner off the ticket, the way <c>hatch recuse</c>
+    /// does, so the next attempt finds no free local runner and runs on the
+    /// ordinary model. Under <c>require</c> nothing is written: the ticket wants
+    /// the local model and no other. Written at the first stall, not the second,
+    /// or the first retry would run locally again.
+    ///
+    /// <para>A failed write is said and carried past: the stall comment is
+    /// worth more than the omission, and it never claims a step-off that did not
+    /// happen. A model the operator set with <c>--model</c> is not the local
+    /// model, whatever the dispatch said.</para>
+    /// </summary>
+    private async Task StepOffAsync(IncrementReport report, WorkDto work, string model, string runnerName, CancellationToken ct)
+    {
+        if (report.Recused || report.Asked > 0 || runnerName.Length == 0) return;
+        if (!work.ModelIsLocal || work.Issue.LocalModel != LocalModelLevels.PreferName) return;
+        if (work.Model is not { Length: > 0 } ran || !string.Equals(model, ran, StringComparison.Ordinal)) return;
+
+        var reason = $"{ran} stalled here; this ticket prefers a local model, so the next attempt runs on the ordinary one";
+        if (reason.Length > 200) reason = reason[..200];
+
+        try
+        {
+            await board.OmitRunnerAsync(report.Key, runnerName, reason, ct);
+            report.LocalModelRan = ran;
+            report.SteppedOff = true;
+        }
+        catch (HatchException e)
+        {
+            say.Complain($"hatch: {report.Key} - {runnerName} could not step off after a stalled local attempt: {e.Message}");
+        }
+    }
+
+    private static string SteppedOffSentence(IncrementReport report, string runnerName) =>
+        $"This attempt ran locally on {report.LocalModelRan}. {runnerName} has stepped off this ticket, so the next attempt runs on the ordinary model.";
+
+    /// <summary>
     /// An increment that ended with the ticket in the column it found it in,
     /// said where a person will see it.
     /// </summary>
@@ -1897,7 +1968,7 @@ public sealed class Increment(
     /// this that already went quietly (see <see cref="LetGo.LeftAsync"/>), so
     /// it is always at least one here, and the comment says which one this is.</para>
     /// </remarks>
-    private async Task FlagStallAsync(IncrementReport report, int? open, int letGo, CancellationToken ct)
+    private async Task FlagStallAsync(IncrementReport report, int? open, int letGo, string runnerName, CancellationToken ct)
     {
         // Nothing is written on a guess. If the questions could not be read,
         // whether this issue is already flagged is not known, and a second
@@ -1944,6 +2015,8 @@ public sealed class Increment(
 
         body += $"\n\nThis is the {Ordinal(letGo + 1)} increment in a row to leave this ticket here.";
 
+        if (report.SteppedOff) body += "\n\n" + SteppedOffSentence(report, runnerName);
+
         body += report.SessionId is { Length: > 0 } session
             ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {adapter.ResumeCommand(session)}"
             : "\n\nThere is no session to resume: the run ended before it said what its id was.";
@@ -1971,6 +2044,8 @@ public sealed class Increment(
                   + "to answer a question about it.";
             say.Line($"hatch: {report.Key} moved nothing - marking it stalled, and going on to the next");
         }
+
+        if (report.SteppedOff) say.Line($"hatch: {report.Key} - {runnerName} stepped off it after a stalled local attempt on {report.LocalModelRan}");
 
         say.Line("");
 

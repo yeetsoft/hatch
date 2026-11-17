@@ -3396,6 +3396,11 @@ public class EfHatchWorkLogEntry
     public const int MaxSessionIdLength = 64;
     public const int MaxTitleLength = 200;
     public const int MaxSummaryLength = 2000;
+    public const int MaxModelPlacementLength = 8;
+    public const int MaxModelDigestLength = 80;
+
+    /// <summary>The placements a row may carry. Anything else is stored as null, never guessed.</summary>
+    public static readonly string[] ModelPlacements = ["local", "fallback", "cloud"];
     public const int MaxReads = 50;
     public const int MaxReadPathLength = 300;
 
@@ -3511,6 +3516,21 @@ public class EfHatchWorkLogEntry
 
     /// <summary>The effort the session ran at. Null on a row posted by an older runner.</summary>
     [MaxLength(EfHatchPlaybook.MaxEffortLength)] public string? PlaybookEffort { get; set; }
+
+    /// <summary>
+    /// The model dispatch chose for the move. It differs from <see cref="PlaybookModel"/>
+    /// exactly when the runner was told to use another model. Null on a row posted by an older runner.
+    /// </summary>
+    [MaxLength(EfHatchPlaybook.MaxModelLength)] public string? DispatchModel { get; set; }
+
+    /// <summary><c>local</c>, <c>fallback</c> or <c>cloud</c>. Null on a row posted by an older runner.</summary>
+    [MaxLength(MaxModelPlacementLength)] public string? ModelPlacement { get; set; }
+
+    /// <summary>
+    /// A local model's digest as the server's model list reported it before the
+    /// session started. Recorded because a tag can be pushed again. Null unless the model ran locally.
+    /// </summary>
+    [MaxLength(MaxModelDigestLength)] public string? ModelDigest { get; set; }
 
     /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight
