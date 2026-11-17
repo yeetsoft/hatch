@@ -635,6 +635,20 @@ describe('uploadAttachment', () => {
     expect(init.headers).toEqual({ Accept: 'application/json' });
     expect(result).toEqual(stored);
   });
+
+  it('carries a given projectId on the path, and leaves it off when null or omitted', async () => {
+    const stored = { id: 'abc', fileName: 'shot.png', contentType: 'image/png', size: 1, createdAt: '2026-11-01T00:00:00Z' };
+    const fetchMock = vi.fn(async (_path: string, _init?: RequestInit) => new Response(JSON.stringify(stored), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await uploadAttachment(new Blob(['x']), 'shot.png', 7);
+    await uploadAttachment(new Blob(['x']), 'shot.png', null);
+    await uploadAttachment(new Blob(['x']), 'shot.png');
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/attachments?projectId=7');
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/attachments');
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/attachments');
+  });
 });
 
 describe('getAttachments', () => {

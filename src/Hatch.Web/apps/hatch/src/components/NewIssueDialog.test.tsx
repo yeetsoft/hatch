@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NewIssueDialog, OnePrField, omitDefault } from './NewIssueDialog';
 import { REMEMBERED_PROJECT_STORAGE_KEY } from '../lib/defaultProject';
@@ -12,9 +12,28 @@ const directory = (kind: 'person' | 'key' = 'person'): AssigneeDirectory => ({
 
 // The Description field's MarkdownEditor reads `window.matchMedia` on render
 // and there is no jsdom here (see vitest config, and lib/clientLogger.ts) -
-// a real render of it throws before a single assertion runs. Nothing below
-// touches Description, so a stub costs nothing these tests care about.
-vi.mock('./MarkdownEditor', () => ({ MarkdownEditor: () => null }));
+// a real render of it throws before a single assertion runs. Capturing, not
+// just stubbing, so a test below can assert on what the dialog handed it -
+// there being no drop or paste to fire without jsdom, this is how the wiring
+// to the chosen project is checked instead.
+const seenEditor = vi.hoisted(() => [] as { attachmentProjectId?: number | null }[]);
+vi.mock('./MarkdownEditor', () => ({
+  MarkdownEditor: (props: { attachmentProjectId?: number | null }) => {
+    seenEditor.push(props);
+    return null;
+  },
+}));
+
+// AttachmentDropZone has nothing jsdom-only in it and renders for real
+// elsewhere; mocked here only to capture `projectId` the same way, passing
+// its children through so every other assertion below still sees the form.
+const seenDropZone = vi.hoisted(() => [] as { projectId?: number | null }[]);
+vi.mock('./AttachmentDropZone', () => ({
+  AttachmentDropZone: (props: { projectId?: number | null; children?: unknown }) => {
+    seenDropZone.push(props);
+    return props.children;
+  },
+}));
 
 // NewIssueDialog confirms a filing through this context - a renderless stub,
 // never exercised by the opening-render assertions below.
@@ -50,6 +69,10 @@ function stubStorage(initial: Record<string, string> = {}) {
 }
 
 afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  seenEditor.length = 0;
+  seenDropZone.length = 0;
+});
 
 const PROJECT: Project = {
   id: 1,
@@ -342,6 +365,40 @@ describe('NewIssueDialog', () => {
     expect(html).toContain('hatch-preapproval-said');
     expect(html).not.toContain('hatch-priority-pill-press');
     expect(html).not.toContain('hatch-preapproval-pill-press');
+  });
+
+  it('sends the chosen project to the drop zone and the editor, and follows it when the choice changes', () => {
+    stubStorage();
+
+    renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [PROJECT, OTHER],
+        candidates: [],
+        defaultProjectKey: 'HATCH',
+        directory: null,
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+
+    expect(seenDropZone[0].projectId).toBe(PROJECT.id);
+    expect(seenEditor[0].attachmentProjectId).toBe(PROJECT.id);
+
+    renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [PROJECT, OTHER],
+        candidates: [],
+        defaultProjectKey: 'AER',
+        directory: null,
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+
+    expect(seenDropZone[1].projectId).toBe(OTHER.id);
+    expect(seenEditor[1].attachmentProjectId).toBe(OTHER.id);
   });
 });
 

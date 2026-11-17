@@ -33,6 +33,7 @@ export function DescriptionEditor({
   clampTo,
   rows = 16,
   noun = 'description',
+  projectId,
 }: {
   /** The section's heading, drawn beside the controls. A node rather than a
       string because the level differs: <h2> on the page, <h4> inside a dialog
@@ -64,6 +65,9 @@ export function DescriptionEditor({
   /** What this editor writes about, in lower case; drives the empty state,
       the changed-underneath sentence and the box's aria-label. */
   noun?: string;
+  /** The project a drop or a paste's upload is sent against, so the
+      attachment it creates can be linked. */
+  projectId?: number | null;
 }) {
   const [draft, setDraft] = useState(() => openDraft(value));
   const [preview, setPreview] = useState(true);
@@ -117,7 +121,7 @@ export function DescriptionEditor({
   const dirty = isDirty(draft);
 
   return (
-    <AttachmentDropZone editor={editorRef} onAppend={append}>
+    <AttachmentDropZone editor={editorRef} onAppend={append} projectId={projectId}>
       <div className="hatch-section-head">
         {title}
         <div className="hatch-section-actions">
@@ -169,6 +173,7 @@ export function DescriptionEditor({
           className={editorClassName}
           ariaLabel={noun.charAt(0).toUpperCase() + noun.slice(1)}
           handle={editorRef}
+          attachmentProjectId={projectId}
         />
       )}
 

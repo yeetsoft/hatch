@@ -85,6 +85,9 @@ export interface MarkdownEditorProps {
   onCtrlEnter?: () => void;
   /** A way in for a caller that needs to insert text at the caret itself. */
   handle?: Ref<MarkdownEditorHandle>;
+  /** The project a pasted image's upload is sent against, so the attachment
+      it creates can be linked. */
+  attachmentProjectId?: number | null;
 }
 
 export function MarkdownEditor(props: MarkdownEditorProps) {
@@ -142,10 +145,14 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
  * draft is untouched. `onPaste` is stable, since Monaco's listener is attached
  * once; it reads the latest `insert` through a ref, as `onChangeRef` does.
  */
-function useImagePaste(insert: (text: string) => void) {
+function useImagePaste(insert: (text: string) => void, projectId?: number | null) {
   const insertRef = useRef(insert);
   useEffect(() => {
     insertRef.current = insert;
+  });
+  const projectIdRef = useRef(projectId);
+  useEffect(() => {
+    projectIdRef.current = projectId;
   });
   const [note, setNote] = useState<string | null>(null);
 
@@ -156,7 +163,7 @@ function useImagePaste(insert: (text: string) => void) {
     e.stopPropagation();
     setNote('Uploading image\u2026');
     shrink(file)
-      .then((blob) => uploadAttachment(blob, file.name || 'image.png'))
+      .then((blob) => uploadAttachment(blob, file.name || 'image.png', projectIdRef.current))
       .then(
         ({ id }) => {
           insertRef.current(imageMarkdown(id));
@@ -178,6 +185,7 @@ function PlainEditor({
   placeholder,
   ariaLabel,
   onCtrlEnter,
+  attachmentProjectId,
   bodyHandle,
   onWanted,
   failed,
@@ -209,7 +217,7 @@ function PlainEditor({
     });
   };
 
-  const image = useImagePaste(insertAtCaret);
+  const image = useImagePaste(insertAtCaret, attachmentProjectId);
 
   // The way in for a caller that wants to insert text at the caret itself.
   useImperativeHandle(bodyHandle, () => ({
@@ -291,6 +299,7 @@ function MonacoEditor({
   placeholder,
   ariaLabel,
   onCtrlEnter,
+  attachmentProjectId,
   bodyHandle,
 }: MarkdownEditorProps & { monaco: MonacoModule; handoffRef: RefObject<Handoff | null>; bodyHandle: Ref<MonacoHandle> }) {
   const host = useRef<HTMLDivElement>(null);
@@ -314,7 +323,7 @@ function MonacoEditor({
     if (editor && selection) editor.executeEdits('image-paste', [{ range: selection, text, forceMoveMarkers: true }]);
   };
 
-  const image = useImagePaste(executeInsert);
+  const image = useImagePaste(executeInsert, attachmentProjectId);
 
   useImperativeHandle(bodyHandle, () => ({
     insertAtCaret(text) {
