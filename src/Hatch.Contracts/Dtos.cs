@@ -4909,6 +4909,14 @@ public enum RunnerBoardDrift
 /// beat writes it exactly as sent, null included, so a restart onto the
 /// generic image does not keep a stale name.
 /// </param>
+/// <param name="AcceleratorMemoryBytes">
+/// The accelerator memory this machine has, in bytes - a fact about the process,
+/// written on every beat, on the terms <see cref="Os"/> has: absent leaves the
+/// session's value alone. Null where the machine has none, or where the runner's
+/// Ollama is hosted elsewhere and this machine's accelerator is not the one in use.
+/// </param>
+/// <param name="AcceleratorDeviceCount">How many accelerator devices this machine has, on the same terms as <see cref="AcceleratorMemoryBytes"/>.</param>
+/// <param name="AcceleratorBackend">The accelerator's backend - <c>cuda</c>, <c>metal</c>, <c>rocm</c> or <c>none</c> - on the same terms as <see cref="AcceleratorMemoryBytes"/>.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4956,7 +4964,10 @@ public record RunnerHeartbeatRequest(
     bool? Container = null,
     string? Username = null,
     DateTimeOffset? ProcessStartedAt = null,
-    string? Image = null);
+    string? Image = null,
+    long? AcceleratorMemoryBytes = null,
+    int? AcceleratorDeviceCount = null,
+    string? AcceleratorBackend = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

@@ -34,4 +34,21 @@ public sealed class OllamaHostTests
         Assert.Equal(expectedUrl, host.Url);
         Assert.Equal(expectedExplicit, host.Explicit);
     }
+
+    [Theory]
+    [InlineData(null, null, true)]
+    [InlineData("http://127.0.0.1:11434", null, true)]
+    [InlineData("localhost", null, true)]
+    [InlineData("LOCALHOST:9", null, true)]
+    [InlineData("[::1]:11434", null, true)]
+    [InlineData("127.0.0.2", null, true)]
+    [InlineData("10.0.0.5", null, false)]
+    [InlineData("ollama.com", null, false)]
+    [InlineData("host", null, false)]
+    [InlineData("0.0.0.0", null, false)]
+    public void Is_local_only_for_the_default_or_an_explicit_loopback_host(
+        string? hatchOllamaHost, string? ollamaHost, bool expected)
+    {
+        Assert.Equal(expected, OllamaHost.Resolve(hatchOllamaHost, ollamaHost).IsLocal);
+    }
 }
