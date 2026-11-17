@@ -17,6 +17,14 @@ export function keyAdvice(me: Me | null): KeyAdvice {
   return me.role === 'admin' ? 'needs-key-admin' : 'needs-key-user';
 }
 
+/**
+ * The Owner hint on Create runner and on the Identity card. The owner is
+ * both whose tickets `--mine` reaches and what projects the key reads
+ * through; nobody is unbounded, as the server answers a key with no owner.
+ */
+export const OWNER_SCOPE_HINT =
+  "Whose tickets this key's --mine reaches. The key sees only the projects its owner sees; with nobody, it sees every project.";
+
 /** A newly-minted or rotated secret, shown once - "The secret panel" in
     docs/runners-page-design.md. Held only in `RunnersLayout`'s `useState`,
     never storage, URL or router state, so it is gone the moment the page

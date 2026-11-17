@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Field, Modal } from '@hatch/ui';
 import { createRunner, getAuthMe, getPeople, setRunnerOwner, suggestRunnerName } from '../api/client';
-import { createProblem, createRunnerKey } from '../lib/runnerKey';
+import { OWNER_SCOPE_HINT, createProblem, createRunnerKey } from '../lib/runnerKey';
 import { useLoaded } from '../lib/useLoaded';
 import type { RunnerSecret } from '../lib/runnerKey';
 
@@ -86,7 +86,7 @@ export function CreateRunnerDialog({
         </Field>
         <Button onClick={suggest}>Suggest another</Button>
       </div>
-      <Field label="Owner">
+      <Field label="Owner" hint={OWNER_SCOPE_HINT}>
         <select value={owner ?? ''} onChange={(e) => setOwner(e.target.value)}>
           <option value="">nobody</option>
           {(people ?? []).map((person) => (

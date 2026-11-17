@@ -624,6 +624,16 @@ A loop with no key refuses before it takes a lock, a claim or makes a request
 ([`work`, `go-to-work`, `do-my-work`](cli-reference)); a read command still
 works, keyless, as the local person.
 
+## What the key reaches
+
+The key claims, hops, reviews, merges and lands only inside its owner's scope.
+Which projects that is, an admin sets on the person
+([people, roles and keys](people-roles-and-keys#runners-and-their-keys)); the
+runner has nothing to configure. An issue outside it is a `404`, a key whose
+owner sees no projects finds nothing and gets no work, and a key with no
+owner sees every project. The merge train follows the same rule, so a
+runner scoped out of a project is never the one that drives it.
+
 ## Where the key never goes
 
 The key stays out of the artifact: never a tracked file, a commit, a plan, an
