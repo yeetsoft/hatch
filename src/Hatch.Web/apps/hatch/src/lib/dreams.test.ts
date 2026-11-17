@@ -21,7 +21,9 @@ import {
   scrubbedDreamProject,
   showsDream,
   weaveBlocker,
+  weaveListQueryOnOpen,
   weaveModeRow,
+  weaveOnScreenLine,
   weaveProjectDefault,
   weaveRequest,
   weaveSeed,
@@ -438,6 +440,20 @@ describe('countLine', () => {
   });
 });
 
+describe('weaveOnScreenLine', () => {
+  it('reads singular for one', () => {
+    expect(weaveOnScreenLine(1)).toBe('1 dream will be handed to the weave.');
+  });
+
+  it('reads plural for several', () => {
+    expect(weaveOnScreenLine(3)).toBe('3 dreams will be handed to the weave.');
+  });
+
+  it('reads plural for none', () => {
+    expect(weaveOnScreenLine(0)).toBe('0 dreams will be handed to the weave.');
+  });
+});
+
 describe('hasMore', () => {
   it('is true while fewer are shown than match', () => {
     expect(hasMore(50, 51)).toBe(true);
@@ -548,6 +564,32 @@ describe('weaveSeed', () => {
 
   it('keeps the person\'s own text once typed', () => {
     expect(weaveSeed('their own seed', 'needle')).toBe('their own seed');
+  });
+});
+
+describe('weaveListQueryOnOpen', () => {
+  it('searches for a typed seed in mode seed, with no search of its own', () => {
+    expect(weaveListQueryOnOpen('seed', 'needle', '')).toBe('needle');
+  });
+
+  it('trims a typed seed before searching for it', () => {
+    expect(weaveListQueryOnOpen('seed', '  needle  ', '')).toBe('needle');
+  });
+
+  it('leaves q alone once a search of its own is typed', () => {
+    expect(weaveListQueryOnOpen('seed', 'needle', 'already searching')).toBe('already searching');
+  });
+
+  it('leaves q alone with no seed typed', () => {
+    expect(weaveListQueryOnOpen('seed', null, 'already searching')).toBe('already searching');
+  });
+
+  it('leaves q alone with a seed typed and then cleared', () => {
+    expect(weaveListQueryOnOpen('seed', '', '')).toBe('');
+  });
+
+  it('leaves q alone outside mode seed', () => {
+    expect(weaveListQueryOnOpen('common', 'needle', '')).toBe('');
   });
 });
 

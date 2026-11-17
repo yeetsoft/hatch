@@ -159,10 +159,18 @@ gradient, sits under the controls, and takes the full width on a phone. While
 it cannot be pressed, a line beside it says why: there is no project to weave
 into, no project is picked (with more than one project and none picked an epic
 has no home), or the mode is **seed** and the seed is empty. Below the mode,
-**Use the dreams on screen** hands the weave the dreams currently listed, in
-the order they are shown, as the ones to start reading from; left unticked,
-the weave names none and the session finds its own. While the history is
-folded no dreams are on screen, so the box names none.
+**Choose the dreams** is a switch. On, it hands the weave the dreams
+currently listed, in the order they are shown, as the ones to start reading
+from, and opens the search row and the list to show exactly what that is -
+in mode **Seed** with a seed typed and no search of its own, turning it on
+previews the seed by searching the list for it. Off, it folds the list and
+the weave names none and the session finds its own. A hint under the switch
+says which: off, "The weave reads every dream and finds its own."; on, "The
+dreams below go in first, and search and filters change them." Closing the
+list any other way - the magnifier, a Back navigation - turns the switch off
+too. While it is on, a line above the rows counts how many dreams are on
+screen, and it changes as the search, the filters or Show more change that
+count.
 
 Pressing **Weave** files an **epic** - in the breakdown column, briefed to be
 woven from the dreams - and takes you straight to it. A refusal shows beside

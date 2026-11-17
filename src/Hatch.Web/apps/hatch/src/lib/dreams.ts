@@ -230,6 +230,12 @@ export function countLine(shown: number, total: number): string {
   return total === 0 ? '0 results' : `${shown} of ${total}`;
 }
 
+/** The line above the list while the switch is on: how many of the dreams
+    shown will be handed to the weave. */
+export function weaveOnScreenLine(shown: number): string {
+  return shown === 1 ? '1 dream will be handed to the weave.' : `${shown} dreams will be handed to the weave.`;
+}
+
 /** Whether a next page exists. */
 export function hasMore(shown: number, total: number): boolean {
   return shown < total;
@@ -287,6 +293,16 @@ export const weaveModeRow = (mode: WeaveMode): WeaveModeRow => WEAVE_MODE_ROWS.f
     narrowing until they start one of their own. */
 export function weaveSeed(seed: string | null, q: string): string {
   return seed !== null ? seed : q;
+}
+
+/** The search box's `q` once the switch turns on: in mode `seed`, with a
+    seed typed (touched, and non-empty once trimmed) and no search of its
+    own, the seed previews itself by searching for it; otherwise `q` is left
+    exactly as it was. */
+export function weaveListQueryOnOpen(mode: WeaveMode, seed: string | null, q: string): string {
+  if (mode === 'seed' && seed !== null && seed.trim() !== '' && q.trim() === '') return seed.trim();
+
+  return q;
 }
 
 /** What a weave press sends, or `null` while it cannot be pressed: no project
