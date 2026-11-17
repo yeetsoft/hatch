@@ -18,3 +18,12 @@ import type { IssueType } from '../types';
  */
 export const childTypes = (parent: IssueType): IssueType[] =>
   ISSUE_TYPES.filter((type) => LEGAL_PARENT_TYPES[type].includes(parent));
+
+/**
+ * The type a picker wears: the pick if the parent can still take it, else the
+ * first legal type. The issue's own type is editable on its page, so a picker
+ * still holding "story" after the epic above it became a story would offer
+ * what the server refuses. Null until somebody chooses.
+ */
+export const clampChild = (picked: IssueType | null, types: readonly IssueType[]): IssueType =>
+  picked && types.includes(picked) ? picked : types[0];
