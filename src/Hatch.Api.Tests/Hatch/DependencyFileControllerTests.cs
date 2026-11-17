@@ -267,6 +267,31 @@ public class DependencyFileControllerTests
     private static DependencyFileRequest Request(string? content, string sha) =>
         new(Remote, Trunk, sha, content, Url, Runner);
 
+    // ---- A repository only a hidden project binds ----
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APutForARepositoryOnlyAHiddenProjectBinds_AnswersAsForOneNobodyBinds_AndStoresNothing(bool none)
+    {
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        ScopeSeed seed;
+        await using (var seeding = new HatchContext(options))
+            seed = await ScopeSeed.SeedAsync(seeding);
+
+        await using var db = ScopeSeed.Request(options, none ? VisibleProjects.Nothing : ScopeSeed.Only(seed.ProjectA));
+        var files = new DependencyFileController(db, new MergeCheckControllerTests.StubCallerIdentity { Person = new EfPerson { Name = "Nathan", CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch } }, new FakeTimeProvider(DateTimeOffset.UnixEpoch), null);
+
+        var hidden = Value(await files.PutDependencyFile(Request(null, Sha1) with { Remote = "https://host/b" }, default));
+        var unbound = Value(await files.PutDependencyFile(Request(null, Sha1) with { Remote = "https://host/nobody" }, default));
+
+        Assert.Equal(hidden.State, unbound.State);
+
+        await using var all = new HatchContext(options);
+        Assert.Equal("abc", Assert.Single(await all.DependencyFiles.Where(f => f.Canonical == ScopeSeed.CanonicalB && f.Trunk == "main").ToListAsync()).Sha);
+        Assert.Single(await all.DependencyFiles.Where(f => f.Canonical == "host/nobody").ToListAsync());
+    }
+
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }

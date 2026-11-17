@@ -44,6 +44,18 @@ public class QueryFilterAuditTests
             "The changelog file, which is the same bytes for every caller - a trunk's own file is judged against "
             + "it, and a scoped caller who got fewer entries would see a file forever behind. It reads every "
             + "project's repositories, closed issues and tree, and returns the entries of a file."),
+        ["TrunkBuildController.PutTrunkBuild"] = (1,
+            "Whether a row for this repository and trunk is stored, so a put naming a repository only a hidden "
+            + "project binds is answered as a fresh row and not by the unique index failing. What is read is an "
+            + "id, so the response reads as an insert would."),
+        ["PlaybookFileController.PutPlaybookFile"] = (1,
+            "Whether a row for this repository and trunk is stored, so a put naming a repository only a hidden "
+            + "project binds is answered as a fresh row and not by the unique index failing. What is read is an "
+            + "id, so the response reads as an insert would."),
+        ["DependencyFileController.PutDependencyFile"] = (1,
+            "Whether a row for this repository and trunk is stored, so a put naming a repository only a hidden "
+            + "project binds is answered as a fresh row and not by the unique index failing. What is read is an "
+            + "id, so the response reads as an insert would."),
         ["HatchContext.OnModelCreating"] = (1,
             "Inside the playbook proposal filter, reading the proposal's changes. A change's filter reads its "
             + "proposal and the proposal's filter reads its changes, and EF overflows the stack on the loop. The "
