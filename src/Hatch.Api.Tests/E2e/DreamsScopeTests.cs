@@ -7,13 +7,15 @@ using Xunit.Abstractions;
 namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
-/// HA-1895's acceptance, rendered: with a scope of two projects out of three,
-/// the Dreams list holds those projects' dreams and the loose one and not the
-/// third project's, the Project facet, the new-dream Lean chooser and the
-/// weave Project chooser list only the two (Lean keeping None), a
-/// <c>?projectId=</c> the scope does not offer is dropped from the address, and
-/// choosing one project in the facet narrows the list to that project's dreams
-/// alone, as it does with no scope. With no scope the page lists all four dreams and all three projects.
+/// HA-1895's acceptance, rendered for the one picker of HA-2396: with a scope
+/// of two projects out of three, the page has one project control, listing the
+/// two and the no-project tile, and the list holds those projects' dreams and
+/// the loose one and not the third project's. A <c>?projectId=</c> the scope
+/// does not offer is dropped from the address. Picking one project writes it
+/// to the address and narrows the list to that project's dreams and the loose
+/// one, and Weave, which has no chooser of its own, can be pressed. With no
+/// scope and none picked, the page lists all four dreams, offers all three
+/// projects, and Weave is disabled and says to pick one.
 /// Run at the desktop viewport in Chromium and at the <c>iPhone 14 Pro</c>
 /// profile in WebKit.
 ///
@@ -35,22 +37,24 @@ public class DreamsScopeTests(ITestOutputHelper output)
 
     private const string LooseDream = "A loose dream";
 
-    private const string PickerSelector = "label.hatch-facet:has(.hatch-facet__label:text-is(\"Project\")) select";
+    private const string TileSelector = ".hatch-dream-project .hatch-project-chooser__tile";
 
-    /// <summary>The facet's option values, both choosers' tiles and the listed dreams, read in one script so they are one moment.</summary>
+    /// <summary>The picker's tiles, how many choosers and Project facets the page draws, the caption, Weave's state and hint, and the listed dreams, read in one script so they are one moment.</summary>
     private const string ReadScript = """
         () => {
-          const label = [...document.querySelectorAll('label.hatch-facet')]
-            .find((l) => l.querySelector('.hatch-facet__label')?.textContent === 'Project');
-          const select = label ? label.querySelector('select') : null;
-          const tiles = (root) => [...document.querySelectorAll(root + ' .hatch-project-chooser__tile')]
-            .map((t) => t.lastElementChild.textContent);
+          const weave = document.querySelector('.hatch-dream-weave__actions button');
+          const hint = document.querySelector('.hatch-dream-weave__actions .text-muted');
           return {
-            options: select ? [...select.options].map((o) => o.value) : null,
-            lean: tiles('.hatch-dream-composer'),
-            weave: tiles('details.hatch-dream-weave'),
+            tiles: [...document.querySelectorAll('.hatch-dream-project .hatch-project-chooser__tile')]
+              .map((t) => t.lastElementChild.textContent),
+            choosers: document.querySelectorAll('.hatch-project-chooser').length,
+            facets: [...document.querySelectorAll('label.hatch-facet')]
+              .filter((l) => l.querySelector('.hatch-facet__label')?.textContent === 'Project').length,
+            caption: document.querySelector('.hatch-dream-project__caption')?.textContent ?? null,
+            weaveDisabled: weave ? weave.disabled : null,
+            weaveHint: hint ? hint.textContent : null,
             dreams: [...document.querySelectorAll('.hatch-dream')]
-              .map((li) => (li.textContent.match(/A (?:dream in \w+|loose dream)/) ?? [''])[0]).sort(),
+              .map((li) => (li.textContent.match(/A (?:dream in \w+|loose dream)|Posted with (?:a project|none)/) ?? [''])[0]).sort(),
             search: location.search,
             scrollWidth: document.documentElement.scrollWidth,
             innerWidth: window.innerWidth,
@@ -87,38 +91,59 @@ public class DreamsScopeTests(ITestOutputHelper output)
             var ids = await deadline.BoundAsync("filing four dreams", () => FileDreamsAsync(baseUrl));
             string[] scopedIds = [ids["DRA"], ids["DRB"]];
 
-            // Scoped to two of three: the list holds the two and the loose one, and each chooser offers the two.
+            // Scoped to two of three: the list holds the two and the loose one, and the one picker offers the two and no project.
             await harness.OpenAsync(deadline, baseUrl, "/dreams?scope=DRA,DRB");
             await harness.WaitForVisibleAsync(deadline, ".hatch-dream-composer");
             await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
             var scoped = await ReadAsync(harness, deadline, "scoped", profileName, DreamOf("DRA"), DreamOf("DRB"), LooseDream);
-            Assert.Equal(["", .. scopedIds], Strings(scoped, "options"));
-            Assert.Equal(["None", "DRA DRA", "DRB DRB"], Strings(scoped, "lean"));
-            Assert.Equal(["DRA DRA", "DRB DRB"], Strings(scoped, "weave"));
+            Assert.Equal(["No project", "DRA DRA", "DRB DRB"], Strings(scoped, "tiles"));
+            AssertOneControl(scoped);
+            Assert.Contains("lean toward no project", scoped.GetProperty("caption").GetString());
             Assert.Equal([DreamOf("DRA"), DreamOf("DRB"), LooseDream], Strings(scoped, "dreams"));
             AssertFits(scoped);
 
-            // A project the scope does not offer is dropped from the address, and reads as none chosen.
+            // A project the scope does not offer is dropped from the address, and reads as none picked.
             await harness.GoToAsync(deadline, $"dreams?scope=DRA,DRB&projectId={ids["DRC"]}");
             await harness.WaitForFunctionAsync(deadline, "waiting for the param to go", "() => !location.search.includes('projectId=')");
             var dropped = await ReadAsync(harness, deadline, "dropped", profileName, DreamOf("DRA"), DreamOf("DRB"), LooseDream);
             Assert.DoesNotContain("projectId", dropped.GetProperty("search").GetString());
             Assert.Equal([DreamOf("DRA"), DreamOf("DRB"), LooseDream], Strings(dropped, "dreams"));
 
-            // Choosing one project: that project's dreams alone; the loose one is the scope's list's, not the project's.
-            await harness.SelectOptionAsync(deadline, PickerSelector, ids["DRB"]);
+            // Picking one project: that project's dreams and the loose one, never another project's.
+            await harness.ClickAsync(deadline, $"{TileSelector}:has-text(\"DRB\")");
             await harness.WaitForHiddenAsync(deadline, $".hatch-dream:has-text(\"{DreamOf("DRA")}\")");
-            var picked = await ReadAsync(harness, deadline, "picked", profileName, DreamOf("DRB"));
-            Assert.Equal([DreamOf("DRB")], Strings(picked, "dreams"));
+            await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
+            await harness.SelectOptionAsync(deadline, "details.hatch-dream-weave select", "pressing");
+            var picked = await ReadAsync(harness, deadline, "picked", profileName, DreamOf("DRB"), LooseDream);
+            Assert.Equal([DreamOf("DRB"), LooseDream], Strings(picked, "dreams"));
+            Assert.Contains("projectId=", picked.GetProperty("search").GetString());
+            Assert.Contains("lean toward DRB", picked.GetProperty("caption").GetString());
+            AssertOneControl(picked);
+            Assert.False(picked.GetProperty("weaveDisabled").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, picked.GetProperty("weaveHint").ValueKind);
 
-            // No scope: nothing changes.
+            // A post with DRB picked leans toward DRB and leaves the pick; one with none picked leans toward none.
+            await PostFromComposerAsync(harness, deadline, PostedWithProject);
+            await harness.WaitForVisibleAsync(deadline, $".hatch-dream:has-text(\"{PostedWithProject}\")");
+            Assert.Contains("projectId=", await harness.EvaluateAsync<string>(deadline, "reading the address", "() => location.search"));
+            Assert.Equal(ids["DRB"], await LeanOfAsync(baseUrl, PostedWithProject));
+
+            await harness.ClickAsync(deadline, $"{TileSelector}:has-text(\"No project\")");
+            await harness.WaitForVisibleAsync(deadline, $".hatch-dream:has-text(\"{DreamOf("DRA")}\")");
+            await PostFromComposerAsync(harness, deadline, PostedWithNone);
+            await harness.WaitForVisibleAsync(deadline, $".hatch-dream:has-text(\"{PostedWithNone}\")");
+            Assert.Null(await LeanOfAsync(baseUrl, PostedWithNone));
+
+            // No scope, none picked: nothing is narrowed, and Weave says to pick a project.
             await harness.GoToAsync(deadline, "dreams");
             await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
-            var unscoped = await ReadAsync(harness, deadline, "unscoped", profileName, DreamOf("DRA"), DreamOf("DRB"), DreamOf("DRC"), LooseDream);
-            Assert.Equal(["", ids["DRA"], ids["DRB"], ids["DRC"]], Strings(unscoped, "options"));
-            Assert.Equal(["None", "DRA DRA", "DRB DRB", "DRC DRC"], Strings(unscoped, "lean"));
-            Assert.Equal(["DRA DRA", "DRB DRB", "DRC DRC"], Strings(unscoped, "weave"));
-            Assert.Equal([DreamOf("DRA"), DreamOf("DRB"), DreamOf("DRC"), LooseDream], Strings(unscoped, "dreams"));
+            await harness.SelectOptionAsync(deadline, "details.hatch-dream-weave select", "pressing");
+            var unscoped = await ReadAsync(harness, deadline, "unscoped", profileName, DreamOf("DRA"), DreamOf("DRB"), DreamOf("DRC"), LooseDream, PostedWithProject, PostedWithNone);
+            Assert.Equal(["No project", "DRA DRA", "DRB DRB", "DRC DRC"], Strings(unscoped, "tiles"));
+            AssertOneControl(unscoped);
+            Assert.Equal([DreamOf("DRA"), DreamOf("DRB"), DreamOf("DRC"), LooseDream, PostedWithProject, PostedWithNone], Strings(unscoped, "dreams"));
+            Assert.True(unscoped.GetProperty("weaveDisabled").GetBoolean());
+            Assert.Equal("Pick a project above to weave.", unscoped.GetProperty("weaveHint").GetString());
 
             harness.AssertNoPageErrors();
         }
@@ -133,10 +158,40 @@ public class DreamsScopeTests(ITestOutputHelper output)
         }
     }
 
+    private const string PostedWithProject = "Posted with a project";
+
+    private const string PostedWithNone = "Posted with none";
+
+    /// <summary>Types into the composer's box once Monaco has taken it over, and presses Post.</summary>
+    private static async Task PostFromComposerAsync(E2eHarness harness, Deadline deadline, string body)
+    {
+        await harness.ClickAsync(deadline, ".hatch-dream-composer__box");
+        await harness.WaitForVisibleAsync(deadline, ".hatch-dream-composer__box .monaco-editor");
+        await harness.ClickAsync(deadline, ".hatch-dream-composer__box .monaco-editor");
+        await harness.InsertTextAsync(deadline, body);
+        await harness.ClickAsync(deadline, ".hatch-dream-composer__actions button:text-is(\"Post\")");
+    }
+
+    /// <summary>The project id a stored dream leans toward, as the picker's string, or null for none.</summary>
+    private static async Task<string?> LeanOfAsync(string baseUrl, string body)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        var list = await http.GetFromJsonAsync<JsonElement>("/api/dreams?limit=50", Web);
+        var dream = list.GetProperty("dreams").EnumerateArray().Single(d => d.GetProperty("body").GetString() == body);
+        var lean = dream.GetProperty("projectId");
+        return lean.ValueKind == JsonValueKind.Null ? null : lean.GetInt32().ToString();
+    }
+
     private static string DreamOf(string key) => $"A dream in {key}";
 
     private static string[] Strings(JsonElement read, string property) =>
         read.GetProperty(property).EnumerateArray().Select(e => e.GetString()!).ToArray();
+
+    private static void AssertOneControl(JsonElement read)
+    {
+        Assert.Equal(1, read.GetProperty("choosers").GetInt32());
+        Assert.Equal(0, read.GetProperty("facets").GetInt32());
+    }
 
     private void AssertFits(JsonElement read) =>
         Assert.True(
@@ -155,7 +210,7 @@ public class DreamsScopeTests(ITestOutputHelper output)
         return read;
     }
 
-    /// <summary>Three projects, filed the way any caller files them with the wall off - the local person may file everything this test files - a dream leaning toward each, and one toward none. Returns each project's id as the facet's option value, by key.</summary>
+    /// <summary>Three projects, filed the way any caller files them with the wall off - the local person may file everything this test files - a dream leaning toward each, and one toward none. Returns each project's id, by key.</summary>
     private static async Task<Dictionary<string, string>> FileDreamsAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
