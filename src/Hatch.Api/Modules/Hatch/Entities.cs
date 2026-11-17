@@ -3125,6 +3125,37 @@ public class EfHatchPlaybook
 }
 
 /// <summary>
+/// One Ollama model a person has added to the board-wide table, with what it
+/// costs to run: the context it can hold and the memory it takes on the
+/// accelerator. Read by every Ollama runner's own heartbeat and by
+/// <c>GET /api/runners</c>, each by way of <see cref="LocalModelFit"/>, to say
+/// which ids fit that runner's own machine.
+/// </summary>
+[Table("LocalModels")]
+[Index(nameof(OllamaId), IsUnique = true)]
+public class EfHatchLocalModel
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    /// <summary>The Ollama id this row names - <see cref="EfHatchPlaybook.LocalModel"/>'s own shape.</summary>
+    [MaxLength(EfHatchPlaybook.MaxModelLength)]
+    public required string OllamaId { get; set; }
+
+    /// <summary>How many tokens of context this model holds.</summary>
+    public required int ContextLengthTokens { get; set; }
+
+    /// <summary>How much accelerator memory a copy of this model takes, in bytes.</summary>
+    public required long MemoryFootprintBytes { get; set; }
+
+    /// <summary>Who added this row, as a name rather than a foreign key - the same shape as <see cref="EfHatchProject.RepoSourcedBy"/>.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string CreatedBy { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
 /// A request to change playbooks, filed by a session that may not edit them
 /// itself and waiting for a person to decide. The record outlives the ticket
 /// that prompted it (<see cref="IssueId"/> goes null with the ticket) and

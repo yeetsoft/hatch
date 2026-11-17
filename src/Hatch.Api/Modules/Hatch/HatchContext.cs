@@ -5,7 +5,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, thirty-five tables.
+/// migration history, thirty-six tables.
 /// </summary>
 public class HatchContext : DbContext, IModuleContext
 {
@@ -58,6 +58,7 @@ public class HatchContext : DbContext, IModuleContext
     public DbSet<EfHatchDream> Dreams => Set<EfHatchDream>();
     public DbSet<EfHatchIssueEvent> IssueEvents => Set<EfHatchIssueEvent>();
     public DbSet<EfHatchPlaybook> Playbooks => Set<EfHatchPlaybook>();
+    public DbSet<EfHatchLocalModel> LocalModels => Set<EfHatchLocalModel>();
     public DbSet<EfHatchPlaybookProposal> PlaybookProposals => Set<EfHatchPlaybookProposal>();
     public DbSet<EfHatchPlaybookProposalChange> PlaybookProposalChanges => Set<EfHatchPlaybookProposalChange>();
     public DbSet<EfHatchWipLimit> WipLimits => Set<EfHatchWipLimit>();

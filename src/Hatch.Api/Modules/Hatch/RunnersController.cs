@@ -83,10 +83,11 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
         var visibleKeys = await VisibleKeysAsync(ct);
+        var localModels = await LocalModelsAsync(ct);
 
         var dtos = new List<RunnerDto>(visible.Count);
         foreach (var r in visible)
-            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, visibleKeys, now, ct));
+            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, visibleKeys, localModels, now, ct));
 
         return dtos;
     }
@@ -113,7 +114,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), now, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await LocalModelsAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -181,7 +182,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), time.GetUtcNow(), ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await LocalModelsAsync(ct), time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
@@ -209,11 +210,16 @@ public class RunnersController(
     private async Task<IReadOnlySet<string>> VisibleKeysAsync(CancellationToken ct) =>
         (await db.Projects.Select(p => p.Key).ToListAsync(ct)).ToHashSet();
 
+    /// <summary>The local-models table, oldest first, read once per request and threaded through <see cref="ProjectAsync"/>.</summary>
+    private Task<List<EfHatchLocalModel>> LocalModelsAsync(CancellationToken ct) =>
+        db.LocalModels.AsNoTracking().OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).ToListAsync(ct);
+
     /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
     private async Task<RunnerDto> ProjectAsync(
         Runner runner, Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
-        SiteSettingsSnapshot site, IReadOnlySet<string> visibleKeys, DateTimeOffset now, CancellationToken ct)
+        SiteSettingsSnapshot site, IReadOnlySet<string> visibleKeys, IReadOnlyList<EfHatchLocalModel> localModels,
+        DateTimeOffset now, CancellationToken ct)
     {
         var ownerId = runner.OwnerPersonId;
         var forName = ownerId is { } id ? (await actors.ResolveAsync(ActorKind.Person, id, ct))?.Name : null;
@@ -230,6 +236,16 @@ public class RunnersController(
         var loop = runner.Sessions?.Where(s => sessions.IsLive(s, now) && s.Kind == EfHatchRunner.LoopKind).ToList() ?? [];
         if (dto.Models.Count == 0) dto = dto with { Models = RunnerDeclaration.Declared(null, loop.Select(s => s.Models)) };
         if (dto.Has.Count == 0) dto = dto with { Has = RunnerDeclaration.Declared(null, loop.Select(s => s.Has)) };
+
+        // A keyed runner with no legacy row has no row-level accelerator fact
+        // at all, so the newest live loop session's own carries it - the same
+        // fallback PutRefusedModels makes for the agent alone.
+        var newestLoop = loop.OrderByDescending(s => s.LastSeenAt).ThenByDescending(s => s.Id).FirstOrDefault();
+        dto = dto with
+        {
+            Hold = LocalModelFit.Hold(
+                localModels, dto.Agent ?? newestLoop?.Agent, dto.AcceleratorMemoryBytes ?? newestLoop?.AcceleratorMemoryBytes, dto.RefusedModels),
+        };
 
         // What the newest live loop's last heartbeat was answered with, kept
         // beside the election the page runs again: where the two differ, the
@@ -381,8 +397,10 @@ public class RunnersController(
         var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
         var site = await siteSettings.GetAsync(ct);
         var forName = (await ForAsync(ct))?.Name ?? key.Name;
+        var localModels = await LocalModelsAsync(ct);
 
-        return RunnerSessions.Instruct(session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
+        return RunnerSessions.Instruct(
+            session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour, localModels);
     }
 
     /// <summary>
@@ -483,6 +501,7 @@ public class RunnersController(
         var forActor = await ForAsync(ct);
         var forName = forActor?.Name ?? (await caller.ApiKeyAsync(ct))?.Name;
         var site = await siteSettings.GetAsync(ct);
+        var localModels = await LocalModelsAsync(ct);
 
         if (row is null)
         {
@@ -496,9 +515,10 @@ public class RunnersController(
                 await db.SaveChangesAsync(ct);
 
                 // A row born on this very beat has never been ordered.
+                var refusedModels = await RefusedFromKeyAsync(ct);
                 return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), null,
                     defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
-                    with { RefusedModels = await RefusedFromKeyAsync(ct) };
+                    with { RefusedModels = refusedModels, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refusedModels) };
             }
             catch (DbUpdateException)
             {
@@ -532,9 +552,10 @@ public class RunnersController(
         await RetireSuperseded(row, now, ct);
         await db.SaveChangesAsync(ct);
 
+        var refused = await RefusedFromKeyAsync(ct);
         return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), order,
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
-            with { RefusedModels = await RefusedFromKeyAsync(ct) };
+            with { RefusedModels = refused, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refused) };
     }
 
     /// <summary>
@@ -955,7 +976,7 @@ public class RunnersController(
         return await ProjectAsync(
             new Runner(aggregate.Key, config ?? aggregate.Config, beatRow, aggregate.Sessions),
             await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, keys, now, ct),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), now, ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await LocalModelsAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -1082,7 +1103,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), now, ct);
+        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await LocalModelsAsync(ct), now, ct);
         return new RunnerMintedDto(dto, rotated.Secret);
     }
 
@@ -1443,7 +1464,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), now, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await LocalModelsAsync(ct), now, ct);
     }
 
     // ---- The one narrowing ----

@@ -5344,6 +5344,85 @@ public class RunnersControllerTests
         Assert.Equal(0, await h.Db.RunnerSessions.CountAsync());
     }
 
+    // ---- Hold: which local models fit this runner's own machine (HA-2424) ----
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AModelSmallerThanTheReportedMemory_IsHeld()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.Db.LocalModels.Add(new EfHatchLocalModel
+        {
+            OllamaId = "fake:1b", ContextLengthTokens = 8_000, MemoryFootprintBytes = 1_000_000_000L, CreatedBy = "Nathan", CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var result = Value(await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Agent: "ollama", AcceleratorMemoryBytes: 2_000_000_000L)));
+
+        Assert.Equal(["fake:1b"], result.Hold);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AModelBiggerThanTheReportedMemory_IsNotHeld()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.Db.LocalModels.Add(new EfHatchLocalModel
+        {
+            OllamaId = "fake:7b", ContextLengthTokens = 8_000, MemoryFootprintBytes = 5_000_000_000L, CreatedBy = "Nathan", CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var result = Value(await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Agent: "ollama", AcceleratorMemoryBytes: 2_000_000_000L)));
+
+        Assert.Empty(result.Hold);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AModelTheSessionRefuses_IsNotHeld()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.CoreDb.ApiKeys.Add(new EfApiKey
+        {
+            Id = h.Caller.Key!.Id, Name = h.Caller.Key.Name, Hash = h.Caller.Key.Hash, Prefix = h.Caller.Key.Prefix, CreatedAt = Now,
+        });
+        await h.CoreDb.SaveChangesAsync();
+        h.Db.LocalModels.Add(new EfHatchLocalModel
+        {
+            OllamaId = "fake:1b", ContextLengthTokens = 8_000, MemoryFootprintBytes = 1_000_000_000L, CreatedBy = "Nathan", CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Agent: "ollama", AcceleratorMemoryBytes: 2_000_000_000L));
+
+        await h.PutRefusedAsync(h.Caller.Key.Name, ["fake:1b"]);
+        var result = Value(await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Agent: "ollama", AcceleratorMemoryBytes: 2_000_000_000L)));
+
+        Assert.Empty(result.Hold);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_NamingNoAgentOrNoAcceleratorMemory_HoldsNothing()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.Db.LocalModels.Add(new EfHatchLocalModel
+        {
+            OllamaId = "fake:1b", ContextLengthTokens = 8_000, MemoryFootprintBytes = 1_000_000_000L, CreatedBy = "Nathan", CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var noAgent = Value(await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, AcceleratorMemoryBytes: 2_000_000_000L)));
+        Assert.Empty(noAgent.Hold);
+
+        var noMemory = Value(await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: "another", Agent: "ollama")));
+        Assert.Empty(noMemory.Hold);
+    }
+
     [Fact]
     public async Task GetRunner_OfABeatLessKeyWithALiveSession_ShowsItsModelsAndHas()
     {

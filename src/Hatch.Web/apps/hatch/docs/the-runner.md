@@ -504,6 +504,18 @@ must not keep looking like the one that was built - while any other beat
 naming none leaves the row's own value alone, the way `Os` and the other five
 machine facts do.
 
+### Hold
+
+A person adds an Ollama model to a board-wide table ([API
+reference](api-reference#local-models)): an id, its context length and how
+much accelerator memory a copy takes. Every heartbeat answers with
+`hold` - the ids of that table this runner's own machine fits - beside the
+accelerator facts above: empty unless this runner's agent is `ollama` and it
+has reported accelerator memory, and then every row whose memory footprint
+is no larger than the memory reported, minus any this runner refuses
+([Refused models](#refused-models)). `hatch runners --json` carries it
+unchanged; nothing pulls a model yet, so a running loop does not read it.
+
 ## What a repository needs
 
 **The file.** A repository says what a build of it needs in

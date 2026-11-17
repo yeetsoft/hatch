@@ -75,6 +75,7 @@ public class ScopeRouteMatrixTests
 
     private const string ColumnOfTheHouse = "a column belongs to the house; no project owns one";
     private const string WipIsTheHouses = "the WIP limit is the house's, and its counts read every project on purpose";
+    private const string LocalModelsAreTheHouses = "the local-models table is the house's, board-wide; no project owns a row";
     private const string ScopeWriting = "what each person may see; an admin's, never a project's";
     private const string HouseSettings = "house settings and the agent credentials; no project";
     private const string HouseBackup = "the house backup; no project";
@@ -98,6 +99,9 @@ public class ScopeRouteMatrixTests
         ("ImagesController.GetImage", Ha2388),
         ("ImportController.Preview", "parses the files it is sent and reads no project"),
         ("ImportController.PreviewText", "parses the text it is sent and reads no project"),
+        ("LocalModelsController.CreateLocalModel", LocalModelsAreTheHouses),
+        ("LocalModelsController.DeleteLocalModel", LocalModelsAreTheHouses),
+        ("LocalModelsController.GetLocalModels", LocalModelsAreTheHouses),
         ("MeController.GetMe", NamesTheCaller),
         ("OvernightController.PostSeen", "marks the night seen for the caller; it names no project and returns none"),
         ("ProjectsController.CreateProject", "names no project; it makes one"),
