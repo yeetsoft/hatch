@@ -344,6 +344,14 @@ on the next beat with no restart; a read that fails keeps the last list and
 says so once on the terminal, until a read succeeds again. A pulled name that
 is not a valid Ollama id (`name:tag`) is left out rather than refusing the beat.
 
+**A pinned id reaches only a runner that lists it.** Where a runner's list names
+pinned ids of its own agent - an ollama runner's pulled models - a row pinned to
+another id of that agent is folded from it in `hatch queue`, and the ticket
+waits with *no live runner offers* that id when every such runner leaves it
+out. A list with no pinned ids (empty, or aliases only, as claude, codex and
+grok advertise) is judged by agent alone. A beat carries at most 100 ids, so a
+runner with more pulled models is folded for one beyond the cut.
+
 **`HATCH_MODELS` overrides the default only for its own agent.** It was
 checked against `HATCH_AGENT`, so a run whose `--agent` flag chose another
 agent advertises that agent's default instead of a list that would be refused.

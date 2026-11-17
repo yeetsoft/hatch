@@ -980,7 +980,8 @@ public sealed class Dispatch(
                 var ofAgent = withModels.Where(d => d.Models.Agent is null || d.Models.Agent == owner).ToList();
                 if (ofAgent.Count == 0)
                     parts.Add($"pinned to {model} - no live runner's agent is {owner}");
-                else if (ofAgent.All(d => RunnerModels.Refuses(d.Refused, model)))
+                else if (ofAgent.All(d => RunnerModels.Refuses(d.Refused, model))
+                         || ofAgent.All(d => !Offers(d.Models, model, owner)))
                     parts.Add($"no live runner offers {model}");
             }
         }
@@ -1458,10 +1459,25 @@ public sealed class Dispatch(
                 ? ModelFamilies.NotOffered(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model, models.Agent)
                 : null;
 
-        return models.Agent is not null && ModelFamilies.Default.AgentOf(model) is { } owner && owner != models.Agent
-            ? ModelFamilies.Default.WrongAgent(model, models.Agent)
-            : null;
+        if (models.Agent is null || ModelFamilies.Default.AgentOf(model) is not { } owner) return null;
+        if (owner != models.Agent) return ModelFamilies.Default.WrongAgent(model, models.Agent);
+
+        return Offers(models, model, owner)
+            ? null
+            : ModelFamilies.NotOffered(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model, models.Agent);
     }
+
+    /// <summary>
+    /// Whether a runner of <paramref name="owner"/>, the agent of the pinned id
+    /// <paramref name="pinned"/>, may be handed it. False only when its list
+    /// names pinned ids of that agent and this one is not among them: a list
+    /// of aliases, or none, was never a list of ids, so it is judged by agent
+    /// alone. A runner with no agent has none to match and offers it.
+    /// </summary>
+    internal static bool Offers(ModelDeclaration declared, string pinned, string owner) =>
+        declared.Agent != owner
+        || declared.Has.Contains(pinned)
+        || !declared.Has.Any(m => ModelFamilies.Default.AgentOf(m) == owner);
 
     /// <summary>
     /// Why the asking runner will not take the move: the model it runs on - the
