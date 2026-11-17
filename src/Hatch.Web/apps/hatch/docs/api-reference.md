@@ -802,6 +802,8 @@ about two refs on origin any runner computes the same way, a pull-request
 state is what the forge itself already says, a brought-current mark is the
 train saying which row it just updated, and a trunk build is nobody's
 issue, so its one route answers to no claim and no column at all.
+A `PUT` to `/trunk-builds` naming a repository only a project outside the
+caller's scope binds answers as one nobody binds does, and stores nothing.
 `/trunk-builds/{id}/bug` is the one write in this group a person can also
 take, from the attention panel's own button. The body is optional, and a
 person may choose three fields in it: `preApproval` (`none`, `express` or
@@ -893,6 +895,8 @@ its playbooks from its own repository rather than from rows here at all.
 content over the stored cap, and writes no event - there is no issue to
 write one on, and no question, since a bad playbooks file is this row's own
 state rather than a stall.
+A `PUT` naming a repository only a project outside the caller's scope
+binds answers as one nobody binds does, and stores nothing.
 
 ### Dependency files
 
@@ -907,6 +911,8 @@ on disk at a repository-sourced project's trunk - a fact a key reports about
 a file, not an edit to Hatch's own instructions - so both its `GET` and its
 `PUT` stay key-open, the same reasoning `/playbook-files` takes. What the file
 says is in [the runner](the-runner#what-a-repository-needs).
+A `PUT` naming a repository only a project outside the caller's scope
+binds answers as one nobody binds does, and stores nothing.
 
 `DependencyFileDto` carries `Remote`, `Canonical`, `Trunk`, `Sha`, `State`
 (`parsed`, `invalid` or `absent`), `Hash` (the stored content's SHA-256),

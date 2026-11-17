@@ -1,5 +1,8 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -120,6 +123,37 @@ public class ScopeEnforcementDatabaseTests
 
         await using var all = new HatchContext(h.Options);
         Assert.Equal(4, await all.Issues.CountAsync());
+    }
+
+    [SkippableTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APutForARepositoryOnlyAHiddenProjectBinds_Answers200_WhereTheUniqueIndexWouldHaveFailedTheSave(bool none)
+    {
+        var h = await NewAsync();
+        await using var db = ScopeSeed.Request(h.Options, none ? VisibleProjects.Nothing : ScopeSeed.Only(h.Seed.ProjectA));
+        var caller = new MergeCheckControllerTests.StubCallerIdentity
+        {
+            Person = new EfPerson { Name = "Nathan", CreatedAt = DateTimeOffset.UnixEpoch, UpdatedAt = DateTimeOffset.UnixEpoch },
+        };
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var remote = "https://" + ScopeSeed.CanonicalB;
+
+        var build = await new TrunkBuildController(db, caller, time)
+            .PutTrunkBuild(new TrunkBuildRequest(remote, "main", "def", BuildVerdicts.Passed, null, "r"), default);
+        var playbook = await new PlaybookFileController(db, caller, time)
+            .PutPlaybookFile(new PlaybookFileRequest(remote, "main", "def", null, null, "r"), default);
+        var dependency = await new DependencyFileController(db, caller, time, null)
+            .PutDependencyFile(new DependencyFileRequest(remote, "main", "def", null, null, "r"), default);
+
+        Assert.Null(Assert.IsType<TrunkBuildDto>(build.Value).ProjectKey);
+        Assert.NotNull(playbook.Value);
+        Assert.NotNull(dependency.Value);
+
+        await using var all = new HatchContext(h.Options);
+        Assert.Equal("abc", Assert.Single(await all.TrunkBuilds.Where(f => f.Canonical == ScopeSeed.CanonicalB).ToListAsync()).Sha);
+        Assert.Equal("abc", Assert.Single(await all.PlaybookFiles.Where(f => f.Canonical == ScopeSeed.CanonicalB).ToListAsync()).Sha);
+        Assert.Equal("abc", Assert.Single(await all.DependencyFiles.Where(f => f.Canonical == ScopeSeed.CanonicalB).ToListAsync()).Sha);
     }
 
     private sealed record Harness(DbContextOptions<HatchContext> Options, ScopeSeed Seed);
