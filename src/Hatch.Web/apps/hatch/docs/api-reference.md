@@ -500,7 +500,7 @@ thing to look at - true of each id when several are given.
 |---|---|---|---|
 | GET | `/attachments` | key | Describes the files named in `ids`, in the order asked |
 | GET | `/attachments/{id}` | key | Downloads one, always as a file under its stored name |
-| POST | `/attachments` | **person** | Uploads one file (multipart `file`, up to 25 MB) |
+| POST | `/attachments` | **person** | Uploads one file (multipart `file`, up to 25 MB), linked to a project with `projectId` |
 | DELETE | `/attachments/{id}` | **person** | Removes one |
 | GET | `/images/{id}` | key | The inline view of an attachment that is an image |
 | POST | `/import/preview` | key | What uploaded `.md` files would become; reads/writes nothing |
@@ -517,7 +517,9 @@ is `ImportRequest(ProjectId, Docs)`, and its answer is
 `ImportedEpicDto(Filename, Key, Title, StoryCount, TaskCount)`.
 
 **Refusals.** Attachment upload and delete 403 a program caller outright -
-files are attached by a person, not by an agent. Upload 400s a request with
+files are attached by a person, not by an agent. Upload's `projectId` is
+optional, checked against the caller's scope, and 404s when it names no
+project the caller can see, before the file is read. Upload 400s a request with
 no file, an empty file, and a file over 25 MB, and stores nothing; an image is
 stored under its detected type whatever its size, anything else under the
 type it was sent with, or `application/octet-stream` when that is missing or
@@ -1248,13 +1250,22 @@ folder configured, `409`s while another run already holds the gate, and
 `403`s for an API key, the same as a program reaching `/overnight/seen`.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
-Owner)` - `kind: key` for an API key, naming its own name, its
+Owner, Scope)` - `kind: key` for an API key, naming its own name, its
 owner's name (`Owner`, null with no owner) and its owner's role lowercased (`Role`, null with no
 owner); `kind: person` when a grant holds a person;
 `kind: local` with the wall off and the machine's own person speaking;
 `kind: none` with the wall off and nobody local either (an unidentified
 browser, still able to sign in); and `204` only for an unidentified browser
 against a walled Hatch - no grant, no key, no local actor.
+
+`Scope` is `MeScopeDto(Mode, ProjectIds)`, on every answer but the `204`: the
+projects the caller reaches, a key's being its owner's. `mode` is `all` for an
+unbounded caller, `none` for one bounded to nothing, and `some` otherwise. It is
+read from what the caller can see and not from the stored row, so a `some`
+whose projects are all deleted reads `none`. `projectIds` is the ids in
+ascending order for `some`, and `[]` for `all` and `none`: `all` does not list
+every project, `GET /projects` does. A client that finds no `scope` - a server
+that predates it - carries on as before.
 
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
 ever used - it edits, it never creates. With the wall up, it also 403s a
