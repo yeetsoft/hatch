@@ -56,4 +56,8 @@ public static class Format
         >= 1_000 => Math.Round(count / 1_000m).ToString("0", CultureInfo.InvariantCulture) + "k",
         _ => count.ToString(CultureInfo.InvariantCulture),
     };
+
+    /// <summary>A memory size in binary gigabytes (1024^3 bytes) to one decimal, a trailing <c>.0</c> dropped: <c>24GB</c>, <c>1.5GB</c>.</summary>
+    public static string Bytes(long bytes) =>
+        (Math.Round(bytes / 1_073_741_824m, 1)).ToString("0.#", CultureInfo.InvariantCulture) + "GB";
 }

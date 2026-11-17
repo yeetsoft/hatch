@@ -18,7 +18,8 @@ public sealed class RunnersCommandTests
         long? tokensUsed = null, long? tokensLastHour = null, IReadOnlyList<string>? models = null,
         IReadOnlyList<string>? has = null, IReadOnlyList<RunnerSessionDto>? sessions = null, string? image = null,
         DateTimeOffset? agentDownUntil = null, string? agentDownKind = null, string? agentDownLine = null,
-        IReadOnlyList<string>? refusedModels = null) =>
+        IReadOnlyList<string>? refusedModels = null, long? acceleratorMemoryBytes = null,
+        int? acceleratorDeviceCount = null, string? acceleratorBackend = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
@@ -28,7 +29,8 @@ public sealed class RunnersCommandTests
             ExhaustedUntil: exhaustedUntil, Projects: projects ?? [], Runs: runs, Spent: spent, Host: host,
             TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has, Sessions: sessions,
             Image: image, AgentDownUntil: agentDownUntil, AgentDownKind: agentDownKind, AgentDownLine: agentDownLine,
-            RefusedModels: refusedModels ?? []);
+            RefusedModels: refusedModels ?? [], AcceleratorMemoryBytes: acceleratorMemoryBytes,
+            AcceleratorDeviceCount: acceleratorDeviceCount, AcceleratorBackend: acceleratorBackend);
 
     private static RunnerSessionDto ASession(
         string where = "Fry:/code/hatch", string? agent = "claude", string? os = "Darwin 23.6.0",
@@ -178,6 +180,34 @@ public sealed class RunnersCommandTests
         var lines = h.Said.Split('\n');
         Assert.EndsWith("  on Fry image ghcr.io/o/r:1", lines.Single(l => l.StartsWith("built", StringComparison.Ordinal)));
         Assert.DoesNotContain("image", lines.Single(l => l.StartsWith("generic", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_row_reporting_an_accelerator_prints_it_after_has_and_before_projects_and_one_that_did_not_prints_nothing_extra()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(name: "one", acceleratorBackend: "metal", acceleratorMemoryBytes: 38_654_705_664L, acceleratorDeviceCount: 1),
+            ARunner(name: "many", acceleratorBackend: "cuda", acceleratorMemoryBytes: 25_769_803_776L, acceleratorDeviceCount: 2),
+            ARunner(name: "nomem", acceleratorBackend: "rocm"),
+            ARunner(name: "frac", acceleratorBackend: "vulkan", acceleratorMemoryBytes: 1_610_612_736L),
+            ARunner(name: "none", acceleratorBackend: "none", acceleratorMemoryBytes: 0, acceleratorDeviceCount: 0),
+            ARunner(name: "silent"),
+            ARunner(name: "all", projects: ["HA"], has: ["pwsh"], acceleratorBackend: "cuda", acceleratorMemoryBytes: 25_769_803_776L, acceleratorDeviceCount: 2),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        string Row(string name) => lines.Single(l => l.StartsWith(name, StringComparison.Ordinal));
+        Assert.EndsWith("  accelerator metal 36GB", Row("one"));
+        Assert.EndsWith("  accelerator cuda 24GB x2", Row("many"));
+        Assert.EndsWith("  accelerator rocm", Row("nomem"));
+        Assert.EndsWith("  accelerator vulkan 1.5GB", Row("frac"));
+        Assert.DoesNotContain("accelerator", Row("none"));
+        Assert.DoesNotContain("accelerator", Row("silent"));
+        Assert.EndsWith("  has pwsh  accelerator cuda 24GB x2  projects HA", Row("all"));
     }
 
     [Fact]

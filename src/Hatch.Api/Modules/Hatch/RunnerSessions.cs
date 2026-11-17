@@ -193,7 +193,10 @@ public sealed class RunnerSessions(Runners runners)
             Username: session.Username,
             ProcessStartedAt: session.ProcessStartedAt,
             Ip: session.Ip,
-            Image: session.Image);
+            Image: session.Image,
+            AcceleratorMemoryBytes: session.AcceleratorMemoryBytes,
+            AcceleratorDeviceCount: session.AcceleratorDeviceCount,
+            AcceleratorBackend: session.AcceleratorBackend);
     }
 
     /// <summary>

@@ -474,6 +474,88 @@ public class RunnersControllerTests
         Assert.Equal(new string('i', EfHatchRunner.MaxImageLength), (await h.OneAsync()).Image);
     }
 
+    // ---- Accelerator ----
+
+    [Fact]
+    public async Task AFreshBeatNamingTheAccelerator_StoresItOnTheRowAndProjectsItUnchanged()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, AcceleratorMemoryBytes: 25_769_803_776L, AcceleratorDeviceCount: 2, AcceleratorBackend: "cuda"));
+
+        var row = await h.RowAsync();
+        Assert.Equal(25_769_803_776L, row.AcceleratorMemoryBytes);
+        Assert.Equal(2, row.AcceleratorDeviceCount);
+        Assert.Equal("cuda", row.AcceleratorBackend);
+
+        var runner = await h.OneAsync();
+        Assert.Equal(25_769_803_776L, runner.AcceleratorMemoryBytes);
+        Assert.Equal(2, runner.AcceleratorDeviceCount);
+        Assert.Equal("cuda", runner.AcceleratorBackend);
+    }
+
+    [Fact]
+    public async Task ALaterBeatUnderAConfigCeiling_StillProjectsTheAccelerator()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, AcceleratorMemoryBytes: 25_769_803_776L, AcceleratorDeviceCount: 2, AcceleratorBackend: "cuda"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "3"));
+
+        // A config row makes the projection a hand-built copy of the beat's
+        // row; a field that copy misses would read as never reported.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(3, runner.MaxRuns);
+        Assert.Equal(25_769_803_776L, runner.AcceleratorMemoryBytes);
+        Assert.Equal(2, runner.AcceleratorDeviceCount);
+        Assert.Equal("cuda", runner.AcceleratorBackend);
+    }
+
+    [Fact]
+    public async Task ALaterBeatNamingNoAccelerator_LeavesTheRowsAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, AcceleratorMemoryBytes: 25_769_803_776L, AcceleratorDeviceCount: 2, AcceleratorBackend: "cuda"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var row = await h.RowAsync();
+        Assert.Equal(25_769_803_776L, row.AcceleratorMemoryBytes);
+        Assert.Equal(2, row.AcceleratorDeviceCount);
+        Assert.Equal("cuda", row.AcceleratorBackend);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeatNamingNoAccelerator_ClearsAPreviouslyReportedOne()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, AcceleratorMemoryBytes: 25_769_803_776L, AcceleratorDeviceCount: 2, AcceleratorBackend: "cuda"));
+
+        // A restart onto a remote Ollama: the new process has no profile to
+        // report, and the fresh beat must not keep the old one's.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
+
+        var row = await h.RowAsync();
+        Assert.Null(row.AcceleratorMemoryBytes);
+        Assert.Null(row.AcceleratorDeviceCount);
+        Assert.Null(row.AcceleratorBackend);
+    }
+
+    [Fact]
+    public async Task AcceleratorBackend_PastItsLimit_IsTruncatedNotRefused()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(AcceleratorBackend: new string('b', 200)));
+
+        Assert.Equal(new string('b', EfHatchRunner.MaxAcceleratorBackendLength), (await h.OneAsync()).AcceleratorBackend);
+    }
+
     // ---- Tags ----
 
     [Fact]
@@ -5074,6 +5156,61 @@ public class RunnersControllerTests
 
         var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
         Assert.Equal(64, row.Os!.Length);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatNamingTheAccelerator_StoresItOnTheSessionAndProjectsItUnchanged()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.CoreDb.ApiKeys.Add(new EfApiKey
+        {
+            Id = h.Caller.Key!.Id, Name = h.Caller.Key.Name, Hash = h.Caller.Key.Hash, Prefix = h.Caller.Key.Prefix, CreatedAt = Now,
+        });
+        await h.CoreDb.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner,
+            AcceleratorMemoryBytes: 25_769_803_776L, AcceleratorDeviceCount: 2, AcceleratorBackend: "cuda"));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(25_769_803_776L, row.AcceleratorMemoryBytes);
+        Assert.Equal(2, row.AcceleratorDeviceCount);
+        Assert.Equal("cuda", row.AcceleratorBackend);
+
+        var session = Assert.Single((await h.OneAsync()).Sessions);
+        Assert.Equal(25_769_803_776L, session.AcceleratorMemoryBytes);
+        Assert.Equal(2, session.AcceleratorDeviceCount);
+        Assert.Equal("cuda", session.AcceleratorBackend);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ALaterBeatNamingNoAccelerator_LeavesTheSessionAlone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner,
+            AcceleratorMemoryBytes: 25_769_803_776L, AcceleratorDeviceCount: 2, AcceleratorBackend: "cuda"));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+
+        var session = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(25_769_803_776L, session.AcceleratorMemoryBytes);
+        Assert.Equal(2, session.AcceleratorDeviceCount);
+        Assert.Equal("cuda", session.AcceleratorBackend);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnAcceleratorBackendLongerThanTheColumn_IsTruncated()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, AcceleratorBackend: new string('b', 200)));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(EfHatchRunner.MaxAcceleratorBackendLength, row.AcceleratorBackend!.Length);
     }
 
     [SkippableFact]
