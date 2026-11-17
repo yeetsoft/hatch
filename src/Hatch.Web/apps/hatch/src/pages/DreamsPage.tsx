@@ -4,6 +4,7 @@ import { Button, Card, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
 import { addDream, deleteDream, getDreams, patchDream, weaveDreams } from '../api/client';
 import { Choice } from '../components/Choice';
 import { DescriptionEditor } from '../components/DescriptionEditor';
+import { DreamsOpeningLines } from '../components/DreamsOpeningLines';
 import { Facet } from '../components/Facet';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { ProjectChooser } from '../components/ProjectChooser';
@@ -240,7 +241,10 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
 
   return (
     <div className="hatch-page">
-      <PageHeader title="Dreams" description="Lines worth keeping before they are work." />
+      <div className="hatch-dream-intro">
+        <PageHeader title="Dreams" />
+        <DreamsOpeningLines />
+      </div>
 
       <Card className="hatch-dream-composer">
         <div className="hatch-dream-composer__box">
