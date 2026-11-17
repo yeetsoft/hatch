@@ -150,11 +150,22 @@ name, that HA-1937 retires.
   (`POST /api/runners`), from **Runners → Create runner**, admin only:
   no key may mint, rotate, revoke or re-own a key, only a person at that
   screen. The dialog takes **Name** ("What the audit trail will call it") and
-  **Owner** ("Whose tickets this key's `--mine` will reach"), then **Create**.
-  The secret is shown once, on the page, beside the two `hatch config`
+  **Owner** (hint: "Whose tickets this key's --mine reaches. The key sees only
+  the projects its owner sees; with nobody, it sees every project."), then
+  **Create**. The secret is shown once, on the page, beside the two `hatch config`
   commands it needs next, and the response is sent `no-store`, so it is never
   shown again. A name already held, by a key revoked or not, is refused. An
-  admin can change the owner later, on the runner's Identity card.
+  admin can change the owner later, on the runner's Identity card, which
+  carries the same hint under the select.
+- **Inside its owner's scope.** A key reads through its owner's
+  [scope](#scope): its `next`, `queue`, `review`, hops, verdicts, merges,
+  landings and closes touch only the projects that person can see, and an
+  issue outside them answers `404`. An owner scoped to `none` leaves the key
+  with nothing to claim. A key with no owner, or a Hatch with the wall off,
+  is unbounded. The merge train follows the same rule: a project is driven
+  only by a runner whose owner can see it, so a runner scoped out of a
+  project is never elected its driver, however long it has run, and a peer
+  scoped out of a project is not counted as able to take its tickets.
 - **Replacing a secret.** An admin rotates a runner with
   `POST /api/runners/{name}/rotate`; a new secret is made at once and
   shown once, sent `no-store`; the old secret is refused from the next call (a
@@ -244,6 +255,9 @@ to sign-in instead.
   screen; left as is, that admin becomes the key's owner. The **Owner** select
   on an existing, unrevoked row also offers `nobody`; a revoked row shows its
   owner as text only.
+- **The owner also sets what projects the key sees.** The key reads through
+  its owner's scope, as above. `nobody` is unbounded: a key with no owner sees
+  every project, though it has no tickets of its own for `--mine`.
 - **Whose tickets it reaches.** The signed-in person; failing that, the key's
   owner; failing that, the local person where the wall is off. `--mine` takes
   only a ticket assigned to that person, or to the key itself, and folds
