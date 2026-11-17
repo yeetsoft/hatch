@@ -186,8 +186,8 @@ public class ScopeRouteMatrixTests
         /// <summary>A person is refused here before scope is read: the route is a key's alone.</summary>
         public bool RefusesPerson { get; init; }
 
-        /// <summary>The ticket that says the probe is known to fail, so it is listed and not sent.</summary>
-        public string? KnownOpen { get; init; }
+        /// <summary>The write is held to the answer an unbound remote gets: the same status and the same body shape.</summary>
+        public bool LikeUnbound { get; init; }
     }
 
     private static readonly JsonSerializerOptions Json = JsonSerializerOptions.Web;
@@ -200,6 +200,39 @@ public class ScopeRouteMatrixTests
     private static Req Put(string path, object? body = null) => Send(HttpMethod.Put, path, body);
     private static Req Patch(string path, object? body = null) => Send(HttpMethod.Patch, path, body);
     private static Req Delete(string path) => new(HttpMethod.Delete, path);
+
+    /// <summary>The JSON property paths of a body, values ignored, sorted; a body that is not JSON has none.</summary>
+    private static List<string> BodyShape(string body)
+    {
+        var paths = new SortedSet<string>(StringComparer.Ordinal);
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            Walk(doc.RootElement, "$", paths);
+        }
+        catch (JsonException)
+        {
+        }
+        return [.. paths];
+
+        static void Walk(JsonElement element, string path, SortedSet<string> paths)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in element.EnumerateObject())
+                        Walk(property.Value, $"{path}.{property.Name}", paths);
+                    break;
+                case JsonValueKind.Array:
+                    foreach (var item in element.EnumerateArray())
+                        Walk(item, $"{path}[]", paths);
+                    break;
+                default:
+                    paths.Add(path);
+                    break;
+            }
+        }
+    }
 
     private static Probe Lookup(Func<Target, Req> build) => new(Kind.Lookup, [build]);
 
@@ -246,12 +279,10 @@ public class ScopeRouteMatrixTests
         ("ChangelogFileController.GetChangelogFiles", Rows(false, t => Get("/api/changelog-files"), t => Get($"/api/changelog-files?remote={t.Remote}"))),
         ("ChangelogFileController.PutChangelogFile", Rows(false, t => Put("/api/changelog-files", new { remote = t.Remote, trunk = "main", sha = "abc", runner = "r" }))),
 
-        // Known to fail, found by reading the code: a hidden row is filtered
-        // out of the lookup, so the upsert inserts and meets the unique index.
-        // Listed and not sent; HA-2393 says what done looks like.
-        ("TrunkBuildController.PutTrunkBuild", Rows(false, t => Put("/api/trunk-builds", new { remote = t.Remote, trunk = "main", sha = "abc", verdict = "pass", runner = "r" })) with { KnownOpen = "HA-2393" }),
-        ("PlaybookFileController.PutPlaybookFile", Rows(false, t => Put("/api/playbook-files", new { remote = t.Remote, trunk = "main", sha = "abc", runner = "r" })) with { KnownOpen = "HA-2393" }),
-        ("DependencyFileController.PutDependencyFile", Rows(false, t => Put("/api/dependency-files", new { remote = t.Remote, trunk = "main", sha = "abc", runner = "r" })) with { KnownOpen = "HA-2393" }),
+        // A hidden repository answers what an unbound remote answers.
+        ("TrunkBuildController.PutTrunkBuild", Rows(false, t => Put("/api/trunk-builds", new { remote = t.Remote, trunk = "main", sha = "abc", verdict = "passed", runner = "r" })) with { LikeUnbound = true }),
+        ("PlaybookFileController.PutPlaybookFile", Rows(false, t => Put("/api/playbook-files", new { remote = t.Remote, trunk = "main", sha = "abc", runner = "r" })) with { LikeUnbound = true }),
+        ("DependencyFileController.PutDependencyFile", Rows(false, t => Put("/api/dependency-files", new { remote = t.Remote, trunk = "main", sha = "abc", runner = "r" })) with { LikeUnbound = true }),
 
         // The work routes are listed as rows only. Their claim, hop and merge
         // behaviour is HA-2387's; what is held here is that a hidden issue's
@@ -506,9 +537,8 @@ public class ScopeRouteMatrixTests
 
         string Say(string name, Req req, HttpStatusCode status) => $"{caller}: {name} {req.Method} {req.Path} answered {(int)status}";
 
-        var live = ProjectBearing.Where(p => p.Probe.KnownOpen is null).ToList();
-        var lookups = live.Where(p => p.Probe.Kind == Kind.Lookup).ToList();
-        var lists = live.Where(p => p.Probe.Kind == Kind.List).ToList();
+        var lookups = ProjectBearing.Where(p => p.Probe.Kind == Kind.Lookup).ToList();
+        var lists = ProjectBearing.Where(p => p.Probe.Kind == Kind.List).ToList();
         var missing = new Dictionary<string, HttpStatusCode>();
 
         // Nonexistent and hidden first: a probe on A may change A, and nothing
@@ -550,8 +580,27 @@ public class ScopeRouteMatrixTests
         {
             for (var i = 0; i < probe.Builds.Length; i++)
             {
+                // The unbound remote first: a write is held to what it answers.
+                (HttpStatusCode Status, string Body)? unbound = null;
+                if (probe.LikeUnbound)
+                    unbound = await SendAsync($"{name} (unbound)", probe.Builds[i](targets[Who.Missing]));
+
                 var req = probe.Builds[i](targets[Who.Hidden]);
                 var (status, body) = await SendAsync($"{name} (list {i})", req);
+
+                if (unbound is { } gone)
+                {
+                    if ((int)gone.Status >= 500) failures.Add($"{caller}: {name} answered {(int)gone.Status} for a remote nothing binds - a server error");
+                    if (status != gone.Status)
+                        failures.Add($"{Say(name, req, status)} for the hidden project's remote, but {(int)gone.Status} for one nothing binds - they must read the same");
+                    else
+                    {
+                        var hiddenShape = BodyShape(body);
+                        var unboundShape = BodyShape(gone.Body);
+                        if (!hiddenShape.SequenceEqual(unboundShape))
+                            failures.Add($"{Say(name, req, status)} for the hidden project's remote, with a body shaped [{string.Join(", ", hiddenShape)}] where an unbound remote's is [{string.Join(", ", unboundShape)}]");
+                    }
+                }
 
                 if ((int)status >= 500) failures.Add($"{Say(name, req, status)} - a list for a scoped caller is a server error");
                 if (body.Contains(WalledHost.HiddenMarker, StringComparison.Ordinal))
