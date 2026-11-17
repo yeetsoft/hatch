@@ -31,15 +31,22 @@ What it holds is the project the dream leans toward: a dream posted with a proje
 toward it, and one posted with none picked leans toward none. A line beside the picker says what the
 choice means. The picker is drawn whenever the board has a project.
 
-The box takes a dream. Type it in the box, which reads markdown like any other description, and
-press **Post** - or press Ctrl+Enter (Cmd+Enter on a Mac) without leaving the box. The **source**
-is where it came from, and may be a web address.
+The composer is an open box with no card around it, asking **What are you dreaming about?** in large
+type. Under it runs a thin rule, faint while the box rests and full while it has focus. Type the dream
+in the box, which reads markdown like any other description, and press **Post** just beneath it. On a
+desktop the key hint beside Post says the shortcut: Ctrl+Enter (Cmd+Enter on a Mac) posts without
+leaving the box. On a phone Post spans the width. Post stays dimmed while the box is empty.
 
-A posted dream appears at the top of the list at once and the box and the source empty themselves.
-The picker keeps its choice, so a run of dreams for one project is a run of posts. If the search or
-the filters would hide the new dream, they are cleared so it can be seen - all but the picked
-project, which stays. If the server refuses the dream, its reason shows beside the box and what you typed stays as
-you left it, ready to post again.
+The **source** is where it came from, and may be a web address. It is folded away behind the small
+**Source** control on Post's row; press it and the field opens with the caret in it. A source with
+text in it stays open, and is saved with the dream.
+
+A posted dream appears at the top of the list at once. The text falls into the rule as it fades while
+the box empties, and the source folds again; with reduced motion on, nothing moves and the box just
+empties. The picker keeps its choice, so a run of dreams for one project is a run of posts. If the
+search or the filters would hide the new dream, they are cleared so it can be seen - all but the
+picked project, which stays. If the server refuses the dream, its reason shows under the box and what
+you typed stays as you left it, ready to post again.
 
 ## From a Claude session
 

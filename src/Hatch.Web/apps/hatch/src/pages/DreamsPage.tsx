@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Card, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
+import { Button, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
 import { addDream, deleteDream, getDreams, patchDream, weaveDreams } from '../api/client';
 import { Choice } from '../components/Choice';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { DreamsOpeningLines } from '../components/DreamsOpeningLines';
-import { MarkdownEditor } from '../components/MarkdownEditor';
+import { DreamComposer } from '../components/DreamComposer';
 import { ProjectChooser } from '../components/ProjectChooser';
 import { agoPhrase } from '../lib/claim';
 import {
@@ -156,37 +156,18 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
     );
   }
 
-  const [body, setBody] = useState('');
-  const [source, setSource] = useState('');
-  const [posting, setPosting] = useState(false);
-  const [postError, setPostError] = useState<string | null>(null);
+  async function post(body: string, source: string | null) {
+    const dream = await addDream({ body, source, projectId: pickedProjectId(filters.projectId, projects) });
 
-  async function post() {
-    // The editor's own Ctrl+Enter can fire on an empty box, or twice.
-    if (!body.trim() || posting) return;
-    setPosting(true);
-    setPostError(null);
-
-    try {
-      const dream = await addDream({ body, source: source.trim() || null, projectId: pickedProjectId(filters.projectId, projects) });
-      setBody('');
-      setSource('');
-
-      if (showsDream(filters, dream)) {
-        setDreams((prev) => [dream, ...prev]);
-        setTotal((t) => t + 1);
-      } else {
-        // The filters would hide it: clear them but the picked project, and
-        // the key effect reloads with the new dream first. Prepending a dream
-        // the server would not list under them would also push every Show more
-        // offset one too far.
-        setParams(writeDreams({ ...EMPTY_DREAMS, projectId: filters.projectId }));
-      }
-    } catch (err) {
-      // The draft stays as typed, so a refusal costs nothing to retry.
-      setPostError(message(err));
-    } finally {
-      setPosting(false);
+    if (showsDream(filters, dream)) {
+      setDreams((prev) => [dream, ...prev]);
+      setTotal((t) => t + 1);
+    } else {
+      // The filters would hide it: clear them but the picked project, and
+      // the key effect reloads with the new dream first. Prepending a dream
+      // the server would not list under them would also push every Show more
+      // offset one too far.
+      setParams(writeDreams({ ...EMPTY_DREAMS, projectId: filters.projectId }));
     }
   }
 
@@ -253,35 +234,7 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
         </div>
       )}
 
-      <Card className="hatch-dream-composer">
-        <div className="hatch-dream-composer__box">
-          <MarkdownEditor
-            value={body}
-            onChange={setBody}
-            rows={3}
-            deferred
-            ariaLabel="Dream"
-            placeholder="A line worth keeping…"
-            onCtrlEnter={() => void post()}
-          />
-          {postError && <p className="text-danger">{postError}</p>}
-        </div>
-
-        <input
-          type="text"
-          className="hatch-dream-composer__source"
-          aria-label="Source"
-          placeholder="Where it came from (optional)"
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-        />
-
-        <div className="hatch-dream-composer__actions">
-          <Button variant="primary" loading={posting} disabled={!body.trim()} onClick={() => void post()}>
-            Post
-          </Button>
-        </div>
-      </Card>
+      <DreamComposer onPost={post} />
 
       <details className="hatch-dream-weave">
         <summary>Weave an epic</summary>
