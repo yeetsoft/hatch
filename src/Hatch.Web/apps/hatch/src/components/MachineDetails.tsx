@@ -1,4 +1,5 @@
 import { Text } from '@hatch/ui';
+import { heldLine } from '../lib/localModels';
 import { acceleratorLabel, drivesLabel, runnerBuildLabel, sessionRepositoriesLabel } from '../lib/runners';
 import type { Runner, RunnerSession } from '../types';
 
@@ -11,6 +12,8 @@ export function MachineDetails({ session, runner, now }: { session: RunnerSessio
   const build = runnerBuildLabel(session, now);
   const repositories = sessionRepositoriesLabel(session);
   const accelerator = acceleratorLabel(session);
+  // `hold` is the runner's, but the server only fills it for a machine that reports its memory.
+  const held = session.acceleratorMemoryBytes != null ? heldLine(runner.hold, runner.models) : null;
 
   return (
     <details>
@@ -23,6 +26,7 @@ export function MachineDetails({ session, runner, now }: { session: RunnerSessio
         </Text>
       )}
       {accelerator && <Text tone="muted">Accelerator {accelerator}</Text>}
+      {held && <Text tone="muted">{held}</Text>}
       {session.agent != null && (
         <Text tone="muted">
           Agent {session.agent}

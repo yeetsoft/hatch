@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useMatch, useNavigate, useOutletContext } from 'react-router-dom';
 import { Button, EmptyState, PageHeader } from '@hatch/ui';
 import { CreateRunnerDialog } from './CreateRunnerDialog';
+import { LocalModelsCard } from './LocalModelsCard';
 import { RunnerList } from './RunnerList';
 import { useRunners } from '../lib/useRunners';
 import { useMe } from '../lib/useMe';
@@ -57,14 +58,17 @@ export function RunnersLayout() {
   }
 
   const list = (
-    <RunnerList
-      runners={runners}
-      selected={selected}
-      isAdmin={isAdmin}
-      wallOff={wallOff}
-      now={now}
-      onCreate={() => setCreating(true)}
-    />
+    <>
+      <RunnerList
+        runners={runners}
+        selected={selected}
+        isAdmin={isAdmin}
+        wallOff={wallOff}
+        now={now}
+        onCreate={() => setCreating(true)}
+      />
+      <LocalModelsCard />
+    </>
   );
   // Never on the wall-off variant: the admin routes this opens are dormant
   // there, and hatch config bootstraps the runner instead.

@@ -30,6 +30,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   refusesDangerous: false,
   models: [],
   refusedModels: [],
+  hold: [],
   has: [],
   drives: [],
   clones: null,
@@ -217,6 +218,26 @@ describe('RunnerDetail: Live sessions', () => {
     state.read = { runners: [runner({ name: 'Quill', sessions: [later, earlier] })], error: null };
     const html = renderAt('/runners/Quill');
     expect(html.indexOf('Mac:/earlier')).toBeLessThan(html.indexOf('Mac:/later'));
+  });
+
+  it('draws the held line on a live session that reports accelerator memory', () => {
+    state.read = {
+      runners: [
+        runner({
+          name: 'Quill',
+          hold: ['fake:1b', 'fake:7b'],
+          models: ['fake:1b'],
+          sessions: [live({ acceleratorBackend: 'cuda', acceleratorMemoryBytes: 24 * 1024 ** 3 })],
+        }),
+      ],
+      error: null,
+    };
+    expect(renderAt('/runners/Quill')).toContain('Holds fake:1b, fake:7b (fake:1b pulled)');
+  });
+
+  it('draws the local-models card beside the list', () => {
+    state.read = { runners: [runner({ name: 'Quill' })], error: null };
+    expect(renderAt('/runners/Quill')).toContain('Local models');
   });
 
   it('draws an agent-down session with its own glyph and words', () => {

@@ -478,6 +478,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   refusesDangerous: false,
   models: [],
   refusedModels: [],
+  hold: [],
   has: [],
   drives: [],
   clones: null,

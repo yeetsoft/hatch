@@ -296,6 +296,21 @@
   min-height: 0;
 }
 
+/* The local-models card under the runner list: a gap from the card above it,
+   and an Add button that keeps its one line when a refusal draws beside it. */
+.hatch-local-models {
+  margin-top: var(--sp-4);
+}
+
+.hatch-local-models .hatch-form-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.hatch-local-models .hatch-form-actions button {
+  white-space: nowrap;
+}
+
 /* The board has no title row: its first line is the filter row, and it sits at
    --sp-6 because that is where every page's first line sits (.hatch-page,
    .hatch-issue-page) and where the header's top edge used to be, so moving

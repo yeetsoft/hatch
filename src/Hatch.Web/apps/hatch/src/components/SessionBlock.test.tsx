@@ -27,6 +27,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   refusesDangerous: false,
   models: [],
   refusedModels: [],
+  hold: [],
   has: [],
   drives: [],
   clones: null,
@@ -181,6 +182,20 @@ describe('SessionBlock', () => {
   it('draws no accelerator row for none or for an older CLI', () => {
     expect(draw(session({ acceleratorBackend: 'none' }))).not.toContain('Accelerator');
     expect(draw(session({ acceleratorBackend: null }))).not.toContain('Accelerator');
+  });
+
+  it('draws what the runner holds, marking the ids it already lists as pulled', () => {
+    const html = draw(
+      session({ acceleratorBackend: 'cuda', acceleratorMemoryBytes: 24 * 1024 ** 3 }),
+      runner({ hold: ['fake:1b', 'fake:7b'], models: ['fake:1b'] }),
+    );
+    expect(html).toContain('Holds fake:1b, fake:7b (fake:1b pulled)');
+  });
+
+  it('draws no held line for an empty hold, or for a session with no accelerator memory', () => {
+    const withMemory = session({ acceleratorBackend: 'cuda', acceleratorMemoryBytes: 24 * 1024 ** 3 });
+    expect(draw(withMemory, runner({ hold: [] }))).not.toContain('Holds');
+    expect(draw(session({ acceleratorMemoryBytes: null }), runner({ hold: ['fake:1b'] }))).not.toContain('Holds');
   });
 
   it('draws the Machine details closed', () => {

@@ -56,6 +56,8 @@ import type {
   PersonScopeWriteRequest,
   PersonWriteRequest,
   Playbook,
+  LocalModelCreateRequest,
+  LocalModelRow,
   PlaybookCreateRequest,
   PlaybookFilesDto,
   ChangelogFilesDto,
@@ -324,6 +326,18 @@ export const patchPlaybook = (id: number, request: PlaybookPatchRequest) =>
   fetchJson<Playbook>(`/api/playbooks/${id}`, { method: 'PATCH', body: JSON.stringify(request) });
 export const deletePlaybook = (id: number) =>
   fetchJson<void>(`/api/playbooks/${id}`, { method: 'DELETE' });
+
+// ---- Local models ----
+//
+// Reading is open to a key, since a runner's own beat has to know the table;
+// the two writes are a person's alone, like the playbook writes above. See
+// LocalModelsController.
+
+export const getLocalModels = () => fetchJson<LocalModelRow[]>('/api/local-models');
+export const createLocalModel = (request: LocalModelCreateRequest) =>
+  fetchJson<LocalModelRow>('/api/local-models', { method: 'POST', ...asJson(request) });
+export const deleteLocalModel = (id: number) =>
+  fetchJson<void>(`/api/local-models/${id}`, { method: 'DELETE' });
 
 export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/playbook-files');
 
