@@ -96,12 +96,15 @@ public static class Fixtures
         int? quietLimitSeconds = null,
         int? maxRunSeconds = null,
         bool? offersNoCode = null,
-        string? releaseNoteFor = null) =>
+        string? releaseNoteFor = null,
+        string? model = null,
+        bool modelIsLocal = false,
+        string? localModel = null) =>
         new(
-            Issue: issue ?? Issue(key),
+            Issue: issue ?? Issue(key, localModel: localModel),
             FromStatus: Status(3, from),
             ToStatus: to is null ? null : Status(kind is WorkKinds.Conflicts or WorkKinds.Build ? 3 : 4, to),
-            Playbook: hop ? null : Playbook(isCheck: isCheck, quietLimitSeconds: quietLimitSeconds, maxRunSeconds: maxRunSeconds),
+            Playbook: hop ? null : Playbook(model: model ?? "opus", isCheck: isCheck, quietLimitSeconds: quietLimitSeconds, maxRunSeconds: maxRunSeconds),
             Children: children ?? [],
             Repositories: repositories ?? [],
             Questions: questions ?? [],
@@ -123,7 +126,9 @@ public static class Fixtures
             AsksReleaseNote: asksReleaseNote,
             NextBriefLimit: nextBriefLimit,
             OffersNoCode: offersNoCode,
-            ReleaseNoteFor: releaseNoteFor);
+            ReleaseNoteFor: releaseNoteFor,
+            Model: hop ? null : model,
+            ModelIsLocal: modelIsLocal);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
