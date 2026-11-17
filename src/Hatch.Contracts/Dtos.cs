@@ -445,6 +445,19 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// The ancestor <paramref name="PreApproval"/> was inherited from, or null
 /// when the effective level is this issue's own, or None.
 /// </param>
+/// <param name="LocalModel">
+/// The effective local-model level's name - see <see cref="LocalModelLevels"/> -
+/// <c>"none"</c>, <c>"prefer"</c> or <c>"require"</c>. Walked live, at read, to
+/// the nearest ancestor - including this issue itself - that is not none;
+/// never stored or copied. Trailing and defaulted for the reason
+/// <paramref name="OpenQuestions"/> is, though every list that draws a card
+/// fills it.
+/// </param>
+/// <param name="LocalModelOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.LocalModel"/>.</param>
+/// <param name="LocalModelFrom">
+/// The ancestor <paramref name="LocalModel"/> was inherited from, or null
+/// when the effective level is this issue's own, or none.
+/// </param>
 /// <param name="OnePr">
 /// Whether this issue's story or bug shares one branch and one pull request
 /// across its tasks - walked live, at read, to the nearest story or bug at or
@@ -515,7 +528,10 @@ public record IssueCardDto(
     string? NoCode = null,
     ContributionDto? Contribution = null,
     string CreatedBy = "",
-    string ProjectPriority = ProjectPriorities.Normal)
+    string ProjectPriority = ProjectPriorities.Normal,
+    string LocalModel = LocalModelLevels.NoneName,
+    string LocalModelOwn = LocalModelLevels.NoneName,
+    string? LocalModelFrom = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -647,6 +663,19 @@ public record IssueClaimDto(
 /// The ancestor <paramref name="PreApproval"/> was inherited from, or null
 /// when the effective level is this issue's own, or None.
 /// </param>
+/// <param name="LocalModel">
+/// The effective local-model level's name - see <see cref="LocalModelLevels"/> -
+/// <c>"none"</c>, <c>"prefer"</c> or <c>"require"</c>. Walked live, at read, to
+/// the nearest ancestor - including this issue itself - that is not none;
+/// never stored or copied. Trailing and defaulted for the reason
+/// <paramref name="OpenQuestions"/> is, though every list that draws a card
+/// fills it.
+/// </param>
+/// <param name="LocalModelOwn">The level this issue's own row carries, regardless of what it inherits - see <see cref="EfHatchIssue.LocalModel"/>.</param>
+/// <param name="LocalModelFrom">
+/// The ancestor <paramref name="LocalModel"/> was inherited from, or null
+/// when the effective level is this issue's own, or none.
+/// </param>
 /// <param name="WipLimit">
 /// How many of an epic's stories may be in progress at once, or null for
 /// no limit - meaningful on an epic and on nothing else. Readable by a key, like every other field a dispatch
@@ -776,7 +805,10 @@ public record IssueDto(
     bool OnePrEnforced = false,
     string? FiledFromKey = null,
     IReadOnlyList<string> FiledKeys = null!,
-    ContributionDto? Contribution = null)
+    ContributionDto? Contribution = null,
+    string LocalModel = LocalModelLevels.NoneName,
+    string LocalModelOwn = LocalModelLevels.NoneName,
+    string? LocalModelFrom = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -1031,6 +1063,42 @@ public static class PreApprovalLevels
 }
 
 /// <summary>
+/// The three levels an issue's local-model preference can sit at - see
+/// <see cref="EfHatchIssue.LocalModel"/>.
+/// </summary>
+public static class LocalModelLevels
+{
+    public const int None = 0;
+    public const int Prefer = 1;
+    public const int Require = 2;
+
+    public const string NoneName = "none";
+    public const string PreferName = "prefer";
+    public const string RequireName = "require";
+
+    /// <summary>The level's name, for the wire - see <see cref="TryParse"/> for the reverse.</summary>
+    public static string Name(int level) => level switch
+    {
+        Require => RequireName,
+        Prefer => PreferName,
+        _ => NoneName,
+    };
+
+    /// <summary>The name's level, or <see langword="false"/> for anything that is not one of the three.</summary>
+    public static bool TryParse(string? name, out int level)
+    {
+        (level, var ok) = name switch
+        {
+            RequireName => (Require, true),
+            PreferName => (Prefer, true),
+            NoneName => (None, true),
+            _ => (None, false),
+        };
+        return ok;
+    }
+}
+
+/// <summary>
 /// Still here. The token is the whole authorization; the line is optional and
 /// cosmetic.
 /// </summary>
@@ -1092,6 +1160,12 @@ public record ClaimHeartbeatRequest(
 /// sentence when it names no issue. Born in the one save, with no
 /// <c>filed_from_changed</c> event.
 /// </param>
+/// <param name="LocalModel">
+/// The local-model level the issue is born at - <c>none</c>, <c>prefer</c> or
+/// <c>require</c>, the names <c>PUT .../local-model</c> takes. Absent (or null)
+/// is <c>none</c>. A person's call: a key that names it is refused. Born in
+/// the one save, with no second event.
+/// </param>
 public record IssueCreateRequest(
     int ProjectId,
     string Type,
@@ -1103,7 +1177,8 @@ public record IssueCreateRequest(
     string? OnePr = null,
     string? Priority = null,
     string? PreApproval = null,
-    string? FiledFromKey = null);
+    string? FiledFromKey = null,
+    string? LocalModel = null);
 
 /// <summary>
 /// An edit. Every field is optional and null means "leave this alone", which
@@ -2412,6 +2487,13 @@ public record ContributionRequest(
 /// meant.
 /// </summary>
 public record PreApprovalRequest(string Level);
+
+/// <summary>
+/// The level to set, by name - <c>"none"</c>, <c>"prefer"</c> or
+/// <c>"require"</c> - see <see cref="LocalModelLevels"/>. One required string
+/// for the same reason <see cref="PreApprovalRequest"/> is.
+/// </summary>
+public record LocalModelRequest(string Level);
 
 /// <summary>
 /// The sentence an increment leaves behind it, saying why it left this ticket

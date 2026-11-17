@@ -622,6 +622,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool>("Held")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("LocalModel")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ModelOverride")
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");

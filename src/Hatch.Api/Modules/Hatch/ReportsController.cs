@@ -103,6 +103,7 @@ public class ReportsController(
                     i.AssigneeApiKeyId,
                     i.Priority,
                     i.PreApproval,
+                    i.LocalModel,
                     i.StalledAt,
                     i.StalledWhy,
                     i.Held,
@@ -126,6 +127,7 @@ public class ReportsController(
             foreach (var i in issues)
             {
                 var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+                var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
                 var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
 
                 cards[i.Id] = new IssueCardDto(
@@ -146,6 +148,9 @@ public class ReportsController(
                     PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                     PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                     PreApprovalFrom: effectivePreApprovalFrom,
+                    LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                    LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
+                    LocalModelFrom: effectiveLocalModelFrom,
                     StalledAt: i.StalledAt,
                     StalledWhy: i.StalledWhy,
                     Held: i.Held,
@@ -1038,6 +1043,7 @@ public class ReportsController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.PreApproval,
+                i.LocalModel,
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
@@ -1059,6 +1065,7 @@ public class ReportsController(
         foreach (var i in issues)
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
 
             cards[i.Id] = new IssueCardDto(
@@ -1079,6 +1086,9 @@ public class ReportsController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
+                LocalModelFrom: effectiveLocalModelFrom,
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,

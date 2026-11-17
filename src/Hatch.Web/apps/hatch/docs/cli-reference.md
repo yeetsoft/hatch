@@ -654,7 +654,9 @@ and absent where they do not apply. The
 description is markdown and goes to the terminal as it was written. A ticket
 that is expedited, emergency, low, economy, paused, express or pre-approved
 says so, and a level it holds only because an ancestor carries it names that
-ancestor. A ticket in an expedited or paused project also gets a
+ancestor. A ticket at a local-model level of `prefer` or `require` prints a
+`local model:` line, naming the ancestor when the level is inherited, and a
+ticket at `none` prints nothing. A ticket in an expedited or paused project also gets a
 `priority:  project <KEY> expedited` or `paused` line after its own, and a
 normal project prints nothing. A ticket that requires a runner tag says so too, naming the project or
 the ancestor issue each tag beyond its own came from. A ticket with omitted runners lists each one with its reason, who omitted it and how long ago, in the shape `hatch omit AER-12` reads, with `(from AER-3)` on one an ancestor carries, and says nothing of them when there are none. None of those can be set from here: the key is a key, and each is a

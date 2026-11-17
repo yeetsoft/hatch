@@ -195,6 +195,7 @@ public static class IssueProjection
             var projectKey = issue.Project?.Key ?? projects[issue.ProjectId].Key;
             var (effective, effectiveFrom) = priorities.Effective(issue.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(issue.Id);
+            var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(issue.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(issue.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(issue.Id);
@@ -277,7 +278,10 @@ public static class IssueProjection
                 (issue.Project?.OnePullRequestPolicy ?? projects[issue.ProjectId].OnePullRequestPolicy) == global::Hatch.Contracts.OnePullRequestPolicies.Enforced,
                 FiledFromKey: issue.FiledFromId is { } filedFromId && parentKeys.TryGetValue(filedFromId, out var filedFromKey) ? filedFromKey : null,
                 FiledKeys: filedKeys.TryGetValue(issue.Id, out var filed) ? filed : [],
-                Contribution: contributions.GetValueOrDefault(issue.Id));
+                Contribution: contributions.GetValueOrDefault(issue.Id),
+                LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                LocalModelOwn: LocalModelLevels.Name(issue.LocalModel),
+                LocalModelFrom: effectiveLocalModelFrom);
         });
     }
 

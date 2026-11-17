@@ -519,6 +519,11 @@ public class AdminSurfaceTests
         // The level by name, same two gates as above - HA-470.
         "IssuePreApprovalController.PutIssuePreApproval",
 
+        // Which kind of model runs a ticket's work. A person's call, not an
+        // agent's: a key that could set it could steer its own ticket's cost
+        // and quality. No approver is needed - it passes no gate.
+        "IssueLocalModelController.PutIssueLocalModel",
+
         // A story's own say over whether its tasks share one branch and one
         // pull request. Unlike its neighbours it is open to a key - it decides
         // how a story is branched, not what the loop reaches for or passes - so
@@ -753,6 +758,7 @@ public class AdminSurfaceTests
         // The night train's edge, now three levels instead of a flag - HA-470.
         "IssuePreApprovalController.PutIssueExpress",
         "IssuePreApprovalController.PutIssuePreApproval",
+        "IssueLocalModelController.PutIssueLocalModel",
         "IssueStallController.PutHold",
         "StatusesController.PutExpressSkips",
         "StatusesController.PutParentPulls",
