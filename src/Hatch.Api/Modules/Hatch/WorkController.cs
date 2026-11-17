@@ -1581,12 +1581,15 @@ public class WorkController(
         // Null on a hop, even where a playbook covers the move, so no client
         // can spawn a session for it by accident - see WorkDto.Hop.
         PlaybookDto? playbookDto = null;
+        string? sessionModel = null;
+        var sessionModelIsLocal = false;
         if (!hopped && playbook is not null)
         {
             var baseDto = PlaybooksController.ToDto(playbook);
+            (sessionModel, sessionModelIsLocal) = Dispatch.ResolveModel(issue, playbook, gate.EffectiveLocalModel(issue.Id).Level);
             playbookDto = baseDto with
             {
-                Model = issue.ModelOverride ?? playbook.Model,
+                Model = sessionModel ?? playbook.Model,
                 Effort = issue.EffortOverride ?? playbook.Effort,
                 Source = match!.Source!,
                 ProjectKey = match.Source == "file" ? issue.Project!.Key : baseDto.ProjectKey,
@@ -1627,7 +1630,9 @@ public class WorkController(
             asksReleaseNote,
             nextBriefLimit,
             offersNoCode,
-            releaseNoteFor);
+            releaseNoteFor,
+            sessionModel,
+            sessionModelIsLocal);
     }
 
     /// <summary>

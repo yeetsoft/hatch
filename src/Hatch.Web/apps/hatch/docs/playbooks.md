@@ -121,8 +121,20 @@ row's local model alone. The Playbooks page shows a set local model under the
 row's model, as `local:` and the id, and a [proposed
 change](#proposed-changes) can set or clear it like the model.
 
-The local model is stored and carried to a runner in its work answer, beside
-`model`. Nothing in dispatch reads it yet: a row's moves run as they did.
+The local model is carried to a runner in its work answer, beside `model`.
+Dispatch reads it for a ticket whose [local model](issues#local-model) level
+is `require`: every move under that ticket whose row names a local model runs
+on that model, and on no other. The move waits for a runner that lists it. A
+runner of another agent, a cloud runner above all, is folded with a sentence
+saying the ticket requires its local model and naming the id, and a runner of
+the right agent that does not list the id, or that refuses it, is folded as for
+any pinned model. A row that names no local model runs as it does today, under
+any level, and an issue's own model override still wins over it. If no live
+runner lists the id, the attention panel and the Runners page say `requires
+<id> locally - no live runner lists it`, and `hatch queue` opens with the same
+line. The ticket stalls as any other does when the local model cannot finish
+it: there is no fallback to the row's cloud model. Levels other than `require`
+leave a row's moves as they were.
 
 ## Budget, the brief limit, the quiet limit, the run limit and denied tools
 

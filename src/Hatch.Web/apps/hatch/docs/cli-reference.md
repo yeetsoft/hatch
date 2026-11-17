@@ -476,8 +476,9 @@ leads rather than trails so that a project no runner can build for is read
 first, and it is printed over an empty queue too. Narrowed to `--mine` or an
 ancestor key, the lines count only the issues the rows below show, and over
 an empty queue say nothing; unnarrowed, they match the panel. For example: `3 issues
-wait for a runner that offers fable` or `1 issue waits for a runner that has
-pwsh 7 or newer and playwright-browsers`. A server too old to send the list
+wait for a runner that offers fable`, `1 issue waits for a runner that has
+pwsh 7 or newer and playwright-browsers`, or, for a ticket that requires its
+local model, `1 issue waits: requires <id> locally - no live runner lists it`. A server too old to send the list
 prints nothing extra.
 Run inside a checkout of a bound repository, with neither `--mine` nor an
 ancestor key, `queue` then lists each open pull request there that no issue

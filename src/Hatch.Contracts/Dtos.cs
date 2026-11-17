@@ -2711,6 +2711,17 @@ public record DreamRemandResultDto(
 /// <c>release-note</c> block whose fence line names the key. Null for any
 /// other dispatch, and where the note already exists.
 /// </param>
+/// <param name="Model">
+/// The model the session runs on: the issue's own override, else - where the
+/// ticket requires its local model and the row names one - that local model,
+/// else the row's. The same value as <c>Playbook.Model</c>, set beside it so a
+/// client need not open the row to read it. Null on a hop, as
+/// <see cref="Playbook"/> is.
+/// </param>
+/// <param name="ModelIsLocal">
+/// True where <paramref name="Model"/> is the row's local model, because the
+/// ticket requires it - the session runs on it and no other.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -2741,7 +2752,9 @@ public record WorkDto(
     bool AsksReleaseNote = false,
     int? NextBriefLimit = null,
     bool? OffersNoCode = null,
-    string? ReleaseNoteFor = null);
+    string? ReleaseNoteFor = null,
+    string? Model = null,
+    bool ModelIsLocal = false);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether

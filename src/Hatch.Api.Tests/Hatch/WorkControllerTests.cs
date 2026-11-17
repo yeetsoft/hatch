@@ -3105,6 +3105,71 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Work_ARequiredTicket_RunsOnTheRowsLocalModel()
+    {
+        var h = await NewAsync();
+        foreach (var row in h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo)) row.LocalModel = "fake:1b";
+        var task = await h.FileAsync("task", "stays on this machine", h.Todo);
+        task.LocalModel = LocalModelLevels.Require;
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal("fake:1b", work.Playbook!.Model);
+        Assert.Equal("fake:1b", work.Model);
+        Assert.True(work.ModelIsLocal);
+        Assert.Equal("fake:1b", Only(await h.Work.GetQueue(0, null, default)).Model);
+    }
+
+    [Fact]
+    public async Task Work_ARequiredTicket_WithAModelOverride_RunsOnTheOverride()
+    {
+        var h = await NewAsync();
+        foreach (var row in h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo)) row.LocalModel = "fake:1b";
+        var task = await h.FileAsync("task", "its own model wins", h.Todo);
+        task.LocalModel = LocalModelLevels.Require;
+        await h.Db.SaveChangesAsync();
+        await h.OverrideAsync(task, model: "opus");
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal("opus", work.Playbook!.Model);
+        Assert.Equal("opus", work.Model);
+        Assert.False(work.ModelIsLocal);
+        Assert.Equal("opus", Only(await h.Work.GetQueue(0, null, default)).Model);
+    }
+
+    [Fact]
+    public async Task Work_ARequiredTicket_OnARowWithNoLocalModel_RunsAsItDoesToday()
+    {
+        var h = await NewAsync();
+        var task = await h.FileAsync("task", "its row names no local model", h.Todo);
+        task.LocalModel = LocalModelLevels.Require;
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal("sonnet", work.Playbook!.Model);
+        Assert.Equal("sonnet", work.Model);
+        Assert.False(work.ModelIsLocal);
+    }
+
+    [Fact]
+    public async Task Work_APreferringTicket_StillRunsOnTheRowsModel()
+    {
+        var h = await NewAsync();
+        foreach (var row in h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo)) row.LocalModel = "fake:1b";
+        var task = await h.FileAsync("task", "prefer is not acted on yet", h.Todo);
+        task.LocalModel = LocalModelLevels.Prefer;
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(task), null, default));
+
+        Assert.Equal("sonnet", work.Model);
+        Assert.False(work.ModelIsLocal);
+    }
+
+    [Fact]
     public async Task Work_ARowNobodySetALocalModelOn_CarriesNone()
     {
         var h = await NewAsync();
