@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Badge, Button, Card, Field, PageHeader, ProjectMark } from '@hatch/ui';
 import {
   addComment,
   addDependency,
   clearClaim,
-  createIssue,
   deleteIssue,
   getAssignees,
   getBoard,
@@ -65,6 +64,7 @@ import { MoveProjectDialog } from '../components/MoveProjectDialog';
 import { ProseClamp } from '../components/ProseClamp';
 import { ReleaseNote } from '../components/ReleaseNote';
 import { TypeBadge } from '../components/TypeBadge';
+import { ChildComposer } from '../components/ChildComposer';
 import { TypeControl } from '../components/TypeControl';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
@@ -101,7 +101,6 @@ import { useRemand } from '../lib/useRemand';
 import { remandOffer } from '../lib/remand';
 import { useConsoleMoves } from '../lib/useConsole';
 import type { MoveResult } from '../lib/useConsole';
-import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useMoveProject } from '../lib/useMoveProject';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { useCoarsePointer } from '../lib/viewport';
@@ -1018,7 +1017,7 @@ export function IssuePage() {
           projectId={issue.projectId}
           project={project}
           parentKey={issue.key}
-          types={filings}
+          parentType={issue.type}
           onFiled={() => void load()}
         />
       )}
@@ -1368,7 +1367,7 @@ function Progress({
   projectId,
   project,
   parentKey,
-  types,
+  parentType,
   onFiled,
 }: {
   rollup: IssueRollup | null;
@@ -1383,8 +1382,9 @@ function Progress({
       still loading or failed to. */
   project: Project | null;
   parentKey: string;
-  /** What may be filed here. Empty draws no composer - a task takes nothing. */
-  types: IssueType[];
+  /** The issue's own type: what may be filed here is read from it, and a task
+      draws no composer - it takes nothing. */
+  parentType: IssueType;
   onFiled: () => void;
 }) {
   return (
@@ -1419,120 +1419,16 @@ function Progress({
 
       {/* Last in the card, and not waiting on the rollup: it is drawn from the
           issue, which has already arrived. */}
-      {types.length > 0 && (
+      {childTypes(parentType).length > 0 && (
         <ChildComposer
           projectId={projectId}
           project={project}
           parentKey={parentKey}
-          types={types}
+          parentType={parentType}
           onFiled={onFiled}
         />
       )}
     </IssueSection>
-  );
-}
-
-/**
- * Filing the next child where the children are listed.
- *
- * A type and a title and nothing else. A description and dates belong to the
- * child and are set on its own page; asking for them here would make filing
- * three stories under an epic three visits to a dialog, which is the thing
- * this card exists to stop.
- *
- * What it may offer is not decided here - childTypes reads the same table the
- * server refuses by, so the picker cannot come to disagree with the refusal.
- */
-function ChildComposer({
-  projectId,
-  project,
-  parentKey,
-  types,
-  onFiled,
-}: {
-  projectId: number;
-  /** The project this child is filed into, for the mark beside File it. Null
-      draws nothing there - the composer still files either way. */
-  project: Project | null;
-  parentKey: string;
-  types: IssueType[];
-  onFiled: () => void;
-}) {
-  const [picked, setPicked] = useState<IssueType | null>(null);
-  const [title, setTitle] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const box = useRef<HTMLInputElement>(null);
-  const { confirm } = useIssueConfirmations();
-
-  // Null until somebody chooses, so the first legal type is the default without
-  // an effect to set it - and clamped on the way out, because the issue's own
-  // type is editable on this page: a picker still holding "story" after the
-  // epic above it became a story would offer what the server refuses.
-  const chosen = picked && types.includes(picked) ? picked : types[0];
-
-  async function submit() {
-    setSaving(true);
-    try {
-      const created = await createIssue({ projectId, type: chosen, title: title.trim(), parentKey });
-      // The same corner the board's dialog raises: a child filed here is an
-      // issue filed, and the key it got is worth as much from this box as from
-      // that one. On the success path only - the catch below is untouched.
-      confirm(created);
-      setTitle('');
-      setError(null);
-      box.current?.focus();
-      onFiled();
-    } catch (err) {
-      // The title is deliberately left where it was typed - the refusal is
-      // usually about the type, and retyping the title to try again is a tax.
-      setError(message(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="hatch-inline-form hatch-child-composer" role="group" aria-label="File a child issue">
-      <Field label="Type">
-        <select value={chosen} onChange={(e) => setPicked(e.target.value as IssueType)}>
-          {types.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Title" className="hatch-child-composer-title">
-        <input
-          ref={box}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          // Enter files it. A title is one line, so there is no newline for
-          // Enter to be taking away - unlike the comment boxes on this page,
-          // which need meta+Enter for exactly that reason.
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && title.trim() && !saving) void submit();
-          }}
-        />
-      </Field>
-
-      <Button variant="primary" loading={saving} disabled={!title.trim()} onClick={() => void submit()}>
-        File it
-      </Button>
-
-      {project && (
-        <span className="hatch-key-preview">
-          <ProjectMark letters={project.key} color={project.color} icon={project.icon} size="sm" title={project.name} />
-          {project.key}-…
-        </span>
-      )}
-
-      {/* Said here, under the box that caused it, in the sentence the server
-          wrote - see fetchJson in api/client.ts. */}
-      {error && <p className="text-danger">{error}</p>}
-    </div>
   );
 }
 

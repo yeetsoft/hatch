@@ -25,16 +25,20 @@ public class TypePillTests(ITestOutputHelper output)
     /// <summary>A little past <see cref="CaseBudgetSeconds"/>, so it only fires if <see cref="Deadline"/> itself fails to bound something.</summary>
     private const int CaseTimeoutMs = (CaseBudgetSeconds + 10) * 1000;
 
-    private const string Band = ".hatch-type-pill-band";
-    private const string Pill = ".hatch-type-pill-press";
-    private const string Step = ".hatch-type-pill-step";
+    // Scoped to the Details card's edit controls: the Progress card's own
+    // composer (HA-2380) draws its own .hatch-type-pill-press whenever its
+    // parent takes a child, unscoped selectors here would match whichever of
+    // the two the document happens to list first.
+    private const string Band = ".hatch-issue-controls .hatch-type-pill-band";
+    private const string Pill = ".hatch-issue-controls .hatch-type-pill-press";
+    private const string Step = ".hatch-issue-controls .hatch-type-pill-step";
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     /// <summary>Runs in the page: each step's word, state, glyph shape and painted colours, then the pill's word.</summary>
     private const string ReadScript = """
         () => {
-          const steps = [...document.querySelectorAll('.hatch-type-pill-step')].map((el) => {
+          const steps = [...document.querySelectorAll('.hatch-issue-controls .hatch-type-pill-step')].map((el) => {
             const style = getComputedStyle(el);
             return {
               word: el.textContent.trim(),
@@ -46,7 +50,7 @@ public class TypePillTests(ITestOutputHelper output)
               border: style.borderTopColor,
             };
           });
-          const pill = document.querySelector('.hatch-type-pill-press');
+          const pill = document.querySelector('.hatch-issue-controls .hatch-type-pill-press');
           const style = getComputedStyle(pill);
           return {
             steps,
@@ -61,7 +65,7 @@ public class TypePillTests(ITestOutputHelper output)
     /// <summary>Runs in the page: brings the Details card's band into view and lets its fade-in finish, so a screenshot shows it as a person sees it.</summary>
     private const string SettleScript = """
         async () => {
-          document.querySelector('.hatch-type-pill-press').scrollIntoView({ block: 'center' });
+          document.querySelector('.hatch-issue-controls .hatch-type-pill-press').scrollIntoView({ block: 'center' });
           await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {})));
         }
         """;
@@ -134,7 +138,7 @@ public class TypePillTests(ITestOutputHelper output)
             await harness.WaitForFunctionAsync(
                 deadline,
                 "waiting for the pill to wear task",
-                "() => document.querySelector('.hatch-type-pill-press')?.textContent.trim() === 'task'");
+                "() => document.querySelector('.hatch-issue-controls .hatch-type-pill-press')?.textContent.trim() === 'task'");
 
             await harness.ClickAsync(deadline, Pill);
             await harness.WaitForVisibleAsync(deadline, Band);
