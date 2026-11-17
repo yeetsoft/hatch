@@ -103,6 +103,17 @@ role and project membership, and it grants nothing: it only narrows.
 - **Who sets it.** An admin, through `GET /scopes`, `GET /scopes/{personId}`
   and `PUT /scopes/{personId}`. An admin may set their own. A key is refused all
   three, and so is any non-admin.
+- **Where it is set.** On **Manage → Users**, in the Scope column of a person's
+  row, and in the Add user form. Choose `none`, `all` or `some`. `all` and
+  `none` save at once. `some` opens the row with every project listed, with its
+  key, name, colour and icon; ticking or unticking one saves at once, and the
+  row reads `some (N)`, N being the ticked count. A `some` with nothing ticked
+  reads `some (0)` and acts as `none`. Choosing `some` starts from what the
+  person sees now: all of the projects ticked from `all`, none from `none`.
+  The row's Projects button opens the list again. An admin who narrows their
+  own scope is asked first and can leave it as it was; widening it, and anyone
+  else's change, never asks. The Add user form saves the scope in a second call
+  once the person exists, and says so if that call fails.
 - **Setting `all` or `none` clears the list.** No chosen projects are kept
   behind for later. A project that is deleted drops out of every list.
 - **A key follows its owner.** A key sees what the person who owns it sees. A

@@ -44,6 +44,10 @@ a key. **Manage → Users** appears in the nav, because there is now a role to
 hold and a key to mint. `migrate` and `api` have to be given the same
 `Auth__*` lines, which Compose already does (`compose.yaml:56-61`).
 
+A person's scope, which projects they may see, exists only with the wall on, like
+Users: it is set on that page, and with the wall off there are no people to give
+one to.
+
 ## Putting a front door on it
 
 Turning the wall on, from nothing, in six steps.
