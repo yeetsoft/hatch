@@ -15,6 +15,14 @@ describe('CreateRunnerDialog', () => {
     expect(html).toMatch(/<button[^>]*\bdisabled\b[^>]*>Create<\/button>/);
   });
 
+  it('hints that the key reads through its owner, and that nobody sees every project', () => {
+    const html = renderToStaticMarkup(<CreateRunnerDialog open onClose={() => {}} onCreated={() => {}} />);
+
+    expect(html).toContain(
+      'Whose tickets this key&#x27;s --mine reaches. The key sees only the projects its owner sees; with nobody, it sees every project.',
+    );
+  });
+
   it('draws nothing while closed', () => {
     expect(renderToStaticMarkup(<CreateRunnerDialog open={false} onClose={() => {}} onCreated={() => {}} />)).toBe('');
   });

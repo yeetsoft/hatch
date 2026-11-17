@@ -98,12 +98,18 @@ public sealed class Dispatch(
     /// null too, so a board-wide scan refuses nothing. A peer's scan passes its
     /// own, and an empty list says fold nothing and look nothing up.
     /// </param>
+    /// <param name="within">
+    /// The projects a scan may take candidates from, over and above the
+    /// caller's own scope: a peer's scan passes what its owner can see, so a
+    /// peer scoped out of a project is not judged able to take its tickets.
+    /// Null, every other caller, narrows nothing.
+    /// </param>
     public async Task<Scan> ScanAsync(
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
         TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
         bool foldLetGo = true, ModelDeclaration? models = null, HasDeclaration? has = null,
-        RunnerRefusal? refusal = null)
+        RunnerRefusal? refusal = null, VisibleProjects? within = null)
     {
         tags ??= TagDeclaration.Unjudged;
         models ??= ModelDeclaration.Unjudged;
@@ -203,6 +209,14 @@ public sealed class Dispatch(
 
         var query = db.Issues.Where(i => walkable.Contains(i.StatusId));
         if (scope is not null) query = query.Where(i => scope.Contains(i.Id));
+
+        // A peer's own scope, narrowing candidates and nothing else - as
+        // ancestorKey does. The caller's own is the context's query filter.
+        if (within is { Unbounded: false })
+        {
+            var visible = within.Ids;
+            query = query.Where(i => visible.Contains(i.ProjectId));
+        }
 
         var candidates = await query
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
@@ -671,7 +685,8 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
-            has: declared.Has, refusal: new RunnerRefusal(peer.Name, declared.Refused));
+            has: declared.Has, refusal: new RunnerRefusal(peer.Name, declared.Refused),
+            within: await PeerWithinAsync(peer, ct));
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -694,7 +709,8 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: ModelDeclaration.Unjudged,
-            has: HasDeclaration.Unjudged, refusal: new RunnerRefusal(peer.Name, []));
+            has: HasDeclaration.Unjudged, refusal: new RunnerRefusal(peer.Name, []),
+            within: await PeerWithinAsync(peer, ct));
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -770,7 +786,42 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
-            has: declared.Has, refusal: new RunnerRefusal(peer.Name, declared.Refused));
+            has: declared.Has, refusal: new RunnerRefusal(peer.Name, declared.Refused),
+            within: await PeerWithinAsync(peer, ct));
+    }
+
+    private readonly Dictionary<Guid, VisibleProjects> peerScopes = [];
+
+    /// <summary>
+    /// Why a peer's scan has no row for <paramref name="issue"/> at all: its
+    /// owner cannot see the issue's project, or - the other reason a row goes
+    /// missing - it is outside the subtree the peer runs under.
+    /// </summary>
+    private async Task<string> OutsideScopeAsync(Peer peer, EfHatchIssue issue, CancellationToken ct)
+    {
+        if (await PeerWithinAsync(peer, ct) is { } within && !within.Sees(issue.ProjectId))
+            return $"its owner cannot see {issue.Project?.Key ?? "the project"}";
+
+        return string.IsNullOrWhiteSpace(peer.Declaration.Under)
+            ? "outside its scope"
+            : $"outside its scope: {peer.Declaration.Under}";
+    }
+
+    /// <summary>
+    /// The projects a peer's owner can see, read once per owner for this
+    /// <see cref="Dispatch"/>. Null, unbounded, for a peer that belongs to
+    /// nobody, a <see cref="Runners"/> this was built without, and a wall that
+    /// is down - the rules <see cref="CallerScope"/> answers a key by.
+    /// </summary>
+    private async Task<VisibleProjects?> PeerWithinAsync(Peer peer, CancellationToken ct)
+    {
+        if (runners is null || peer.Declaration.OwnerPersonId is not { } owner) return null;
+        if (peerScopes.TryGetValue(owner, out var known)) return known;
+
+        var scopes = await runners.OwnerScopesAsync(db, [owner], ct);
+        var scope = scopes.GetValueOrDefault(owner, VisibleProjects.Everything);
+        peerScopes[owner] = scope;
+        return scope;
     }
 
     /// <summary>
@@ -819,6 +870,8 @@ public sealed class Dispatch(
         foreach (var peer in fleet)
             scans[peer.Id] = await PeerRowsAsync(peer, offsetMinutes, ct);
 
+        var boardRows = board.Rows.GroupBy(r => r.Issue.Id).ToDictionary(g => g.Key, g => g.First());
+
         var result = new Dictionary<long, StepTakers>();
         foreach (var id in judged)
         {
@@ -844,7 +897,7 @@ public sealed class Dispatch(
                 var firstScan = scans[first.Id];
                 var reason = firstScan.Failure
                     ?? firstScan.Rows.FirstOrDefault(r => r.Issue.Id == id)?.Blocked
-                    ?? $"outside its scope: {first.Declaration.Under}";
+                    ?? await OutsideScopeAsync(first, boardRows[id].Issue, ct);
                 untaken.Add(new RunnerReasonDto(first.Name, reason));
             }
 

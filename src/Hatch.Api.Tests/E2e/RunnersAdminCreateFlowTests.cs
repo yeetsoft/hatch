@@ -50,6 +50,9 @@ public class RunnersAdminCreateFlowTests(ITestOutputHelper output)
 
             await harness.ClickAsync(deadline, ".hatch-page-header__actions button:text-is(\"Create runner\")");
             await harness.WaitForVisibleAsync(deadline, "text=A name from the cast list");
+
+            // HA-2387: the Owner field says the key reads through its owner's scope.
+            await harness.WaitForVisibleAsync(deadline, "text=The key sees only the projects its owner sees");
             await harness.ScreenshotAsync(deadline, "1-create-dialog");
 
             await harness.ClickAsync(deadline, "button:text-is(\"Create\")");
