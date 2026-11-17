@@ -12,7 +12,7 @@ namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
 /// An admin reads and sets what each person may see. Nothing here enforces the
-/// scope; the filter that reads it is a later story.
+/// scope; <see cref="ScopeEnforcementTests"/> does.
 /// </summary>
 public class ScopesControllerTests
 {

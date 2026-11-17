@@ -119,9 +119,13 @@ role and project membership, and it grants nothing: it only narrows.
 - **A key follows its owner.** A key sees what the person who owns it sees. A
   key with no live owner sees every project. So do the wall being off, and
   work the server starts itself.
-- **Not enforced yet.** Today the scope is only recorded and read back. No
-  board, search or issue route is narrowed by it; that is the next piece of
-  work.
+- **It is enforced where the data is read.** A person on `some` sees only the
+  rows of those projects, on every board, list, search and issue page. A person
+  on `none` sees no project, issue, comment or event. A project outside the
+  scope reads as one that does not exist, so its existence is not told, and a
+  bulk change never touches a row the person cannot see. A few house-wide
+  numbers, such as how many cards are in progress, still count every project:
+  the limit is the house's, and they show a number, never a card.
 
 ## Runners and their keys
 

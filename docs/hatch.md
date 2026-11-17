@@ -24,6 +24,9 @@ the next heading of the same level and stop.
     why is the person a bare Guid?
   - [Person scope](#person-scope) - Which projects may a person see, and how
     does the server say so for a caller?
+  - [How scope is enforced](#how-scope-is-enforced) - What stops a row of a
+    project the caller cannot see leaving the data layer, and what is let
+    through on purpose?
   - [Logo](#logo) - How is a project's logo stored and its type decided?
   - [Repository](#repository) - How does a project bind its git remotes?
   - [Status](#status) - What is a board column, and which flags make it
@@ -712,8 +715,89 @@ them,** since a key that could write a scope could widen its own owner's view.
 
 **The resolver is `ICallerScope`**, scoped, beside `IProjectAccess` and, like
 it, answering about the caller and never an arbitrary person. See
-[the resolver's rules](#the-callers-scope). **Nothing reads it yet:** this
-story is the fact and the routes; the filter that reads the fact is the next.
+[the resolver's rules](#the-callers-scope). The query filters on `HatchContext`
+read what it answers: see [How scope is enforced](#how-scope-is-enforced).
+
+### How scope is enforced
+
+No row that belongs to a project leaves `HatchContext` for a caller whose scope
+does not hold that project. It is one place, `HatchContext.OnModelCreating`,
+and two tests that keep it whole. A project outside the scope reads as one that
+does not exist: a lookup by id or key finds nothing, so its existence is not
+told.
+
+**The filter.** `ScopeResolutionFilter` is an action filter registered for the
+whole Hatch module (`HatchModule`). It runs after the role gate, which is an
+authorization filter and so runs first, and before the action. It resolves
+[`ICallerScope`](#the-callers-scope) once and puts the answer on `RequestScope`,
+a scoped holder shared with the request's `HatchContext`. It acts on this
+module's controllers only, so a core route pays no scope read. No query filter
+does I/O: they read the answer the filter already left.
+
+**Fail closed.** A context that belongs to a request and has no resolved scope
+throws `InvalidOperationException` on its first query of a filtered table, and
+never answers everything. A context built with no request holder at all — the
+tests, the design-time factory — is unbounded explicitly, and so is one built
+inside a job, which has a holder and no HTTP context. The resolver's own reads
+go through the same context with `RequestScope.Resolving` up, so they see every
+project and need no opt-out. A table with no filter (below) is not guarded, so
+a query on it does not throw.
+
+**What carries a filter.** Every predicate opens with `Unbounded ||`, so a
+caller with everything reads exactly what it did before.
+
+- Directly, by project: `Projects`, `Issues`, `ProjectRepositories`,
+  `ProjectMembers`, `ProjectLogos`; and `Playbooks` and `Dreams` where
+  `ProjectId` is set. A global playbook and a dream with no project stay
+  visible to everyone.
+- Through an issue: `Comments`, `IssueEvents`, `WorkLog`, `MergeChecks`,
+  `BuildChecks`, `Landings`, `Verdicts`, `Contributions`, `RunnerOmissions`,
+  `Dependencies` (by `IssueId`), `DreamThreads`, `DreamRemands` and
+  `ChangelogTasks`. `PlaybookProposals` and `PlaybookProposalChanges` read
+  their issue, else the playbook they edit; a proposal with neither is
+  nobody's and only an unbounded caller reads it.
+- Through a repository: `TrunkBuilds`, `PlaybookFiles`, `DependencyFiles` and
+  `ChangelogFiles`, visible when any visible project binds that `Canonical`.
+
+**What does not.** `Statuses`, `WipLimits`, `OvernightSeen`, `Attachments` (its
+own story), the runner tables, `PersonScopes` and `PersonScopeProjects` (the
+resolver reads them), and everything in the core schema.
+
+**Required navigations.** A row whose required navigation points at a hidden
+row is dropped from an `Include` rather than returned with a hole in it: a
+dependency whose blocker is hidden does not come back from
+`Dependencies.Include(d => d.DependsOn)`. Without the `Include` the row is the
+caller's own and carries the id.
+
+**Bulk writes.** `ExecuteUpdate` and `ExecuteDelete` take the filter, so a bulk
+write never touches a row the caller cannot see. The in-memory provider refuses
+bulk writes, so only the Postgres lane (`make test-api-db`) proves it.
+
+**The opt-outs.** `IgnoreQueryFilters()` is called only where a read must see
+every project to answer correctly and returns no content:
+
+1. House-wide WIP counts, in `Wip`: the limit is the house's. The priority tree
+   it reads is read the same way (`PriorityTree.ForAsync(ignoreFilters: true)`).
+2. Rank placement, in `RankService`: a column is shared by every project.
+3. The dependency gate, in `Dispatch`: a blocker in a hidden project still
+   blocks. It reads the same tree.
+4. `ProjectRepositoryBinding.WinnersAsync`: the project a repository belongs to
+   is the same whoever asks.
+5. The changelog file, in `ChangelogFiles`: the same bytes for every caller.
+
+A sixth sits inside the model, in the playbook proposal filter, to break a loop:
+a change's filter reads its proposal and the proposal's filter reads its changes,
+and EF overflows the stack applying each. Merge-train driver election is not
+an opt-out: a key scoped out of a project does not drive its train.
+
+**The two audits.** `QueryFilterAuditTests` lists every `IgnoreQueryFilters()`
+call site by `File.Method`, with a count and a sentence saying why; an unlisted
+site fails the build. `QueryFilterModelAuditTests` walks the model and fails on
+any table with a foreign-key path to `Projects`, or a `Canonical` column, that
+has no filter and is not on its named list — `PersonScopeProjects` is, for the
+reason above. `ScopeEnforcementTests` (in-memory) and
+`ScopeEnforcementDatabaseTests` (Postgres) read every filtered table as a
+`some`, a `none`, an `all` and an unbounded caller.
 
 ### Logo
 
@@ -3628,8 +3712,9 @@ first that applies winning:
 `none` is the empty set. `some` is the rows that remain after any cascade. The
 answer is read once per request. A wall that is up with no person and no key
 never reaches a Hatch route, so a missing principal here is only a key without
-a live owner. The filter that applies the answer is not built yet; see
-[Person scope](#person-scope).
+a live owner. `ScopeResolutionFilter` asks once per request, and the answer is
+applied by the query filters on `HatchContext`; see
+[How scope is enforced](#how-scope-is-enforced).
 
 ### The key
 

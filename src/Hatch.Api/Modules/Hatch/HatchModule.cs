@@ -1,4 +1,5 @@
 using Hatch.Api.Jobs;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -73,6 +74,14 @@ public static class HatchModule
         // holds a scoped HatchContext.
         services.AddScoped<IProjectAccess, ProjectAccess>();
         services.AddScoped<ICallerScope, CallerScope>();
+
+        // Scoped, so the filter that resolves the caller's scope and the
+        // HatchContext whose query filters read it share one holder for the
+        // life of a request. A context built outside a request is handed
+        // the same holder and finds it empty with no HTTP context, which is
+        // unbounded - that is how a job reads everything.
+        services.AddScoped<RequestScope>();
+        services.Configure<MvcOptions>(o => o.Filters.Add<ScopeResolutionFilter>());
 
         // The container runner's entrypoint authenticates the `claude` CLI it
         // starts with this - the one thing the pasted token still does. The

@@ -137,8 +137,9 @@ an owner, and 400s if the project binds no repository.  The stories-on-epics PUT
 ## Scopes
 
 What each person may see of the projects. All three are an admin's and a
-person's alone: a key is refused with `403`. Nothing reads a scope yet, so
-setting one changes what these routes answer and nothing else.
+person's alone: a key is refused with `403`. A scope narrows every board,
+list, search and issue route for the person it belongs to, and for the keys
+that person owns.
 See [People, roles and keys](people-roles-and-keys#scope).
 
 | Method | Path | Who | What it does |
