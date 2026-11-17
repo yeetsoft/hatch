@@ -62,6 +62,16 @@ public interface IAgentAdapter
     void Refresh() { }
 
     /// <summary>
+    /// Asks the server to pull <paramref name="model"/> and waits until it has.
+    /// Null means pulled; text is the reason it was not. Called by the loop
+    /// between increments, never by a session. Does not touch the list
+    /// <see cref="Models"/> answers from: the loop calls <see cref="Refresh"/>
+    /// afterwards. The default has nothing to pull.
+    /// </summary>
+    Task<string?> PullAsync(string model, CancellationToken ct) =>
+        Task.FromResult<string?>($"{DisplayName} has no models to pull");
+
+    /// <summary>
     /// The digest of <paramref name="model"/> as the server's list last read
     /// reported it, for the work log. Answers from that stored list, never a new
     /// read, so it is the list the session started under. The default has no list.

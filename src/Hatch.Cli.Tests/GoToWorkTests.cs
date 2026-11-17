@@ -595,6 +595,145 @@ public sealed class GoToWorkTests
         Assert.True(adapter.Refreshed >= 2);
     }
 
+    // ---- The loop pulls what the board asks it to hold (HA-2427) ----
+
+    private const string HeldModel = "qwen3-coder:30b";
+
+    private static void Holding(Harness h, int? maxRuns = 1) =>
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, maxRuns, null, null, Hold: [HeldModel]));
+
+    [Fact]
+    public async Task The_loop_pulls_a_held_model_the_adapter_lacks_and_says_pulling_on_its_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var adapter = new FakeAdapter { Models = [] };
+        Holding(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime with { Adapter = adapter }).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Equal([HeldModel], adapter.Pulled);
+        var beats = Beats(h);
+        var at = beats.ToList().FindIndex(b => b.Line == $"pulling {HeldModel}");
+        Assert.True(at >= 0, "a beat said what it was pulling");
+        Assert.True(beats[at].Pulling);
+
+        // After the pull the list was read again, and a beat with `pulling` cleared carries it.
+        var after = beats.Skip(at + 1).First(b => b.Pulling is not true);
+        Assert.Contains(HeldModel, after.Models!);
+        Assert.True(adapter.Refreshed >= 2);
+        Assert.False(beats[^1].Pulling);
+        Assert.Contains(h.Say.Said, l => l.Contains($"pulling {HeldModel}", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l == $"hatch: pulled {HeldModel}");
+    }
+
+    [Fact]
+    public async Task A_failed_pull_is_said_with_its_reason_and_not_asked_again_inside_the_hour()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        var adapter = new FakeAdapter { Models = [], PullFailure = "pull model manifest: file does not exist" };
+        Holding(h, maxRuns: null);
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand((h.Supervised with { Clock = clock }) with { Adapter = adapter }).RunAsync(
+            ["--interval", "1", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromSeconds(1),
+            () => Beats(h).Any(b => b.Line!.Contains("pulling " + HeldModel + " failed: pull model manifest", StringComparison.Ordinal)),
+            "a beat that carries the reason");
+        Assert.Contains(h.Say.Complained, l => l.Contains("pull model manifest: file does not exist", StringComparison.Ordinal));
+        Assert.StartsWith($"pulling {HeldModel} failed: pull model manifest: file does not exist - trying again after ",
+            Beats(h).Last(b => b.Line!.Contains("failed", StringComparison.Ordinal)).Line);
+
+        // A few more passes inside the hour pull nothing.
+        var beatsSoFar = Beats(h).Count;
+        await DriveUntilAsync(clock, TimeSpan.FromSeconds(1), () => Beats(h).Count >= beatsSoFar + 3, "three more beats");
+        Assert.Single(adapter.Pulled);
+
+        // Past the hour it asks again.
+        clock.Advance(TimeSpan.FromHours(1));
+        await DriveUntilAsync(clock, TimeSpan.FromSeconds(1), () => adapter.Pulled.Count >= 2, "a second ask");
+
+        cts.Cancel();
+        await running;
+        Assert.Equal([HeldModel, HeldModel], adapter.Pulled.Take(2));
+    }
+
+    [Fact]
+    public async Task A_pull_that_outlasts_the_interval_beats_again_with_pulling_set()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        var gate = new TaskCompletionSource();
+        var adapter = new FakeAdapter { Models = [], PullGate = gate.Task };
+        Holding(h, maxRuns: null);
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand((h.Supervised with { Clock = clock }) with { Adapter = adapter }).RunAsync(
+            ["--interval", "5", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromSeconds(5),
+            () => Beats(h).Count(b => b.Pulling is true) >= 2, "two beats while the pull is open");
+        Assert.Single(adapter.Pulled);
+        Assert.All(Beats(h).Where(b => b.Pulling is true), b => Assert.Equal($"pulling {HeldModel}", b.Line));
+
+        gate.SetResult();
+        await DriveUntilAsync(clock, TimeSpan.FromSeconds(5), () => Beats(h).Any(b => b.Pulling is false) && adapter.Refreshed >= 2, "the beat that clears it");
+
+        cts.Cancel();
+        await running;
+    }
+
+    [Fact]
+    public async Task A_model_the_adapter_already_has_pulls_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var adapter = new FakeAdapter { Models = [HeldModel] };
+        Holding(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime with { Adapter = adapter }).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Empty(adapter.Pulled);
+        Assert.All(Beats(h), b => Assert.NotEqual(true, b.Pulling));
+    }
+
+    [Fact]
+    public async Task A_paused_runner_pulls_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        var adapter = new FakeAdapter { Models = [] };
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto(RunnerStates.Paused, null, null, null, null, Hold: [HeldModel]));
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand((h.Supervised with { Clock = clock }) with { Adapter = adapter }).RunAsync(
+            ["--interval", "1", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromSeconds(1), () => Beats(h).Count >= 3, "a few passes of a paused runner");
+        cts.Cancel();
+        await running;
+
+        Assert.Empty(adapter.Pulled);
+    }
+
+    [Fact]
+    public async Task A_once_run_pulls_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var adapter = new FakeAdapter { Models = [] };
+        Holding(h);
+
+        await new GoToWorkCommand(h.Runtime with { Adapter = adapter }).RunAsync(["--once"], default);
+
+        Assert.Empty(adapter.Pulled);
+    }
+
     [Fact]
     public async Task A_once_beat_carries_this_machine_but_not_runs_or_spend()
     {

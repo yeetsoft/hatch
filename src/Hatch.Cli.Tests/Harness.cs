@@ -167,7 +167,34 @@ public sealed class FakeAdapter : IAgentAdapter
     /// <summary>How many times the loop asked this adapter to re-read its list.</summary>
     public int Refreshed { get; private set; }
 
-    public void Refresh() => Refreshed++;
+    public void Refresh()
+    {
+        Refreshed++;
+
+        // A pulled model is on the server's list the next time it is read.
+        Models = [.. Models, .. _held.Where(id => !Models.Contains(id))];
+    }
+
+    private readonly List<string> _held = [];
+
+    /// <summary>Every id the loop asked this adapter to pull, in order.</summary>
+    public List<string> Pulled { get; } = [];
+
+    /// <summary>The reason <see cref="PullAsync"/> answers with; null pulls.</summary>
+    public string? PullFailure { get; set; }
+
+    /// <summary>When set, a pull waits on this task before it answers - a pull held open.</summary>
+    public Task? PullGate { get; set; }
+
+    public async Task<string?> PullAsync(string model, CancellationToken ct)
+    {
+        Pulled.Add(model);
+        if (PullGate is { } gate) await gate.WaitAsync(ct);
+        if (PullFailure is not null) return PullFailure;
+
+        _held.Add(model);
+        return null;
+    }
 
     /// <summary>The digest each model name answers, as a server's list would; absent is null.</summary>
     public Dictionary<string, string> Digests { get; } = [];

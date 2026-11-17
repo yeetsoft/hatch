@@ -186,6 +186,26 @@ public sealed class RestartTests : IDisposable
     }
 
     [Fact]
+    public void A_failed_pull_goes_there_and_comes_back_and_an_older_file_has_none()
+    {
+        var path = Path.Combine(_root, "night.json");
+        var state = new NightState
+        {
+            PullRetries = [new("qwen3-coder:30b", new DateTimeOffset(2026, 9, 8, 3, 0, 0, TimeSpan.Zero), "file does not exist")],
+        };
+
+        Assert.True(state.Write(path));
+
+        var back = NightState.Read(path);
+        Assert.NotNull(back);
+        Assert.Equal(state.PullRetries, back.PullRetries);
+
+        var old = Path.Combine(_root, "old.json");
+        File.WriteAllText(old, "{\"Runs\":3}");
+        Assert.Empty(new Tally(TimeProvider.System, NightState.Read(old)).ToState().PullRetries);
+    }
+
+    [Fact]
     public void The_log_one_incarnation_wrote_is_the_file_the_next_one_appends_to()
     {
         var state = Path.Combine(_root, "night.json");
