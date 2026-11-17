@@ -2713,14 +2713,21 @@ public record DreamRemandResultDto(
 /// </param>
 /// <param name="Model">
 /// The model the session runs on: the issue's own override, else - where the
-/// ticket requires its local model and the row names one - that local model,
-/// else the row's. The same value as <c>Playbook.Model</c>, set beside it so a
-/// client need not open the row to read it. Null on a hop, as
+/// ticket requires its local model, or prefers it and the asking runner runs it,
+/// and the row names one - that local model, else the row's. The same value
+/// as <c>Playbook.Model</c>, set beside it so a client need not open the row to
+/// read it. Null on a hop, as
 /// <see cref="Playbook"/> is.
 /// </param>
 /// <param name="ModelIsLocal">
-/// True where <paramref name="Model"/> is the row's local model, because the
-/// ticket requires it - the session runs on it and no other.
+/// True where <paramref name="Model"/> is the row's local model: the ticket
+/// requires it, so the session runs on it and no other, or the ticket prefers
+/// it and the asking runner is one that runs it.
+/// </param>
+/// <param name="ModelFellBack">
+/// True where the ticket prefers a local model and the row names one, yet the
+/// session runs on the row's ordinary model: no local runner was free, or
+/// the asker named none. A client may say so; nothing is wrong.
 /// </param>
 public record WorkDto(
     IssueDto Issue,
@@ -2754,7 +2761,8 @@ public record WorkDto(
     bool? OffersNoCode = null,
     string? ReleaseNoteFor = null,
     string? Model = null,
-    bool ModelIsLocal = false);
+    bool ModelIsLocal = false,
+    bool ModelFellBack = false);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether

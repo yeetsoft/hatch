@@ -691,7 +691,8 @@ public class WorkController(
             hasDeclared,
             Asking(runner),
             await RefusalAsync(runner, ct),
-            ct);
+            ct,
+            askPeers: true);
     }
 
     /// <summary>
@@ -1434,7 +1435,7 @@ public class WorkController(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, PaceReadings? pace, DependencyGate gate,
         FamilyGate family, ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, ModelDeclaration models, HasDeclaration has, RunnerAsking? asking,
-        RunnerRefusal? runnerRefusal, CancellationToken ct)
+        RunnerRefusal? runnerRefusal, CancellationToken ct, bool askPeers = false)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
 
@@ -1551,11 +1552,18 @@ public class WorkController(
             ? await runners.ProjectDriversAsync(db, keys, claimed.Now, ct)
             : (IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)>)new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
         var driver = drivers.TryGetValue(issue.ProjectId, out var d) ? d : ((string Name, DateTimeOffset LastSeenAt)?)null;
+        var localModelLevel = gate.EffectiveLocalModel(issue.Id).Level;
+
+        // A named dispatch runs no scan, so the free-runner question the scan asks
+        // of a preferring ticket is asked here. A pass has asked it already.
+        var leftFor = askPeers && !hop && asking is not null
+            ? await _dispatch.LeftForLocalAsync(issue, playbook, localModelLevel, models, asking, ct)
+            : null;
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
-            has: has, requirement: requirement, refusal: runnerRefusal);
+            has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor);
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
@@ -1583,10 +1591,12 @@ public class WorkController(
         PlaybookDto? playbookDto = null;
         string? sessionModel = null;
         var sessionModelIsLocal = false;
+        var sessionModelFellBack = false;
         if (!hopped && playbook is not null)
         {
             var baseDto = PlaybooksController.ToDto(playbook);
-            (sessionModel, sessionModelIsLocal) = Dispatch.ResolveModel(issue, playbook, gate.EffectiveLocalModel(issue.Id).Level);
+            (sessionModel, sessionModelIsLocal) = Dispatch.ResolveModel(issue, playbook, localModelLevel, models);
+            sessionModelFellBack = Dispatch.FellBack(issue, playbook, localModelLevel, sessionModelIsLocal);
             playbookDto = baseDto with
             {
                 Model = sessionModel ?? playbook.Model,
@@ -1632,7 +1642,8 @@ public class WorkController(
             offersNoCode,
             releaseNoteFor,
             sessionModel,
-            sessionModelIsLocal);
+            sessionModelIsLocal,
+            sessionModelFellBack);
     }
 
     /// <summary>

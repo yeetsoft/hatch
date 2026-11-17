@@ -2028,6 +2028,79 @@ public class DispatchTests
         Assert.Null(Dispatch.RefusalFold(ModelIssue(), todo, ModelRow("sonnet", "alpha:1b"), refusal));
     }
 
+    // ---- A preferred local model: the asker that can run it gets it, and the rest are left for a free one ----
+
+    private static readonly EfHatchStatus TodoColumn = new() { Name = "todo", SortOrder = 20 };
+
+    [Fact]
+    public void ResolveModel_Prefer_AnOllamaAskerListingTheId_ResolvesToIt() =>
+        Assert.Equal(("alpha:1b", true), Dispatch.ResolveModel(
+            ModelIssue(), ModelRow("sonnet", "alpha:1b"), LocalModelLevels.Prefer, ModelDeclaration.Of(["alpha:1b"], "ollama")));
+
+    [Fact]
+    public void ResolveModel_Prefer_ACloudAsker_AnAskerLackingTheId_OrNoAsker_ResolvesToTheRowsModel()
+    {
+        var row = ModelRow("sonnet", "alpha:1b");
+        Assert.Equal(("sonnet", false), Dispatch.ResolveModel(ModelIssue(), row, LocalModelLevels.Prefer, ModelDeclaration.Of(["haiku", "sonnet"], "claude")));
+        Assert.Equal(("sonnet", false), Dispatch.ResolveModel(ModelIssue(), row, LocalModelLevels.Prefer, ModelDeclaration.Of(["beta:2b"], "ollama")));
+        Assert.Equal(("sonnet", false), Dispatch.ResolveModel(ModelIssue(), row, LocalModelLevels.Prefer, ModelDeclaration.Unjudged));
+        Assert.Equal(("sonnet", false), Dispatch.ResolveModel(ModelIssue(), row, LocalModelLevels.Prefer));
+    }
+
+    [Fact]
+    public void ResolveModel_Prefer_AnOverrideBeatsTheLocalModel() =>
+        Assert.Equal(("opus", false), Dispatch.ResolveModel(
+            ModelIssue("opus"), ModelRow("sonnet", "alpha:1b"), LocalModelLevels.Prefer, ModelDeclaration.Of(["alpha:1b"], "ollama")));
+
+    [Fact]
+    public void ModelFold_Prefer_WithAFreeRunner_FoldsACloudAskerWithTheLeftForSentence() =>
+        Assert.Equal(
+            ModelFamilies.LeftForLocal("AER-7", "todo", "gpu", "alpha:1b"),
+            Dispatch.ModelFold(
+                ModelIssue(), TodoColumn, ModelRow("sonnet", "alpha:1b"), ModelDeclaration.Of(["haiku", "sonnet"], "claude"),
+                LocalModelLevels.Prefer, ("gpu", "alpha:1b")));
+
+    [Fact]
+    public void ModelFold_Prefer_WithAFreeRunner_NeverFoldsAnOllamaAskerListingTheId() =>
+        Assert.Null(Dispatch.ModelFold(
+            ModelIssue(), TodoColumn, ModelRow("sonnet", "alpha:1b"), ModelDeclaration.Of(["alpha:1b"], "ollama"),
+            LocalModelLevels.Prefer, ("gpu", "alpha:1b")));
+
+    [Fact]
+    public void ModelFold_Prefer_WithNoFreeRunner_LeavesACloudAskerAlone() =>
+        Assert.Null(Dispatch.ModelFold(
+            ModelIssue(), TodoColumn, ModelRow("sonnet", "alpha:1b"), ModelDeclaration.Of(["haiku", "sonnet"], "claude"),
+            LocalModelLevels.Prefer));
+
+    [Fact]
+    public void ModelFold_FreeRunner_IsReadOnlyAtPrefer_AndNeverAgainstAnOverride()
+    {
+        var cloud = ModelDeclaration.Of(["haiku", "sonnet"], "claude");
+        Assert.Null(Dispatch.ModelFold(ModelIssue(), TodoColumn, ModelRow("sonnet", "alpha:1b"), cloud, LocalModelLevels.None, ("gpu", "alpha:1b")));
+        Assert.Null(Dispatch.ModelFold(ModelIssue("haiku"), TodoColumn, ModelRow("sonnet", "alpha:1b"), cloud, LocalModelLevels.Prefer, ("gpu", "alpha:1b")));
+    }
+
+    [Theory]
+    [InlineData(LocalModelLevels.Prefer, "alpha:1b", null, false, true)]
+    [InlineData(LocalModelLevels.Prefer, "alpha:1b", null, true, false)]
+    [InlineData(LocalModelLevels.Prefer, "alpha:1b", "opus", false, false)]
+    [InlineData(LocalModelLevels.Prefer, null, null, false, false)]
+    [InlineData(LocalModelLevels.Require, "alpha:1b", null, false, false)]
+    [InlineData(LocalModelLevels.None, "alpha:1b", null, false, false)]
+    public void FellBack_IsTrueOnlyForAPreferringMoveRunningOnTheRowsModel(int level, string? localModel, string? modelOverride, bool local, bool expected) =>
+        Assert.Equal(expected, Dispatch.FellBack(ModelIssue(modelOverride), ModelRow("sonnet", localModel), level, local));
+
+    [Fact]
+    public void RunsLocally_NeedsAJudgedRunnerOfTheIdsAgentListingTheId()
+    {
+        Assert.True(Dispatch.RunsLocally(ModelDeclaration.Of(["alpha:1b"], "ollama"), "alpha:1b"));
+        Assert.False(Dispatch.RunsLocally(ModelDeclaration.Of(["alpha:1b"], "claude"), "alpha:1b"));
+        Assert.False(Dispatch.RunsLocally(ModelDeclaration.Of(["beta:2b"], "ollama"), "alpha:1b"));
+        Assert.False(Dispatch.RunsLocally(ModelDeclaration.Of(["alpha:1b"], null), "alpha:1b"));
+        Assert.False(Dispatch.RunsLocally(ModelDeclaration.Unjudged, "alpha:1b"));
+        Assert.False(Dispatch.RunsLocally(null, "alpha:1b"));
+    }
+
     private static async Task<Harness> NewAsync()
     {
         var db = new HatchContext(

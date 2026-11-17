@@ -238,8 +238,19 @@ model runs on that model, and only on a runner that lists it; the move waits
 until one does, and the ticket stalls as any other would if that model cannot
 finish it. A row with no local model runs as it does today, and the issue's own
 model override still wins. See [the local model](playbooks#the-local-model) on
-a playbook row. `prefer` is recorded and shown but the loop does not act on it
-yet.
+a playbook row.
+
+At `prefer`, a move whose row names a local model runs on it when a local
+runner is free to take the move, and on the row's ordinary model when none is.
+A local runner is free when it is live, runs the `ollama` agent, is running
+rather than paused, holds no ticket, lists the model, and nothing on the ticket
+rules it out - its tags, an omitted runner, a refused model or a missing
+`has`. A runner that is working or paused is not free, so the cloud never waits
+on a GPU. While one is free, a cloud runner is told the ticket is left for it,
+and `hatch queue` prints the sentence. The issue's own model override still
+wins, and a row with no local model runs as it does today. The work answer
+says which model the session runs on, and `modelFellBack` where it is the
+ordinary one.
 
 ## Finished with no code
 

@@ -681,8 +681,11 @@ or the sentence saying what does - see
 [what a session is told](what-a-session-is-told) for what the prompt itself
 holds. The `WorkDto` also carries `model`, the model the session runs on, and
 `modelIsLocal`, true where it is the playbook row's local model because the
-ticket requires it; `model` is the same value as `playbook.model`, the issue's
-own override first, and both are null on a hop, as `playbook` is.
+ticket requires it, or prefers it and the asking runner runs it; and
+`modelFellBack`, true where the ticket prefers a local model and the row names
+one, yet the session runs on the row's ordinary model. `model` is the same
+value as `playbook.model`, the issue's own override first, and both are null on
+a hop, as `playbook` is.
 
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus

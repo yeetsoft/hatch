@@ -133,8 +133,19 @@ any level, and an issue's own model override still wins over it. If no live
 runner lists the id, the attention panel and the Runners page say `requires
 <id> locally - no live runner lists it`, and `hatch queue` opens with the same
 line. The ticket stalls as any other does when the local model cannot finish
-it: there is no fallback to the row's cloud model. Levels other than `require`
-leave a row's moves as they were.
+it: there is no fallback to the row's cloud model.
+
+At `prefer`, a move whose row names a local model runs on it when a local runner
+is free to take it, and on the row's own model when none is. A runner of the
+model's agent that lists the id gets the move on that model. Any other runner is
+folded with the sentence *left for <runner>, which is free to run it on <id>* while some live
+runner is free to, and gets the row's own model once none is - the work answer
+says `modelFellBack`. A runner is **free** when it is live and running, runs
+the model's agent, lists the id, holds no claim, and nothing on the ticket
+folds it: its tags, an omission, a refused model or a missing `has`. Busy and
+paused both count as not free: a cloud runner never waits on a GPU. A runner
+that is still pulling the model does not count as free once the loop reports
+pulling. The level `none` leaves a row's moves as they were.
 
 ## Budget, the brief limit, the quiet limit, the run limit and denied tools
 
