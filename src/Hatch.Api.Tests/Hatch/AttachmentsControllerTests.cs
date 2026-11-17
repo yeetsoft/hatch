@@ -192,10 +192,88 @@ public class AttachmentsControllerTests
     {
         var (controller, db) = New();
 
-        var result = await controller.PostAttachment(null, CancellationToken.None);
+        var result = await controller.PostAttachment(null, null, CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Empty(db.Attachments);
+    }
+
+    // ---- The project ----
+
+    [Fact]
+    public async Task APostWithTheCallersOwnProjectId_IsStoredLinkedToIt()
+    {
+        var (options, projectA, _) = await NewScopedProjectsAsync();
+        var controller = ScopedController(ScopeSeed.Request(options, ScopeSeed.Only(projectA)));
+
+        var dto = Value(await Post(controller, Pdf, "a.pdf", "application/pdf", projectA));
+
+        using var db = new HatchContext(options);
+        Assert.Equal(projectA, (await db.Attachments.SingleAsync(a => a.Id == dto.Id)).ProjectId);
+    }
+
+    [Fact]
+    public async Task APostWithAnOutOfScopeProjectId_Is404AndStoresNothing()
+    {
+        var (options, projectA, projectB) = await NewScopedProjectsAsync();
+        var controller = ScopedController(ScopeSeed.Request(options, ScopeSeed.Only(projectA)));
+
+        var result = await Post(controller, Pdf, "a.pdf", "application/pdf", projectB);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        using var db = new HatchContext(options);
+        Assert.Empty(db.Attachments);
+    }
+
+    [Fact]
+    public async Task APostWithANonexistentProjectId_Is404AndStoresNothing()
+    {
+        var (controller, db) = New();
+
+        var result = await Post(controller, Pdf, "a.pdf", "application/pdf", 999);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        Assert.Empty(db.Attachments);
+    }
+
+    [Fact]
+    public async Task ALinkedAttachment_DownloadsAndListsAndDeletes_OnlyFromAScopeHoldingItsProject()
+    {
+        var (options, projectA, projectB) = await NewScopedProjectsAsync();
+        var owner = ScopedController(ScopeSeed.Request(options, ScopeSeed.Only(projectA)));
+        var id = Value(await Post(owner, Pdf, "a.pdf", "application/pdf", projectA)).Id;
+
+        var ownScope = ScopedController(ScopeSeed.Request(options, ScopeSeed.Only(projectA)));
+        Assert.IsType<FileContentResult>(await ownScope.GetAttachment(id, default));
+        Assert.Single(Value(await ownScope.GetAttachments(id.ToString(), default)));
+
+        var otherScope = ScopedController(ScopeSeed.Request(options, ScopeSeed.Only(projectB)));
+        Assert.IsType<NotFoundResult>(await otherScope.GetAttachment(id, default));
+        Assert.Empty(Value(await otherScope.GetAttachments(id.ToString(), default)));
+
+        Assert.IsType<NotFoundResult>(await otherScope.DeleteAttachment(id, default));
+        using (var check = new HatchContext(options))
+            Assert.Equal(1, await check.Attachments.CountAsync());
+
+        Assert.IsType<NoContentResult>(await ownScope.DeleteAttachment(id, default));
+    }
+
+    [Fact]
+    public async Task AnUnlinkedAttachment_DownloadsAndListsAndDeletes_UnderEveryScope()
+    {
+        var (options, projectA, projectB) = await NewScopedProjectsAsync();
+        var owner = ScopedController(ScopeSeed.Request(options, ScopeSeed.Only(projectA)));
+        var id = Value(await Post(owner, Pdf, "a.pdf", "application/pdf")).Id;
+
+        foreach (var visible in new[] { ScopeSeed.Only(projectA), ScopeSeed.Only(projectB), VisibleProjects.Nothing })
+        {
+            var controller = ScopedController(ScopeSeed.Request(options, visible));
+            Assert.IsType<FileContentResult>(await controller.GetAttachment(id, default));
+            Assert.Single(Value(await controller.GetAttachments(id.ToString(), default)));
+        }
+
+        var deleter = ScopedController(ScopeSeed.Request(options, VisibleProjects.Nothing));
+        Assert.IsType<NoContentResult>(await deleter.DeleteAttachment(id, default));
     }
 
     [Theory]
@@ -375,14 +453,29 @@ public class AttachmentsControllerTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
 
-    private static Task<ActionResult<AttachmentDto>> Post(AttachmentsController controller, byte[] bytes, string name, string declaredContentType)
+    private static AttachmentsController ScopedController(HatchContext db) =>
+        NewController(db, new StubCaller { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } });
+
+    private static async Task<(DbContextOptions<HatchContext> Options, int ProjectA, int ProjectB)> NewScopedProjectsAsync()
+    {
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var db = new HatchContext(options);
+        var a = new EfHatchProject { Key = "AAA", Name = "A", CreatedAt = Now };
+        var b = new EfHatchProject { Key = "BBB", Name = "B", CreatedAt = Now };
+        db.AddRange(a, b);
+        await db.SaveChangesAsync();
+        return (options, a.Id, b.Id);
+    }
+
+    private static Task<ActionResult<AttachmentDto>> Post(
+        AttachmentsController controller, byte[] bytes, string name, string declaredContentType, int? projectId = null)
     {
         var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", name)
         {
             Headers = new HeaderDictionary(),
             ContentType = declaredContentType,
         };
-        return controller.PostAttachment(file, CancellationToken.None);
+        return controller.PostAttachment(file, projectId, CancellationToken.None);
     }
 
     private static T Value<T>(ActionResult<T> result) =>
