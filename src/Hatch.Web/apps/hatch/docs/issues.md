@@ -466,7 +466,10 @@ A file dropped onto the **New issue** dialog's body, or onto an issue's
 **Description** section on the issue page or the board's peek, is uploaded
 and linked into the description, in Edit or in Preview alike. While a file
 is in the air over either area it reads `Drop to attach`. Several files
-dropped at once are uploaded in order and inserted one per line.
+dropped at once are uploaded in order and inserted one per line. A file
+dropped or pasted belongs to the project the issue, or the New issue dialog,
+is in; one dropped before this landed, or dropped anywhere else, stays
+unlinked.
 
 A PNG, JPEG, GIF or WebP becomes an inline image; anything else becomes a
 download link named for the file itself, routed through
