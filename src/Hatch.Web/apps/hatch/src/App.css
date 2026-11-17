@@ -2275,6 +2275,80 @@ button.hatch-card-stories:focus-visible {
   }
 }
 
+/* The history control under Weave an epic: a borderless line that opens the
+   search row and the list. The glyph is stroked, not filled like the "..."
+   beside the filters, so it is drawn at currentColor. */
+.hatch-dream-history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--t-label);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.hatch-dream-history-toggle:hover,
+.hatch-dream-history-toggle[aria-expanded='true'] {
+  color: var(--ink);
+}
+
+.hatch-dream-history-toggle svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.hatch-dream-history-toggle__count {
+  font-family: var(--mono);
+}
+
+/* No margin of its own: .hatch-page > * centres it. */
+.hatch-dream-history-offer {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-dream-history-offer__show {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The folded history fades in when opened; on opacity alone, so nothing moves. */
+.hatch-dream-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  animation: hatch-dream-history-in 200ms ease-out;
+}
+
+@keyframes hatch-dream-history-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-dream-history {
+    animation: none;
+  }
+}
+
 /* A date range is a .hatch-facet label wrapping two bare <input type="date">,
    so the facet's own border and background carry the look and the inputs
    draw nothing of their own - base.css's input rules are what this undoes. */

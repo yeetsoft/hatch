@@ -41,11 +41,14 @@ The **source** is where it came from, and may be a web address. It is folded awa
 **Source** control on Post's row; press it and the field opens with the caret in it. A source with
 text in it stays open, and is saved with the dream.
 
-A posted dream appears at the top of the list at once. The text falls into the rule as it fades while
+A posted dream appears at the top of the list at once when the list is open. The text falls into the rule as it fades while
 the box empties, and the source folds again; with reduced motion on, nothing moves and the box just
 empties. The picker keeps its choice, so a run of dreams for one project is a run of posts. If the
 search or the filters would hide the new dream, they are cleared so it can be seen - all but the
-picked project, which stays. If the server refuses the dream, its reason shows under the box and what
+picked project, which stays, and the list stays open. With the list folded (see
+[Finding one](#finding-one)) there is no list to put it in: the box empties, the count on **Past
+dreams** goes up by one, and a line under it says **Posted.** with a **Show it** button. Pressing
+that opens the list with the new dream first. If the server refuses the dream, its reason shows under the box and what
 you typed stays as you left it, ready to post again.
 
 ## From a Claude session
@@ -72,6 +75,18 @@ An edit does not run the search again: a dream whose new words no longer match t
 the list until the next time it loads.
 
 ## Finding one
+
+The history is folded when you arrive: a bare `/dreams` draws neither the search row nor the list.
+One control under **Weave an epic**, **Past dreams**, opens both, and pressing it again folds them.
+It carries a magnifier glyph and a count in the mono face, which is the picked project's total - the
+same dreams the list would hold with that project and no search - so it holds while you search. The
+list fades in when it opens; with reduced motion on it just appears.
+
+Open lives in the address, as `open=true`, so Back undoes an open or a close, a reload keeps it and a
+pasted link reproduces it. The list is also open whenever the address carries `q`, `loose`, `issue`
+or `remandedFrom`, so the links the issue page and the board's remand notice make
+(`/dreams?issue=KEY`, `/dreams?remandedFrom=KEY`) arrive open and filtered. Folding the list removes
+`open` and clears those four, and leaves `projectId` alone.
 
 The search box matches any word, not every word: a query of two words finds a dream that has either.
 That is unlike the Search page, which wants all of them. The results are narrowed by the project
@@ -136,7 +151,7 @@ none picked, **Weave** is disabled and a line beside it says to pick a project
 - an epic needs a home. Below the mode, **Use the dreams on screen** hands the weave the
 dreams currently listed, in the order they are shown, as the ones to start
 reading from; left unticked, the weave names none and the session finds its
-own.
+own. While the history is folded no dreams are on screen, so the box names none.
 
 Pressing **Weave** files an **epic** - in the breakdown column, briefed to be
 woven from the dreams - and takes you straight to it. A refusal shows beside
