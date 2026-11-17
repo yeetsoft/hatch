@@ -554,6 +554,12 @@ export function drivesLabel(runner: Runner): string {
   return runner.drives.length === 0 ? 'driving nothing' : `driving ${runner.drives.join(', ')}`;
 }
 
+/** Bytes as binary gigabytes to one decimal, a trailing `.0` dropped: `24GB`,
+    `1.5GB`. The one formatter for accelerator and model memory both. */
+export function gigabytesLabel(bytes: number): string {
+  return `${Math.round((bytes / 1024 ** 3) * 10) / 10}GB`;
+}
+
 /** A session's accelerator as one phrase - `cuda 24GB x2` - or null for a
     session that reported none or nothing. Memory is binary gigabytes to one
     decimal with a trailing `.0` dropped, and `x` only above one device, the
@@ -563,7 +569,7 @@ export function acceleratorLabel(session: RunnerSession): string | null {
   if (backend == null || backend === 'none') return null;
   const parts = [backend];
   if (session.acceleratorMemoryBytes != null) {
-    parts.push(`${Math.round((session.acceleratorMemoryBytes / 1024 ** 3) * 10) / 10}GB`);
+    parts.push(gigabytesLabel(session.acceleratorMemoryBytes));
   }
   if (session.acceleratorDeviceCount != null && session.acceleratorDeviceCount > 1) {
     parts.push(`x${session.acceleratorDeviceCount}`);

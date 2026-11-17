@@ -77,6 +77,15 @@ recent time it was heard from and then by name. Revoked runners sit last, in a
 collapsed **Revoked (n)** that opens by itself when you are looking at one of
 them. There is no such group when none is revoked.
 
+Below the list sits a **Local models** card: the board-wide table of Ollama
+models, one row each with the Ollama id, its context length in tokens and its
+memory footprint in gigabytes, in the order they were added. Add a row with the
+three fields under the table, or remove one with its **Delete**. Footprint is
+typed in gigabytes and kept in bytes. An id the server refuses - not an Ollama
+id, or already in the table - is answered in the server's own sentence beside
+the form, and nothing is added. The table says what a runner can be asked to
+hold; it pulls nothing by itself.
+
 ### The detail
 
 Five cards, in this order.
@@ -193,7 +202,12 @@ out. The accelerator reads as one line, `Accelerator cuda 24GB x2`: the backend,
 the memory in gigabytes where reported, and `x` and the count only above one
 device. A session that reports `none`, or nothing, draws no such line; so does
 one whose runner talks to an Ollama server on another machine, which reports no
-profile at all. `ip` is never one of the nine - it is the server's own
+profile at all. Under it, a session that reports accelerator memory draws one
+more line naming what its runner is asked to hold, `Holds fake:1b, fake:7b
+(fake:1b pulled)`. `hold` is the rows of the local-models table that fit the
+machine's memory and that the runner does not refuse, for an Ollama runner
+only; an id is marked *pulled* where the runner's own heartbeat already lists
+it among its models. An empty `hold` draws no line. `ip` is never one of the nine - it is the server's own
 reading of the connection, taken after the forwarded header from the proxy in front of it is applied, so it is
 set on every session regardless of CLI version, including one that sends none of
 the other nine. The panel also names the session's host, its agent, its build (a

@@ -2910,6 +2910,10 @@ export interface Runner {
       from PUT /runners/{name}/refused-models, never from a heartbeat. Empty,
       never null. Mirrors RunnerDto.RefusedModels. */
   refusedModels: string[];
+  /** The Ollama ids this runner is asked to hold: the local-models table's rows
+      that fit its machine, computed on read. Empty, never null - and empty for
+      a runner that reports no accelerator memory. Mirrors RunnerDto.Hold. */
+  hold: string[];
 }
 
 /** One session beneath a runner: one `go-to-work` loop, so two checkouts
@@ -3121,4 +3125,21 @@ export interface Revision {
   builtAt: string | null;
   client: ClientRevisionVerdict | null;
   cluster: unknown;
+}
+
+/** One row of the board-wide local-models table. Mirrors LocalModelDto; named a row because `LocalModel` is an issue's level. */
+export interface LocalModelRow {
+  id: number;
+  ollamaId: string;
+  contextLengthTokens: number;
+  memoryFootprintBytes: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+/** A new row for the table. Mirrors LocalModelCreateRequest. */
+export interface LocalModelCreateRequest {
+  ollamaId: string;
+  contextLengthTokens: number;
+  memoryFootprintBytes: number;
 }
