@@ -160,6 +160,7 @@ public class MeControllerTests
         new(
             new StubLocalCaller(local, person, key),
             new StubSiteSettings(localPersonName: settingName),
+            new MeScopeTests.FixedScope(VisibleProjects.Everything),
             Options.Create(new AuthOptions
             {
                 Enabled = enabled,

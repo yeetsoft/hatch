@@ -35,6 +35,7 @@ import { createLedger } from '../lib/refresh';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { useScope } from '../lib/useScope';
 import type { Dream, Project, WeaveMode } from '../types';
+import { ScopeGate } from '../components/ScopeGate';
 
 /** How long the box waits after the last keystroke before it writes `q`. */
 const DEBOUNCE_MS = 300;
@@ -49,6 +50,14 @@ const DEBOUNCE_MS = 300;
  * loose ones, and every project the page offers is one of them.
  */
 export function DreamsPage() {
+  return (
+    <ScopeGate>
+      <DreamsContent />
+    </ScopeGate>
+  );
+}
+
+function DreamsContent() {
   const { ids, projects, isScoped, loaded } = useScope();
 
   if (!loaded) return <p className="text-muted">Loading…</p>;

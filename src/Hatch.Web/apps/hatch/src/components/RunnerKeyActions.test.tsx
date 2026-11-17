@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { RevokeRunnerBody, RotateRunnerBody, RunnerKeyActions } from './RunnerKeyActions';
+import { OWNER_SCOPE_HINT } from '../lib/runnerKey';
 import type { Runner } from '../types';
 
 // The clicks themselves (opening a modal, saving the owner) are checked in
@@ -24,6 +25,14 @@ describe('RunnerKeyActions', () => {
     expect(html).toContain('aria-label="Owner of Quill"');
     expect(html).toContain('>Rotate key</button>');
     expect(html).toContain('>Revoke</button>');
+  });
+
+  it('hints, under the select, that the key reads through its owner', () => {
+    const html = renderToStaticMarkup(
+      <RunnerKeyActions runner={runner()} onSecret={() => {}} reload={async () => {}} />,
+    );
+    expect(html).toContain(OWNER_SCOPE_HINT.replace("'", '&#x27;'));
+    expect(html.indexOf('nobody</option>')).toBeLessThan(html.indexOf('The key sees only the projects its owner sees'));
   });
 
   it('marks nobody selected when the runner has no owner', () => {

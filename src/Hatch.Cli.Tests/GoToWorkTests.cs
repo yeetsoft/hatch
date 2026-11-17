@@ -1868,7 +1868,7 @@ public sealed class GoToWorkTests
         // is no exception to it - merging an approved pull request needs no
         // Claude CLI - so its own independent read of review is not this
         // invariant's concern.
-        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me"));
     }
 
     /// <summary>The StopWhy sentence names whichever agent was asked for, not always claude.</summary>
@@ -1884,7 +1884,7 @@ public sealed class GoToWorkTests
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_GROK_BIN is not there: {missing}", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("there is no grok CLI to spawn", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me"));
     }
 
     /// <summary>Ollama spawns through the codex binary, so a missing one refuses the same way codex itself does.</summary>
@@ -1900,7 +1900,7 @@ public sealed class GoToWorkTests
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("there is no ollama CLI to spawn", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me"));
     }
 
     [Fact]
@@ -2243,7 +2243,7 @@ public sealed class GoToWorkTests
         Assert.NotNull(retaken);
         Assert.Equal("", refusal);
 
-        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Route != "GET /api/me"));
     }
 
     [Fact]
@@ -2255,7 +2255,7 @@ public sealed class GoToWorkTests
         Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--repo", missing], default));
 
         Assert.Contains(h.Say.Complained, l => l.Contains(missing, StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Route != "GET /api/me"));
 
         using var takeable = LoopLock.Take(h.Root, h.Temp, out var refusal);
         Assert.NotNull(takeable);
@@ -2271,7 +2271,7 @@ public sealed class GoToWorkTests
         Assert.Equal(1, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
 
         Assert.Contains(h.Say.Complained, l => l.Contains("nope", StringComparison.Ordinal) && l.Contains("claude", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Route != "GET /api/me"));
     }
 
     [Fact]
@@ -2307,7 +2307,7 @@ public sealed class GoToWorkTests
 
         // Nothing was read and nothing was spawned: the refusal is before the
         // board, because a loop that cannot run should not be asking.
-        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Route != "GET /api/me"));
     }
 
     [Fact]
@@ -2362,7 +2362,7 @@ public sealed class GoToWorkTests
         Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "0"], default));
         Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--until", "tea time"], default));
 
-        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Route != "GET /api/me"));
     }
 
     [Fact]
@@ -4668,7 +4668,7 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Complained, l => l.Contains(Environment.ProcessId.ToString(), StringComparison.Ordinal));
         Assert.Contains(h.Say.Complained, l => l.Contains("elsewhere-checkout", StringComparison.Ordinal));
         Assert.Contains(h.Say.Complained, l => l.Contains("hatch config --here --workspace", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Route != "GET /api/me"));
     }
 
     [Fact]
@@ -4886,7 +4886,7 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Complained, l => l.Contains(Environment.ProcessId.ToString(), StringComparison.Ordinal));
         Assert.Contains(h.Say.Complained, l => l.Contains("elsewhere-checkout", StringComparison.Ordinal));
         Assert.Contains(h.Say.Complained, l => l.Contains("hatch config --here --workspace", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Route != "GET /api/me"));
 
         // The standing checkout's own lock was released on the way out, same as
         // any other refusal before a claim: this loop never got past the door.
@@ -5282,5 +5282,29 @@ public sealed class GoToWorkTests
 
         var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A key whose owner's scope reaches no project has no board to ask: one
+    /// sentence, a clean exit, and nothing taken - no queue read, no claim, no
+    /// workspace reset, no session.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_key_whose_scope_reaches_no_project_says_so_and_takes_nothing(bool mine)
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("GET", "/api/me", new MeDto("key", "Riker", null, true, false, false, null, new MeScopeDto("none", [])));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(mine ? ["--once", "--mine"] : ["--once"], default));
+
+        Assert.Contains(NoScope.Sentence, h.Say.Complained);
+        Assert.Equal(["GET /api/me"], h.Wire.Calls.Select(c => c.Route));
+        Assert.Empty(h.Wire.To("GET", Queue));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
+        Assert.Empty(h.Workspace.Prepared);
+        Assert.Empty(h.Sessions.Spawned);
     }
 }

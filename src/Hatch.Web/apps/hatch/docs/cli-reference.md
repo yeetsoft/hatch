@@ -405,6 +405,12 @@ advance. A stock board has none of these, so its lines are a name and a number.
 The project counts come from the project list; a Hatch that cannot give it
 prints the line without them.
 
+Under a key whose scope reaches no project, it prints one sentence on the error
+stream and exits `0`, and reads nothing else: `hatch: no project is in this
+key's scope - an admin sets it on Manage → Users`
+([People, roles and keys](people-roles-and-keys#scope)). The same goes for
+`next`, `queue`, `go-to-work` and `do-my-work`.
+
 ### next
 
 ```
@@ -1070,6 +1076,13 @@ restart appends to the same file and the next night starts a new one.
 
 - `--mine` takes only the caller's own tickets. Plain `go-to-work` skips every
   person's tickets, including yours.
+
+A key whose owner's scope reaches no project prints the one sentence
+`hatch: no project is in this key's scope - an admin sets it on Manage → Users`
+and exits `0`, before it takes the agent, a checkout or a ticket. The scope is
+read once, as the loop starts; one changed while it runs is seen on the next
+start. `--project` is not checked against the scope here: a project outside it
+is simply never on the board this key reads.
 - `--under <epic key>` stays inside one epic's subtree.
 - `--project <key>` takes only that project's tickets. It is repeatable, and
   the whole list is for this run: sent on every beat, and the loop never

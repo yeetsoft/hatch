@@ -9,6 +9,7 @@ import { orderPlan, planProjectId } from '../lib/plan';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
 import type { Plan, PlanEntry, Project, Status } from '../types';
+import { ScopeGate } from '../components/ScopeGate';
 
 /** The URL's whole vocabulary here: which project, by key. */
 const PROJECT = 'project';
@@ -34,6 +35,14 @@ interface PlanView {
  * from every card in the tracker.
  */
 export function PlanPage() {
+  return (
+    <ScopeGate>
+      <PlanContent />
+    </ScopeGate>
+  );
+}
+
+function PlanContent() {
   const [params, setParams] = useSearchParams();
   const chosen = params.get(PROJECT) ?? '';
   const scope = useScope();

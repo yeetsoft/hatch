@@ -20,6 +20,12 @@ namespace Hatch.Api.Modules.Hatch;
 /// - empty for a keyless row and for a key with no config row. See
 /// <see cref="Hatch.Contracts.RunnerModels.Refuses"/>.
 /// </param>
+/// <param name="OwnerPersonId">
+/// The person the runner's key belongs to, whether or not <paramref name="Mine"/>
+/// is set - <paramref name="Principal"/> is only resolved under <c>Mine</c>.
+/// What a peer scan reads the runner's scope by: a key reads through its
+/// owner's scope. Null for a runner that belongs to nobody, which is unbounded.
+/// </param>
 public sealed record RunnerDeclaration(
     RepositoryDeclaration Repos,
     string? Under,
@@ -30,7 +36,8 @@ public sealed record RunnerDeclaration(
     IReadOnlyList<string> Projects,
     Actor? Principal,
     string Name,
-    IReadOnlyList<string> Refused)
+    IReadOnlyList<string> Refused,
+    Guid? OwnerPersonId = null)
 {
     /// <summary>
     /// The sentence saying why this runner cannot be answered for, or null. A
@@ -62,7 +69,8 @@ public sealed record RunnerDeclaration(
             WorkController.ProjectKeys(row.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries)),
             principal,
             row.Name,
-            config is null ? [] : RunnerTagColumn.Read(config.RefusedModels));
+            config is null ? [] : RunnerTagColumn.Read(config.RefusedModels),
+            row.ForPersonId);
     }
 
     /// <summary>
@@ -129,7 +137,8 @@ public sealed record RunnerDeclaration(
 
         return new RunnerDeclaration(
             repos, under, mine, TagDeclaration.Of(tags, refusesDangerous), has, models, projects, principal, runner.Name,
-            config is null ? [] : RunnerTagColumn.Read(config.RefusedModels));
+            config is null ? [] : RunnerTagColumn.Read(config.RefusedModels),
+            runner.OwnerPersonId);
     }
 
     /// <summary>

@@ -95,7 +95,12 @@ Three variants, picked by one rule, stated once:
 | Viewer | `runner.canControl` false | Everything read-only. |
 
 - **Admin** sees every control on the page, and is the only variant that creates
-  a runner, picks its owner, rotates its secret or revokes it.
+  a runner, picks its owner, rotates its secret or revokes it. The Owner field on
+  Create runner carries a hint, and the Identity card carries the same sentence
+  under the owner select: the key reads through its owner's scope, so it sees only
+  the projects its owner sees, and `nobody` means it sees every project. The text
+  is `OWNER_SCOPE_HINT` in
+  [`runnerKey.ts`](../src/Hatch.Web/apps/hatch/src/lib/runnerKey.ts).
 - **Owner** reads identity facts as text: there is no owner select, rotate,
   revoke or create.
 - **Viewer** sees values drawn as `Text`, never as disabled inputs, which read

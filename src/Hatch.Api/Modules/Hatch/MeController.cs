@@ -32,17 +32,23 @@ namespace Hatch.Api.Modules.Hatch;
 public class MeController(
     ICallerIdentity caller,
     ISiteSettingsService settings,
+    ICallerScope callerScope,
     IOptions<AuthOptions> options) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<MeDto>> GetMe(CancellationToken ct)
     {
+        // What ScopeResolutionFilter already read for this request, so it
+        // costs nothing here.
+        var scope = ScopeOf(await callerScope.ResolveAsync(ct));
+
         if (await caller.ApiKeyAsync(ct) is { } key)
             return new MeDto("key", key.Name, key.Owner?.Role.ToString().ToLowerInvariant(),
-                true, false, false, key.Owner?.Name);
+                true, false, false, key.Owner?.Name, scope);
 
         if (await caller.PersonAsync(ct) is { } signedIn)
-            return new MeDto("person", signedIn.Name, signedIn.Role.ToString().ToLowerInvariant(), true, true, false);
+            return new MeDto("person", signedIn.Name, signedIn.Role.ToString().ToLowerInvariant(), true, true, false,
+                Scope: scope);
 
         var local = await caller.LocalAsync(ct);
         if (local is not { Kind: ActorKind.Person } person)
@@ -52,7 +58,7 @@ public class MeController(
             // page still redeems an invite without the wall or Google
             // configured, so this caller can always sign in.
             if (!options.Value.Enabled && local is null)
-                return new MeDto("none", "", null, true, false, true);
+                return new MeDto("none", "", null, true, false, true, Scope: scope);
 
             return NoContent();
         }
@@ -64,6 +70,16 @@ public class MeController(
             (await settings.GetAsync(ct)).LocalPersonName,
             options.Value.LocalPerson.Name);
 
-        return new MeDto("local", person.Name, null, configured, false, options.Value.Google.Configured);
+        return new MeDto("local", person.Name, null, configured, false, options.Value.Google.Configured, Scope: scope);
     }
+
+    /// <summary>
+    /// <c>none</c> is a bounded scope with nothing in it, which is also what a
+    /// <c>some</c> whose projects were all deleted comes to: the mode says what
+    /// the caller sees, not what a row says.
+    /// </summary>
+    private static MeScopeDto ScopeOf(VisibleProjects visible) =>
+        visible.Unbounded ? new MeScopeDto(PersonScopeMode.All, [])
+        : visible.ProjectIds.Count == 0 ? new MeScopeDto(PersonScopeMode.None, [])
+        : new MeScopeDto(PersonScopeMode.Some, [.. visible.ProjectIds.Order()]);
 }

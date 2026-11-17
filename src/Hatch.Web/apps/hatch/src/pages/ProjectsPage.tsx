@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, Card, EmptyState, Field, Modal, PageHeader, Table } from '@hatch/ui';
 import { claimProject, createProject, deleteProject, getProjects } from '../api/client';
+import { ScopeGate } from '../components/ScopeGate';
 import { ProjectEditDialog } from '../components/ProjectEditDialog';
 import { ProjectRow } from '../components/ProjectRow';
 import { message } from '../lib/errors';
@@ -8,6 +9,14 @@ import { useLoaded } from '../lib/useLoaded';
 import type { Project } from '../types';
 
 export function ProjectsPage() {
+  return (
+    <ScopeGate>
+      <ProjectsContent />
+    </ScopeGate>
+  );
+}
+
+function ProjectsContent() {
   const { data: projects, error, setError, reload } = useLoaded<Project[]>(getProjects);
   const [key, setKey] = useState('');
   const [name, setName] = useState('');
