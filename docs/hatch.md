@@ -784,8 +784,11 @@ every project to answer correctly and returns no content:
 4. `ProjectRepositoryBinding.WinnersAsync`: the project a repository belongs to
    is the same whoever asks.
 5. The changelog file, in `ChangelogFiles`: the same bytes for every caller.
+6. Whether a project key is taken, in `ProjectsController.KeyTakenAsync`: a key
+   is unique across the house, so a hidden project's key is taken too. It
+   returns one bool, no row.
 
-A sixth sits inside the model, in the playbook proposal filter, to break a loop:
+A seventh sits inside the model, in the playbook proposal filter, to break a loop:
 a change's filter reads its proposal and the proposal's filter reads its changes,
 and EF overflows the stack applying each. Merge-train driver election is not
 an opt-out: a key scoped out of a project does not drive its train.
