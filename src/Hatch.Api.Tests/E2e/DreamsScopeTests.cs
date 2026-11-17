@@ -123,14 +123,14 @@ public class DreamsScopeTests(ITestOutputHelper output)
             Assert.Equal(JsonValueKind.Null, picked.GetProperty("weaveHint").ValueKind);
 
             // A post with DRB picked leans toward DRB and leaves the pick; one with none picked leans toward none.
-            await PostFromComposerAsync(harness, deadline, PostedWithProject);
+            await PostFromComposerAsync(harness, deadline, profile is not null, PostedWithProject);
             await harness.WaitForVisibleAsync(deadline, $".hatch-dream:has-text(\"{PostedWithProject}\")");
             Assert.Contains("projectId=", await harness.EvaluateAsync<string>(deadline, "reading the address", "() => location.search"));
             Assert.Equal(ids["DRB"], await LeanOfAsync(baseUrl, PostedWithProject));
 
             await harness.ClickAsync(deadline, $"{TileSelector}:has-text(\"No project\")");
             await harness.WaitForVisibleAsync(deadline, $".hatch-dream:has-text(\"{DreamOf("DRA")}\")");
-            await PostFromComposerAsync(harness, deadline, PostedWithNone);
+            await PostFromComposerAsync(harness, deadline, profile is not null, PostedWithNone);
             await harness.WaitForVisibleAsync(deadline, $".hatch-dream:has-text(\"{PostedWithNone}\")");
             Assert.Null(await LeanOfAsync(baseUrl, PostedWithNone));
 
@@ -162,12 +162,23 @@ public class DreamsScopeTests(ITestOutputHelper output)
 
     private const string PostedWithNone = "Posted with none";
 
-    /// <summary>Types into the composer's box once Monaco has taken it over, and presses Post.</summary>
-    private static async Task PostFromComposerAsync(E2eHarness harness, Deadline deadline, string body)
+    /// <summary>
+    /// Types into the composer's box and presses Post. A touch profile has a coarse pointer, which keeps
+    /// the box a plain textarea, so there is no Monaco to wait for; the desktop waits for Monaco to take it over.
+    /// </summary>
+    private static async Task PostFromComposerAsync(E2eHarness harness, Deadline deadline, bool touch, string body)
     {
-        await harness.ClickAsync(deadline, ".hatch-dream-composer__box");
-        await harness.WaitForVisibleAsync(deadline, ".hatch-dream-composer__box .monaco-editor");
-        await harness.ClickAsync(deadline, ".hatch-dream-composer__box .monaco-editor");
+        if (touch)
+        {
+            await harness.ClickAsync(deadline, ".hatch-dream-composer__box textarea");
+        }
+        else
+        {
+            await harness.ClickAsync(deadline, ".hatch-dream-composer__box");
+            await harness.WaitForVisibleAsync(deadline, ".hatch-dream-composer__box .monaco-editor");
+            await harness.ClickAsync(deadline, ".hatch-dream-composer__box .monaco-editor");
+        }
+
         await harness.InsertTextAsync(deadline, body);
         await harness.ClickAsync(deadline, ".hatch-dream-composer__actions button:text-is(\"Post\")");
     }
