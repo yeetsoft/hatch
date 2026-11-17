@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  acceleratorLabel,
   activityParts,
   activityWords,
   boundsChanged,
@@ -1454,5 +1455,25 @@ describe('what a runner\'s live sessions add up to and declare', () => {
       { where: 'Mac:/one', dangerous: true },
       { where: 'Mac:/two', dangerous: false },
     ]);
+  });
+});
+
+describe('acceleratorLabel', () => {
+  it('names the backend, the memory and the device count above one', () => {
+    expect(acceleratorLabel(session({ acceleratorBackend: 'cuda', acceleratorMemoryBytes: 24 * 1024 ** 3, acceleratorDeviceCount: 2 }))).toBe('cuda 24GB x2');
+  });
+
+  it('keeps one decimal and drops a trailing zero', () => {
+    expect(acceleratorLabel(session({ acceleratorBackend: 'metal', acceleratorMemoryBytes: 1.5 * 1024 ** 3, acceleratorDeviceCount: 1 }))).toBe('metal 1.5GB');
+  });
+
+  it('reads the backend alone where no memory is reported', () => {
+    expect(acceleratorLabel(session({ acceleratorBackend: 'metal', acceleratorMemoryBytes: null }))).toBe('metal');
+  });
+
+  it('is null for none, null and an older CLI', () => {
+    expect(acceleratorLabel(session({ acceleratorBackend: 'none', acceleratorMemoryBytes: 1024 ** 3 }))).toBeNull();
+    expect(acceleratorLabel(session({ acceleratorBackend: null }))).toBeNull();
+    expect(acceleratorLabel(session())).toBeNull();
   });
 });

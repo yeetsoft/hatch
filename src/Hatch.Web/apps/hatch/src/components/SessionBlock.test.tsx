@@ -168,6 +168,21 @@ describe('SessionBlock', () => {
     expect(draw(session({ container: null }))).not.toContain('Container');
   });
 
+  it('draws the accelerator with its backend, memory and device count', () => {
+    const html = draw(session({ acceleratorBackend: 'cuda', acceleratorMemoryBytes: 24 * 1024 ** 3, acceleratorDeviceCount: 2 }));
+    expect(html).toMatch(/Accelerator\s*cuda 24GB x2/);
+  });
+
+  it('draws the backend alone where no memory is reported', () => {
+    const html = draw(session({ acceleratorBackend: 'metal', acceleratorMemoryBytes: null, acceleratorDeviceCount: null }));
+    expect(html).toMatch(/Accelerator\s*metal</);
+  });
+
+  it('draws no accelerator row for none or for an older CLI', () => {
+    expect(draw(session({ acceleratorBackend: 'none' }))).not.toContain('Accelerator');
+    expect(draw(session({ acceleratorBackend: null }))).not.toContain('Accelerator');
+  });
+
   it('draws the Machine details closed', () => {
     const html = draw(session());
     expect(html).toContain('<details>');
