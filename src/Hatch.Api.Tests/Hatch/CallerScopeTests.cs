@@ -95,7 +95,10 @@ public class CallerScopeTests
 
         // Removed without the context's cascade: the in-memory provider only
         // cascades rows it is tracking, and the read must not depend on it.
-        await h.Db.Projects.Where(p => p.Id == h.ProjectIds[1]).ExecuteDeleteAsync();
+        var doomed = await h.Db.Projects.FindAsync(h.ProjectIds[1]);
+        h.Db.ChangeTracker.Clear();
+        h.Db.Projects.Remove(doomed!);
+        await h.Db.SaveChangesAsync();
         Assert.Equal(2, await h.Db.PersonScopeProjects.CountAsync());
 
         Assert.Equal([h.ProjectIds[0]], (await h.NewScope().ResolveAsync(default)).ProjectIds);
@@ -151,10 +154,19 @@ public class CallerScopeTests
             Db = db,
             Actors = new StubActorDirectory(),
             ProjectIds = projects.Select(p => p.Id).ToList(),
-            Accessor = new HttpContextAccessor { HttpContext = httpContext ? new DefaultHttpContext() : null },
+            Accessor = new FixedAccessor(httpContext ? new DefaultHttpContext() : null),
             Auth = Options.Create(new AuthOptions { Enabled = wall }),
         };
         return h;
+    }
+
+    /// <summary>
+    /// The real accessor holds its context in an AsyncLocal, which a value set
+    /// inside an async helper loses on the way back to the test.
+    /// </summary>
+    private sealed class FixedAccessor(HttpContext? context) : IHttpContextAccessor
+    {
+        public HttpContext? HttpContext { get; set; } = context;
     }
 
     private sealed class Harness

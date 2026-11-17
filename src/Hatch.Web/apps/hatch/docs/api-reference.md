@@ -134,6 +134,19 @@ runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
 an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The runners-work-contributions PUT 403s if the caller is not an owner. The files-contributions PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`. The priority PUT 403s if the caller is not an owner, and 400s on anything but `paused`, `normal` or `expedited`.
 
+## Scopes
+
+What each person may see of the projects. All three are an admin's and a
+person's alone: a key is refused with `403`. Nothing reads a scope yet, so
+setting one changes what these routes answer and nothing else.
+See [People, roles and keys](people-roles-and-keys#scope).
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/scopes` | **person** | Every person's scope, `[{ personId, mode, projectIds }]`; a person with no row reads as `all` with every project id |
+| GET | `/scopes/{personId}` | **person** | One person's scope; `404` for a person who does not exist |
+| PUT | `/scopes/{personId}` | **person** | Sets `{ mode, projectIds }`, `mode` one of `none`, `all`, `some`; `projectIds` is required under `some` and ignored otherwise; `400` for an unknown mode or project, `404` for an unknown person |
+
 ## Columns
 
 | Method | Path | Who | What it does |

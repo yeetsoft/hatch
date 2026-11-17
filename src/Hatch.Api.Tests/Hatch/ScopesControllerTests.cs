@@ -1,3 +1,4 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
@@ -61,8 +62,8 @@ public class ScopesControllerTests
         var written = Value(await h.Scopes.PutScope(h.Ada.Id, new PersonScopeWriteRequest("none", null), default));
         var read = Value(await h.Scopes.GetScope(h.Ada.Id, default));
 
-        Assert.Equal(new PersonScopeDto(h.Ada.Id, "none", []), written);
-        Assert.Equal(written, read);
+        AssertScope(new PersonScopeDto(h.Ada.Id, "none", []), written);
+        AssertScope(written, read);
     }
 
     [Fact]
@@ -74,8 +75,8 @@ public class ScopesControllerTests
         var written = Value(await h.Scopes.PutScope(h.Ada.Id, new PersonScopeWriteRequest("all", null), default));
         var read = Value(await h.Scopes.GetScope(h.Ada.Id, default));
 
-        Assert.Equal(new PersonScopeDto(h.Ada.Id, "all", h.ProjectIds), written);
-        Assert.Equal(written, read);
+        AssertScope(new PersonScopeDto(h.Ada.Id, "all", h.ProjectIds), written);
+        AssertScope(written, read);
     }
 
     [Fact]
@@ -84,11 +85,11 @@ public class ScopesControllerTests
         var h = await NewAsync();
 
         var written = Value(await h.Scopes.PutScope(h.Ada.Id, new PersonScopeWriteRequest("some", [h.ProjectIds[2], h.ProjectIds[0], h.ProjectIds[2]]), default));
-        Assert.Equal(new PersonScopeDto(h.Ada.Id, "some", [h.ProjectIds[0], h.ProjectIds[2]]), written);
-        Assert.Equal(written, Value(await h.Scopes.GetScope(h.Ada.Id, default)));
+        AssertScope(new PersonScopeDto(h.Ada.Id, "some", [h.ProjectIds[0], h.ProjectIds[2]]), written);
+        AssertScope(written, Value(await h.Scopes.GetScope(h.Ada.Id, default)));
 
         var empty = Value(await h.Scopes.PutScope(h.Ada.Id, new PersonScopeWriteRequest("some", []), default));
-        Assert.Equal(new PersonScopeDto(h.Ada.Id, "some", []), empty);
+        AssertScope(new PersonScopeDto(h.Ada.Id, "some", []), empty);
     }
 
     [Theory]
@@ -279,6 +280,14 @@ public class ScopesControllerTests
         public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult<Actor?>(null);
         public Task<bool> IsProgramAsync(CancellationToken ct) => Task.FromResult(false);
         public Task<string> ActorNameAsync(CancellationToken ct) => Task.FromResult(name);
+    }
+
+    /// <summary>A record compares its list by reference, so compare the parts.</summary>
+    private static void AssertScope(PersonScopeDto expected, PersonScopeDto actual)
+    {
+        Assert.Equal(expected.PersonId, actual.PersonId);
+        Assert.Equal(expected.Mode, actual.Mode);
+        Assert.Equal(expected.ProjectIds, actual.ProjectIds);
     }
 
     private static T Value<T>(ActionResult<T> result) =>
