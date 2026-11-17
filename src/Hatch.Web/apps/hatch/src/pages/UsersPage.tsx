@@ -1,24 +1,49 @@
 import { Fragment, type FormEvent, useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Card, EmptyState, Field, Modal, PageHeader, Table, Text } from '@hatch/ui';
-import { createPerson, deletePerson, getAuthMe, getPeople, getPersonSessions, putPerson, revokeGrant } from '../api/client';
+import { Badge, Button, Card, EmptyState, Field, Modal, PageHeader, ProjectMark, Table, Text, markVars } from '@hatch/ui';
+import {
+  createPerson,
+  deletePerson,
+  getAuthMe,
+  getPeople,
+  getPersonSessions,
+  getProjects,
+  getScopes,
+  putPerson,
+  putScope,
+  revokeGrant,
+} from '../api/client';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
 import {
+  addUserWithScope,
   canAddUser,
   canChangeRole,
   canDelete,
   deleteSentence,
   demotionSentence,
   isDemotion,
+  isNarrowing,
+  narrowingSentence,
   ROLES,
+  SCOPE_MODES,
+  scopeForMode,
+  scopeLabel,
   sortPeople,
 } from '../lib/people';
-import type { Person, PersonRole, PersonSession } from '../types';
+import type { Person, PersonRole, PersonScope, PersonScopeMode, PersonScopeWriteRequest, PersonSession, Project } from '../types';
 
-/** A change waiting on a press: a demotion, or a delete. */
-type Pending =
+/** A change waiting on a press: a demotion, a delete, or an admin narrowing
+    their own scope. */
+export type Pending =
   | { kind: 'demote'; person: Person; to: PersonRole }
-  | { kind: 'delete'; person: Person };
+  | { kind: 'delete'; person: Person }
+  | { kind: 'narrow'; person: Person; from: PersonScope; to: PersonScope };
+
+/** The one panel a row has open under it. */
+type Open = { id: string; panel: 'sessions' | 'scope' };
+
+/** The scope the Add user form is holding. */
+type NewScope = { mode: PersonScopeMode; projectIds: number[] };
 
 /**
  * An Admin's view of the people this install knows: who they are, what role
@@ -36,14 +61,20 @@ export function UsersPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<Open | null>(null);
+  const [scopes, setScopes] = useState<Map<string, PersonScope>>(new Map());
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  const [mePersonId, setMePersonId] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<PersonRole>('user');
+  const [newScope, setNewScope] = useState<NewScope>({ mode: 'all', projectIds: [] });
 
   const load = useCallback(async () => {
     try {
-      setPeople(sortPeople(await getPeople()));
+      const [list, scopeList] = await Promise.all([getPeople(), getScopes()]);
+      setPeople(sortPeople(list));
+      setScopes(new Map(scopeList.map((scope) => [scope.personId, scope])));
     } catch (err) {
       setFailure(message(err));
     }
@@ -52,9 +83,22 @@ export function UsersPage() {
   useEffect(() => {
     void load();
     getAuthMe()
-      .then((me) => setMyGrantId(me?.grantId ?? null))
+      .then((me) => {
+        setMyGrantId(me?.grantId ?? null);
+        setMePersonId(me?.personId ?? null);
+      })
       .catch(() => {});
+    getProjects()
+      .then(setProjects)
+      .catch((err) => setFailure(message(err)));
   }, [load]);
+
+  const allIds = (projects ?? []).map((project) => project.id);
+
+  /** What the table knows of a person's scope. A person it has no row for reads
+      `all`, as the server does. */
+  const scopeOf = (person: Person): PersonScope =>
+    scopes.get(person.id) ?? { personId: person.id, mode: 'all', projectIds: allIds };
 
   /** Runs a write; whatever happens, asks again so the table shows what is
       true rather than what was pressed. */
@@ -81,15 +125,54 @@ export function UsersPage() {
     else void write(person, to);
   }
 
+  /** Saves a scope at once, unless it is an admin narrowing their own, which
+      asks first. What the person would hold afterwards is `to`. */
+  function writeScope(person: Person, request: { mode: PersonScopeMode; projectIds?: number[] }) {
+    const from = scopeOf(person);
+    const to: PersonScope = {
+      personId: person.id,
+      mode: request.mode,
+      projectIds: request.mode === 'all' ? allIds : request.mode === 'none' ? [] : (request.projectIds ?? []),
+    };
+    if (person.id === mePersonId && isNarrowing(from, to)) {
+      setPending({ kind: 'narrow', person, from, to });
+      return;
+    }
+    void act(() => putScope(person.id, request));
+  }
+
+  function chooseScope(person: Person, mode: PersonScopeMode) {
+    const current = scopeOf(person);
+    if (mode === current.mode) return;
+    writeScope(person, scopeForMode(current, mode));
+    if (mode === 'some') setOpen({ id: person.id, panel: 'scope' });
+    else if (open?.id === person.id && open.panel === 'scope') setOpen(null);
+  }
+
+  function chooseNewScope(mode: PersonScopeMode) {
+    setNewScope({ mode, projectIds: mode === 'some' ? allIds : [] });
+  }
+
   async function addUser(e: FormEvent) {
     e.preventDefault();
     if (!canAddUser(newEmail)) return;
     setBusy(true);
     try {
-      await createPerson({ email: newEmail.trim(), role: newRole, name: newName.trim() || undefined });
+      await addUserWithScope(
+        // The form clears once the person exists, so a scope that then fails
+        // does not leave the typing behind to be submitted twice.
+        async (request) => {
+          const person = await createPerson(request);
+          setNewEmail('');
+          setNewName('');
+          setNewScope({ mode: 'all', projectIds: [] });
+          return person;
+        },
+        putScope,
+        { email: newEmail.trim(), role: newRole, name: newName.trim() || undefined },
+        newScope.mode === 'some' ? { mode: 'some', projectIds: newScope.projectIds } : { mode: newScope.mode },
+      );
       setFailure(null);
-      setNewEmail('');
-      setNewName('');
     } catch (err) {
       setFailure(message(err));
     } finally {
@@ -121,6 +204,23 @@ export function UsersPage() {
               ))}
             </select>
           </Field>
+          <Field label="Scope" hint="Which projects they see. Saved once they are added.">
+            <select value={newScope.mode} onChange={(e) => chooseNewScope(e.target.value as PersonScopeMode)}>
+              {SCOPE_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mode === newScope.mode ? scopeLabel(newScope) : mode}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {newScope.mode === 'some' && (
+            <ScopeChecklist
+              projects={projects}
+              selected={newScope.projectIds}
+              disabled={busy}
+              onChange={(projectIds) => setNewScope({ mode: 'some', projectIds })}
+            />
+          )}
           <Field label="Name (optional)">
             <input value={newName} onChange={(e) => setNewName(e.target.value)} />
           </Field>
@@ -145,6 +245,7 @@ export function UsersPage() {
                 <th>Email</th>
                 <th>Provider</th>
                 <th>Role</th>
+                <th>Scope</th>
                 <th>Last sign-in</th>
                 <th>Sessions</th>
                 <th />
@@ -174,10 +275,31 @@ export function UsersPage() {
                         ))}
                       </select>
                     </td>
+                    <td>
+                      <ScopeSelect
+                        name={person.name}
+                        scope={scopeOf(person)}
+                        disabled={busy}
+                        onChoose={(mode) => chooseScope(person, mode)}
+                      />
+                      {scopeOf(person).mode === 'some' && (
+                        <Button
+                          onClick={() =>
+                            setOpen(open?.id === person.id && open.panel === 'scope' ? null : { id: person.id, panel: 'scope' })
+                          }
+                        >
+                          Projects {open?.id === person.id && open.panel === 'scope' ? '▾' : '▸'}
+                        </Button>
+                      )}
+                    </td>
                     <td>{person.lastSignInAt ? agoPhrase(person.lastSignInAt, now) : <Text tone="muted">has not signed in yet</Text>}</td>
                     <td>
-                      <Button onClick={() => setOpen(open === person.id ? null : person.id)}>
-                        {person.sessionCount} {open === person.id ? '▾' : '▸'}
+                      <Button
+                        onClick={() =>
+                          setOpen(open?.id === person.id && open.panel === 'sessions' ? null : { id: person.id, panel: 'sessions' })
+                        }
+                      >
+                        {person.sessionCount} {open?.id === person.id && open.panel === 'sessions' ? '▾' : '▸'}
                       </Button>
                     </td>
                     <td>
@@ -190,10 +312,19 @@ export function UsersPage() {
                       </Button>
                     </td>
                   </tr>
-                  {open === person.id && (
+                  {open?.id === person.id && (
                     <tr>
-                      <td colSpan={7}>
-                        <Sessions personId={person.id} myGrantId={myGrantId} now={now} onChanged={load} />
+                      <td colSpan={8}>
+                        {open.panel === 'sessions' ? (
+                          <Sessions personId={person.id} myGrantId={myGrantId} now={now} onChanged={load} />
+                        ) : (
+                          <ScopeChecklist
+                            projects={projects}
+                            selected={scopeOf(person).projectIds}
+                            disabled={busy}
+                            onChange={(projectIds) => writeScope(person, { mode: 'some', projectIds })}
+                          />
+                        )}
                       </td>
                     </tr>
                   )}
@@ -204,37 +335,136 @@ export function UsersPage() {
         </Card>
       )}
 
-      <Modal
-        open={pending !== null}
+      <PendingDialog
+        pending={pending}
+        busy={busy}
         onClose={() => setPending(null)}
-        title={pending?.kind === 'delete' ? `Delete ${pending.person.name}?` : `Change ${pending?.person.name ?? ''}'s role?`}
-      >
-        {pending && (
-          <div className="hatch-claim-clear">
-            <p>
-              {pending.kind === 'delete'
-                ? deleteSentence(pending.person)
+        onConfirm={(p) =>
+          void act(() =>
+            p.kind === 'delete'
+              ? deletePerson(p.person.id)
+              : p.kind === 'narrow'
+                ? putScope(p.person.id, scopeRequest(p.to))
+                : putPerson(p.person.id, { name: p.person.name, role: p.to }),
+          )
+        }
+      />
+    </div>
+  );
+}
+
+/** The confirmation a risky change waits on. */
+export function PendingDialog({
+  pending,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  pending: Pending | null;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (pending: Pending) => void;
+}) {
+  const name = pending?.person.name ?? '';
+  const title =
+    pending?.kind === 'delete'
+      ? `Delete ${name}?`
+      : pending?.kind === 'narrow'
+        ? `Change ${name}'s scope?`
+        : `Change ${name}'s role?`;
+
+  return (
+    <Modal open={pending !== null} onClose={onClose} title={title}>
+      {pending && (
+        <div className="hatch-claim-clear">
+          <p>
+            {pending.kind === 'delete'
+              ? deleteSentence(pending.person)
+              : pending.kind === 'narrow'
+                ? narrowingSentence(pending.person.name, pending.from, pending.to)
                 : demotionSentence(pending.person.name, pending.person.role, pending.to)}
-            </p>
-            <div className="hatch-form-actions">
-              <Button onClick={() => setPending(null)}>Leave it</Button>
-              <Button
-                variant="danger"
-                loading={busy}
-                onClick={() =>
-                  void act(() =>
-                    pending.kind === 'delete'
-                      ? deletePerson(pending.person.id)
-                      : putPerson(pending.person.id, { name: pending.person.name, role: pending.to }),
-                  )
-                }
-              >
-                {pending.kind === 'delete' ? 'Delete' : 'Demote'}
-              </Button>
-            </div>
+          </p>
+          <div className="hatch-form-actions">
+            <Button onClick={onClose}>Leave it</Button>
+            <Button variant="danger" loading={busy} onClick={() => onConfirm(pending)}>
+              {pending.kind === 'delete' ? 'Delete' : pending.kind === 'narrow' ? 'Narrow' : 'Demote'}
+            </Button>
           </div>
-        )}
-      </Modal>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/** What a scope is saved as: `some` carries its ids, the others carry none. */
+function scopeRequest(scope: Pick<PersonScope, 'mode' | 'projectIds'>): PersonScopeWriteRequest {
+  return scope.mode === 'some' ? { mode: 'some', projectIds: scope.projectIds } : { mode: scope.mode };
+}
+
+/** A person's scope as the inline select a row draws, beside the Role one.
+    The option for the current mode reads `some (N)` under `some`. */
+export function ScopeSelect({
+  name,
+  scope,
+  disabled,
+  onChoose,
+}: {
+  name: string;
+  scope: Pick<PersonScope, 'mode' | 'projectIds'>;
+  disabled: boolean;
+  onChoose: (mode: PersonScopeMode) => void;
+}) {
+  return (
+    <select
+      aria-label={`Scope of ${name}`}
+      value={scope.mode}
+      disabled={disabled}
+      onChange={(e) => onChoose(e.target.value as PersonScopeMode)}
+    >
+      {SCOPE_MODES.map((mode) => (
+        <option key={mode} value={mode}>
+          {mode === scope.mode ? scopeLabel(scope) : mode}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Every project, ticked where the person sees it. Ticking calls `onChange`
+    with the new set, in the board's project order. */
+export function ScopeChecklist({
+  projects,
+  selected,
+  disabled,
+  onChange,
+}: {
+  projects: Project[] | null;
+  selected: number[];
+  disabled: boolean;
+  onChange: (projectIds: number[]) => void;
+}) {
+  if (!projects) return <Text tone="muted">Reading projects…</Text>;
+  if (projects.length === 0) return <Text tone="muted">No projects yet.</Text>;
+
+  const ticked = new Set(selected);
+  const toggle = (id: number) =>
+    onChange(projects.filter((p) => (p.id === id ? !ticked.has(id) : ticked.has(p.id))).map((p) => p.id));
+
+  return (
+    <div className="hatch-project-chooser__tiles">
+      {projects.map((project) => (
+        <label
+          key={project.id}
+          className={disabled ? 'hatch-project-chooser__tile hatch-project-chooser__tile--disabled' : 'hatch-project-chooser__tile'}
+          style={markVars(project.color)}
+        >
+          <input type="checkbox" checked={ticked.has(project.id)} disabled={disabled} onChange={() => toggle(project.id)} />
+          <ProjectMark size="sm" letters={project.key} color={project.color} icon={project.icon} title={project.name} />
+          <span>
+            {project.key} {project.name}
+          </span>
+        </label>
+      ))}
     </div>
   );
 }
