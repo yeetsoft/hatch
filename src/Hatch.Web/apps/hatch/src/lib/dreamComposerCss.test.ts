@@ -86,3 +86,24 @@ describe('Post', () => {
     expect(declarationsOf('.hatch-btn.hatch-gradient-fill:hover:not(:disabled)')['filter']).toBe('brightness(1.1)');
   });
 });
+
+describe('the dream history', () => {
+  it('fades in on opacity alone', () => {
+    // Not through declarationsOf: it merges the reduced-motion rule over this one.
+    expect(css).toMatch(/\.hatch-dream-history\s*\{[^}]*animation:\s*hatch-dream-history-in 200ms/);
+    const frames = blocksOf('@keyframes hatch-dream-history-in');
+    expect(frames).toContain('opacity');
+    expect(frames).not.toContain('transform');
+  });
+
+  it('just appears under reduced motion', () => {
+    expect(declarationsOf('.hatch-dream-history', '@media (prefers-reduced-motion: reduce)')['animation']).toBe('none');
+  });
+
+  it('draws its magnifier stroked, and its count in the mono face', () => {
+    const glyph = declarationsOf('.hatch-dream-history-toggle svg');
+    expect(glyph['fill']).toBe('none');
+    expect(glyph['stroke']).toBe('currentColor');
+    expect(declarationsOf('.hatch-dream-history-toggle__count')['font-family']).toBe('var(--mono)');
+  });
+});

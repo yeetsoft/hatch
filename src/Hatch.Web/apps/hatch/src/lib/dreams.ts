@@ -6,14 +6,17 @@ import type { Dream, DreamWeaveRequest, Project, WeaveMode } from '../types';
 
 /** The filter the Dreams page's controls hold. Every field but `loose` is a
     string, `''` meaning unset, the way search.ts's own filters are held.
-    `loose` is a real boolean - it is written to the URL as the literal
-    string `'true'` or omitted, never `'false'`. */
+    `loose` and `open` are real booleans - each is written to the URL as the
+    literal string `'true'` or omitted, never `'false'`. `open` says the
+    history (the search row and the list) is drawn; the page hides it until
+    asked for. */
 export interface DreamFilters {
   q: string;
   projectId: string;
   loose: boolean;
   issueKey: string;
   remandedFrom: string;
+  open: boolean;
 }
 
 export const EMPTY_DREAMS: DreamFilters = {
@@ -22,6 +25,7 @@ export const EMPTY_DREAMS: DreamFilters = {
   loose: false,
   issueKey: '',
   remandedFrom: '',
+  open: false,
 };
 
 const POSITIVE_INTEGER = /^[1-9]\d*$/;
@@ -32,7 +36,11 @@ const idOrEmpty = (raw: string | null): string => (raw !== null && POSITIVE_INTE
     issue page's Drew-on section links to `/dreams?issue=KEY`, and that is
     the name on the address bar - with no validation, the same tolerance
     `readSearch` gives a bad `projectId`: an unparseable one just finds
-    nothing, which is the server's job to decide, not this filter's. */
+    nothing, which is the server's job to decide, not this filter's.
+
+    `open` is true for `open=true`, and also whenever the address carries
+    `q`, `loose`, `issue` or `remandedFrom`: a link that narrows the list is a
+    link that wants to see it. */
 export function readDreams(params: URLSearchParams): DreamFilters {
   return {
     q: params.get('q') ?? '',
@@ -40,17 +48,23 @@ export function readDreams(params: URLSearchParams): DreamFilters {
     loose: params.get('loose') === 'true',
     issueKey: params.get('issue') ?? '',
     remandedFrom: params.get('remandedFrom') ?? '',
+    open:
+      params.get('open') === 'true' ||
+      params.has('q') ||
+      params.has('loose') ||
+      params.has('issue') ||
+      params.has('remandedFrom'),
   };
 }
 
 /** The fixed order every written query string holds its fields in, so equal
     filters are equal links. `issueKey` is written under `issue`, the URL's
     own name for it. */
-const FIELD_ORDER: (keyof DreamFilters)[] = ['q', 'projectId', 'loose', 'issueKey', 'remandedFrom'];
+const FIELD_ORDER: (keyof DreamFilters)[] = ['q', 'projectId', 'loose', 'issueKey', 'remandedFrom', 'open'];
 
 /** The filter, onto a URL. Only set fields are written, in `FIELD_ORDER`;
     `q` is trimmed and omitted when it trims to nothing; `loose` is written
-    as `'true'` only when true. */
+    as `'true'` only when true, and `open` the same, last. */
 export function writeDreams(filters: DreamFilters): URLSearchParams {
   const params = new URLSearchParams();
 
@@ -64,8 +78,10 @@ export function writeDreams(filters: DreamFilters): URLSearchParams {
       if (filters.loose) params.set('loose', 'true');
     } else if (field === 'issueKey') {
       if (filters.issueKey) params.set('issue', filters.issueKey);
-    } else {
+    } else if (field === 'remandedFrom') {
       if (filters.remandedFrom) params.set('remandedFrom', filters.remandedFrom);
+    } else {
+      if (filters.open) params.set('open', 'true');
     }
   }
 
@@ -89,6 +105,8 @@ export const DREAMS_PAGE = 50;
     the request an unscoped page has always made. */
 export function dreamsRequest(filters: DreamFilters, offset: number, ids: number[]): URLSearchParams {
   const params = writeDreams(filters);
+  // The server ignores it, and it would change the key the page reloads on.
+  params.delete('open');
   const issue = params.get('issue');
   if (issue !== null) {
     params.delete('issue');
@@ -109,6 +127,22 @@ export function dreamsRequest(filters: DreamFilters, offset: number, ids: number
   if (offset !== 0) params.set('offset', String(offset));
 
   return params;
+}
+
+/** The request for how many dreams a project's choice holds: the list's own
+    request with nothing but the picked project, and a page of one - the list
+    route's `total` is the count, so no route of its own. */
+export function dreamsCountRequest(projectId: string, ids: number[]): URLSearchParams {
+  const params = dreamsRequest({ ...EMPTY_DREAMS, projectId }, 0, ids);
+  params.set('limit', '1');
+
+  return params;
+}
+
+/** Whether any filter is set, `open` aside, which the list being drawn already
+    says: what tells "No dreams yet." from "Nothing matches." */
+export function narrowed(filters: DreamFilters): boolean {
+  return writeDreams({ ...filters, open: false }).size > 0;
 }
 
 /** The project filter, with a pick the scope no longer holds put back to

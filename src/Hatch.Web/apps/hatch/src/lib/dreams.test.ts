@@ -5,10 +5,12 @@ import {
   WEAVE_MODES,
   countLine,
   deleteDreamQuestion,
+  dreamsCountRequest,
   dreamsRequest,
   firstLine,
   hasMore,
   isUrl,
+  narrowed,
   pickedProjectId,
   projectCaption,
   readDreams,
@@ -75,6 +77,31 @@ describe('readDreams', () => {
   it('reads an absent remandedFrom as empty', () => {
     expect(readDreams(params({})).remandedFrom).toBe('');
   });
+
+  it('reads open=true as open', () => {
+    expect(readDreams(params({ open: 'true' })).open).toBe(true);
+  });
+
+  it('reads an absent open as closed', () => {
+    expect(readDreams(params({})).open).toBe(false);
+  });
+
+  it('reads open=false as closed', () => {
+    expect(readDreams(params({ open: 'false' })).open).toBe(false);
+  });
+
+  it('keeps a picked project alone closed', () => {
+    expect(readDreams(params({ projectId: '3' })).open).toBe(false);
+  });
+
+  it.each([
+    ['q', 'word'],
+    ['loose', 'true'],
+    ['issue', 'HA-1'],
+    ['remandedFrom', 'HA-2'],
+  ])('reads %s as opening the list', (name, value) => {
+    expect(readDreams(params({ [name]: value })).open).toBe(true);
+  });
 });
 
 describe('writeDreams', () => {
@@ -108,14 +135,22 @@ describe('writeDreams', () => {
     expect(writeDreams({ ...EMPTY_DREAMS, remandedFrom: 'HA-2' }).get('remandedFrom')).toBe('HA-2');
   });
 
-  it('writes a full filter in the fixed order', () => {
-    const full: DreamFilters = { q: 'needle', projectId: '1', loose: true, issueKey: 'HA-1', remandedFrom: 'HA-2' };
+  it('omits open when false', () => {
+    expect(writeDreams({ ...EMPTY_DREAMS, open: false }).has('open')).toBe(false);
+  });
 
-    expect([...writeDreams(full).keys()]).toEqual(['q', 'projectId', 'loose', 'issue', 'remandedFrom']);
+  it('writes open as the string true when true', () => {
+    expect(writeDreams({ ...EMPTY_DREAMS, open: true }).get('open')).toBe('true');
+  });
+
+  it('writes a full filter in the fixed order', () => {
+    const full: DreamFilters = { q: 'needle', projectId: '1', loose: true, issueKey: 'HA-1', remandedFrom: 'HA-2', open: true };
+
+    expect([...writeDreams(full).keys()]).toEqual(['q', 'projectId', 'loose', 'issue', 'remandedFrom', 'open']);
   });
 
   it('round-trips a valid filter through readDreams', () => {
-    const full: DreamFilters = { q: 'needle', projectId: '1', loose: true, issueKey: 'HA-1', remandedFrom: 'HA-2' };
+    const full: DreamFilters = { q: 'needle', projectId: '1', loose: true, issueKey: 'HA-1', remandedFrom: 'HA-2', open: true };
 
     expect(readDreams(writeDreams(full))).toEqual(full);
   });
@@ -147,7 +182,7 @@ describe('dreamsRequest', () => {
   });
 
   it('carries q, projectId and loose through unrenamed', () => {
-    const request = dreamsRequest({ q: 'needle', projectId: '1', loose: true, issueKey: '', remandedFrom: '' }, 0, []);
+    const request = dreamsRequest({ q: 'needle', projectId: '1', loose: true, issueKey: '', remandedFrom: '', open: false }, 0, []);
     expect(request.get('q')).toBe('needle');
     expect(request.get('projectId')).toBe('1');
     expect(request.get('loose')).toBe('true');
@@ -178,13 +213,65 @@ describe('dreamsRequest', () => {
   });
 
   it('still carries q, loose, issueKey, limit and offset with a scope', () => {
-    const request = dreamsRequest({ q: 'needle', projectId: '', loose: true, issueKey: 'HA-1', remandedFrom: '' }, 50, [1, 2]);
+    const request = dreamsRequest({ q: 'needle', projectId: '', loose: true, issueKey: 'HA-1', remandedFrom: '', open: false }, 50, [1, 2]);
     expect(request.get('q')).toBe('needle');
     expect(request.get('loose')).toBe('true');
     expect(request.get('issueKey')).toBe('HA-1');
     expect(request.has('issue')).toBe(false);
     expect(request.get('limit')).toBe(String(DREAMS_PAGE));
     expect(request.get('offset')).toBe('50');
+  });
+});
+
+describe('dreamsRequest and open', () => {
+  it('never sends open', () => {
+    expect(dreamsRequest({ ...EMPTY_DREAMS, open: true }, 0, []).has('open')).toBe(false);
+  });
+
+  it('is the same request open or closed', () => {
+    expect(dreamsRequest({ ...EMPTY_DREAMS, open: true }, 0, []).toString()).toBe(
+      dreamsRequest(EMPTY_DREAMS, 0, []).toString(),
+    );
+  });
+});
+
+describe('dreamsCountRequest', () => {
+  it('asks for a page of one', () => {
+    expect(dreamsCountRequest('', []).get('limit')).toBe('1');
+  });
+
+  it('carries the picked project with includeNoProject, and nothing else of a filter', () => {
+    const request = dreamsCountRequest('2', [1, 2]);
+    expect(request.getAll('projectId')).toEqual(['2']);
+    expect(request.get('includeNoProject')).toBe('true');
+    for (const name of ['q', 'loose', 'issueKey', 'remandedFromKey', 'open', 'offset']) {
+      expect(request.has(name)).toBe(false);
+    }
+  });
+
+  it('carries the scope when no project is picked', () => {
+    expect(dreamsCountRequest('', [1, 2]).getAll('projectId')).toEqual(['1', '2']);
+  });
+});
+
+describe('narrowed', () => {
+  it('is false for the empty filter, open or not', () => {
+    expect(narrowed(EMPTY_DREAMS)).toBe(false);
+    expect(narrowed({ ...EMPTY_DREAMS, open: true })).toBe(false);
+  });
+
+  it.each([
+    { q: 'word' },
+    { projectId: '1' },
+    { loose: true },
+    { issueKey: 'HA-1' },
+    { remandedFrom: 'HA-2' },
+  ])('is true for %o', (field) => {
+    expect(narrowed({ ...EMPTY_DREAMS, open: true, ...field })).toBe(true);
+  });
+
+  it('is false for a q that trims to nothing', () => {
+    expect(narrowed({ ...EMPTY_DREAMS, q: '  ', open: true })).toBe(false);
   });
 });
 

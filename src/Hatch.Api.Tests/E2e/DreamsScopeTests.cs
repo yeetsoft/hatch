@@ -16,6 +16,7 @@ namespace Hatch.Api.Tests.E2e;
 /// one, and Weave, which has no chooser of its own, can be pressed. With no
 /// scope and none picked, the page lists all four dreams, offers all three
 /// projects, and Weave is disabled and says to pick one.
+/// The history is folded on a bare <c>/dreams</c> (HA-2398), so every address here asks for it with <c>open=true</c>.
 /// Run at the desktop viewport in Chromium and at the <c>iPhone 14 Pro</c>
 /// profile in WebKit.
 ///
@@ -92,7 +93,7 @@ public class DreamsScopeTests(ITestOutputHelper output)
             string[] scopedIds = [ids["DRA"], ids["DRB"]];
 
             // Scoped to two of three: the list holds the two and the loose one, and the one picker offers the two and no project.
-            await harness.OpenAsync(deadline, baseUrl, "/dreams?scope=DRA,DRB");
+            await harness.OpenAsync(deadline, baseUrl, "/dreams?scope=DRA,DRB&open=true");
             await harness.WaitForVisibleAsync(deadline, ".hatch-dream-composer");
             await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
             var scoped = await ReadAsync(harness, deadline, "scoped", profileName, DreamOf("DRA"), DreamOf("DRB"), LooseDream);
@@ -103,7 +104,7 @@ public class DreamsScopeTests(ITestOutputHelper output)
             AssertFits(scoped);
 
             // A project the scope does not offer is dropped from the address, and reads as none picked.
-            await harness.GoToAsync(deadline, $"dreams?scope=DRA,DRB&projectId={ids["DRC"]}");
+            await harness.GoToAsync(deadline, $"dreams?scope=DRA,DRB&projectId={ids["DRC"]}&open=true");
             await harness.WaitForFunctionAsync(deadline, "waiting for the param to go", "() => !location.search.includes('projectId=')");
             var dropped = await ReadAsync(harness, deadline, "dropped", profileName, DreamOf("DRA"), DreamOf("DRB"), LooseDream);
             Assert.DoesNotContain("projectId", dropped.GetProperty("search").GetString());
@@ -135,7 +136,7 @@ public class DreamsScopeTests(ITestOutputHelper output)
             Assert.Null(await LeanOfAsync(baseUrl, PostedWithNone));
 
             // No scope, none picked: nothing is narrowed, and Weave says to pick a project.
-            await harness.GoToAsync(deadline, "dreams");
+            await harness.GoToAsync(deadline, "dreams?open=true");
             await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
             await harness.SelectOptionAsync(deadline, "details.hatch-dream-weave select", "pressing");
             var unscoped = await ReadAsync(harness, deadline, "unscoped", profileName, DreamOf("DRA"), DreamOf("DRB"), DreamOf("DRC"), LooseDream, PostedWithProject, PostedWithNone);

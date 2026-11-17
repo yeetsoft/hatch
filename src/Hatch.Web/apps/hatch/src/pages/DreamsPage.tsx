@@ -13,9 +13,11 @@ import {
   WEAVE_MODES,
   countLine,
   deleteDreamQuestion,
+  dreamsCountRequest,
   dreamsRequest,
   hasMore,
   isUrl,
+  narrowed,
   pickedProjectId,
   projectCaption,
   readDreams,
@@ -48,6 +50,10 @@ const DEBOUNCE_MS = 300;
  * picked project leans new dreams, homes the weave and narrows the list to its
  * dreams and the ones that lean toward none. Every field is the URL's and
  * nowhere else, so Back undoes a change and pasting the link reproduces it.
+ *
+ * The search row and the list are folded until asked for: one control, which
+ * shows how many dreams the picked project holds, opens them. A link that
+ * narrows the list opens it too (see `readDreams`).
  *
  * In a tab scoped to projects the list is those projects' dreams and the
  * loose ones, and every project the page offers is one of them.
@@ -108,14 +114,20 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
   const [error, setError] = useState<string | null>(null);
   const [ledger] = useState(createLedger);
 
+  const open = filters.open;
   const key = dreamsRequest(filters, 0, ids).toString();
 
   useEffect(() => {
     const ticket = ledger.begin();
     setDreams([]);
     setTotal(0);
-    setLoading(true);
     setError(null);
+    // Loading even folded, so the list opens on "Loading…" and not on a
+    // flash of "No dreams yet." before the effect runs.
+    setLoading(true);
+
+    // Folded, nothing is drawn, so nothing is asked for.
+    if (!open) return () => ledger.invalidate();
 
     getDreams(dreamsRequest(filters, 0, ids)).then(
       (result) => {
@@ -134,7 +146,46 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
     return () => ledger.invalidate();
     // key, not filters: it is the same string for an unchanged query, so a
     // re-render that leaves the query alone does not reload it.
-  }, [key]);
+  }, [key, open]);
+
+  // How many dreams the picked project holds, whether the list is open or
+  // not and whatever it is searched for. Its own ledger: it never races the list.
+  const [count, setCount] = useState<number | null>(null);
+  const [countLedger] = useState(createLedger);
+  const countKey = dreamsCountRequest(filters.projectId, ids).toString();
+
+  useEffect(() => {
+    const ticket = countLedger.begin();
+    setCount(null);
+
+    getDreams(dreamsCountRequest(filters.projectId, ids)).then(
+      (result) => {
+        if (countLedger.isCurrent(ticket)) setCount(result.total);
+      },
+      () => {
+        // The control reads without a number; the list reports its own errors.
+      },
+    );
+
+    return () => countLedger.invalidate();
+  }, [countKey]);
+
+  // A post made while the list is folded offers to show the new dream.
+  const [offered, setOffered] = useState(false);
+
+  useEffect(() => {
+    setOffered(false);
+  }, [open, filters.projectId]);
+
+  function openHistory() {
+    setParams(writeDreams({ ...filters, open: true }));
+  }
+
+  // Folding clears the search and the filters and leaves the picked project alone.
+  function closeHistory() {
+    setDraft('');
+    setParams(writeDreams({ ...EMPTY_DREAMS, projectId: filters.projectId }));
+  }
 
   function showMore() {
     const ticket = ledger.begin();
@@ -159,15 +210,21 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
   async function post(body: string, source: string | null) {
     const dream = await addDream({ body, source, projectId: pickedProjectId(filters.projectId, projects) });
 
-    if (showsDream(filters, dream)) {
+    setCount((c) => (c === null ? c : c + 1));
+
+    if (!open) {
+      // Nothing is drawn to put it in: opening fetches newest first, so the
+      // new dream is first when the offer is taken.
+      setOffered(true);
+    } else if (showsDream(filters, dream)) {
       setDreams((prev) => [dream, ...prev]);
       setTotal((t) => t + 1);
     } else {
       // The filters would hide it: clear them but the picked project, and
-      // the key effect reloads with the new dream first. Prepending a dream
-      // the server would not list under them would also push every Show more
-      // offset one too far.
-      setParams(writeDreams({ ...EMPTY_DREAMS, projectId: filters.projectId }));
+      // the key effect reloads with the new dream first, and the list stays
+      // open. Prepending a dream the server would not list under them would
+      // also push every Show more offset one too far.
+      setParams(writeDreams({ ...EMPTY_DREAMS, projectId: filters.projectId, open: true }));
     }
   }
 
@@ -208,6 +265,7 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
   const onRemoved = (id: number) => {
     setDreams((prev) => removeDream(prev, id));
     setTotal((t) => t - 1);
+    setCount((c) => (c === null ? c : c - 1));
   };
 
   // Once per render of the list, so every row's "ago" reads from the same instant.
@@ -268,87 +326,115 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
         </div>
       </details>
 
-      <div className="hatch-board-filters hatch-search-filters">
-        {/* type="search" on purpose; base.css says why. */}
-        <input
-          type="search"
-          className={`hatch-board-search hatch-search-box${draft.trim() !== '' ? ' hatch-board-search--lit' : ''}`}
-          aria-label="Search dreams"
-          placeholder="Search dreams…"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
+      <button
+        type="button"
+        className="hatch-dream-history-toggle"
+        aria-expanded={open}
+        aria-controls="hatch-dream-history"
+        onClick={open ? closeHistory : openHistory}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="M15.5 15.5 21 21" />
+        </svg>
+        Past dreams
+        {count !== null && <span className="hatch-dream-history-toggle__count">{count}</span>}
+      </button>
 
-        <button
-          type="button"
-          className={facetClass(filters.loose)}
-          aria-pressed={filters.loose}
-          title="Dreams no issue has drawn on"
-          onClick={() => setParams(writeDreams({ ...filters, loose: !filters.loose }))}
-        >
-          Loose only
-        </button>
-
-        {filters.issueKey !== '' && (
-          <button
-            type="button"
-            className={facetClass(true)}
-            title="Show dreams no matter which issue drew on them"
-            onClick={() => setParams(writeDreams({ ...filters, issueKey: '' }))}
-          >
-            Drew on {filters.issueKey} ×
+      {offered && !open && (
+        <p className="hatch-dream-history-offer" role="status">
+          Posted.{' '}
+          <button type="button" className="hatch-dream-history-offer__show" onClick={openHistory}>
+            Show it
           </button>
-        )}
-
-        {filters.remandedFrom !== '' && (
-          <button
-            type="button"
-            className={facetClass(true)}
-            title="Show dreams no matter which issue they were remanded from"
-            onClick={() => setParams(writeDreams({ ...filters, remandedFrom: '' }))}
-          >
-            Remanded from {filters.remandedFrom} ×
-          </button>
-        )}
-      </div>
-
-      {loading && <p className="text-muted">Loading…</p>}
-
-      {!loading && error && dreams.length === 0 && <p className="text-danger">{error}</p>}
-
-      {!loading && !error && dreams.length === 0 && (
-        <EmptyState message={writeDreams(filters).size === 0 ? 'No dreams yet.' : 'Nothing matches.'} />
+        </p>
       )}
 
-      {!loading && dreams.length > 0 && (
-        <>
-          {error && <p className="text-danger">{error}</p>}
+      {open && (
+        <div id="hatch-dream-history" className="hatch-dream-history">
+          <div className="hatch-board-filters hatch-search-filters">
+            {/* type="search" on purpose; base.css says why. */}
+            <input
+              type="search"
+              className={`hatch-board-search hatch-search-box${draft.trim() !== '' ? ' hatch-board-search--lit' : ''}`}
+              aria-label="Search dreams"
+              placeholder="Search dreams…"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
 
-          <p className="text-muted" aria-live="polite">
-            {countLine(dreams.length, total)}
-          </p>
+            <button
+              type="button"
+              className={facetClass(filters.loose)}
+              aria-pressed={filters.loose}
+              title="Dreams no issue has drawn on"
+              onClick={() => setParams(writeDreams({ ...filters, loose: !filters.loose }))}
+            >
+              Loose only
+            </button>
 
-          <ul className="hatch-dream-list">
-            {dreams.map((dream) => (
-              <DreamRow
-                key={dream.id}
-                dream={dream}
-                now={now}
-                project={dream.projectKey ? byKey.get(dream.projectKey) : undefined}
-                onChanged={onChanged}
-                onRemoved={onRemoved}
-              />
-            ))}
-          </ul>
+            {filters.issueKey !== '' && (
+              <button
+                type="button"
+                className={facetClass(true)}
+                title="Show dreams no matter which issue drew on them"
+                onClick={() => setParams(writeDreams({ ...filters, issueKey: '' }))}
+              >
+                Drew on {filters.issueKey} ×
+              </button>
+            )}
 
-          {hasMore(dreams.length, total) && (
-            <div className="hatch-form-actions">
-              <Button onClick={showMore} loading={loadingMore}>
-                Show more
-              </Button>
-            </div>
+            {filters.remandedFrom !== '' && (
+              <button
+                type="button"
+                className={facetClass(true)}
+                title="Show dreams no matter which issue they were remanded from"
+                onClick={() => setParams(writeDreams({ ...filters, remandedFrom: '' }))}
+              >
+                Remanded from {filters.remandedFrom} ×
+              </button>
+            )}
+          </div>
+
+          {loading && <p className="text-muted">Loading…</p>}
+
+          {!loading && error && dreams.length === 0 && <p className="text-danger">{error}</p>}
+
+          {!loading && !error && dreams.length === 0 && (
+            <EmptyState message={narrowed(filters) ? 'Nothing matches.' : 'No dreams yet.'} />
           )}
-        </>
+
+          {!loading && dreams.length > 0 && (
+            <>
+              {error && <p className="text-danger">{error}</p>}
+
+              <p className="text-muted" aria-live="polite">
+                {countLine(dreams.length, total)}
+              </p>
+
+              <ul className="hatch-dream-list">
+                {dreams.map((dream) => (
+                  <DreamRow
+                    key={dream.id}
+                    dream={dream}
+                    now={now}
+                    project={dream.projectKey ? byKey.get(dream.projectKey) : undefined}
+                    onChanged={onChanged}
+                    onRemoved={onRemoved}
+                  />
+                ))}
+              </ul>
+
+              {hasMore(dreams.length, total) && (
+                <div className="hatch-form-actions">
+                  <Button onClick={showMore} loading={loadingMore}>
+                    Show more
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );
