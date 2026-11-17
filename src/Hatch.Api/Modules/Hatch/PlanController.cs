@@ -66,6 +66,7 @@ public class PlanController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.PreApproval,
+                i.LocalModel,
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
@@ -87,6 +88,7 @@ public class PlanController(
         foreach (var c in children)
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(c.Id);
+            var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(c.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(c.Id);
             rows.Add(new ChildRollupDto(
                 new IssueCardDto(
@@ -107,6 +109,9 @@ public class PlanController(
                     PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                     PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
                     PreApprovalFrom: effectivePreApprovalFrom,
+                    LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                    LocalModelOwn: LocalModelLevels.Name(c.LocalModel),
+                    LocalModelFrom: effectiveLocalModelFrom,
                     StalledAt: c.StalledAt,
                     StalledWhy: c.StalledWhy,
                     Held: c.Held,
@@ -168,6 +173,7 @@ public class PlanController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.PreApproval,
+                i.LocalModel,
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
@@ -241,6 +247,7 @@ public class PlanController(
 
                 var row = byId[id];
                 var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(id);
+                var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(id);
                 var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(id);
 
                 entries.Add(new PlanEntryDto(
@@ -262,6 +269,9 @@ public class PlanController(
                         PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                         PreApprovalOwn: PreApprovalLevels.Name(row.PreApproval),
                         PreApprovalFrom: effectivePreApprovalFrom,
+                        LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                        LocalModelOwn: LocalModelLevels.Name(row.LocalModel),
+                        LocalModelFrom: effectiveLocalModelFrom,
                         StalledAt: row.StalledAt,
                         StalledWhy: row.StalledWhy,
                         Held: row.Held,

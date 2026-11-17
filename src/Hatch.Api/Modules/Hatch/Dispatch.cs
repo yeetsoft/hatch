@@ -980,7 +980,8 @@ public sealed class Dispatch(
                 var ofAgent = withModels.Where(d => d.Models.Agent is null || d.Models.Agent == owner).ToList();
                 if (ofAgent.Count == 0)
                     parts.Add($"pinned to {model} - no live runner's agent is {owner}");
-                else if (ofAgent.All(d => RunnerModels.Refuses(d.Refused, model)))
+                else if (ofAgent.All(d => RunnerModels.Refuses(d.Refused, model))
+                         || ofAgent.All(d => !Offers(d.Models, model, owner)))
                     parts.Add($"no live runner offers {model}");
             }
         }
@@ -1458,10 +1459,25 @@ public sealed class Dispatch(
                 ? ModelFamilies.NotOffered(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model, models.Agent)
                 : null;
 
-        return models.Agent is not null && ModelFamilies.Default.AgentOf(model) is { } owner && owner != models.Agent
-            ? ModelFamilies.Default.WrongAgent(model, models.Agent)
-            : null;
+        if (models.Agent is null || ModelFamilies.Default.AgentOf(model) is not { } owner) return null;
+        if (owner != models.Agent) return ModelFamilies.Default.WrongAgent(model, models.Agent);
+
+        return Offers(models, model, owner)
+            ? null
+            : ModelFamilies.NotOffered(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model, models.Agent);
     }
+
+    /// <summary>
+    /// Whether a runner of <paramref name="owner"/>, the agent of the pinned id
+    /// <paramref name="pinned"/>, may be handed it. False only when its list
+    /// names pinned ids of that agent and this one is not among them: a list
+    /// of aliases, or none, was never a list of ids, so it is judged by agent
+    /// alone. A runner with no agent has none to match and offers it.
+    /// </summary>
+    internal static bool Offers(ModelDeclaration declared, string pinned, string owner) =>
+        declared.Agent != owner
+        || declared.Has.Contains(pinned)
+        || !declared.Has.Any(m => ModelFamilies.Default.AgentOf(m) == owner);
 
     /// <summary>
     /// Why the asking runner will not take the move: the model it runs on - the
@@ -3216,6 +3232,10 @@ public sealed class PriorityTree
     // beside _rows rather than widening its tuple, as _runnerTags is.
     private readonly Dictionary<long, string?> _dangerous;
 
+    // Each issue's own local-model level - LocalModelLevels. Kept beside
+    // _dangerous rather than widening _rows; an issue with no entry reads as none.
+    private readonly Dictionary<long, int> _localModels;
+
     // Each issue's project's level - ProjectPriorities. Kept beside _dangerous
     // rather than widening _rows; an issue with no entry reads as normal.
     private readonly Dictionary<long, string> _projectLevels;
@@ -3235,9 +3255,11 @@ public sealed class PriorityTree
         Dictionary<long, (IReadOnlyList<string>, IReadOnlyList<string>)>? runnerTags = null,
         Dictionary<long, string?>? dangerous = null,
         Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>>? omissions = null,
-        Dictionary<long, string>? projectLevels = null)
+        Dictionary<long, string>? projectLevels = null,
+        Dictionary<long, int>? localModels = null)
     {
         _rows = rows;
+        _localModels = localModels ?? new();
         _projectLevels = projectLevels ?? new();
         _onePr = onePr ?? new();
         _runnerTags = runnerTags ?? new();
@@ -3267,6 +3289,7 @@ public sealed class PriorityTree
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous, ProjectPriority = i.Project!.Priority,
+                i.LocalModel,
             })
             .ToListAsync(ct);
 
@@ -3287,7 +3310,8 @@ public sealed class PriorityTree
                     g => g.Key,
                     g => (IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>)
                         g.Select(o => (o.RunnerName, o.Reason, o.By, o.At)).ToList()),
-            rows.ToDictionary(r => r.Id, r => r.ProjectPriority));
+            rows.ToDictionary(r => r.Id, r => r.ProjectPriority),
+            rows.ToDictionary(r => r.Id, r => r.LocalModel));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -3340,6 +3364,27 @@ public sealed class PriorityTree
         }
 
         return (PreApprovalLevels.None, null);
+    }
+
+    /// <summary>
+    /// The local-model level live on this issue: its own, if set, or the
+    /// nearest ancestor's that is not None. <c>FromKey</c> is null when the
+    /// level found is the issue's own, or when the walk never leaves None.
+    /// </summary>
+    public (int Level, string? FromKey) EffectiveLocalModel(long issueId)
+    {
+        var seen = new HashSet<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (_localModels.TryGetValue(id, out var level) && level != LocalModelLevels.None)
+                return (level, id == issueId || !TryGet(id, out var row) ? null : row.Key);
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return (LocalModelLevels.None, null);
     }
 
     /// <summary>
@@ -3697,6 +3742,9 @@ public sealed class DependencyGate
 
     /// <summary>The pre-approval live on this issue - see <see cref="PriorityTree.EffectivePreApproval"/>.</summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId) => _tree.EffectivePreApproval(issueId);
+
+    /// <summary>The local-model level live on this issue - see <see cref="PriorityTree.EffectiveLocalModel"/>.</summary>
+    public (int Level, string? FromKey) EffectiveLocalModel(long issueId) => _tree.EffectiveLocalModel(issueId);
 
     /// <summary>Whether one pull request is shared across the story or bug this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
     public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId) => _tree.EffectiveOnePr(issueId);

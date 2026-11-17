@@ -165,7 +165,7 @@ public sealed class IssueCommandsTests
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
-        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "runner tags:", "dangerous:", "stories at once:", "runner:" })
+        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "local model:", "runner tags:", "dangerous:", "stories at once:", "runner:" })
             Assert.DoesNotContain(absent, h.Said);
     }
 
@@ -472,6 +472,48 @@ public sealed class IssueCommandsTests
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
         Assert.Contains("pre-approval:  preapproved - approved and closed by the loop once green (inherited from HA-12)", h.Said);
+    }
+
+    [Theory]
+    [InlineData("prefer")]
+    [InlineData("require")]
+    public async Task Show_says_the_local_model_level_the_issue_holds(string level)
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { LocalModel = level });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains($"local model:  {level}", h.Said);
+        Assert.DoesNotContain("inherited", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_names_the_ancestor_a_local_model_level_came_from()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { LocalModel = LocalModelLevels.PreferName, LocalModelFrom = "HA-2405" });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("local model:  prefer (inherited from HA-2405)", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_nothing_of_a_local_model_at_none()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { LocalModel = LocalModelLevels.NoneName });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.DoesNotContain("local model", h.Said);
     }
 
     [Fact]

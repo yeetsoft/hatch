@@ -1098,7 +1098,7 @@ public class IssuesControllerTests
 
         var obj = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
-        Assert.Equal("choosing an issue's priority or pre-approval level is a person's call, not an agent's", obj.Value);
+        Assert.Equal("choosing an issue's priority, pre-approval or local-model level is a person's call, not an agent's", obj.Value);
         Assert.Empty(h.Db.Issues);
         Assert.Equal(before, await NextNumberAsync(h));
     }

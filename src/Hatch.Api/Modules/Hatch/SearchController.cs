@@ -150,6 +150,7 @@ public class SearchController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.PreApproval,
+                i.LocalModel,
                 i.RunnerTags,
                 i.Dangerous,
                 i.StalledAt,
@@ -188,6 +189,7 @@ public class SearchController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.PreApproval,
+                i.LocalModel,
                 i.RunnerTags,
                 i.Dangerous,
                 i.StalledAt,
@@ -221,6 +223,7 @@ public class SearchController(
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
@@ -258,6 +261,9 @@ public class SearchController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
+                LocalModelFrom: effectiveLocalModelFrom,
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,

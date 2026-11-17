@@ -165,6 +165,13 @@ public sealed class IssueCommands(Cli cli)
         else if (issue.PreApproval == PreApprovalLevels.PreApprovedName)
             cli.Say.Line($"pre-approval:  preapproved - approved and closed by the loop once green{preApprovalFrom}");
 
+        // Nothing for none, as the lines above say nothing for theirs.
+        if (issue.LocalModel != LocalModelLevels.NoneName)
+        {
+            var localModelFrom = issue.LocalModelFrom is { Length: > 0 } localModelAncestor ? $" (inherited from {localModelAncestor})" : "";
+            cli.Say.Line($"local model:  {issue.LocalModel}{localModelFrom}");
+        }
+
         // Said only where the ticket requires a tag, and naming where each tag
         // beyond its own came from, the way the levels above name an ancestor.
         if (issue.RunnerTags.Count > 0)

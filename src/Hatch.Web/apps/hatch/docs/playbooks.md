@@ -82,9 +82,10 @@ agent, and a board with none leaves it sitting rather than guessing.
 A row's model is also a statement about which runners can take it. An alias is
 taken only by a runner that offers it - `haiku sonnet opus fable` by default,
 narrowed by `HATCH_MODELS` and by what the runner learned its account cannot
-spawn - and a pinned id only by a runner of that agent. A runner that cannot is
-folded from the row in `hatch queue` with the sentence in [the
-runner](the-runner#models), so the row is never claimed and then dropped; the
+spawn - and a pinned id only by a runner of that agent that, where it lists
+pinned ids, lists this one. A runner that cannot is folded from the row in
+`hatch queue` with the sentence in [the runner](the-runner#models), so the row
+is never claimed and then dropped; the
 runner's own skip above is the backstop, and the board folds first. A board
 where **no live runner** offers the row's tier does not loop and does not look
 finished: the ticket waits, and the attention panel's **Waiting on a runner**

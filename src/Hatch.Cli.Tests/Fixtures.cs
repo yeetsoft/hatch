@@ -40,6 +40,7 @@ public static class Fixtures
         bool expedited = false, string? pullRequestUrl = null, bool express = false, string? priority = null,
         int? wipLimit = null, string? stalledWhy = null, int statusId = 3,
         string? preApproval = null, string? preApprovalFrom = null,
+        string? localModel = null, string? localModelFrom = null,
         IReadOnlyList<LandingDto>? landings = null) =>
         new(
             Key: key, ProjectId: 1, ProjectKey: "AER", Type: type, Title: title, Description: description,
@@ -51,6 +52,8 @@ public static class Fixtures
             Priority: priority ?? (expedited ? PriorityLevels.ExpeditedName : PriorityLevels.NormalName),
             PreApproval: preApproval ?? (express ? PreApprovalLevels.ExpressName : PreApprovalLevels.NoneName),
             PreApprovalFrom: preApprovalFrom,
+            LocalModel: localModel ?? LocalModelLevels.NoneName,
+            LocalModelFrom: localModelFrom,
             WipLimit: wipLimit, StalledWhy: stalledWhy, Landings: landings);
 
     public static IssueCardDto Card(string key, string type = "task", string title = "A child", int statusId = 3) =>

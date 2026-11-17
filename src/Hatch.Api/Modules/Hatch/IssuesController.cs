@@ -225,6 +225,7 @@ public class IssuesController(
                 i.AssigneeApiKeyId,
                 i.Priority,
                 i.PreApproval,
+                i.LocalModel,
                 i.RunnerTags,
                 i.Dangerous,
                 i.StalledAt,
@@ -251,6 +252,7 @@ public class IssuesController(
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
@@ -288,6 +290,9 @@ public class IssuesController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
+                LocalModelFrom: effectiveLocalModelFrom,
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,
@@ -340,7 +345,11 @@ public class IssuesController(
                 return forbidden;
         }
 
-        return await CreateIssueAsync(request, priority, ct, preApproval);
+        var localModel = LocalModelLevels.None;
+        if (request.LocalModel is { } localModelName && !LocalModelLevels.TryParse(localModelName, out localModel))
+            return BadRequest(IssueLocalModelController.UnknownLevel(localModelName));
+
+        return await CreateIssueAsync(request, priority, ct, preApproval, localModel: localModel);
     }
 
     /// <summary>
@@ -355,7 +364,7 @@ public class IssuesController(
     /// not a change from anything.
     /// </summary>
     internal async Task<ActionResult<IssueDto>> CreateIssueAsync(
-        IssueCreateRequest request, int priority, CancellationToken ct, int preApproval = PreApprovalLevels.None, int? statusId = null)
+        IssueCreateRequest request, int priority, CancellationToken ct, int preApproval = PreApprovalLevels.None, int? statusId = null, int localModel = LocalModelLevels.None)
     {
         var title = request.Title?.Trim();
         if (Invalid(title, request.Description, request.Type) is { } invalid) return BadRequest(invalid);
@@ -459,6 +468,7 @@ public class IssuesController(
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
                 PreApproval = preApproval,
+                LocalModel = localModel,
                 OnePullRequest = onePr,
                 Priority = priority,
                 CreatedBy = actor,
@@ -1333,13 +1343,13 @@ public class IssuesController(
     /// A person, not a key. Choosing the level an issue is born at is the
     /// operator's call, the same way setting it later is - see
     /// <see cref="OverrideRefusal"/>. Fires on the raw presence of
-    /// <c>priority</c> or <c>preApproval</c>, even as <c>normal</c> or
-    /// <c>none</c>, before either is parsed or the project is looked up, so an
+    /// <c>priority</c>, <c>preApproval</c> or <c>localModel</c>, even as
+    /// <c>normal</c> or <c>none</c>, before either is parsed or the project is looked up, so an
     /// agent learns nothing from the answer.
     /// </summary>
     private async Task<ObjectResult?> CreateLevelRefusal(IssueCreateRequest request, CancellationToken ct) =>
-        (request.Priority is not null || request.PreApproval is not null) && await caller.IsProgramAsync(ct)
-            ? new ObjectResult("choosing an issue's priority or pre-approval level is a person's call, not an agent's")
+        (request.Priority is not null || request.PreApproval is not null || request.LocalModel is not null) && await caller.IsProgramAsync(ct)
+            ? new ObjectResult("choosing an issue's priority, pre-approval or local-model level is a person's call, not an agent's")
             {
                 StatusCode = StatusCodes.Status403Forbidden,
             }
