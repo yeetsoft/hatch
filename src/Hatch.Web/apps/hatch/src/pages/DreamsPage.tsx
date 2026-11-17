@@ -28,6 +28,8 @@ import {
   showsDream,
   weaveBlocker,
   weaveModeRow,
+  weaveListQueryOnOpen,
+  weaveOnScreenLine,
   weaveProjectDefault,
   weaveRequest,
   weaveSeed,
@@ -236,6 +238,26 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
   const [pressing, setPressing] = useState(false);
   const [weaveError, setWeaveError] = useState<string | null>(null);
 
+  // Closing the list any other way than the switch - the magnifier, a Back
+  // navigation - turns the switch off too, so it never reads on over a
+  // folded list.
+  useEffect(() => {
+    if (!open) setWeaveOnScreen(false);
+  }, [open]);
+
+  // On: opens the list (and the search row with it) and, in mode seed with a
+  // typed seed and no search of its own, previews it by searching for it.
+  // Off: folds the list, which clears the search and the filters.
+  function chooseDreams(next: boolean) {
+    if (next) {
+      setWeaveOnScreen(true);
+      setParams(writeDreams({ ...filters, open: true, q: weaveListQueryOnOpen(weaveMode, weaveSeedText, draft) }));
+    } else {
+      setWeaveOnScreen(false);
+      closeHistory();
+    }
+  }
+
   const weaveProject = weaveProjectDefault(filters.projectId, projects);
 
   const weave = weaveRequest({
@@ -329,10 +351,21 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
           </div>
         )}
 
-        <label>
-          <input type="checkbox" checked={weaveOnScreen} onChange={(e) => setWeaveOnScreen(e.target.checked)} />
-          Use the dreams on screen
+        <label className="hatch-dream-weave__choose">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={weaveOnScreen}
+            onChange={(e) => chooseDreams(e.target.checked)}
+          />
+          <span className="hatch-dream-weave__choose-track" aria-hidden="true" />
+          <span>Choose the dreams</span>
         </label>
+        <p className="hatch-dream-weave__choose-hint">
+          {weaveOnScreen
+            ? 'The dreams below go in first, and search and filters change them.'
+            : 'The weave reads every dream and finds its own.'}
+        </p>
 
         <div className="hatch-dream-weave__actions">
           <Button
@@ -435,6 +468,12 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
           {!loading && dreams.length > 0 && (
             <>
               {error && <p className="text-danger">{error}</p>}
+
+              {weaveOnScreen && (
+                <p className="hatch-dream-weave__choose-count" aria-live="polite">
+                  {weaveOnScreenLine(dreams.length)}
+                </p>
+              )}
 
               <p className="text-muted" aria-live="polite">
                 {countLine(dreams.length, total)}
