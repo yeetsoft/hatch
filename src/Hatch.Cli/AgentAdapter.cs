@@ -62,6 +62,13 @@ public interface IAgentAdapter
     void Refresh() { }
 
     /// <summary>
+    /// The digest of <paramref name="model"/> as the server's list last read
+    /// reported it, for the work log. Answers from that stored list, never a new
+    /// read, so it is the list the session started under. The default has no list.
+    /// </summary>
+    string? Digest(string? model) => null;
+
+    /// <summary>
     /// What this agent can spawn, as the beat advertises it: the aliases unless
     /// the adapter knows better. Empty where it can name none.
     /// </summary>

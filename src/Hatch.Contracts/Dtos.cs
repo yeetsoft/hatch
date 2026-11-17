@@ -3386,6 +3386,9 @@ public record WorkLogReadDto(string Path, int Count);
 /// <param name="IssueType">The issue's type when the session was dispatched. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookModel">The model the session ran on. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookEffort">The effort the session ran at. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="DispatchModel">The model dispatch chose for the move: the playbook's model, its preferred local model, or the issue's override. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="ModelPlacement">Where that model ran: <c>local</c>, <c>fallback</c> (a preferred local model was wanted and the ordinary model ran instead) or <c>cloud</c>. Null from a CLI built before this shipped, and for any other value; never guessed by the server.</param>
+/// <param name="ModelDigest">The digest of a local model as the local server's model list reported it before the session started. Null unless the model ran locally.</param>
 /// <param name="Reads">The files the session read, heaviest first. Capped and clipped by the endpoint rather than refused. Null from a CLI built before this shipped.</param>
 public record WorkLogEntryRequest(
     string SessionId,
@@ -3412,7 +3415,10 @@ public record WorkLogEntryRequest(
     string? IssueType = null,
     string? PlaybookModel = null,
     string? PlaybookEffort = null,
-    IReadOnlyList<WorkLogReadDto>? Reads = null);
+    IReadOnlyList<WorkLogReadDto>? Reads = null,
+    string? DispatchModel = null,
+    string? ModelPlacement = null,
+    string? ModelDigest = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -3434,6 +3440,9 @@ public record WorkLogEntryRequest(
 /// <param name="IssueType">The issue's type when the session was dispatched. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookModel">The model the session ran on. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="PlaybookEffort">The effort the session ran at. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="DispatchModel">The model dispatch chose for the move: the playbook's model, its preferred local model, or the issue's override. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="ModelPlacement">Where that model ran: <c>local</c>, <c>fallback</c> (a preferred local model was wanted and the ordinary model ran instead) or <c>cloud</c>. Null from a CLI built before this shipped, and for any other value; never guessed by the server.</param>
+/// <param name="ModelDigest">The digest of a local model as the local server's model list reported it before the session started. Null unless the model ran locally.</param>
 /// <param name="Reads">The files the session read, heaviest first. Empty for a row posted without any, including every row written before this shipped.</param>
 public record WorkLogEntryDto(
     long Id,
@@ -3467,6 +3476,9 @@ public record WorkLogEntryDto(
     string? IssueType,
     string? PlaybookModel,
     string? PlaybookEffort,
+    string? DispatchModel,
+    string? ModelPlacement,
+    string? ModelDigest,
     IReadOnlyList<WorkLogReadDto> Reads);
 
 /// <summary>
@@ -3574,6 +3586,9 @@ public record WorkLogHistoryDto(
 /// <param name="Title">What the session said it did, or null when it never said - see <paramref name="Described"/>.</param>
 /// <param name="TotalTokens">The four counts added up - one definition of the headline, as everywhere else in the module.</param>
 /// <param name="Agent">Which agent ran this session, an id like <c>claude</c>. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="DispatchModel">The model dispatch chose for the move. Null from a CLI built before this shipped; never guessed by the server.</param>
+/// <param name="ModelPlacement">Where that model ran: <c>local</c>, <c>fallback</c> or <c>cloud</c>. Null from a CLI built before this shipped.</param>
+/// <param name="ModelDigest">The digest of a local model, read before the session started. Null unless the model ran locally.</param>
 public record WorkLogSessionDto(
     long Id,
     string SessionId,
@@ -3595,7 +3610,10 @@ public record WorkLogSessionDto(
     int? Requests,
     long? PeakContextTokens,
     int? PromptChars,
-    string? Agent);
+    string? Agent,
+    string? DispatchModel,
+    string? ModelPlacement,
+    string? ModelDigest);
 
 /// <summary>
 /// The sessions in a range, ranked - and what that whole range cost, whether or

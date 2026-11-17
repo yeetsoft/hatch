@@ -2498,6 +2498,13 @@ export interface WorkLogEntry {
   playbookModel: string | null;
   /** The effort the session ran at. */
   playbookEffort: string | null;
+  /** The model dispatch chose for the move. Null on a row posted by a CLI built before this existed. */
+  dispatchModel: string | null;
+  /** Where that model ran: on a local server, as the ordinary model after a
+      preferred local one could not be had, or in the cloud. Null on an older row. */
+  modelPlacement: 'local' | 'fallback' | 'cloud' | null;
+  /** A local model's digest, read before the session started. Null unless it ran locally. */
+  modelDigest: string | null;
   /** The files the session read and how often, heaviest first. Empty - never
       null - on a row posted without any. Mirrors WorkLogReadDto. */
   reads: { path: string; count: number }[];
@@ -2594,6 +2601,13 @@ export interface WorkLogSession {
   /** What a resume command is built from - see `resumeCommand`, which is what is actually drawn. */
   sessionId: string;
   agent: string | null;
+  /** The model dispatch chose for the move. Null on a row posted by a CLI built before this existed. */
+  dispatchModel: string | null;
+  /** Where that model ran: on a local server, as the ordinary model after a
+      preferred local one could not be had, or in the cloud. Null on an older row. */
+  modelPlacement: 'local' | 'fallback' | 'cloud' | null;
+  /** A local model's digest, read before the session started. Null unless it ran locally. */
+  modelDigest: string | null;
   /** The issue it was run against, and the issue's own title - both on the wire
       so a row links without a second read. */
   issueKey: string;

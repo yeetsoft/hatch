@@ -169,6 +169,11 @@ public sealed class FakeAdapter : IAgentAdapter
 
     public void Refresh() => Refreshed++;
 
+    /// <summary>The digest each model name answers, as a server's list would; absent is null.</summary>
+    public Dictionary<string, string> Digests { get; } = [];
+
+    public string? Digest(string? model) => model is not null && Digests.TryGetValue(model, out var d) ? d : null;
+
     /// <summary>
     /// Set to make <see cref="CanDeny"/> refuse a row carrying at least one
     /// denied-tools rule, with this sentence; null, or a row with no rules at

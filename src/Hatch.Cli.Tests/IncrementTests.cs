@@ -572,6 +572,48 @@ public sealed class IncrementTests
     }
 
     /// <summary>
+    /// HA-2413: the work log names the model dispatch chose, where it ran, and a local model's
+    /// digest from the list read before the session. A fallback ran the ordinary model, so it has none.
+    /// </summary>
+    [Theory]
+    [InlineData("local", "gemma3:4b", true, false, "sha256:aaa", "local", "sha256:aaa")]
+    [InlineData("fallback", "sonnet", false, true, "sha256:aaa", "fallback", null)]
+    [InlineData("cloud", "sonnet", false, false, "sha256:aaa", "cloud", null)]
+    public async Task An_increment_bills_what_model_ran_where_and_its_digest(
+        string _, string model, bool isLocal, bool fellBack, string listed,
+        string expectedPlacement, string? expectedDigest)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        var adapter = new FakeAdapter();
+        adapter.Digests[model] = listed;
+        var work = Fixtures.Work("AER-1") with { Model = model, ModelIsLocal = isLocal, ModelFellBack = fellBack };
+
+        await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
+            work, h.Root, model, "high", quiet: false, claim, default);
+
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal(model, billed.DispatchModel);
+        Assert.Equal(expectedPlacement, billed.ModelPlacement);
+        Assert.Equal(expectedDigest, billed.ModelDigest);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
     /// HA-1146: the model and effort billed are the ones the session was spawned with, which
     /// differ from the playbook's exactly when the operator overrode them; an empty one is null.
     /// </summary>

@@ -262,6 +262,35 @@ export function modelEffortPhrase(entry: Pick<WorkLogEntry, 'playbookModel' | 'p
   return `${entry.playbookModel}/${entry.playbookEffort}`;
 }
 
+/** The front of a digest, enough to tell two pulls of one tag apart. The whole
+    digest goes on a `title`, not here. A `sha256:` prefix is not part of it. */
+export function shortDigest(digest: string): string {
+  return digest.replace(/^sha256:/, '').slice(0, 12);
+}
+
+/** What a row says about the model that ran and where: `"Ran on sonnet"`, `"Ran
+    locally on gemma3:4b, digest 1a2b3c4d5e6f"`, or that a preferred local model
+    was not used. Null for a row with no placement - one written before the
+    placement was recorded - so it says nothing rather than something false. */
+export function modelRunPhrase(
+  entry: Pick<WorkLogEntry, 'dispatchModel' | 'modelPlacement' | 'modelDigest' | 'playbookModel'>,
+): string | null {
+  if (entry.modelPlacement === null) return null;
+
+  const model = entry.dispatchModel ?? entry.playbookModel;
+  if (model === null) return null;
+
+  if (entry.modelPlacement === 'local') {
+    return entry.modelDigest === null
+      ? `Ran locally on ${model}`
+      : `Ran locally on ${model}, digest ${shortDigest(entry.modelDigest)}`;
+  }
+  if (entry.modelPlacement === 'fallback') {
+    return `Fell back to ${model}, the ordinary model: no local runner was free`;
+  }
+  return `Ran on ${model}`;
+}
+
 /** The `<summary>` of a row's reads disclosure, e.g. `"Read 12 paths"`. Only
     called for a non-empty list - an entry that read nothing draws no
     disclosure at all. */

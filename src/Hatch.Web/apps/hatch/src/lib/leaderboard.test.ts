@@ -51,6 +51,9 @@ const session = (over: Partial<WorkLogSession> = {}): WorkLogSession => ({
   requests: 42,
   peakContextTokens: 140_000,
   promptChars: 16_533,
+  dispatchModel: null,
+  modelPlacement: null,
+  modelDigest: null,
   ...over,
 });
 

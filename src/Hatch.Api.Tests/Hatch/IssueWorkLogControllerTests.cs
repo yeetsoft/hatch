@@ -234,6 +234,54 @@ public class IssueWorkLogControllerTests
         Assert.Null(row.PlaybookEffort);
     }
 
+    [Theory]
+    [InlineData("gemma3:4b", "local", "sha256:abc", "gemma3:4b", "local", "sha256:abc")]
+    [InlineData("sonnet", "fallback", null, "sonnet", "fallback", null)]
+    [InlineData("sonnet", "cloud", null, "sonnet", "cloud", null)]
+    [InlineData("sonnet", "fallback", "sha256:abc", "sonnet", "fallback", null)]
+    [InlineData("sonnet", "elsewhere", "sha256:abc", "sonnet", null, null)]
+    [InlineData(null, null, null, null, null, null)]
+    public async Task TheModelThatRan_IsStoredAndReadBack_AndOnlyALocalRowKeepsADigest(
+        string? model, string? placement, string? digest,
+        string? expectedModel, string? expectedPlacement, string? expectedDigest)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with
+        {
+            DispatchModel = model,
+            ModelPlacement = placement,
+            ModelDigest = digest,
+        });
+
+        Assert.Equal(expectedModel, entry.DispatchModel);
+        Assert.Equal(expectedPlacement, entry.ModelPlacement);
+        Assert.Equal(expectedDigest, entry.ModelDigest);
+
+        var row = Assert.Single((await h.ReadAsync(issue.Key)).Entries);
+        Assert.Equal(expectedModel, row.DispatchModel);
+        Assert.Equal(expectedPlacement, row.ModelPlacement);
+        Assert.Equal(expectedDigest, row.ModelDigest);
+    }
+
+    [Fact]
+    public async Task AnOverLongModelOrDigest_IsClippedNotRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with
+        {
+            DispatchModel = new string('m', 200),
+            ModelPlacement = "local",
+            ModelDigest = new string('d', 200),
+        });
+
+        Assert.Equal(EfHatchPlaybook.MaxModelLength, entry.DispatchModel!.Length);
+        Assert.Equal(EfHatchWorkLogEntry.MaxModelDigestLength, entry.ModelDigest!.Length);
+    }
+
     [Fact]
     public async Task ABoardOrProjectSourcedRow_NeverCarriesAFileReference()
     {

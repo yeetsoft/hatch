@@ -417,6 +417,25 @@ public class WorkLogControllerTests
     }
 
     [Fact]
+    public async Task ASessionsModelPlacementAndDigest_AreCarriedExactlyAsStored_AndNullForAnOlderRow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 4_000, Now.AddHours(-4), dispatchModel: "gemma3:4b", modelPlacement: "local", modelDigest: "sha256:abc");
+        await h.SpendAsync(issue, 3_000, Now.AddHours(-3), dispatchModel: "sonnet", modelPlacement: "fallback");
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-2), dispatchModel: "sonnet", modelPlacement: "cloud");
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1));
+
+        var rows = (await h.SessionsAsync(sort: "tokens")).Sessions;
+
+        Assert.Equal(("gemma3:4b", "local", "sha256:abc"), (rows[0].DispatchModel, rows[0].ModelPlacement, rows[0].ModelDigest));
+        Assert.Equal(("sonnet", "fallback", (string?)null), (rows[1].DispatchModel, rows[1].ModelPlacement, rows[1].ModelDigest));
+        Assert.Equal(("sonnet", "cloud", (string?)null), (rows[2].DispatchModel, rows[2].ModelPlacement, rows[2].ModelDigest));
+        Assert.Equal(((string?)null, (string?)null, (string?)null), (rows[3].DispatchModel, rows[3].ModelPlacement, rows[3].ModelDigest));
+    }
+
+    [Fact]
     public async Task CostRanksOnTheDollars_AndEndedIsNewestFirst()
     {
         var h = await NewAsync();
@@ -1110,7 +1129,10 @@ public class WorkLogControllerTests
             string? model = null,
             string? effort = null,
             int? promptChars = null,
-            IReadOnlyList<WorkLogReadDto>? reads = null)
+            IReadOnlyList<WorkLogReadDto>? reads = null,
+            string? dispatchModel = null,
+            string? modelPlacement = null,
+            string? modelDigest = null)
         {
             IssueKey.TryParse(issue.Key, out var projectKey, out var number);
             var issueId = await Db.Issues.AsNoTracking().WithKey(projectKey, number).Select(i => i.Id).FirstAsync();
@@ -1140,6 +1162,9 @@ public class WorkLogControllerTests
                 IssueType = issueType,
                 PlaybookModel = model,
                 PlaybookEffort = effort,
+                DispatchModel = dispatchModel,
+                ModelPlacement = modelPlacement,
+                ModelDigest = modelDigest,
                 Reads = reads is null ? null : WorkLogRollup.WriteReads(reads),
                 CreatedAt = Now,
             };
