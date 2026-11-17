@@ -523,6 +523,62 @@ public sealed class WorkCommandTests
         Assert.Empty(Assert.Single(h.Sessions.Spawned).DeniedTools);
     }
 
+    // ---- A stalled local attempt steps off the ticket (HA-2412) ----
+
+    private static void LocalNamedTicket(Harness h, string level)
+    {
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", model: "qwen3-coder", modelIsLocal: true, localModel: level));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", "/api/issues/AER-1/omitted-runners/" + Uri.EscapeDataString(h.Runtime.RunnerName), Fixtures.Issue("AER-1"));
+        Bookkeeping(h, "AER-1");
+    }
+
+    private static IReadOnlyList<Call> Omissions(Harness h) =>
+        h.Wire.Calls.Where(c => c.Method == "PUT" && c.Path.Contains("/omitted-runners/", StringComparison.Ordinal)).ToList();
+
+    [Fact]
+    public async Task A_stalled_local_attempt_under_prefer_steps_off_through_hatch_work_too()
+    {
+        using var h = new Harness();
+        LocalNamedTicket(h, LocalModelLevels.PreferName);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var omitted = Assert.Single(Omissions(h));
+        Assert.Contains("qwen3-coder", omitted.Body, StringComparison.Ordinal);
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Contains("This attempt ran locally on qwen3-coder.", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("has stepped off this ticket", comment.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_stalled_local_attempt_under_require_stays_on_the_ticket_through_hatch_work()
+    {
+        using var h = new Harness();
+        LocalNamedTicket(h, LocalModelLevels.RequireName);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(Omissions(h));
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.DoesNotContain("stepped off", comment.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_model_flag_is_not_the_local_model_and_steps_nothing_off()
+    {
+        using var h = new Harness();
+        LocalNamedTicket(h, LocalModelLevels.PreferName);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--model", "sonnet"], default));
+
+        Assert.Empty(Omissions(h));
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.DoesNotContain("stepped off", comment.Body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_session_that_fails_still_gives_the_ticket_back()
     {

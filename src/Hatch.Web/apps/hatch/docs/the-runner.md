@@ -619,6 +619,15 @@ and the increment ends with `hatch: AER-12 - <runner> recused itself
 (<reason>), going on to the next` - no stall comment, no mark, no question.
 `hatch omit AER-12 --lift <runner>` undoes it.
 
+A runner also steps off a ticket by itself in one case. When a session that ran
+on the ticket's local model under `prefer` stalls, the runner writes its own
+omission, naming the model, and the stall comment says the attempt ran locally
+and that the runner has stepped off. The next attempt finds no free local runner
+and runs on the ordinary model. A second runner that holds the same model may
+try it locally once more, and steps off after its own stall. Under `require` the
+runner stays on the ticket, since nothing else may run it. The omission has no
+expiry: `hatch omit AER-12 --lift <runner>` undoes it.
+
 ### Refused models
 
 A key can also refuse models rather than tickets: a list of models its runner
