@@ -5680,6 +5680,21 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_APinnedIdMissingFromTheRunnersListOfIds_IsFoldedWithTheNotOfferedSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "pinned", h.Todo);
+        await h.OverrideAsync(issue, model: "alpha:1b");
+
+        var folded = Only(await h.Work.GetQueue(0, null, default, model: ["beta:2b"], agent: "ollama"));
+        Assert.Equal(NotOffered(issue, "todo", "alpha:1b", "ollama"), folded.Blocked);
+        Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, model: ["alpha:1b", "beta:2b"], agent: "ollama")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, agent: "ollama")).Blocked);
+    }
+
+    [Fact]
     public async Task Queue_AHop_IsNeverFoldedOnItsModel()
     {
         var h = await NewAsync();

@@ -1855,6 +1855,23 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task WaitingOnARunner_APinnedIdNoRunnerListsIsWaiting_AndARunnerWithAnEmptyListEmptiesIt()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "alpha:1b");
+        var issue = await h.FileAsync("task", "pinned to a pulled model", h.Todo);
+        await h.RunnerAsync("has-beta", null, models: ["beta:2b"], agent: "ollama");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("no live runner offers alpha:1b", row.Missing);
+
+        // A runner whose list was never read is not a runner with nothing.
+        await h.RunnerAsync("unread", null, models: [], agent: "ollama");
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
     public async Task WaitingOnARunner_ASplitFleetWithARefusalListsNothing()
     {
         var h = await NewAsync();

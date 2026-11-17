@@ -1921,6 +1921,45 @@ public class DispatchTests
         }
     }
 
+    // ---- ModelFold: a pinned id is judged against the runner's own list ----
+
+    private static string? FoldPinned(string pinned, ModelDeclaration declared)
+    {
+        var issue = new EfHatchIssue { ProjectId = 1, Number = 7, Type = "task", Title = "pinned", StatusId = 1, Rank = 1, CreatedBy = "test", CreatedAt = Now, UpdatedAt = Now, Project = new EfHatchProject { Key = "AER", Name = "Aerie", CreatedAt = Now }, ModelOverride = pinned };
+        return Dispatch.ModelFold(issue, new EfHatchStatus { Name = "todo", SortOrder = 20 }, null, declared);
+    }
+
+    [Fact]
+    public void ModelFold_APinnedIdTheRunnerLists_IsNotFolded() =>
+        Assert.Null(FoldPinned("alpha:1b", ModelDeclaration.Of(["alpha:1b", "beta:2b"], "ollama")));
+
+    [Fact]
+    public void ModelFold_APinnedIdMissingFromANonEmptyList_IsFoldedWithTheNotOfferedSentence() =>
+        Assert.Equal(
+            ModelFamilies.NotOffered("AER-7", "todo", "alpha:1b", "ollama"),
+            FoldPinned("alpha:1b", ModelDeclaration.Of(["beta:2b"], "ollama")));
+
+    [Fact]
+    public void ModelFold_AnEmptyList_IsJudgedByAgentAlone() =>
+        Assert.Null(FoldPinned("alpha:1b", ModelDeclaration.Of([], "ollama")));
+
+    [Fact]
+    public void ModelFold_AListOfAliasesOnlyOfTheSameAgent_IsJudgedByAgentAlone()
+    {
+        Assert.Null(FoldPinned("claude-made-up-1", ModelDeclaration.Of(["haiku", "sonnet"], "claude")));
+        Assert.Null(FoldPinned("alpha:1b", ModelDeclaration.Of(["haiku"], "ollama")));
+    }
+
+    [Fact]
+    public void ModelFold_APinnedIdOfAnotherAgent_KeepsTheWrongAgentSentence() =>
+        Assert.Equal(
+            ModelFamilies.Default.WrongAgent("alpha:1b", "claude"),
+            FoldPinned("alpha:1b", ModelDeclaration.Of(["beta:2b"], "claude")));
+
+    [Fact]
+    public void ModelFold_ARunnerWithNoAgent_IsNotFoldedOnAPinnedId() =>
+        Assert.Null(FoldPinned("alpha:1b", ModelDeclaration.Of(["beta:2b"], null)));
+
     private static async Task<Harness> NewAsync()
     {
         var db = new HatchContext(
