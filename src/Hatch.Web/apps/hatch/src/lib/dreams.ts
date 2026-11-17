@@ -260,6 +260,27 @@ export function removeDream(dreams: Dream[], id: number): Dream[] {
 /** The four ways a weave press can draw its epic, in the order the control offers them. */
 export const WEAVE_MODES: readonly WeaveMode[] = ['seed', 'pressing', 'common', 'next'];
 
+export interface WeaveModeRow {
+  name: WeaveMode;
+  word: string;
+  /** What the mode asks the weaving session for, in one line - a paraphrase
+      of `DreamWeave.Asks` on the server, which has no cross-language test
+      tying the two. A change to either needs the other read again. */
+  hint: string;
+}
+
+const WEAVE_MODE_WORDS_AND_HINTS: Record<WeaveMode, Omit<WeaveModeRow, 'name'>> = {
+  seed: { word: 'Seed', hint: 'Follow a thread you name.' },
+  pressing: { word: 'Most pressing', hint: 'The thread the dreams return to with the most urgency.' },
+  common: { word: 'Most common', hint: 'The thread the most dreams touch.' },
+  next: { word: 'Next step', hint: 'The nearest step toward the vision, given what has already shipped.' },
+};
+
+/** One row per mode, in `WEAVE_MODES` order - the one place that names a mode and says what it does. */
+export const WEAVE_MODE_ROWS: WeaveModeRow[] = WEAVE_MODES.map((name) => ({ name, ...WEAVE_MODE_WORDS_AND_HINTS[name] }));
+
+export const weaveModeRow = (mode: WeaveMode): WeaveModeRow => WEAVE_MODE_ROWS.find((row) => row.name === mode)!;
+
 /** The seed box's text: the person's own once they have typed - `seed` is no
     longer `null` the moment the box is touched, even to clear it - else the
     search box's own `q`, so the seed follows a search the person is already
