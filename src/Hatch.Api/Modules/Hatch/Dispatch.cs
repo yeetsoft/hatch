@@ -411,8 +411,9 @@ public sealed class Dispatch(
                         drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
                         has: has, requirement: requirement, refusal: refusal);
-                    if (!hop && (ModelFold(issue, status, playbook, models) is not null
-                                  || RefusalFold(issue, status, playbook, refusal) is not null))
+                    var localLevel = gate.EffectiveLocalModel(issue.Id).Level;
+                    if (!hop && (ModelFold(issue, status, playbook, models, localLevel) is not null
+                                  || RefusalFold(issue, status, playbook, refusal, localLevel) is not null))
                         modelFolded = true;
                     if (requirement is not null && rowTo is not null
                         && CodeGated(issue, status, rowTo, hop, implementation, merged, built)
@@ -482,11 +483,12 @@ public sealed class Dispatch(
                             : null,
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey,
-                        Model: issue.ModelOverride ?? playbook?.Model,
+                        Model: ResolveModel(issue, playbook, localLevel).Model,
                         DeniedTools: playbook is null ? null : EfHatchPlaybook.ReadDeniedTools(playbook.DeniedTools) ?? [],
                         WaitsOn: blocking.WaitsOn,
                         AnyOf: blocking.AnyOf,
-                        ProjectLevel: gate.ProjectLevel(issue.Id)));
+                        ProjectLevel: gate.ProjectLevel(issue.Id),
+                        ModelIsLocal: ResolveModel(issue, playbook, localLevel).Local));
                 }
             }
 
@@ -973,16 +975,16 @@ public sealed class Dispatch(
             {
                 if (!withModels.Any(d => !RunnerModels.Refuses(d.Refused, model)
                                          && (!d.Models.Judged || d.Models.Has.Count == 0 || d.Models.Has.Contains(model))))
-                    parts.Add($"no live runner offers {model}");
+                    parts.Add(row.ModelIsLocal ? RequiresLocally(model) : $"no live runner offers {model}");
             }
             else if (ModelFamilies.Default.AgentOf(model) is { } owner)
             {
                 var ofAgent = withModels.Where(d => d.Models.Agent is null || d.Models.Agent == owner).ToList();
                 if (ofAgent.Count == 0)
-                    parts.Add($"pinned to {model} - no live runner's agent is {owner}");
+                    parts.Add(row.ModelIsLocal ? RequiresLocally(model) : $"pinned to {model} - no live runner's agent is {owner}");
                 else if (ofAgent.All(d => RunnerModels.Refuses(d.Refused, model))
                          || ofAgent.All(d => !Offers(d.Models, model, owner)))
-                    parts.Add($"no live runner offers {model}");
+                    parts.Add(row.ModelIsLocal ? RequiresLocally(model) : $"no live runner offers {model}");
             }
         }
 
@@ -1007,6 +1009,8 @@ public sealed class Dispatch(
 
         return parts.Count == 0 ? null : string.Join("; ", parts);
     }
+
+    private static string RequiresLocally(string model) => $"requires {model} locally - no live runner lists it";
 
     /// <summary>
     /// Which of <paramref name="needs"/> no peer in <paramref name="withHas"/>
@@ -1440,6 +1444,24 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// The model a move runs on, and whether it is the row's local model. The
+    /// issue's own override is the most specific thing said about it and wins.
+    /// Else a ticket whose live level is <see cref="LocalModelLevels.Require"/>
+    /// runs a row that names a local model on that model, and nowhere else.
+    /// Anything else - a row with no local model, or a level of
+    /// <see cref="LocalModelLevels.None"/> or <see cref="LocalModelLevels.Prefer"/>,
+    /// which no dispatch acts on yet - runs on the row's own model.
+    /// </summary>
+    internal static (string? Model, bool Local) ResolveModel(EfHatchIssue issue, EfHatchPlaybook? playbook, int localModelLevel)
+    {
+        if (!string.IsNullOrWhiteSpace(issue.ModelOverride)) return (issue.ModelOverride, false);
+        if (localModelLevel == LocalModelLevels.Require && !string.IsNullOrWhiteSpace(playbook?.LocalModel))
+            return (playbook!.LocalModel, true);
+
+        return (playbook?.Model, false);
+    }
+
+    /// <summary>
     /// Why this caller's runner cannot spawn the move: the model it runs on -
     /// the issue's override, else the matched playbook's - is an alias the
     /// runner does not offer, or a pinned id of an agent other than the
@@ -1447,12 +1469,20 @@ public sealed class Dispatch(
     /// and for a move that names no model. <paramref name="playbook"/> is the
     /// row the move matched, the review row on a review self-move.
     /// </summary>
-    internal static string? ModelFold(EfHatchIssue issue, EfHatchStatus from, EfHatchPlaybook? playbook, ModelDeclaration models)
+    internal static string? ModelFold(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchPlaybook? playbook, ModelDeclaration models,
+        int localModelLevel = LocalModelLevels.None)
     {
         if (!models.Judged) return null;
 
-        var model = issue.ModelOverride ?? playbook?.Model;
+        var (model, local) = ResolveModel(issue, playbook, localModelLevel);
         if (string.IsNullOrWhiteSpace(model)) return null;
+
+        // A required local model is not an alias: only a runner of its agent
+        // can serve it, and any other - a cloud runner above all - is told
+        // why, in the ticket's own words, rather than that the id is pinned.
+        if (local && models.Agent is not null && ModelFamilies.Default.AgentOf(model) is { } localOwner && localOwner != models.Agent)
+            return ModelFamilies.LocalRequired(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model, models.Agent);
 
         if (ModelFamilies.Aliases.Contains(model))
             return models.Has.Count > 0 && !models.Has.Contains(model)
@@ -1486,11 +1516,13 @@ public sealed class Dispatch(
     /// refusal, for a runner that refuses nothing, and for a move that names no
     /// model.
     /// </summary>
-    internal static string? RefusalFold(EfHatchIssue issue, EfHatchStatus from, EfHatchPlaybook? playbook, RunnerRefusal? refusal)
+    internal static string? RefusalFold(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchPlaybook? playbook, RunnerRefusal? refusal,
+        int localModelLevel = LocalModelLevels.None)
     {
         if (refusal is null || refusal.Models.Count == 0) return null;
 
-        var model = issue.ModelOverride ?? playbook?.Model;
+        var model = ResolveModel(issue, playbook, localModelLevel).Model;
         return RunnerModels.Refuses(refusal.Models, model)
             ? ModelFamilies.Refused(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model!, refusal.Runner)
             : null;
@@ -2258,12 +2290,12 @@ public sealed class Dispatch(
 
         // A move the runner cannot spawn. Not a hop, which spawns nothing, and
         // not an idle review self-move, which the review judge speaks for.
-        if (!hop && !reviewIdle && ModelFold(issue, from, playbook, models ?? ModelDeclaration.Unjudged) is { } modelBlock)
+        if (!hop && !reviewIdle && ModelFold(issue, from, playbook, models ?? ModelDeclaration.Unjudged, gate.EffectiveLocalModel(issue.Id).Level) is { } modelBlock)
             return new Blocking(modelBlock, BlockedKinds.Other);
 
         // Beside the model fold, and gated as it is: a runner that refuses the
         // model is never dispatched a move on it, from any door.
-        if (!hop && !reviewIdle && RefusalFold(issue, from, playbook, refusal) is { } refusalBlock)
+        if (!hop && !reviewIdle && RefusalFold(issue, from, playbook, refusal, gate.EffectiveLocalModel(issue.Id).Level) is { } refusalBlock)
             return new Blocking(refusalBlock, BlockedKinds.Other);
 
         // After the model and refusal folds, before the dependencies: a runner that cannot
@@ -2947,7 +2979,7 @@ public sealed record ScanRow(
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
     string? Model = null, IReadOnlyList<string>? DeniedTools = null,
     IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false,
-    string? ProjectLevel = null);
+    string? ProjectLevel = null, bool ModelIsLocal = false);
 
 /// <summary>
 /// <see cref="Dispatch.BlockedWithKind"/>'s answer: the sentence and its kind,

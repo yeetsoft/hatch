@@ -1643,6 +1643,29 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task WaitingOnARunner_ARequiredLocalModelNoLiveRunnerLists_SaysSo_UntilOneDoes()
+    {
+        var h = await NewAsync();
+        var row = Playbook(h.Todo, h.InProgress, "", "sonnet");
+        row.LocalModel = "alpha:1b";
+        h.Db.AddRange(row, Playbook(h.InProgress, h.Review, "", "sonnet"));
+        var issue = await h.FileAsync("task", "stays on this machine", h.Todo);
+        issue.LocalModel = LocalModelLevels.Require;
+        await h.Db.SaveChangesAsync();
+        await h.RunnerAsync("host:/cloud", null, models: ["haiku", "sonnet"], agent: "claude");
+        await h.RunnerAsync("host:/local", null, models: ["beta:2b"], agent: "ollama");
+
+        var waiting = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(
+            new WaitingOnARunnerDto(Key(issue), "stays on this machine", "task", "todo", "requires alpha:1b locally - no live runner lists it"),
+            waiting);
+
+        await h.RunnerAsync("host:/local-two", null, models: ["alpha:1b", "beta:2b"], agent: "ollama");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
     public async Task WaitingOnARunner_CountsNoRunnerThatIsStalePausedOrExhausted()
     {
         var h = await NewAsync();
