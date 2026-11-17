@@ -77,6 +77,8 @@ const FIXED = [
   '--console-dim',
   '--console-glow',
   '--letterbox',
+  '--gradient-ink-from',
+  '--gradient-ink-to',
   '--shadow',
   '--overlay',
   ...Array.from({ length: 8 }, (_, at) => `--series-${at + 1}`),

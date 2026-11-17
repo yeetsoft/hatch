@@ -87,6 +87,14 @@ const GROUPS: ColorGroup[] = [
     ],
   },
   {
+    title: 'Gradient ink',
+    note: "Page text, never a fill: the stops of the gradient that .hatch-gradient-ink clips to the glyphs. Light takes the bar's own two stops; the bar stays dark in dark mode, so dark takes the two light ends instead. Both are fixed in a custom palette.",
+    tokens: [
+      { name: '--gradient-ink-from', use: 'The ink’s near stop, blue; the colour under it where clipping is missing' },
+      { name: '--gradient-ink-to', use: 'The far stop, violet' },
+    ],
+  },
+  {
     title: 'Fixed',
     note: 'Black in both themes, or white regardless of theme - neither follows the palette.',
     tokens: [
