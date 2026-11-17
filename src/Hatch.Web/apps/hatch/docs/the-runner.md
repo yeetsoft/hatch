@@ -284,7 +284,11 @@ under the same key sees (a `tag=` sent replaces them, never joins them; a key
 with none set still advertises none). A call with no key and neither `tag=`
 nor `dangerous=` sent is the board's own scan and is judged on no tags at
 all, so a person's board-wide read folds nothing on tags.
-[Models](#models) and [Has](#has) below have each detection in full. A
+[Models](#models) and [Has](#has) below have each detection in full. The
+accelerator is a third detection on the same terms: read once per process, every
+beat carries it (the backend, the device count and the memory total across
+devices), and it is never a person's to set. A runner reports it only where its
+Ollama is on its own machine, and `hatch runners` prints it beside `has`. A
 container `hatch image build` built advertises two more facts with no
 detection of its own, read once at start the same way the six [machine
 facts](#what---show-prints) are: the dependency set it was baked with, which

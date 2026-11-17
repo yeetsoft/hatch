@@ -168,7 +168,10 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             Image: runner.Image,
             AgentDownUntil: runner.AgentDownUntil,
             AgentDownKind: runner.AgentDownKind,
-            AgentDownLine: runner.AgentDownLine);
+            AgentDownLine: runner.AgentDownLine,
+            AcceleratorMemoryBytes: runner.AcceleratorMemoryBytes,
+            AcceleratorDeviceCount: runner.AcceleratorDeviceCount,
+            AcceleratorBackend: runner.AcceleratorBackend);
     }
 
     /// <summary>
@@ -265,6 +268,9 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         Models = beat.Models,
         Has = beat.Has,
         Image = beat.Image,
+        AcceleratorMemoryBytes = beat.AcceleratorMemoryBytes,
+        AcceleratorDeviceCount = beat.AcceleratorDeviceCount,
+        AcceleratorBackend = beat.AcceleratorBackend,
         RefusesDangerous = beat.RefusesDangerous,
         Projects = beat.Projects,
         ExhaustedUntil = beat.ExhaustedUntil,

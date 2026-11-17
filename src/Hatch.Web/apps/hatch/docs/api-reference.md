@@ -1168,6 +1168,16 @@ seven - `os`, `arch`, `agentVersion`, `container`, `username`,
 `RunnerSessionDto` is what `GET /runners` answers under each runner's
 `sessions`, and what `hatch runners --json` prints unchanged.
 
+The body takes three accelerator facts beside them - `acceleratorMemoryBytes`
+(the total across devices, in bytes), `acceleratorDeviceCount` and
+`acceleratorBackend` (`cuda`, `rocm`, `metal`, `vulkan` or `none`, capped at 16
+characters) - which a runner reports only where its Ollama is on its own
+machine. They are kept on the session and on the runner's row alike: an absent
+field leaves the stored value alone, except that a fresh `loop` beat writes the
+row's exactly as sent, so a restart that reports none clears the last process's.
+Both `RunnerSessionDto` and the `GET /runners` row carry all three, and a
+config ceiling on the row does not hide them.
+
 `PATCH /runners/{name}/sessions/{id}` sets one session's state
 (`RunnerSessionPatchRequest { state }`) without touching any sibling session
 under the same key; `404`s an id that is not this key's own.

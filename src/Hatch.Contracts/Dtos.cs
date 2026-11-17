@@ -4700,6 +4700,14 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// that names none. Null for a runner from the generic image, or an older one
 /// that never said.
 /// </param>
+/// <param name="AcceleratorMemoryBytes">
+/// The accelerator memory this runner reports, in bytes, total across its
+/// devices - a fact the runner reports about itself, carried on every beat, on
+/// the terms <see cref="Image"/> has. Null where it never reported one, or
+/// where its Ollama is hosted elsewhere.
+/// </param>
+/// <param name="AcceleratorDeviceCount">How many accelerator devices this runner reports, on the same terms as <see cref="AcceleratorMemoryBytes"/>.</param>
+/// <param name="AcceleratorBackend">The accelerator's backend - <c>cuda</c>, <c>metal</c>, <c>rocm</c> or <c>none</c> - on the same terms as <see cref="AcceleratorMemoryBytes"/>.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -4762,7 +4770,10 @@ public record RunnerDto(
     IReadOnlyList<string> RefusedModels = null!,
     DateTimeOffset? AgentDownUntil = null,
     string? AgentDownKind = null,
-    string? AgentDownLine = null)
+    string? AgentDownLine = null,
+    long? AcceleratorMemoryBytes = null,
+    int? AcceleratorDeviceCount = null,
+    string? AcceleratorBackend = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4776,7 +4787,9 @@ public record RunnerDto(
 
 /// <summary>
 /// One session an api key behind a runner has open, read beside the key's
-/// own fields on <see cref="RunnerDto"/>.
+/// own fields on <see cref="RunnerDto"/>. The three accelerator fields are the
+/// facts this session's runner reports about itself on every beat, as on
+/// <see cref="RunnerDto"/>: memory is the total across its devices.
 /// </summary>
 public record RunnerSessionDto(
     int Id,
@@ -4831,7 +4844,10 @@ public record RunnerSessionDto(
     string? Image = null,
     DateTimeOffset? AgentDownUntil = null,
     string? AgentDownKind = null,
-    string? AgentDownLine = null)
+    string? AgentDownLine = null,
+    long? AcceleratorMemoryBytes = null,
+    int? AcceleratorDeviceCount = null,
+    string? AcceleratorBackend = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
