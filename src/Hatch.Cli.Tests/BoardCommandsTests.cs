@@ -1299,6 +1299,20 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public void Waiting_prints_a_required_local_model_no_runner_lists_verbatim()
+    {
+        var waiting = new[]
+        {
+            new WaitingOnARunnerDto(
+                "AER-1", "t", "task", "In Progress", "requires alpha:1b locally - no live runner lists it"),
+        };
+
+        Assert.Equal(
+            ["1 issue waits: requires alpha:1b locally - no live runner lists it"],
+            BoardCommands.Waiting(waiting));
+    }
+
+    [Fact]
     public async Task A_refusal_from_the_origin_is_the_sentence_the_origin_wrote()
     {
         using var h = new CliHarness();

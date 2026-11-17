@@ -679,7 +679,10 @@ increment does with the answer, rather than retold here. `/work/next` and
 playbook row and the prompt the increment is to run where nothing blocks it,
 or the sentence saying what does - see
 [what a session is told](what-a-session-is-told) for what the prompt itself
-holds.
+holds. The `WorkDto` also carries `model`, the model the session runs on, and
+`modelIsLocal`, true where it is the playbook row's local model because the
+ticket requires it; `model` is the same value as `playbook.model`, the issue's
+own override first, and both are null on a hop, as `playbook` is.
 
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus
@@ -875,7 +878,7 @@ that row.
 
 `PlaybookDto` carries the transition (`FromStatusId`/`FromStatusName`,
 `ToStatusId`/`ToStatusName`), `Types`, `Shape`, the effective `Prompt`
-beside the row's own `DefaultPrompt`, `Model`, `LocalModel` (the Ollama id a move runs on when it runs locally; null means the row never runs locally; `POST`/`PATCH` take it as a string, null leaving it alone on patch and blank clearing it, and an alias or another agent's id is a `400` - carried in a runner's work answer beside `Model`, not yet read by dispatch), `Effort`, an optional `Budget`
+beside the row's own `DefaultPrompt`, `Model`, `LocalModel` (the Ollama id a move runs on when it runs locally; null means the row never runs locally; `POST`/`PATCH` take it as a string, null leaving it alone on patch and blank clearing it, and an alias or another agent's id is a `400` - carried in a runner's work answer beside `Model`, and read by dispatch for a ticket that requires its local model), `Effort`, an optional `Budget`
 (millions of tokens), `BriefLimit` (characters), `QuietLimitSeconds` (seconds a
 claim may go without a word; null inherits the server's quiet lapse) and
 `MaxRunSeconds` (seconds a session may run before it is cut off; null means no
@@ -1447,7 +1450,9 @@ own trouble (`backup`), null when `Hatch__BackupPath` is unset or the
 backup is healthy. `waitingOnARunner` lists the issues whose next move is
 clear but that no live runner can take, because every live runner's own
 declaration folds it on the model it runs on or on a development dependency
-its project's repository asks for; each entry carries `key`, `title`, `type`,
+its project's repository asks for - a move whose ticket requires its local
+model, and that no live runner lists, reads `requires <id> locally - no live
+runner lists it`; each entry carries `key`, `title`, `type`,
 `move` (the column the move starts from) and `missing` (what no live runner
 has), ordered by tier and then rank, and the list is empty when no runner is
 live. `trainStalled` lists the projects whose merge train passed its driver

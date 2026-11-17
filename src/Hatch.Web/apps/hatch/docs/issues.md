@@ -233,8 +233,13 @@ is not none, and a board card at `prefer` or `require` wears a small mark.
 Any person may set it. A key-holder sees the word, with where it was
 inherited from, and nothing to press.
 
-The setting is recorded and shown, but the loop does not act on it yet:
-nothing is routed to a local model because of it.
+At `require`, every move under the ticket whose playbook row names a local
+model runs on that model, and only on a runner that lists it; the move waits
+until one does, and the ticket stalls as any other would if that model cannot
+finish it. A row with no local model runs as it does today, and the issue's own
+model override still wins. See [the local model](playbooks#the-local-model) on
+a playbook row. `prefer` is recorded and shown but the loop does not act on it
+yet.
 
 ## Finished with no code
 

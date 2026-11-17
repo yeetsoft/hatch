@@ -672,6 +672,12 @@ describe('waitingOnARunnerLines', () => {
       waitingOnARunnerLines([waitingOnARunner({ missing: 'no live runner offers fable; no live runner has pwsh 7' })]),
     ).toEqual(['1 issue waits: no live runner offers fable; no live runner has pwsh 7']);
   });
+
+  it('says a required local model no runner lists whole, after a colon', () => {
+    expect(
+      waitingOnARunnerLines([waitingOnARunner({ missing: 'requires alpha:1b locally - no live runner lists it' })]),
+    ).toEqual(['1 issue waits: requires alpha:1b locally - no live runner lists it']);
+  });
 });
 describe('runnerCapacityWords', () => {
   it('names the one taker, pluralising the step count', () => {

@@ -69,6 +69,10 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
             ? $"{key} in {column} runs on {model} - this runner does not offer it"
             : $"{key} in {column} runs on {model} - this runner's {agent} does not offer it";
 
+    /// <summary>The sentence a board or runner prints when <paramref name="key"/> requires its local <paramref name="model"/> and the runner's <paramref name="agent"/> is not the one that serves it.</summary>
+    public static string LocalRequired(string key, string column, string model, string? agent) =>
+        $"{key} in {column} requires its local model {model} - this runner's agent is {agent}";
+
     /// <summary>The sentence a board or runner prints when <paramref name="key"/>'s <paramref name="column"/> runs on a <paramref name="model"/> that <paramref name="runner"/> refuses.</summary>
     public static string Refused(string key, string column, string model, string runner) =>
         $"{key} in {column} runs on {model} - {runner} refuses it";

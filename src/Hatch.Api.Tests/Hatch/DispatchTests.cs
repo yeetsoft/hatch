@@ -1960,6 +1960,74 @@ public class DispatchTests
     public void ModelFold_ARunnerWithNoAgent_IsNotFoldedOnAPinnedId() =>
         Assert.Null(FoldPinned("alpha:1b", ModelDeclaration.Of(["beta:2b"], null)));
 
+
+    // ---- ResolveModel and the local model: a required ticket runs a row's local model, and nowhere else ----
+
+    private static EfHatchIssue ModelIssue(string? modelOverride = null) =>
+        new() { ProjectId = 1, Number = 7, Type = "task", Title = "local", StatusId = 1, Rank = 1, CreatedBy = "test", CreatedAt = Now, UpdatedAt = Now, Project = new EfHatchProject { Key = "AER", Name = "Aerie", CreatedAt = Now }, ModelOverride = modelOverride };
+
+    private static EfHatchPlaybook ModelRow(string model, string? localModel) =>
+        new() { FromStatusId = 1, ToStatusId = 2, Types = "", Shape = "any", Model = model, Effort = "high", LocalModel = localModel, CreatedAt = Now, UpdatedAt = Now };
+
+    private static string? FoldRequired(ModelDeclaration declared) =>
+        Dispatch.ModelFold(ModelIssue(), new EfHatchStatus { Name = "todo", SortOrder = 20 }, ModelRow("sonnet", "alpha:1b"), declared, LocalModelLevels.Require);
+
+    [Fact]
+    public void ResolveModel_AnOverride_BeatsRequire() =>
+        Assert.Equal(("opus", false), Dispatch.ResolveModel(ModelIssue("opus"), ModelRow("sonnet", "alpha:1b"), LocalModelLevels.Require));
+
+    [Fact]
+    public void ResolveModel_RequireWithARowLocalModel_ResolvesToIt() =>
+        Assert.Equal(("alpha:1b", true), Dispatch.ResolveModel(ModelIssue(), ModelRow("sonnet", "alpha:1b"), LocalModelLevels.Require));
+
+    [Fact]
+    public void ResolveModel_RequireWithNoRowLocalModel_ResolvesToTheRowsModel()
+    {
+        Assert.Equal(("sonnet", false), Dispatch.ResolveModel(ModelIssue(), ModelRow("sonnet", null), LocalModelLevels.Require));
+        Assert.Equal(("sonnet", false), Dispatch.ResolveModel(ModelIssue(), ModelRow("sonnet", "  "), LocalModelLevels.Require));
+    }
+
+    [Theory]
+    [InlineData(LocalModelLevels.None)]
+    [InlineData(LocalModelLevels.Prefer)]
+    public void ResolveModel_NoneAndPrefer_LeaveTheRowsModel(int level) =>
+        Assert.Equal(("sonnet", false), Dispatch.ResolveModel(ModelIssue(), ModelRow("sonnet", "alpha:1b"), level));
+
+    [Fact]
+    public void ResolveModel_NoPlaybook_NamesNoModel() =>
+        Assert.Equal((null, false), Dispatch.ResolveModel(ModelIssue(), null, LocalModelLevels.Require));
+
+    [Fact]
+    public void ModelFold_ARequiredMove_OnACloudRunner_IsFoldedWithTheLocalRequiredSentence() =>
+        Assert.Equal(
+            ModelFamilies.LocalRequired("AER-7", "todo", "alpha:1b", "claude"),
+            FoldRequired(ModelDeclaration.Of(["haiku", "sonnet"], "claude")));
+
+    [Fact]
+    public void ModelFold_ARequiredMove_OnARunnerListingTheId_IsNotFolded() =>
+        Assert.Null(FoldRequired(ModelDeclaration.Of(["alpha:1b", "beta:2b"], "ollama")));
+
+    [Fact]
+    public void ModelFold_ARequiredMove_OnARunnerOfTheAgentLackingTheId_IsFoldedAsNotOffered() =>
+        Assert.Equal(
+            ModelFamilies.NotOffered("AER-7", "todo", "alpha:1b", "ollama"),
+            FoldRequired(ModelDeclaration.Of(["beta:2b"], "ollama")));
+
+    [Fact]
+    public void ModelFold_WithoutRequire_IgnoresTheRowsLocalModel() =>
+        Assert.Null(Dispatch.ModelFold(
+            ModelIssue(), new EfHatchStatus { Name = "todo", SortOrder = 20 }, ModelRow("sonnet", "alpha:1b"),
+            ModelDeclaration.Of(["haiku", "sonnet"], "claude"), LocalModelLevels.Prefer));
+
+    [Fact]
+    public void RefusalFold_ARequiredMove_ReadsTheLocalModel()
+    {
+        var refusal = new RunnerRefusal("night", ["alpha:1b"]);
+        var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
+        Assert.NotNull(Dispatch.RefusalFold(ModelIssue(), todo, ModelRow("sonnet", "alpha:1b"), refusal, LocalModelLevels.Require));
+        Assert.Null(Dispatch.RefusalFold(ModelIssue(), todo, ModelRow("sonnet", "alpha:1b"), refusal));
+    }
+
     private static async Task<Harness> NewAsync()
     {
         var db = new HatchContext(
