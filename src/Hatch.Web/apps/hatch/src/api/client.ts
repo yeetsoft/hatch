@@ -51,6 +51,8 @@ import type {
   Person,
   PersonSession,
   PersonCreateRequest,
+  PersonScope,
+  PersonScopeWriteRequest,
   PersonWriteRequest,
   Playbook,
   PlaybookCreateRequest,
@@ -972,6 +974,9 @@ export const createPerson = (request: PersonCreateRequest) =>
 export const putPerson = (id: string, request: PersonWriteRequest) =>
   fetchJson<Person>(`/api/people/${seg(id)}`, { method: 'PUT', ...asJson(request) });
 export const deletePerson = (id: string) => fetchJson<void>(`/api/people/${seg(id)}`, { method: 'DELETE' });
+export const getScopes = () => fetchJson<PersonScope[]>('/api/scopes');
+export const putScope = (personId: string, request: PersonScopeWriteRequest) =>
+  fetchJson<PersonScope>(`/api/scopes/${seg(personId)}`, { method: 'PUT', ...asJson(request) });
 export const getPersonSessions = (id: string) =>
   fetchJson<PersonSession[]>(`/api/people/${seg(id)}/sessions`);
 export const revokeGrant = (id: string) => fetchJson<void>(`/api/auth/grants/${seg(id)}`, { method: 'DELETE' });

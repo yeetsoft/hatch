@@ -2973,6 +2973,24 @@ export interface Person {
   lastSignInAt: string | null;
 }
 
+/** How much of the board a person sees. Mirrors the server's scope modes. */
+export type PersonScopeMode = 'none' | 'all' | 'some';
+
+/** One person's scope. `all` carries every project id, `none` carries none.
+    Mirrors PersonScopeDto. */
+export interface PersonScope {
+  personId: string;
+  mode: PersonScopeMode;
+  projectIds: number[];
+}
+
+/** What a scope change puts. `projectIds` is required under `some` and ignored
+    otherwise. */
+export interface PersonScopeWriteRequest {
+  mode: PersonScopeMode;
+  projectIds?: number[];
+}
+
 /** What a rename or a role change puts. Both fields are required: an omitted
     role would be a demotion by omission. */
 export interface PersonWriteRequest {

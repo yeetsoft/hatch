@@ -5760,31 +5760,36 @@ input.hatch-inline-title-input {
   opacity: 0.6;
 }
 
-.hatch-type-pill.epic {
+.hatch-type-pill.epic,
+.hatch-type-badge.epic {
   border-color: var(--primary);
   background: var(--primary);
   color: var(--on-accent);
 }
 
-.hatch-type-pill.reflection {
+.hatch-type-pill.reflection,
+.hatch-type-badge.reflection {
   border-color: var(--series-6);
   background: var(--series-6);
   color: var(--on-accent);
 }
 
-.hatch-type-pill.story {
+.hatch-type-pill.story,
+.hatch-type-badge.story {
   border-color: var(--series-7);
   background: var(--series-7);
   color: var(--on-accent);
 }
 
-.hatch-type-pill.task {
+.hatch-type-pill.task,
+.hatch-type-badge.task {
   border-color: var(--series-3);
   background: var(--series-3);
   color: var(--on-accent);
 }
 
-.hatch-type-pill.bug {
+.hatch-type-pill.bug,
+.hatch-type-badge.bug {
   border-color: var(--danger);
   background: var(--danger);
   color: var(--on-accent);
@@ -5796,7 +5801,9 @@ input.hatch-inline-title-input {
    --on-accent on the dark theme's fills. The glyph keeps the type's colour on
    a card; only the ink on this face changes. */
 .hatch-type-pill.reflection,
+.hatch-type-badge.reflection,
 .hatch-type-pill.task,
+.hatch-type-badge.task,
 .hatch-type-pill-step.reflection.here,
 .hatch-type-pill-step.task.here {
   color: var(--ink);
