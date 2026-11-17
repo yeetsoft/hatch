@@ -163,6 +163,89 @@ public sealed class GoToWorkTests
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
+    // ---- A stalled local attempt steps off the ticket (HA-2412) ----
+
+    /// <summary>One ticket whose dispatch ran on a local model at <paramref name="level"/>, and which the session leaves where it found it.</summary>
+    private static void LocalTicket(Harness h, string level, int letGo = 0)
+    {
+        OneTicket(h);
+        h.Wire.Replace(
+            "GET", "/api/work/AER-1", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                Fixtures.Work("AER-1", from: "In Review", model: "qwen3-coder", modelIsLocal: true, localModel: level, letGo: letGo), Fixtures.Json));
+        h.Wire.Json("POST", "/api/issues/AER-1/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+    }
+
+    private static IReadOnlyList<Call> Omissions(Harness h) =>
+        h.Wire.Calls.Where(c => c.Method == "PUT" && c.Path.Contains("/omitted-runners/", StringComparison.Ordinal)).ToList();
+
+    [Fact]
+    public async Task A_stalled_local_attempt_under_prefer_steps_the_runner_off_the_ticket()
+    {
+        using var h = new Harness();
+        LocalTicket(h, LocalModelLevels.PreferName);
+        h.Wire.Json("PUT", $"/api/issues/AER-1/omitted-runners/{Uri.EscapeDataString(h.Runtime.RunnerName)}", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var omitted = Assert.Single(Omissions(h));
+        Assert.Contains("qwen3-coder", omitted.Body, StringComparison.Ordinal);
+
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Contains("This attempt ran locally on qwen3-coder.", comment.Body, StringComparison.Ordinal);
+        Assert.Contains($"{h.Runtime.RunnerName} has stepped off this ticket", comment.Body, StringComparison.Ordinal);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_second_stalled_local_attempt_under_prefer_steps_off_and_says_so_on_the_flag()
+    {
+        using var h = new Harness();
+        LocalTicket(h, LocalModelLevels.PreferName, letGo: 1);
+        h.Wire.Json("PUT", $"/api/issues/AER-1/omitted-runners/{Uri.EscapeDataString(h.Runtime.RunnerName)}", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Single(Omissions(h));
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Contains("This attempt ran locally on qwen3-coder.", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("has stepped off this ticket", comment.Body, StringComparison.Ordinal);
+        Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+    }
+
+    [Fact]
+    public async Task A_stalled_local_attempt_under_require_leaves_the_runner_on_the_ticket()
+    {
+        using var h = new Harness();
+        LocalTicket(h, LocalModelLevels.RequireName);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(Omissions(h));
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.DoesNotContain("stepped off", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("ran locally", comment.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_refused_step_off_still_writes_the_stall_comment_and_does_not_claim_one()
+    {
+        using var h = new Harness();
+        LocalTicket(h, LocalModelLevels.PreferName);
+        h.Wire.Reply("PUT", $"/api/issues/AER-1/omitted-runners/{Uri.EscapeDataString(h.Runtime.RunnerName)}", HttpStatusCode.Forbidden, "no");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Single(Omissions(h));
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Contains("let it go", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("stepped off", comment.Body, StringComparison.Ordinal);
+        Assert.Contains(h.Say.Complained, l => l.Contains("could not step off", StringComparison.Ordinal));
+    }
+
     /// <summary>The same release, for a pass that actually moved the ticket.</summary>
     [Fact]
     public async Task A_pass_that_moves_its_ticket_releases_the_claim_worked()

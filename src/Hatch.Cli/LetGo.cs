@@ -34,10 +34,11 @@ public static class LetGo
     /// </summary>
     public static Task LeftAsync(
         Board board, Terminal say, IAgentAdapter adapter, string key, string why, string? sessionId,
-        CancellationToken ct, string? kept = null) =>
+        CancellationToken ct, string? kept = null, string? steppedOff = null) =>
         WriteAsync(
             board, say, adapter, key,
-            $"An unattended increment left {key} where it found it and let it go: {why}.",
+            $"An unattended increment left {key} where it found it and let it go: {why}."
+            + (steppedOff is { Length: > 0 } ? $"\n\n{steppedOff}" : ""),
             sessionId, "There is no session to resume: the run ended before it said what its id was.", ct, kept);
 
     /// <summary>

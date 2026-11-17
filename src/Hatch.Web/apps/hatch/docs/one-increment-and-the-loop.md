@@ -357,6 +357,13 @@ counts as not moved. Stalls escalate:
   second, and after it the board stops resuming the ticket. A person's
   *Resume now* starts the count over.
 
+A stall on the ticket's local model under `prefer` also takes the runner off
+the ticket, so the next attempt runs on the ordinary model. The stall comment
+says the attempt ran locally and names the model. This is not a recusal: it
+still counts as a stall, and the claim is released `dropped`. Under `require`
+the runner stays on. [The runner](the-runner#what-a-runner-refuses) has the
+rest.
+
 An open question on the ticket is itself the flag, so the second stall on a
 ticket that already has one only comments. A session that asked a question is
 no stall, and neither is one that recused: `hatch recuse` ends the increment
