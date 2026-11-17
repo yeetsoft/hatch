@@ -268,11 +268,12 @@ none of that is re-derived here.
 
 `IssueCreateRequest` is `ProjectId`, `Type`, `Title`, an optional
 `Description`, `ParentKey`, `ReadyAt`, `DueAt`, `OnePr`, `Priority`,
-`PreApproval` and `FiledFromKey` - `OnePr` only on a `story` or a `bug`, refused on anything else,
+`PreApproval`, `FiledFromKey` and `LocalModel` - `OnePr` only on a `story` or a `bug`, refused on anything else,
 `inherit`/`on`/`off` (`on` and `off` 409 under a project whose one-PR policy is
 `enforced`, before anything is written); `Priority` and `PreApproval` take the level names the two
 `PUT` routes below take, absent meaning `normal` and `none`, so an issue can be
-born at a level in the one save, with no second event. `IssuePatchRequest`
+born at a level in the one save, with no second event; `LocalModel` takes `none`, `prefer` or `require`
+the same way, absent meaning `none`. `IssuePatchRequest`
 is `Title?`, `Description?`, `Type?`, `StatusId?`, `ParentKey?`, `ReadyAt?`,
 `DueAt?`, `PullRequestUrl?`, `ProjectId?`, `MoveDescendants?`, `WipOverride`,
 `FiledFromKey?` - `""` clears `ParentKey`, `FiledFromKey`, `ReadyAt`, `DueAt` or `PullRequestUrl` (no issue key,
@@ -298,12 +299,12 @@ request URL. A column change that would overflow the WIP section 409s with a
 and a cross-project `ProjectId` on a patch, are person-only even on this
 key-open controller: a program sending either is 403'd before the issue is
 even loaded. Create has person-only fields of its own the same way: a program
-that names `priority` or `preApproval`, even as `normal` or `none`, is 403'd
+that names `priority`, `preApproval` or `localModel`, even as `normal` or `none`, is 403'd
 before the project is looked up or a number is minted. A person who names
 `preapproved` must be an owner or approver of the project, and one who names
 `express` must be allowed to move work into the board's send-back column - the
 two questions `PUT /issues/{key}/pre-approval` asks - and a refusal files
-nothing. An unknown level name 400s, naming the levels. A project move 409s if any issue in the moving set - the root,
+nothing; `localModel` needs no approver. An unknown level name 400s, naming the levels. A project move 409s if any issue in the moving set - the root,
 or the whole subtree unless `moveDescendants: false` - holds a live claim.
 The move route additionally 409s if `FromStatusId` does not match where the
 card actually is, and 409s, as a plain string rather than the WIP body, if
@@ -321,6 +322,7 @@ not mint an issue number - try again".
 | expedite | PUT | `/issues/{key}/expedite` | **person** | Legacy two-level alias for priority (`expedited`/`normal`) |
 | pre-approval | PUT | `/issues/{key}/pre-approval` | **person** | One of three named levels |
 | express | PUT | `/issues/{key}/express` | **person** | Legacy two-level alias for pre-approval (`express`/`none`) |
+| local-model | PUT | `/issues/{key}/local-model` | **person** | One of three named levels |
 | one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs; `on`/`off` 409 under an `enforced` project |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
@@ -403,6 +405,11 @@ with a `no_code_changed` one. `pre-approval` and
 `preapproved` needs an owner or approver, 403 otherwise, since that is the
 approve press given in advance; every other transition is gated like an
 ordinary move into the board's send-back column, where one exists.
+`local-model` takes `none`, `prefer` or `require`, writes a `local_model_changed`
+event naming both sides, and needs no approver - any person may set it, and a key is
+403'd. `IssueDto` and `IssueCardDto` carry `localModel`, `localModelOwn` and
+`localModelFrom`, read live from the nearest ancestor that is not `none`. An unknown
+name 400s, naming the levels. Nothing in dispatch reads the level yet.
 `playbook` 400s an unknown model or effort - the same validation a playbook
 file is held to. `landing` 400s a malformed remote, sha or trunk, and the
 first write for a repository 400s if it omits `trunk`. Every field here
@@ -1519,6 +1526,7 @@ PUT    /issues/{key}/priority
 PUT    /issues/{key}/expedite
 PUT    /issues/{key}/pre-approval
 PUT    /issues/{key}/express
+PUT    /issues/{key}/local-model
 PUT    /issues/{key}/hold
 PATCH  /issues/{key}/playbook
 POST   /attachments

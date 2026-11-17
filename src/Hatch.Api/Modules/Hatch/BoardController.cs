@@ -48,6 +48,7 @@ public class BoardController(
         Guid? AssigneeApiKeyId,
         int Priority,
         int PreApproval,
+        int LocalModel,
         string? Dangerous,
         DateTimeOffset? StalledAt,
         string? StalledWhy,
@@ -80,6 +81,7 @@ public class BoardController(
         i.AssigneeApiKeyId,
         i.Priority,
         i.PreApproval,
+        i.LocalModel,
         i.Dangerous,
         i.StalledAt,
         i.StalledWhy,
@@ -194,6 +196,7 @@ public class BoardController(
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
             return new IssueCardDto(
@@ -217,6 +220,9 @@ public class BoardController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
+                LocalModelFrom: effectiveLocalModelFrom,
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,

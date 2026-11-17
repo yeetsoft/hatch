@@ -1446,7 +1446,7 @@ public class WorkController(
                 ProjectKey = i.Project!.Key,
                 i.Number, i.Type, i.Title, i.StatusId, i.Rank,
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
-                i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.PreApproval,
+                i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.PreApproval, i.LocalModel,
                 i.StalledAt, i.StalledWhy, i.Held, i.PullRequestUrl,
                 i.ClosedAt, i.NoCode, i.CreatedBy,
                 Claim = new ClaimSnapshot(
@@ -1460,6 +1460,7 @@ public class WorkController(
         foreach (var c in children)
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = gate.EffectivePreApproval(c.Id);
+            var (effectiveLocalModel, effectiveLocalModelFrom) = gate.EffectiveLocalModel(c.Id);
             var (onePr, onePrOwn, onePrFrom) = gate.EffectiveOnePr(c.Id);
             childCards.Add(new IssueCardDto(
                 IssueKey.Format(c.ProjectKey, c.Number),
@@ -1479,6 +1480,9 @@ public class WorkController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                LocalModel: LocalModelLevels.Name(effectiveLocalModel),
+                LocalModelOwn: LocalModelLevels.Name(c.LocalModel),
+                LocalModelFrom: effectiveLocalModelFrom,
                 StalledAt: c.StalledAt,
                 StalledWhy: c.StalledWhy,
                 Held: c.Held,

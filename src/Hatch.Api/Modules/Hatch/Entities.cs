@@ -1245,6 +1245,25 @@ public class EfHatchIssue
     public int PreApproval { get; set; }
 
     /// <summary>
+    /// Whether this issue's work prefers or requires a local model - a
+    /// <see cref="Hatch.Contracts.LocalModelLevels"/> value: None, Prefer or
+    /// Require. Its own row's level only; what the issue reads is the nearest
+    /// ancestor's, including its own, that is not None.
+    /// </summary>
+    /// <remarks>
+    /// <para>Inheritance. A level set here is live on everything beneath this
+    /// issue that sets none of its own, down to the first descendant that
+    /// carries a level of its own. It is live, not copied: nothing is written
+    /// onto a descendant's row because an ancestor's changed. None on the way
+    /// up is not a stop; the walk passes through it to the next ancestor.
+    /// <c>PriorityTree.EffectiveLocalModel</c> does the walk, at read.</para>
+    ///
+    /// <para>Nothing in dispatch reads it yet: it is stored, served and shown,
+    /// and no runner is chosen by it.</para>
+    /// </remarks>
+    public int LocalModel { get; set; }
+
+    /// <summary>
     /// Which runners may implement this issue, as a jsonb array in the order
     /// they were written - normalised, case folded and deduplicated by
     /// <see cref="Hatch.Contracts.RunnerTags"/> before a tag ever reaches this
@@ -2540,6 +2559,13 @@ public class EfHatchIssueEvent
     /// by name, the same as <see cref="PriorityChanged"/>.
     /// </summary>
     public const string PreApprovalChanged = "pre_approval_changed";
+
+    /// <summary>
+    /// The issue's local-model level changed - see
+    /// <see cref="EfHatchIssue.LocalModel"/>. The payload carries both sides
+    /// by name, the same as <see cref="PreApprovalChanged"/>.
+    /// </summary>
+    public const string LocalModelChanged = "local_model_changed";
 
     /// <summary>
     /// A story's one-PR override changed - see
