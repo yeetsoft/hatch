@@ -1,4 +1,5 @@
 import type { IssueType } from '../types';
+import { issueTypeRow } from '../lib/issueType';
 
 const LABEL: Record<IssueType, string> = {
   epic: 'epic',
@@ -7,6 +8,26 @@ const LABEL: Record<IssueType, string> = {
   task: 'task',
   bug: 'bug',
 };
+
+/** The bare shape: what the card's corner glyph and the type pill both draw. */
+export function TypeShape({ type }: { type: IssueType }) {
+  const shape = issueTypeRow(type).shape;
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      {shape === 'diamond' && (
+        <rect className="hatch-type-glyph-shape" x="3" y="3" width="10" height="10" transform="rotate(45 8 8)" />
+      )}
+      {shape === 'hexagon' && (
+        <polygon className="hatch-type-glyph-shape" points="5,2 11,2 14,8 11,14 5,14 2,8" />
+      )}
+      {shape === 'circle' && <circle className="hatch-type-glyph-shape" cx="8" cy="8" r="6" />}
+      {shape === 'square' && (
+        <rect className="hatch-type-glyph-shape" x="2" y="2" width="12" height="12" rx="1.5" />
+      )}
+      {shape === 'triangle' && <polygon className="hatch-type-glyph-shape" points="8,2 14,13 2,13" />}
+    </svg>
+  );
+}
 
 /**
  * The card's type, as a shape in the corner rather than a word in the body.
@@ -22,19 +43,7 @@ const LABEL: Record<IssueType, string> = {
 export function TypeGlyph({ type }: { type: IssueType }) {
   return (
     <span className={`hatch-type-glyph hatch-type-glyph--${type}`} title={LABEL[type]} aria-label={LABEL[type]}>
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        {type === 'epic' && (
-          <rect className="hatch-type-glyph-shape" x="3" y="3" width="10" height="10" transform="rotate(45 8 8)" />
-        )}
-        {type === 'reflection' && (
-          <polygon className="hatch-type-glyph-shape" points="5,2 11,2 14,8 11,14 5,14 2,8" />
-        )}
-        {type === 'story' && <circle className="hatch-type-glyph-shape" cx="8" cy="8" r="6" />}
-        {type === 'task' && (
-          <rect className="hatch-type-glyph-shape" x="2" y="2" width="12" height="12" rx="1.5" />
-        )}
-        {type === 'bug' && <polygon className="hatch-type-glyph-shape" points="8,2 14,13 2,13" />}
-      </svg>
+      <TypeShape type={type} />
     </span>
   );
 }

@@ -65,6 +65,7 @@ import { MoveProjectDialog } from '../components/MoveProjectDialog';
 import { ProseClamp } from '../components/ProseClamp';
 import { ReleaseNote } from '../components/ReleaseNote';
 import { TypeBadge } from '../components/TypeBadge';
+import { TypeControl } from '../components/TypeControl';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
 import { onePrSaid } from '../lib/onePr';
@@ -108,7 +109,7 @@ import { useMoveConfirmation } from '../lib/useMoveConfirmation';
 import { useWipOverride } from '../lib/useWipOverride';
 import { wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
-import { ISSUE_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
+import { PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
 import type {
   AssigneeDirectory,
   AssigneeRequest,
@@ -818,14 +819,8 @@ export function IssuePage() {
 
         {editingPrimary && (
         <div className="hatch-issue-controls">
-          <Field label="Type">
-            <select value={issue.type} onChange={(e) => void save({ type: e.target.value as IssueType })}>
-              {ISSUE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+          <Field label="Type" as="div">
+            <TypeControl issueKey={issue.key} type={issue.type} onChange={(type) => void save({ type })} />
           </Field>
 
           {/* `as="div"` for the reason the fields below it are - `ProjectMark`'s
