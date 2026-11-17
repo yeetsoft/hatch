@@ -10,8 +10,9 @@ namespace Hatch.Api.Tests.Hatch;
 /// </summary>
 /// <remarks>
 /// Project A and project B each own two issues and one of everything that hangs
-/// off an issue. A playbook and a dream with no project stand beside them, and
-/// so do three repositories: one bound by A, one by B, and one bound by both.
+/// off an issue. A playbook, a dream and an attachment with no project stand
+/// beside them, and so do three repositories: one bound by A, one by B, and
+/// one bound by both.
 /// </remarks>
 internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long IssueB, long DreamA, long DreamB)
 {
@@ -45,6 +46,7 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
         new("ProjectLogos", db => db.ProjectLogos.CountAsync(), 2, 1, 0),
         new("Playbooks", db => db.Playbooks.CountAsync(), 3, 2, 1),
         new("Dreams", db => db.Dreams.CountAsync(), 3, 2, 1),
+        new("Attachments", db => db.Attachments.CountAsync(), 3, 2, 1),
         new("Comments", db => db.Comments.CountAsync(), 2, 1, 0),
         new("IssueEvents", db => db.IssueEvents.CountAsync(), 2, 1, 0),
         new("WorkLog", db => db.WorkLog.CountAsync(), 2, 1, 0),
@@ -101,6 +103,11 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
         var dreamB = new EfHatchDream { Body = "dream b", Author = "test", CreatedAt = At, UpdatedAt = At, ProjectId = b.Id };
         var dreamGlobal = new EfHatchDream { Body = "dream", Author = "test", CreatedAt = At, UpdatedAt = At };
         db.AddRange(dreamA, dreamB, dreamGlobal);
+
+        var attachmentA = Attachment(a.Id);
+        var attachmentB = Attachment(b.Id);
+        var attachmentGlobal = Attachment(null);
+        db.AddRange(attachmentA, attachmentB, attachmentGlobal);
         await db.SaveChangesAsync();
 
         var issues = new Dictionary<int, (EfHatchIssue One, EfHatchIssue Two)>();
@@ -207,6 +214,11 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
     {
         FromStatusId = from.Id, ToStatusId = to.Id, Types = "story", Shape = EfHatchPlaybook.AnyShape,
         Model = "m", Effort = "low", CreatedAt = At, UpdatedAt = At, ProjectId = projectId,
+    };
+
+    private static EfHatchAttachment Attachment(int? projectId) => new()
+    {
+        Id = Guid.NewGuid(), Bytes = [1], ContentType = "application/octet-stream", FileName = "f", Size = 1, CreatedAt = At, ProjectId = projectId,
     };
 
     private static EfHatchIssue Issue(int projectId, int number, EfHatchStatus status) => new()

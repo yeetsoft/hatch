@@ -59,10 +59,15 @@ public class AttachmentsController(HatchContext db, TimeProvider time, ICallerId
     [HttpPost]
     [RequireRole(PersonRole.User)]
     [RequestSizeLimit(MaxBytes + 64 * 1024)]
-    public async Task<ActionResult<AttachmentDto>> PostAttachment(IFormFile? file, CancellationToken ct)
+    public async Task<ActionResult<AttachmentDto>> PostAttachment(IFormFile? file, [FromQuery] int? projectId, CancellationToken ct)
     {
         if (await caller.IsProgramAsync(ct))
             return StatusCode(StatusCodes.Status403Forbidden, "files are attached by a person, not uploaded by an agent");
+
+        // Checked before the file is read: the scope filter HA-2383 already
+        // put on Projects makes an out-of-scope id read as absent with no
+        // extra check needed.
+        if (projectId is not null && !await db.Projects.AnyAsync(p => p.Id == projectId, ct)) return NotFound();
 
         if (file is null) return BadRequest("no file was uploaded");
         if (file.Length == 0) return BadRequest("that file is empty");
@@ -88,6 +93,7 @@ public class AttachmentsController(HatchContext db, TimeProvider time, ICallerId
             FileName = NameOf(file.FileName),
             Size = bytes.Length,
             CreatedById = await caller.PersonIdAsync(ct),
+            ProjectId = projectId,
             CreatedAt = time.GetUtcNow(),
         };
         db.Attachments.Add(attachment);

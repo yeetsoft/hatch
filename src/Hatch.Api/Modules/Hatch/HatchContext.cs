@@ -578,6 +578,18 @@ public class HatchContext : DbContext, IModuleContext
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
+        // An attachment that names a project is that project's - cascading,
+        // not the SetNull a dream's own FK above is: there is no meaning to
+        // an attachment surviving the deletion of the project it was
+        // uploaded for, the same lean EfHatchProjectRepository's own FK takes.
+        modelBuilder.Entity<EfHatchAttachment>(e =>
+        {
+            e.HasOne(a => a.Project)
+                .WithMany()
+                .HasForeignKey(a => a.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<EfHatchPlaybookFile>(e =>
         {
             e.Property(f => f.Rows).HasColumnType("jsonb");
@@ -601,19 +613,22 @@ public class HatchContext : DbContext, IModuleContext
         // navigation: the rule should read the same whichever way EF composes
         // it.
         //
-        // Deliberately unfiltered: Statuses, WipLimits, OvernightSeen,
-        // Attachments (its own story), the runner tables, PersonScopes and
-        // PersonScopeProjects (the resolver reads them), and the core schema.
+        // Deliberately unfiltered: Statuses, WipLimits, OvernightSeen, the
+        // runner tables, PersonScopes and PersonScopeProjects (the resolver
+        // reads them), and the core schema.
         modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
         modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
         modelBuilder.Entity<EfHatchProjectRepository>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
         modelBuilder.Entity<EfHatchProjectMember>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
         modelBuilder.Entity<EfHatchProjectLogo>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
 
-        // A global playbook, and a dream leaning toward no project, are visible to everyone.
+        // A global playbook, a dream leaning toward no project, and an
+        // unlinked attachment are visible to everyone.
         modelBuilder.Entity<EfHatchPlaybook>().HasQueryFilter(e =>
             Unbounded || e.ProjectId == null || Visible.Contains(e.ProjectId.Value));
         modelBuilder.Entity<EfHatchDream>().HasQueryFilter(e =>
+            Unbounded || e.ProjectId == null || Visible.Contains(e.ProjectId.Value));
+        modelBuilder.Entity<EfHatchAttachment>().HasQueryFilter(e =>
             Unbounded || e.ProjectId == null || Visible.Contains(e.ProjectId.Value));
 
         modelBuilder.Entity<EfHatchComment>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));

@@ -511,7 +511,7 @@ thing to look at - true of each id when several are given.
 |---|---|---|---|
 | GET | `/attachments` | key | Describes the files named in `ids`, in the order asked |
 | GET | `/attachments/{id}` | key | Downloads one, always as a file under its stored name |
-| POST | `/attachments` | **person** | Uploads one file (multipart `file`, up to 25 MB) |
+| POST | `/attachments` | **person** | Uploads one file (multipart `file`, up to 25 MB), linked to a project with `projectId` |
 | DELETE | `/attachments/{id}` | **person** | Removes one |
 | GET | `/images/{id}` | key | The inline view of an attachment that is an image |
 | POST | `/import/preview` | key | What uploaded `.md` files would become; reads/writes nothing |
@@ -528,7 +528,9 @@ is `ImportRequest(ProjectId, Docs)`, and its answer is
 `ImportedEpicDto(Filename, Key, Title, StoryCount, TaskCount)`.
 
 **Refusals.** Attachment upload and delete 403 a program caller outright -
-files are attached by a person, not by an agent. Upload 400s a request with
+files are attached by a person, not by an agent. Upload's `projectId` is
+optional, checked against the caller's scope, and 404s when it names no
+project the caller can see, before the file is read. Upload 400s a request with
 no file, an empty file, and a file over 25 MB, and stores nothing; an image is
 stored under its detected type whatever its size, anything else under the
 type it was sent with, or `application/octet-stream` when that is missing or

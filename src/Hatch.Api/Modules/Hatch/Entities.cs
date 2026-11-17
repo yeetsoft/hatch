@@ -654,6 +654,10 @@ public class EfHatchAttachment
     /// </summary>
     public Guid? CreatedById { get; set; }
 
+    /// <summary>The project this attachment belongs to, or null - see this type's own <c>ProjectId</c>/<c>Project</c> FK config in HatchContext.</summary>
+    public int? ProjectId { get; set; }
+    public EfHatchProject? Project { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 }
 
