@@ -747,9 +747,9 @@ a query on it does not throw.
 caller with everything reads exactly what it did before.
 
 - Directly, by project: `Projects`, `Issues`, `ProjectRepositories`,
-  `ProjectMembers`, `ProjectLogos`; and `Playbooks` and `Dreams` where
-  `ProjectId` is set. A global playbook and a dream with no project stay
-  visible to everyone.
+  `ProjectMembers`, `ProjectLogos`; and `Playbooks`, `Dreams` and
+  `Attachments` where `ProjectId` is set. A global playbook, a dream with no
+  project and an unlinked attachment stay visible to everyone.
 - Through an issue: `Comments`, `IssueEvents`, `WorkLog`, `MergeChecks`,
   `BuildChecks`, `Landings`, `Verdicts`, `Contributions`, `RunnerOmissions`,
   `Dependencies` (by `IssueId`), `DreamThreads`, `DreamRemands` and
@@ -759,9 +759,9 @@ caller with everything reads exactly what it did before.
 - Through a repository: `TrunkBuilds`, `PlaybookFiles`, `DependencyFiles` and
   `ChangelogFiles`, visible when any visible project binds that `Canonical`.
 
-**What does not.** `Statuses`, `WipLimits`, `OvernightSeen`, `Attachments` (its
-own story), the runner tables, `PersonScopes` and `PersonScopeProjects` (the
-resolver reads them), and everything in the core schema.
+**What does not.** `Statuses`, `WipLimits`, `OvernightSeen`, the runner tables,
+`PersonScopes` and `PersonScopeProjects` (the resolver reads them), and
+everything in the core schema.
 
 **Required navigations.** A row whose required navigation points at a hidden
 row is dropped from an `Include` rather than returned with a hole in it: a

@@ -50,10 +50,15 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("integer");
+
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
 
                     b.ToTable("Attachments", "hatch");
                 });
@@ -2359,6 +2364,16 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsUnique();
 
                     b.ToTable("WorkLogEntries", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchAttachment", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchProject", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchBuildCheck", b =>
