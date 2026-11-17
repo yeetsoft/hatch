@@ -268,13 +268,15 @@ internal sealed class WalledHost : IAsyncDisposable
     /// <summary>
     /// On a budget of its own: the case's is likely spent by the time it is
     /// torn down, and a spent one would skip the drop and leave the pair on
-    /// the server.
+    /// the server. A minute and a half, since each drop waits on a checkpoint
+    /// and queues behind every other test's drops on one lock; thirty seconds
+    /// was not enough on a slow disk.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
         foreach (var client in clients) client.Dispose();
 
-        var teardown = new Deadline(TimeSpan.FromSeconds(30), () => "");
+        var teardown = new Deadline(TimeSpan.FromSeconds(90), () => "");
         try
         {
             await teardown.BoundAsync("stopping the host", () => factory.DisposeAsync().AsTask());

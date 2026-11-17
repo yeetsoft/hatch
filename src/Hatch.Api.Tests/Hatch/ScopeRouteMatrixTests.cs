@@ -167,6 +167,13 @@ public class ScopeRouteMatrixTests
         /// <summary>Deletes, and anything else that would break a later twin, run last.</summary>
         public bool Destructive { get; init; }
 
+        /// <summary>
+        /// Sent after every other twin, deletes included. It takes rows the other
+        /// twins read with it: an issue's edge, omission and proposal, a project's
+        /// everything.
+        /// </summary>
+        public bool Last { get; init; }
+
         /// <summary>The route lists issue text, so a caller who sees A must read A's marker in the first build.</summary>
         public bool ListsText { get; init; }
 
@@ -264,7 +271,7 @@ public class ScopeRouteMatrixTests
         ("IssuesController.GetIssue", Lookup(t => Get($"/api/issues/{t.Key}"))),
         ("IssuesController.PatchIssue", Lookup(t => Patch($"/api/issues/{t.Key}", new { description = "patched" }))),
         ("IssuesController.MoveIssue", Lookup(t => Post($"/api/issues/{t.Key}/move", new { statusId = t.StatusId }))),
-        ("IssuesController.DeleteIssue", Lookup(t => Delete($"/api/issues/{t.Key}")) with { Destructive = true }),
+        ("IssuesController.DeleteIssue", Lookup(t => Delete($"/api/issues/{t.Key}")) with { Destructive = true, Last = true }),
         ("IssueThreadController.GetComments", Lookup(t => Get($"/api/issues/{t.Key}/comments"))),
         ("IssueThreadController.AddComment", Lookup(t => Post($"/api/issues/{t.Key}/comments", new { body = "a comment" }))),
         ("IssueThreadController.GetEvents", Lookup(t => Get($"/api/issues/{t.Key}/events"))),
@@ -368,7 +375,7 @@ public class ScopeRouteMatrixTests
 
         // ---- A project, by id ----
         ("ProjectsController.PatchProject", Lookup(t => Patch($"/api/projects/{t.ProjectId}", new { name = "A" }))),
-        ("ProjectsController.DeleteProject", Lookup(t => Delete($"/api/projects/{t.ProjectId}")) with { Destructive = true }),
+        ("ProjectsController.DeleteProject", Lookup(t => Delete($"/api/projects/{t.ProjectId}")) with { Destructive = true, Last = true }),
         ("ProjectsController.GetRepositories", Lookup(t => Get($"/api/projects/{t.ProjectId}/repositories"))),
         ("ProjectsController.PutRepositories", Lookup(t => Put($"/api/projects/{t.ProjectId}/repositories", new[] { new { remote = t.Remote } }))),
         ("ProjectsController.GetLogo", Lookup(t => Get($"/api/projects/{t.ProjectId}/logo"))),
@@ -563,7 +570,7 @@ public class ScopeRouteMatrixTests
         // must not read as a project nothing has. Deletes last.
         if (seesA)
         {
-            foreach (var (name, probe) in lookups.OrderBy(p => p.Probe.Destructive))
+            foreach (var (name, probe) in lookups.OrderBy(p => p.Probe.Last).ThenBy(p => p.Probe.Destructive))
             {
                 var req = probe.Builds[0](targets[Who.Visible]);
                 var (status, _) = await SendAsync($"{name} (visible)", req);
