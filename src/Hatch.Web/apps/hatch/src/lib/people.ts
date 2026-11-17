@@ -1,4 +1,12 @@
-import type { Person, PersonRole } from '../types';
+import type {
+  Person,
+  PersonCreateRequest,
+  PersonRole,
+  PersonScope,
+  PersonScopeMode,
+  PersonScopeWriteRequest,
+} from '../types';
+import { message } from './errors';
 
 /** The roles in the order a select offers them: least to most. */
 export const ROLES: readonly PersonRole[] = ['pending', 'user', 'admin'];
@@ -58,4 +66,64 @@ export function deleteSentence(person: Pick<Person, 'name' | 'sessionCount'>): s
     server judges the address; this only keeps an empty form from posting. */
 export function canAddUser(email: string): boolean {
   return email.trim().length > 0;
+}
+
+/** The scope modes in the order a select offers them: least to most. */
+export const SCOPE_MODES: readonly PersonScopeMode[] = ['none', 'all', 'some'];
+
+/** What a scope reads as in a select and a row: the mode, and under `some` how
+    many projects are ticked. `some (0)` sees nothing, as `none` does. */
+export function scopeLabel(scope: Pick<PersonScope, 'mode' | 'projectIds'>): string {
+  return scope.mode === 'some' ? `some (${scope.projectIds.length})` : scope.mode;
+}
+
+/** Whether moving from one scope to another takes any project away, and so
+    asks first when it is one's own. `all` already lists every project, so
+    `all` to `some` with everything ticked takes nothing. */
+export function isNarrowing(
+  from: Pick<PersonScope, 'projectIds'>,
+  to: Pick<PersonScope, 'projectIds'>,
+): boolean {
+  const kept = new Set(to.projectIds);
+  return from.projectIds.some((id) => !kept.has(id));
+}
+
+/** What the confirmation says: by count, what the person stops seeing. */
+export function narrowingSentence(
+  name: string,
+  from: Pick<PersonScope, 'mode' | 'projectIds'>,
+  to: Pick<PersonScope, 'mode' | 'projectIds'>,
+): string {
+  const kept = new Set(to.projectIds);
+  const lost = from.projectIds.filter((id) => !kept.has(id)).length;
+  const projects = `${lost} ${lost === 1 ? 'project' : 'projects'}`;
+  return `${name} goes from ${scopeLabel(from)} to ${scopeLabel(to)}: they will stop seeing ${projects}.`;
+}
+
+/** The request to send on choosing a mode. `some` carries over what the person
+    holds now, so from `all` every project starts ticked and from `none` none
+    does; `all` and `none` send no ids. */
+export function scopeForMode(
+  current: Pick<PersonScope, 'projectIds'>,
+  mode: PersonScopeMode,
+): PersonScopeWriteRequest {
+  return mode === 'some' ? { mode, projectIds: [...current.projectIds] } : { mode };
+}
+
+/** Adds a person, then gives them the scope the form chose. No row already
+    reads `all`, so that choice makes no second call. When the second call
+    fails the person exists, on `all`, and the sentence says so. */
+export async function addUserWithScope(
+  create: (request: PersonCreateRequest) => Promise<Pick<Person, 'id'>>,
+  setScope: (personId: string, request: PersonScopeWriteRequest) => Promise<unknown>,
+  request: PersonCreateRequest,
+  scope: PersonScopeWriteRequest,
+): Promise<void> {
+  const person = await create(request);
+  if (scope.mode === 'all') return;
+  try {
+    await setScope(person.id, scope);
+  } catch (err) {
+    throw new Error(`${request.email} was added with scope all, and the scope was not saved: ${message(err)}`);
+  }
 }
