@@ -9,8 +9,8 @@ using Xunit.Abstractions;
 namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
-/// HA-2331: the issue page's status bar draws Status, Priority and Pre-approval
-/// as three pills of one height, their words 16px at weight 600. The Status pill
+/// HA-2331: the issue page's status bar draws Status, Priority, Pre-approval and Local model
+/// as four pills of one height, their words 16px at weight 600. The Status pill
 /// once fell back to the bar's 14px body text because the peek's
 /// <c>font: inherit</c> reset outranked the large pill's own size, which left it
 /// 37px tall beside two pills 45px tall. jsdom cannot measure, so this reads the
@@ -32,7 +32,7 @@ public class IssuePillSizesTests(ITestOutputHelper output)
     /// <summary>Sub-pixel layout is fractional; two pills within half a pixel of each other are the same height.</summary>
     private const double Tolerance = 0.5;
 
-    /// <summary>The Status pill's height before the change, and the Priority and Pre-approval pills'. The three now sit between them.</summary>
+    /// <summary>The Status pill's height before the change, and the Priority and Pre-approval pills'. The four now sit between them.</summary>
     private const double WasStatus = 37;
 
     private const double WasLevels = 45;
@@ -44,9 +44,10 @@ public class IssuePillSizesTests(ITestOutputHelper output)
         ".hatch-status-bar .hatch-status-pill-lg",
         ".hatch-status-bar .hatch-priority-pill-lg",
         ".hatch-status-bar .hatch-preapproval-pill-lg",
+        ".hatch-status-bar .hatch-localmodel-pill-lg",
     ];
 
-    /// <summary>Runs in the page: each pill's box height, font size and font weight, in <see cref="Pills"/> order, then the two read-only words as drawn in the bar.</summary>
+    /// <summary>Runs in the page: each pill's box height, font size and font weight, in <see cref="Pills"/> order, then the three read-only words as drawn in the bar.</summary>
     private const string MeasureScript = """
         (selectors) => {
           const read = (el) => {
@@ -55,7 +56,7 @@ public class IssuePillSizesTests(ITestOutputHelper output)
           };
           const pills = selectors.map((s) => read(document.querySelector(s)));
           const bar = document.querySelector('.hatch-status-bar');
-          const said = ['hatch-priority-said', 'hatch-preapproval-said'].map((c) => {
+          const said = ['hatch-priority-said', 'hatch-preapproval-said', 'hatch-localmodel-said'].map((c) => {
             const el = document.createElement('span');
             el.className = c;
             el.textContent = 'said';

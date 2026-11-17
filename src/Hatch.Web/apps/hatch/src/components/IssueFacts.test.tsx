@@ -39,6 +39,9 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   preApproval: 'none',
   preApprovalOwn: 'none',
   preApprovalFrom: null,
+  localModel: 'none',
+  localModelOwn: 'none',
+  localModelFrom: null,
   runnerTags: [],
   runnerTagsOwn: [],
   runnerTagsFrom: [],
@@ -175,6 +178,14 @@ describe('IssueFacts', () => {
     expect(html).not.toContain('Runner tags');
     expect(html).not.toContain('Dangerous');
     expect(html).not.toContain('Omitted runners');
+  });
+
+  it('draws a Local model field at prefer, naming the ancestor it came from, and none at none', () => {
+    const prefer = render(issue({ localModel: 'prefer', localModelFrom: 'AER-9' }));
+    expect(prefer).toContain('Local model');
+    expect(prefer).toContain('Prefer (inherited from AER-9)');
+    expect(render(issue({ localModel: 'require' }))).toContain('Require');
+    expect(render(issue())).not.toContain('Local model');
   });
 
   it('draws a Runner tags field with the union sentence when runnerTags is non-empty', () => {

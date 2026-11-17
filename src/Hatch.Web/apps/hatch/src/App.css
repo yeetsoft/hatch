@@ -3531,13 +3531,15 @@ button.hatch-chip {
    of the pill that opened them, would draw between it and the next pill rather
    than under the row, as the status band does. */
 .hatch-status-bar .hatch-priority-band,
-.hatch-status-bar .hatch-preapproval-band {
+.hatch-status-bar .hatch-preapproval-band,
+.hatch-status-bar .hatch-localmodel-band {
   order: 1;
 }
 
 /* A key-holder's words, at the size of the pills they stand in for. */
 .hatch-status-bar .hatch-priority-said,
-.hatch-status-bar .hatch-preapproval-said {
+.hatch-status-bar .hatch-preapproval-said,
+.hatch-status-bar .hatch-localmodel-said {
   font-size: var(--t-section);
 }
 
@@ -6606,6 +6608,25 @@ input.hatch-inline-title-input {
   line-height: 1.6;
 }
 
+/* Local model, beside Pre-approved and drawn the same way: --primary, with
+   require one shade stronger than prefer. Absent at none. */
+.hatch-card-localmodel {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.hatch-card-localmodel.require {
+  background: color-mix(in srgb, var(--primary) 45%, transparent);
+  color: color-mix(in srgb, var(--primary) 70%, var(--ink));
+}
+
 /* Dangerous, beside Express and Pre-approved and drawn the same way. --danger
    rather than --warn: --warn is the open question's own, and a card that is
    both dangerous and owed an answer needs the two marks to read as different
@@ -6821,6 +6842,185 @@ input.hatch-inline-title-input {
 
 .hatch-preapproval-step.preapproved.here {
   background: color-mix(in srgb, var(--success) 70%, var(--ink));
+  color: var(--on-accent);
+}
+
+/* The local-model pill, on the issue page: `.hatch-preapproval-pill` in the
+   same shape and the same three steps, in --primary rather than --success so
+   the two never read as one fact. Prefer takes --primary; require goes one
+   shade stronger, the same "second intensity of one hue" idiom. The bare rule
+   (none) is the filled neutral. */
+.hatch-localmodel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--ink) 40%, var(--card));
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--ink) 14%, var(--card));
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hatch-localmodel-pill:hover:not(:disabled, .prefer, .require) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.hatch-localmodel-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hatch-localmodel-pill.prefer {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-accent);
+}
+
+.hatch-localmodel-pill.require {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--ink));
+  background: color-mix(in srgb, var(--primary) 70%, var(--ink));
+  color: var(--on-accent);
+}
+
+/* The pill's button chrome and caret - `.hatch-preapproval-pill-press`/`-caret`, renamed. */
+.hatch-localmodel-pill-press {
+  transition:
+    box-shadow var(--transition),
+    opacity var(--transition);
+}
+
+.hatch-localmodel-pill-press:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-localmodel-pill-press[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hatch-localmodel-pill-caret {
+  transition: transform var(--transition);
+}
+
+.hatch-localmodel-pill-press[aria-expanded='true'] .hatch-localmodel-pill-caret {
+  transform: rotate(180deg);
+}
+
+/* `.hatch-preapproval-pill-lg`, renamed. */
+.hatch-localmodel-pill-lg {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-section);
+}
+
+.hatch-localmodel-pill-lg .hatch-localmodel-pill-caret {
+  width: 16px;
+  height: 16px;
+}
+
+/* What a reader who may not press it sees instead: the state as a word. */
+.hatch-localmodel-said {
+  color: var(--muted);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.hatch-localmodel-said.prefer {
+  color: var(--primary-ink);
+}
+
+.hatch-localmodel-said.require {
+  color: color-mix(in srgb, var(--primary) 70%, var(--ink));
+}
+
+/* The band under the pill, coloured by the effective level's own class. */
+.hatch-localmodel-band {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: var(--r);
+  animation: hatch-peek-status-in var(--transition) both;
+}
+
+.hatch-localmodel-band.prefer {
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  border-left-color: var(--primary);
+}
+
+.hatch-localmodel-band.require {
+  background: color-mix(in srgb, var(--primary) 18%, var(--card));
+  border-left-color: color-mix(in srgb, var(--primary) 70%, var(--ink));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-localmodel-band {
+    animation: none;
+  }
+}
+
+/* One button per level. */
+.hatch-localmodel-steps {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hatch-localmodel-step {
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hatch-localmodel-step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-strong) 18%, transparent);
+}
+
+.hatch-localmodel-step.prefer {
+  border-color: var(--primary);
+}
+
+.hatch-localmodel-step.require {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--ink));
+}
+
+/* The level this issue's own row already carries. Disabled rather than merely
+   marked - pressing it would write an event saying local model moved from
+   prefer to prefer. */
+.hatch-localmodel-step.here {
+  background: var(--line-strong);
+  color: var(--ink);
+  cursor: default;
+  opacity: 1;
+}
+
+.hatch-localmodel-step.prefer.here {
+  background: var(--primary);
+  color: var(--on-accent);
+}
+
+.hatch-localmodel-step.require.here {
+  background: color-mix(in srgb, var(--primary) 70%, var(--ink));
   color: var(--on-accent);
 }
 
