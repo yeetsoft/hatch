@@ -54,6 +54,14 @@ public interface IAgentAdapter
     }
 
     /// <summary>
+    /// Re-reads whatever server-side list the adapter keeps, so
+    /// <see cref="CanServe"/> and <see cref="Models"/> answer from what the
+    /// server holds now. Called by the loop between increments, never by a
+    /// session. The default has no list to re-read.
+    /// </summary>
+    void Refresh() { }
+
+    /// <summary>
     /// What this agent can spawn, as the beat advertises it: the aliases unless
     /// the adapter knows better. Empty where it can name none.
     /// </summary>

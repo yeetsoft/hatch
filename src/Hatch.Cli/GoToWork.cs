@@ -1574,6 +1574,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // pass when no claim is held. That is what makes "picked up between
             // increments, after the one in flight has finished" true by
             // construction rather than by a check somewhere.
+            // The adapter's server-side list is re-read at the same moment, so
+            // the beat and the picker both see what the server holds now.
+            runtime.Adapter.Refresh();
             var told = await BeatAsync(line, under, mine, tally, once, ct);
 
             if (told is { State: RunnerStates.Stopping })

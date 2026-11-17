@@ -492,6 +492,21 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task The_loop_has_the_adapter_re_read_its_list_before_each_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        var adapter = new FakeAdapter();
+        var runtime = h.Runtime with { Adapter = adapter };
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.True(adapter.Refreshed >= 2);
+    }
+
+    [Fact]
     public async Task A_once_beat_carries_this_machine_but_not_runs_or_spend()
     {
         using var h = new Harness();
