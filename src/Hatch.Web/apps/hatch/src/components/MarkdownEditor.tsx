@@ -289,6 +289,12 @@ const px = (custom: string, fallback: number) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+/** The room before the text, from the host's `--md-inset`, else `--sp-3`. */
+const inset = (hostStyle: CSSStyleDeclaration) => {
+  const n = parseFloat(hostStyle.getPropertyValue('--md-inset'));
+  return Number.isFinite(n) ? n : px('--sp-3', 12);
+};
+
 function MonacoEditor({
   monaco,
   handoffRef,
@@ -375,7 +381,8 @@ function MonacoEditor({
       folding: false,
       // The room a field's text has from its border, which a gutter of
       // decorations would otherwise be.
-      lineDecorationsWidth: px('--sp-3', 12),
+      // `--md-inset` on the host moves it: a flush box (the Dreams composer) sets 0.
+      lineDecorationsWidth: inset(style),
       lineNumbersMinChars: 0,
       overviewRulerLanes: 0,
       hideCursorInOverviewRuler: true,

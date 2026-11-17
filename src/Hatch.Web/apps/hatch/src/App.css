@@ -1959,6 +1959,32 @@ button.hatch-card-stories:focus-visible {
   }
 }
 
+/* The gradient fill: a pill painted --chrome to --chrome-end, for the one
+   control on a page that is the point of it. The solid colour is the fallback
+   where a gradient is missing. Written against .hatch-btn so it outranks the
+   variant's own background and its hover (0,3,0); hover brightens rather than
+   swaps the fill. */
+.hatch-gradient-fill {
+  background: var(--chrome);
+  color: var(--on-chrome);
+  border-radius: var(--r-pill);
+}
+
+.hatch-btn.hatch-gradient-fill {
+  background: var(--chrome);
+  background-image: linear-gradient(135deg, var(--chrome), var(--chrome-end));
+  color: var(--on-chrome);
+  border-radius: var(--r-pill);
+  /* Both chrome stops are dark: on the dark page the pill needs an edge to read. */
+  box-shadow: inset 0 0 0 1px var(--on-chrome-wash);
+}
+
+.hatch-btn.hatch-gradient-fill:hover:not(:disabled) {
+  background: var(--chrome);
+  background-image: linear-gradient(135deg, var(--chrome), var(--chrome-end));
+  filter: brightness(1.1);
+}
+
 /* Dreams' title and the three lines under it, one block so the page's own gap
    (the column's row gap) falls where it always did: below the lot, down to the
    composer. Inside, the lines sit under the title the way the header's
@@ -2056,8 +2082,16 @@ button.hatch-card-stories:focus-visible {
   color: var(--muted);
 }
 
-/* The Dreams composer: the box, the source and Post, stacked. The
-   source takes the full width; Post sits at the right, full width on a phone. */
+/* The Dreams composer: an open box asking for a thought, a rule under it, and
+   Post directly beneath. No card, border or panel - the page is the ground.
+
+   The box is two things by device (components/MarkdownEditor.tsx): a textarea
+   on a touch screen and Monaco's editor on a desktop. Each is restated here
+   with two classes on one element, since `.hatch-md-editor` sits later in this
+   file and `base.css`'s `textarea:hover` / `textarea:focus` out-rank a single
+   class. Size and line height are read back off the host by the component, so
+   this CSS is what Monaco is built from. `--md-inset: 0` takes the 12px the
+   field's text is normally indented, so the text lines up with the rule. */
 .hatch-dream-composer {
   display: flex;
   flex-direction: column;
@@ -2065,23 +2099,155 @@ button.hatch-card-stories:focus-visible {
 }
 
 .hatch-dream-composer__box {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+
+.hatch-dream-box {
+  --md-inset: 0;
+}
+
+.hatch-dream-box.hatch-description-editor,
+.hatch-dream-box.hatch-md-editor {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: var(--t-subhead);
+  line-height: var(--lh-body);
+}
+
+.hatch-dream-box.hatch-description-editor {
+  padding-block: var(--sp-2);
+  padding-inline: var(--md-inset);
+  resize: none;
+}
+
+.hatch-dream-box.hatch-description-editor:focus,
+.hatch-dream-box.hatch-md-editor:focus-within {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Monaco's theme paints the editor on --card (lib/editorTheme.ts): a white
+   patch on the page's ground. Its own stylesheet arrives later, in a lazy
+   chunk, so the selector is long enough to win whatever the order. */
+.hatch-dream-box.hatch-md-editor .monaco-editor,
+.hatch-dream-box.hatch-md-editor .monaco-editor .monaco-editor-background,
+.hatch-dream-box.hatch-md-editor .monaco-editor .margin,
+.hatch-dream-box.hatch-md-editor .monaco-editor .inputarea.ime-input {
+  background-color: transparent;
+}
+
+/* The rule: faint while the box rests, full while it has focus. */
+.hatch-dream-composer__box::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--gradient-ink-from), var(--gradient-ink-to));
+  opacity: 0.35;
+  pointer-events: none;
+  transition: opacity var(--transition);
+}
+
+.hatch-dream-composer__box:focus-within::after {
+  opacity: 1;
+}
+
+@media (forced-colors: active) {
+  .hatch-dream-composer__box::after {
+    background: Highlight;
+  }
+}
+
+/* The posted text, over the emptied box, falling into the rule as it fades.
+   It is a copy - the box itself is empty by the time it shows - and takes no
+   clicks. It drops a box height: the ghost is as tall as the box. */
+.hatch-dream-composer__ghost {
+  position: absolute;
+  inset: 0 0 var(--sp-2);
+  overflow: hidden;
+  padding-block: var(--sp-2);
+  font-size: var(--t-subhead);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  pointer-events: none;
+  animation: hatch-dream-fall 300ms ease-in forwards;
+}
+
+@keyframes hatch-dream-fall {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-dream-composer__ghost {
+    animation: none;
+    display: none;
+  }
 }
 
 .hatch-dream-composer__source {
   width: 100%;
 }
 
+/* Post at the leading edge, its key hint beside it, and the Source control at
+   the far end. On a phone Post spans the width and the rest wraps under it. */
 .hatch-dream-composer__actions {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.hatch-dream-composer__hint {
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+@media (pointer: coarse) {
+  .hatch-dream-composer__hint {
+    display: none;
+  }
+}
+
+.hatch-dream-composer__source-toggle {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--t-label);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.hatch-dream-composer__source-toggle:hover {
+  color: var(--ink);
 }
 
 @media (max-width: 40rem) {
-  .hatch-dream-composer__actions > * {
+  .hatch-dream-composer__actions > .hatch-gradient-fill {
     flex: 1 1 100%;
+  }
+
+  .hatch-dream-composer__source-toggle {
+    margin-inline-start: 0;
   }
 }
 

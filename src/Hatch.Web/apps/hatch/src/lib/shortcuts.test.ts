@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isGoToShortcut, isTypingTarget, isUndoShortcut, undoShortcutLabel } from './shortcuts';
+import { isGoToShortcut, isTypingTarget, isUndoShortcut, postShortcutLabel, undoShortcutLabel } from './shortcuts';
 
 const chord = (key: string, mods: Partial<Record<'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey', boolean>> = {}) => ({
   key,
@@ -100,6 +100,20 @@ describe('undoShortcutLabel', () => {
   it('says Ctrl everywhere else, and where the platform is unknown', () => {
     for (const platform of ['Win32', 'Windows', 'Linux x86_64', '']) {
       expect(undoShortcutLabel(platform)).toBe('Ctrl+Z');
+    }
+  });
+});
+
+describe('postShortcutLabel', () => {
+  it('says Cmd on the platforms that have one', () => {
+    for (const platform of ['MacIntel', 'macOS', 'iPhone', 'iPad']) {
+      expect(postShortcutLabel(platform)).toBe('⌘↵');
+    }
+  });
+
+  it('says Ctrl+Enter on Windows, Linux and where the platform is unknown', () => {
+    for (const platform of ['Win32', 'Windows', 'Linux x86_64', '']) {
+      expect(postShortcutLabel(platform)).toBe('Ctrl+Enter');
     }
   });
 });

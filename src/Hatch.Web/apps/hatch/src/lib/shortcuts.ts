@@ -65,3 +65,9 @@ export function currentPlatform(): string {
   const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
   return nav.userAgentData?.platform ?? nav.platform ?? '';
 }
+
+/** What to call the post chord (Ctrl+Enter, Cmd+Enter on a Mac) on the
+    operator's platform. Same input as `undoShortcutLabel`. */
+export function postShortcutLabel(platform: string): string {
+  return /mac|iphone|ipad/i.test(platform) ? '⌘↵' : 'Ctrl+Enter';
+}
