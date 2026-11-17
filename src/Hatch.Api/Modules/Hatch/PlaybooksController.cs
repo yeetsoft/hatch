@@ -89,6 +89,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         var effort = request.Effort?.Trim() ?? EfHatchPlaybook.DefaultEffort;
         if (PlaybookPatches.InvalidDispatch(model, effort, families) is { } dispatchError) return BadRequest(dispatchError);
 
+        string? localModel = null;
+        if (request.LocalModel?.Trim() is { Length: > 0 } trimmedLocalModel)
+        {
+            if (PlaybookFile.InvalidLocalModel(trimmedLocalModel, families) is { } localModelError)
+                return BadRequest(localModelError);
+            localModel = trimmedLocalModel;
+        }
+
         int? budget = null;
         if (request.Budget is not null)
         {
@@ -138,6 +146,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
             BriefLimit = briefLimit,
             QuietLimitSeconds = quietLimitSeconds,
             MaxRunSeconds = maxRunSeconds,
+            LocalModel = localModel,
             DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
             IsCheck = request.IsCheck ?? false,
             ProjectId = projectId,
@@ -176,6 +185,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         playbook.BriefLimit = next.BriefLimit;
         playbook.QuietLimitSeconds = next.QuietLimitSeconds;
         playbook.MaxRunSeconds = next.MaxRunSeconds;
+        playbook.LocalModel = next.LocalModel;
         playbook.DeniedTools = next.DeniedTools;
         playbook.IsCheck = next.IsCheck;
         playbook.ProjectId = next.ProjectId;
@@ -256,5 +266,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         state.ProjectId is not null ? "project" : "board",
         state.QuietLimitSeconds,
         unreachableReason,
-        state.MaxRunSeconds);
+        state.MaxRunSeconds,
+        state.LocalModel);
 }

@@ -29,6 +29,7 @@ const BASE: Playbook = {
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
+  localModel: null,
   updatedAt: '2026-01-01T00:00:00Z',
   projectId: null,
   projectKey: null,
@@ -120,6 +121,7 @@ const FILE_ROW: PlaybookFileRowDto = {
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
+  localModel: null,
 };
 
 describe('PlaybookRow', () => {
@@ -304,6 +306,28 @@ describe('PlaybookRow', () => {
     expect(neither).not.toContain('quiet after');
     expect(neither).not.toContain('cut off after');
     expect(neither.match(/<td/g)).toHaveLength(both.match(/<td/g)!.length);
+  });
+
+  it('shows a set local model under the model, and nothing when there is none', () => {
+    const render = (localModel: string | null) =>
+      renderToStaticMarkup(
+        <PlaybookRow playbook={{ ...BASE, localModel }} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+      );
+    expect(render('fake:1b')).toContain('local: fake:1b');
+    expect(render(null)).not.toContain('local:');
+  });
+
+  it('shows a repo file row local model the same way', () => {
+    const render = (localModel: string | null) =>
+      renderToStaticMarkup(
+        <table>
+          <tbody>
+            <PlaybookFileRowLine row={{ ...FILE_ROW, localModel }} statuses={STATUSES} />
+          </tbody>
+        </table>,
+      );
+    expect(render('fake:1b')).toContain('local: fake:1b');
+    expect(render(null)).not.toContain('local:');
   });
 
   it('has an ungated Delete button, outside the open button', () => {

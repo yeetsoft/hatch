@@ -69,6 +69,16 @@ export function maxRunRequest(draft: string): string {
   return draft.trim();
 }
 
+/** What the local model field shows: blank for none, the Ollama id otherwise. */
+export function localModelDraft(localModel: string | null): string {
+  return localModel ?? '';
+}
+
+/** The field, trimmed, as the wire's `localModel` - blank clears it. */
+export function localModelRequest(draft: string): string {
+  return draft.trim();
+}
+
 /** The list's words for a row's quiet limit and run limit, in that order -
     each only when set, so a row with neither says nothing. */
 export function limitNotes(p: Pick<Playbook, 'quietLimitSeconds' | 'maxRunSeconds'>): string[] {

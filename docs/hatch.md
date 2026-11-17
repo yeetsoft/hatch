@@ -3042,10 +3042,10 @@ whole of its wording and its `defaultPrompt` is always null: nothing marks it
 as the operator's own, there is nothing to hand it back to, and it changes only
 by a commit to the file. A row's optional keys are `model`, `effort`, `shape`,
 `types`, `budget`, `briefLimit`, `quietLimitSeconds`, `maxRunSeconds`,
-`deniedTools` and `isCheck`; `quietLimitSeconds` and `maxRunSeconds` each
+`localModel`, `deniedTools` and `isCheck`; `quietLimitSeconds` and `maxRunSeconds` each
 follow the same rule as `briefLimit` — a whole number of one or more, in
 seconds — and a value that is not one makes the file `invalid`, with the line
-the value is on. `maxRunSeconds` is stored and read back, and a [claim](#claim) copies it as its run cap.
+the value is on. `maxRunSeconds` is stored and read back, and a [claim](#claim) copies it as its run cap. `localModel` must be an Ollama `name:tag` id; an alias or another agent's id makes the file `invalid` the same way.
 A parsed row's `unreachableReason` is computed on read from the live columns
 and never persisted, so reordering columns changes it with no new `PUT`;
 `Rows` JSON is unchanged.
@@ -3526,7 +3526,7 @@ matter under a hundred lines of tidying.
 
 `EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Shape`, `Prompt`,
 `DefaultPrompt`, `Model`, `Effort`, `Budget`, `BriefLimit`, `QuietLimitSeconds`,
-`MaxRunSeconds`, `DeniedTools`, `IsCheck`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
+`MaxRunSeconds`, `LocalModel`, `DeniedTools`, `IsCheck`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
 
 What an agent is told, and how much thought to spend, when it moves an issue of
 some type and shape from one column to the next. `Shape` is one of `any`
@@ -3542,7 +3542,13 @@ quiet (see [a claim that has gone quiet](#claim)): null, the default, inherits
 `Hatch:StallLapseMinutes`, and a value is a whole number of one or more,
 written and cleared the way `Budget` and `BriefLimit` are. `MaxRunSeconds` is
 stored and read back the same way, under the same three-state rule; nothing
-reads it yet. `IsCheck` is false by default and a person's write only — a
+reads it yet. `LocalModel` is the Ollama id (`name:tag`) a move under the row
+runs on when it runs locally: null, the default, means the row never runs
+locally; `POST` and `PATCH` take it as a string, null leaving it alone on
+patch and blank clearing it, and an alias or another agent's id is a 400. It is
+carried in a runner's work answer beside `Model`, which an issue's own model
+override changes and `LocalModel` it does not; nothing in dispatch reads it
+yet. `IsCheck` is false by default and a person's write only — a
 key's `POST` or `PATCH` of it is refused with the rest of the playbook write —
 and what it means is in [Check](#check).
 
@@ -4102,7 +4108,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/changelog-files` | GET | Every stored [changelog file](#changelog-file), ordered by canonical then trunk, with the path itself and the canonicals currently elected; `?remote=` (repeatable) is answered in `ElectedRemotes` |
 | `/changelog-files` | PUT | Keeps a runner's [changelog file](#changelog-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Judges the bytes against the board's own projection rather than trusting a client-sent verdict; where the state is `behind` or `absent` and no [changelog task](#the-changelog-task) for that canonical is open in any column, files one. `404` for a remote no project elects. No event and no question |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
-| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck`, `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise) and `maxRunSeconds` (null means no limit; `POST`/`PATCH` take it as a string, the same three states, 400 *a run limit is a whole number of one or more, in seconds* otherwise - a claim copies it as its run cap, see [Claim](#claim)); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
+| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck`, `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise) and `maxRunSeconds` (null means no limit; `POST`/`PATCH` take it as a string, the same three states, 400 *a run limit is a whole number of one or more, in seconds* otherwise - a claim copies it as its run cap, see [Claim](#claim)) and `localModel` (null means the row never runs locally; `POST`/`PATCH` take it as a string, null leaving it alone and blank clearing it, 400 *a local model is an Ollama id ...* for an alias or another agent's id - carried in a runner's work answer beside `model`, not yet read by dispatch); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/playbook-proposals` | GET | The queue for one [playbook proposal](#playbook-proposal) state, oldest first — pending by default, or `?state=approved`, `rejected` or `all` |
 | `/playbook-proposals/{id}` | GET | One proposal, with every change it carries |
 | `/playbook-proposals` | POST | Files a [playbook proposal](#playbook-proposal) — a reason, an optional issue, and one or more changes — checked against the live board the same way `PATCH /playbooks/{id}` is, and against every other pending proposal naming the same row, before anything saves; changes nothing live. A named issue gets a `playbook_proposed` event |

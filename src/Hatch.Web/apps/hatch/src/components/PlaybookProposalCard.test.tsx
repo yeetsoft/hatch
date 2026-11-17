@@ -26,6 +26,7 @@ const BEFORE: Playbook = {
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
+  localModel: null,
   updatedAt: '2026-01-01T00:00:00Z',
   projectId: null,
   projectKey: null,
@@ -72,6 +73,18 @@ describe('PlaybookProposalCard', () => {
     }
     expect(html).toContain('aria-label="Prescribed text"');
     expect(html).toContain('aria-label="The operator&#x27;s own wording"');
+  });
+
+  it('shows the local model before and after, none when a side has none', () => {
+    const after: Playbook = { ...BEFORE, localModel: 'fake:1b' };
+    const html = renderToStaticMarkup(
+      <PlaybookProposalCard change={change({ after, changedFields: ['localModel'] })} statuses={STATUSES} />,
+    );
+    const rows = html.match(/<tr>.*?<\/tr>/gs) ?? [];
+    const localRow = rows.find((r) => r.includes('>Local model<'))!;
+    expect(localRow).toContain('none');
+    expect(localRow).toContain('fake:1b');
+    expect(localRow.match(/hatch-playbook-proposal-cell--changed/g)).toHaveLength(2);
   });
 
   it('shows the out-of-date badge and its exact reason', () => {

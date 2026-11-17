@@ -3088,6 +3088,32 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Work_CarriesTheRowsLocalModel_AndAnOverrideLeavesItAlone()
+    {
+        var h = await NewAsync();
+        foreach (var row in h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo)) row.LocalModel = "fake:1b";
+        await h.Db.SaveChangesAsync();
+        var task = await h.FileAsync("task", "runs somewhere else", h.Todo);
+
+        Assert.Equal("fake:1b", Value(await h.Work.GetWork(Key(task), null, default)).Playbook!.LocalModel);
+
+        await h.OverrideAsync(task, model: "opus");
+        var playbook = Value(await h.Work.GetWork(Key(task), null, default)).Playbook!;
+
+        Assert.Equal("opus", playbook.Model);
+        Assert.Equal("fake:1b", playbook.LocalModel);
+    }
+
+    [Fact]
+    public async Task Work_ARowNobodySetALocalModelOn_CarriesNone()
+    {
+        var h = await NewAsync();
+        var task = await h.FileAsync("task", "stays where it is", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Playbook!.LocalModel);
+    }
+
+    [Fact]
     public async Task Work_ReportsAnEffortOverrideTheSameWay()
     {
         var h = await NewAsync();

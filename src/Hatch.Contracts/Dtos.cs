@@ -2003,7 +2003,8 @@ public record PlaybookDto(
     string Source = "board",
     int? QuietLimitSeconds = null,
     string? UnreachableReason = null,
-    int? MaxRunSeconds = null);
+    int? MaxRunSeconds = null,
+    string? LocalModel = null);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
@@ -2044,6 +2045,11 @@ public record PlaybookFileReferenceDto(string Path, string Canonical, string Tru
 /// whitespace clears it; a parsed positive integer sets it - the same three
 /// states <paramref name="Budget"/> carries.
 /// </param>
+/// <param name="LocalModel">
+/// The Ollama id a move under this row runs on when it runs locally. Null or
+/// blank means none (on create); a <c>name:tag</c> id sets it - an alias or
+/// another agent's id is refused.
+/// </param>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -2058,7 +2064,8 @@ public record PlaybookCreateRequest(
     string? ProjectId = null,
     bool? IsCheck = null,
     string? QuietLimitSeconds = null,
-    string? MaxRunSeconds = null);
+    string? MaxRunSeconds = null,
+    string? LocalModel = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="Prompt">
@@ -2091,6 +2098,11 @@ public record PlaybookCreateRequest(
 /// leaves it alone; <c>""</c> or whitespace clears it; a parsed positive
 /// integer sets it - the same three states <paramref name="Budget"/> carries.
 /// </param>
+/// <param name="LocalModel">
+/// The Ollama id a move under this row runs on when it runs locally. Null
+/// leaves it alone; <c>""</c> or whitespace clears it; a <c>name:tag</c> id
+/// sets it - an alias or another agent's id is refused.
+/// </param>
 public record PlaybookPatchRequest(
     int? FromStatusId,
     int? ToStatusId,
@@ -2105,7 +2117,8 @@ public record PlaybookPatchRequest(
     string? ProjectId = null,
     bool? IsCheck = null,
     string? QuietLimitSeconds = null,
-    string? MaxRunSeconds = null);
+    string? MaxRunSeconds = null,
+    string? LocalModel = null);
 
 /// <summary>
 /// One change in a proposal submission: the playbook, then every field
@@ -2124,7 +2137,8 @@ public record PlaybookProposalChangeRequest(
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
-    bool? IsCheck = null)
+    bool? IsCheck = null,
+    string? LocalModel = null)
 {
     /// <summary>The fields alone, in <see cref="PlaybookPatchRequest"/>'s own shape.</summary>
     public PlaybookPatchRequest ToPatch() => new(
@@ -2139,13 +2153,15 @@ public record PlaybookProposalChangeRequest(
         Shape: Shape,
         DeniedTools: DeniedTools,
         ProjectId: ProjectId,
-        IsCheck: IsCheck);
+        IsCheck: IsCheck,
+        LocalModel: LocalModel);
 
-    /// <summary>Whether any of the twelve patch fields is present - <c>""</c> and an empty list count.</summary>
+    /// <summary>Whether any of the thirteen patch fields is present - <c>""</c> and an empty list count.</summary>
     public bool NamesAField =>
         FromStatusId is not null || ToStatusId is not null || Types is not null || Prompt is not null ||
         Model is not null || Effort is not null || Budget is not null || BriefLimit is not null ||
-        Shape is not null || DeniedTools is not null || ProjectId is not null || IsCheck is not null;
+        Shape is not null || DeniedTools is not null || ProjectId is not null || IsCheck is not null ||
+        LocalModel is not null;
 }
 
 /// <summary>A session's proposal: why, the ticket it was working, and the changes.</summary>
@@ -2157,7 +2173,7 @@ public record PlaybookProposalRequest(
 /// <param name="PlaybookId">Null once the playbook has been deleted; <paramref name="Before"/> still says what it was.</param>
 /// <param name="ChangedFields">
 /// Which fields differ between <paramref name="Before"/> and <paramref name="After"/>, from a fixed vocabulary
-/// in this order: <c>fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit,
+/// in this order: <c>fromStatusId, toStatusId, types, shape, prompt, model, localModel, effort, budget, briefLimit,
 /// deniedTools, isCheck, projectId</c>.
 /// </param>
 /// <param name="OutOfDate">Whether the playbook has changed since the proposal was made.</param>
@@ -4308,14 +4324,15 @@ public record PlaybookFileRequest(
 public record PlaybookFileRow(
     int FromStatusId, int ToStatusId, IReadOnlyList<string> Types, string Shape, string Prompt,
     string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
-    int? QuietLimitSeconds = null, int? MaxRunSeconds = null);
+    int? QuietLimitSeconds = null, int? MaxRunSeconds = null, string? LocalModel = null);
 
 /// <summary>PlaybookFileRow with its status ids resolved to the board's current names - the shape a client reads. Mirrors PlaybookDto minus Id/UpdatedAt/ProjectId.</summary>
 public record PlaybookFileRowDto(
     int FromStatusId, string FromStatusName, int ToStatusId, string ToStatusName,
     IReadOnlyList<string> Types, string Shape, string Prompt, string Model, string Effort,
     int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
-    int? QuietLimitSeconds = null, string? UnreachableReason = null, int? MaxRunSeconds = null);
+    int? QuietLimitSeconds = null, string? UnreachableReason = null, int? MaxRunSeconds = null,
+    string? LocalModel = null);
 
 public record PlaybookFileDto(
     long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,

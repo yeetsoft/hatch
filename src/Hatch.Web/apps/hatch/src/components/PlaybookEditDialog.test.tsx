@@ -29,6 +29,7 @@ const BASE: Playbook = {
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
+  localModel: null,
   updatedAt: '2026-01-01T00:00:00Z',
   projectId: null,
   projectKey: null,
@@ -153,6 +154,25 @@ describe('PlaybookEditDialog own-wording panel', () => {
 
   it('shows no prescribed text for a new playbook', () => {
     expect(render(null)).not.toContain(PRESCRIBED);
+  });
+});
+
+describe('PlaybookEditDialog local model field', () => {
+  it('opens a row with a local model holding its id', () => {
+    const html = render({ ...BASE, localModel: 'fake:1b' });
+    expect(html).toContain('Local model');
+    expect(html).toContain('value="fake:1b"');
+  });
+
+  it('opens a row with none, and a new playbook, with the label and no id', () => {
+    for (const html of [render(BASE), render(null)]) {
+      expect(html).toContain('Local model');
+      expect(html).not.toContain('fake:1b');
+    }
+  });
+
+  it('says what blank means', () => {
+    expect(render(BASE)).toContain('Leave blank and it never runs locally.');
   });
 });
 

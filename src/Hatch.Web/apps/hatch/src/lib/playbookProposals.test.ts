@@ -77,6 +77,7 @@ describe('proposalsBannerSentence', () => {
 describe('proposalFieldRows', () => {
   const FIELDS = [
     'model',
+    'localModel',
     'effort',
     'fromStatusId',
     'toStatusId',
@@ -89,7 +90,7 @@ describe('proposalFieldRows', () => {
     'projectId',
   ];
 
-  it('comes back as the exact eleven rows, in order, unchanged for an empty changedFields', () => {
+  it('comes back as the exact twelve rows, in order, unchanged for an empty changedFields', () => {
     expect(proposalFieldRows([]).map((r) => r.field)).toEqual(FIELDS);
     expect(proposalFieldRows([]).every((r) => r.changed === false)).toBe(true);
   });
