@@ -188,6 +188,7 @@ export function NewIssueDialog({
         editor={editorRef}
         onAppend={(text) => setDescription((d) => appendBlock(d, text))}
         disabled={projects.length === 0}
+        projectId={chosen}
       >
         <div className="hatch-form">
           {projects.length === 0 ? (
@@ -277,6 +278,7 @@ export function NewIssueDialog({
                   className="hatch-grows"
                   ariaLabel="Description"
                   handle={editorRef}
+                  attachmentProjectId={chosen}
                 />
               </Field>
 

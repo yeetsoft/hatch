@@ -212,11 +212,14 @@ export const deleteProjectLogo = (id: number) =>
 // ---- Attachments ----
 
 /** Stores one file. Multipart, so the browser sets the boundary and this does
-    not name its own content type, as with `previewImport`. */
-export const uploadAttachment = (blob: Blob, fileName: string) => {
+    not name its own content type, as with `previewImport`. `projectId`, given,
+    is sent on the query string, so the attachment can be linked to the project
+    the editor is in - left off `null` or `undefined`, as `getPlan`'s does. */
+export const uploadAttachment = (blob: Blob, fileName: string, projectId?: number | null) => {
   const form = new FormData();
   form.append('file', blob, fileName);
-  return fetchJson<Attachment>('/api/attachments', { method: 'POST', body: form });
+  const qs = projectId !== null && projectId !== undefined ? `?projectId=${projectId}` : '';
+  return fetchJson<Attachment>(`/api/attachments${qs}`, { method: 'POST', body: form });
 };
 
 /** The attachments among `ids` that still exist, in the order asked. Ids are
