@@ -171,7 +171,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             AgentDownLine: runner.AgentDownLine,
             AcceleratorMemoryBytes: runner.AcceleratorMemoryBytes,
             AcceleratorDeviceCount: runner.AcceleratorDeviceCount,
-            AcceleratorBackend: runner.AcceleratorBackend);
+            AcceleratorBackend: runner.AcceleratorBackend,
+            Pulling: runner.Pulling);
     }
 
     /// <summary>
@@ -278,6 +279,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         AgentDownKind = beat.AgentDownKind,
         AgentDownLine = beat.AgentDownLine,
         ThrottledUntil = beat.ThrottledUntil,
+        Pulling = beat.Pulling,
         Usage = beat.Usage,
         UsageReadAt = beat.UsageReadAt,
         ForPersonId = beat.ForPersonId,

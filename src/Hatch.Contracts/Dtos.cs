@@ -4762,6 +4762,7 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// unless this runner's agent is Ollama and it has reported accelerator
 /// memory. Never null.
 /// </param>
+/// <param name="Pulling">Whether this runner's loop is pulling a model, on the terms <see cref="RunnerHeartbeatRequest.Pulling"/> has.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -4828,7 +4829,8 @@ public record RunnerDto(
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
-    IReadOnlyList<string> Hold = null!)
+    IReadOnlyList<string> Hold = null!,
+    bool Pulling = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4903,7 +4905,8 @@ public record RunnerSessionDto(
     string? AgentDownLine = null,
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
-    string? AcceleratorBackend = null)
+    string? AcceleratorBackend = null,
+    bool Pulling = false)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -5101,6 +5104,10 @@ public enum RunnerBoardDrift
 /// </param>
 /// <param name="AcceleratorDeviceCount">How many accelerator devices this machine has, on the same terms as <see cref="AcceleratorMemoryBytes"/>.</param>
 /// <param name="AcceleratorBackend">The accelerator's backend - <c>cuda</c>, <c>metal</c>, <c>rocm</c> or <c>none</c> - on the same terms as <see cref="AcceleratorMemoryBytes"/>.</param>
+/// <param name="Pulling">
+/// True while the loop is pulling a model, written on every loop beat; null
+/// or false clears it. A <c>once</c> beat leaves it alone.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -5151,7 +5158,8 @@ public record RunnerHeartbeatRequest(
     string? Image = null,
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
-    string? AcceleratorBackend = null);
+    string? AcceleratorBackend = null,
+    bool? Pulling = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

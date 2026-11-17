@@ -3930,6 +3930,14 @@ public class EfHatchRunner
     public string? AgentDownLine { get; set; }
 
     /// <summary>
+    /// Whether this runner's loop is pulling a model - a fact about the
+    /// process, on the same terms as <see cref="ExhaustedUntil"/>: a loop
+    /// heartbeat that says it is pulling writes it, and a loop heartbeat that
+    /// does not clears it. A <c>once</c> beat leaves it alone either way.
+    /// </summary>
+    public bool Pulling { get; set; }
+
+    /// <summary>
     /// When this runner expects its token throttle to lift - a fact about the
     /// process, on the same terms as <see cref="ExhaustedUntil"/>: a loop
     /// heartbeat writes it, and a loop heartbeat that says it is not throttled
@@ -4173,6 +4181,9 @@ public class EfHatchRunnerSession
     /// <summary>What this session's agent said, as <see cref="EfHatchRunner.AgentDownLine"/>.</summary>
     [MaxLength(EfHatchRunner.MaxAgentDownLineLength)]
     public string? AgentDownLine { get; set; }
+
+    /// <summary>Whether this session's loop is pulling a model, as <see cref="EfHatchRunner.Pulling"/>.</summary>
+    public bool Pulling { get; set; }
 
     /// <summary>When this session's token throttle was due to lift, as <see cref="EfHatchRunner.ThrottledUntil"/>.</summary>
     public DateTimeOffset? ThrottledUntil { get; set; }

@@ -1040,6 +1040,22 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task Pulling_IsWrittenAndClearedByALoopBeat_AndLeftAloneByAOnceBeat()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Pulling: true));
+        Assert.True((await h.RowAsync()).Pulling);
+
+        // A `once` beat shares the loop's row name and must not clear it.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once"));
+        Assert.True((await h.RowAsync()).Pulling);
+
+        // A loop beat that does not say it is pulling clears it at once.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.False((await h.RowAsync()).Pulling);
+    }
+
+    [Fact]
     public async Task Host_PastItsLimit_IsTruncatedNotRefused()
     {
         var h = await NewAsync();
@@ -1601,6 +1617,21 @@ public class RunnersControllerTests
 
         Assert.Equal(Now.AddHours(2), runner.ExhaustedUntil);
         Assert.Equal(Now.AddHours(3), runner.ThrottledUntil);
+    }
+
+    [Fact]
+    public async Task AKeyedRunnerWithALiveSessionThatIsPulling_ShowsPullingOnTheRow()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        var session = NewSession(key.Id, Now, "here:/a");
+        session.Pulling = true;
+        h.Db.RunnerSessions.Add(session);
+        await h.Db.SaveChangesAsync();
+
+        var runner = await h.OneAsync();
+
+        Assert.True(runner.Pulling);
     }
 
     [Fact]
@@ -5199,6 +5230,25 @@ public class RunnersControllerTests
         Assert.Equal(25_769_803_776L, session.AcceleratorMemoryBytes);
         Assert.Equal(2, session.AcceleratorDeviceCount);
         Assert.Equal("cuda", session.AcceleratorBackend);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_Pulling_IsWrittenAndClearedByALoopBeat_AndLeftAloneByAOnceBeat()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Pulling: true));
+
+        var session = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.True(session.Pulling);
+
+        // A `once` beat shares the loop session's (key, where) and must not clear it.
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: Runner));
+        Assert.True((await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Pulling);
+
+        // A loop beat that does not say it is pulling clears it at once.
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+        Assert.False((await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Pulling);
     }
 
     [SkippableFact]
