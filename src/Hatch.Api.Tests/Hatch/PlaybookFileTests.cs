@@ -214,6 +214,86 @@ public class PlaybookFileTests
         Assert.Contains("(line 4)", problem);
     }
 
+    // ---- localModel ----
+
+    [Fact]
+    public void ALocalModel_ParsesIntoTheRow()
+    {
+        const string yaml = """
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                localModel: fake:1b
+                prompt: hi
+            """;
+
+        var (rows, problem) = Parse(yaml);
+
+        Assert.Null(problem);
+        Assert.Equal("fake:1b", Assert.Single(rows!).LocalModel);
+        Assert.Equal("fake:1b", PlaybookFile.Resolve(rows![0]).LocalModel);
+    }
+
+    [Fact]
+    public void NoLocalModel_OrABlankOne_LeavesTheRowWithout()
+    {
+        const string yaml = """
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                prompt: hi
+              - from: Backlog
+                to: Breakdown
+                localModel: ""
+                prompt: hi
+            """;
+
+        var (rows, problem) = Parse(yaml);
+
+        Assert.Null(problem);
+        Assert.All(rows!, r => Assert.Null(PlaybookFile.Resolve(r).LocalModel));
+    }
+
+    [Theory]
+    [InlineData("sonnet")]
+    [InlineData("claude-opus-5")]
+    [InlineData("gpt-6-luna")]
+    public void ALocalModelThatIsAnAliasOrAnotherAgentsId_IsAProblemCarryingItsLine(string bad)
+    {
+        var yaml = $"""
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                localModel: {bad}
+                prompt: hi
+            """;
+
+        var (rows, problem) = Parse(yaml);
+
+        Assert.Null(rows);
+        Assert.Contains($"not an alias or another agent's id like \"{bad}\"", problem);
+        Assert.Contains("(line 4)", problem);
+    }
+
+    [Fact]
+    public void AStoredRowWrittenBeforeLocalModel_StillReads_WithItNull()
+    {
+        const string stored = """
+            [{"fromStatusId":1,"toStatusId":2,"types":["epic"],"shape":"any","prompt":"hi","model":"sonnet","effort":"high","budget":null,"briefLimit":6000,"deniedTools":[],"isCheck":false}]
+            """;
+
+        Assert.Null(Assert.Single(EfHatchPlaybookFile.ReadRows(stored)).LocalModel);
+    }
+
+    [Fact]
+    public void AStoredRowCarryingALocalModel_ReadsItBack()
+    {
+        var stored = EfHatchPlaybookFile.WriteRows(
+            [new PlaybookFileRow(1, 2, ["epic"], "any", "hi", "sonnet", "high", null, null, [], false, null, null, "fake:1b")]);
+
+        Assert.Equal("fake:1b", Assert.Single(EfHatchPlaybookFile.ReadRows(stored)).LocalModel);
+    }
+
     [Fact]
     public void AStoredRowWrittenBeforeMaxRunSeconds_StillReads_WithItNull()
     {

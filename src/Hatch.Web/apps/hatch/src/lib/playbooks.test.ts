@@ -21,6 +21,8 @@ import {
   isUncheckedEdit,
   leftNote,
   limitNotes,
+  localModelDraft,
+  localModelRequest,
   matchesProjectFilter,
   maxRunDraft,
   maxRunRequest,
@@ -126,6 +128,24 @@ describe('the run limit field', () => {
 
   it('a blank field clears the run limit', () => {
     expect(maxRunRequest('  ')).toBe('');
+  });
+});
+
+describe('the local model field', () => {
+  it('shows none as a blank box', () => {
+    expect(localModelDraft(null)).toBe('');
+  });
+
+  it('shows a held local model as its id', () => {
+    expect(localModelDraft('fake:1b')).toBe('fake:1b');
+  });
+
+  it('trims the field for the wire', () => {
+    expect(localModelRequest(' fake:1b ')).toBe('fake:1b');
+  });
+
+  it('a blank field clears the local model', () => {
+    expect(localModelRequest('  ')).toBe('');
   });
 });
 
@@ -354,6 +374,7 @@ describe('coverage', () => {
       quietLimitSeconds: null,
       unreachableReason: null,
       maxRunSeconds: null,
+      localModel: null,
     });
     const playbook = (r: CoverageRow): Playbook => ({
       ...fileRow(r),
