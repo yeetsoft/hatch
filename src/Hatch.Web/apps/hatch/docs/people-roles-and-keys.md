@@ -91,6 +91,27 @@ project rather than globally.
   with no session and nobody pressing anything by hand: the pre-approval was
   that owner's or approver's own permission, given in advance.
 
+## Scope
+
+A person's scope is which projects they may see. It is a third thing beside the
+role and project membership, and it grants nothing: it only narrows.
+
+- **Three modes.** `all` sees every project. `none` sees no project. `some`
+  sees the projects an admin chose.
+- **No row is `all`.** Someone who has never been given a scope sees every
+  project.
+- **Who sets it.** An admin, through `GET /scopes`, `GET /scopes/{personId}`
+  and `PUT /scopes/{personId}`. An admin may set their own. A key is refused all
+  three, and so is any non-admin.
+- **Setting `all` or `none` clears the list.** No chosen projects are kept
+  behind for later. A project that is deleted drops out of every list.
+- **A key follows its owner.** A key sees what the person who owns it sees. A
+  key with no live owner sees every project. So do the wall being off, and
+  work the server starts itself.
+- **Not enforced yet.** Today the scope is only recorded and read back. No
+  board, search or issue route is narrowed by it; that is the next piece of
+  work.
+
 ## Runners and their keys
 
 A runner is a key: the credential a program carries instead of a person,
