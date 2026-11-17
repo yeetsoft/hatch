@@ -39,9 +39,14 @@ const NOT_TEXT = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio
  * Whether typing lands here, which is where Undo already means something: the
  * field's own text undo, which the board must not take from it.
  */
-export function isTypingTarget(el: { tagName: string; isContentEditable?: boolean; type?: string } | null): boolean {
+export function isTypingTarget(
+  el: { tagName: string; isContentEditable?: boolean; type?: string; editContext?: unknown } | null,
+): boolean {
   if (!el) return false;
   if (el.isContentEditable) return true;
+  // Chromium's EditContext: Monaco focuses a plain div with one attached, which is neither
+  // contenteditable nor :read-write, yet is where the keystrokes land.
+  if (el.editContext) return true;
 
   const tag = el.tagName.toLowerCase();
   if (tag === 'textarea' || tag === 'select') return true;

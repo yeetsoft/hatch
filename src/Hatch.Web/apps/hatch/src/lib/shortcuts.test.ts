@@ -71,6 +71,10 @@ describe('isTypingTarget', () => {
     expect(isTypingTarget({ tagName: 'DIV', isContentEditable: true })).toBe(true);
   });
 
+  it('is an element with an EditContext, which is how Chromium focuses Monaco', () => {
+    expect(isTypingTarget({ tagName: 'DIV', isContentEditable: false, editContext: {} })).toBe(true);
+  });
+
   it('is not an input that is a button in disguise', () => {
     for (const type of ['button', 'checkbox', 'radio', 'submit', 'range']) {
       expect(isTypingTarget({ tagName: 'INPUT', type })).toBe(false);
@@ -82,6 +86,7 @@ describe('isTypingTarget', () => {
     expect(isTypingTarget({ tagName: 'BODY' })).toBe(false);
     expect(isTypingTarget({ tagName: 'BUTTON' })).toBe(false);
     expect(isTypingTarget({ tagName: 'DIV', isContentEditable: false })).toBe(false);
+    expect(isTypingTarget({ tagName: 'DIV', editContext: null })).toBe(false);
   });
 });
 
