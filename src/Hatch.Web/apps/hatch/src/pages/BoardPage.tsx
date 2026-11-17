@@ -94,6 +94,7 @@ import { meterText, preview, runs, tightest } from '../lib/wip';
 import type { Tightness } from '../lib/wip';
 import { WipBands } from '../components/WipBands';
 import type { AssigneeDirectory, Board, IssueCard, Project, Status, Wip } from '../types';
+import { ScopeGate } from '../components/ScopeGate';
 
 /** The URL's whole vocabulary here: which project, by key - the same param
     PlanPage's picker uses. */
@@ -135,6 +136,14 @@ function PlusGlyph() {
 }
 
 export function BoardPage() {
+  return (
+    <ScopeGate>
+      <BoardContent />
+    </ScopeGate>
+  );
+}
+
+function BoardContent() {
   const isPhone = usePhone();
   const pinned = pinnedBoard(isPhone, useStandalone());
 

@@ -1184,6 +1184,16 @@ public sealed class GoToWorkCommand(Runtime runtime)
             return 1;
         }
 
+        // A key whose owner's scope reaches no project has nothing to ask the
+        // board for, and a night of "nothing workable" would hide why. Read once,
+        // after every refusal that needs no board and before any lock is taken;
+        // a scope changed while the loop runs is seen the next time it starts.
+        if (await NoScope.EmptyAsync(runtime.Board, ct))
+        {
+            runtime.Say.Complain(NoScope.Sentence);
+            return 0;
+        }
+
         // One lock per checkout this runner serves - a second loop naming any
         // one of them is refused, by the first loop still holding it. And, where
         // a workspace is set, one WorkspaceLock on the workspace directory for

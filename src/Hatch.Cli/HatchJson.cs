@@ -44,6 +44,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(CredentialDto))]
 [JsonSerializable(typeof(MeDto))]
+[JsonSerializable(typeof(MeScopeDto))]
 [JsonSerializable(typeof(List<StatusDto>))]
 [JsonSerializable(typeof(List<CommentDto>))]
 [JsonSerializable(typeof(List<IssueEventDto>))]

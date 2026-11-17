@@ -83,6 +83,7 @@ public sealed class BoardCommands(Cli cli)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, BoardUsage);
         if (args.Length > 0) return Usage.Refuse(cli.Say, "board takes nothing", BoardUsage);
+        if (await NoScope.SaidAsync(cli, ct)) return 0;
 
         var board = await cli.Board.BoardAsync(ct);
         if (board is null) return 1;
@@ -186,6 +187,7 @@ public sealed class BoardCommands(Cli cli)
         if (args.Length > 1) return Usage.Refuse(cli.Say, "next takes one column", NextUsage);
 
         var want = args.Length == 1 ? args[0] : "todo";
+        if (await NoScope.SaidAsync(cli, ct)) return 0;
 
         var board = await cli.Board.BoardAsync(ct);
         if (board is null) return 1;
@@ -253,6 +255,8 @@ public sealed class BoardCommands(Cli cli)
             else if (under is null && !arg.StartsWith('-')) under = arg;
             else return Usage.Refuse(cli.Say, "queue takes [--mine] and one ancestor key", QueueUsage);
         }
+
+        if (await NoScope.SaidAsync(cli, ct)) return 0;
 
         var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine, cli.RunnerName, takers: true);
 

@@ -119,6 +119,17 @@ role and project membership, and it grants nothing: it only narrows.
 - **A key follows its owner.** A key sees what the person who owns it sees. A
   key with no live owner sees every project. So do the wall being off, and
   work the server starts itself.
+- **A person sees their own scope.** `GET /api/me` answers it as `scope`, for a
+  person and for a key (its owner's). When it reaches no project, the board,
+  Plan, Projects and Dreams pages draw one sentence in place of the page: *No
+  project is in your scope; an admin sets it on Manage → Users.* It is not a
+  blank board and not an error. A fresh install with no projects yet is not
+  this: its scope is `all`, and it says "No projects yet." The new-issue
+  default, the `?scope=` tab filter and every project picker offer only the
+  projects `GET /api/projects` returns, which is already the caller's own.
+  `hatch board`, `next`, `queue`, `go-to-work` and `do-my-work` under a key
+  that reaches no project print the same news in one sentence and exit `0`,
+  where they would otherwise read as a board with nothing on it.
 - **It is enforced where the data is read.** A person on `some` sees only the
   rows of those projects, on every board, list, search and issue page. A person
   on `none` sees no project, issue, comment or event. A project outside the
