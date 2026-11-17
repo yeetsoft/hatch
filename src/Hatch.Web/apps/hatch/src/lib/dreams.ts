@@ -295,6 +295,26 @@ export function weaveRequest(args: {
   return request;
 }
 
+/** Why Weave cannot be pressed, or `null` when it can: the line the page puts
+    beside the button. In the order a person fixes them - no project exists,
+    none is picked, then mode `seed` with nothing (once trimmed) to pull on.
+    It is `null` exactly when `weaveRequest` is not, which the tests hold. */
+export function weaveBlocker(args: {
+  projectId: number | null;
+  projectCount: number;
+  mode: WeaveMode;
+  seed: string | null;
+  q: string;
+}): string | null {
+  const { projectId, projectCount, mode, seed, q } = args;
+  if (projectId === null) {
+    return projectCount === 0 ? 'There is no project to weave into yet.' : 'Pick a project above to weave.';
+  }
+  if (mode === 'seed' && weaveSeed(seed, q).trim() === '') return 'Name a thread to pull first.';
+
+  return null;
+}
+
 /** The project a weave files into: the picked project, when it parses and
     names a project that still exists; else the only project there is, when
     there is exactly one; else `null`, so the person is asked rather than

@@ -87,6 +87,49 @@ describe('Post', () => {
   });
 });
 
+describe('the weave section', () => {
+  it('has a heading at the display size, in weight 800', () => {
+    const rule = declarationsOf('.hatch-dream-weave__title');
+    expect(rule['font-size']).toBe('var(--t-display)');
+    expect(rule['font-weight']).toBe('800');
+  });
+
+  it('types its seed at 18px across the whole section, with no border', () => {
+    const rule = declarationsOf('.hatch-dream-weave__seed .hatch-dream-weave__input');
+    expect(rule['font-size']).toBe('var(--t-subhead)');
+    expect(rule['width']).toBe('100%');
+    expect(rule['border']).toBe('0');
+    expect(rule['box-shadow']).toBe('none');
+  });
+
+  it('wears the dream box rule: faint at rest, full on focus, the ink pair, Highlight when forced', () => {
+    expect(Number(declarationsOf('.hatch-dream-weave__seed::after')['opacity'])).toBeLessThan(1);
+    expect(declarationsOf('.hatch-dream-weave__seed:focus-within::after')['opacity']).toBe('1');
+    expect(css).toMatch(/\.hatch-dream-weave__seed::after,\s*\.hatch-dream-composer__box::after\s*\{[^}]*linear-gradient\(90deg, var\(--gradient-ink-from\), var\(--gradient-ink-to\)\)/);
+    expect(declarationsOf('.hatch-dream-weave__seed::after', '@media (forced-colors: active)')['background']).toBe('Highlight');
+  });
+
+  it("moves the heading's gradient, forever, while a weave is being filed", () => {
+    const rule = declarationsOf('.hatch-dream-weave__title--filing', '@supports (background-clip: text) or (-webkit-background-clip: text)');
+    expect(rule['animation']).toMatch(/^hatch-dream-weave-filing \S+ linear infinite$/);
+    expect(blocksOf('@keyframes hatch-dream-weave-filing')).toContain('background-position');
+    // The loop has no seam: the first stop comes round again at the far end.
+    expect(rule['background-image']).toMatch(/var\(--gradient-ink-from\), var\(--gradient-ink-to\), var\(--gradient-ink-from\)/);
+  });
+
+  it('holds the heading still under reduced motion and forced colours', () => {
+    expect(declarationsOf('.hatch-dream-weave__title--filing', '@media (prefers-reduced-motion: reduce)')['animation']).toBe('none');
+    const forced = declarationsOf('.hatch-dream-weave__title--filing', '@media (forced-colors: active)');
+    expect(forced['animation']).toBe('none');
+    expect(forced['background-image']).toBe('none');
+  });
+
+  it('is a section, not a fold', () => {
+    expect(css).not.toMatch(/details\.hatch-dream-weave/);
+    expect(css).not.toMatch(/\.hatch-dream-weave\s+summary/);
+  });
+});
+
 describe('the dream history', () => {
   it('fades in on opacity alone', () => {
     // Not through declarationsOf: it merges the reduced-motion rule over this one.
