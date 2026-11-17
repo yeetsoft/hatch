@@ -71,7 +71,7 @@ internal static class PlaybookProposalProjection
             beforeDto.Prompt == beforeDto.DefaultPrompt ? null : beforeDto.Prompt, beforeDto.DefaultPrompt,
             beforeDto.Model, beforeDto.Effort, beforeDto.Budget, beforeDto.BriefLimit, beforeDto.QuietLimitSeconds,
             EfHatchPlaybook.WriteDeniedTools(beforeDto.DeniedTools), beforeDto.IsCheck, beforeDto.ProjectId,
-            beforeDto.MaxRunSeconds);
+            beforeDto.MaxRunSeconds, beforeDto.LocalModel);
 
         var after = PlaybookPatches.Apply(before, patch);
 
@@ -132,6 +132,7 @@ internal static class PlaybookProposalProjection
         if (before.Shape != after.Shape) fields.Add("shape");
         if (before.EffectivePrompt != after.EffectivePrompt) fields.Add("prompt");
         if (before.Model != after.Model) fields.Add("model");
+        if (before.LocalModel != after.LocalModel) fields.Add("localModel");
         if (before.Effort != after.Effort) fields.Add("effort");
         if (before.Budget != after.Budget) fields.Add("budget");
         if (before.BriefLimit != after.BriefLimit) fields.Add("briefLimit");

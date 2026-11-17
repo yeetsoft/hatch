@@ -108,7 +108,7 @@ public class PlaybookProposalEntitiesTests
         var request = new PlaybookProposalChangeRequest(
             PlaybookId: 7, FromStatusId: 1, ToStatusId: 2, Types: ["task"], Prompt: "p", Model: "opus",
             Effort: "high", Budget: "5", BriefLimit: "9", Shape: "leaf", DeniedTools: ["Bash"],
-            ProjectId: "3", IsCheck: true);
+            ProjectId: "3", IsCheck: true, LocalModel: "fake:1b");
 
         var patch = request.ToPatch();
 
@@ -124,6 +124,7 @@ public class PlaybookProposalEntitiesTests
         Assert.Equal(new[] { "Bash" }, patch.DeniedTools);
         Assert.Equal("3", patch.ProjectId);
         Assert.True(patch.IsCheck);
+        Assert.Equal("fake:1b", patch.LocalModel);
     }
 
     [Fact]
@@ -149,6 +150,7 @@ public class PlaybookProposalEntitiesTests
         new(7, DeniedTools: []),
         new(7, ProjectId: ""),
         new(7, IsCheck: false),
+        new(7, LocalModel: ""),
     };
 
     [Theory]

@@ -533,6 +533,8 @@ export interface PlaybookFileRow {
   isCheck: boolean;
   quietLimitSeconds: number | null;
   maxRunSeconds: number | null;
+  /** The Ollama id a move under this row runs on when it runs locally, or null for never. */
+  localModel: string | null;
 }
 
 /** PlaybookFileRow with its status ids resolved to the board's current names
@@ -555,6 +557,8 @@ export interface PlaybookFileRowDto {
   /** The server's sentence for a row the dispatcher can never pick; null when reachable. */
   unreachableReason: string | null;
   maxRunSeconds: number | null;
+  /** The Ollama id a move under this row runs on when it runs locally, or null for never. */
+  localModel: string | null;
 }
 
 /** Mirrors PlaybookFileDto. */
@@ -1598,6 +1602,8 @@ export interface Playbook {
   unreachableReason: string | null;
   /** Seconds a session under this row may run before it is cut off, or null for no limit. */
   maxRunSeconds: number | null;
+  /** The Ollama id a move under this row runs on when it runs locally, or null for never. */
+  localModel: string | null;
   updatedAt: string;
   /** The one project this row speaks for, or null to speak for every project. */
   projectId: number | null;
@@ -1653,6 +1659,7 @@ export interface PlaybookCreateRequest {
   briefLimit?: string;
   quietLimitSeconds?: string;
   maxRunSeconds?: string;
+  localModel?: string;
   shape?: PlaybookShape;
   deniedTools?: string[];
   isCheck?: boolean;
@@ -1675,6 +1682,7 @@ export interface PlaybookPatchRequest {
   briefLimit?: string;
   quietLimitSeconds?: string;
   maxRunSeconds?: string;
+  localModel?: string;
   shape?: PlaybookShape;
   deniedTools?: string[];
   isCheck?: boolean;

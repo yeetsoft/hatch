@@ -36,6 +36,19 @@ public class PlaybookPatchesTests
     }
 
     [Fact]
+    public void A_local_model_is_set_trimmed_kept_when_null_and_cleared_when_blank()
+    {
+        var set = PlaybookPatches.Apply(State(), new PlaybookPatchRequest(null, null, null, null, null, null, LocalModel: " fake:1b "));
+        Assert.Equal("fake:1b", set.LocalModel);
+
+        var kept = PlaybookPatches.Apply(set, Patch(model: "opus"));
+        Assert.Equal("fake:1b", kept.LocalModel);
+
+        var cleared = PlaybookPatches.Apply(set, new PlaybookPatchRequest(null, null, null, null, null, null, LocalModel: "   "));
+        Assert.Null(cleared.LocalModel);
+    }
+
+    [Fact]
     public void A_field_left_null_in_the_request_is_untouched()
     {
         var current = State();

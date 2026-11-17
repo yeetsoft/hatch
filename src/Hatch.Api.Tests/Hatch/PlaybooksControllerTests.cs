@@ -329,6 +329,102 @@ public class PlaybooksControllerTests
             Reason(refusal.Result));
     }
 
+    // ---- LocalModel: setting, changing, clearing ----
+
+    [Fact]
+    public async Task ALocalModel_IsNullByDefault_OnTheWire()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        Assert.Null(row.LocalModel);
+        Assert.Null((await h.ReadAsync(row.Id)).LocalModel);
+    }
+
+    [Fact]
+    public async Task ALocalModel_IsSetTrimmedAndReadBack()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var patched = await h.SetAsync(row.Id, localModel: " fake:1b ");
+
+        Assert.Equal("fake:1b", patched.LocalModel);
+        Assert.Equal("fake:1b", (await h.ReadAsync(row.Id)).LocalModel);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ALocalModel_ABlankValue_ClearsIt(string blank)
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, localModel: "fake:1b");
+
+        var cleared = await h.SetAsync(row.Id, localModel: blank);
+
+        Assert.Null(cleared.LocalModel);
+    }
+
+    [Fact]
+    public async Task PatchingSomethingElse_WithLocalModelOmitted_LeavesItUnchanged()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, localModel: "fake:1b");
+
+        var patched = Value(await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, "a new prompt", null, null), default));
+
+        Assert.Equal("a new prompt", patched.Prompt);
+        Assert.Equal("fake:1b", patched.LocalModel);
+    }
+
+    [Theory]
+    [InlineData("sonnet")]
+    [InlineData("claude-opus-5")]
+    [InlineData("gpt-6-luna")]
+    [InlineData("no-tag")]
+    public async Task ALocalModel_ThatIsNotAnOllamaId_IsRefused_AndWritesNothing(string bad)
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, LocalModel: bad), default);
+
+        Assert.Contains($"not an alias or another agent's id like \"{bad}\"", Reason(refusal.Result));
+        Assert.Null((await h.ReadAsync(row.Id)).LocalModel);
+    }
+
+    [Fact]
+    public async Task ALocalModel_CanBeSetOnCreate()
+    {
+        var h = await NewAsync();
+
+        Assert.Equal("fake:1b", (await h.CreateAsync(localModel: "fake:1b")).LocalModel);
+    }
+
+    [Fact]
+    public async Task ABlankLocalModelOnCreate_IsNone()
+    {
+        var h = await NewAsync();
+
+        Assert.Null((await h.CreateAsync(localModel: "  ")).LocalModel);
+    }
+
+    [Fact]
+    public async Task ALocalModelOnCreate_ThatIsAnAlias_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", LocalModel: "sonnet"), default);
+
+        Assert.Contains("not an alias or another agent's id like \"sonnet\"", Reason(refusal.Result));
+    }
+
     // ---- MaxRunSeconds: setting, changing, clearing ----
 
     [Fact]
@@ -1097,19 +1193,20 @@ public class PlaybooksControllerTests
 
         public async Task<PlaybookDto> CreateAsync(
             string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
-            bool? isCheck = null, string? quietLimitSeconds = null, string? maxRunSeconds = null) =>
+            bool? isCheck = null, string? quietLimitSeconds = null, string? maxRunSeconds = null, string? localModel = null) =>
             Created(await Playbooks.CreatePlaybook(
                 new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit,
                     ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds,
-                    MaxRunSeconds: maxRunSeconds), default));
+                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel), default));
 
         public async Task<PlaybookDto> SetAsync(
             int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
-            bool? isCheck = null, string? prompt = null, string? quietLimitSeconds = null, string? maxRunSeconds = null) =>
+            bool? isCheck = null, string? prompt = null, string? quietLimitSeconds = null, string? maxRunSeconds = null,
+            string? localModel = null) =>
             Value(await Playbooks.PatchPlaybook(
                 id, new PlaybookPatchRequest(null, null, null, prompt, null, null, budget, briefLimit,
                     ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds,
-                    MaxRunSeconds: maxRunSeconds), default));
+                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel), default));
 
         /// <summary>There is no API to set a prescribed text, so a test sets it on the row.</summary>
         public async Task SetDefaultPromptAsync(int id)

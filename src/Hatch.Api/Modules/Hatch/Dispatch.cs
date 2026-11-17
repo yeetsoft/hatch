@@ -2645,6 +2645,7 @@ public sealed class Dispatch(
                 BriefLimit = row.BriefLimit,
                 QuietLimitSeconds = row.QuietLimitSeconds,
                 MaxRunSeconds = row.MaxRunSeconds,
+                LocalModel = row.LocalModel,
                 DeniedTools = EfHatchPlaybook.WriteDeniedTools(row.DeniedTools),
                 IsCheck = row.IsCheck,
                 CreatedAt = file.CheckedAt,
