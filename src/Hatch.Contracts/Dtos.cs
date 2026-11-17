@@ -5129,6 +5129,25 @@ public record CredentialDto(string ProtectedToken);
 /// who already holds a grant and so has nothing to sign in to.
 /// </param>
 /// <param name="Owner">The key's owner's name, for <c>key</c> with an owner. Null for every other kind.</param>
+/// <param name="Scope">
+/// Which projects the caller reaches - a key reads its owner's. Null only on
+/// the 204 and from a server that predates it, which a client reads as
+/// "carry on as before".
+/// </param>
 public record MeDto(
     string Kind, string Name, string? Role, bool Configured, bool CanSignOut, bool CanSignIn,
-    string? Owner = null);
+    string? Owner = null, MeScopeDto? Scope = null);
+
+/// <summary>
+/// The caller's own scope, as <c>GET /api/me</c> reports it.
+/// </summary>
+/// <param name="Mode">
+/// <c>all</c> (unbounded), <c>none</c> (bounded, and no project left in it) or
+/// <c>some</c>. Read from what the caller can actually see, not the stored row,
+/// so a <c>some</c> whose projects are all gone reads <c>none</c>.
+/// </param>
+/// <param name="ProjectIds">
+/// The ids, ascending, for <c>some</c>. Empty for <c>all</c> and <c>none</c>:
+/// <c>all</c> does not list every project - <c>GET /api/projects</c> does.
+/// </param>
+public record MeScopeDto(string Mode, IReadOnlyList<int> ProjectIds);
