@@ -2958,6 +2958,12 @@ export interface RunnerSession {
   standing?: boolean | null;
   /** The image this session was started from, as `Runner.image`. Mirrors RunnerSessionDto.Image. */
   image?: string | null;
+  /** The accelerator's memory in bytes, or null where unread or not reported. Mirrors RunnerSessionDto.AcceleratorMemoryBytes. */
+  acceleratorMemoryBytes?: number | null;
+  /** How many accelerator devices the machine has, or null where unread or not reported. Mirrors RunnerSessionDto.AcceleratorDeviceCount. */
+  acceleratorDeviceCount?: number | null;
+  /** The accelerator's backend (`cuda`, `rocm`, `metal`, `vulkan` or `none`), or null where not reported. Mirrors RunnerSessionDto.AcceleratorBackend. */
+  acceleratorBackend?: string | null;
 }
 
 /** Sent to `PATCH /runners/{name}/sessions/{id}`: the one session's state. Mirrors RunnerSessionPatchRequest. */

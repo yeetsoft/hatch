@@ -1,5 +1,5 @@
 import { Text } from '@hatch/ui';
-import { drivesLabel, runnerBuildLabel, sessionRepositoriesLabel } from '../lib/runners';
+import { acceleratorLabel, drivesLabel, runnerBuildLabel, sessionRepositoriesLabel } from '../lib/runners';
 import type { Runner, RunnerSession } from '../types';
 
 /** One session's machine, unfolded: the design's widened `RunnerDetails` -
@@ -10,6 +10,7 @@ import type { Runner, RunnerSession } from '../types';
 export function MachineDetails({ session, runner, now }: { session: RunnerSession; runner: Runner; now: Date }) {
   const build = runnerBuildLabel(session, now);
   const repositories = sessionRepositoriesLabel(session);
+  const accelerator = acceleratorLabel(session);
 
   return (
     <details>
@@ -21,6 +22,7 @@ export function MachineDetails({ session, runner, now }: { session: RunnerSessio
           {session.arch != null ? ` (${session.arch})` : ''}
         </Text>
       )}
+      {accelerator && <Text tone="muted">Accelerator {accelerator}</Text>}
       {session.agent != null && (
         <Text tone="muted">
           Agent {session.agent}

@@ -184,14 +184,19 @@ is meant to be one machine, and tags and bounds are per runner. With none live,
 the card says how to start one.
 
 Each block ends in a closed **Machine** panel, showing what the session's last
-heartbeat said about itself. It carries six machine fields - `os`, `arch`,
-`agentVersion`, `container`, `username`, `processStartedAt` - plus `ip`, seven in
-all. The six come from the CLI itself and are missing for a session run by a CLI
-old enough to predate them, and the panel leaves a missing field out. `ip` is
-never one of the six - it is the server's own reading of the connection, taken
-after the forwarded header from the proxy in front of it is applied, so it is
+heartbeat said about itself. It carries nine machine fields - `os`, `arch`,
+`agentVersion`, `container`, `username`, `processStartedAt`, and the accelerator's
+`acceleratorBackend`, `acceleratorMemoryBytes` and `acceleratorDeviceCount` - plus
+`ip`, ten in all. The nine come from the CLI itself and are missing for a session
+run by a CLI old enough to predate them, and the panel leaves a missing field
+out. The accelerator reads as one line, `Accelerator cuda 24GB x2`: the backend,
+the memory in gigabytes where reported, and `x` and the count only above one
+device. A session that reports `none`, or nothing, draws no such line; so does
+one whose runner talks to an Ollama server on another machine, which reports no
+profile at all. `ip` is never one of the nine - it is the server's own
+reading of the connection, taken after the forwarded header from the proxy in front of it is applied, so it is
 set on every session regardless of CLI version, including one that sends none of
-the other six. The panel also names the session's host, its agent, its build (a
+the other nine. The panel also names the session's host, its agent, its build (a
 short sha and how long ago, or `dev build` for one that hasn't been stamped), the
 repositories it serves and what it drives. Nothing else is collected: no
 environment variable, no process id, no MAC address.

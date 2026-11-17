@@ -554,6 +554,23 @@ export function drivesLabel(runner: Runner): string {
   return runner.drives.length === 0 ? 'driving nothing' : `driving ${runner.drives.join(', ')}`;
 }
 
+/** A session's accelerator as one phrase - `cuda 24GB x2` - or null for a
+    session that reported none or nothing. Memory is binary gigabytes to one
+    decimal with a trailing `.0` dropped, and `x` only above one device, the
+    way `hatch runners` prints it. */
+export function acceleratorLabel(session: RunnerSession): string | null {
+  const backend = session.acceleratorBackend;
+  if (backend == null || backend === 'none') return null;
+  const parts = [backend];
+  if (session.acceleratorMemoryBytes != null) {
+    parts.push(`${Math.round((session.acceleratorMemoryBytes / 1024 ** 3) * 10) / 10}GB`);
+  }
+  if (session.acceleratorDeviceCount != null && session.acceleratorDeviceCount > 1) {
+    parts.push(`x${session.acceleratorDeviceCount}`);
+  }
+  return parts.join(' ');
+}
+
 /** A held order as the row says it: what was asked, by whom, and how long ago. */
 export function orderSentence(order: NonNullable<Runner['order']>, now: Date): string {
   return `ordered to ${order.kind}${order.key ? ' ' + order.key : ''} by ${order.by ?? 'somebody'}, ${agoPhrase(order.at, now)}`;
