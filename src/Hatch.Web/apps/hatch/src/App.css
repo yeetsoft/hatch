@@ -6371,6 +6371,119 @@ input.hatch-inline-title-input {
   background: var(--danger);
 }
 
+/* The weave mode pill (Dreams), in place of the Mode dropdown: shaped after
+   `.hatch-type-pill-press`/`-caret`/`-band`, but with one fill for every
+   mode rather than one per row - `.hatch-gradient-fill` already paints the
+   pill, the way Post and Weave are painted, and a mode has no colour of its
+   own to carry. */
+.hatch-weave-mode-pill-press {
+  /* The pill's own column (.hatch-dream-weave) stretches a flex child to the
+     full width by default, as `.hatch-type-pill`'s own align-self opts out
+     of its row for the same reason. */
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  transition:
+    box-shadow var(--transition),
+    opacity var(--transition);
+}
+
+.hatch-weave-mode-pill-press:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-weave-mode-pill-caret {
+  transition: transform var(--transition);
+}
+
+.hatch-weave-mode-pill-press[aria-expanded='true'] .hatch-weave-mode-pill-caret {
+  transform: rotate(180deg);
+}
+
+.hatch-weave-mode-pill-band {
+  flex-basis: 100%;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--chrome);
+  border-radius: var(--r);
+  animation: hatch-peek-status-in var(--transition) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-weave-mode-pill-band {
+    animation: none;
+  }
+}
+
+/* A column, not a wrap of chips: each step carries a name and a sentence, so
+   it reads as a list. */
+.hatch-weave-mode-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+.hatch-weave-mode-step {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hatch-weave-mode-step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-strong) 18%, transparent);
+}
+
+.hatch-weave-mode-step__name {
+  font-weight: 600;
+}
+
+.hatch-weave-mode-step__hint {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+/* The mode this press already is. Disabled rather than merely marked:
+   pressing it would write a request with the mode it is already in.
+   Marked in --chrome at a low opacity - the "second intensity of one hue"
+   idiom `.hatch-priority-pill.low` already uses - since no mode has a
+   colour of its own. */
+.hatch-weave-mode-step.here {
+  border-color: var(--chrome);
+  background: color-mix(in srgb, var(--chrome) 16%, transparent);
+  cursor: default;
+}
+
+.hatch-weave-mode-step.here .hatch-weave-mode-step__hint {
+  color: var(--ink);
+}
+
+/* The current mode's hint, under the pill, always shown - with no
+   pointer:coarse rule hiding it, since a phone reads it too. */
+.hatch-dream-weave__mode-hint {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 /* Carried past a column marked Express skips, with no session.
  *
  * No stripe on the card - that is expedite's, and a card marked both would

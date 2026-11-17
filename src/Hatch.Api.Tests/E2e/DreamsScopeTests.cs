@@ -126,7 +126,8 @@ public class DreamsScopeTests(ITestOutputHelper output)
             Assert.True(seeded.GetProperty("weaveDisabled").GetBoolean());
             Assert.Equal("Name a thread to pull first.", seeded.GetProperty("weaveHint").GetString());
 
-            await harness.SelectOptionAsync(deadline, ".hatch-dream-weave select", "pressing");
+            await harness.ClickAsync(deadline, ".hatch-weave-mode-pill-press");
+            await harness.ClickAsync(deadline, ".hatch-weave-mode-step:has-text(\"Most pressing\")");
             var picked = await ReadAsync(harness, deadline, "picked", profileName, DreamOf("DRB"), LooseDream);
             Assert.Equal([DreamOf("DRB"), LooseDream], Strings(picked, "dreams"));
             Assert.Contains("projectId=", picked.GetProperty("search").GetString());
@@ -149,7 +150,8 @@ public class DreamsScopeTests(ITestOutputHelper output)
 
             // No scope, none picked: nothing is narrowed, and Weave says to pick a project.
             await harness.GoToAsync(deadline, "dreams?open=true");
-            await harness.SelectOptionAsync(deadline, ".hatch-dream-weave select", "pressing");
+            await harness.ClickAsync(deadline, ".hatch-weave-mode-pill-press");
+            await harness.ClickAsync(deadline, ".hatch-weave-mode-step:has-text(\"Most pressing\")");
             var unscoped = await ReadAsync(harness, deadline, "unscoped", profileName, DreamOf("DRA"), DreamOf("DRB"), DreamOf("DRC"), LooseDream, PostedWithProject, PostedWithNone);
             Assert.Equal(["No project", "DRA DRA", "DRB DRB", "DRC DRC"], Strings(unscoped, "tiles"));
             AssertOneControl(unscoped);

@@ -130,6 +130,26 @@ describe('the weave section', () => {
   });
 });
 
+describe('the weave mode pill', () => {
+  it('shows the current mode hint in --mono, --t-label, --muted, with no coarse-pointer rule hiding it', () => {
+    const rule = declarationsOf('.hatch-dream-weave__mode-hint');
+    expect(rule['font-family']).toBe('var(--mono)');
+    expect(rule['font-size']).toBe('var(--t-label)');
+    expect(rule['color']).toBe('var(--muted)');
+    expect(blocksOf('@media (pointer: coarse)')).not.toContain('hatch-dream-weave__mode-hint');
+  });
+
+  it('lists its steps in a column, not a wrap of chips', () => {
+    expect(declarationsOf('.hatch-weave-mode-steps')['flex-direction']).toBe('column');
+  });
+
+  it('marks the current step in --chrome, not a borrowed type colour', () => {
+    const rule = declarationsOf('.hatch-weave-mode-step.here');
+    expect(rule['border-color']).toBe('var(--chrome)');
+    expect(rule['background']).toContain('var(--chrome)');
+  });
+});
+
 describe('the dream history', () => {
   it('fades in on opacity alone', () => {
     // Not through declarationsOf: it merges the reduced-motion rule over this one.

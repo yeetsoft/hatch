@@ -139,13 +139,19 @@ box. Its heading is large and in the gradient ink, with a line under it saying
 what a press does: it files an epic woven from the dreams and takes you to it.
 It has no project control of its own: it uses the picker above the composer.
 
-Below is a **Mode**, one of four: a seed sentence's own thread; the thread
-the dreams return to with the most urgency; the thread the most dreams touch;
-or the next step toward the vision, given what has already shipped. Choosing
-**seed** shows a **Seed** box that spans the section and is typed at the same
-size as the dream box, over the same rule, which goes full while it has focus.
-It follows the search box above until you touch it - the moment you have typed
-in it, even to clear it, it keeps its own text and stops following search.
+Below is a mode pill, in the top bar's gradient, wearing the current mode's
+name. Pressing it opens a band of four steps - **Seed**, follow a thread you
+name; **Most pressing**, the thread the dreams return to with the most
+urgency; **Most common**, the thread the most dreams touch; and **Next
+step**, the nearest step toward the vision, given what has already shipped -
+each with its hint as text, not only as a `title`. Escape folds the band
+with no change; picking a step folds it, swaps the pill and sends the step's
+own mode. The current mode's hint sits under the pill too, always shown,
+even on a phone. Choosing **Seed** shows a **Seed** box that spans the
+section and is typed at the same size as the dream box, over the same rule,
+which goes full while it has focus. It follows the search box above until
+you touch it - the moment you have typed in it, even to clear it, it keeps
+its own text and stops following search.
 
 The epic is filed into the picked project, or into the one project when the
 board runs only one, even with none picked. **Weave**, a pill in the top bar's

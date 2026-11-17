@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
 import { addDream, deleteDream, getDreams, patchDream, weaveDreams } from '../api/client';
-import { Choice } from '../components/Choice';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { DreamsOpeningLines } from '../components/DreamsOpeningLines';
 import { DreamComposer } from '../components/DreamComposer';
 import { ProjectChooser } from '../components/ProjectChooser';
+import { WeaveModeControl } from '../components/WeaveModeControl';
 import { agoPhrase } from '../lib/claim';
 import {
   EMPTY_DREAMS,
@@ -27,6 +27,7 @@ import {
   scrubbedDreamProject,
   showsDream,
   weaveBlocker,
+  weaveModeRow,
   weaveProjectDefault,
   weaveRequest,
   weaveSeed,
@@ -312,7 +313,8 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
         </h2>
         <p className="hatch-dream-weave__lede">Files an epic woven from the dreams and takes you to it.</p>
 
-        <Choice label="Mode" value={weaveMode} options={WEAVE_MODES} onChange={(value) => setWeaveMode(value as WeaveMode)} />
+        <WeaveModeControl mode={weaveMode} onChange={setWeaveMode} />
+        <p className="hatch-dream-weave__mode-hint">{weaveModeRow(weaveMode).hint}</p>
 
         {weaveMode === 'seed' && (
           <div className="hatch-dream-weave__seed">

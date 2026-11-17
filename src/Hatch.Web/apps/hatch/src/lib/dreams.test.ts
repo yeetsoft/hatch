@@ -3,6 +3,7 @@ import {
   DREAMS_PAGE,
   EMPTY_DREAMS,
   WEAVE_MODES,
+  WEAVE_MODE_ROWS,
   countLine,
   deleteDreamQuestion,
   dreamsCountRequest,
@@ -20,6 +21,7 @@ import {
   scrubbedDreamProject,
   showsDream,
   weaveBlocker,
+  weaveModeRow,
   weaveProjectDefault,
   weaveRequest,
   weaveSeed,
@@ -650,6 +652,23 @@ describe('weaveBlocker', () => {
 describe('WEAVE_MODES', () => {
   it('lists the four modes in the order the control offers them', () => {
     expect(WEAVE_MODES).toEqual(['seed', 'pressing', 'common', 'next']);
+  });
+});
+
+describe('WEAVE_MODE_ROWS', () => {
+  it('has one row per mode, in WEAVE_MODES order', () => {
+    expect(WEAVE_MODE_ROWS.map((row) => row.name)).toEqual(WEAVE_MODES);
+  });
+
+  it('gives each mode a word and a hint', () => {
+    for (const row of WEAVE_MODE_ROWS) {
+      expect(row.word.length).toBeGreaterThan(0);
+      expect(row.hint.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('finds a row by mode', () => {
+    expect(weaveModeRow('pressing').word).toBe('Most pressing');
   });
 });
 
