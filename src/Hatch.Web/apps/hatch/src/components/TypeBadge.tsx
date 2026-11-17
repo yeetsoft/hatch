@@ -1,19 +1,11 @@
 import { Badge } from '@hatch/ui';
-import type { BadgeTone } from '@hatch/ui';
 import type { IssueType } from '../types';
+import { issueTypeRow } from '../lib/issueType';
 
-/* One tone per type, so a column is skimmable by shape rather than read word
-   by word. Epics are the loud one because there are few of them and they are
-   what the board is organised around; a bug is the only type that is a
-   problem, so it is the only one wearing the danger tone. */
-const TONES: Record<IssueType, BadgeTone> = {
-  epic: 'primary',
-  reflection: 'success',
-  story: 'muted',
-  task: 'muted',
-  bug: 'danger',
-};
-
+/* The type's own face, the same one the control's pill and the board card's
+   glyph wear: `.hatch-type-badge.<class>` in App.css gives it the colour, and
+   overrides the Badge's tone outright. */
 export function TypeBadge({ type }: { type: IssueType }) {
-  return <Badge tone={TONES[type]}>{type}</Badge>;
+  const row = issueTypeRow(type);
+  return <Badge className={`hatch-type-badge ${row.class}`}>{row.word}</Badge>;
 }
