@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Field, ProjectMark } from '@hatch/ui';
 import { assigneeFact, effortFact, modelFact, wipLimitFact } from '../lib/issueFacts';
 import { dangerousFact } from '../lib/dangerous';
+import { localModelFact } from '../lib/localModel';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { omissionsFact } from '../lib/runnerOmissions';
 import { runnerTagsSentence } from '../lib/runnerTags';
@@ -100,6 +101,12 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
       <Field label="Effort" as="div">
         {effortFact(issue.effortOverride)}
       </Field>
+
+      {issue.localModel !== 'none' && (
+        <Field label="Local model" as="div">
+          {localModelFact(issue.localModel, issue.localModelFrom)}
+        </Field>
+      )}
 
       {RUNS_CHILDREN.includes(issue.type) && (
         <Field label="Stories at once" as="div">

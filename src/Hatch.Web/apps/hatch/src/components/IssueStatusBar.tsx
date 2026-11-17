@@ -1,4 +1,5 @@
 import { statusVars } from '../lib/color';
+import { LocalModelControl, type LocalModel } from './LocalModelControl';
 import { PreApprovalControl, type PreApproval } from './PreApprovalControl';
 import { PriorityControl, type Priority } from './PriorityControl';
 import { StatusPicker } from './StatusPicker';
@@ -13,11 +14,11 @@ import type { AssigneeDirectory, Issue, Status } from '../types';
  * size as its ready date. Here it is the page's own band: the column it is in,
  * in that column's colour, as a pill that opens the board's columns on a press
  * - the same StatusPicker the board peek uses, so the two screens cannot
- * disagree about what is on offer. Priority and Pre-approval are its peers and
- * sit beside it, the same controls the peek draws, at the same size.
+ * disagree about what is on offer. Priority, Pre-approval and Local model are
+ * its peers and sit beside it, the same controls the peek draws, at the same size.
  *
  * Each control opens its own band under the row (`order: 1; flex-basis: 100%`,
- * see App.css), so the three are direct children of the bar rather than
+ * see App.css), so the four are direct children of the bar rather than
  * wrapped with their labels.
  */
 export function IssueStatusBar({
@@ -27,11 +28,13 @@ export function IssueStatusBar({
   canApprove,
   priorityBusy,
   preApprovalBusy,
+  localModelBusy,
   onMove,
   onRemand,
   blocked,
   onPriority,
   onPreApproval,
+  onLocalModel,
 }: {
   issue: Issue;
   statuses: Status[];
@@ -42,6 +45,7 @@ export function IssueStatusBar({
   canApprove: boolean;
   priorityBusy: boolean;
   preApprovalBusy: boolean;
+  localModelBusy: boolean;
   onMove: (statusId: number) => void;
   /** Remand this issue to a dream in a deferred column. */
   onRemand?: (statusId: number) => void;
@@ -49,6 +53,7 @@ export function IssueStatusBar({
   blocked: (status: Status) => string | null;
   onPriority: (priority: Priority) => void;
   onPreApproval: (level: PreApproval) => void;
+  onLocalModel: (level: LocalModel) => void;
 }) {
   const current = statuses.find((s) => s.id === issue.statusId);
 
@@ -97,6 +102,19 @@ export function IssueStatusBar({
         directory={directory}
         busy={preApprovalBusy}
         onChange={onPreApproval}
+      />
+
+      <span className="hatch-status-bar-label">Local model</span>
+      <LocalModelControl
+        key={`localmodel-${issue.key}`}
+        size="lg"
+        issueKey={issue.key}
+        localModel={issue.localModel}
+        localModelOwn={issue.localModelOwn}
+        localModelFrom={issue.localModelFrom}
+        directory={directory}
+        busy={localModelBusy}
+        onChange={onLocalModel}
       />
     </section>
   );

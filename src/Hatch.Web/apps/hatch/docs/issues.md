@@ -216,6 +216,26 @@ or lower `preapproved`, and the band says so on the steps it locks. A
 key-holder sees the word, with where it was inherited from, and nothing to
 press.
 
+## Local model
+
+Three levels: none, prefer, require — read live from the nearest ancestor
+that sets one, the same way priority is. `none` runs on the cloud model, as
+every ticket always has. `prefer` uses a local model where one can do the
+work and falls back to the cloud model where none can. `require` runs only
+on a local model and never falls back quietly. The level reaches everything
+beneath the ticket that sets it, so an epic set to `prefer` has every story
+and task under it preferring too, until one of them sets its own.
+
+The level is a pill in the issue page's status band, after Pre-approval.
+Pressing it opens the three levels under the row, and a press saves. The
+Details card names the level and the ticket it was inherited from, once it
+is not none, and a board card at `prefer` or `require` wears a small mark.
+Any person may set it. A key-holder sees the word, with where it was
+inherited from, and nothing to press.
+
+The setting is recorded and shown, but the loop does not act on it yet:
+nothing is routed to a local model because of it.
+
 ## Finished with no code
 
 A one-line reason, at most 200 characters and trimmed, saying that a ticket
