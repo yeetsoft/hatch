@@ -130,6 +130,10 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         entry.IssueType = request.IssueType;
         entry.PlaybookModel = request.PlaybookModel;
         entry.PlaybookEffort = request.PlaybookEffort;
+        entry.DispatchModel = Clip(request.DispatchModel, EfHatchPlaybook.MaxModelLength);
+        var placement = request.ModelPlacement?.Trim();
+        entry.ModelPlacement = placement is not null && EfHatchWorkLogEntry.ModelPlacements.Contains(placement) ? placement : null;
+        entry.ModelDigest = entry.ModelPlacement == "local" ? Clip(request.ModelDigest, EfHatchWorkLogEntry.MaxModelDigestLength) : null;
         entry.Reads = WorkLogRollup.WriteReads(request.Reads ?? []);
 
         await db.SaveChangesAsync(ct);
@@ -234,6 +238,9 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         w.IssueType,
         w.PlaybookModel,
         w.PlaybookEffort,
+        w.DispatchModel,
+        w.ModelPlacement,
+        w.ModelDigest,
         WorkLogRollup.ReadReads(w.Reads));
 
     /// <summary>What goes in the column, or null when the run reported no models at all.</summary>

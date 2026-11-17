@@ -237,6 +237,9 @@ public static class WorkLogRollup
                 w.PeakContextTokens,
                 w.PromptChars,
                 w.Agent,
+                w.DispatchModel,
+                w.ModelPlacement,
+                w.ModelDigest,
                 w.Reads))
             .ToListAsync(ct);
 
@@ -457,6 +460,9 @@ public static class WorkLogRollup
         long? PeakContextTokens,
         int? PromptChars,
         string? Agent,
+        string? DispatchModel,
+        string? ModelPlacement,
+        string? ModelDigest,
         string? Reads);
 
     /// <summary>The headline, added the one way it is added - see <see cref="Fold"/>.</summary>
@@ -489,7 +495,10 @@ public static class WorkLogRollup
         r.Requests,
         r.PeakContextTokens,
         r.PromptChars,
-        r.Agent);
+        r.Agent,
+        r.DispatchModel,
+        r.ModelPlacement,
+        r.ModelDigest);
 
     /// <summary>
     /// The log, narrowed to a set of issues - or the whole of it when there is

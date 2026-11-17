@@ -405,6 +405,17 @@ against that issue, its title and summary - or *A session that did not say
 what it did*, when it left neither - then its tokens, its notional cost, how
 long it took, how many turns, and a command to resume it.
 
+A row also says which model the session ran on. A cloud session names the
+model and nothing more. A session that ran on a local model says it ran
+locally and shows that model's digest, short, with the whole digest on hover. A
+session that fell back names the ordinary model it ran on and says it fell back
+from a preferred local model, with no digest. A row written before this was
+recorded shows none of these. The digest is there because a tag can be pushed
+again, so two sessions on one tag may have run different weights; it is read
+before the session starts, so it is never the weights of a later pull. The
+leaderboard's session list has the same model column. Nothing here measures
+trust: the log says what ran, and a person reads it.
+
 ## The battery
 
 In the nav bar, with no page of its own: your own Claude usage, as your own

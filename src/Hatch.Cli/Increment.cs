@@ -1807,6 +1807,17 @@ public sealed class Increment(
         // which is the smaller number and the honest answer to "how long did
         // this take".
         var source = work.Playbook?.Source;
+
+        // What dispatch chose, and where it ran. An ollama runner is local by
+        // definition, so an issue override naming a local id is not mislabelled
+        // cloud. The digest is looked up from the list the adapter last read,
+        // which is the one this session started under: it is only re-read between
+        // increments, so a tag pushed again during the run is not recorded. A
+        // fallback ran the ordinary model, so it carries no digest.
+        var dispatchModel = work.Model ?? work.Playbook?.Model;
+        var placement = work.ModelIsLocal || adapter.Id == "ollama" ? "local"
+            : work.ModelFellBack ? "fallback"
+            : "cloud";
         var row = entry with
         {
             StartedAt = started,
@@ -1824,6 +1835,9 @@ public sealed class Increment(
             // differ exactly when `--model`/`--effort` overrode it.
             PlaybookModel = model.Length > 0 ? model : null,
             PlaybookEffort = effort.Length > 0 ? effort : null,
+            DispatchModel = string.IsNullOrEmpty(dispatchModel) ? null : dispatchModel,
+            ModelPlacement = placement,
+            ModelDigest = placement == "local" ? adapter.Digest(dispatchModel) : null,
         };
 
         try

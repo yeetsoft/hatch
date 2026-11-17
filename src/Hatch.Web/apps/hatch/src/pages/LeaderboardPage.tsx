@@ -264,6 +264,7 @@ function LeaderboardBody({
                 <tr>
                   <th scope="col">Session</th>
                   <th scope="col">Issue</th>
+                  <th scope="col">Model</th>
                   {COLUMNS.map((column) => (
                     <th
                       key={column.key}
@@ -342,6 +343,11 @@ function Row({ session }: { session: WorkLogSession }) {
       </td>
       <td>
         <Link to={`/issues/${session.issueKey}`}>{session.issueKey}</Link>
+      </td>
+      <td title={session.modelDigest ?? undefined}>
+        {session.dispatchModel ?? '—'}
+        {session.modelPlacement === 'local' && <Badge>local</Badge>}
+        {session.modelPlacement === 'fallback' && <Badge>fell back</Badge>}
       </td>
       <td>{compactTokens(session.totalTokens)}</td>
       <td>{session.requests ?? '—'}</td>

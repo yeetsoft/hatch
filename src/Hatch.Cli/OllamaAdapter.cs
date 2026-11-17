@@ -37,8 +37,11 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
 
     private readonly Action<string>? _warn;
 
-    /// <summary>The model names the last good read of <c>/api/tags</c> found, and null until one has succeeded.</summary>
-    private HashSet<string>? _models;
+    /// <summary>
+    /// The model names the last good read of <c>/api/tags</c> found, each with the
+    /// digest it reported (null where it reported none), and null until one has succeeded.
+    /// </summary>
+    private Dictionary<string, string?>? _models;
 
     /// <summary>True once a failed <see cref="Refresh"/> has said so, until a read succeeds again.</summary>
     private bool _staleSaid;
@@ -166,8 +169,8 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
         _warn?.Invoke($"hatch: ollama is not answering at {_host.Url} - keeping the model list from the last read");
     }
 
-    /// <summary>The names <c>/api/tags</c> lists, or null where the server did not answer a list.</summary>
-    private HashSet<string>? ReadTags()
+    /// <summary>The names <c>/api/tags</c> lists with their digests, or null where the server did not answer a list.</summary>
+    private Dictionary<string, string?>? ReadTags()
     {
         try
         {
@@ -193,15 +196,19 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
     private string NotAnswering() =>
         $"hatch: ollama is not answering at {_host.Url} - start it, or point HATCH_OLLAMA_HOST at one that is";
 
-    private static HashSet<string> ParseModels(string json)
+    private static Dictionary<string, string?> ParseModels(string json)
     {
-        var models = new HashSet<string>(StringComparer.Ordinal);
+        var models = new Dictionary<string, string?>(StringComparer.Ordinal);
         using var doc = JsonDocument.Parse(json);
         if (doc.RootElement.TryGetProperty("models", out var list) && list.ValueKind == JsonValueKind.Array)
             foreach (var entry in list.EnumerateArray())
                 if (entry.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String
                     && name.GetString() is { Length: > 0 } s)
-                    models.Add(s);
+                {
+                    var digest = entry.TryGetProperty("digest", out var d) && d.ValueKind == JsonValueKind.String
+                        && d.GetString() is { Length: > 0 } text ? text : null;
+                    models[s] = digest;
+                }
         return models;
     }
 
@@ -222,10 +229,28 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
         if (string.IsNullOrEmpty(model) || _models is null) return true;
 
         var id = _tiers.TryGetValue(model, out var mapped) ? mapped : model;
-        if (id is null || _models.Contains(id)) return true;
+        if (id is null || _models.ContainsKey(id)) return true;
 
         refusal = $"pinned to {id}, which this runner's ollama has not pulled - ollama pull {id} would";
         return false;
+    }
+
+    /// <summary>
+    /// The digest the last read of <c>/api/tags</c> reported for <paramref name="model"/>,
+    /// an alias going through the tiers exactly as <see cref="CanServe"/> sends it.
+    /// Null where the model is not in that list, reported no digest, or no list has been read.
+    /// </summary>
+    /// <remarks>
+    /// Answers from the stored list and never reads the server: the loop calls this
+    /// after a session, and a tag pushed again during the run would otherwise record
+    /// weights that did not run.
+    /// </remarks>
+    public string? Digest(string? model)
+    {
+        if (string.IsNullOrEmpty(model) || _models is null) return null;
+
+        var id = _tiers.TryGetValue(model, out var mapped) ? mapped : model;
+        return id is not null && _models.TryGetValue(id, out var digest) ? digest : null;
     }
 
     /// <summary>
@@ -238,7 +263,7 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
         ModelFamilies.Aliases
             .Select(alias => _tiers.TryGetValue(alias, out var id) ? id : null)
             .OfType<string>()
-            .Concat((_models ?? []).Order(StringComparer.Ordinal))
+            .Concat((_models?.Keys ?? (IEnumerable<string>)[]).Order(StringComparer.Ordinal))
             .Distinct()
             .Where(id => ModelFamilies.Default.AgentOf(id) == "ollama")
             .Take(RunnerModels.MaxCount)

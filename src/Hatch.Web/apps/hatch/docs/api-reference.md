@@ -1347,7 +1347,12 @@ one and none is meant to exist. Its `GET`, on `issues/{key}/work-log`,
 answers a `WorkLogDto(Key, Totals, Own, Entries)` where `Totals` covers the
 whole subtree and `Own`/`Entries` cover only this issue - an epic showing a
 handful of its own sessions beside a much larger `Totals` is the feature,
-not a bug. `/work-log/history` buckets by `hour` or `day`, chosen from the
+not a bug. Each entry, and each row of `/work-log/sessions`, names the model
+that ran: `dispatchModel`, `modelPlacement` (`local`, `fallback`, `cloud`, or
+null from a CLI built before it was recorded) and `modelDigest` (a local
+model's digest as the local server listed it before the session, null
+otherwise); the `POST` accepts the same three, stores any other placement as
+null and keeps a digest only on a `local` row. `/work-log/history` buckets by `hour` or `day`, chosen from the
 range's length unless named, and answers the bucket size it actually used;
 `/work-log/sessions` ranks by `tokens` (the default), `cost`, `ended`,
 `requests` or `peakContext`, each descending. Both take an optional

@@ -10,6 +10,8 @@ import {
   errorPhrase,
   hasDescendantSpend,
   modelEffortPhrase,
+  modelRunPhrase,
+  shortDigest,
   moneyPhrase,
   ownPhrase,
   parseTokenCount,
@@ -71,6 +73,9 @@ const entry = (over: Partial<WorkLogEntry> = {}): WorkLogEntry => ({
   issueType: null,
   playbookModel: null,
   playbookEffort: null,
+  dispatchModel: null,
+  modelPlacement: null,
+  modelDigest: null,
   reads: [],
   ...over,
 });
@@ -459,5 +464,50 @@ describe('the sentences the totals say', () => {
     expect(errorPhrase(totals())).toBeNull();
     expect(errorPhrase(totals({ errors: 1 }))).toBe('1 session ended with an error');
     expect(errorPhrase(totals({ errors: 2 }))).toBe('2 sessions ended with an error');
+  });
+});
+
+describe('modelRunPhrase', () => {
+  const digest = '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+
+  it('names a cloud session model and nothing more', () => {
+    const phrase = modelRunPhrase(entry({ dispatchModel: 'sonnet', modelPlacement: 'cloud' }));
+    expect(phrase).toBe('Ran on sonnet');
+  });
+
+  it('says a local session ran locally and shows the short digest', () => {
+    const phrase = modelRunPhrase(entry({ dispatchModel: 'gemma3:4b', modelPlacement: 'local', modelDigest: digest }));
+    expect(phrase).toBe('Ran locally on gemma3:4b, digest 1a2b3c4d5e6f');
+  });
+
+  it('says a local session ran locally when the server reported no digest', () => {
+    expect(modelRunPhrase(entry({ dispatchModel: 'gemma3:4b', modelPlacement: 'local' }))).toBe(
+      'Ran locally on gemma3:4b',
+    );
+  });
+
+  it('says a fallback session fell back, and shows no digest', () => {
+    const phrase = modelRunPhrase(entry({ dispatchModel: 'sonnet', modelPlacement: 'fallback' }));
+    expect(phrase).toContain('Fell back to sonnet');
+    expect(phrase).not.toContain('digest');
+  });
+
+  it('says nothing for a row written before the placement was recorded', () => {
+    expect(modelRunPhrase(entry({ dispatchModel: null, modelPlacement: null }))).toBeNull();
+    expect(modelRunPhrase(entry({ dispatchModel: 'sonnet', modelPlacement: null }))).toBeNull();
+  });
+
+  it('falls back to the playbook model when dispatch named none', () => {
+    expect(modelRunPhrase(entry({ playbookModel: 'opus', modelPlacement: 'cloud' }))).toBe('Ran on opus');
+  });
+});
+
+describe('shortDigest', () => {
+  it('keeps the first twelve characters', () => {
+    expect(shortDigest('1a2b3c4d5e6f7a8b9c0d')).toBe('1a2b3c4d5e6f');
+  });
+
+  it('does not count a sha256: prefix', () => {
+    expect(shortDigest('sha256:1a2b3c4d5e6f7a8b9c0d')).toBe('1a2b3c4d5e6f');
   });
 });
