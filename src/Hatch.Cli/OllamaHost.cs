@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -34,6 +36,24 @@ public sealed record OllamaHost(string Url, bool Explicit)
     {
         var chosen = FirstNonBlank(hatchOllamaHost) ?? FirstNonBlank(ollamaHost);
         return chosen is null ? Default : new OllamaHost(Normalise(chosen), true);
+    }
+
+    /// <summary>
+    /// True for the default host, or an explicit one whose host is <c>localhost</c>
+    /// or a loopback address - the one case where this machine's accelerator is the
+    /// one Ollama uses. <c>0.0.0.0</c> and the empty host of <c>:port</c> are not
+    /// local: a false "not local" only withholds a profile.
+    /// </summary>
+    public bool IsLocal => !Explicit || IsLoopback(Url);
+
+    private static bool IsLoopback(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+
+        // DnsSafeHost, not Host: it drops the brackets from [::1].
+        var host = uri.DnsSafeHost;
+        return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || (IPAddress.TryParse(host, out var address) && IPAddress.IsLoopback(address));
     }
 
     private static string? FirstNonBlank(string? value) =>
