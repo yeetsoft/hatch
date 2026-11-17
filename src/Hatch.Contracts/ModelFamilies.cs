@@ -73,6 +73,10 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
     public static string LocalRequired(string key, string column, string model, string? agent) =>
         $"{key} in {column} requires its local model {model} - this runner's agent is {agent}";
 
+    /// <summary>The sentence a board or runner prints when <paramref name="key"/> prefers its local <paramref name="model"/> and <paramref name="runner"/>, which runs it, is free to take the move.</summary>
+    public static string LeftForLocal(string key, string column, string runner, string model) =>
+        $"{key} in {column} is left for {runner}, which is free to run it on {model}";
+
     /// <summary>The sentence a board or runner prints when <paramref name="key"/>'s <paramref name="column"/> runs on a <paramref name="model"/> that <paramref name="runner"/> refuses.</summary>
     public static string Refused(string key, string column, string model, string runner) =>
         $"{key} in {column} runs on {model} - {runner} refuses it";

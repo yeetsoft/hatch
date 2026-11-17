@@ -406,6 +406,17 @@ counted as offering it: the board's list of moves no live runner can take
 says `no live runner offers fable` once every live runner refuses it or
 lacks it.
 
+**A preferred local model.** A ticket whose [local model](issues#local-model)
+level is `prefer` runs a move whose row names a local model on that model when
+a runner is free to run it. An ollama runner that is idle - running, holding no
+ticket - and lists the model takes the move on it. A cloud runner asking while
+such a runner is free is told the ticket is left for it, *"HA-12 in To Do is left
+for gpu-box, which is free to run it on qwen3-coder:30b"*, and `hatch queue`
+prints the same line; with none free, it takes the move on the row's ordinary
+model and the work answer says `modelFellBack`. A runner that is working,
+paused or omitted on the ticket is not free. See [the local
+model](playbooks#the-local-model).
+
 ### Has
 
 A machine can declare what it has that detection cannot see. `HATCH_HAS` is a

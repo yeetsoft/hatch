@@ -3155,11 +3155,11 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Work_APreferringTicket_StillRunsOnTheRowsModel()
+    public async Task Work_APreferringTicket_WithNoAsker_RunsOnTheRowsModel_AndSaysItFellBack()
     {
         var h = await NewAsync();
         foreach (var row in h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo)) row.LocalModel = "fake:1b";
-        var task = await h.FileAsync("task", "prefer is not acted on yet", h.Todo);
+        var task = await h.FileAsync("task", "nobody asked for it", h.Todo);
         task.LocalModel = LocalModelLevels.Prefer;
         await h.Db.SaveChangesAsync();
 
@@ -3167,6 +3167,163 @@ public class WorkControllerTests
 
         Assert.Equal("sonnet", work.Model);
         Assert.False(work.ModelIsLocal);
+        Assert.True(work.ModelFellBack);
+    }
+
+    [Fact]
+    public async Task Work_ARequiredTicket_DoesNotSayItFellBack()
+    {
+        var h = await NewAsync();
+        foreach (var row in h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo)) row.LocalModel = "fake:1b";
+        var task = await h.FileAsync("task", "stays here", h.Todo);
+        task.LocalModel = LocalModelLevels.Require;
+        await h.Db.SaveChangesAsync();
+
+        Assert.False(Value(await h.Work.GetWork(Key(task), null, default)).ModelFellBack);
+    }
+
+    // ---- A preferred local model, when a local runner is free ----
+
+    private static readonly List<string> CloudModels = ["haiku", "sonnet"];
+
+    private static readonly List<string> LocalModels = ["fake:1b"];
+
+    /// <summary>One idle Ollama runner and one cloud runner, and every Todo row naming <c>fake:1b</c> as its local model.</summary>
+    private static async Task<(string Local, string Cloud)> PreferringFleetAsync(Harness h, Action<EfHatchRunner>? tweakLocal = null)
+    {
+        foreach (var row in h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo)) row.LocalModel = "fake:1b";
+        await h.Db.SaveChangesAsync();
+
+        var local = RunnerName();
+        var cloud = RunnerName();
+        await AddLoopRunnerAsync(h, local, row =>
+        {
+            row.Agent = "ollama";
+            row.Models = "fake:1b";
+            row.Where = "gpu-box:/work/local";
+            tweakLocal?.Invoke(row);
+        });
+        await AddLoopRunnerAsync(h, cloud, row =>
+        {
+            row.Agent = "claude";
+            row.Models = "haiku\nsonnet";
+            row.Where = "cloud-box:/work/cloud";
+        });
+        return (local, cloud);
+    }
+
+    private static async Task<EfHatchIssue> PreferringTaskAsync(Harness h, string title, long? parentId = null)
+    {
+        var task = await h.FileAsync("task", title, h.Todo, parentId: parentId);
+        if (parentId is null) task.LocalModel = LocalModelLevels.Prefer;
+        await h.Db.SaveChangesAsync();
+        return task;
+    }
+
+    private static QueueEntryDto Entry(ActionResult<IReadOnlyList<QueueEntryDto>> queue, EfHatchIssue issue) =>
+        Value(queue).Single(e => e.Issue.Key == Key(issue));
+
+    private static string LeftFor(EfHatchIssue issue, string runner) =>
+        ModelFamilies.LeftForLocal(Key(issue), "todo", runner, "fake:1b");
+
+    [Fact]
+    public async Task Prefer_ATaskUnderAPreferringEpic_RunsLocally_WhileTheOllamaRunnerIsIdle()
+    {
+        var h = await NewAsync();
+        var (local, cloud) = await PreferringFleetAsync(h);
+        var epic = await h.FileAsync("epic", "prefers a local model", h.InProgress);
+        epic.LocalModel = LocalModelLevels.Prefer;
+        await h.Db.SaveChangesAsync();
+        var task = await PreferringTaskAsync(h, "runs on the GPU", epic.Id);
+
+        // The cloud runner is told the ticket is left for the free local one, from every door.
+        var sentence = LeftFor(task, local);
+        Assert.Equal(sentence, Entry(await h.Work.GetQueue(runner: cloud, model: CloudModels, agent: "claude"), task).Blocked);
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(task), runner: cloud, model: CloudModels, agent: "claude")).Blocked);
+
+        // The Ollama runner is not folded, and gets the move on the local model.
+        Assert.Null(Entry(await h.Work.GetQueue(runner: local, model: LocalModels, agent: "ollama"), task).Blocked);
+        Assert.Equal("fake:1b", Entry(await h.Work.GetQueue(runner: local, model: LocalModels, agent: "ollama"), task).Model);
+        var work = Value(await h.Work.GetWork(Key(task), runner: local, model: LocalModels, agent: "ollama"));
+        Assert.Null(work.Blocked);
+        Assert.Equal("fake:1b", work.Model);
+        Assert.Equal("fake:1b", work.Playbook!.Model);
+        Assert.True(work.ModelIsLocal);
+        Assert.False(work.ModelFellBack);
+    }
+
+    [Fact]
+    public async Task Prefer_ASecondTask_WhileTheOllamaRunnerIsBusy_RunsOnTheRowsModel()
+    {
+        var h = await NewAsync();
+        var (local, cloud) = await PreferringFleetAsync(h);
+        var first = await PreferringTaskAsync(h, "holds the GPU");
+        var second = await PreferringTaskAsync(h, "filed while it is busy");
+        await h.ClaimAsync(first, by: local, runner: "gpu-box:/work/local");
+
+        var entry = Entry(await h.Work.GetQueue(runner: cloud, model: CloudModels, agent: "claude"), second);
+        Assert.Null(entry.Blocked);
+        Assert.Equal("sonnet", entry.Model);
+
+        var work = Value(await h.Work.GetWork(Key(second), runner: cloud, model: CloudModels, agent: "claude"));
+        Assert.Null(work.Blocked);
+        Assert.Equal("sonnet", work.Model);
+        Assert.False(work.ModelIsLocal);
+        Assert.True(work.ModelFellBack);
+
+        Assert.Equal(Key(second), Value(await h.Work.GetNextWork(runner: cloud, model: CloudModels, agent: "claude")).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Prefer_WhileTheOllamaRunnerIsPaused_TheCloudRunnerTakesItOnTheRowsModel()
+    {
+        var h = await NewAsync();
+        var (_, cloud) = await PreferringFleetAsync(h, row => row.State = EfHatchRunner.Paused);
+        var task = await PreferringTaskAsync(h, "nobody local is running");
+
+        Assert.Null(Entry(await h.Work.GetQueue(runner: cloud, model: CloudModels, agent: "claude"), task).Blocked);
+        var work = Value(await h.Work.GetWork(Key(task), runner: cloud, model: CloudModels, agent: "claude"));
+        Assert.Equal("sonnet", work.Model);
+        Assert.True(work.ModelFellBack);
+    }
+
+    [Fact]
+    public async Task Prefer_WhenTheOllamaRunnerIsOmittedOnTheTicket_TheCloudRunnerTakesItOnTheRowsModel()
+    {
+        var h = await NewAsync();
+        var (local, cloud) = await PreferringFleetAsync(h);
+        var task = await PreferringTaskAsync(h, "not for the GPU");
+        await OmitAsync(h, task, local, by: "operator");
+
+        Assert.Null(Entry(await h.Work.GetQueue(runner: cloud, model: CloudModels, agent: "claude"), task).Blocked);
+        var work = Value(await h.Work.GetWork(Key(task), runner: cloud, model: CloudModels, agent: "claude"));
+        Assert.Equal("sonnet", work.Model);
+        Assert.True(work.ModelFellBack);
+    }
+
+    [Fact]
+    public async Task Prefer_WhenTheOllamaRunnerDoesNotListTheModel_TheCloudRunnerTakesItOnTheRowsModel()
+    {
+        var h = await NewAsync();
+        var (_, cloud) = await PreferringFleetAsync(h, row => row.Models = "other:7b");
+        var task = await PreferringTaskAsync(h, "the GPU box lacks the model");
+
+        Assert.Null(Entry(await h.Work.GetQueue(runner: cloud, model: CloudModels, agent: "claude"), task).Blocked);
+        Assert.True(Value(await h.Work.GetWork(Key(task), runner: cloud, model: CloudModels, agent: "claude")).ModelFellBack);
+    }
+
+    [Fact]
+    public async Task Prefer_AnIssueModelOverride_Wins_AndFoldsNothing()
+    {
+        var h = await NewAsync();
+        var (_, cloud) = await PreferringFleetAsync(h);
+        var task = await PreferringTaskAsync(h, "its own model wins");
+        await h.OverrideAsync(task, model: "haiku");
+
+        Assert.Null(Entry(await h.Work.GetQueue(runner: cloud, model: CloudModels, agent: "claude"), task).Blocked);
+        var work = Value(await h.Work.GetWork(Key(task), runner: cloud, model: CloudModels, agent: "claude"));
+        Assert.Equal("haiku", work.Model);
+        Assert.False(work.ModelFellBack);
     }
 
     [Fact]

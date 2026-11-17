@@ -404,16 +404,29 @@ public sealed class Dispatch(
                         requirements[issue.ProjectId] = requirement;
                     }
 
+                    var localLevel = gate.EffectiveLocalModel(issue.Id).Level;
+
+                    // A preferred local model some other runner is free to run: the
+                    // move is left for it, so the cloud never waits on a GPU but
+                    // never spends a move a free one could have taken. A peer's own
+                    // scan asks nobody, so the peers never ask each other in turn.
+                    (string Runner, string Model)? leftFor = null;
+                    if (!hop && foldLetGo && asking is not null && PreferredElsewhere(issue, playbook, localLevel, models) is { } preferred)
+                    {
+                        peers ??= new PeerScans(this, asking, now, offsetMinutes);
+                        if (await peers.FreeLocalAsync(issue.Id, preferred, ct) is { } free)
+                            leftFor = (free, preferred);
+                    }
+
                     var blocking = BlockedWithKind(
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
                         drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
-                        has: has, requirement: requirement, refusal: refusal);
-                    var localLevel = gate.EffectiveLocalModel(issue.Id).Level;
-                    if (!hop && (ModelFold(issue, status, playbook, models, localLevel) is not null
-                                  || RefusalFold(issue, status, playbook, refusal, localLevel) is not null))
+                        has: has, requirement: requirement, refusal: refusal, leftFor: leftFor);
+                    if (!hop && (ModelFold(issue, status, playbook, models, localLevel, leftFor) is not null
+                                  || RefusalFold(issue, status, playbook, refusal, localLevel, models) is not null))
                         modelFolded = true;
                     if (requirement is not null && rowTo is not null
                         && CodeGated(issue, status, rowTo, hop, implementation, merged, built)
@@ -483,12 +496,12 @@ public sealed class Dispatch(
                             : null,
                         effective[issue.Id].Level,
                         effective[issue.Id].FromKey,
-                        Model: ResolveModel(issue, playbook, localLevel).Model,
+                        Model: ResolveModel(issue, playbook, localLevel, models).Model,
                         DeniedTools: playbook is null ? null : EfHatchPlaybook.ReadDeniedTools(playbook.DeniedTools) ?? [],
                         WaitsOn: blocking.WaitsOn,
                         AnyOf: blocking.AnyOf,
                         ProjectLevel: gate.ProjectLevel(issue.Id),
-                        ModelIsLocal: ResolveModel(issue, playbook, localLevel).Local));
+                        ModelIsLocal: ResolveModel(issue, playbook, localLevel, models).Local));
                 }
             }
 
@@ -581,6 +594,7 @@ public sealed class Dispatch(
     {
         private List<Peer>? _peers;
         private readonly Dictionary<string, HashSet<long>> _takeable = [];
+        private HashSet<(string Runner, string Where)>? _holding;
 
         public async Task<bool> CouldTakeAsync(long issueId, CancellationToken ct)
         {
@@ -588,18 +602,54 @@ public sealed class Dispatch(
 
             foreach (var peer in _peers)
             {
-                if (!_takeable.TryGetValue(peer.Id, out var ids))
-                {
-                    ids = await dispatch.TakeableByAsync(peer, offsetMinutes, ct);
-                    _takeable[peer.Id] = ids;
-                }
-
-                if (ids.Contains(issueId)) return true;
+                if ((await TakeableAsync(peer, ct)).Contains(issueId)) return true;
             }
 
             return false;
         }
+
+        /// <summary>
+        /// The name of the first peer that is free to run <paramref name="localModel"/>
+        /// for <paramref name="issueId"/>, or null. Free is read from the peer's
+        /// last beat and its claim: it is live (the peer filter drops a paused or
+        /// stopping one), its agent is the model's and its list names it, and it
+        /// holds no live claim. Its own scan then has to find the ticket takeable,
+        /// so tags, omissions, refusals, <c>has</c>, projects and scope all fold it
+        /// with no second copy of the rules. With no runner store, none is free.
+        /// </summary>
+        public async Task<string?> FreeLocalAsync(long issueId, string localModel, CancellationToken ct)
+        {
+            if (!dispatch.HasRunnerStore) return null;
+
+            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct);
+            _holding ??= await dispatch.HoldingAsync(now, ct);
+
+            foreach (var peer in _peers)
+            {
+                if (!RunsLocally(peer.Declaration.Models, localModel) || _holding.Contains((peer.Name, peer.Where))) continue;
+                if ((await TakeableAsync(peer, ct)).Contains(issueId)) return peer.Name;
+            }
+
+            return null;
+        }
+
+        private async Task<HashSet<long>> TakeableAsync(Peer peer, CancellationToken ct)
+        {
+            if (!_takeable.TryGetValue(peer.Id, out var ids))
+            {
+                ids = await dispatch.TakeableByAsync(peer, offsetMinutes, ct);
+                _takeable[peer.Id] = ids;
+            }
+
+            return ids;
+        }
     }
+
+    private bool HasRunnerStore => runners is not null;
+
+    /// <summary>Every runner and checkout holding a live claim, as <see cref="Runners.HeldAsync"/> reads them.</summary>
+    private async Task<HashSet<(string Runner, string Where)>> HoldingAsync(DateTimeOffset now, CancellationToken ct) =>
+        (await runners!.HeldAsync(db, claims, now, ct)).Keys.ToHashSet();
 
     /// <summary>
     /// One peer a scan could defer to, or count as waiting: a beat and a
@@ -610,8 +660,10 @@ public sealed class Dispatch(
     /// on - <c>"beat:" + Name</c> or <c>"session:" + session id</c>, never
     /// <c>(Name, Where)</c>, since a beat and a session of one process can
     /// share a <c>Where</c>.
+    /// <see cref="Where"/> is the checkout it runs at, the other half of the key
+    /// <see cref="Runners.HeldAsync"/> reads a claim by.
     /// </summary>
-    private sealed record Peer(string Id, string Name, RunnerDeclaration Declaration);
+    private sealed record Peer(string Id, string Name, string Where, RunnerDeclaration Declaration);
 
     /// <summary>
     /// Every peer that is here, running, and has budget left, excluding
@@ -635,13 +687,13 @@ public sealed class Dispatch(
             if (string.Equals(runner.Name, excludeName, StringComparison.Ordinal)) continue;
 
             if (runner.Beat is { } beat && IsLiveBeat(beat, now, liveSince))
-                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, await RunnerDeclaration.OfAsync(beat, actors, ct, runner.Config)));
+                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, beat.Where ?? "", await RunnerDeclaration.OfAsync(beat, actors, ct, runner.Config)));
 
             if (sessions is null || runner.Sessions is null) continue;
             foreach (var session in runner.Sessions)
             {
                 if (!IsLiveSession(session, runner.Config, now, liveSince)) continue;
-                peers.Add(new Peer($"session:{session.Id}", runner.Name, await RunnerDeclaration.OfAsync(runner, [session], actors, ct)));
+                peers.Add(new Peer($"session:{session.Id}", runner.Name, session.Where ?? "", await RunnerDeclaration.OfAsync(runner, [session], actors, ct)));
             }
         }
 
@@ -1447,19 +1499,78 @@ public sealed class Dispatch(
     /// The model a move runs on, and whether it is the row's local model. The
     /// issue's own override is the most specific thing said about it and wins.
     /// Else a ticket whose live level is <see cref="LocalModelLevels.Require"/>
-    /// runs a row that names a local model on that model, and nowhere else.
-    /// Anything else - a row with no local model, or a level of
-    /// <see cref="LocalModelLevels.None"/> or <see cref="LocalModelLevels.Prefer"/>,
-    /// which no dispatch acts on yet - runs on the row's own model.
+    /// runs a row that names a local model on that model, and nowhere else; and
+    /// one at <see cref="LocalModelLevels.Prefer"/> runs it there when
+    /// <paramref name="asker"/> is a runner that can - see <see cref="RunsLocally"/>.
+    /// Anything else - a row with no local model, a level of
+    /// <see cref="LocalModelLevels.None"/>, or a preferring ticket asked by a
+    /// runner that cannot run the model, or by none - runs on the row's own model.
     /// </summary>
-    internal static (string? Model, bool Local) ResolveModel(EfHatchIssue issue, EfHatchPlaybook? playbook, int localModelLevel)
+    internal static (string? Model, bool Local) ResolveModel(
+        EfHatchIssue issue, EfHatchPlaybook? playbook, int localModelLevel, ModelDeclaration? asker = null)
     {
         if (!string.IsNullOrWhiteSpace(issue.ModelOverride)) return (issue.ModelOverride, false);
-        if (localModelLevel == LocalModelLevels.Require && !string.IsNullOrWhiteSpace(playbook?.LocalModel))
-            return (playbook!.LocalModel, true);
+        if (!string.IsNullOrWhiteSpace(playbook?.LocalModel))
+        {
+            if (localModelLevel == LocalModelLevels.Require) return (playbook.LocalModel, true);
+            if (localModelLevel == LocalModelLevels.Prefer && RunsLocally(asker, playbook.LocalModel)) return (playbook.LocalModel, true);
+        }
 
         return (playbook?.Model, false);
     }
+
+    /// <summary>
+    /// Whether a runner declaring <paramref name="declared"/> serves the local
+    /// <paramref name="model"/> itself: it is judged, its agent is the one the
+    /// id belongs to, and its own list names the id.
+    /// </summary>
+    internal static bool RunsLocally(ModelDeclaration? declared, string model) =>
+        declared is { Judged: true, Agent: { } agent }
+        && ModelFamilies.Default.AgentOf(model) == agent
+        && declared.Has.Contains(model);
+
+    /// <summary>
+    /// The local model a preferring ticket's move would rather run on, where
+    /// the asker is a judged runner that cannot run it itself - the only case
+    /// another runner being free to run it changes what the asker is told.
+    /// Null for any other level, a row with no local model, an issue with its
+    /// own model, and an asker that runs the model or declared nothing.
+    /// </summary>
+    internal static string? PreferredElsewhere(EfHatchIssue issue, EfHatchPlaybook? playbook, int localModelLevel, ModelDeclaration models) =>
+        localModelLevel == LocalModelLevels.Prefer && models.Judged
+        && string.IsNullOrWhiteSpace(issue.ModelOverride)
+        && playbook?.LocalModel is { Length: > 0 } preferred
+        && !RunsLocally(models, preferred)
+            ? preferred
+            : null;
+
+    /// <summary>
+    /// <see cref="PreferredElsewhere"/>, answered for a caller that has no scan
+    /// of its own - a named dispatch: the runner free to take the preferred
+    /// move and the model, or null where none is, or none is in question.
+    /// </summary>
+    public async Task<(string Runner, string Model)?> LeftForLocalAsync(
+        EfHatchIssue issue, EfHatchPlaybook? playbook, int localModelLevel, ModelDeclaration models, RunnerAsking asking,
+        CancellationToken ct)
+    {
+        if (PreferredElsewhere(issue, playbook, localModelLevel, models) is not { } preferred) return null;
+
+        var free = await new PeerScans(this, asking, time.GetUtcNow(), 0).FreeLocalAsync(issue.Id, preferred, ct);
+        return free is null ? null : (free, preferred);
+    }
+
+    /// <summary>
+    /// True where a preferring ticket's move runs on the row's ordinary model
+    /// though the row names a local one: the level is
+    /// <see cref="LocalModelLevels.Prefer"/>, the row names a local model, the
+    /// issue has no override, and <paramref name="local"/> - what
+    /// <see cref="ResolveModel"/> answered - is false.
+    /// </summary>
+    internal static bool FellBack(EfHatchIssue issue, EfHatchPlaybook? playbook, int localModelLevel, bool local) =>
+        localModelLevel == LocalModelLevels.Prefer
+        && !string.IsNullOrWhiteSpace(playbook?.LocalModel)
+        && string.IsNullOrWhiteSpace(issue.ModelOverride)
+        && !local;
 
     /// <summary>
     /// Why this caller's runner cannot spawn the move: the model it runs on -
@@ -1471,12 +1582,19 @@ public sealed class Dispatch(
     /// </summary>
     internal static string? ModelFold(
         EfHatchIssue issue, EfHatchStatus from, EfHatchPlaybook? playbook, ModelDeclaration models,
-        int localModelLevel = LocalModelLevels.None)
+        int localModelLevel = LocalModelLevels.None, (string Runner, string Model)? leftFor = null)
     {
         if (!models.Judged) return null;
 
-        var (model, local) = ResolveModel(issue, playbook, localModelLevel);
+        var (model, local) = ResolveModel(issue, playbook, localModelLevel, models);
         if (string.IsNullOrWhiteSpace(model)) return null;
+
+        // A preferred local model that another runner is free to run: this
+        // asker cannot run it itself, so the move is left for that runner
+        // rather than spent on the row's ordinary model.
+        if (localModelLevel == LocalModelLevels.Prefer && !local && leftFor is { } left
+            && string.IsNullOrWhiteSpace(issue.ModelOverride))
+            return ModelFamilies.LeftForLocal(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, left.Runner, left.Model);
 
         // A required local model is not an alias: only a runner of its agent
         // can serve it, and any other - a cloud runner above all - is told
@@ -1518,11 +1636,11 @@ public sealed class Dispatch(
     /// </summary>
     internal static string? RefusalFold(
         EfHatchIssue issue, EfHatchStatus from, EfHatchPlaybook? playbook, RunnerRefusal? refusal,
-        int localModelLevel = LocalModelLevels.None)
+        int localModelLevel = LocalModelLevels.None, ModelDeclaration? models = null)
     {
         if (refusal is null || refusal.Models.Count == 0) return null;
 
-        var model = ResolveModel(issue, playbook, localModelLevel).Model;
+        var model = ResolveModel(issue, playbook, localModelLevel, models).Model;
         return RunnerModels.Refuses(refusal.Models, model)
             ? ModelFamilies.Refused(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model!, refusal.Runner)
             : null;
@@ -2054,11 +2172,12 @@ public sealed class Dispatch(
         ModelDeclaration? models = null,
         HasDeclaration? has = null,
         DependencyRequirement? requirement = null,
-        RunnerRefusal? refusal = null) =>
+        RunnerRefusal? refusal = null,
+        (string Runner, string Model)? leftFor = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
-            repoSourced, tags, projects, asking, models, has, requirement, refusal).Sentence;
+            repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor).Sentence;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -2099,7 +2218,8 @@ public sealed class Dispatch(
         ModelDeclaration? models = null,
         HasDeclaration? has = null,
         DependencyRequirement? requirement = null,
-        RunnerRefusal? refusal = null)
+        RunnerRefusal? refusal = null,
+        (string Runner, string Model)? leftFor = null)
     {
         var hop = hopKind is not null;
 
@@ -2290,12 +2410,12 @@ public sealed class Dispatch(
 
         // A move the runner cannot spawn. Not a hop, which spawns nothing, and
         // not an idle review self-move, which the review judge speaks for.
-        if (!hop && !reviewIdle && ModelFold(issue, from, playbook, models ?? ModelDeclaration.Unjudged, gate.EffectiveLocalModel(issue.Id).Level) is { } modelBlock)
+        if (!hop && !reviewIdle && ModelFold(issue, from, playbook, models ?? ModelDeclaration.Unjudged, gate.EffectiveLocalModel(issue.Id).Level, leftFor) is { } modelBlock)
             return new Blocking(modelBlock, BlockedKinds.Other);
 
         // Beside the model fold, and gated as it is: a runner that refuses the
         // model is never dispatched a move on it, from any door.
-        if (!hop && !reviewIdle && RefusalFold(issue, from, playbook, refusal, gate.EffectiveLocalModel(issue.Id).Level) is { } refusalBlock)
+        if (!hop && !reviewIdle && RefusalFold(issue, from, playbook, refusal, gate.EffectiveLocalModel(issue.Id).Level, models) is { } refusalBlock)
             return new Blocking(refusalBlock, BlockedKinds.Other);
 
         // After the model and refusal folds, before the dependencies: a runner that cannot
