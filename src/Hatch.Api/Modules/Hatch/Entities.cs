@@ -3588,6 +3588,9 @@ public class EfHatchRunner
     /// <summary>Room for a registry image reference with its tag, such as <c>ghcr.io/owner/repo/hatch-runner:abc123</c>.</summary>
     public const int MaxImageLength = 256;
 
+    /// <summary>Room for an accelerator backend name: <c>cuda</c>, <c>rocm</c>, <c>metal</c>, <c>vulkan</c> or <c>none</c>.</summary>
+    public const int MaxAcceleratorBackendLength = 16;
+
     /// <summary>Room for a full git sha, or "dev" for an unstamped build.</summary>
     public const int MaxRevisionLength = 40;
 
@@ -3813,6 +3816,22 @@ public class EfHatchRunner
     /// </summary>
     [MaxLength(MaxImageLength)]
     public string? Image { get; set; }
+
+    /// <summary>
+    /// The total memory, in bytes, across the accelerator devices this
+    /// runner's own Ollama can use - a fact about the running process,
+    /// written whenever a heartbeat names one and cleared only by a fresh
+    /// <c>loop</c> beat that names none (a restart onto a remote Ollama).
+    /// Null for a runner that never reported one.
+    /// </summary>
+    public long? AcceleratorMemoryBytes { get; set; }
+
+    /// <summary>The number of accelerator devices this runner reports, kept on the terms of <see cref="AcceleratorMemoryBytes"/>.</summary>
+    public int? AcceleratorDeviceCount { get; set; }
+
+    /// <summary>The accelerator backend this runner reports, kept on the terms of <see cref="AcceleratorMemoryBytes"/>.</summary>
+    [MaxLength(MaxAcceleratorBackendLength)]
+    public string? AcceleratorBackend { get; set; }
 
     /// <summary>
     /// Whether this runner refuses dangerous work. Seeded once by a heartbeat
@@ -4161,6 +4180,16 @@ public class EfHatchRunnerSession
     /// <summary>The image this session was started from, as <see cref="EfHatchRunner.Image"/>.</summary>
     [MaxLength(EfHatchRunner.MaxImageLength)]
     public string? Image { get; set; }
+
+    /// <summary>The total accelerator memory, in bytes, across devices this session reports, as <see cref="EfHatchRunner.AcceleratorMemoryBytes"/>.</summary>
+    public long? AcceleratorMemoryBytes { get; set; }
+
+    /// <summary>The number of accelerator devices this session reports, as <see cref="EfHatchRunner.AcceleratorDeviceCount"/>.</summary>
+    public int? AcceleratorDeviceCount { get; set; }
+
+    /// <summary>The accelerator backend this session reports, as <see cref="EfHatchRunner.AcceleratorBackend"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxAcceleratorBackendLength)]
+    public string? AcceleratorBackend { get; set; }
 
     /// <summary>
     /// The project keys this session's last heartbeat was answered with as the

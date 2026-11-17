@@ -169,7 +169,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Bound(r) + Models(r) + Refuses(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Accelerator(r) + Bound(r) + Models(r) + Refuses(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -243,6 +243,21 @@ public sealed class RunnersCommand(Cli cli)
             return at == -1 ? entry : $"{entry[..at]} {entry[(at + 1)..]}";
         });
         return "  has " + string.Join(", ", entries);
+    }
+
+    /// <summary>
+    /// The accelerator a runner reports, after its dependencies: the backend,
+    /// the memory total across its devices in binary gigabytes, and the device
+    /// count where there is more than one. Nothing where it never reported one
+    /// or reported <c>none</c>, so a row without one reads as it always has.
+    /// </summary>
+    private static string Accelerator(RunnerDto row)
+    {
+        if (row.AcceleratorBackend is not { Length: > 0 } backend || backend == "none") return "";
+        var line = "  accelerator " + backend;
+        if (row.AcceleratorMemoryBytes is { } memory) line += " " + Format.Bytes(memory);
+        if (row.AcceleratorDeviceCount is int count and > 1) line += " x" + count.ToString(CultureInfo.InvariantCulture);
+        return line;
     }
 
     /// <summary>

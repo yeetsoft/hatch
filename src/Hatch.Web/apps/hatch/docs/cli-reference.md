@@ -608,6 +608,14 @@ after `on HOST` - the reference baked into the image at build time
 ([the runner](the-runner#image)). One from the generic image, or outside one,
 prints nothing extra.
 
+A runner that reports an accelerator adds `  accelerator cuda 24GB x2` after
+`has` and before any projects: the backend, the memory total across its devices
+in binary gigabytes (1024^3 bytes, one decimal, `.0` dropped, so `36GB` or
+`1.5GB`), and `xN` only where it has more than one device. A backend that
+reports no memory prints the backend alone (`  accelerator rocm`). A runner
+that never reported one, or reported `none`, prints nothing extra
+([the runner](the-runner#what-a-runner-advertises)).
+
 A runner that reports dependencies closes that part of its line with
 `  has dotnet 10.0.100, node 22.11.0, pwsh`, comma-separated, before any
 projects; one with none prints nothing extra.

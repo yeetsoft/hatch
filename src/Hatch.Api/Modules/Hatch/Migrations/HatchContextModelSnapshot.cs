@@ -1605,6 +1605,16 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
 
+                    b.Property<string>("AcceleratorBackend")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("AcceleratorDeviceCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("AcceleratorMemoryBytes")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTimeOffset?>("AdoptedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1833,6 +1843,16 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AcceleratorBackend")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("AcceleratorDeviceCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("AcceleratorMemoryBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Agent")
                         .HasMaxLength(16)

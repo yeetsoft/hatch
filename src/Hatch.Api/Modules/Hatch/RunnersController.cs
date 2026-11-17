@@ -1563,6 +1563,9 @@ public class RunnersController(
             Models = models,
             Has = has,
             Image = Fits(request.Image, EfHatchRunner.MaxImageLength),
+            AcceleratorMemoryBytes = request.AcceleratorMemoryBytes,
+            AcceleratorDeviceCount = request.AcceleratorDeviceCount,
+            AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength),
             Projects = keys.Count > 0 ? string.Join('\n', keys) : null,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
@@ -1639,6 +1642,12 @@ public class RunnersController(
         // one exception a fresh loop beat draws.
         if (request.Image is not null) row.Image = Fits(request.Image, EfHatchRunner.MaxImageLength);
 
+        // The accelerator is the same kind of fact as Image: written when
+        // sent, absent leaving it alone, bar the fresh loop beat below.
+        if (request.AcceleratorMemoryBytes is not null) row.AcceleratorMemoryBytes = request.AcceleratorMemoryBytes;
+        if (request.AcceleratorDeviceCount is not null) row.AcceleratorDeviceCount = request.AcceleratorDeviceCount;
+        if (request.AcceleratorBackend is not null) row.AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength);
+
         // A fact about the process, like Where and Remotes: overwritten by
         // whatever the latest beat said, any kind. Tags are never taken off a
         // beat at all - only PatchRunner moves row.Tags.
@@ -1689,11 +1698,17 @@ public class RunnersController(
         {
             Bound(row, request);
 
-            // The one field written even where the beat names none: a fresh
+            // The fields written even where the beat names none: a fresh
             // start that named no image must not keep a stale one from the
             // incarnation before it, the way a restart onto the generic image
             // would otherwise look like it was still the one that was built.
+            // The accelerator goes the same way: a restart that now reports no
+            // profile (its Ollama moved off the box) must not keep the
+            // previous process's.
             row.Image = Fits(request.Image, EfHatchRunner.MaxImageLength);
+            row.AcceleratorMemoryBytes = request.AcceleratorMemoryBytes;
+            row.AcceleratorDeviceCount = request.AcceleratorDeviceCount;
+            row.AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength);
 
             // The one beat that writes state: a start that asked to stand by
             // is paused on the beat that says so, from any state, so its own
@@ -1770,6 +1785,9 @@ public class RunnersController(
             Models = models,
             Has = has,
             Image = Fits(request.Image, EfHatchRunner.MaxImageLength),
+            AcceleratorMemoryBytes = request.AcceleratorMemoryBytes,
+            AcceleratorDeviceCount = request.AcceleratorDeviceCount,
+            AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength),
             Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength),
             Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength),
             AgentVersion = Fits(request.AgentVersion, EfHatchRunnerSession.MaxAgentVersionLength),
@@ -1829,6 +1847,9 @@ public class RunnersController(
 
         if (request.Os is not null) session.Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength);
         if (request.Arch is not null) session.Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength);
+        if (request.AcceleratorMemoryBytes is not null) session.AcceleratorMemoryBytes = request.AcceleratorMemoryBytes;
+        if (request.AcceleratorDeviceCount is not null) session.AcceleratorDeviceCount = request.AcceleratorDeviceCount;
+        if (request.AcceleratorBackend is not null) session.AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength);
         if (request.AgentVersion is not null) session.AgentVersion = Fits(request.AgentVersion, EfHatchRunnerSession.MaxAgentVersionLength);
         if (request.Username is not null) session.Username = Fits(request.Username, EfHatchRunnerSession.MaxUsernameLength);
         if (request.Container is not null) session.Container = request.Container;
