@@ -164,6 +164,11 @@ public sealed class FakeAdapter : IAgentAdapter
         return true;
     }
 
+    /// <summary>How many times the loop asked this adapter to re-read its list.</summary>
+    public int Refreshed { get; private set; }
+
+    public void Refresh() => Refreshed++;
+
     /// <summary>
     /// Set to make <see cref="CanDeny"/> refuse a row carrying at least one
     /// denied-tools rule, with this sentence; null, or a row with no rules at

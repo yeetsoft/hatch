@@ -15,7 +15,9 @@ namespace Hatch.Cli;
 /// its read-only sandbox cannot carry is an <see cref="InvalidOperationException"/>
 /// from both builds, inherited as it stands.
 /// </remarks>
-public sealed class OllamaAdapter : CodexAdapter
+// Names the interface again so Refresh, which CodexAdapter has no member for,
+// is the one an IAgentAdapter caller reaches rather than the default no-op.
+public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
 {
     /// <summary>Every alias null: no model id is shipped here, the operator names theirs.</summary>
     private static readonly IReadOnlyDictionary<string, string?> DefaultTiers = new Dictionary<string, string?>
@@ -33,15 +35,23 @@ public sealed class OllamaAdapter : CodexAdapter
     private readonly IReadOnlyDictionary<string, string?> _tiers;
     private readonly HttpClient _http;
 
-    /// <summary>The model names <see cref="CanSpawn"/> pulled, and null until a run has asked successfully.</summary>
+    private readonly Action<string>? _warn;
+
+    /// <summary>The model names the last good read of <c>/api/tags</c> found, and null until one has succeeded.</summary>
     private HashSet<string>? _models;
+
+    /// <summary>True once a failed <see cref="Refresh"/> has said so, until a read succeeds again.</summary>
+    private bool _staleSaid;
 
     /// <param name="host">Where the server is; <see cref="OllamaHost.Default"/> when none.</param>
     /// <param name="tiers">
     /// Overrides onto four null defaults, so an alias nobody mapped sends no
     /// <c>-m</c> at all and the CLI's own default applies.
     /// </param>
-    /// <param name="warn">Told once, from the constructor, which aliases will run on the CLI's default.</param>
+    /// <param name="warn">
+    /// Told which aliases will run on the CLI's default, once from the constructor,
+    /// and once per outage when <see cref="Refresh"/> cannot reach the server.
+    /// </param>
     public OllamaAdapter(
         OllamaHost? host = null,
         IReadOnlyDictionary<string, string?>? tiers = null,
@@ -52,6 +62,7 @@ public sealed class OllamaAdapter : CodexAdapter
         : base(configured, path)
     {
         _host = host ?? OllamaHost.Default;
+        _warn = warn;
 
         var merged = new Dictionary<string, string?>(DefaultTiers);
         if (tiers is not null)
@@ -102,8 +113,9 @@ public sealed class OllamaAdapter : CodexAdapter
     /// <summary>
     /// <see cref="CodexAdapter"/>'s own binary lookup, plus a second question
     /// once the binary is found: whether the resolved host is actually
-    /// answering. Asked once per process - a success is cached in
-    /// <see cref="_models"/> for good, never re-asked.
+    /// answering. Only the first read is asked here - once one has succeeded
+    /// the answer is true without asking, and <see cref="Refresh"/> is what
+    /// reads the list again.
     /// </summary>
     /// <remarks>
     /// 2026-10-21: <c>GET /api/tags</c> is Ollama's own list-local-models
@@ -125,34 +137,56 @@ public sealed class OllamaAdapter : CodexAdapter
 
         if (!base.CanSpawn(out refusal)) return false;
 
+        if (ReadTags() is not { } read)
+        {
+            refusal = NotAnswering();
+            return false;
+        }
+
+        _models = read;
+        refusal = "";
+        return true;
+    }
+
+    /// <summary>
+    /// Reads <c>/api/tags</c> again, between increments. A list replaces the
+    /// last one; a failed read keeps it and says so once, until a read succeeds.
+    /// </summary>
+    public void Refresh()
+    {
+        if (ReadTags() is { } read)
+        {
+            _models = read;
+            _staleSaid = false;
+            return;
+        }
+
+        if (_staleSaid) return;
+        _staleSaid = true;
+        _warn?.Invoke($"hatch: ollama is not answering at {_host.Url} - keeping the model list from the last read");
+    }
+
+    /// <summary>The names <c>/api/tags</c> lists, or null where the server did not answer a list.</summary>
+    private HashSet<string>? ReadTags()
+    {
         try
         {
             var response = _http.GetAsync($"{_host.Url}/api/tags").GetAwaiter().GetResult();
-            if (!response.IsSuccessStatusCode)
-            {
-                refusal = NotAnswering();
-                return false;
-            }
+            if (!response.IsSuccessStatusCode) return null;
 
-            var body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            _models = ParseModels(body);
-            refusal = "";
-            return true;
+            return ParseModels(response.Content.ReadAsStringAsync().GetAwaiter().GetResult());
         }
         catch (HttpRequestException)
         {
-            refusal = NotAnswering();
-            return false;
+            return null;
         }
         catch (TaskCanceledException)
         {
-            refusal = NotAnswering();
-            return false;
+            return null;
         }
         catch (JsonException)
         {
-            refusal = NotAnswering();
-            return false;
+            return null;
         }
     }
 
@@ -178,8 +212,7 @@ public sealed class OllamaAdapter : CodexAdapter
     protected override string? ModelFlag(string model) => _tiers.TryGetValue(model, out var id) ? id : model;
 
     /// <summary>
-    /// A pinned id or mapped alias not in the list <see cref="CanSpawn"/> cached
-    /// skips the row. A null or empty model, an unmapped alias, and a list never
+    /// A pinned id or mapped alias not in the list last read skips the row. A null or empty model, an unmapped alias, and a list never
     /// read all answer true: Hatch never pulls, and never guesses at a list it
     /// has not read.
     /// </summary>

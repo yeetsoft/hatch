@@ -338,8 +338,11 @@ machine-bound, so a profile still reads it from the per-user file.
 for claude, codex and grok the four aliases, `haiku sonnet opus fable`; for
 ollama the ids its aliases are mapped to (`HATCH_OLLAMA_TIERS`), in alias order, then
 the models its server has pulled, sorted, up to 100. An ollama runner with
-nothing mapped and nothing pulled advertises none. A pulled name that is not a
-valid Ollama id (`name:tag`) is left out rather than refusing the beat.
+nothing mapped and nothing pulled advertises none. The loop reads the server's
+list again before each beat, so a model pulled or removed during the run shows
+on the next beat with no restart; a read that fails keeps the last list and
+says so once on the terminal, until a read succeeds again. A pulled name that
+is not a valid Ollama id (`name:tag`) is left out rather than refusing the beat.
 
 **`HATCH_MODELS` overrides the default only for its own agent.** It was
 checked against `HATCH_AGENT`, so a run whose `--agent` flag chose another
@@ -357,7 +360,8 @@ row's models, rather than none, which would leave the last list standing.
 
 **Every heartbeat writes the list.** Unlike tags, the board does not own it:
 the row carries whatever the last beat said, so changing `HATCH_MODELS` or
-pulling a model on an ollama server shows on the next heartbeat. A runner that
+pulling a model on an ollama server shows on the next heartbeat: the loop reads
+the server's list before every beat, not once at the start. A runner that
 has nothing to advertise sends none and leaves the row's list as it was.
 
 **The models and the agent ride on every dispatch read too.** `hatch queue`,
