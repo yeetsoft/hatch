@@ -82,6 +82,7 @@ export function TypeControl({
   type,
   types = ISSUE_TYPES,
   busy = false,
+  label: named,
   onChange,
 }: {
   issueKey: string;
@@ -90,6 +91,9 @@ export function TypeControl({
   types?: readonly IssueType[];
   /** A save is already out: the pill stays where it is and stops answering. */
   busy?: boolean;
+  /** What follows "Type: <word>." in the pill's accessible name, for a pill that
+      is not setting `issueKey`'s own type. Defaults to "Set <key>'s type". */
+  label?: string;
   onChange: (type: IssueType) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -125,7 +129,7 @@ export function TypeControl({
   };
 
   const row = issueTypeRow(type);
-  const label = `Type: ${row.word}. Set ${issueKey}'s type`;
+  const label = `Type: ${row.word}. ${named ?? `Set ${issueKey}'s type`}`;
 
   return (
     <>

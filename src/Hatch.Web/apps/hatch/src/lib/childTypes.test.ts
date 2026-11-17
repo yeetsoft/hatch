@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { childTypes } from './childTypes';
+import { childTypes, clampChild } from './childTypes';
 import { ISSUE_TYPES, LEGAL_PARENT_TYPES } from '../types';
 
 describe('childTypes', () => {
@@ -34,5 +34,20 @@ describe('childTypes', () => {
         expect(ISSUE_TYPES).toContain(offered);
       }
     }
+  });
+});
+
+describe('clampChild', () => {
+  it('keeps a pick the parent can still take', () => {
+    expect(clampChild('bug', childTypes('story'))).toBe('bug');
+  });
+
+  it('falls to the first legal type when the pick is no longer legal', () => {
+    expect(clampChild('epic', childTypes('story'))).toBe('task');
+  });
+
+  it('falls to the first legal type when nothing is picked', () => {
+    expect(clampChild(null, childTypes('epic'))).toBe('epic');
+    expect(clampChild(null, childTypes('bug'))).toBe('task');
   });
 });

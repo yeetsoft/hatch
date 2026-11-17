@@ -21,6 +21,15 @@ describe('TypeControl', () => {
     expect(html).not.toContain('Set type');
   });
 
+  it('names what it sets when it is given a label', () => {
+    const html = renderToStaticMarkup(
+      <TypeControl issueKey="HA-14" type="epic" label="Type of the new child" onChange={() => {}} />,
+    );
+
+    expect(html).toContain('aria-label="Type: epic. Type of the new child"');
+    expect(html).not.toContain('HA-14');
+  });
+
   it.each(ISSUE_TYPES)('wears the %s shape, hidden from the accessible name', (type) => {
     const html = renderToStaticMarkup(<TypeControl issueKey="HA-14" type={type} onChange={() => {}} />);
 
