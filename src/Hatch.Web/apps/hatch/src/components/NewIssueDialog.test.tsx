@@ -303,6 +303,26 @@ describe('NewIssueDialog', () => {
     expect(html).toContain('hatch-preapproval-pill-press');
   });
 
+  it('draws Type as a pressable pill with its band closed, in place of a select', () => {
+    stubStorage();
+
+    const html = renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [PROJECT],
+        candidates: [],
+        defaultProjectKey: '',
+        directory: directory(),
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+
+    expect(html).toContain('hatch-type-pill-press');
+    expect(html).not.toContain('hatch-type-pill-band');
+    expect(html).not.toContain('<select');
+  });
+
   it('draws Priority and Pre-approval as words, with no pressable pill, for a key', () => {
     stubStorage();
 

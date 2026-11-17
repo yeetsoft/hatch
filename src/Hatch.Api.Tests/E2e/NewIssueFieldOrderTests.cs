@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Tests.Hatch;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Playwright;
 using Xunit.Abstractions;
 
 namespace Hatch.Api.Tests.E2e;
@@ -28,7 +29,9 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
 
     private const string ModalPanel = ".hatch-modal__panel";
 
-    private const string TypeSelect = ".hatch-modal__panel .hatch-field:has(> .hatch-field__control > .hatch-field__label:text-is(\"Type\")) select";
+    private const string TypePill = ".hatch-modal__panel .hatch-type-pill-press";
+
+    private const string TypeBand = ".hatch-modal__panel .hatch-type-pill-band";
 
     /// <summary>
     /// Runs in the page: the dialog's field labels in document order, the paired
@@ -52,6 +55,13 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
             scrollWidth: document.documentElement.scrollWidth,
             innerWidth: window.innerWidth,
           };
+        }
+        """;
+
+    /// <summary>Runs in the page: lets the open band's fade-in finish, so a screenshot shows it as a person sees it.</summary>
+    private const string SettleScript = """
+        async () => {
+          await Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {})));
         }
         """;
 
@@ -125,13 +135,26 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
             AssertPair(task, stacked);
 
             // A story: One pull request sits right after Type, before the levels.
-            await harness.SelectOptionAsync(deadline, TypeSelect, "story");
+            var page = harness.Page!;
+            await harness.ClickAsync(deadline, TypePill);
+            await harness.WaitForVisibleAsync(deadline, TypeBand);
+            await harness.EvaluateAsync<JsonElement?>(deadline, "settling the type band", SettleScript);
+            await harness.ScreenshotAsync(deadline, $"{name}-type-band");
+            await deadline.BoundAsync("pressing story", () => page.Locator(TypeBand).GetByRole(AriaRole.Button, new() { Name = "story", Exact = true }).ClickAsync());
+            await harness.WaitForHiddenAsync(deadline, TypeBand);
             await harness.WaitForVisibleAsync(deadline, ".hatch-modal__panel .hatch-one-pr-steps");
             var story = await harness.EvaluateAsync<JsonElement>(deadline, "measuring the dialog as a story", MeasureScript);
             output.WriteLine(story.ToString());
             await harness.ScreenshotAsync(deadline, $"{name}-story");
             AssertOrder(story, "story", ["Type", "One pull request", "Priority", "Pre-approval", "Title", "Parent", "Description", "Ready", "Due"]);
             AssertPair(story, stacked);
+
+            // Back to a task: One pull request goes again.
+            await harness.ClickAsync(deadline, TypePill);
+            await harness.WaitForVisibleAsync(deadline, TypeBand);
+            await deadline.BoundAsync("pressing task", () => page.Locator(TypeBand).GetByRole(AriaRole.Button, new() { Name = "task", Exact = true }).ClickAsync());
+            await harness.WaitForHiddenAsync(deadline, TypeBand);
+            await harness.WaitForHiddenAsync(deadline, ".hatch-modal__panel .hatch-one-pr-steps");
 
             // Each level's open band, in a half-width column, stays inside the dialog.
             foreach (var level in new[] { "priority", "preapproval" })

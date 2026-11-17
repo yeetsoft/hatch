@@ -17,7 +17,7 @@ import { OnePrSteps, type OnePrSetting } from './OnePrControl';
 import { PreApprovalControl, type PreApproval } from './PreApprovalControl';
 import { PriorityControl, type Priority } from './PriorityControl';
 import { ProjectChooser } from './ProjectChooser';
-import { ISSUE_TYPES } from '../types';
+import { TypeControl } from './TypeControl';
 import type { AssigneeDirectory, Issue, IssueCard, IssueType, Project } from '../types';
 
 /** What a filing sends for a level the dialog carries with a default: the
@@ -204,17 +204,16 @@ export function NewIssueDialog({
                 }}
               />
 
-              <Field label="Type">
-                <select value={type} onChange={(e) => {
-                    setType(e.target.value as IssueType);
+              <Field label="Type" as="div">
+                <TypeControl
+                  issueKey=""
+                  type={type}
+                  busy={saving}
+                  onChange={(next) => {
+                    setType(next);
                     setOnePr('inherit');
-                  }}>
-                  {ISSUE_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                  }}
+                />
               </Field>
 
               <OnePrField
