@@ -2835,6 +2835,8 @@ export interface Runner {
   tokensLastHour: number | null;
   /** When the hourly cap lifts and the runner resumes on its own. Null when it is not held back. */
   throttledUntil: string | null;
+  /** Whether this runner's loop is pulling a model, written on every loop beat. Mirrors RunnerDto.Pulling; optional for a stub that predates it. */
+  pulling?: boolean;
   untilAt: string | null;
   /** How long a runner may go unheard from before it is gone - the server's own
       Hatch:RunnerGoneAfterSeconds, carried the way a claim carries its TTL, so
@@ -2982,6 +2984,8 @@ export interface RunnerSession {
   acceleratorDeviceCount?: number | null;
   /** The accelerator's backend (`cuda`, `rocm`, `metal`, `vulkan` or `none`), or null where not reported. Mirrors RunnerSessionDto.AcceleratorBackend. */
   acceleratorBackend?: string | null;
+  /** Whether this session's loop is pulling a model, written on every loop beat. Mirrors RunnerSessionDto.Pulling; optional for a stub that predates it. */
+  pulling?: boolean;
 }
 
 /** Sent to `PATCH /runners/{name}/sessions/{id}`: the one session's state. Mirrors RunnerSessionPatchRequest. */

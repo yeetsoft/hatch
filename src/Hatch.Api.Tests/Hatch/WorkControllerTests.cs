@@ -3288,6 +3288,19 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Prefer_WhileTheOllamaRunnerIsPulling_TheCloudRunnerTakesItOnTheRowsModel()
+    {
+        var h = await NewAsync();
+        var (_, cloud) = await PreferringFleetAsync(h, row => row.Pulling = true);
+        var task = await PreferringTaskAsync(h, "the GPU box is pulling a model");
+
+        Assert.Null(Entry(await h.Work.GetQueue(runner: cloud, model: CloudModels, agent: "claude"), task).Blocked);
+        var work = Value(await h.Work.GetWork(Key(task), runner: cloud, model: CloudModels, agent: "claude"));
+        Assert.Equal("sonnet", work.Model);
+        Assert.True(work.ModelFellBack);
+    }
+
+    [Fact]
     public async Task Prefer_WhenTheOllamaRunnerIsOmittedOnTheTicket_TheCloudRunnerTakesItOnTheRowsModel()
     {
         var h = await NewAsync();

@@ -277,6 +277,10 @@ public class RunnersController(
         if (!(dto.ThrottledUntil > now) && Latest(live.Select(s => s.ThrottledUntil), now) is { } throttled)
             dto = dto with { ThrottledUntil = throttled };
 
+        // A keyed runner has no beat row of its own, so a live session
+        // pulling is the only way the row ever shows it.
+        if (!dto.Pulling && live.Any(s => s.Pulling)) dto = dto with { Pulling = true };
+
         // Copied whole from one session - never a kind from one session and a
         // line from another - so the latest ahead of now wins all three.
         if (!(dto.AgentDownUntil > now) &&
@@ -1594,6 +1598,7 @@ public class RunnersController(
             AgentDownKind = request.AgentDown == true ? NormaliseAgentDownKind(request.AgentDownKind) : null,
             AgentDownLine = request.AgentDown == true ? Fits(request.AgentDownLine, EfHatchRunner.MaxAgentDownLineLength) : null,
             ThrottledUntil = request.ThrottledUntil,
+            Pulling = kind == EfHatchRunner.LoopKind && request.Pulling == true,
             ForPersonId = forPersonId,
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
@@ -1708,6 +1713,11 @@ public class RunnersController(
         // clear the loop's own wait.
         if (kind == EfHatchRunner.LoopKind) row.ThrottledUntil = request.ThrottledUntil;
 
+        // Written on every loop beat, the same as ThrottledUntil: a beat that
+        // does not say it is pulling clears it. Not a `once` beat, for the
+        // same reason.
+        if (kind == EfHatchRunner.LoopKind) row.Pulling = request.Pulling == true;
+
         // Whose key this is can change on the API Keys page, so this is
         // written every beat like Where and Remotes, unlike the six bounds,
         // which only a fresh loop's first beat writes. Not a `once` beat:
@@ -1801,6 +1811,7 @@ public class RunnersController(
             AgentDownKind = request.AgentDown == true ? NormaliseAgentDownKind(request.AgentDownKind) : null,
             AgentDownLine = request.AgentDown == true ? Fits(request.AgentDownLine, EfHatchRunner.MaxAgentDownLineLength) : null,
             ThrottledUntil = request.ThrottledUntil,
+            Pulling = kind == EfHatchRunner.LoopKind && request.Pulling == true,
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
             Models = models,
@@ -1915,6 +1926,9 @@ public class RunnersController(
         // Loop-only, the same as Touch: a `once` beat shares the loop
         // session's (key, where) and must not clear its own wait.
         if (kind == EfHatchRunner.LoopKind) session.ThrottledUntil = request.ThrottledUntil;
+
+        // Loop-only, the same as ThrottledUntil above.
+        if (kind == EfHatchRunner.LoopKind) session.Pulling = request.Pulling == true;
 
         if (Utilization.Serialise(request.Usage) is { } usage)
         {

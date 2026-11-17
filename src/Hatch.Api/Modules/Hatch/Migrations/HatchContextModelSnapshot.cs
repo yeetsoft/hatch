@@ -1750,6 +1750,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Projects")
                         .HasColumnType("text");
 
+                    b.Property<bool>("Pulling")
+                        .HasColumnType("boolean");
+
                     b.Property<bool?>("RefusesDangerous")
                         .HasColumnType("boolean");
 
@@ -2006,6 +2009,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<string>("Projects")
                         .HasColumnType("text");
+
+                    b.Property<bool>("Pulling")
+                        .HasColumnType("boolean");
 
                     b.Property<bool?>("RefusesDangerous")
                         .HasColumnType("boolean");

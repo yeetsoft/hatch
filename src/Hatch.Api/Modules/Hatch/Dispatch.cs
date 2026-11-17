@@ -612,10 +612,11 @@ public sealed class Dispatch(
         /// The name of the first peer that is free to run <paramref name="localModel"/>
         /// for <paramref name="issueId"/>, or null. Free is read from the peer's
         /// last beat and its claim: it is live (the peer filter drops a paused or
-        /// stopping one), its agent is the model's and its list names it, and it
-        /// holds no live claim. Its own scan then has to find the ticket takeable,
-        /// so tags, omissions, refusals, <c>has</c>, projects and scope all fold it
-        /// with no second copy of the rules. With no runner store, none is free.
+        /// stopping one), its agent is the model's and its list names it, it is
+        /// not pulling a model, and it holds no live claim. Its own scan then has
+        /// to find the ticket takeable, so tags, omissions, refusals, <c>has</c>,
+        /// projects and scope all fold it with no second copy of the rules. With
+        /// no runner store, none is free.
         /// </summary>
         public async Task<string?> FreeLocalAsync(long issueId, string localModel, CancellationToken ct)
         {
@@ -626,7 +627,7 @@ public sealed class Dispatch(
 
             foreach (var peer in _peers)
             {
-                if (!RunsLocally(peer.Declaration.Models, localModel) || _holding.Contains((peer.Name, peer.Where))) continue;
+                if (!RunsLocally(peer.Declaration.Models, localModel) || peer.Pulling || _holding.Contains((peer.Name, peer.Where))) continue;
                 if ((await TakeableAsync(peer, ct)).Contains(issueId)) return peer.Name;
             }
 
@@ -663,7 +664,7 @@ public sealed class Dispatch(
     /// <see cref="Where"/> is the checkout it runs at, the other half of the key
     /// <see cref="Runners.HeldAsync"/> reads a claim by.
     /// </summary>
-    private sealed record Peer(string Id, string Name, string Where, RunnerDeclaration Declaration);
+    private sealed record Peer(string Id, string Name, string Where, RunnerDeclaration Declaration, bool Pulling = false);
 
     /// <summary>
     /// Every peer that is here, running, and has budget left, excluding
@@ -687,13 +688,13 @@ public sealed class Dispatch(
             if (string.Equals(runner.Name, excludeName, StringComparison.Ordinal)) continue;
 
             if (runner.Beat is { } beat && IsLiveBeat(beat, now, liveSince))
-                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, beat.Where ?? "", await RunnerDeclaration.OfAsync(beat, actors, ct, runner.Config)));
+                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, beat.Where ?? "", await RunnerDeclaration.OfAsync(beat, actors, ct, runner.Config), beat.Pulling));
 
             if (sessions is null || runner.Sessions is null) continue;
             foreach (var session in runner.Sessions)
             {
                 if (!IsLiveSession(session, runner.Config, now, liveSince)) continue;
-                peers.Add(new Peer($"session:{session.Id}", runner.Name, session.Where ?? "", await RunnerDeclaration.OfAsync(runner, [session], actors, ct)));
+                peers.Add(new Peer($"session:{session.Id}", runner.Name, session.Where ?? "", await RunnerDeclaration.OfAsync(runner, [session], actors, ct), session.Pulling));
             }
         }
 

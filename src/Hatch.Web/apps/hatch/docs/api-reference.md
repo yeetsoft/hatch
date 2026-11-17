@@ -1107,6 +1107,15 @@ expects to be back under that cap while it waits, written on every `loop` beat
 (so a beat that carries null clears it) and left alone by a `once` beat. It has
 no `PATCH` field.
 
+`pulling` is a fact the loop reports about itself, on the same terms as
+`throttledUntil`: true while it is pulling a model, written on every `loop`
+beat, and cleared by a `loop` beat that does not say so; a `once` beat leaves
+it alone. A keyed runner with no beat row of its own folds it from its live
+sessions the way `exhaustedUntil` does, true the moment any live session says
+so. Dispatch reads it off the row: a runner that is pulling is live, but is
+never offered as the free local runner a preferred local model folds a cloud
+asker onto. It has no `PATCH` field.
+
 `agentDownUntil`, `agentDownKind` and `agentDownLine` are the same tri-state
 `exhausted`/`exhaustedUntil` already has, for the agent rather than the
 account: `agentDown: true` writes `agentDownUntil` and normalises
@@ -1263,7 +1272,8 @@ Each row also carries the token side of the bounds: `maxTokens` and
 row holds it, `default` when it comes from the site default on `/settings`,
 `none` when there is no such bound anywhere - then `tokensUsed` and
 `tokensLastHour`, the loop's own running counts, and `throttledUntil`, the
-instant a waiting loop expects to be under its hourly cap, or null. `models`
+instant a waiting loop expects to be under its hourly cap, or null, and
+`pulling`, whether the loop is pulling a model. `models`
 is the runner's advertised models in the order given, `[]` for a row that never
 reported; `has` is the dependencies it advertised, as `id` or `id@version`
 strings in the order given, `[]` for a row that never said.

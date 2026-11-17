@@ -144,8 +144,8 @@ says `modelFellBack`. A runner is **free** when it is live and running, runs
 the model's agent, lists the id, holds no claim, and nothing on the ticket
 folds it: its tags, an omission, a refused model or a missing `has`. Busy and
 paused both count as not free: a cloud runner never waits on a GPU. A runner
-that is still pulling the model does not count as free once the loop reports
-pulling. The level `none` leaves a row's moves as they were.
+that is still pulling the model does not count as free while the runner's
+beat says `pulling`. The level `none` leaves a row's moves as they were.
 
 ## Budget, the brief limit, the quiet limit, the run limit and denied tools
 

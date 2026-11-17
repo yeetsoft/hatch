@@ -196,7 +196,8 @@ public sealed class RunnerSessions(Runners runners)
             Image: session.Image,
             AcceleratorMemoryBytes: session.AcceleratorMemoryBytes,
             AcceleratorDeviceCount: session.AcceleratorDeviceCount,
-            AcceleratorBackend: session.AcceleratorBackend);
+            AcceleratorBackend: session.AcceleratorBackend,
+            Pulling: session.Pulling);
     }
 
     /// <summary>
