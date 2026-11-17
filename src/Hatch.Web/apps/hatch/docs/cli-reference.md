@@ -1169,6 +1169,18 @@ is simply never on the board this key reads.
   argument through to `go-to-work` whole and again on each restart, so neither
   needed a change to carry it the whole night.
 
+**Pulling held models.** An Ollama runner pulls the models the board asks it to
+hold ([Hold](the-runner#hold)). It does so at the top of a pass, after the
+board's stop and pause, the usage wait, the token wait and the agent check,
+and before the pass picks a ticket - never under `--once`, and never from a
+session. For each held id its server lacks, one at a time, the line reads
+`pulling <id>`, the beat carries `pulling: true`, and the loop beats again every
+`--interval` seconds until that pull ends. A pull that fails is said on the
+runner's line with the server's reason (`pulling <id> failed: <reason> - trying
+again after 14:05`) and on the terminal, and the id is not asked for again for
+an hour, a restart included. After a pull the adapter's list is read again and a
+beat with `pulling` cleared carries what it now holds.
+
 None of the bounds, `--project` included, is set by default. Each is read
 between increments, so the increment in flight always finishes. The two restart flags do nothing in a
 `hatch` started by hand, which has no supervisor to rebuild and run it again.

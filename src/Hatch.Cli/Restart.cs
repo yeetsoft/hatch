@@ -146,6 +146,9 @@ public sealed class LoopSource(string root) : ISelf
 /// <summary>One increment's reported tokens and the instant it ended, an entry of the rolling sixty-minute window.</summary>
 public sealed record TokenEntry(DateTimeOffset At, long Tokens);
 
+/// <summary>A model whose pull failed, the instant the loop may ask for it again, and the reason the server gave.</summary>
+public sealed record PullRetry(string Model, DateTimeOffset At, string Reason);
+
 /// <summary>A model the runner has stopped offering, until an instant or - where that is null - for the rest of the run.</summary>
 public sealed record NarrowedModel(string Model, DateTimeOffset? Until);
 
@@ -271,6 +274,14 @@ public sealed record NightState
 
     /// <summary>Seconds paused in spells already closed.</summary>
     public long AgentDownSeconds { get; init; }
+
+    /// <summary>
+    /// The models whose last pull failed, with when each may be asked for again,
+    /// so a restart does not hammer a server that just refused. Absent in an
+    /// older state file, which reads as none - and the generated reader fills a
+    /// missing init-only property with null, so a reader coalesces.
+    /// </summary>
+    public IReadOnlyList<PullRetry> PullRetries { get; init; } = [];
 
     /// <summary>
     /// What is at <paramref name="path"/>, or null - which is a fresh night.

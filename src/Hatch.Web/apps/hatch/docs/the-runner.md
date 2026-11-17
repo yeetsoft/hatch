@@ -360,6 +360,15 @@ runner with more pulled models is folded for one beyond the cut.
 checked against `HATCH_AGENT`, so a run whose `--agent` flag chose another
 agent advertises that agent's default instead of a list that would be refused.
 
+**The loop pulls what the board asks it to hold.** An ollama runner's loop
+pulls each model in the beat's `hold` ([Hold](#hold)) that its server lacks,
+one at a time, at the top of a pass and ahead of any ticket. While it does, the
+runner's line reads `pulling <id>` and the beat carries `pulling: true`; the
+loop beats again every `--interval` seconds until the pull ends, and the
+server's list is read again after it. A pull that fails is said on the line with
+the server's reason and not tried again for an hour. A session never pulls, and
+neither does a `--once` run - see [go-to-work](cli-reference#go-to-work).
+
 **A runner can stop offering a model for a while.** Until a time, or for the
 rest of the run, a narrowed model is left off the list the beat sends, whatever
 `HATCH_MODELS` or the agent's default says, and it is back once the time
@@ -514,7 +523,8 @@ accelerator facts above: empty unless this runner's agent is `ollama` and it
 has reported accelerator memory, and then every row whose memory footprint
 is no larger than the memory reported, minus any this runner refuses
 ([Refused models](#refused-models)). `hatch runners --json` carries it
-unchanged; nothing pulls a model yet, so a running loop does not read it.
+unchanged. A running ollama loop reads it and pulls what its server lacks,
+between increments ([Models](#models)).
 
 ## What a repository needs
 

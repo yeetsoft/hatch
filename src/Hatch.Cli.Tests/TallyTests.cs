@@ -1510,6 +1510,43 @@ public sealed class TallyTests
         Assert.Equal(clock.GetUtcNow() + TimeSpan.FromMinutes(5), tally.AgentDownUntil);
     }
 
+
+    // ---- HA-2427: a failed pull is not tried again for an hour ----
+
+    [Fact]
+    public void A_failed_pull_is_blocked_for_an_hour_then_free_and_a_success_forgets_it()
+    {
+        var (clock, tally) = Down();
+
+        tally.PullFailed("a:1b", "no such model", clock.GetUtcNow());
+
+        Assert.True(tally.PullBlocked("a:1b", clock.GetUtcNow()));
+        Assert.False(tally.PullBlocked("b:1b", clock.GetUtcNow()));
+        Assert.Contains("pulling a:1b failed: no such model - trying again after ", tally.PullNote(clock.GetUtcNow()), StringComparison.Ordinal);
+
+        clock.Advance(TimeSpan.FromMinutes(59));
+        Assert.True(tally.PullBlocked("a:1b", clock.GetUtcNow()));
+
+        clock.Advance(TimeSpan.FromMinutes(2));
+        Assert.False(tally.PullBlocked("a:1b", clock.GetUtcNow()));
+        Assert.Equal("", tally.PullNote(clock.GetUtcNow()));
+
+        tally.PullFailed("a:1b", "again", clock.GetUtcNow());
+        tally.PullDone("a:1b");
+        Assert.False(tally.PullBlocked("a:1b", clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void A_failed_pull_survives_a_restart()
+    {
+        var (clock, tally) = Down();
+        tally.PullFailed("a:1b", "no such model", clock.GetUtcNow());
+
+        var carried = new Tally(clock, tally.ToState());
+
+        Assert.True(carried.PullBlocked("a:1b", clock.GetUtcNow()));
+        Assert.Equal(tally.PullNote(clock.GetUtcNow()), carried.PullNote(clock.GetUtcNow()));
+    }
     [Fact]
     public void A_pause_survives_a_restart_to_the_same_instant_on_the_same_rung()
     {

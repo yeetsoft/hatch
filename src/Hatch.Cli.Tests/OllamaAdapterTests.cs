@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 
 namespace Hatch.Cli.Tests;
@@ -788,5 +789,137 @@ public sealed class OllamaAdapterTests : IDisposable
     public void Executable_is_null_even_with_a_configured_binary()
     {
         Assert.Null(new OllamaAdapter(configured: _bin).Executable);
+    }
+
+    // ---- The loop pulls what the board asks it to hold ----
+
+    /// <summary>A wire whose <c>/api/pull</c> answers as told, and which keeps what it was asked.</summary>
+    private sealed class PullWire(HttpStatusCode status = HttpStatusCode.OK, string body = """{"status":"success"}""") : HttpMessageHandler
+    {
+        public List<(string Path, string Body)> Pulls { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (request.RequestUri!.AbsolutePath == "/api/pull")
+            {
+                Pulls.Add((request.RequestUri.AbsolutePath, await request.Content!.ReadAsStringAsync(ct)));
+                return new HttpResponseMessage(status) { Content = new StringContent(body) };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"models":[]}""") };
+        }
+    }
+
+    [Fact]
+    public async Task PullAsync_asks_the_server_to_pull_the_model_without_streaming_and_answers_null_on_success()
+    {
+        var wire = new PullWire();
+
+        var reason = await Adapter(wire: wire).PullAsync(Pinned, default);
+
+        Assert.Null(reason);
+        var pull = Assert.Single(wire.Pulls);
+        using var sent = System.Text.Json.JsonDocument.Parse(pull.Body);
+        Assert.Equal(Pinned, sent.RootElement.GetProperty("model").GetString());
+        Assert.False(sent.RootElement.GetProperty("stream").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PullAsync_leaves_the_list_alone_until_Refresh()
+    {
+        IAgentAdapter adapter = Adapter(wire: new PullWire());
+
+        await adapter.PullAsync(Pinned, default);
+
+        Assert.DoesNotContain(Pinned, adapter.Models);
+    }
+
+    [Fact]
+    public async Task PullAsync_answers_an_error_body_on_a_2xx_as_the_reason()
+    {
+        var reason = await Adapter(wire: new PullWire(body: """{"error":"pull model manifest: file does not exist"}""")).PullAsync(Pinned, default);
+
+        Assert.Equal("pull model manifest: file does not exist", reason);
+    }
+
+    [Fact]
+    public async Task PullAsync_answers_a_2xx_that_never_says_success_as_not_finished()
+    {
+        var reason = await Adapter(wire: new PullWire(body: """{"status":"pulling manifest"}""")).PullAsync(Pinned, default);
+
+        Assert.Equal("the server did not say the pull finished", reason);
+    }
+
+    [Fact]
+    public async Task PullAsync_answers_the_error_of_a_non_2xx_else_its_code()
+    {
+        Assert.Equal("model not found",
+            await Adapter(wire: new PullWire(HttpStatusCode.NotFound, """{"error":"model not found"}""")).PullAsync(Pinned, default));
+        Assert.Equal("HTTP 500",
+            await Adapter(wire: new PullWire(HttpStatusCode.InternalServerError, "oops")).PullAsync(Pinned, default));
+    }
+
+    [Fact]
+    public async Task PullAsync_answers_not_JSON_for_a_2xx_that_is_not()
+    {
+        var reason = await Adapter(wire: new PullWire(body: "<html>")).PullAsync(Pinned, default);
+
+        Assert.Equal("the server's answer was not JSON", reason);
+    }
+
+    [Fact]
+    public async Task PullAsync_says_ollama_is_not_answering_where_the_server_is_unreachable()
+    {
+        var adapter = new OllamaAdapter(configured: _bin, handler: new ThrowingWire(new HttpRequestException("refused")));
+
+        var reason = await adapter.PullAsync(Pinned, default);
+
+        Assert.StartsWith("ollama is not answering at ", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PullAsync_cuts_a_long_reason_to_two_hundred_characters()
+    {
+        var long_ = new string('x', 500);
+
+        var reason = await Adapter(wire: new PullWire(body: $$"""{"error":"{{long_}}"}""")).PullAsync(Pinned, default);
+
+        Assert.Equal(200, reason!.Length);
+    }
+
+    [Fact]
+    public async Task PullAsync_rethrows_a_cancelled_token()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Adapter(wire: new PullWire()).PullAsync(Pinned, cts.Token));
+    }
+
+    [Fact]
+    public async Task An_adapter_with_no_pull_of_its_own_says_it_has_nothing_to_pull()
+    {
+        IAgentAdapter adapter = new FakeAdapterWithoutPull();
+
+        Assert.Equal("Plain has no models to pull", await adapter.PullAsync(Pinned, default));
+    }
+
+    private sealed class FakeAdapterWithoutPull : IAgentAdapter
+    {
+        public string Id => "plain";
+        public string DisplayName => "Plain";
+        public bool CanSpawn(out string refusal) { refusal = ""; return true; }
+        public ProcessStartInfo BuildHeadless(SessionRequest request) => throw new NotSupportedException();
+        public ProcessStartInfo BuildAttached(SessionRequest request) => throw new NotSupportedException();
+        public IAgentStreamReader CreateReader(string root, RunFacts facts, string model) => throw new NotSupportedException();
+        public string? ReadClosing(string json) => null;
+        public string ResumeCommand(string sessionId) => sessionId;
+        public IAgentHooks? WriteHooks(string temp, string key, string hatch, string? rtk) => null;
+        public IUsageProbe? Probe => null;
+        public IHookOutputWriter HookOutput => throw new NotSupportedException();
+        public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => null;
+        public ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => null;
+        public AuthFailure.Recognised? RecogniseAuthFailure(string? said) => null;
     }
 }

@@ -17,6 +17,7 @@ public sealed class Tally
     private readonly List<string> _interrupted;
     private readonly List<string> _preempted;
     private readonly List<string> _failed = [];
+    private readonly Dictionary<string, (DateTimeOffset At, string Reason)> _pullRetries;
     private readonly List<TokenEntry> _window;
     private readonly DateTimeOffset _started;
     private readonly Action<string>? _log;
@@ -37,6 +38,8 @@ public sealed class Tally
         _letGo = [.. carried?.LetGo ?? []];
         _interrupted = [.. carried?.Interrupted ?? []];
         _preempted = [.. carried?.Preempted ?? []];
+        _pullRetries = new(StringComparer.Ordinal);
+        foreach (var retry in carried?.PullRetries ?? []) _pullRetries[retry.Model] = (retry.At, retry.Reason);
 
         var now = clock.GetUtcNow();
         _window = [.. (carried?.Window ?? []).Where(e => Live(e, now))];
@@ -198,6 +201,31 @@ public sealed class Tally
         AgentDownLine = null;
         AgentDownSince = null;
     }
+
+    /// <summary>How long a model whose pull failed is left alone before the loop asks for it again.</summary>
+    public static readonly TimeSpan PullRetryAfter = TimeSpan.FromHours(1);
+
+    /// <summary>A pull of <paramref name="model"/> failed: it is not tried again until an hour after <paramref name="at"/>.</summary>
+    public void PullFailed(string model, string reason, DateTimeOffset at) =>
+        _pullRetries[model] = (at + PullRetryAfter, reason);
+
+    /// <summary>A pull of <paramref name="model"/> finished, so whatever was held against it is forgotten.</summary>
+    public void PullDone(string model) => _pullRetries.Remove(model);
+
+    /// <summary>Whether <paramref name="model"/> failed a pull and its retry time is still ahead of <paramref name="now"/>.</summary>
+    public bool PullBlocked(string model, DateTimeOffset now) =>
+        _pullRetries.TryGetValue(model, out var held) && held.At > now;
+
+    /// <summary>
+    /// The failed pulls still waiting out their hour, as one note to lead the
+    /// runner's line with - the server cuts a line from its end, so the reason
+    /// is what survives. Empty where none is waiting.
+    /// </summary>
+    public string PullNote(DateTimeOffset now) =>
+        string.Concat(_pullRetries
+            .Where(e => e.Value.At > now)
+            .OrderBy(e => e.Value.At)
+            .Select(e => $"pulling {e.Key} failed: {e.Value.Reason} - trying again after {e.Value.At.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)}; "));
 
     /// <summary>What a health check cost, joined to the night's spend. Not a run: <c>--max-runs</c> counts increments.</summary>
     public void SpendOnCheck(AgentCheck.Verdict verdict) => Spend(verdict.Cost, false, verdict.Tokens);
@@ -688,6 +716,7 @@ public sealed class Tally
         AgentDownStep = AgentDownStep,
         AgentDownSince = AgentDownSince,
         AgentDownSeconds = AgentDownSeconds,
+        PullRetries = [.. _pullRetries.Select(e => new PullRetry(e.Key, e.Value.At, e.Value.Reason))],
     };
 
     /// <summary>What the night has come to so far, in one line, on the way to a restart.</summary>
@@ -1944,6 +1973,16 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             throttled.Clear();
 
+            // The models the board asks this runner to hold and its adapter
+            // lacks, pulled one at a time ahead of any ticket. Every wait
+            // above has already continued, and `told` is null under `--once`,
+            // so neither a paused runner nor a once run pulls.
+            if (!await PullHeldAsync(told?.Hold ?? [], line, under, mine, tally, once, interval, ct))
+            {
+                await SayStoppedAsync(line, under, mine, tally, once, ct);
+                return false;
+            }
+
             // Between the heartbeat and the pass, and on every iteration - an
             // idle loop and a busy one alike - so a pull request that stopped
             // merging while a session was running is conflict work as soon as
@@ -2067,7 +2106,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// so a machine with nothing clears whatever an older start advertised.
     /// </remarks>
     private async Task<RunnerInstructionDto?> BeatAsync(
-        Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
+        Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct, bool pulling = false)
     {
         var usage = runtime.Readout.Snapshot();
 
@@ -2082,7 +2121,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Fresh: !once && tally.Fresh ? true : null,
                 Standby: tally.Standby && tally.Fresh && !once ? true : null,
-                Line: line.Line,
+                Line: WithPullNote(tally, line.Line),
                 Under: under,
                 MaxRuns: tally.MaxRuns,
                 MaxSpend: tally.MaxSpend,
@@ -2122,6 +2161,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 AgentDownUntil: once ? null : tally.AgentDownUntil,
                 AgentDownKind: once ? null : tally.AgentDownKind,
                 AgentDownLine: once ? null : tally.AgentDownLine,
+                Pulling: once ? null : pulling,
                 // Read here rather than carried from the last pass, so the beat
                 // at the top of a pass is never one pass behind the window.
                 ThrottledUntil: tally.ThrottledUntil(runtime.Clock.GetUtcNow()),
@@ -2154,6 +2194,86 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // to apply an instruction to, and a single increment that acknowledged
         // a `stopping` it could not act on would be a lie on the row.
         return once ? null : beat.Instruction;
+    }
+
+    /// <summary>
+    /// Pulls each id in <paramref name="hold"/> the adapter does not list and
+    /// no failure is holding back, in the board's order, one at a time. The
+    /// runner's line reads <c>pulling &lt;id&gt;</c> and every <paramref name="interval"/>
+    /// seconds the loop beats again with <c>pulling</c> set until that pull
+    /// ends. A failed pull is held against the id for an hour and the next id
+    /// is tried. Answers false where the loop was stopped while it pulled.
+    /// </summary>
+    /// <remarks>
+    /// Only the loop pulls, between increments - a session never does.
+    /// After any attempt one last beat clears <c>pulling</c>, and where
+    /// something was pulled the adapter's list is read again first so that beat
+    /// advertises it.
+    /// </remarks>
+    private async Task<bool> PullHeldAsync(
+        IReadOnlyList<string> hold, Chatter line, string? under, bool mine, Tally tally, bool once, int interval,
+        CancellationToken ct)
+    {
+        var wanted = hold
+            .Where(id => !runtime.Adapter.Models.Contains(id, StringComparer.Ordinal)
+                && !tally.PullBlocked(id, runtime.Clock.GetUtcNow()))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (wanted.Count == 0) return true;
+
+        var pulled = false;
+        try
+        {
+            foreach (var id in wanted)
+            {
+                line.Line = $"pulling {id}";
+                runtime.Say.Line("");
+                runtime.Say.Line($"hatch: pulling {id} - the board asked this runner to hold it");
+
+                var pull = runtime.Adapter.PullAsync(id, ct);
+                while (true)
+                {
+                    await BeatAsync(line, under, mine, tally, once, ct, pulling: true);
+
+                    using var between = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    var next = Task.Delay(TimeSpan.FromSeconds(interval), runtime.Clock, between.Token);
+                    var first = await Task.WhenAny(pull, next);
+                    await between.CancelAsync();
+                    if (first == pull) break;
+                }
+
+                if (await pull is { } reason)
+                {
+                    tally.PullFailed(id, reason, runtime.Clock.GetUtcNow());
+                    runtime.Say.Complain($"hatch: pulling {id} failed - {reason}; trying again in an hour");
+                    continue;
+                }
+
+                tally.PullDone(id);
+                pulled = true;
+                runtime.Say.Line($"hatch: pulled {id}");
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        if (pulled) runtime.Adapter.Refresh();
+        line.Line = "";
+        await BeatAsync(line, under, mine, tally, once, ct, pulling: false);
+        return true;
+    }
+
+    /// <summary>
+    /// <paramref name="said"/> behind the note of any failed pull still waiting
+    /// out its hour. The note leads so that the server's cut of a long line
+    /// takes the end of the line and not the reason.
+    /// </summary>
+    private string? WithPullNote(Tally tally, string? said)
+    {
+        var note = tally.PullNote(runtime.Clock.GetUtcNow());
+        return note.Length == 0 ? said : said is { Length: > 0 } ? note + said : note.TrimEnd(';', ' ');
     }
 
     /// <summary>How often a fresh loop asks again while it waits out a session it found live.</summary>

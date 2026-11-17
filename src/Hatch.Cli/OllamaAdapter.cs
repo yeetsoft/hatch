@@ -35,6 +35,9 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
     private readonly IReadOnlyDictionary<string, string?> _tiers;
     private readonly HttpClient _http;
 
+    /// <summary>The same handler as <see cref="_http"/>, with no timeout: a pull takes as long as the download does.</summary>
+    private readonly HttpClient _pullHttp;
+
     private readonly Action<string>? _warn;
 
     /// <summary>
@@ -77,7 +80,11 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
         if (unmapped.Length > 0)
             warn?.Invoke($"hatch: ollama - {Join(unmapped)} run on the CLI's default model");
 
-        _http = new HttpClient(handler ?? new HttpClientHandler()) { Timeout = ReachTimeout };
+        // One handler under two clients: a pull outlasts the three seconds a
+        // list read is given, so it has a client with no timeout of its own.
+        var inner = handler ?? new HttpClientHandler();
+        _http = new HttpClient(inner) { Timeout = ReachTimeout };
+        _pullHttp = new HttpClient(inner, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
     }
 
     public override string Id => "ollama";
@@ -169,6 +176,78 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
         _warn?.Invoke($"hatch: ollama is not answering at {_host.Url} - keeping the model list from the last read");
     }
 
+    /// <summary>The longest reason <see cref="PullAsync"/> answers with.</summary>
+    private const int MaxReason = 200;
+
+    /// <summary>
+    /// Pulls <paramref name="model"/> through <c>POST /api/pull</c> with
+    /// <c>stream</c> off, so the answer comes once the pull is over. Null
+    /// means pulled; text is the server's reason, or ours where it said none.
+    /// Never writes the list <see cref="Models"/> reads: the loop calls
+    /// <see cref="Refresh"/> afterwards.
+    /// </summary>
+    /// <remarks>
+    /// Per Ollama's documented API, not a live server: a 2xx answer is
+    /// <c>{"status":"success"}</c> or <c>{"error":"..."}</c>, and a non-2xx
+    /// answer's body is <c>{"error":"..."}</c>.
+    /// </remarks>
+    public async Task<string?> PullAsync(string model, CancellationToken ct)
+    {
+        try
+        {
+            var body = JsonSerializer.Serialize(new Dictionary<string, object> { ["model"] = model, ["stream"] = false });
+            using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+            using var response = await _pullHttp.PostAsync($"{_host.Url}/api/pull", content, ct);
+            var text = await response.Content.ReadAsStringAsync(ct);
+
+            if (!response.IsSuccessStatusCode)
+                return Cut(ErrorOf(text) ?? $"HTTP {(int)response.StatusCode}");
+
+            using var doc = JsonDocument.Parse(text);
+            if (ErrorIn(doc.RootElement) is { } error) return Cut(error);
+
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("status", out var status)
+                && status.ValueKind == JsonValueKind.String && status.GetString() == "success"
+                ? null
+                : "the server did not say the pull finished";
+        }
+        catch (HttpRequestException)
+        {
+            return Cut(NotAnswering()["hatch: ".Length..]);
+        }
+        catch (JsonException)
+        {
+            return "the server's answer was not JSON";
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return Cut(NotAnswering()["hatch: ".Length..]);
+        }
+    }
+
+    /// <summary>The <c>error</c> text of a body, or null where it is not JSON or names none.</summary>
+    private static string? ErrorOf(string text)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            return ErrorIn(doc.RootElement);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ErrorIn(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var error)
+            && error.ValueKind == JsonValueKind.String && error.GetString() is { Length: > 0 } said
+            ? said
+            : null;
+
+    private static string Cut(string reason) => reason.Length > MaxReason ? reason[..MaxReason] : reason;
+
     /// <summary>The names <c>/api/tags</c> lists with their digests, or null where the server did not answer a list.</summary>
     private Dictionary<string, string?>? ReadTags()
     {
@@ -220,8 +299,9 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
 
     /// <summary>
     /// A pinned id or mapped alias not in the list last read skips the row. A null or empty model, an unmapped alias, and a list never
-    /// read all answer true: Hatch never pulls, and never guesses at a list it
-    /// has not read.
+    /// read all answer true: this never pulls (only the loop does, between
+    /// increments, through <see cref="PullAsync"/>), and never guesses at a
+    /// list it has not read.
     /// </summary>
     public override bool CanServe(string? model, out string refusal)
     {
