@@ -2143,7 +2143,10 @@ button.hatch-card-stories:focus-visible {
   background-color: transparent;
 }
 
-/* The rule: faint while the box rests, full while it has focus. */
+/* The rule: faint while the box rests, full while it has focus. The weave
+   section's seed box wears the same one; the composer's own selector stays
+   last in each list. */
+.hatch-dream-weave__seed::after,
 .hatch-dream-composer__box::after {
   content: "";
   position: absolute;
@@ -2157,11 +2160,13 @@ button.hatch-card-stories:focus-visible {
   transition: opacity var(--transition);
 }
 
+.hatch-dream-weave__seed:focus-within::after,
 .hatch-dream-composer__box:focus-within::after {
   opacity: 1;
 }
 
 @media (forced-colors: active) {
+  .hatch-dream-weave__seed::after,
   .hatch-dream-composer__box::after {
     background: Highlight;
   }
@@ -2251,27 +2256,96 @@ button.hatch-card-stories:focus-visible {
   }
 }
 
-/* The weave control: the same stacked spacing as the composer card above it,
-   open under a <summary> rather than always shown. */
+/* Weave an epic: a section of the page under the dream box, always open. Its
+   heading is the call to action, at the display size in the gradient ink; the
+   same stacked spacing as the composer above it. */
 .hatch-dream-weave {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
 }
 
+.hatch-dream-weave__title {
+  margin: 0;
+  font-size: var(--t-display);
+  font-weight: 800;
+  line-height: var(--lh-tight);
+}
+
+.hatch-dream-weave__lede {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* The seed box, in seed mode: the width of the section, typed at the dream
+   box's size, over the same rule. The rule is the focus mark, so the input
+   takes none of its own; the selector is long enough to beat base.css's
+   input:focus. */
+.hatch-dream-weave__seed {
+  position: relative;
+  padding-bottom: var(--sp-2);
+}
+
+.hatch-dream-weave__seed .hatch-dream-weave__input {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+  padding-block: var(--sp-2);
+  font: inherit;
+  font-size: var(--t-subhead);
+}
+
+/* Weave at the leading edge, the line saying why it cannot be pressed beside
+   it. On a phone Weave spans the width and the line wraps under it. */
 .hatch-dream-weave__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
+}
+
+.hatch-dream-weave__why {
+  margin: 0;
 }
 
 @media (max-width: 40rem) {
-  .hatch-dream-weave__actions {
-    flex-wrap: wrap;
-  }
-
-  .hatch-dream-weave__actions > * {
+  .hatch-dream-weave__actions > .hatch-gradient-fill {
     flex: 1 1 100%;
+  }
+}
+
+/* While a weave is being filed the heading's gradient moves. The first stop is
+   repeated at the far end so the loop has no seam, and every pixel stays
+   between the two ink stops. It is written after .hatch-gradient-ink, which
+   sets the plain gradient this replaces, and only where the ink is clipped to
+   the glyphs. */
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .hatch-dream-weave__title--filing {
+    background-image: linear-gradient(90deg, var(--gradient-ink-from), var(--gradient-ink-to), var(--gradient-ink-from));
+    background-size: 200% 100%;
+    animation: hatch-dream-weave-filing 1.6s linear infinite;
+  }
+}
+
+@keyframes hatch-dream-weave-filing {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-dream-weave__title--filing {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .hatch-dream-weave__title--filing {
+    background-image: none;
+    animation: none;
   }
 }
 

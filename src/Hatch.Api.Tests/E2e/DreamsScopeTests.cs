@@ -45,6 +45,7 @@ public class DreamsScopeTests(ITestOutputHelper output)
         () => {
           const weave = document.querySelector('.hatch-dream-weave__actions button');
           const hint = document.querySelector('.hatch-dream-weave__actions .text-muted');
+          const title = document.querySelector('.hatch-dream-weave__title');
           return {
             tiles: [...document.querySelectorAll('.hatch-dream-project .hatch-project-chooser__tile')]
               .map((t) => t.lastElementChild.textContent),
@@ -54,6 +55,8 @@ public class DreamsScopeTests(ITestOutputHelper output)
             caption: document.querySelector('.hatch-dream-project__caption')?.textContent ?? null,
             weaveDisabled: weave ? weave.disabled : null,
             weaveHint: hint ? hint.textContent : null,
+            weaveTitle: title ? title.textContent : null,
+            weaveTitleSize: title ? getComputedStyle(title).fontSize : null,
             dreams: [...document.querySelectorAll('.hatch-dream')]
               .map((li) => (li.textContent.match(/A (?:dream in \w+|loose dream)|Posted with (?:a project|none)/) ?? [''])[0]).sort(),
             search: location.search,
@@ -95,8 +98,12 @@ public class DreamsScopeTests(ITestOutputHelper output)
             // Scoped to two of three: the list holds the two and the loose one, and the one picker offers the two and no project.
             await harness.OpenAsync(deadline, baseUrl, "/dreams?scope=DRA,DRB&open=true");
             await harness.WaitForVisibleAsync(deadline, ".hatch-dream-composer");
-            await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
+
+            // Weave an epic is on the page on arrival, with nothing opened, as a heading at the display size.
+            await harness.WaitForVisibleAsync(deadline, ".hatch-dream-weave__title");
             var scoped = await ReadAsync(harness, deadline, "scoped", profileName, DreamOf("DRA"), DreamOf("DRB"), LooseDream);
+            Assert.Equal("Weave an epic", scoped.GetProperty("weaveTitle").GetString());
+            Assert.Equal("32px", scoped.GetProperty("weaveTitleSize").GetString());
             Assert.Equal(["No project", "DRA DRA", "DRB DRB"], Strings(scoped, "tiles"));
             AssertOneControl(scoped);
             Assert.Contains("lean toward no project", scoped.GetProperty("caption").GetString());
@@ -113,8 +120,13 @@ public class DreamsScopeTests(ITestOutputHelper output)
             // Picking one project: that project's dreams and the loose one, never another project's.
             await harness.ClickAsync(deadline, $"{TileSelector}:has-text(\"DRB\")");
             await harness.WaitForHiddenAsync(deadline, $".hatch-dream:has-text(\"{DreamOf("DRA")}\")");
-            await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
-            await harness.SelectOptionAsync(deadline, "details.hatch-dream-weave select", "pressing");
+
+            // The default mode is seed, and nothing is typed: Weave says what it wants.
+            var seeded = await ReadAsync(harness, deadline, "seeded", profileName, DreamOf("DRB"), LooseDream);
+            Assert.True(seeded.GetProperty("weaveDisabled").GetBoolean());
+            Assert.Equal("Name a thread to pull first.", seeded.GetProperty("weaveHint").GetString());
+
+            await harness.SelectOptionAsync(deadline, ".hatch-dream-weave select", "pressing");
             var picked = await ReadAsync(harness, deadline, "picked", profileName, DreamOf("DRB"), LooseDream);
             Assert.Equal([DreamOf("DRB"), LooseDream], Strings(picked, "dreams"));
             Assert.Contains("projectId=", picked.GetProperty("search").GetString());
@@ -137,8 +149,7 @@ public class DreamsScopeTests(ITestOutputHelper output)
 
             // No scope, none picked: nothing is narrowed, and Weave says to pick a project.
             await harness.GoToAsync(deadline, "dreams?open=true");
-            await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
-            await harness.SelectOptionAsync(deadline, "details.hatch-dream-weave select", "pressing");
+            await harness.SelectOptionAsync(deadline, ".hatch-dream-weave select", "pressing");
             var unscoped = await ReadAsync(harness, deadline, "unscoped", profileName, DreamOf("DRA"), DreamOf("DRB"), DreamOf("DRC"), LooseDream, PostedWithProject, PostedWithNone);
             Assert.Equal(["No project", "DRA DRA", "DRB DRB", "DRC DRC"], Strings(unscoped, "tiles"));
             AssertOneControl(unscoped);

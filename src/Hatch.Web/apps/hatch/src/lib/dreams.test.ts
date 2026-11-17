@@ -19,6 +19,7 @@ import {
   replaceDream,
   scrubbedDreamProject,
   showsDream,
+  weaveBlocker,
   weaveProjectDefault,
   weaveRequest,
   weaveSeed,
@@ -597,6 +598,52 @@ describe('weaveRequest', () => {
     expect(
       weaveRequest({ mode: 'next', seed: null, q: '', projectId: 1, useOnScreen: true, dreams }),
     ).toEqual({ projectId: 1, mode: 'next', dreamIds: [3, 1, 2] });
+  });
+});
+
+describe('weaveBlocker', () => {
+  const ready = { projectId: 1, projectCount: 2, mode: 'seed' as const, seed: 'a thread', q: '' };
+
+  it('says there is no project to weave into when there are none', () => {
+    expect(weaveBlocker({ ...ready, projectId: null, projectCount: 0 })).toBe('There is no project to weave into yet.');
+  });
+
+  it('asks for a project when there are some and none is picked', () => {
+    expect(weaveBlocker({ ...ready, projectId: null })).toBe('Pick a project above to weave.');
+  });
+
+  it('asks for a thread in mode seed with nothing typed', () => {
+    expect(weaveBlocker({ ...ready, seed: '   ' })).toBe('Name a thread to pull first.');
+    expect(weaveBlocker({ ...ready, seed: null, q: '' })).toBe('Name a thread to pull first.');
+  });
+
+  it('counts the search box as the seed until the seed is touched', () => {
+    expect(weaveBlocker({ ...ready, seed: null, q: 'needle' })).toBeNull();
+    expect(weaveBlocker({ ...ready, seed: '', q: 'needle' })).toBe('Name a thread to pull first.');
+  });
+
+  it('names the project first when both are missing', () => {
+    expect(weaveBlocker({ ...ready, projectId: null, seed: '' })).toBe('Pick a project above to weave.');
+  });
+
+  it('needs no seed in the other modes', () => {
+    for (const mode of ['pressing', 'common', 'next'] as const) {
+      expect(weaveBlocker({ ...ready, mode, seed: '' })).toBeNull();
+    }
+  });
+
+  it('is null exactly when weaveRequest is not', () => {
+    for (const mode of WEAVE_MODES) {
+      for (const projectId of [null, 1]) {
+        for (const seed of [null, '', '  ', 'x']) {
+          for (const q of ['', 'needle']) {
+            const blocker = weaveBlocker({ projectId, projectCount: 2, mode, seed, q });
+            const request = weaveRequest({ mode, seed, q, projectId, useOnScreen: false, dreams: [] });
+            expect(blocker === null).toBe(request !== null);
+          }
+        }
+      }
+    }
   });
 });
 

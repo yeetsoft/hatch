@@ -134,28 +134,35 @@ and they see the same list, the way every other filter on this page does (see
 
 ## Weaving an epic
 
-**Weave an epic** sits closed, under the composer box, open by pressing its
-summary. It has no project control of its own: it uses the picker above the
-composer.
+**Weave an epic** is a section of the page, always open, under the composer
+box. Its heading is large and in the gradient ink, with a line under it saying
+what a press does: it files an epic woven from the dreams and takes you to it.
+It has no project control of its own: it uses the picker above the composer.
 
-Inside is a **Mode**, one of four: a seed sentence's own thread; the thread
+Below is a **Mode**, one of four: a seed sentence's own thread; the thread
 the dreams return to with the most urgency; the thread the most dreams touch;
 or the next step toward the vision, given what has already shipped. Choosing
-**seed** shows a **Seed** box, which follows the search box above until you
-touch it - the moment you have typed in it, even to clear it, it keeps its
-own text and stops following search.
+**seed** shows a **Seed** box that spans the section and is typed at the same
+size as the dream box, over the same rule, which goes full while it has focus.
+It follows the search box above until you touch it - the moment you have typed
+in it, even to clear it, it keeps its own text and stops following search.
 
 The epic is filed into the picked project, or into the one project when the
-board runs only one, even with none picked. With more than one project and
-none picked, **Weave** is disabled and a line beside it says to pick a project
-- an epic needs a home. Below the mode, **Use the dreams on screen** hands the weave the
-dreams currently listed, in the order they are shown, as the ones to start
-reading from; left unticked, the weave names none and the session finds its
-own. While the history is folded no dreams are on screen, so the box names none.
+board runs only one, even with none picked. **Weave**, a pill in the top bar's
+gradient, sits under the controls, and takes the full width on a phone. While
+it cannot be pressed, a line beside it says why: there is no project to weave
+into, no project is picked (with more than one project and none picked an epic
+has no home), or the mode is **seed** and the seed is empty. Below the mode,
+**Use the dreams on screen** hands the weave the dreams currently listed, in
+the order they are shown, as the ones to start reading from; left unticked,
+the weave names none and the session finds its own. While the history is
+folded no dreams are on screen, so the box names none.
 
 Pressing **Weave** files an **epic** - in the breakdown column, briefed to be
 woven from the dreams - and takes you straight to it. A refusal shows beside
-the button and leaves every control as it was, ready to press again.
+the button and leaves every control as it was, ready to press again. While
+the epic is being filed the heading's gradient moves, and it stops when a
+refusal shows; under reduced motion it does not move at all.
 
 What happens next happens off this page: the loop's epic-breakdown session
 reads the dreams the brief points at, gives the epic a title of its own in

@@ -26,6 +26,7 @@ import {
   replaceDream,
   scrubbedDreamProject,
   showsDream,
+  weaveBlocker,
   weaveProjectDefault,
   weaveRequest,
   weaveSeed,
@@ -245,6 +246,14 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
     dreams,
   });
 
+  const blocker = weaveBlocker({
+    projectId: weaveProject,
+    projectCount: projects.length,
+    mode: weaveMode,
+    seed: weaveSeedText,
+    q: draft,
+  });
+
   async function press() {
     if (weave === null || pressing) return;
     setPressing(true);
@@ -294,18 +303,28 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
 
       <DreamComposer onPost={post} />
 
-      <details className="hatch-dream-weave">
-        <summary>Weave an epic</summary>
+      <section className="hatch-dream-weave" aria-labelledby="hatch-dream-weave-title">
+        <h2
+          id="hatch-dream-weave-title"
+          className={`hatch-gradient-ink hatch-dream-weave__title${pressing ? ' hatch-dream-weave__title--filing' : ''}`}
+        >
+          Weave an epic
+        </h2>
+        <p className="hatch-dream-weave__lede">Files an epic woven from the dreams and takes you to it.</p>
 
         <Choice label="Mode" value={weaveMode} options={WEAVE_MODES} onChange={(value) => setWeaveMode(value as WeaveMode)} />
 
         {weaveMode === 'seed' && (
-          <input
-            type="text"
-            aria-label="Seed"
-            value={weaveSeed(weaveSeedText, draft)}
-            onChange={(e) => setWeaveSeedText(e.target.value)}
-          />
+          <div className="hatch-dream-weave__seed">
+            <input
+              type="text"
+              aria-label="Seed"
+              className="hatch-dream-weave__input"
+              placeholder="Name a thread to pull…"
+              value={weaveSeed(weaveSeedText, draft)}
+              onChange={(e) => setWeaveSeedText(e.target.value)}
+            />
+          </div>
         )}
 
         <label>
@@ -314,17 +333,24 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
         </label>
 
         <div className="hatch-dream-weave__actions">
-          <Button variant="primary" loading={pressing} disabled={weave === null} onClick={() => void press()}>
+          <Button
+            variant="primary"
+            className="hatch-gradient-fill"
+            loading={pressing}
+            disabled={weave === null}
+            aria-describedby={blocker ? 'hatch-dream-weave-why' : undefined}
+            onClick={() => void press()}
+          >
             Weave
           </Button>
-          {weaveProject === null && (
-            <p className="text-muted">
-              {projects.length === 0 ? 'There is no project to weave into yet.' : 'Pick a project above to weave.'}
+          {blocker && (
+            <p id="hatch-dream-weave-why" className="text-muted hatch-dream-weave__why">
+              {blocker}
             </p>
           )}
           {weaveError && <p className="text-danger">{weaveError}</p>}
         </div>
-      </details>
+      </section>
 
       <button
         type="button"
