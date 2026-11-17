@@ -106,12 +106,23 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
         var row = await db.TrunkBuilds.Include(t => t.BugIssue).ThenInclude(i => i!.Project)
             .FirstOrDefaultAsync(t => t.Canonical == canonical && t.Trunk == trunk, ct);
 
+        // A row only a project outside the caller's scope binds reads as missing
+        // above. Storing one would collide with it on the unique index, and the
+        // failure would say the repository exists - so answer as a fresh row
+        // does and store nothing.
+        long? hiddenId = null;
+        if (row is null)
+            hiddenId = await db.TrunkBuilds.IgnoreQueryFilters()
+                .Where(f => f.Canonical == canonical && f.Trunk == trunk)
+                .Select(f => (long?)f.Id).FirstOrDefaultAsync(ct);
+
         var sameSha = row is not null && row.Sha == sha;
 
         if (row is null)
         {
             row = new EfHatchTrunkBuild
             {
+                Id = hiddenId ?? 0,
                 Remote = remote,
                 Canonical = canonical,
                 Trunk = trunk,
@@ -122,7 +133,7 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
                 Runner = runner,
                 CheckedBy = actor,
             };
-            db.TrunkBuilds.Add(row);
+            if (hiddenId is null) db.TrunkBuilds.Add(row);
         }
 
         if (!sameSha)
@@ -151,7 +162,8 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
 
         await db.SaveChangesAsync(ct);
 
-        var winner = await ProjectRepositoryBinding.WinnerAsync(db, canonical, ct);
+        // That lookup ignores the scope, so it would name the hidden project.
+        var winner = hiddenId is null ? await ProjectRepositoryBinding.WinnerAsync(db, canonical, ct) : null;
         return TrunkBuildProjection.Project(row, winner?.Key);
     }
 

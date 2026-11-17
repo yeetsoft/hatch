@@ -97,6 +97,16 @@ public class DependencyFileController(
         var safeUrl = SafeUrl(request.Url);
 
         var row = await db.DependencyFiles.FirstOrDefaultAsync(f => f.Canonical == canonical && f.Trunk == trunk, ct);
+
+        // A row only a project outside the caller's scope binds reads as missing
+        // above. Storing one would collide with it on the unique index, and the
+        // failure would say the repository exists - so answer as a fresh row
+        // does and store nothing.
+        long? hiddenId = null;
+        if (row is null)
+            hiddenId = await db.DependencyFiles.IgnoreQueryFilters()
+                .Where(f => f.Canonical == canonical && f.Trunk == trunk)
+                .Select(f => (long?)f.Id).FirstOrDefaultAsync(ct);
         var previousSha = row?.Sha;
         var previousHash = row?.Hash;
         var previousWasParsed = row?.State == EfHatchDependencyFile.ParsedState;
@@ -105,10 +115,11 @@ public class DependencyFileController(
         {
             row = new EfHatchDependencyFile
             {
+                Id = hiddenId ?? 0,
                 Remote = remote, Canonical = canonical, Trunk = trunk, Sha = sha,
                 State = EfHatchDependencyFile.AbsentState, CheckedAt = now, Runner = runner, CheckedBy = actor,
             };
-            db.DependencyFiles.Add(row);
+            if (hiddenId is null) db.DependencyFiles.Add(row);
         }
 
         if (decoded is null)
