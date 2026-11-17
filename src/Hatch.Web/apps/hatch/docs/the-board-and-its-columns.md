@@ -251,10 +251,9 @@ with none chosen the results are those of every project in scope. A
 
 **Track → Dreams** follows the scope too. Its list holds the dreams of the
 projects in scope and every dream that leans toward no project, which always
-shows. Its Project filter, the **Lean** chooser under the composer and the
-**Project** chooser under **Weave an epic** list only the scope's projects,
-**None** stays on **Lean**, and the filter is not drawn for a one-project
-scope. A `?projectId=` outside the scope is dropped from the address. See
+shows. Its one **Project** picker, above the composer, lists only the scope's
+projects after **No project**. A `?projectId=` outside the scope is dropped
+from the address. See
 [Dreams](dreams#finding-one).
 
 **Reports → Timeline, Cumulative flow, Changelog and Consumption** follow the scope too.

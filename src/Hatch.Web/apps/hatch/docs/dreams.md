@@ -26,14 +26,19 @@ worth turning into a ticket, or never is.
 
 ## Writing one
 
-The box at the top of the screen takes a dream. Type it in the box, which reads markdown like any
-other description, and press **Post** - or press Ctrl+Enter (Cmd+Enter on a Mac) without leaving the
-box. The **lean** is the project it points toward, and **None** leaves it loose. The **source** is
-where it came from, and may be a web address.
+Above the box sits the page's one **Project** picker, with a first tile, **No project**, for none.
+What it holds is the project the dream leans toward: a dream posted with a project picked leans
+toward it, and one posted with none picked leans toward none. A line beside the picker says what the
+choice means. The picker is drawn whenever the board has a project.
 
-A posted dream appears at the top of the list at once and the box, the lean and the source empty
-themselves. If the search or the filters would hide the new dream, they are cleared so it can be
-seen. If the server refuses the dream, its reason shows beside the box and what you typed stays as
+The box takes a dream. Type it in the box, which reads markdown like any other description, and
+press **Post** - or press Ctrl+Enter (Cmd+Enter on a Mac) without leaving the box. The **source**
+is where it came from, and may be a web address.
+
+A posted dream appears at the top of the list at once and the box and the source empty themselves.
+The picker keeps its choice, so a run of dreams for one project is a run of posts. If the search or
+the filters would hide the new dream, they are cleared so it can be seen - all but the picked
+project, which stays. If the server refuses the dream, its reason shows beside the box and what you typed stays as
 you left it, ready to post again.
 
 ## From a Claude session
@@ -62,15 +67,17 @@ the list until the next time it loads.
 ## Finding one
 
 The search box matches any word, not every word: a query of two words finds a dream that has either.
-That is unlike the Search page, which wants all of them. The results are narrowed by project, and by
-a loose-only toggle that keeps only the dreams no issue has drawn on.
+That is unlike the Search page, which wants all of them. The results are narrowed by the project
+picked above the box, and by a loose-only toggle that keeps only the dreams no issue has drawn on.
+
+With a project picked, the list holds that project's dreams and the dreams that lean toward no
+project, and none of another project's. With none picked it covers every project. The pick is
+written to the address as `projectId`, so a reload keeps it and Back undoes it.
 
 In a tab [scoped](the-board-and-its-columns#scoping-a-tab-to-projects) to some projects, the list
-shows those projects' dreams and, always, the dreams that lean toward no project. The Project
-filter, the **Lean** chooser and the **Project** chooser under **Weave an epic** list only those
-projects, and **None** stays on **Lean**; the filter is not drawn for a one-project scope. A
-`projectId` in the address that the scope does not hold is dropped, and the list reads as if no
-project were chosen.
+shows those projects' dreams and, always, the dreams that lean toward no project. The picker lists
+only those projects, after **No project**. A `projectId` in the address that the scope does not hold
+is dropped, and the list reads as if no project were picked.
 
 The URL carries the search, so a link to a query is a real link: paste it to somebody and they see
 the same dreams.
@@ -106,7 +113,8 @@ and they see the same list, the way every other filter on this page does (see
 ## Weaving an epic
 
 **Weave an epic** sits closed, under the composer box, open by pressing its
-summary. The composer stays first, even on the phone - nothing goes above it.
+summary. It has no project control of its own: it uses the picker above the
+composer.
 
 Inside is a **Mode**, one of four: a seed sentence's own thread; the thread
 the dreams return to with the most urgency; the thread the most dreams touch;
@@ -115,10 +123,10 @@ or the next step toward the vision, given what has already shipped. Choosing
 touch it - the moment you have typed in it, even to clear it, it keeps its
 own text and stops following search.
 
-A **Project** chooser defaults to the Project facet's own choice, or to the
-one project when the board runs only one; with more than one project and no
-facet set, nothing is checked, and the project must be chosen by hand - an
-epic needs a home. Below it, **Use the dreams on screen** hands the weave the
+The epic is filed into the picked project, or into the one project when the
+board runs only one, even with none picked. With more than one project and
+none picked, **Weave** is disabled and a line beside it says to pick a project
+- an epic needs a home. Below the mode, **Use the dreams on screen** hands the weave the
 dreams currently listed, in the order they are shown, as the ones to start
 reading from; left unticked, the weave names none and the session finds its
 own.

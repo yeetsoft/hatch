@@ -9,7 +9,8 @@ import {
   firstLine,
   hasMore,
   isUrl,
-  offeredProjectId,
+  pickedProjectId,
+  projectCaption,
   readDreams,
   remandedMore,
   removeDream,
@@ -158,10 +159,16 @@ describe('dreamsRequest', () => {
     expect(request.get('includeNoProject')).toBe('true');
   });
 
-  it('keeps a chosen project as the lone projectId, with no includeNoProject', () => {
+  it('keeps a picked project as the lone projectId, with includeNoProject', () => {
     const request = dreamsRequest({ ...EMPTY_DREAMS, projectId: '2' }, 0, [1, 2]);
     expect(request.getAll('projectId')).toEqual(['2']);
-    expect(request.has('includeNoProject')).toBe(false);
+    expect(request.get('includeNoProject')).toBe('true');
+  });
+
+  it('sets includeNoProject for a picked project on an unscoped page', () => {
+    const request = dreamsRequest({ ...EMPTY_DREAMS, projectId: '2' }, 0, []);
+    expect(request.getAll('projectId')).toEqual(['2']);
+    expect(request.get('includeNoProject')).toBe('true');
   });
 
   it('adds neither projectId nor includeNoProject for an empty scope', () => {
@@ -202,19 +209,48 @@ describe('scrubbedDreamProject', () => {
   });
 });
 
-describe('offeredProjectId', () => {
-  const inScope = [{ id: 1 }, { id: 2 }] as Project[];
+describe('pickedProjectId', () => {
+  const projects = [{ id: 1 }, { id: 2 }] as Project[];
 
-  it('keeps an in-scope id', () => {
-    expect(offeredProjectId(2, inScope)).toBe(2);
+  it('is the id when the projects hold it', () => {
+    expect(pickedProjectId('2', projects)).toBe(2);
   });
 
-  it('gives null for an out-of-scope id', () => {
-    expect(offeredProjectId(3, inScope)).toBeNull();
+  it('is null for an id the projects do not hold', () => {
+    expect(pickedProjectId('3', projects)).toBeNull();
   });
 
-  it('gives null for null', () => {
-    expect(offeredProjectId(null, inScope)).toBeNull();
+  it('is null for none picked', () => {
+    expect(pickedProjectId('', projects)).toBeNull();
+  });
+});
+
+describe('projectCaption', () => {
+  const projects = [
+    { id: 1, key: 'DRA' },
+    { id: 2, key: 'DRB' },
+  ] as Project[];
+
+  it('says new dreams lean toward none and to pick one to weave, with none picked', () => {
+    expect(projectCaption('', projects)).toBe(
+      'New dreams lean toward no project. The list covers every project. Pick one to weave.',
+    );
+  });
+
+  it('says the weave files into the only project, when there is one and none is picked', () => {
+    expect(projectCaption('', [projects[0]])).toBe(
+      'New dreams lean toward no project. The list covers every project. The weave files into the only project.',
+    );
+  });
+
+  it('names the picked project, the weave and the list', () => {
+    expect(projectCaption('2', projects)).toBe(
+      'New dreams lean toward DRB. The weave files into it. The list holds its dreams and the ones that lean toward none.',
+    );
+  });
+
+  it('reads an id the projects do not hold as none picked', () => {
+    expect(projectCaption('9', projects)).toBe(projectCaption('', projects));
   });
 });
 
@@ -355,8 +391,8 @@ describe('showsDream', () => {
     expect(showsDream({ ...EMPTY_DREAMS, projectId: '3' }, { projectId: 4 })).toBe(false);
   });
 
-  it('hides a loose-leaning dream under a project filter', () => {
-    expect(showsDream({ ...EMPTY_DREAMS, projectId: '3' }, { projectId: null })).toBe(false);
+  it('shows a dream leaning toward no project under a project filter', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, projectId: '3' }, { projectId: null })).toBe(true);
   });
 });
 
@@ -486,7 +522,7 @@ describe('WEAVE_MODES', () => {
 describe('weaveProjectDefault', () => {
   const projects = [{ id: 1 } as Project, { id: 2 } as Project];
 
-  it('takes the facet when it parses and names a known project', () => {
+  it('takes the picked project when it parses and names a known project', () => {
     expect(weaveProjectDefault('2', projects)).toBe(2);
   });
 
@@ -494,11 +530,11 @@ describe('weaveProjectDefault', () => {
     expect(weaveProjectDefault('', [{ id: 5 } as Project])).toBe(5);
   });
 
-  it('is null for several projects with no facet', () => {
+  it('is null for several projects with none picked', () => {
     expect(weaveProjectDefault('', projects)).toBeNull();
   });
 
-  it('is null for a facet naming an unknown project', () => {
+  it('is null for a pick naming an unknown project', () => {
     expect(weaveProjectDefault('9', projects)).toBeNull();
   });
 });

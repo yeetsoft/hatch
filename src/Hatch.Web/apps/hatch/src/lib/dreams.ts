@@ -80,11 +80,13 @@ export const DREAMS_PAGE = 50;
     key renamed to the server's own `issueKey` query parameter, plus `limit`,
     plus `offset` when it is not the first page.
 
-    With no project chosen and a scope of `ids`, the scope is sent as a
+    With no project picked and a scope of `ids`, the scope is sent as a
     `projectId` list and `includeNoProject` is set, so a narrowed tab still
-    sees the dreams that belong to no project. A chosen project is already
-    written by `writeDreams` and stays the lone `projectId`; an empty `ids`
-    adds nothing, which is the request an unscoped page has always made. */
+    sees the dreams that belong to no project. A picked project is already
+    written by `writeDreams` and stays the lone `projectId`, with
+    `includeNoProject` set too: the list holds its dreams and the ones that
+    lean toward none. An empty `ids` with none picked adds nothing, which is
+    the request an unscoped page has always made. */
 export function dreamsRequest(filters: DreamFilters, offset: number, ids: number[]): URLSearchParams {
   const params = writeDreams(filters);
   const issue = params.get('issue');
@@ -97,7 +99,9 @@ export function dreamsRequest(filters: DreamFilters, offset: number, ids: number
     params.delete('remandedFrom');
     params.set('remandedFromKey', remandedFrom);
   }
-  if (filters.projectId === '' && ids.length > 0) {
+  if (filters.projectId !== '') {
+    params.set('includeNoProject', 'true');
+  } else if (ids.length > 0) {
     for (const id of ids) params.append('projectId', String(id));
     params.set('includeNoProject', 'true');
   }
@@ -117,11 +121,27 @@ export function scrubbedDreamProject(projectId: string, inScope: Project[], isSc
   return inScope.some((p) => String(p.id) === projectId) ? projectId : '';
 }
 
-/** The project a lean or weave pick offers, if the scope still holds it; else
-    `null`. A pick left over from a scope that has since narrowed is dropped
-    here rather than sent. */
-export function offeredProjectId(id: number | null, inScope: Project[]): number | null {
-  return id !== null && inScope.some((p) => p.id === id) ? id : null;
+/** The picked project as an id: the address's `projectId` when `projects`
+    holds it, else `null`. */
+export function pickedProjectId(projectId: string, projects: Project[]): number | null {
+  const parsed = Number(projectId);
+
+  return projectId !== '' && projects.some((p) => p.id === parsed) ? parsed : null;
+}
+
+/** The line beside the picker, saying what the choice means for the
+    composer, the weave and the list. With one project on the board, none
+    picked still weaves, so the caption says where. */
+export function projectCaption(projectId: string, projects: Project[]): string {
+  const picked = pickedProjectId(projectId, projects);
+  if (picked !== null) {
+    const { key } = projects.find((p) => p.id === picked)!;
+    return `New dreams lean toward ${key}. The weave files into it. The list holds its dreams and the ones that lean toward none.`;
+  }
+
+  const base = 'New dreams lean toward no project. The list covers every project.';
+
+  return projects.length === 1 ? `${base} The weave files into the only project.` : `${base} Pick one to weave.`;
 }
 
 /** A dream's one-liner: its body's first line, trimmed - the same one-liner
@@ -182,13 +202,14 @@ export function hasMore(shown: number, total: number): boolean {
 }
 
 /** Whether a freshly posted dream belongs in the list the filters show: no
-    q, no issueKey, and either no projectId or the dream's own. `loose` never
+    q, no issueKey, and either no projectId or a dream that is that project's
+    or leans toward none, as the list's own request holds. `loose` never
     excludes it (a new dream has no issue woven in). `q` is judged trimmed,
     the way `writeDreams` writes it. */
 export function showsDream(filters: DreamFilters, dream: Pick<Dream, 'projectId'>): boolean {
   if (filters.q.trim() !== '' || filters.issueKey !== '' || filters.remandedFrom !== '') return false;
 
-  return filters.projectId === '' || filters.projectId === String(dream.projectId);
+  return filters.projectId === '' || dream.projectId === null || filters.projectId === String(dream.projectId);
 }
 
 /** The list with `updated` in place of the dream sharing its id, order kept.
@@ -240,7 +261,7 @@ export function weaveRequest(args: {
   return request;
 }
 
-/** The project a weave starts on: the Project facet's own, when it parses and
+/** The project a weave files into: the picked project, when it parses and
     names a project that still exists; else the only project there is, when
     there is exactly one; else `null`, so the person is asked rather than
     guessed for. */

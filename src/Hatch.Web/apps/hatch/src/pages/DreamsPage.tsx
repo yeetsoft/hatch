@@ -5,7 +5,6 @@ import { addDream, deleteDream, getDreams, patchDream, weaveDreams } from '../ap
 import { Choice } from '../components/Choice';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { DreamsOpeningLines } from '../components/DreamsOpeningLines';
-import { Facet } from '../components/Facet';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { ProjectChooser } from '../components/ProjectChooser';
 import { agoPhrase } from '../lib/claim';
@@ -17,7 +16,8 @@ import {
   dreamsRequest,
   hasMore,
   isUrl,
-  offeredProjectId,
+  pickedProjectId,
+  projectCaption,
   readDreams,
   remandedMore,
   removeDream,
@@ -33,7 +33,7 @@ import { message } from '../lib/errors';
 import { facetClass } from '../lib/facet';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { createLedger } from '../lib/refresh';
-import { hasMultipleProjects, useProjects } from '../lib/useProjects';
+import { useProjects } from '../lib/useProjects';
 import { useScope } from '../lib/useScope';
 import type { Dream, Project, WeaveMode } from '../types';
 import { ScopeGate } from '../components/ScopeGate';
@@ -43,8 +43,10 @@ const DEBOUNCE_MS = 300;
 
 /**
  * The dreams, newest first - or best match first with `q`; the order is the
- * server's and nothing here reorders it. A search box, a Project facet and a
- * Loose-only switch over a list of dreams. Every field is the URL's and
+ * server's and nothing here reorders it. One project picker above the
+ * composer, a search box and a Loose-only switch over a list of dreams. The
+ * picked project leans new dreams, homes the weave and narrows the list to its
+ * dreams and the ones that lean toward none. Every field is the URL's and
  * nowhere else, so Back undoes a change and pasting the link reproduces it.
  *
  * In a tab scoped to projects the list is those projects' dreams and the
@@ -156,7 +158,6 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
 
   const [body, setBody] = useState('');
   const [source, setSource] = useState('');
-  const [leanId, setLeanId] = useState<number | null>(null);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
@@ -167,19 +168,19 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
     setPostError(null);
 
     try {
-      const dream = await addDream({ body, source: source.trim() || null, projectId: offeredProjectId(leanId, projects) });
+      const dream = await addDream({ body, source: source.trim() || null, projectId: pickedProjectId(filters.projectId, projects) });
       setBody('');
       setSource('');
-      setLeanId(null);
 
       if (showsDream(filters, dream)) {
         setDreams((prev) => [dream, ...prev]);
         setTotal((t) => t + 1);
       } else {
-        // The filters would hide it: clear them, and the key effect reloads
-        // with the new dream first. Prepending a dream the server would not
-        // list under them would also push every Show more offset one too far.
-        setParams(writeDreams(EMPTY_DREAMS));
+        // The filters would hide it: clear them but the picked project, and
+        // the key effect reloads with the new dream first. Prepending a dream
+        // the server would not list under them would also push every Show more
+        // offset one too far.
+        setParams(writeDreams({ ...EMPTY_DREAMS, projectId: filters.projectId }));
       }
     } catch (err) {
       // The draft stays as typed, so a refusal costs nothing to retry.
@@ -191,25 +192,17 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
 
   const [weaveMode, setWeaveMode] = useState<WeaveMode>(WEAVE_MODES[0]);
   const [weaveSeedText, setWeaveSeedText] = useState<string | null>(null);
-  const [weaveProjectId, setWeaveProjectId] = useState<number | null>(() => weaveProjectDefault(filters.projectId, projects));
-  const [weaveProjectChosen, setWeaveProjectChosen] = useState(false);
-  const [lastProjectsLength, setLastProjectsLength] = useState(projects.length);
-  // projects arrives after the first render - re-default the chooser once it
-  // does, the same adjusted-during-render idiom above keeps filters.q's draft
-  // in sync with, but only while the person hasn't chosen one themselves.
-  if (projects.length !== lastProjectsLength) {
-    setLastProjectsLength(projects.length);
-    if (!weaveProjectChosen) setWeaveProjectId(weaveProjectDefault(filters.projectId, projects));
-  }
   const [weaveOnScreen, setWeaveOnScreen] = useState(false);
   const [pressing, setPressing] = useState(false);
   const [weaveError, setWeaveError] = useState<string | null>(null);
+
+  const weaveProject = weaveProjectDefault(filters.projectId, projects);
 
   const weave = weaveRequest({
     mode: weaveMode,
     seed: weaveSeedText,
     q: draft,
-    projectId: offeredProjectId(weaveProjectId, projects),
+    projectId: weaveProject,
     useOnScreen: weaveOnScreen,
     dreams,
   });
@@ -246,6 +239,20 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
         <DreamsOpeningLines />
       </div>
 
+      {projects.length > 0 && (
+        <div className="hatch-dream-project">
+          <ProjectChooser
+            projects={projects}
+            value={pickedProjectId(filters.projectId, projects)}
+            onChange={(id) => setParams(writeDreams({ ...filters, projectId: String(id) }))}
+            legend="Project"
+            keepLabel="No project"
+            onKeep={() => setParams(writeDreams({ ...filters, projectId: '' }))}
+          />
+          <p className="hatch-dream-project__caption">{projectCaption(filters.projectId, projects)}</p>
+        </div>
+      )}
+
       <Card className="hatch-dream-composer">
         <div className="hatch-dream-composer__box">
           <MarkdownEditor
@@ -259,15 +266,6 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
           />
           {postError && <p className="text-danger">{postError}</p>}
         </div>
-
-        <ProjectChooser
-          projects={projects}
-          value={offeredProjectId(leanId, projects)}
-          onChange={setLeanId}
-          legend="Lean"
-          keepLabel="None"
-          onKeep={() => setLeanId(null)}
-        />
 
         <input
           type="text"
@@ -299,16 +297,6 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
           />
         )}
 
-        <ProjectChooser
-          projects={projects}
-          value={offeredProjectId(weaveProjectId, projects)}
-          onChange={(id) => {
-            setWeaveProjectChosen(true);
-            setWeaveProjectId(id);
-          }}
-          legend="Project"
-        />
-
         <label>
           <input type="checkbox" checked={weaveOnScreen} onChange={(e) => setWeaveOnScreen(e.target.checked)} />
           Use the dreams on screen
@@ -318,6 +306,11 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
           <Button variant="primary" loading={pressing} disabled={weave === null} onClick={() => void press()}>
             Weave
           </Button>
+          {weaveProject === null && (
+            <p className="text-muted">
+              {projects.length === 0 ? 'There is no project to weave into yet.' : 'Pick a project above to weave.'}
+            </p>
+          )}
           {weaveError && <p className="text-danger">{weaveError}</p>}
         </div>
       </details>
@@ -332,19 +325,6 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
-
-        {hasMultipleProjects(projects) && (
-          <Facet
-            label="Project"
-            lit={filters.projectId !== ''}
-            value={filters.projectId}
-            options={[
-              { value: '', text: 'All projects' },
-              ...projects.map((project) => ({ value: String(project.id), text: `${project.key} — ${project.name}` })),
-            ]}
-            onChange={(projectId) => setParams(writeDreams({ ...filters, projectId }))}
-          />
-        )}
 
         <button
           type="button"

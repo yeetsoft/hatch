@@ -2041,7 +2041,22 @@ button.hatch-card-stories:focus-visible {
   margin-top: var(--sp-2);
 }
 
-/* The Dreams composer: the box, the lean, the source and Post, stacked. The
+/* The one project picker above the composer, and the line saying what the
+   choice means, stacked. */
+.hatch-dream-project {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hatch-dream-project__caption {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+/* The Dreams composer: the box, the source and Post, stacked. The
    source takes the full width; Post sits at the right, full width on a phone. */
 .hatch-dream-composer {
   display: flex;
@@ -2085,6 +2100,10 @@ button.hatch-card-stories:focus-visible {
 }
 
 @media (max-width: 40rem) {
+  .hatch-dream-weave__actions {
+    flex-wrap: wrap;
+  }
+
   .hatch-dream-weave__actions > * {
     flex: 1 1 100%;
   }
