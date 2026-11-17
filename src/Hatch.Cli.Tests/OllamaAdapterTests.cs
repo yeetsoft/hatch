@@ -643,6 +643,84 @@ public sealed class OllamaAdapterTests : IDisposable
         }
     }
 
+    private static string Tags(params string[] names) =>
+        "{\"models\":[" + string.Join(",", names.Select(n => $"{{\"name\":\"{n}\"}}")) + "]}";
+
+    [Fact]
+    public void Refresh_makes_Models_follow_the_second_list()
+    {
+        IAgentAdapter adapter = Adapter(wire: new SequenceWire(Tags("a:1b"), Tags("a:1b", "b:1b")));
+        Assert.Equal(["a:1b"], adapter.Models);
+
+        adapter.Refresh();
+
+        Assert.Equal(["a:1b", "b:1b"], adapter.Models);
+    }
+
+    [Fact]
+    public void Refresh_makes_CanServe_follow_a_pull()
+    {
+        IAgentAdapter adapter = Adapter(wire: new SequenceWire(Tags("a:1b"), Tags("a:1b", Pinned)));
+        Assert.False(adapter.CanServe(Pinned, out _));
+
+        adapter.Refresh();
+
+        Assert.True(adapter.CanServe(Pinned, out _));
+    }
+
+    [Fact]
+    public void Refresh_makes_CanServe_follow_a_removal()
+    {
+        IAgentAdapter adapter = Adapter(wire: new SequenceWire(Tags(Pinned), Tags("a:1b")));
+        Assert.True(adapter.CanServe(Pinned, out _));
+
+        adapter.Refresh();
+
+        Assert.False(adapter.CanServe(Pinned, out var refusal));
+        Assert.Equal(Unpulled, refusal);
+    }
+
+    [Fact]
+    public void Refresh_keeps_the_last_list_and_says_so_once_when_the_read_fails()
+    {
+        IAgentAdapter adapter = Adapter(wire: new SequenceWire(Tags("a:1b"), null, null));
+
+        adapter.Refresh();
+        adapter.Refresh();
+
+        Assert.Equal(["a:1b"], adapter.Models);
+        Assert.Equal(
+            [$"hatch: ollama is not answering at {OllamaHost.Default.Url} - keeping the model list from the last read"],
+            _warnings.Where(w => w.Contains("not answering")));
+    }
+
+    [Fact]
+    public void Refresh_says_it_again_when_a_failure_follows_a_recovery()
+    {
+        IAgentAdapter adapter = Adapter(wire: new SequenceWire(Tags("a:1b"), null, Tags("b:1b"), null));
+
+        adapter.Refresh();
+        adapter.Refresh();
+        Assert.Equal(["b:1b"], adapter.Models);
+        adapter.Refresh();
+
+        Assert.Equal(2, _warnings.Count(w => w.Contains("not answering")));
+    }
+
+    /// <summary>A wire that answers each read with the next body, the last repeating; null is a refused read.</summary>
+    private sealed class SequenceWire(params string?[] bodies) : HttpMessageHandler
+    {
+        private int _next;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var body = bodies[Math.Min(_next++, bodies.Length - 1)];
+            return body is null
+                ? throw new HttpRequestException("refused")
+                : Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
+        }
+    }
+
     /// <summary>A wire that fails to answer at all, the way a dead or slow Ollama would.</summary>
     private sealed class ThrowingWire(Exception exception) : HttpMessageHandler
     {
