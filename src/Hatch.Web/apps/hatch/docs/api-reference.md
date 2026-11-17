@@ -1244,13 +1244,22 @@ folder configured, `409`s while another run already holds the gate, and
 `403`s for an API key, the same as a program reaching `/overnight/seen`.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
-Owner)` - `kind: key` for an API key, naming its own name, its
+Owner, Scope)` - `kind: key` for an API key, naming its own name, its
 owner's name (`Owner`, null with no owner) and its owner's role lowercased (`Role`, null with no
 owner); `kind: person` when a grant holds a person;
 `kind: local` with the wall off and the machine's own person speaking;
 `kind: none` with the wall off and nobody local either (an unidentified
 browser, still able to sign in); and `204` only for an unidentified browser
 against a walled Hatch - no grant, no key, no local actor.
+
+`Scope` is `MeScopeDto(Mode, ProjectIds)`, on every answer but the `204`: the
+projects the caller reaches, a key's being its owner's. `mode` is `all` for an
+unbounded caller, `none` for one bounded to nothing, and `some` otherwise. It is
+read from what the caller can see and not from the stored row, so a `some`
+whose projects are all deleted reads `none`. `projectIds` is the ids in
+ascending order for `some`, and `[]` for `all` and `none`: `all` does not list
+every project, `GET /projects` does. A client that finds no `scope` - a server
+that predates it - carries on as before.
 
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
 ever used - it edits, it never creates. With the wall up, it also 403s a

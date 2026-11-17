@@ -407,7 +407,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> DriversAsync(
         HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
     {
-        var (candidates, people, projects) = await LiveCandidatesAsync(db, keys, now, ct);
+        var (candidates, people, projects, scopes) = await LiveCandidatesAsync(db, keys, now, ct);
 
         // From the candidates' own distinct names, not live.ToDictionary: two
         // sessions under one key are two candidates of the same name, and a
@@ -419,7 +419,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
 
         foreach (var project in projects)
         {
-            var driver = EligibleCandidates(candidates, people, project).Select(c => c.Name).FirstOrDefault();
+            var driver = EligibleCandidates(candidates, people, scopes, project).Select(c => c.Name).FirstOrDefault();
             if (driver is not null) byRunner[driver].Add(project.Key);
         }
 
@@ -468,12 +468,12 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     public async Task<IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)>> ProjectDriversAsync(
         HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
     {
-        var (candidates, people, projects) = await LiveCandidatesAsync(db, keys, now, ct);
+        var (candidates, people, projects, scopes) = await LiveCandidatesAsync(db, keys, now, ct);
 
         var byProject = new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
         foreach (var project in projects)
         {
-            var driver = EligibleCandidates(candidates, people, project).FirstOrDefault();
+            var driver = EligibleCandidates(candidates, people, scopes, project).FirstOrDefault();
             if (driver.Name is not null) byProject[project.Id] = (driver.Name, driver.LastSeenAt);
         }
 
@@ -489,7 +489,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     private async Task<(
         List<(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, Guid? ForPersonId, RepositoryDeclaration Repos)> Candidates,
         Dictionary<int, HashSet<Guid>> People,
-        List<EfHatchProject> Projects)> LiveCandidatesAsync(HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
+        List<EfHatchProject> Projects,
+        IReadOnlyDictionary<Guid, VisibleProjects> OwnerScopes)> LiveCandidatesAsync(HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = Cutoff(now);
 
@@ -551,7 +552,49 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
 
         var projects = await db.Projects.AsNoTracking().Include(p => p.Repositories).ToListAsync(ct);
 
-        return (candidates, people, projects);
+        // What each candidate's owner may see: a candidate whose owner is
+        // scoped out of a project is never its driver, or nobody would drive
+        // it - its own heartbeat never sees the project to be told so.
+        var scopes = await OwnerScopesAsync(
+            db, candidates.Where(c => c.ForPersonId is not null).Select(c => c.ForPersonId!.Value).Distinct(), ct);
+
+        return (candidates, people, projects, scopes);
+    }
+
+    /// <summary>
+    /// The projects each of <paramref name="people"/> may see, read straight
+    /// off the scope tables rather than through the caller's own view - what
+    /// a runner's key reads through when it is asked about a project. A person
+    /// with no row is <see cref="VisibleProjects.Everything"/>, as
+    /// <see cref="CallerScope"/> reads them. With the wall down a scope means
+    /// nothing, so the answer is empty, and a caller reads a person missing
+    /// from it as unbounded.
+    /// </summary>
+    /// <remarks>
+    /// A <c>some</c> person's project ids are the raw rows, with no join to
+    /// the projects table: a caller intersects them with the projects it
+    /// already holds, and a project that is gone matches nothing.
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<Guid, VisibleProjects>> OwnerScopesAsync(
+        HatchContext db, IEnumerable<Guid> people, CancellationToken ct)
+    {
+        var ids = people.Distinct().ToList();
+        if (!auth.Value.Enabled || ids.Count == 0) return new Dictionary<Guid, VisibleProjects>();
+
+        var rows = await db.PersonScopes.AsNoTracking().Where(s => ids.Contains(s.PersonId)).ToListAsync(ct);
+        var chosen = (await db.PersonScopeProjects.AsNoTracking()
+                .Where(p => ids.Contains(p.PersonId))
+                .Select(p => new { p.PersonId, p.ProjectId })
+                .ToListAsync(ct))
+            .GroupBy(p => p.PersonId)
+            .ToDictionary(g => g.Key, g => g.Select(p => p.ProjectId).ToHashSet());
+
+        return ids.ToDictionary(id => id, id => rows.FirstOrDefault(r => r.PersonId == id)?.Mode switch
+        {
+            null or PersonScopeMode.All => VisibleProjects.Everything,
+            PersonScopeMode.None => VisibleProjects.Nothing,
+            _ => new VisibleProjects(false, chosen.GetValueOrDefault(id) ?? []),
+        });
     }
 
     /// <summary>
@@ -565,9 +608,15 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     private static IEnumerable<(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, Guid? ForPersonId, RepositoryDeclaration Repos)> EligibleCandidates(
         List<(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, Guid? ForPersonId, RepositoryDeclaration Repos)> candidates,
         Dictionary<int, HashSet<Guid>> people,
+        IReadOnlyDictionary<Guid, VisibleProjects> scopes,
         EfHatchProject project) =>
         candidates
             .Where(c => Dispatch.HoldsCheckout(project.Repositories, c.Repos))
+            // A candidate whose owner cannot see this project cannot drive it.
+            // No owner, no scope row and a wall that is down are unbounded.
+            .Where(c => c.ForPersonId is not { } owner
+                || !scopes.TryGetValue(owner, out var scope)
+                || scope.Sees(project.Id))
             .Where(c => !people.TryGetValue(project.Id, out var qualifying)
                 || (c.ForPersonId is { } person && qualifying.Contains(person)))
             // A candidate this project's train has just passed over stays

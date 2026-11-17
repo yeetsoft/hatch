@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Modal, Text } from '@hatch/ui';
 import { getPeople, revokeRunner, rotateRunner, setRunnerOwner } from '../api/client';
-import { changeOwner, revokeRunnerKey, rotateRunnerKey } from '../lib/runnerKey';
+import { OWNER_SCOPE_HINT, changeOwner, revokeRunnerKey, rotateRunnerKey } from '../lib/runnerKey';
 import { useLoaded } from '../lib/useLoaded';
 import type { RunnerSecret } from '../lib/runnerKey';
 import type { Runner } from '../types';
@@ -120,6 +120,7 @@ export function RunnerKeyActions({
         </Button>
       </div>
       {ownerRefusal && <p className="text-danger">{ownerRefusal}</p>}
+      <Text tone="muted">{OWNER_SCOPE_HINT}</Text>
 
       <Modal
         open={rotating}

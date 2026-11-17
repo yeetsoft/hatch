@@ -4,13 +4,13 @@ import { getMe } from '../api/client';
 import type { Me } from '../types';
 import { LOCAL_PERSON_CHANGED } from './localPerson';
 
-interface MeValue {
+export interface MeValue {
   /** Null until answered, and for a caller that is nobody (a key). */
   me: Me | null;
   isAdmin: boolean;
 }
 
-const MeContext = createContext<MeValue>({ me: null, isAdmin: false });
+export const MeContext = createContext<MeValue>({ me: null, isAdmin: false });
 
 /**
  * Asks who is here once per load, and again when the Settings page says the

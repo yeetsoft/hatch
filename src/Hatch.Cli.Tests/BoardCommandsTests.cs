@@ -1586,4 +1586,67 @@ public sealed class BoardCommandsTests
         Assert.Empty(h.Wire.To("GET", "/api/trunk-builds"));
         Assert.Empty(h.Wire.To("GET", "/api/projects"));
     }
+
+    private static MeDto AKey(string mode, params int[] ids) =>
+        new("key", "Riker", null, true, false, false, null, new MeScopeDto(mode, ids));
+
+    [Fact]
+    public async Task A_key_whose_scope_reaches_no_project_says_so_on_board_next_and_queue_and_reads_nothing()
+    {
+        foreach (var run in new Func<CliHarness, Task<int>>[]
+        {
+            h => new BoardCommands(h.Cli).BoardAsync([], default),
+            h => new BoardCommands(h.Cli).NextAsync([], default),
+            h => new BoardCommands(h.Cli).QueueAsync([], default),
+        })
+        {
+            using var h = new CliHarness();
+            h.Wire.Json("GET", "/api/me", AKey("none"));
+
+            Assert.Equal(0, await run(h));
+
+            Assert.Equal(NoScope.Sentence, h.Complained);
+            Assert.Equal("", h.Said);
+            Assert.Equal(["GET /api/me"], h.Wire.Calls.Select(c => c.Route));
+        }
+    }
+
+    [Theory]
+    [InlineData("all")]
+    [InlineData("some")]
+    public async Task A_key_with_projects_in_scope_reads_the_board_as_before(string mode)
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/me", AKey(mode, 3));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.StartsWith("Backlog: 0", h.Said);
+        Assert.DoesNotContain(NoScope.Sentence, h.Complained);
+    }
+
+    [Fact]
+    public async Task A_me_that_cannot_be_read_carries_on_as_before()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/me", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.StartsWith("Backlog: 0", h.Said);
+    }
+
+    [Fact]
+    public async Task A_server_that_predates_scope_carries_on_as_before()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/me", new MeDto("key", "Riker", null, true, false, false));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2)));
+
+        Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
+
+        Assert.StartsWith("Backlog: 0", h.Said);
+    }
 }

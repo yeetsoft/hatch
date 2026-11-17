@@ -2286,6 +2286,16 @@ export interface Me {
   canSignOut: boolean;
   /** Whether an authority is configured to sign in with. False once a grant already holds someone. */
   canSignIn: boolean;
+  /** Which projects the caller reaches - a key reads its owner's. Absent from a
+      server that predates it, which reads as "carry on as before". Mirrors MeScopeDto. */
+  scope?: MeScope;
+}
+
+/** `none` is a scope with no project in it; `all` does not list the projects
+    (`/api/projects` does), and `some` lists their ids, ascending. */
+export interface MeScope {
+  mode: 'all' | 'some' | 'none';
+  projectIds: number[];
 }
 
 // ---- Settings ----
