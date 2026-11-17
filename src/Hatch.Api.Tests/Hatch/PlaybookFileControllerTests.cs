@@ -38,6 +38,7 @@ public class PlaybookFileControllerTests
             briefLimit: 6000
             quietLimitSeconds: 1500
             maxRunSeconds: 3600
+            localModel: fake:1b
             prompt: |
               You are turning a captured idea into an epic...
         """;
@@ -283,6 +284,17 @@ public class PlaybookFileControllerTests
 
         var row = Assert.Single(Assert.Single(Value(await h.GetAsync()).Files).Rows);
         Assert.Equal(3600, row.MaxRunSeconds);
+    }
+
+    [Fact]
+    public async Task AParsedRow_ReadsBackItsLocalModel()
+    {
+        var h = await NewAsync();
+
+        await h.PutAsync(Request(Good, Sha1));
+
+        var row = Assert.Single(Assert.Single(Value(await h.GetAsync()).Files).Rows);
+        Assert.Equal("fake:1b", row.LocalModel);
     }
 
     // ---- Harness ----

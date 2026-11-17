@@ -80,7 +80,14 @@ export function PlaybookRow({
           <Text tone="muted" as="span">any</Text>
         )}
       </td>
-      <td>{playbook.model}</td>
+      <td>
+        {playbook.model}
+        {playbook.localModel && (
+          <div>
+            <Text tone="muted" as="span">local: {playbook.localModel}</Text>
+          </div>
+        )}
+      </td>
       <td>{playbook.effort}</td>
       <td>
         <Button

@@ -633,6 +633,38 @@ public class PlaybookProposalsControllerTests
     }
 
     [Fact]
+    public async Task ApproveAll_OnALocalModelChange_WritesTheColumn_AndLeavesTheModelAlone()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(
+            patch: new PlaybookPatchRequest(null, null, null, null, null, null, LocalModel: "fake:1b"));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default));
+
+        Assert.Equal("fake:1b", Assert.Single(result.Playbooks).LocalModel);
+        var row = await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id);
+        Assert.Equal("fake:1b", row.LocalModel);
+        Assert.Equal("sonnet", row.Model);
+    }
+
+    [Fact]
+    public async Task ApproveAll_OnAModelChange_LeavesAnExistingLocalModelIntact()
+    {
+        var h = await NewAsync();
+        h.Playbook.LocalModel = "fake:1b";
+        await h.Db.SaveChangesAsync();
+        var proposal = await h.ProposeAsync(patch: new PlaybookPatchRequest(null, null, null, null, "opus", null));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        var row = await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id);
+        Assert.Equal("opus", row.Model);
+        Assert.Equal("fake:1b", row.LocalModel);
+    }
+
+    [Fact]
     public async Task ApproveAll_WithOneRowEditedSince_Is409NamingTheSecondProposal_AndChangesNeither()
     {
         var h = await NewAsync();

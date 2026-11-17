@@ -13,6 +13,8 @@ import {
   deniedToolsRequest,
   isOverridden,
   maxRunDraft,
+  localModelDraft,
+  localModelRequest,
   maxRunRequest,
   quietLimitDraft,
   quietLimitRequest,
@@ -47,6 +49,7 @@ interface Draft {
   types: IssueType[];
   shape: PlaybookShape;
   model: string;
+  localModel: string;
   effort: string;
   budget: string;
   briefLimit: string;
@@ -66,6 +69,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
       types: playbook.types,
       shape: playbook.shape,
       model: playbook.model,
+      localModel: localModelDraft(playbook.localModel),
       effort: playbook.effort,
       budget: budgetDraft(playbook.budget),
       briefLimit: briefLimitDraft(playbook.briefLimit),
@@ -84,6 +88,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
     types: [],
     shape: PLAYBOOK_SHAPE_DEFAULT,
     model: PLAYBOOK_MODEL_DEFAULT,
+    localModel: '',
     effort: PLAYBOOK_EFFORT_DEFAULT,
     budget: '',
     briefLimit: '',
@@ -152,6 +157,7 @@ export function PlaybookEditDialog({
           types: draft!.types,
           shape: draft!.shape,
           model: draft!.model,
+          localModel: localModelRequest(draft!.localModel),
           effort: draft!.effort,
           budget: budgetRequest(draft!.budget),
           briefLimit: briefLimitRequest(draft!.briefLimit),
@@ -169,6 +175,7 @@ export function PlaybookEditDialog({
           types: draft!.types,
           shape: draft!.shape,
           model: draft!.model,
+          localModel: localModelRequest(draft!.localModel),
           effort: draft!.effort,
           budget: budgetRequest(draft!.budget),
           briefLimit: briefLimitRequest(draft!.briefLimit),
@@ -248,6 +255,12 @@ export function PlaybookEditDialog({
           </Field>
           <Field label="Model" hint="Which model the dispatched session runs on. An alias is a tier every agent maps for itself; a pinned id picks the agent that runs it.">
             <Choice value={draft.model} options={PLAYBOOK_MODELS} onChange={(model) => write({ model })} />
+          </Field>
+          <Field
+            label="Local model"
+            hint="The Ollama id, as name:tag, this move runs on when it runs locally. Leave blank and it never runs locally."
+          >
+            <input value={draft.localModel} onChange={(e) => write({ localModel: e.target.value })} />
           </Field>
           <Field label="Effort" hint="How much thought it may spend on the move.">
             <Choice value={draft.effort} options={PLAYBOOK_EFFORTS} onChange={(effort) => write({ effort })} />

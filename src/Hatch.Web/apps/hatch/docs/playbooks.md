@@ -2,7 +2,7 @@
 title: Playbooks
 section: Concepts
 order: 50
-summary: What a playbook row says, how one is matched to a move, and what its model, effort, budget, brief limit, quiet limit and run limit control.
+summary: What a playbook row says, how one is matched to a move, and what its model, local model, effort, budget, brief limit, quiet limit and run limit control.
 ---
 
 A playbook is the instruction for one transition — one column to another, for
@@ -82,9 +82,10 @@ agent, and a board with none leaves it sitting rather than guessing.
 A row's model is also a statement about which runners can take it. An alias is
 taken only by a runner that offers it - `haiku sonnet opus fable` by default,
 narrowed by `HATCH_MODELS` and by what the runner learned its account cannot
-spawn - and a pinned id only by a runner of that agent. A runner that cannot is
-folded from the row in `hatch queue` with the sentence in [the
-runner](the-runner#models), so the row is never claimed and then dropped; the
+spawn - and a pinned id only by a runner of that agent that, where it lists
+pinned ids, lists this one. A runner that cannot is folded from the row in
+`hatch queue` with the sentence in [the runner](the-runner#models), so the row
+is never claimed and then dropped; the
 runner's own skip above is the backstop, and the board folds first. A board
 where **no live runner** offers the row's tier does not loop and does not look
 finished: the ticket waits, and the attention panel's **Waiting on a runner**
@@ -96,6 +97,32 @@ goes through a proposal, as the page says further down.
 `Effort` is exactly what the agent CLI's own effort flag accepts — a value it
 does not recognise is one the CLI refuses at spawn time, not one the Playbooks
 page catches first.
+
+## The local model
+
+A row can carry a second model, the **local model**: the Ollama id a move under
+that row runs on when it runs locally. It is a `name:tag` id, such as
+`name:tag`; an alias like `sonnet`, or the id of another agent such as
+`claude-…` or `gpt-…`, is refused with a sentence, in the edit dialog, on the
+API and in `.hatch/playbooks.yaml`, where the sentence names the line.
+
+A row names one local model, and the hardware profile only chooses which
+runners may take it. A size class on the row, with each runner picking its
+best fit, would run a different model for the same row on a different night,
+so the row says which. The prompt and the effort are the row's own on both
+paths; only the model differs, so there is no second row with a prompt for
+local models.
+
+Left blank, a row has no local model and **never runs locally**, whatever an
+issue says; no seeded row carries one. Clearing the field and saving removes
+it. In a repository's `.hatch/playbooks.yaml` it is the `localModel` key. An
+issue's own model override changes the model a move runs on and leaves the
+row's local model alone. The Playbooks page shows a set local model under the
+row's model, as `local:` and the id, and a [proposed
+change](#proposed-changes) can set or clear it like the model.
+
+The local model is stored and carried to a runner in its work answer, beside
+`model`. Nothing in dispatch reads it yet: a row's moves run as they did.
 
 ## Budget, the brief limit, the quiet limit, the run limit and denied tools
 

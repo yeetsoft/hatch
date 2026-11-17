@@ -34,7 +34,7 @@ public static class PlaybookFile
     internal const int MaxFileBytes = 512 * 1024;
 
     private static readonly string[] EntryKeys =
-        ["from", "to", "types", "shape", "prompt", "model", "effort", "budget", "briefLimit", "deniedTools", "isCheck", "quietLimitSeconds", "maxRunSeconds"];
+        ["from", "to", "types", "shape", "prompt", "model", "effort", "budget", "briefLimit", "deniedTools", "isCheck", "quietLimitSeconds", "maxRunSeconds", "localModel"];
 
     public static (IReadOnlyList<PlaybookCreateRequest>? Rows, string? Problem) Parse(
         byte[] content, IReadOnlyList<EfHatchStatus> statuses, ModelFamilies? families = null)
@@ -143,6 +143,11 @@ public static class PlaybookFile
         if (InvalidModel(effectiveModel, families) is { } modelError)
             return (null, modelError, modelNode?.Start ?? entry.Start);
 
+        var localModelNode = Scalar(entry, "localModel");
+        if (localModelNode?.Value?.Trim() is { Length: > 0 } localModel &&
+            InvalidLocalModel(localModel, families) is { } localModelError)
+            return (null, localModelError, localModelNode.Start);
+
         var effortNode = Scalar(entry, "effort");
         var effort = effortNode?.Value;
         var effectiveEffort = effort?.Trim() is { Length: > 0 } e ? e : EfHatchPlaybook.DefaultEffort;
@@ -193,7 +198,8 @@ public static class PlaybookFile
             ProjectId: null,
             IsCheck: isCheck,
             QuietLimitSeconds: quietLimitNode?.Value,
-            MaxRunSeconds: maxRunNode?.Value);
+            MaxRunSeconds: maxRunNode?.Value,
+            LocalModel: localModelNode?.Value);
 
         return (row, null, null);
     }
@@ -293,6 +299,21 @@ public static class PlaybookFile
         return EfHatchPlaybook.IsValidModel(model, families)
             ? null
             : (families ?? ModelFamilies.Default).Refusal(model);
+    }
+
+    /// <summary>
+    /// The same, for the Ollama id a row runs on when it runs locally: only an
+    /// id the ollama family recognises, so an alias or another agent's id is
+    /// refused. The caller trims it and treats blank as none before asking.
+    /// </summary>
+    internal static string? InvalidLocalModel(string model, ModelFamilies? families = null)
+    {
+        var rows = families ?? ModelFamilies.Default;
+        if (rows.AgentOf(model) == "ollama") return null;
+
+        var example = rows.Rows.FirstOrDefault(r => r.Agent == "ollama")?.Example;
+        return $"a local model is an Ollama id{(example is null ? "" : $" such as {example}")} - " +
+               $"not an alias or another agent's id like \"{model}\"";
     }
 
     /// <summary>The same, for the thinking budget.</summary>
@@ -422,7 +443,8 @@ public static class PlaybookFile
 
         return new PlaybookFileRow(
             row.FromStatusId, row.ToStatusId, types, shape, row.Prompt.Trim(), model, effort,
-            budget, briefLimit, deniedTools, row.IsCheck ?? false, quietLimit, maxRun);
+            budget, briefLimit, deniedTools, row.IsCheck ?? false, quietLimit, maxRun,
+            row.LocalModel?.Trim() is { Length: > 0 } localModel ? localModel : null);
     }
 
     /// <summary>
@@ -435,5 +457,5 @@ public static class PlaybookFile
         row.ToStatusId, names.GetValueOrDefault(row.ToStatusId, ""),
         row.Types, row.Shape, row.Prompt, row.Model, row.Effort, row.Budget, row.BriefLimit, row.DeniedTools, row.IsCheck,
         row.QuietLimitSeconds, Columns.UnreachableReason(statuses, row.FromStatusId, row.ToStatusId, row.IsCheck),
-        row.MaxRunSeconds);
+        row.MaxRunSeconds, row.LocalModel);
 }

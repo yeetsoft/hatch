@@ -3088,6 +3088,32 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Work_CarriesTheRowsLocalModel_AndAnOverrideLeavesItAlone()
+    {
+        var h = await NewAsync();
+        foreach (var row in h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo)) row.LocalModel = "fake:1b";
+        await h.Db.SaveChangesAsync();
+        var task = await h.FileAsync("task", "runs somewhere else", h.Todo);
+
+        Assert.Equal("fake:1b", Value(await h.Work.GetWork(Key(task), null, default)).Playbook!.LocalModel);
+
+        await h.OverrideAsync(task, model: "opus");
+        var playbook = Value(await h.Work.GetWork(Key(task), null, default)).Playbook!;
+
+        Assert.Equal("opus", playbook.Model);
+        Assert.Equal("fake:1b", playbook.LocalModel);
+    }
+
+    [Fact]
+    public async Task Work_ARowNobodySetALocalModelOn_CarriesNone()
+    {
+        var h = await NewAsync();
+        var task = await h.FileAsync("task", "stays where it is", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Playbook!.LocalModel);
+    }
+
+    [Fact]
     public async Task Work_ReportsAnEffortOverrideTheSameWay()
     {
         var h = await NewAsync();
@@ -5677,6 +5703,21 @@ public class WorkControllerTests
 
         await h.OverrideAsync(issue, model: "claude-opus-5");
         Assert.Null(Only(await h.Work.GetQueue(0, null, default, agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_APinnedIdMissingFromTheRunnersListOfIds_IsFoldedWithTheNotOfferedSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "pinned", h.Todo);
+        await h.OverrideAsync(issue, model: "alpha:1b");
+
+        var folded = Only(await h.Work.GetQueue(0, null, default, model: ["beta:2b"], agent: "ollama"));
+        Assert.Equal(NotOffered(issue, "todo", "alpha:1b", "ollama"), folded.Blocked);
+        Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, model: ["alpha:1b", "beta:2b"], agent: "ollama")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, agent: "ollama")).Blocked);
     }
 
     [Fact]

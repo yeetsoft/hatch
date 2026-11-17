@@ -29,6 +29,7 @@ export interface ProposalFieldRow {
 
 const PROPOSAL_FIELDS: { field: string; label: string }[] = [
   { field: 'model', label: 'Model' },
+  { field: 'localModel', label: 'Local model' },
   { field: 'effort', label: 'Effort' },
   { field: 'fromStatusId', label: 'From' },
   { field: 'toStatusId', label: 'To' },

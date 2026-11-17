@@ -2977,6 +2977,14 @@ public class EfHatchPlaybook
     [MaxLength(MaxModelLength)]
     public required string Model { get; set; }
 
+    /// <summary>
+    /// The Ollama id a move under this row runs on when it runs locally, blank
+    /// unless a person has set one - a row without one never runs locally.
+    /// Nothing reads it yet.
+    /// </summary>
+    [MaxLength(MaxModelLength)]
+    public string? LocalModel { get; set; }
+
     [MaxLength(MaxEffortLength)]
     public required string Effort { get; set; }
 

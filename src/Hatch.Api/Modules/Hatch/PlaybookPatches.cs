@@ -11,12 +11,12 @@ internal sealed record PlaybookState(
     int FromStatusId, int ToStatusId, string Types, string Shape,
     string? Prompt, string? DefaultPrompt, string Model, string Effort,
     int? Budget, int? BriefLimit, int? QuietLimitSeconds, string? DeniedTools, bool IsCheck, int? ProjectId,
-    int? MaxRunSeconds = null)
+    int? MaxRunSeconds = null, string? LocalModel = null)
 {
     public static PlaybookState Of(EfHatchPlaybook p) => new(
         p.FromStatusId, p.ToStatusId, p.Types, p.Shape,
         p.Prompt, p.DefaultPrompt, p.Model, p.Effort,
-        p.Budget, p.BriefLimit, p.QuietLimitSeconds, p.DeniedTools, p.IsCheck, p.ProjectId, p.MaxRunSeconds);
+        p.Budget, p.BriefLimit, p.QuietLimitSeconds, p.DeniedTools, p.IsCheck, p.ProjectId, p.MaxRunSeconds, p.LocalModel);
 
     public string EffectivePrompt => Prompt ?? DefaultPrompt ?? "";
 }
@@ -32,7 +32,7 @@ internal static class PlaybookPatches
     /// <summary>
     /// Null when the patch is legal against this state and the live board;
     /// otherwise the sentence PATCH has always used. Checked in order: shape,
-    /// project id, project, column and clash, prompt, model and effort, budget,
+    /// project id, project, column and clash, prompt, model and effort, local model, budget,
     /// brief limit, quiet limit, run limit, denied tools - so two faults at once report the same one first.
     /// </summary>
     public static async Task<string?> RefusalAsync(
@@ -82,6 +82,10 @@ internal static class PlaybookPatches
         var effort = request.Effort?.Trim() ?? current.Effort;
         if (InvalidDispatch(model, effort, families) is { } dispatchError) return dispatchError;
 
+        if (request.LocalModel?.Trim() is { Length: > 0 } localModel &&
+            PlaybookFile.InvalidLocalModel(localModel, families) is { } localModelError)
+            return localModelError;
+
         if (request.Budget is not null && PlaybookFile.ParseBudget(request.Budget).Error is { } budgetError)
             return budgetError;
 
@@ -123,6 +127,10 @@ internal static class PlaybookPatches
         var maxRunSeconds = current.MaxRunSeconds;
         if (request.MaxRunSeconds is not null) maxRunSeconds = PlaybookFile.ParseMaxRun(request.MaxRunSeconds).Value;
 
+        var localModel = current.LocalModel;
+        if (request.LocalModel is not null)
+            localModel = request.LocalModel.Trim() is { Length: > 0 } trimmedLocalModel ? trimmedLocalModel : null;
+
         var deniedTools = current.DeniedTools;
         if (request.DeniedTools is not null)
             deniedTools = EfHatchPlaybook.WriteDeniedTools(EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools));
@@ -143,6 +151,7 @@ internal static class PlaybookPatches
             BriefLimit = briefLimit,
             QuietLimitSeconds = quietLimitSeconds,
             MaxRunSeconds = maxRunSeconds,
+            LocalModel = localModel,
             DeniedTools = deniedTools,
             IsCheck = request.IsCheck ?? current.IsCheck,
             ProjectId = projectId,
