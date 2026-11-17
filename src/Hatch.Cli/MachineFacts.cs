@@ -1,19 +1,22 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Hatch.Cli;
 
 /// <summary>
-/// Seven facts about the machine a process runs on, read once per process and
+/// Ten facts about the machine a process runs on, read once per process and
 /// stamped on every beat. A fact that cannot be read is null rather than
 /// guessed.
 /// </summary>
 public sealed record MachineFacts(
     string? Os, string? Arch, string? AgentVersion, bool? Container, string? Username, DateTimeOffset? ProcessStartedAt,
-    string? Image)
+    string? Image, long? AcceleratorMemoryBytes, int? AcceleratorDeviceCount, string? AcceleratorBackend)
 {
     /// <summary>Every fact null - a process that never asked, or an adapter with no binary of its own.</summary>
-    public static readonly MachineFacts None = new(null, null, null, null, null, null, null);
+    public static readonly MachineFacts None = new(null, null, null, null, null, null, null, null, null, null);
 
     /// <summary>
     /// Every fact a running process can read: <see cref="RuntimeInformation.OSDescription"/>
@@ -21,9 +24,12 @@ public sealed record MachineFacts(
     /// lowercased, <paramref name="adapter"/>'s own <c>--version</c> read through
     /// <paramref name="probe"/>, whether <see cref="InContainer"/> says this process is
     /// inside one, the OS username, when this process itself started, and
-    /// <see cref="ImageFrom"/>'s own answer off the real environment.
+    /// <see cref="ImageFrom"/>'s own answer off the real environment. The accelerator
+    /// is read by <see cref="ReadAcceleratorAsync"/> only where <paramref name="localOllama"/>
+    /// is true; an Ollama hosted elsewhere makes this machine's accelerator a fact
+    /// about the wrong machine, so all three accelerator facts stay null.
     /// </summary>
-    public static async Task<MachineFacts> ReadAsync(IAgentAdapter adapter, Probe probe, CancellationToken ct)
+    public static async Task<MachineFacts> ReadAsync(IAgentAdapter adapter, Probe probe, bool localOllama, CancellationToken ct)
     {
         var os = ShortOs(RuntimeInformation.OSDescription);
         var arch = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
@@ -40,7 +46,117 @@ public sealed record MachineFacts(
         try { startedAt = Process.GetCurrentProcess().StartTime.ToUniversalTime(); }
         catch { startedAt = null; }
 
-        return new MachineFacts(os, arch, agentVersion, container, username, startedAt, image);
+        long? acceleratorMemory = null;
+        int? acceleratorDevices = null;
+        string? acceleratorBackend = null;
+        if (localOllama)
+        {
+            var appleSilicon = OperatingSystem.IsMacOS() && RuntimeInformation.OSArchitecture == Architecture.Arm64;
+            (acceleratorMemory, acceleratorDevices, acceleratorBackend) = await ReadAcceleratorAsync(appleSilicon, probe, ct);
+        }
+
+        return new MachineFacts(
+            os, arch, agentVersion, container, username, startedAt, image,
+            acceleratorMemory, acceleratorDevices, acceleratorBackend);
+    }
+
+    private static readonly Regex CardKey = new(@"^card\d+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// The accelerator this machine has, read through <paramref name="probe"/>; the
+    /// first branch that answers wins. <paramref name="appleSilicon"/>: memory from
+    /// <c>sysctl -n hw.memsize</c> (null where the reading fails), one device,
+    /// <c>metal</c>. NVIDIA: <c>nvidia-smi</c>'s MiB per line, summed, <c>cuda</c>.
+    /// ROCm: <c>rocm-smi</c>'s <c>card&lt;N&gt;</c> entries' VRAM bytes, summed,
+    /// <c>rocm</c>. Else <c>(null, null, "none")</c>. A branch whose output is
+    /// missing or not in the shape expected is absent, not an error; a throw other
+    /// than cancellation is caught.
+    /// </summary>
+    public static async Task<(long? Memory, int? Devices, string? Backend)> ReadAcceleratorAsync(
+        bool appleSilicon, Probe probe, CancellationToken ct)
+    {
+        if (appleSilicon)
+        {
+            var memsize = await ProbeOutputAsync("sysctl", ["-n", "hw.memsize"], probe, ct);
+            long? memory = long.TryParse(memsize?.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var bytes) ? bytes : null;
+            return (memory, 1, "metal");
+        }
+
+        var nvidia = await ProbeOutputAsync("nvidia-smi", ["--query-gpu=memory.total", "--format=csv,noheader,nounits"], probe, ct);
+        if (nvidia is not null)
+        {
+            var lines = nvidia.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+            var mebibytes = lines
+                .Select(l => long.TryParse(l, NumberStyles.None, CultureInfo.InvariantCulture, out var mib) ? (long?)mib : null)
+                .ToArray();
+            if (lines.Length > 0 && mebibytes.All(mib => mib is not null))
+                return (mebibytes.Sum(mib => mib!.Value) * 1024 * 1024, lines.Length, "cuda");
+        }
+
+        var rocm = await ProbeOutputAsync("rocm-smi", ["--showmeminfo", "vram", "--json"], probe, ct);
+        if (rocm is not null && RocmVram(rocm) is { } vram)
+            return (vram.Bytes, vram.Cards, "rocm");
+
+        return (null, null, "none");
+    }
+
+    /// <summary>
+    /// <paramref name="json"/>'s top-level <c>card&lt;N&gt;</c> properties, each one's
+    /// <c>VRAM Total Memory (B)</c> summed - null with no such card, or any whose
+    /// reading does not parse. Other keys, such as <c>system</c>, are ignored.
+    /// </summary>
+    private static (long Bytes, int Cards)? RocmVram(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
+
+            long total = 0;
+            var cards = 0;
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!CardKey.IsMatch(property.Name)) continue;
+                if (property.Value.ValueKind != JsonValueKind.Object
+                    || !property.Value.TryGetProperty("VRAM Total Memory (B)", out var reading)
+                    || reading.ValueKind != JsonValueKind.String
+                    || !long.TryParse(reading.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var bytes))
+                    return null;
+
+                total += bytes;
+                cards++;
+            }
+
+            return cards == 0 ? null : (total, cards);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="file"/> run with <paramref name="args"/> through <paramref name="probe"/>:
+    /// its output where it completed with exit code 0, else null. A throw other than
+    /// cancellation is caught and answered as null.
+    /// </summary>
+    private static async Task<string?> ProbeOutputAsync(string file, string[] args, Probe probe, CancellationToken ct)
+    {
+        ProbeResult result;
+        try
+        {
+            result = await probe(file, args, Detect.ProbeTimeout, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+
+        return result.Completed && result.ExitCode == 0 ? result.Output : null;
     }
 
     /// <summary><paramref name="env"/>'s <c>HATCH_IMAGE</c>, trimmed - null where unset, blank, or all whitespace.</summary>
@@ -117,7 +233,7 @@ public sealed record MachineFacts(
         return line is null ? null : Truncate(line);
     }
 
-    /// <summary><paramref name="request"/> with these seven fields set and every other field left alone.</summary>
+    /// <summary><paramref name="request"/> with these ten fields set and every other field left alone.</summary>
     public RunnerHeartbeatRequest Stamp(RunnerHeartbeatRequest request) => request with
     {
         Os = Os,
@@ -127,6 +243,9 @@ public sealed record MachineFacts(
         Username = Username,
         ProcessStartedAt = ProcessStartedAt,
         Image = Image,
+        AcceleratorMemoryBytes = AcceleratorMemoryBytes,
+        AcceleratorDeviceCount = AcceleratorDeviceCount,
+        AcceleratorBackend = AcceleratorBackend,
     };
 
     private static T Safe<T>(Func<T> read, T fallback)

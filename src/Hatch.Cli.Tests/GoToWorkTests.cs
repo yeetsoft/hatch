@@ -437,7 +437,7 @@ public sealed class GoToWorkTests
     [Fact]
     public async Task The_heartbeat_carries_the_machine()
     {
-        var machine = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch, "ghcr.io/o/r:1");
+        var machine = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch, "ghcr.io/o/r:1", 24L << 30, 2, "cuda");
         using var h = new Harness(machine: machine);
         OneTicket(h);
 
@@ -453,10 +453,13 @@ public sealed class GoToWorkTests
         Assert.Equal(machine.Username, beat.Username);
         Assert.Equal(machine.ProcessStartedAt, beat.ProcessStartedAt);
         Assert.Equal(machine.Image, beat.Image);
+        Assert.Equal(machine.AcceleratorMemoryBytes, beat.AcceleratorMemoryBytes);
+        Assert.Equal(machine.AcceleratorDeviceCount, beat.AcceleratorDeviceCount);
+        Assert.Equal(machine.AcceleratorBackend, beat.AcceleratorBackend);
     }
 
     [Fact]
-    public async Task A_default_harness_sends_all_seven_machine_facts_null()
+    public async Task A_default_harness_sends_all_ten_machine_facts_null()
     {
         using var h = new Harness();
         OneTicket(h);
@@ -473,6 +476,9 @@ public sealed class GoToWorkTests
         Assert.Null(beat.Username);
         Assert.Null(beat.ProcessStartedAt);
         Assert.Null(beat.Image);
+        Assert.Null(beat.AcceleratorMemoryBytes);
+        Assert.Null(beat.AcceleratorDeviceCount);
+        Assert.Null(beat.AcceleratorBackend);
     }
 
     [Fact]

@@ -3,7 +3,7 @@ using System.Reflection;
 namespace Hatch.Cli.Tests;
 
 /// <summary>
-/// The seven machine facts a beat carries: read once, each null where it
+/// The ten machine facts a beat carries: read once, each null where it
 /// could not be read.
 /// </summary>
 public sealed class MachineFactsTests
@@ -125,10 +125,212 @@ public sealed class MachineFactsTests
         Assert.Null(version);
     }
 
+    // ---- ReadAcceleratorAsync ---------------------------------------------
+
+    private const string NvidiaFile = "nvidia-smi";
+    private const string RocmFile = "rocm-smi";
+    private const string SysctlFile = "sysctl";
+
+    private static string Card(long bytes) =>
+        $$"""{"VRAM Total Memory (B)": "{{bytes}}", "VRAM Total Used Memory (B)": "0"}""";
+
+    /// <summary>A probe answering per executable; one not named did not complete, as a missing one does.</summary>
+    private static Probe Tools(Dictionary<string, ProbeResult> answers, List<string>? calls = null) =>
+        (file, _, _, _) =>
+        {
+            calls?.Add(file);
+            return Task.FromResult(answers.TryGetValue(file, out var result) ? result : new ProbeResult(false, -1, ""));
+        };
+
+    private static Dictionary<string, ProbeResult> Only(string file, string output, int exit = 0) =>
+        new() { [file] = new ProbeResult(true, exit, output) };
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_reads_apple_silicon_memory()
+    {
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(
+            true, Tools(Only(SysctlFile, "38654705664\n")), CancellationToken.None);
+
+        Assert.Equal((38654705664L, 1, "metal"), accelerator);
+    }
+
+    [Theory]
+    [InlineData("not a number", 0, true)]
+    [InlineData("38654705664", 1, true)]
+    [InlineData("", 0, false)]
+    public async Task ReadAcceleratorAsync_keeps_metal_when_the_memory_reading_fails(string output, int exit, bool completed)
+    {
+        Probe probe = (_, _, _, _) => Task.FromResult(new ProbeResult(completed, exit, output));
+
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(true, probe, CancellationToken.None);
+
+        Assert.Equal((null, 1, "metal"), accelerator);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_keeps_metal_when_the_probe_throws()
+    {
+        Probe throws = (_, _, _, _) => throw new InvalidOperationException("boom");
+
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(true, throws, CancellationToken.None);
+
+        Assert.Equal((null, 1, "metal"), accelerator);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_on_apple_silicon_never_asks_nvidia_smi()
+    {
+        var calls = new List<string>();
+
+        await MachineFacts.ReadAcceleratorAsync(true, Tools(Only(SysctlFile, "1\n"), calls), CancellationToken.None);
+
+        Assert.Equal([SysctlFile], calls);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_reads_the_nvidia_query_in_mebibytes()
+    {
+        var calls = new List<(string File, string[] Args)>();
+
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(
+            false, Answering("24564\n", calls: calls), CancellationToken.None);
+
+        Assert.Equal((24564L * 1024 * 1024, 1, "cuda"), accelerator);
+        var call = Assert.Single(calls);
+        Assert.Equal(NvidiaFile, call.File);
+        Assert.Equal(["--query-gpu=memory.total", "--format=csv,noheader,nounits"], call.Args);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_sums_two_nvidia_gpus()
+    {
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(
+            false, Tools(Only(NvidiaFile, "24564\n24564\n")), CancellationToken.None);
+
+        Assert.Equal((2 * 24564L * 1024 * 1024, 2, "cuda"), accelerator);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_reads_nvidia_windows_line_endings()
+    {
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(
+            false, Tools(Only(NvidiaFile, "12282\r\n")), CancellationToken.None);
+
+        Assert.Equal((12282L * 1024 * 1024, 1, "cuda"), accelerator);
+    }
+
+    [Theory]
+    [InlineData(false, -1, "")]
+    [InlineData(true, 9, "12282\n")]
+    public async Task ReadAcceleratorAsync_falls_from_nvidia_through_to_rocm(bool completed, int exit, string output)
+    {
+        var answers = new Dictionary<string, ProbeResult>
+        {
+            [NvidiaFile] = new ProbeResult(completed, exit, output),
+            [RocmFile] = new ProbeResult(true, 0, $$"""{"card0": {{Card(17163091968)}}}"""),
+        };
+
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(false, Tools(answers), CancellationToken.None);
+
+        Assert.Equal((17163091968L, 1, "rocm"), accelerator);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_reads_one_rocm_card()
+    {
+        var calls = new List<(string File, string[] Args)>();
+        Probe probe = (file, args, _, _) =>
+        {
+            calls.Add((file, args));
+            return Task.FromResult(file == RocmFile
+                ? new ProbeResult(true, 0, $$"""{"card0": {{Card(17163091968)}}}""")
+                : new ProbeResult(false, -1, ""));
+        };
+
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(false, probe, CancellationToken.None);
+
+        Assert.Equal((17163091968L, 1, "rocm"), accelerator);
+        Assert.Equal(["--showmeminfo", "vram", "--json"], calls.Single(c => c.File == RocmFile).Args);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_sums_two_rocm_cards()
+    {
+        var json = $$"""{"card0": {{Card(1000)}}, "card1": {{Card(2000)}}}""";
+
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(false, Tools(Only(RocmFile, json)), CancellationToken.None);
+
+        Assert.Equal((3000L, 2, "rocm"), accelerator);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_ignores_a_rocm_key_that_is_not_a_card()
+    {
+        var json = $$"""{"card0": {{Card(1000)}}, "system": {"Driver version": "6.1.0"}, "cardinal": 5}""";
+
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(false, Tools(Only(RocmFile, json)), CancellationToken.None);
+
+        Assert.Equal((1000L, 1, "rocm"), accelerator);
+    }
+
+    [Theory]
+    [InlineData("""{"system": {"Driver version": "6.1.0"}}""")]
+    [InlineData("""{"card0": {"VRAM Total Memory (B)": "lots"}}""")]
+    [InlineData("""{"card0": {"VRAM Total Memory (B)": "1000"}, "card1": {}}""")]
+    [InlineData("[]")]
+    [InlineData("not json at all")]
+    [InlineData("")]
+    public async Task ReadAcceleratorAsync_treats_unusable_rocm_output_as_absent(string output)
+    {
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(false, Tools(Only(RocmFile, output)), CancellationToken.None);
+
+        Assert.Equal((null, null, "none"), accelerator);
+    }
+
+    [Theory]
+    [InlineData("No devices were found\n")]
+    [InlineData("24564\nN/A\n")]
+    [InlineData("\n")]
+    public async Task ReadAcceleratorAsync_treats_unusable_nvidia_output_as_absent(string output)
+    {
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(false, Tools(Only(NvidiaFile, output)), CancellationToken.None);
+
+        Assert.Equal((null, null, "none"), accelerator);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_is_none_when_nothing_answers()
+    {
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(false, Tools([]), CancellationToken.None);
+
+        Assert.Equal((null, null, "none"), accelerator);
+    }
+
+    [Fact]
+    public async Task ReadAcceleratorAsync_is_none_for_a_throwing_probe()
+    {
+        Probe throws = (_, _, _, _) => throw new InvalidOperationException("boom");
+
+        var accelerator = await MachineFacts.ReadAcceleratorAsync(false, throws, CancellationToken.None);
+
+        Assert.Equal((null, null, "none"), accelerator);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReadAcceleratorAsync_lets_cancellation_propagate(bool appleSilicon)
+    {
+        Probe cancelled = (_, _, _, _) => throw new OperationCanceledException();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => MachineFacts.ReadAcceleratorAsync(appleSilicon, cancelled, CancellationToken.None));
+    }
+
     // ---- shape ------------------------------------------------------------
 
     [Fact]
-    public void MachineFacts_has_exactly_the_seven_properties()
+    public void MachineFacts_has_exactly_the_ten_properties()
     {
         var names = typeof(MachineFacts)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -136,15 +338,15 @@ public sealed class MachineFactsTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(["AgentVersion", "Arch", "Container", "Image", "Os", "ProcessStartedAt", "Username"], names);
+        Assert.Equal(["AcceleratorBackend", "AcceleratorDeviceCount", "AcceleratorMemoryBytes", "AgentVersion", "Arch", "Container", "Image", "Os", "ProcessStartedAt", "Username"], names);
     }
 
     // ---- Stamp --------------------------------------------------------
 
     [Fact]
-    public void Stamp_fills_the_seven_and_leaves_everything_else_alone()
+    public void Stamp_fills_the_ten_and_leaves_everything_else_alone()
     {
-        var facts = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch, "ghcr.io/o/r:1");
+        var facts = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch, "ghcr.io/o/r:1", 24L << 30, 2, "cuda");
         var request = new RunnerHeartbeatRequest(Kind: "loop", Line: "working");
 
         var stamped = facts.Stamp(request);
@@ -158,6 +360,9 @@ public sealed class MachineFactsTests
             Username = "runner",
             ProcessStartedAt = DateTimeOffset.UnixEpoch,
             Image = "ghcr.io/o/r:1",
+            AcceleratorMemoryBytes = 24L << 30,
+            AcceleratorDeviceCount = 2,
+            AcceleratorBackend = "cuda",
         };
         Assert.Equal(expected, stamped);
     }
