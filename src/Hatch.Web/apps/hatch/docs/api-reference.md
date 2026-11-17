@@ -148,6 +148,17 @@ See [People, roles and keys](people-roles-and-keys#scope).
 | GET | `/scopes/{personId}` | **person** | One person's scope; `404` for a person who does not exist |
 | PUT | `/scopes/{personId}` | **person** | Sets `{ mode, projectIds }`, `mode` one of `none`, `all`, `some`; `projectIds` is required under `some` and ignored otherwise; `400` for an unknown mode or project, `404` for an unknown person |
 
+**A project outside the caller's scope answers as one that does not exist, on
+every route that takes one.** That is `404`, or the usual `400` with `there is
+no project N` where a filter or a body names the project: a report's
+`projectId`, a bulk edit that moves issues, a new playbook's `projectId`. It is
+never `403`, and never a status that differs from the one an id nothing has
+gets. A list answers without the project's rows, and a search finds nothing of
+it. A key reads through its owner, and a key with no owner is unbounded.
+A runner's `Under` is checked the same way: it must name an issue the caller
+can see, so a hidden issue and a missing one both answer `404`.
+`ScopeRouteMatrixTests` asks every Hatch route this, as a person and as a key.
+
 ## Columns
 
 | Method | Path | Who | What it does |
