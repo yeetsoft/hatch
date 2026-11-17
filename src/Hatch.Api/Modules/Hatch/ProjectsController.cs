@@ -88,7 +88,7 @@ public class ProjectsController(
 
         // Checked here for the sentence, and enforced by a unique index
         // underneath for the race - the message is the point of doing it twice.
-        if (await db.Projects.AnyAsync(p => p.Key == key, ct))
+        if (await KeyTakenAsync(key!, null, ct))
             return Conflict($"{key} is already taken");
 
         var color = request.Color?.Trim();
@@ -171,7 +171,7 @@ public class ProjectsController(
 
             if (key != project.Key)
             {
-                if (await db.Projects.AnyAsync(p => p.Key == key && p.Id != id, ct))
+                if (await KeyTakenAsync(key, id, ct))
                     return Conflict($"{key} is already taken");
 
                 project.Key = key;
@@ -1185,6 +1185,14 @@ public class ProjectsController(
             project.OnePullRequestPolicy, project.OnePullRequestPolicyBy, project.OnePullRequestPolicyAt,
             project.Priority, project.PriorityBy, project.PriorityAt,
             project.FilesContributions, project.FilesContributionsBy, project.FilesContributionsAt);
+
+    /// <summary>
+    /// Whether a project already holds <paramref name="key"/>, hidden ones included. A key is unique
+    /// across the house, so a scoped caller who names a hidden project's key has to be told it is
+    /// taken: the filtered read would pass them on to the unique index and a 500.
+    /// </summary>
+    private Task<bool> KeyTakenAsync(string key, int? exceptId, CancellationToken ct) =>
+        db.Projects.IgnoreQueryFilters().AnyAsync(p => p.Key == key && p.Id != exceptId, ct);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

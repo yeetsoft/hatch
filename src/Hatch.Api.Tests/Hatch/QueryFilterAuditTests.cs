@@ -48,6 +48,10 @@ public class QueryFilterAuditTests
             "Inside the playbook proposal filter, reading the proposal's changes. A change's filter reads its "
             + "proposal and the proposal's filter reads its changes, and EF overflows the stack on the loop. The "
             + "playbook rule is written out in the filter beside it, so the opt-out lets nothing hidden through."),
+        ["ProjectsController.KeyTakenAsync"] = (1,
+            "Whether a project key is taken. A key is unique across the house, so a hidden project's key is "
+            + "just as taken as a visible one, and a filtered read would let a scoped caller through to the "
+            + "unique index. What leaves is one bool, no row."),
     };
 
     private static readonly Regex Call = new(@"\.IgnoreQueryFilters\(", RegexOptions.Compiled);

@@ -2451,13 +2451,14 @@ public class RunnersControllerTests
     public async Task TheBounds_AreFoldedIntoWhatTheLoopReadsBack()
     {
         var h = await NewAsync();
+        var epic = await h.FileAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
 
         await h.PatchAsync(Runner, new RunnerPatchRequest(
-            Under: "aer-930", MaxRuns: "12", MaxSpend: "40.00", UntilAt: "2026-09-09T06:00:00Z"));
+            Under: epic.Key.ToLowerInvariant(), MaxRuns: "12", MaxSpend: "40.00", UntilAt: "2026-09-09T06:00:00Z"));
 
         var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
-        Assert.Equal("AER-930", instruction.Under);
+        Assert.Equal(epic.Key, instruction.Under);
         Assert.Equal(12, instruction.MaxRuns);
         Assert.Equal(40m, instruction.MaxSpend);
         Assert.Equal(new DateTimeOffset(2026, 9, 9, 6, 0, 0, TimeSpan.Zero), instruction.UntilAt);
@@ -2467,12 +2468,13 @@ public class RunnersControllerTests
     public async Task AnAbsentFieldLeavesOneAloneAndAnEmptyOneTakesItOff()
     {
         var h = await NewAsync();
+        var epic = await h.FileAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
         await h.PatchAsync(Runner, new RunnerPatchRequest(
-            Under: "AER-930", MaxRuns: "12", MaxSpend: "40", UntilAt: "2026-09-09T06:00:00Z"));
+            Under: epic.Key, MaxRuns: "12", MaxSpend: "40", UntilAt: "2026-09-09T06:00:00Z"));
 
         var still = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
-        Assert.Equal("AER-930", still.Under);
+        Assert.Equal(epic.Key, still.Under);
         Assert.Equal(12, still.MaxRuns);
 
         var cleared = await h.PatchAsync(Runner, new RunnerPatchRequest(
@@ -3739,6 +3741,8 @@ public class RunnersControllerTests
     {
         var h = await NewAsync(wall: true, role: PersonRole.Admin);
         var key = await h.AddKeyAsync(Runner);
+        var epic = await h.FileAsync();
+        Assert.Equal("AER-1", epic.Key);
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
 
         var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(
@@ -5590,6 +5594,95 @@ public class RunnersControllerTests
     /// <summary>The horizon these tests judge against, short enough to step over inside one.</summary>
     private const int Horizon = 60;
 
+    // ---- A scoped caller and a project they cannot see ----
+
+    [Fact]
+    public async Task AHeldClaimOnAHiddenIssue_ShowsNoClaimAndNoChatter_ToAScopedViewer()
+    {
+        var h = await NewAsync();
+        var visible = await h.AddProjectAsync("AAA");
+        var hidden = await h.AddProjectAsync("BBB");
+        var issue = await h.FileAsync(projectId: hidden);
+        await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket", Where: Runner));
+
+        var everything = await h.OneAsync();
+        Assert.Equal(issue.Key, everything.ClaimKey);
+
+        var (runners, _) = h.ScopedTo(ScopeSeed.Only(visible));
+        var scoped = Assert.Single(Value(await runners.GetRunners(default, live: true)));
+
+        Assert.Equal(Runner, scoped.Name);
+        Assert.Null(scoped.ClaimKey);
+        Assert.Null(scoped.ClaimStatus);
+        Assert.NotEqual("make test-api", scoped.Line);
+    }
+
+    [Fact]
+    public async Task DrivesTold_NamingAHiddenProject_IsCutToTheViewersOwn()
+    {
+        var h = await NewAsync();
+        var visible = await h.AddProjectAsync("AAA");
+        await h.AddProjectAsync("BBB");
+        var key = await h.AddKeyAsync("session-only");
+        var session = NewSession(key.Id, Now, Runner);
+        session.DrivesTold = "AAA\nBBB";
+        h.Db.RunnerSessions.Add(session);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal(["AAA", "BBB"], (await h.OneAsync()).DrivesTold);
+
+        var (runners, _) = h.ScopedTo(ScopeSeed.Only(visible));
+        var scoped = Assert.Single(Value(await runners.GetRunners(default, live: true)));
+
+        Assert.Equal(["AAA"], scoped.DrivesTold);
+    }
+
+    [Fact]
+    public async Task APatchedUnder_NamingAHiddenOrAnAbsentIssue_IsTheSame404()
+    {
+        var h = await NewAsync();
+        var visible = await h.AddProjectAsync("AAA");
+        var hidden = await h.AddProjectAsync("BBB");
+        Assert.Equal("AAA-1", (await h.FileAsync(projectId: visible)).Key);
+        Assert.Equal("BBB-1", (await h.FileAsync(projectId: hidden)).Key);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var (runners, _) = h.ScopedTo(ScopeSeed.Only(visible));
+
+        var behindTheScope = await runners.PatchRunner(Runner, new RunnerPatchRequest(Under: "BBB-1"), default);
+        var absent = await runners.PatchRunner(Runner, new RunnerPatchRequest(Under: "BBB-99"), default);
+
+        Assert.IsType<NotFoundObjectResult>(behindTheScope.Result);
+        Assert.IsType<NotFoundObjectResult>(absent.Result);
+        Assert.Equal("there is no issue BBB-1", Reason(behindTheScope.Result));
+        Assert.Equal("there is no issue BBB-99", Reason(absent.Result));
+
+        // Nothing was written, and the one the viewer can see is taken.
+        Assert.Null((await h.OneAsync()).Under);
+        Assert.Equal("AAA-1", Value(await runners.PatchRunner(Runner, new RunnerPatchRequest(Under: "AAA-1"), default)).Under);
+    }
+
+    [Fact]
+    public async Task ACreateOrARekey_OntoAHiddenProjectsKey_Is409NotAnException()
+    {
+        var h = await NewAsync();
+        var visible = await h.AddProjectAsync("AAA");
+        await h.AddProjectAsync("BBB");
+
+        var (_, projects) = h.ScopedTo(ScopeSeed.Only(visible));
+
+        var created = await projects.CreateProject(new ProjectCreateRequest("BBB", "Another"), default);
+        Assert.IsType<ConflictObjectResult>(created.Result);
+        Assert.Equal("BBB is already taken", Reason(created.Result));
+
+        var rekeyed = await projects.PatchProject(visible, new ProjectPatchRequest(null, Key: "bbb"), default);
+        Assert.IsType<ConflictObjectResult>(rekeyed.Result);
+        Assert.Equal("BBB is already taken", Reason(rekeyed.Result));
+
+        Assert.Equal("AAA", (await h.Db.Projects.SingleAsync(p => p.Id == visible)).Key);
+    }
+
     private sealed class Harness
     {
         public required RunnersController Runners { get; init; }
@@ -5600,11 +5693,33 @@ public class RunnersControllerTests
         public required StubActorDirectory Actors { get; init; }
         public required Guid PersonId { get; init; }
         public required StubCaller Caller { get; init; }
+        public required DbContextOptions<HatchContext> Options { get; init; }
+        public required Func<HatchContext, RunnersController> BuildRunners { get; init; }
+        public required Func<HatchContext, ProjectsController> BuildProjects { get; init; }
 
         private int nextRepoOrder;
 
-        public async Task<IssueDto> FileAsync(string title = "a thing") =>
-            Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, "task", title, null, null, null, null), default));
+        /// <summary>
+        /// The same store asked through a caller who may see only <paramref name="visible"/>: a second
+        /// <see cref="RunnersController"/> and <see cref="ProjectsController"/> over a scoped context.
+        /// </summary>
+        public (RunnersController Runners, ProjectsController Projects) ScopedTo(VisibleProjects visible)
+        {
+            var scoped = ScopeSeed.Request(Options, visible);
+            return (BuildRunners(scoped), BuildProjects(scoped));
+        }
+
+        public async Task<IssueDto> FileAsync(string title = "a thing", int? projectId = null) =>
+            Created(await Issues.CreateIssue(new IssueCreateRequest(projectId ?? ProjectId, "task", title, null, null, null, null), default));
+
+        /// <summary>A project beside the shared one, written straight to the table, and its id.</summary>
+        public async Task<int> AddProjectAsync(string key)
+        {
+            var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+            Db.Projects.Add(project);
+            await Db.SaveChangesAsync();
+            return project.Id;
+        }
 
         /// <summary>A remote bound to the shared project, written straight to the table - WorkControllerTests's own pattern.</summary>
         public async Task<EfHatchProjectRepository> BindRepositoryAsync(string remote)
@@ -5861,9 +5976,10 @@ public class RunnersControllerTests
         long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null, ISiteSettingsService? siteSettings = null,
         string? connectionString = null, int? trainStallMinutes = null, int? runnerGoneAfterSeconds = null)
     {
-        var db = connectionString is null
-            ? new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options)
-            : new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options);
+        var options = connectionString is null
+            ? new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options
+            : new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options;
+        var db = new HatchContext(options);
 
         var hatch = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         db.Add(hatch);
@@ -5884,7 +6000,6 @@ public class RunnersControllerTests
             Options.Create(new AuthOptions { Enabled = wall }),
             revision ?? new StubRevision("dev", 0));
         var actors = new StubActorDirectory();
-        var dispatch = new Dispatch(db, actors, claims, time);
 
         var id = personId ?? Guid.NewGuid();
         var caller = nobody
@@ -5907,11 +6022,23 @@ public class RunnersControllerTests
 
         var sessions = new RunnerSessions(runners);
 
+        RunnersController BuildRunners(HatchContext context) =>
+            new(context, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
+                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys,
+                sessions, new Dispatch(context, actors, claims, time), NullLogger<RunnersController>.Instance);
+
+        ProjectsController BuildProjects(HatchContext context) =>
+            new(context, time, caller, actors, new ProjectAccess(context, actors), NullLogger<ProjectsController>.Instance, new RankService(context), claims)
+            {
+                ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+            };
+
         return new Harness
         {
-            Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
-                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys,
-                sessions, dispatch, NullLogger<RunnersController>.Instance),
+            Runners = BuildRunners(db),
+            Options = options,
+            BuildRunners = BuildRunners,
+            BuildProjects = BuildProjects,
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,

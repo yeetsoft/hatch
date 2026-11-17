@@ -82,10 +82,11 @@ public class RunnersController(
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
+        var visibleKeys = await VisibleKeysAsync(ct);
 
         var dtos = new List<RunnerDto>(visible.Count);
         foreach (var r in visible)
-            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, now, ct));
+            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, visibleKeys, now, ct));
 
         return dtos;
     }
@@ -112,7 +113,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, now, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -180,7 +181,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), time.GetUtcNow(), ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
@@ -204,11 +205,15 @@ public class RunnersController(
         return RunnerCast.Suggest(taken);
     }
 
+    /// <summary>The keys of the projects this caller may see, read once per request: a project outside their scope is not named to them.</summary>
+    private async Task<IReadOnlySet<string>> VisibleKeysAsync(CancellationToken ct) =>
+        (await db.Projects.Select(p => p.Key).ToListAsync(ct)).ToHashSet();
+
     /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
     private async Task<RunnerDto> ProjectAsync(
         Runner runner, Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
-        SiteSettingsSnapshot site, DateTimeOffset now, CancellationToken ct)
+        SiteSettingsSnapshot site, IReadOnlySet<string> visibleKeys, DateTimeOffset now, CancellationToken ct)
     {
         var ownerId = runner.OwnerPersonId;
         var forName = ownerId is { } id ? (await actors.ResolveAsync(ActorKind.Person, id, ct))?.Name : null;
@@ -231,7 +236,8 @@ public class RunnersController(
         // loop was told something the page would not say.
         if (loop.Where(s => s.DrivesTold is not null).OrderByDescending(s => s.LastSeenAt).ThenByDescending(s => s.Id).FirstOrDefault() is { } told)
         {
-            dto = dto with { DrivesTold = told.DrivesTold!.Split('\n', StringSplitOptions.RemoveEmptyEntries) };
+            // That session's own scope wrote the list, so this viewer keeps only the keys they can see.
+            dto = dto with { DrivesTold = told.DrivesTold!.Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(visibleKeys.Contains).ToList() };
         }
 
         if (runner.Sessions is not { Count: > 0 } own) return dto;
@@ -866,8 +872,13 @@ public class RunnersController(
         if (request.Under is { } wanted && wanted.Trim().Length > 0)
         {
             under = wanted.Trim().ToUpperInvariant();
-            if (!IssueKey.TryParse(under, out _, out _))
+            if (!IssueKey.TryParse(under, out var underProject, out var underNumber))
                 return BadRequest($"--under names an issue, like AER-12 - not \"{wanted.Trim()}\"");
+
+            // A key is a pointer to an issue the caller can see. One outside their scope
+            // answers as one that does not exist, so the 404 tells them nothing.
+            if (!await db.Issues.WithKey(underProject, underNumber).AnyAsync(ct))
+                return NotFound($"there is no issue {under}");
         }
 
         if (Number(request.MaxRuns, out var maxRuns) is { } runsError) return BadRequest(runsError);
@@ -944,7 +955,7 @@ public class RunnersController(
         return await ProjectAsync(
             new Runner(aggregate.Key, config ?? aggregate.Config, beatRow, aggregate.Sessions),
             await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, keys, now, ct),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), now, ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -1071,7 +1082,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, now, ct);
+        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), now, ct);
         return new RunnerMintedDto(dto, rotated.Secret);
     }
 
@@ -1432,7 +1443,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, now, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), now, ct);
     }
 
     // ---- The one narrowing ----
