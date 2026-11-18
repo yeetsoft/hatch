@@ -241,7 +241,9 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         w.DispatchModel,
         w.ModelPlacement,
         w.ModelDigest,
-        WorkLogRollup.ReadReads(w.Reads));
+        WorkLogRollup.ReadReads(w.Reads),
+        w.Outcome,
+        w.Reason);
 
     /// <summary>What goes in the column, or null when the run reported no models at all.</summary>
     private static string? WriteModels(IReadOnlyList<WorkLogModelUseDto> models) =>
