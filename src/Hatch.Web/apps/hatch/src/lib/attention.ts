@@ -338,6 +338,20 @@ export function trainStalledWords(t: TrainStalled): string {
   return t.electedRunner === null ? `${passedOver} - no other runner is eligible` : `${passedOver} - handed to ${t.electedRunner}`;
 }
 
+/** The longest a stalled train's reason runs before it is cut: one line of a row, not a paragraph. */
+const TRAIN_STALLED_REASON_CHARS = 200;
+
+/**
+ * A "Stalled merge trains" row's second line: the head's newest comment,
+ * trimmed to its first line and cut with an ellipsis when it is long. Null
+ * when the issue has no comment, so the row draws one line only.
+ */
+export function trainStalledReasonWords(t: TrainStalled): string | null {
+  const line = (t.reason ?? '').split(/\r?\n/).map((l) => l.trim()).find((l) => l !== '');
+  if (line === undefined) return null;
+  return line.length > TRAIN_STALLED_REASON_CHARS ? `${line.slice(0, TRAIN_STALLED_REASON_CHARS - 1).trimEnd()}…` : line;
+}
+
 /** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
 export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';
 

@@ -1723,11 +1723,11 @@ public record ReviewDto(
 /// Defaults to null so an older client still reads.
 /// </param>
 /// <param name="TrainStalled">
-/// Every project whose merge train passed its driver over and has not yet heard
-/// from that runner again, ordered by project key. Listed beside the rest but
-/// not counted: the row stays until the passed-over runner next checks in, and
-/// a runner that died never does. Empty, not null, when there is none, on every
-/// board shape. Defaults to null so an older client still reads.
+/// Every project whose merge train has passed over every live runner eligible
+/// to drive it, ordered by project key. Listed beside the rest but not counted:
+/// the row stays until the head moves on or a runner not yet tried turns up,
+/// however often the passed-over runners check in. Empty, not null, when there
+/// is none, on every board shape. Defaults to null so an older client still reads.
 /// </param>
 /// <param name="RunnerCapacity">
 /// One row per project whose clear implementation steps no live runner, or only
@@ -1925,7 +1925,8 @@ public record WaitingOnARunnerDto(string Key, string Title, string Type, string 
 /// <param name="ElectedRunner">The runner elected in its place, or null when no other runner was eligible.</param>
 /// <param name="HeadKey">The issue at the head of the train when it stalled.</param>
 /// <param name="At">When the train was passed over.</param>
-public record TrainStalledDto(string ProjectKey, string ProjectName, string PassedOverRunner, string? ElectedRunner, string HeadKey, DateTimeOffset At);
+/// <param name="Reason">The head issue's newest comment - what a driver that skipped it said - or null when it has none.</param>
+public record TrainStalledDto(string ProjectKey, string ProjectName, string PassedOverRunner, string? ElectedRunner, string HeadKey, DateTimeOffset At, string? Reason = null);
 
 /// <summary>
 /// A project whose clear implementation steps no live runner, or only one, can

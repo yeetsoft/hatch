@@ -331,7 +331,7 @@ not mint an issue number - try again".
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
 | contribution | PUT | `/issues/{key}/contribution` | key | That the issue came from outside: pull request URL, head branch, author login and association, origin. Write-once, unique per pull request URL; answers the `IssueDto` |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue. A key may also write it under a changelog task's live claim |
-| stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
+| stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why. On a claim whose session spent nothing (no tokens, ended in error) the board leaves the mark off, still answers `200` with the issue, and writes a `stall_declined` event instead |
 | hold | PUT | `/issues/{key}/hold` | **person** | Parks/resumes a ticket; clears any stall mark |
 | playbook | PATCH | `/issues/{key}/playbook` | **person, at the browser** | Per-ticket model/effort override, beating every playbook |
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
@@ -786,7 +786,11 @@ carries an optional `token` (the one the claim was taken with), an optional
 written into the event only beside an `outcome`. Where `sessionId` names a work-log row of this issue
 and an `outcome` is given, that row's `outcome` and `reason` are stamped in the same save as the
 event, and the event's own payload carries the session id too; a `sessionId` naming no row, or
-given with no `outcome`, stamps nothing and is never refused for it. `abandoned` is what a
+given with no `outcome`, stamps nothing and is never refused for it. A `dropped` release whose
+claim spent nothing - at least one work-log row reached the board since the
+claim was taken, and every such row has zero tokens and `isError` true - is
+written with the outcome the runner sent plus `spentNothing: true`, and
+`letGo` neither counts it nor stops at it. `abandoned` is what a
 starting loop sends for the claim its dead predecessor left (a crash, a closed
 window): it is skipped over by `letGo`, neither counted nor resetting the
 count. `unstarted` is what a runner sends when the session's agent never started
@@ -1542,13 +1546,17 @@ model, and that no live runner lists, reads `requires <id> locally - no live
 runner lists it`; each entry carries `key`, `title`, `type`,
 `move` (the column the move starts from) and `missing` (what no live runner
 has), ordered by tier and then rank, and the list is empty when no runner is
-live. `trainStalled` lists the projects whose merge train passed its driver
-over and has not heard from that runner since, ordered by project key; each
-entry carries `projectKey`, `projectName`, `passedOverRunner`, `electedRunner`
-(null when no other runner was eligible), `headKey` (the issue at the head of
-the train) and `at`. It is empty, not null, when no train is stalled, and the
-panel draws nothing for an empty list; unlike `waitingOnARunner` it is not
-counted, since a runner that died never checks in to clear it. `runnerCapacity`
+live. `trainStalled` lists the projects whose merge train has passed over every
+live runner eligible to drive it while the head stayed on one issue, ordered by
+project key. A runner that keeps checking in is still counted as passed over,
+and a project with a live eligible runner the train has not yet tried is not
+listed. Each entry carries `projectKey`, `projectName`, `passedOverRunner`,
+`electedRunner` (null when no other runner was eligible), `headKey` (the issue
+at the head of the train), `at` and `reason` (the head issue's newest comment,
+which a driver that skips a head writes, or null when it has none). It is
+empty, not null, when no train is stalled, and the panel draws nothing for an
+empty list; unlike `waitingOnARunner` it is not counted, since the row clears
+only when the head moves on. `runnerCapacity`
 lists the projects whose clear implementation steps no live runner, or only
 one, can take - always computed, with no query flag - ordered by project key;
 each entry carries `projectKey`, `steps` (how many clear implementation steps

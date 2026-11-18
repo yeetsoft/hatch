@@ -990,6 +990,7 @@ export type IssueEventKind =
   | 'contribution_filed'
   | 'wip_overridden'
   | 'stalled'
+  | 'stall_declined'
   | 'playbook_proposed'
   | 'held'
   | 'resumed'
@@ -2168,9 +2169,10 @@ export interface WaitingOnARunner {
 /** One project whose clear implementation steps no live runner, or only one, can take, with the reasons the rest cannot. Mirrors RunnerCapacityDto. */
 export interface RunnerCapacity { projectKey: string; steps: number; keys: string[]; takers: string[]; reasons: RunnerReason[] }
 
-/** A project whose merge train passed its driver over, with the head issue it
-    stalled on and the runner elected in its place, or null when none was
-    eligible. Mirrors TrainStalledDto. */
+/** A project whose merge train has passed over every runner able to drive it,
+    with the head issue it stalled on, the runner elected in its place when the
+    newest pass-over was written (null when none was eligible), and the head's
+    newest comment as the reason (null when it has none). Mirrors TrainStalledDto. */
 export interface TrainStalled {
   projectKey: string;
   projectName: string;
@@ -2178,6 +2180,7 @@ export interface TrainStalled {
   electedRunner: string | null;
   headKey: string;
   at: string;
+  reason: string | null;
 }
 
 /** The merge column's issues the loop is still progressing on its own - about

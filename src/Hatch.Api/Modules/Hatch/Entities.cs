@@ -255,6 +255,18 @@ public class EfHatchProject
     public string? TrainStalledDriver { get; set; }
 
     /// <summary>
+    /// Every runner this project's merge train has passed over while
+    /// <see cref="TrainWatchedIssueId"/> stayed on one issue, as a jsonb array
+    /// in the order they were passed over - what the attention page judges an
+    /// exhausted train by. <see cref="TrainStalledDriver"/> is only the latest
+    /// of them and clears when that runner heartbeats; this does not, so a
+    /// driver that keeps checking in cannot hide that it never acted. Emptied
+    /// whenever the watch is cleared or the head moves on. Empty, not null, the
+    /// way <see cref="RunnerTags"/> is.
+    /// </summary>
+    public string TrainStalledDrivers { get; set; } = "[]";
+
+    /// <summary>
     /// The merges-column head this project's train last saw acting - see
     /// <see cref="TrainWatch.Observe"/> - or null while its head is not
     /// <see cref="WorkKinds.Merge"/> or <see cref="WorkKinds.Update"/>. No
@@ -2663,6 +2675,15 @@ public class EfHatchIssueEvent
 
     /// <summary>An increment left this ticket where it found it - see <see cref="EfHatchIssue.StalledAt"/>.</summary>
     public const string Stalled = "stalled";
+
+    /// <summary>
+    /// A runner asked for a stall mark and the board declined, because the
+    /// claim spent nothing - see <see cref="SpentNothing"/>. The payload is
+    /// <c>{ why, because }</c>, <c>because</c> being <c>spent_nothing</c>;
+    /// the actor is whoever sent the mark. The issue's
+    /// <see cref="EfHatchIssue.StalledAt"/> is untouched.
+    /// </summary>
+    public const string StallDeclined = "stall_declined";
 
     /// <summary>A person marked this ticket for the loop to keep off - see <see cref="EfHatchIssue.Held"/>.</summary>
     public const string Held = "held";

@@ -111,6 +111,12 @@ and with only one runner nothing changes.
 
 Some endings that look like a stall are not one, and count toward nothing:
 
+- A session that spent nothing. If the session's work-log row shows no tokens
+  and an error, the board declines the stall mark: the ticket keeps the record
+  it had, the history says *No stall mark: the session spent nothing*, and the
+  release is not added to the count above. The ticket is free for the very
+  next pass. The cause is the runner's, not the ticket's. A session with any
+  tokens, or one that ended without an error, is counted as before.
 - Filing issues under the ticket. The ticket is measured against the children
   it had at dispatch, and a new key is progress.
 - A session that asked a question. The open question is the flag.

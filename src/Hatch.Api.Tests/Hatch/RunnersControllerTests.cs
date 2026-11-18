@@ -2089,6 +2089,73 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task ThePassOver_AddsTheRunnerToTheRoster_AndAReinstatementLeavesItThere()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.SeedMergingHeadAsync();
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Equal(["here:/one"], RunnerTagColumn.Read((await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDrivers));
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var project = await h.Db.Projects.AsNoTracking().SingleAsync();
+        Assert.Null(project.TrainStalledDriver);
+        Assert.Equal(["here:/one"], RunnerTagColumn.Read(project.TrainStalledDrivers));
+    }
+
+    [Fact]
+    public async Task ASecondPassOverOnTheSameHead_HoldsBothRunners_EvenWithNobodyLeftToDrive()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.SeedMergingHeadAsync();
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var project = await h.Db.Projects.AsNoTracking().SingleAsync();
+        Assert.Equal(["here:/one", "here:/two"], RunnerTagColumn.Read(project.TrainStalledDrivers));
+
+        // Nobody is eligible now, and the next beats must not wipe the roster.
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        project = await h.Db.Projects.AsNoTracking().SingleAsync();
+        Assert.Equal(["here:/one", "here:/two"], RunnerTagColumn.Read(project.TrainStalledDrivers));
+    }
+
+    [Fact]
+    public async Task AHeadThatMovesOn_EmptiesTheRoster()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var head = await h.SeedMergingHeadAsync();
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.NotEqual("[]", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDrivers);
+
+        var issue = await h.Db.Issues.SingleAsync(i => i.Id == head.Id);
+        issue.StatusId = await h.Db.Statuses.Where(s => !s.MergesPullRequest).Select(s => s.Id).FirstAsync();
+        await h.Db.SaveChangesAsync();
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal("[]", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDrivers);
+    }
+
+    [Fact]
     public async Task ABeatUnderThePassedOverRunnersOwnName_ClearsItAndReElectsIt()
     {
         var h = await NewAsync(runnerGoneAfterSeconds: 3600);

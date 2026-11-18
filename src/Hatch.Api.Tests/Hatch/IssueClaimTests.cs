@@ -2896,6 +2896,227 @@ public class IssueClaimTests
         Assert.Equal(id, Assert.Single(await LetGo.ByAsync(h.Connect(), runner, default)).Key);
     }
 
+    // ---- A session that spent nothing is not a drop ----
+    //
+    // The rule itself is SpentNothingTests'; these cover the release that asks
+    // it, and the replay of a night that used to hold a ticket for a person.
+
+    private static async Task WorkLogRowAsync(Harness h, string issue, long tokens, bool isError)
+    {
+        var db = h.Connect();
+        var at = h.Time.GetUtcNow();
+        db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = (await h.RowAsync(issue)).Id,
+            SessionId = Guid.NewGuid().ToString("N"),
+            StartedAt = at,
+            EndedAt = at,
+            DurationMs = 0,
+            CreatedAt = at,
+            InputTokens = tokens,
+            IsError = isError,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<JsonElement> ReleasePayloadAsync(Harness h, string issue) =>
+        (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+
+    private static async Task<int> LetGoCountAsync(Harness h, string issue) =>
+        await LetGo.ForIssueAsync(h.Connect(), (await h.RowAsync(issue)).Id, default);
+
+    [SkippableFact]
+    public async Task ADropAfterASessionThatSpentNothing_IsMarkedAndNotCounted()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, "host-one:/work/tree");
+        await WorkLogRowAsync(h, issue, tokens: 0, isError: true);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default));
+
+        var payload = await ReleasePayloadAsync(h, issue);
+        Assert.Equal(ClaimOutcomes.Dropped, payload.GetProperty("outcome").GetString());
+        Assert.Equal("host-one:/work/tree", payload.GetProperty("runner").GetString());
+        Assert.True(payload.GetProperty("spentNothing").GetBoolean());
+        Assert.Equal(0, await LetGoCountAsync(h, issue));
+        Assert.Empty(await LetGo.ByAsync(h.Connect(), "host-one:/work/tree", default));
+    }
+
+    [SkippableFact]
+    public async Task ADropAfterASessionThatSpentNothing_StillCarriesAReasonTheRunnerSent()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await WorkLogRowAsync(h, issue, tokens: 0, isError: true);
+
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, ClaimLostReasons.Quiet, default));
+
+        var payload = await ReleasePayloadAsync(h, issue);
+        Assert.Equal(ClaimLostReasons.Quiet, payload.GetProperty("reason").GetString());
+        Assert.True(payload.GetProperty("spentNothing").GetBoolean());
+    }
+
+    [SkippableFact]
+    public async Task ADropWithNoWorkLogRow_IsCountedAsItAlwaysWas()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, "host-one:/work/tree");
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default));
+
+        Assert.False((await ReleasePayloadAsync(h, issue)).TryGetProperty("spentNothing", out _));
+        Assert.Equal(1, await LetGoCountAsync(h, issue));
+        Assert.Single(await LetGo.ByAsync(h.Connect(), "host-one:/work/tree", default));
+    }
+
+    [SkippableFact]
+    public async Task ADropAfterARowThatSpentTokens_IsCountedAsItAlwaysWas()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await WorkLogRowAsync(h, issue, tokens: 5000, isError: true);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default));
+
+        Assert.False((await ReleasePayloadAsync(h, issue)).TryGetProperty("spentNothing", out _));
+        Assert.Equal(1, await LetGoCountAsync(h, issue));
+    }
+
+    [SkippableFact]
+    public async Task ADropAfterARowThatIsNotAnError_IsCountedAsItAlwaysWas()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await WorkLogRowAsync(h, issue, tokens: 0, isError: false);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default));
+
+        Assert.False((await ReleasePayloadAsync(h, issue)).TryGetProperty("spentNothing", out _));
+        Assert.Equal(1, await LetGoCountAsync(h, issue));
+    }
+
+    [SkippableTheory]
+    [InlineData(ClaimOutcomes.Worked)]
+    [InlineData(ClaimOutcomes.Recused)]
+    [InlineData(ClaimOutcomes.Unservable)]
+    [InlineData(ClaimOutcomes.Abandoned)]
+    [InlineData(ClaimOutcomes.Unstarted)]
+    [InlineData(ClaimOutcomes.Preempted)]
+    [InlineData(null)]
+    public async Task AReleaseWithAnyOtherOutcome_IsNeverMarked(string? outcome)
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await WorkLogRowAsync(h, issue, tokens: 0, isError: true);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, outcome, default));
+
+        Assert.False((await ReleasePayloadAsync(h, issue)).TryGetProperty("spentNothing", out _));
+    }
+
+    [SkippableFact]
+    public async Task ARowFromAnEarlierClaim_IsNotThisClaims()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var first = await h.TakeAsync(issue);
+        await WorkLogRowAsync(h, issue, tokens: 0, isError: true);
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, first, ClaimOutcomes.Worked, default));
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+
+        var second = await h.TakeAsync(issue);
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, second, ClaimOutcomes.Dropped, default));
+
+        var released = (await h.EventsAsync(issue)).Last(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+        Assert.False(released.Payload!.Value.TryGetProperty("spentNothing", out _));
+        Assert.Equal(1, await LetGoCountAsync(h, issue));
+    }
+
+    [SkippableFact]
+    public async Task ADropAfterTwoRows_IsMarkedOnlyWhenBothSpentNothing()
+    {
+        await using var h = await NewAsync();
+        var both = await h.FileAsync();
+        var bothToken = await h.TakeAsync(both);
+        await WorkLogRowAsync(h, both, tokens: 0, isError: true);
+        await WorkLogRowAsync(h, both, tokens: 0, isError: true);
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(both, bothToken, ClaimOutcomes.Dropped, default));
+
+        var one = await h.FileAsync();
+        var oneToken = await h.TakeAsync(one);
+        await WorkLogRowAsync(h, one, tokens: 0, isError: true);
+        await WorkLogRowAsync(h, one, tokens: 42, isError: true);
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(one, oneToken, ClaimOutcomes.Dropped, default));
+
+        Assert.True((await ReleasePayloadAsync(h, both)).GetProperty("spentNothing").GetBoolean());
+        Assert.False((await ReleasePayloadAsync(h, one)).TryGetProperty("spentNothing", out _));
+    }
+
+    /// <summary>
+    /// The calls HA-2433's history holds for one runner, three times over: a
+    /// claim, a work-log row with no tokens that ended in error, a comment, a
+    /// stall mark (second and third rounds), and a release with "dropped". The
+    /// ticket used to end held for a person; it ends with a clean record.
+    /// </summary>
+    [SkippableFact]
+    public async Task ThreeSessionsThatSpentNothing_LeaveNoStallMarkAndNoLetGo()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var runner = "host-one:/work/tree";
+        h.Caller.Key = new EfApiKey { Name = "runner-one", Prefix = "hatch_ak_x", Hash = [1], CreatedAt = Now };
+
+        var comments = new List<string>();
+        for (var round = 1; round <= 3; round++)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(20));
+            var token = await h.TakeAsync(issue, runner);
+
+            var at = h.Time.GetUtcNow();
+            var posted = await new IssueWorkLogController(h.Connect(), h.Time, h.Caller).PostEntry(
+                issue,
+                new WorkLogEntryRequest(
+                    $"session-{round}", at, at.AddSeconds(2), 2000, null, null, IsError: true, Turns: 0, CostUsd: null, Models: []),
+                default);
+            Assert.IsNotType<ObjectResult>(posted.Result);
+
+            var comment = $"round {round}: the session ended in error";
+            comments.Add(comment);
+            Value(await h.Thread.AddComment(issue, new CommentCreateRequest(comment), default));
+
+            if (round > 1)
+            {
+                var stall = new IssueStallController(h.Connect(), h.Actors, h.Rule, h.Caller, h.Time);
+                Assert.NotNull(Value(await stall.PutStall(issue, new StallRequest("ended in error"), default)));
+            }
+
+            Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default));
+        }
+
+        var row = await h.RowAsync(issue);
+        Assert.Null(row.StalledAt);
+        Assert.Null(row.StalledWhy);
+        Assert.Equal(0, await LetGoCountAsync(h, issue));
+        Assert.Empty(await LetGo.ByAsync(h.Connect(), runner, default));
+
+        var events = await h.EventsAllAsync(issue);
+        Assert.Equal(2, events.Count(e => e.Kind == EfHatchIssueEvent.StallDeclined));
+        Assert.DoesNotContain(events, e => e.Kind == EfHatchIssueEvent.Stalled);
+        Assert.All(
+            events.Where(e => e.Kind == EfHatchIssueEvent.ClaimReleased),
+            e => Assert.True(e.Payload!.Value.GetProperty("spentNothing").GetBoolean()));
+
+        // The runner's own words are untouched.
+        Assert.Equal(comments, (await h.CommentsAsync(issue)).Select(c => c.Body).ToList());
+    }
+
     // ---- A no-code declaration is the review column's (HA-2198) ----
     //
     // The take and the release are conditional UPDATEs, so this lives here and
