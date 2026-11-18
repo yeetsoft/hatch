@@ -4594,6 +4594,13 @@ public static class RunnerAgentDownKinds
 
     /// <summary>The agent is signed out and needs a person to sign it back in.</summary>
     public const string SignedOut = "signed-out";
+
+    /// <summary>
+    /// The board stood the session down after it dropped several tickets in a
+    /// row without spending a token. Written by the board alone: a heartbeat
+    /// that sends it is stored as <see cref="NotStarting"/>.
+    /// </summary>
+    public const string BoardPaused = "board-paused";
 }
 
 /// <summary>

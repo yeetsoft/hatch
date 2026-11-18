@@ -2014,6 +2014,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("PauseStreak")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset?>("ProcessStartedAt")
                         .HasColumnType("timestamp with time zone");
 

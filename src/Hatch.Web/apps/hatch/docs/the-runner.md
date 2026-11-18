@@ -1218,6 +1218,29 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or run it through
 `powershell -NoProfile -ExecutionPolicy Bypass -File`.
 
+## When the board pauses a session
+
+A session that drops three tickets in a row without spending a token is stood
+down for an hour. The count is per session, not per ticket: three tickets, one
+each, pause it the same as one ticket three times.
+
+- **What counts.** Only a release with outcome `dropped`. One the board marked
+  as having spent nothing adds one. One whose work-log rows spent tokens sets
+  the count back to zero. A drop with no work-log row since the claim, and any
+  other outcome, leave it alone.
+- **What the board writes.** On that session alone, `agentDownUntil` an hour
+  ahead, `agentDownKind` `board-paused`, and `agentDownLine` saying how many
+  sessions ended in error and the last ticket's key. Another session under the
+  same key is untouched. The count goes back to zero.
+- **How it ends.** When `agentDownUntil` passes. Nothing sweeps it. Until then
+  a heartbeat from the session cannot clear or reword it, and a session
+  restarted into the same checkout starts with the same pause. A paused
+  session is left out of the peer set and the driver election, as any session
+  with an agent down is.
+- **Setting it.** `Hatch__RunnerPauseAfter` (default `3`, `0` turns it off) and
+  `Hatch__RunnerPauseMinutes` (default `60`); see
+  [deployment overview](deployment-overview).
+
 ## When it will not run
 
 - **`hatch: no claude CLI on PATH.`** The runner looks on `PATH` only — never

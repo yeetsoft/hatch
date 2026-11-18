@@ -2873,7 +2873,7 @@ export interface Runner {
       never a person's to set. Null on an ordinary runner, or one that has
       since cleared it. Optional so a stub that predates it still compiles. */
   agentDownUntil?: string | null;
-  /** One of `'not-starting'` or `'signed-out'`, read only while `agentDownUntil` is set. */
+  /** One of `'not-starting'`, `'signed-out'` or `'board-paused'`, read only while `agentDownUntil` is set. */
   agentDownKind?: string | null;
   /** What the agent said, read only while `agentDownUntil` is set. */
   agentDownLine?: string | null;

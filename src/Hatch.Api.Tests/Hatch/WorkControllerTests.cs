@@ -2392,7 +2392,7 @@ public class WorkControllerTests
         Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
     }
 
-    public enum Peer { Paused, Stale, Once, Exhausted, AgentDown, Until, OutOfRuns, MineOfAnother, MineOfNobody, OtherRepository }
+    public enum Peer { Paused, Stale, Once, Exhausted, AgentDown, BoardPaused, Until, OutOfRuns, MineOfAnother, MineOfNobody, OtherRepository }
 
     [Theory]
     [InlineData(Peer.Paused)]
@@ -2400,6 +2400,7 @@ public class WorkControllerTests
     [InlineData(Peer.Once)]
     [InlineData(Peer.Exhausted)]
     [InlineData(Peer.AgentDown)]
+    [InlineData(Peer.BoardPaused)]
     [InlineData(Peer.Until)]
     [InlineData(Peer.OutOfRuns)]
     [InlineData(Peer.MineOfAnother)]
@@ -2424,6 +2425,10 @@ public class WorkControllerTests
                 case Peer.Once: row.Kind = EfHatchRunner.OnceKind; break;
                 case Peer.Exhausted: row.ExhaustedUntil = Now.AddHours(1); break;
                 case Peer.AgentDown: row.AgentDownUntil = Now.AddHours(1); break;
+                case Peer.BoardPaused:
+                    row.AgentDownUntil = Now.AddHours(1);
+                    row.AgentDownKind = RunnerAgentDownKinds.BoardPaused;
+                    break;
                 case Peer.Until: row.UntilAt = Now.AddMinutes(-1); break;
                 case Peer.OutOfRuns: row.MaxRuns = 3; row.Runs = 3; break;
                 case Peer.MineOfAnother: row.Mine = true; row.ForPersonId = ada.Id; break;

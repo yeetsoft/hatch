@@ -83,6 +83,28 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         ? options.Value.StallResumeLimit
         : new HatchOptions().StallResumeLimit;
 
+    /// <summary>
+    /// How many releases in a row that spent nothing pause a runner session -
+    /// see <see cref="HatchOptions.RunnerPauseAfter"/>. Zero is kept as "never
+    /// pause", and only a negative value falls back.
+    /// </summary>
+    public int RunnerPauseAfter { get; } = options.Value.RunnerPauseAfter switch
+    {
+        0 => 0,
+        > 0 => options.Value.RunnerPauseAfter,
+        _ => new HatchOptions().RunnerPauseAfter,
+    };
+
+    /// <summary>
+    /// How long a paused session stands down, in minutes - see
+    /// <see cref="HatchOptions.RunnerPauseMinutes"/>. Zero or less falls back.
+    /// </summary>
+    public int RunnerPauseMinutes { get; } = options.Value.RunnerPauseMinutes switch
+    {
+        > 0 => options.Value.RunnerPauseMinutes,
+        _ => new HatchOptions().RunnerPauseMinutes,
+    };
+
     /// <summary>The heartbeat at or after which a claim is still alive.</summary>
     public DateTimeOffset Cutoff(DateTimeOffset now) => now.AddSeconds(-TtlSeconds);
 

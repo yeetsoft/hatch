@@ -1043,8 +1043,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 |---|---|---|---|
 | GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil` |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted` |
-| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts |
+| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way |
 | POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
@@ -1137,13 +1137,20 @@ asker onto. It has no `PATCH` field.
 `agentDownUntil`, `agentDownKind` and `agentDownLine` are the same tri-state
 `exhausted`/`exhaustedUntil` already has, for the agent rather than the
 account: `agentDown: true` writes `agentDownUntil` and normalises
-`agentDownKind` to one of `not-starting` or `signed-out` (anything else sent
-is stored as `not-starting`), `agentDown: false` clears all three at once, and
+`agentDownKind` to one of `not-starting` or `signed-out` (anything else sent,
+`board-paused` included, is stored as `not-starting`), `agentDown: false` clears all three at once, and
 absent - an older CLI, or `hatch work`'s single beat - leaves them alone. A
 keyed runner composes them off its live sessions the way `exhaustedUntil` does:
 whichever session's own `agentDownUntil` is latest and still ahead of now,
 copied whole rather than mixing a kind from one session with a line from
-another. None of the three has a `PATCH` field. Unlike exhaustion, a runner
+another. None of the three has a `PATCH` field. The board writes the three
+itself, with kind `board-paused`, on the session whose releases spent nothing
+(see [the runner](the-runner#when-the-board-pauses-a-session)). While that
+pause lasts a heartbeat from the session cannot clear, shorten or reword it:
+`agentDown: false`, `agentDown: true` with the runner's own kind, and an absent
+field all leave it whole. Once `agentDownUntil` has passed the heartbeat writes
+the three as it always did. A new session row for the same key and checkout,
+started while the pause is still in force, begins with the same three. Unlike exhaustion, a runner
 whose agent is down is left out of `Dispatch`'s peer set and is never elected
 driver until the check passes.
 

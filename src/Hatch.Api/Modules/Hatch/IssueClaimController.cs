@@ -295,9 +295,10 @@ public class IssueClaimController(
         // A dropped release by a claim that spent nothing is marked, so the
         // let-go count neither counts it nor stops at it - see SpentNothing.
         // The outcome is the runner's own and stays as sent.
-        var spentNothing = token is not null
-            && given == ClaimOutcomes.Dropped
-            && await SpentNothing.ClaimAsync(db, issue.Id, claim.ClaimedAt, ct);
+        var verdict = token is not null && given == ClaimOutcomes.Dropped
+            ? await SpentNothing.ClaimVerdictAsync(db, issue.Id, claim.ClaimedAt, ct)
+            : SpentNothing.Verdict.NoRows;
+        var spentNothing = verdict == SpentNothing.Verdict.Nothing;
 
         await WithdrawDeclarationAsync(issue, actor, now, ct);
         Log(
@@ -312,8 +313,54 @@ public class IssueClaimController(
             why,
             spentNothing);
 
+        if (token is not null && given == ClaimOutcomes.Dropped)
+            await CountForPauseAsync(issue, claim, verdict, now, ct);
+
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    /// <summary>
+    /// Keeps the releasing session's count of releases in a row that spent
+    /// nothing, and pauses the session at <see cref="IssueClaims.RunnerPauseAfter"/>.
+    /// Only a dropped release moves it: one that spent nothing adds one, one
+    /// whose rows spent tokens sets it to zero, and a release with no row since
+    /// the claim says nothing either way and leaves it alone. The session is
+    /// found the way <see cref="TouchRunnerAsync"/> finds it, and the count is
+    /// written in the same save as the release's event. Nothing happens
+    /// where there is no key or no live session at the claim's checkout.
+    /// </summary>
+    private async Task CountForPauseAsync(
+        EfHatchIssue issue, ClaimSnapshot claim, SpentNothing.Verdict verdict, DateTimeOffset now, CancellationToken ct)
+    {
+        if (verdict == SpentNothing.Verdict.NoRows || claim.Runner is null) return;
+        if (await caller.ApiKeyAsync(ct) is not { } key) return;
+
+        var session = await db.RunnerSessions
+            .Where(s => s.ApiKeyId == key.Id && s.Where == claim.Runner && s.EndedAt == null)
+            .OrderBy(s => s.Id)
+            .FirstOrDefaultAsync(ct);
+        if (session is null) return;
+
+        if (verdict == SpentNothing.Verdict.Spent)
+        {
+            session.PauseStreak = 0;
+            return;
+        }
+
+        if (claims.RunnerPauseAfter <= 0) return;
+
+        session.PauseStreak++;
+        if (session.PauseStreak < claims.RunnerPauseAfter) return;
+
+        var line = $"{session.PauseStreak} sessions in a row ended in error without spending a token, " +
+            $"the last on {IssueKey.Format(issue.Project!.Key, issue.Number)}";
+        session.AgentDownUntil = now.AddMinutes(claims.RunnerPauseMinutes);
+        session.AgentDownKind = RunnerAgentDownKinds.BoardPaused;
+        session.AgentDownLine = line.Length > EfHatchRunner.MaxAgentDownLineLength
+            ? line[..EfHatchRunner.MaxAgentDownLineLength]
+            : line;
+        session.PauseStreak = 0;
     }
 
     // ---- The one narrowing ----
