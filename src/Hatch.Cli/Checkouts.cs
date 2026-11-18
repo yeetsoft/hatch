@@ -468,6 +468,37 @@ public static class Checkouts
     }
 
     /// <summary>
+    /// The checkout a pull request's own repository is held in - or null when
+    /// the url names a bound repository this runner holds no checkout of, which
+    /// is a skip, since another runner may hold it.
+    /// </summary>
+    /// <remarks>
+    /// The url is folded to <c>host[:port]/path</c>, lowercased and without its
+    /// scheme, and only tested for starting with a bound repository's
+    /// <see cref="WorkRepositoryDto.Canonical"/> and a slash - the slash keeps
+    /// <c>o/r</c> from matching <c>o/r-two</c>. The board's own identity rule is
+    /// not written a second way here. A url that names none of them - one that
+    /// does not parse, or a host the board spells differently, such as an ssh
+    /// alias - falls back to the first checkout <paramref name="polled"/>
+    /// holds, which is what every caller did before the url was consulted.
+    /// </remarks>
+    public static Polled? ForPullRequest(
+        string url, IReadOnlyList<WorkRepositoryDto> repositories, IReadOnlyList<Polled> polled)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            var folded = $"{uri.Authority}{uri.AbsolutePath}".ToLowerInvariant();
+            foreach (var r in repositories)
+            {
+                if (folded.StartsWith(r.Canonical.ToLowerInvariant() + "/", StringComparison.Ordinal))
+                    return polled.FirstOrDefault(p => p.Canonical == r.Canonical);
+            }
+        }
+
+        return polled.FirstOrDefault();
+    }
+
+    /// <summary>
     /// Where to spawn an unbound project's dispatch, or one bound to
     /// repositories this runner holds - or null when the primary matched
     /// nothing this runner has, which is the caller's cue to treat the ticket
