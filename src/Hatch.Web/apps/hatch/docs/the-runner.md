@@ -670,6 +670,20 @@ it reads tags, and says once when the board has changed it: `hatch: the board
 set refuses fable` (or `refuses none` when the list is cleared). A Hatch too
 old to answer with the list leaves the loop's own alone.
 
+A runner also refuses a model it found did not fit. After a session on a local
+model, the loop asks the server what it has loaded (`GET /api/ps`) while the
+model is still resident. Where less of the model sits in video memory than it
+takes, the model spilled off the accelerator, and the loop adds its id to its
+own list with the same `PUT /api/runners/{name}/refused-models`, merged with
+what it holds. It says so once on the terminal (`hatch: <id> did not fit on the
+accelerator - refusing it from now on`) and its line leads with `<id> did not
+fit on the accelerator - refused` for as long as the loop runs. From then the
+board hands this runner no move on the model and does not ask it to hold it. A
+model the server no longer has loaded, or does not answer for, is not judged
+and nothing is written. The board's own entry for the model is never edited -
+that stays a person's - and `hatch runners refuse --lift <id>` takes the
+refusal off.
+
 ## The runner's name
 
 A runner's name is its key's. The board reads it from `GET /api/me`

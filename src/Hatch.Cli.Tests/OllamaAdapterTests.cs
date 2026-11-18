@@ -878,6 +878,117 @@ public sealed class OllamaAdapterTests : IDisposable
         Assert.StartsWith("ollama is not answering at ", reason, StringComparison.Ordinal);
     }
 
+    // ---- A model that does not fit is refused ----
+
+    /// <summary>A wire whose <c>/api/ps</c> answers as told, and whose <c>/api/tags</c> lists nothing.</summary>
+    private sealed class PsWire(string body, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler
+    {
+        public int Asked { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (request.RequestUri!.AbsolutePath != "/api/ps")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"models":[]}""") });
+
+            Asked++;
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) });
+        }
+    }
+
+    private static string Loaded(string name, string sizes, string field = "name") =>
+        $$"""{"models":[{"{{field}}":"{{name}}",{{sizes}}}]}""";
+
+    [Fact]
+    public async Task SpilledAsync_answers_null_for_a_model_wholly_on_the_accelerator()
+    {
+        var wire = new PsWire(Loaded(Pinned, "\"size\":1000,\"size_vram\":1000"));
+
+        Assert.Null(await Adapter(wire: wire).SpilledAsync(Pinned, default));
+        Assert.Equal(1, wire.Asked);
+    }
+
+    [Fact]
+    public async Task SpilledAsync_answers_the_id_where_less_of_the_model_is_in_video_memory_than_it_takes()
+    {
+        var wire = new PsWire(Loaded(Pinned, "\"size\":1000,\"size_vram\":600"));
+
+        Assert.Equal(Pinned, await Adapter(wire: wire).SpilledAsync(Pinned, default));
+    }
+
+    [Fact]
+    public async Task SpilledAsync_matches_the_entry_on_its_model_field_as_well_as_its_name()
+    {
+        var wire = new PsWire(Loaded(Pinned, "\"size\":1000,\"size_vram\":0", field: "model"));
+
+        Assert.Equal(Pinned, await Adapter(wire: wire).SpilledAsync(Pinned, default));
+    }
+
+    [Fact]
+    public async Task SpilledAsync_answers_null_for_a_model_that_is_no_longer_loaded()
+    {
+        Assert.Null(await Adapter(wire: new PsWire("""{"models":[]}""")).SpilledAsync(Pinned, default));
+    }
+
+    [Fact]
+    public async Task SpilledAsync_does_not_judge_by_another_models_entry()
+    {
+        var wire = new PsWire(Loaded("llama3:8b", "\"size\":1000,\"size_vram\":100"));
+
+        Assert.Null(await Adapter(wire: wire).SpilledAsync(Pinned, default));
+    }
+
+    [Fact]
+    public async Task SpilledAsync_goes_through_the_tiers_for_an_alias()
+    {
+        var tiers = new Dictionary<string, string?> { ["sonnet"] = Pinned };
+        var wire = new PsWire(Loaded(Pinned, "\"size\":1000,\"size_vram\":600"));
+
+        Assert.Equal(Pinned, await Adapter(tiers: tiers, wire: wire).SpilledAsync("sonnet", default));
+    }
+
+    [Fact]
+    public async Task SpilledAsync_answers_null_without_asking_for_an_unmapped_alias_or_no_model()
+    {
+        var wire = new PsWire(Loaded(Pinned, "\"size\":1000,\"size_vram\":600"));
+        var adapter = Adapter(wire: wire);
+
+        Assert.Null(await adapter.SpilledAsync("sonnet", default));
+        Assert.Null(await adapter.SpilledAsync(null, default));
+        Assert.Equal(0, wire.Asked);
+    }
+
+    [Fact]
+    public async Task SpilledAsync_answers_null_where_the_server_errors_or_answers_what_is_not_JSON()
+    {
+        Assert.Null(await Adapter(wire: new PsWire("oops", HttpStatusCode.InternalServerError)).SpilledAsync(Pinned, default));
+        Assert.Null(await Adapter(wire: new PsWire("<html>")).SpilledAsync(Pinned, default));
+    }
+
+    [Fact]
+    public async Task SpilledAsync_answers_null_where_the_server_is_unreachable()
+    {
+        var adapter = new OllamaAdapter(configured: _bin, handler: new ThrowingWire(new HttpRequestException("refused")));
+
+        Assert.Null(await adapter.SpilledAsync(Pinned, default));
+    }
+
+    [Fact]
+    public async Task SpilledAsync_does_not_judge_an_entry_with_no_size_vram_or_a_zero_size()
+    {
+        Assert.Null(await Adapter(wire: new PsWire(Loaded(Pinned, "\"size\":1000"))).SpilledAsync(Pinned, default));
+        Assert.Null(await Adapter(wire: new PsWire(Loaded(Pinned, "\"size\":0,\"size_vram\":0"))).SpilledAsync(Pinned, default));
+    }
+
+    [Fact]
+    public async Task SpilledAsync_leaves_the_list_alone()
+    {
+        IAgentAdapter adapter = Adapter(wire: new PsWire(Loaded(Pinned, "\"size\":1000,\"size_vram\":600")));
+
+        await adapter.SpilledAsync(Pinned, default);
+
+        Assert.DoesNotContain(Pinned, adapter.Models);
+    }
+
     [Fact]
     public async Task PullAsync_cuts_a_long_reason_to_two_hundred_characters()
     {

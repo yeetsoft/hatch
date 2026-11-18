@@ -79,6 +79,15 @@ public interface IAgentAdapter
     string? Digest(string? model) => null;
 
     /// <summary>
+    /// Asks the server what it has loaded and answers the id of
+    /// <paramref name="model"/> where it did not sit wholly on the accelerator,
+    /// else null: it fit, it is no longer loaded, the alias maps to nothing, or
+    /// the server did not answer. Called by the loop right after a session, while
+    /// the model is still resident. The default has no server to ask.
+    /// </summary>
+    Task<string?> SpilledAsync(string? model, CancellationToken ct) => Task.FromResult<string?>(null);
+
+    /// <summary>
     /// What this agent can spawn, as the beat advertises it: the aliases unless
     /// the adapter knows better. Empty where it can name none.
     /// </summary>

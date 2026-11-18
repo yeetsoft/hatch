@@ -687,6 +687,97 @@ public sealed class GoToWorkTests
         await running;
     }
 
+    // ---- A model that does not fit is refused (HA-2417) ----
+
+    private const string Spilling = "qwen3-coder:30b";
+
+    private static string RefusedRoute(Harness h) =>
+        $"/api/runners/{Uri.EscapeDataString(h.Runtime.RunnerName)}/refused-models";
+
+    /// <summary>One pass whose ticket ran <c>opus</c>, which the adapter says spilled as <see cref="Spilling"/> where <paramref name="spills"/>.</summary>
+    private static async Task<(Harness H, FakeAdapter Adapter)> OnePassThatSpilled(bool spills, IReadOnlyList<string>? held = null)
+    {
+        var h = new Harness();
+        OneTicket(h);
+        var adapter = new FakeAdapter();
+        if (spills) adapter.Spills["opus"] = Spilling;
+        if (held is not null) h.Runtime.Board.Refused = held;
+        h.Wire.Json("PUT", RefusedRoute(h), RunnersCommandTests.ARunner(refusedModels: [.. held ?? [], Spilling]));
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime with { Adapter = adapter }).RunAsync(["--max-runs", "2"], default));
+        return (h, adapter);
+    }
+
+    [Fact]
+    public async Task A_model_that_fit_writes_nothing_and_leaves_the_line_alone()
+    {
+        var (h, adapter) = await OnePassThatSpilled(spills: false);
+        using var _ = h;
+
+        Assert.Equal(["opus"], adapter.Asked.Distinct());
+        Assert.Empty(h.Wire.To("PUT", RefusedRoute(h)));
+        Assert.All(Beats(h), b => Assert.DoesNotContain("did not fit", b.Line ?? "", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("did not fit", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_model_that_spilled_is_refused_merged_with_the_list_held_and_the_line_says_so()
+    {
+        var (h, _) = await OnePassThatSpilled(spills: true, held: ["fable"]);
+        using var _ = h;
+
+        var put = Assert.Single(h.Wire.To("PUT", RefusedRoute(h))).Read<RunnerRefusedModelsWriteRequest>();
+        Assert.Equal(["fable", Spilling], put.Models);
+        Assert.Equal(["fable", Spilling], h.Runtime.Board.Refused);
+        Assert.Contains(h.Say.Complained, l => l == $"hatch: {Spilling} did not fit on the accelerator - refusing it from now on");
+
+        // Our own write is not the board's: Fold has nothing to announce.
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("the board set refuses", StringComparison.Ordinal));
+
+        // The next beat, and every one after, still says why.
+        Assert.StartsWith($"{Spilling} did not fit on the accelerator - refused", Beats(h)[^1].Line);
+    }
+
+    [Fact]
+    public async Task A_model_already_refused_is_not_written_again()
+    {
+        var (h, _) = await OnePassThatSpilled(spills: true, held: [Spilling]);
+        using var _ = h;
+
+        Assert.Empty(h.Wire.To("PUT", RefusedRoute(h)));
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("did not fit", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_model_no_longer_loaded_is_not_judged_and_writes_nothing()
+    {
+        // The adapter answers null for a model it cannot find loaded, as it does for one that fit.
+        var (h, adapter) = await OnePassThatSpilled(spills: false);
+        using var _ = h;
+
+        Assert.NotEmpty(adapter.Asked);
+        Assert.Empty(h.Wire.To("PUT", RefusedRoute(h)));
+    }
+
+    [Fact]
+    public async Task A_refused_write_is_said_and_does_not_fail_the_pass()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var adapter = new FakeAdapter();
+        adapter.Spills["opus"] = Spilling;
+        h.Wire.Reply("PUT", RefusedRoute(h), HttpStatusCode.Forbidden, "\"not a route a key may take\"");
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime with { Adapter = adapter }).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Single(h.Wire.To("PUT", RefusedRoute(h)));
+        Assert.Contains(h.Say.Complained, l => l.Contains("refusing it failed", StringComparison.Ordinal));
+        Assert.Empty(h.Runtime.Board.Refused);
+        Assert.All(Beats(h), b => Assert.DoesNotContain("did not fit", b.Line ?? "", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_model_the_adapter_already_has_pulls_nothing()
     {

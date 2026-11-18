@@ -18,6 +18,7 @@ public sealed class Tally
     private readonly List<string> _preempted;
     private readonly List<string> _failed = [];
     private readonly Dictionary<string, (DateTimeOffset At, string Reason)> _pullRetries;
+    private readonly SortedSet<string> _spilled = new(StringComparer.Ordinal);
     private readonly List<TokenEntry> _window;
     private readonly DateTimeOffset _started;
     private readonly Action<string>? _log;
@@ -226,6 +227,18 @@ public sealed class Tally
             .Where(e => e.Value.At > now)
             .OrderBy(e => e.Value.At)
             .Select(e => $"pulling {e.Key} failed: {e.Value.Reason} - trying again after {e.Value.At.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)}; "));
+
+    /// <summary>A session found <paramref name="model"/> spilled off the accelerator, so the loop refused it.</summary>
+    public void Spilled(string model) => _spilled.Add(model);
+
+    /// <summary>
+    /// The models this loop refused for not fitting, as one note to lead the
+    /// runner's line with, so the row says why for as long as the loop runs and
+    /// the next increment's line does not wipe it. One per model, sorted. Empty
+    /// where none was.
+    /// </summary>
+    public string SpilledNote() =>
+        string.Concat(_spilled.Select(id => $"{id} did not fit on the accelerator - refused; "));
 
     /// <summary>What a health check cost, joined to the night's spend. Not a run: <c>--max-runs</c> counts increments.</summary>
     public void SpendOnCheck(AgentCheck.Verdict verdict) => Spend(verdict.Cost, false, verdict.Tokens);
@@ -2266,14 +2279,50 @@ public sealed class GoToWorkCommand(Runtime runtime)
     }
 
     /// <summary>
-    /// <paramref name="said"/> behind the note of any failed pull still waiting
-    /// out its hour. The note leads so that the server's cut of a long line
+    /// <paramref name="said"/> behind the note of any model refused for not fitting
+    /// and of any failed pull still waiting out its hour. The note leads so that
+    /// the server's cut of a long line
     /// takes the end of the line and not the reason.
     /// </summary>
     private string? WithPullNote(Tally tally, string? said)
     {
-        var note = tally.PullNote(runtime.Clock.GetUtcNow());
+        var note = tally.SpilledNote() + tally.PullNote(runtime.Clock.GetUtcNow());
         return note.Length == 0 ? said : said is { Length: > 0 } ? note + said : note.TrimEnd(';', ' ');
+    }
+
+    /// <summary>
+    /// Asks the adapter whether <paramref name="ran"/> spilled off the
+    /// accelerator, and where it did adds it to this runner's own refused
+    /// models, merged with the list the loop holds. Never edits the board's
+    /// entry for the model: that stays a person's. A model that fit, is no
+    /// longer loaded, or that the server did not answer for writes nothing.
+    /// </summary>
+    /// <remarks>
+    /// A write that fails is said and does not fail the pass: the next
+    /// session's check asks again. A runner whose key has no name has no row to
+    /// write.
+    /// </remarks>
+    private async Task RefuseSpilledAsync(string? ran, Tally tally, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(runtime.RunnerName)) return;
+
+        var id = await runtime.Adapter.SpilledAsync(ran, ct);
+        if (id is null || RunnerModels.Refuses(runtime.Board.Refused, id)) return;
+
+        IReadOnlyList<string> merged = [.. runtime.Board.Refused, id];
+        try
+        {
+            var written = await runtime.Board.WriteRefusedModelsAsync(runtime.RunnerName, merged, ct);
+            runtime.Board.Refused = written?.RefusedModels ?? merged;
+        }
+        catch (HatchException e)
+        {
+            runtime.Say.Complain($"hatch: {id} did not fit on the accelerator, and refusing it failed - {e.Message}");
+            return;
+        }
+
+        tally.Spilled(id);
+        runtime.Say.Complain($"hatch: {id} did not fit on the accelerator - refusing it from now on");
     }
 
     /// <summary>How often a fresh loop asks again while it waits out a session it found live.</summary>
@@ -2773,6 +2822,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
             }
 
             tally.Record(report);
+
+            // Before the lease is let go and before anything else asks the
+            // server to load: the model is still resident now, and Ollama only
+            // keeps it for minutes.
+            await RefuseSpilledAsync(work.Model ?? work.Playbook?.Model, tally, ct);
+
             releaseOutcome = report.ReleaseOutcome;
             releaseReason = report.ReleaseReason;
 
