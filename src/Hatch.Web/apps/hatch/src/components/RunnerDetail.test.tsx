@@ -251,6 +251,21 @@ describe('RunnerDetail: Live sessions', () => {
     expect(html).toContain('hatch-runner-glyph--agent-down');
     expect(html).toContain('Agent needs signing in');
   });
+
+  it('draws a board-paused session as paused by the board, with the board line', () => {
+    const down = live({
+      id: 1,
+      agentDownUntil: new Date(Date.now() + 3_600_000).toISOString(),
+      agentDownKind: 'board-paused',
+      agentDownLine: 'three sessions ended in error',
+    });
+    state.read = { runners: [runner({ name: 'Quill', sessions: [down] })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).toContain('hatch-runner-glyph--agent-down');
+    expect(html).toContain('Paused by the board until');
+    expect(html).toContain('three sessions ended in error');
+    expect(html).not.toContain('Agent not starting');
+  });
 });
 
 describe('RunnerDetail: Pause all and Stop all', () => {

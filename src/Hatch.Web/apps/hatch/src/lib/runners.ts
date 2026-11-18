@@ -94,6 +94,7 @@ function factsWords(facts: ActivityFacts, now: Date): string {
       const said = facts.agentDownLine ? ` - ${facts.agentDownLine}` : '';
       if (facts.agentDownKind === 'signed-out') return `Agent needs signing in${said}`;
       const words = resetClockWords(new Date(facts.agentDownUntil as string), now);
+      if (facts.agentDownKind === 'board-paused') return `Paused by the board until ${words ?? 'an unknown time'}${said}`;
       return `Agent not starting until ${words ?? 'an unknown time'}${said}`;
     }
     case 'exhausted': {

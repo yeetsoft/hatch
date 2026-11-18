@@ -323,6 +323,54 @@ public sealed class RunnersCommandTests
         Assert.Contains("needs signing in", h.Said);
     }
 
+    [Fact]
+    public async Task A_board_paused_row_prints_paused_by_the_board_and_what_the_board_said()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "board-paused", agentDownLine: "three sessions ended in error"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("paused by the board", h.Said);
+        Assert.Contains("board said: three sessions ended in error", h.Said);
+        Assert.DoesNotContain("agent not starting", h.Said);
+        Assert.DoesNotContain("agent said", h.Said);
+    }
+
+    [Fact]
+    public async Task A_board_paused_session_prints_paused_by_the_board_under_its_runner()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(sessions: [ASession(agentDownUntil: Now.AddHours(1), agentDownKind: "board-paused")]),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("paused by the board", h.Said);
+        Assert.DoesNotContain("agent not starting", h.Said);
+    }
+
+    [Fact]
+    public async Task A_board_pause_that_has_passed_prints_idle_and_no_line()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(agentDownUntil: Now.AddHours(-1), agentDownKind: "board-paused", agentDownLine: "three sessions ended in error"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("idle", h.Said);
+        Assert.DoesNotContain("paused by the board", h.Said);
+        Assert.DoesNotContain("board said", h.Said);
+    }
+
     /// <summary>
     /// The server writes <c>boardDrift</c>/<c>sourceDrift</c> as strings
     /// (<c>JsonStringEnumConverter</c> in <c>Hatch.Api</c>); <see cref="Fixtures"/>'s
