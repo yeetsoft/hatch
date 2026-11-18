@@ -14,11 +14,9 @@ import type { NavEntry } from './nav';
 // literally, with no parent prefix - reached from a RunnerRow, never the nav.
 // /design/:slug is reached from the gallery's own rail, and /design itself
 // only redirects to its first slug - neither is a bar entry; /design alone
-// (below, in NAV) is the row that opens it. /ballot is reached by its URL
-// until its link in the bar lands (HA-2438), which takes it off this list.
+// (below, in NAV) is the row that opens it.
 const EXCLUDED_ROUTES = new Set([
   '/',
-  '/ballot',
   '/docs',
   '/issues/:key',
   '/reports/timeline',
@@ -70,9 +68,9 @@ describe('NAV', () => {
 });
 
 describe('the bar', () => {
-  it('shows Search, Track, Agents and Manage and nothing else, for anybody', () => {
+  it('shows Search, Ballot, Track, Agents and Manage and nothing else, for anybody', () => {
     for (const isAdmin of [false, true]) {
-      expect(navFor(isAdmin).map((entry) => entry.label)).toEqual(['Search', 'Track', 'Agents', 'Manage']);
+      expect(navFor(isAdmin).map((entry) => entry.label)).toEqual(['Search', 'Ballot', 'Track', 'Agents', 'Manage']);
     }
   });
 
@@ -127,6 +125,7 @@ describe('activeGroup', () => {
   it('is null for the board, a top-level link and a page with no group', () => {
     expect(activeGroup('/')).toBeNull();
     expect(activeGroup('/search')).toBeNull();
+    expect(activeGroup('/ballot')).toBeNull();
     expect(activeGroup('/issues/HA-1')).toBeNull();
     expect(activeGroup('/docs')).toBeNull();
     expect(activeGroup('/docs/x')).toBeNull();
@@ -174,10 +173,11 @@ describe('navRows', () => {
     return entries.reduce((sum, entry) => sum + (entry.kind === 'link' ? 1 : entry.rows.length), 0);
   }
 
-  it('puts Search first with no group label, then Track under its heading', () => {
-    const rows = navRows(false).slice(0, 5);
+  it('puts Search first and Ballot after it, both with no group label, then Track under its heading', () => {
+    const rows = navRows(false).slice(0, 6);
     expect(rows).toEqual([
       { to: '/search', label: 'Search', end: undefined, groupLabel: null },
+      { to: '/ballot', label: 'Ballot', end: undefined, groupLabel: null },
       { to: '/dreams', label: 'Dreams', groupLabel: 'Track' },
       { to: '/plan', label: 'Plan', groupLabel: 'Track' },
       { to: '/reports', label: 'Reports', groupLabel: 'Track' },
