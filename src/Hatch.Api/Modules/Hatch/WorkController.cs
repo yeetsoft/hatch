@@ -521,12 +521,20 @@ public class WorkController(
         var builds = await _dispatch.BuildChecksAsync(checkIds, ct);
 
         // The head branch a contribution recorded, for the rows that came from
-        // outside: it is the only branch the board knows the name of there.
+        // outside; the rest are read off the pull request, below.
         var contributionRows = await db.Contributions.AsNoTracking()
             .Where(c => c.HeadBranch != null && checkIds.Contains(c.IssueId))
             .Select(c => new { c.IssueId, c.HeadBranch })
             .ToListAsync(ct);
-        var recordedBranches = contributionRows.ToDictionary(c => c.IssueId, c => c.HeadBranch);
+        var contributedBranches = contributionRows.ToDictionary(c => c.IssueId, c => c.HeadBranch);
+
+        // The pull request is the pointer to an issue's change: its contribution's
+        // recorded head where it came from outside, else the one a runner read off
+        // the forge. Null only before either is known.
+        var recordedBranches = held.Concat(merging)
+            .Select(i => (i.Id, Branch: contributedBranches.GetValueOrDefault(i.Id) is { Length: > 0 } c ? c : i.PullRequestHeadBranch))
+            .Where(r => r.Branch is { Length: > 0 })
+            .ToDictionary(r => r.Id, r => r.Branch);
 
         // A trunk-landing issue in review has no branch for a runner to check;
         // what it reports is where the commit landed and how the trunk's build
@@ -830,7 +838,7 @@ public class WorkController(
             var sentence = MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now,
-                pullRequestHeadSince: issue.PullRequestHeadSince).Sentence;
+                pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.RecordedBranch).Sentence;
             db.Comments.Add(new EfHatchComment
             {
                 IssueId = issue.Id,
@@ -1187,7 +1195,7 @@ public class WorkController(
         var judgement = MergeWork.Judge(
             issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
             merges, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now, review.Name,
-            pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.Contribution?.HeadBranch);
+            pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.RecordedBranch);
 
         if (judgement.Kind != WorkKinds.Pushback) return Conflict(judgement.Sentence);
 
@@ -1628,7 +1636,7 @@ public class WorkController(
                 sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)),
             statuses.Select(StatusesController.ToDto).ToList(),
             blocked is null && hopKind == HopKinds.Approve
-                ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now, pullRequestHeadSince: issue.PullRequestHeadSince).Sentence
+                ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now, pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.RecordedBranch).Sentence
                 : null,
             issue.Project!.Landing,
             issue.Project!.ChecksRequired,

@@ -14,6 +14,10 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 public static class IssueProjection
 {
+    /// <summary>The branch the issue's pull request is on - its contribution's, else the one a runner read off the forge. See <see cref="EfHatchIssue.RecordedBranch"/>.</summary>
+    private static string? RecordedBranchOf(ContributionDto? contribution, EfHatchIssue issue) =>
+        contribution?.HeadBranch is { Length: > 0 } contributed ? contributed : issue.PullRequestHeadBranch;
+
     /// <summary>
     /// One issue. The single-issue case of <see cref="ToDtosAsync"/> rather
     /// than a second projection beside it: the endpoint that hands out one
@@ -212,7 +216,7 @@ public static class IssueProjection
                     issue.PullRequestClosedAt, issue.Project?.ChecksRequired ?? projects[issue.ProjectId].ChecksRequired,
                     issue.PullRequestMergeState, issue.PullRequestHeadSha, now, reviewName,
                     pullRequestHeadSince: issue.PullRequestHeadSince,
-                    recordedBranch: contributions.GetValueOrDefault(issue.Id)?.HeadBranch);
+                    recordedBranch: RecordedBranchOf(contributions.GetValueOrDefault(issue.Id), issue));
                 mergeWork = new MergeWorkDto(j.Kind, j.Sentence);
             }
 
@@ -281,7 +285,8 @@ public static class IssueProjection
                 Contribution: contributions.GetValueOrDefault(issue.Id),
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(issue.LocalModel),
-                LocalModelFrom: effectiveLocalModelFrom);
+                LocalModelFrom: effectiveLocalModelFrom,
+                PullRequestHeadBranch: issue.PullRequestHeadBranch);
         });
     }
 

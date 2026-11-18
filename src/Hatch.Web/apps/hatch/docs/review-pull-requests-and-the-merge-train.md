@@ -43,7 +43,7 @@ The merge check says whether the branch merges with the trunk. It has four verdi
 |---|---|
 | `clean` | the branch merges with the trunk; nothing for a session to do |
 | `conflicted` | it does not, in the files named |
-| `none` | no unmerged branch on origin is named for the issue |
+| `none` | no unmerged branch on origin is named for the issue, or the pull request's head branch is not on origin |
 | `ambiguous` | two or more are, and the board will not guess which is the issue's |
 
 The build check says how the checks on the branch's tip came out. It is about one sha, since a verdict about any other sha says nothing about the branch as it stands. It also has four verdicts:
@@ -55,7 +55,7 @@ The build check says how the checks on the branch's tip came out. It is about on
 | `pending` | something is still queued or running; nothing is fixed until every check has concluded, so one increment sees every failure at once |
 | `none` | no check ran on the sha; a push's checks take a moment to appear, so the runner keeps asking for ten minutes before it believes it |
 
-A contribution that came from outside carries the head branch its pull request was opened from, and that recorded branch stands in for a branch named for the issue's key: both checks, the runner's update of the branch and the merge train read the one branch on origin with that name, and a branch named for the key is not looked for. `none` then means the recorded branch is not on origin, and the review and merge columns say so by name, as "its recorded branch `<name>` is not on origin". An issue with no recorded branch is read exactly as before.
+The pull request is the pointer to an issue's change. Once an issue has one, the branch it comes from is the issue's branch, whatever it is called: both checks, the runner's update of the branch and the merge train read that one branch on origin, and a branch that is only named for the issue's key is not looked for or counted, so a second one never holds the issue. The runner reads the head branch off the forge with the pull request's state and tells the board; a contribution that came from outside brings the same branch with it. `none` then means that branch is not on origin, and the review and merge columns say so by name, as "its recorded branch `<name>` is not on origin". Only an issue with no pull request yet, or one the runner has not read yet, is matched by name, as before.
 
 An issue in review is dispatched on these two and nothing else. The board reads them in this order:
 

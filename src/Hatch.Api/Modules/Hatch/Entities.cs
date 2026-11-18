@@ -1096,6 +1096,29 @@ public class EfHatchIssue
     public string? PullRequestHeadSha { get; set; }
 
     /// <summary>
+    /// The branch the pull request comes from, as a runner read it off the
+    /// forge, or null until one has. The pull request is the only pointer to an
+    /// issue's change, so this is the branch the merge check, the review and the
+    /// merge look at - a branch merely named for the key is not looked for once
+    /// it is known. Fixed for a pull request, so it moves only with the url:
+    /// cleared with it, and never by a repeat read that says nothing.
+    /// </summary>
+    [MaxLength(ContributionRequest.MaxHeadBranchLength)]
+    public string? PullRequestHeadBranch { get; set; }
+
+    /// <summary>
+    /// The branch the issue's pull request is on, which is the issue's change:
+    /// the one its contribution recorded where it came from outside, else the
+    /// one a runner read off the forge. Null before either is known, when the
+    /// check falls back to a branch named for the key - the one case it does.
+    /// Not stored; needs <see cref="Contribution"/> loaded to see a contribution's.
+    /// </summary>
+    public string? RecordedBranch =>
+        Contribution?.HeadBranch is { Length: > 0 } contributed ? contributed
+        : PullRequestHeadBranch is { Length: > 0 } read ? read
+        : null;
+
+    /// <summary>
     /// When the head of the pull request last became the sha held in
     /// <see cref="PullRequestHeadSha"/>, or null until a runner has read an open
     /// pull request. Moves only with the sha, never with a repeat read, and is

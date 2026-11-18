@@ -285,12 +285,17 @@ public static class Branches
         work.BranchKey is { Length: > 0 } key && !key.Equals(work.Issue.Key, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// The head branch the issue's contribution recorded, which stands in for a
-    /// branch named for the key - the issue's own record only: a task on its
-    /// story's shared branch checks the story's branch, whatever it has recorded.
+    /// The head branch of the issue's pull request - its contribution's, or the one
+    /// a runner read off the forge - which stands in for a branch named for the key.
+    /// Null before the board holds either, and then the key's name is what is
+    /// looked for. The issue's own record only: a task on its story's shared branch
+    /// checks the story's branch, whatever it has recorded.
     /// </summary>
     public static string? RecordedFor(WorkDto work) =>
-        IsShared(work) ? null : work.Issue.Contribution?.HeadBranch is { Length: > 0 } head ? head : null;
+        IsShared(work) ? null
+        : work.Issue.Contribution?.HeadBranch is { Length: > 0 } head ? head
+        : work.Issue.PullRequestHeadBranch is { Length: > 0 } read ? read
+        : null;
 
     /// <summary>The key every git call for this dispatch names its branch by - the issue's own, unless it shares.</summary>
     public static string KeyOf(WorkDto work) => IsShared(work) ? work.BranchKey! : work.Issue.Key;

@@ -1225,7 +1225,14 @@ nullable, and null means *not read* — which is not `unknown` or `none`, both o
 the forge can say. Only `PUT /api/issues/{key}/pull-request-state` writes
 them, and when the url changes they are cleared together with
 `PullRequestClosedAt`, since a state read of one pull request says nothing of
-another. They are stored and drawn, and `MergeWork.Judge` reads
+another. Beside them sits `PullRequestHeadBranch`, the branch the pull request
+comes from, which is the pointer to the issue's change: the runner's read
+sends it on the same route, a blank or absent one leaves what is held, and it
+is cleared with the url and with nothing else. It is no event of its own and
+does not move `UpdatedAt`. It rides on the review read as
+`ReviewCheckDto.Branch` and on a dispatch as `IssueDto.PullRequestHeadBranch`,
+and a contribution's recorded head branch, where the issue has one, is the same
+pointer and comes first. They are stored and drawn, and `MergeWork.Judge` reads
 the merge state and the head sha - see [the merge column's judge list](#the-approval-column) - and
 nothing else on the server does: no gate or move reads them, and the review
 decision, the read-at time and the url are still read by nothing. The issue page draws a chip beside the pull
@@ -2794,8 +2801,8 @@ four:
 |---|---|
 | `clean` | The branch merges with the trunk. Nothing for an agent to do |
 | `conflicted` | It does not, in the paths `Files` names |
-| `none` | No unmerged branch on origin is named for the issue |
-| `ambiguous` | Two or more are, and nothing here guesses which is the issue's |
+| `none` | No unmerged branch on origin is named for the issue - or, for an issue whose pull request's head branch is known, that branch is not on origin or is merged |
+| `ambiguous` | Two or more are named for the issue, and nothing here guesses which is its. Only for an issue with no pull request's head branch known yet: once there is one, it is the only branch looked at, and how many others are named for the key is never counted |
 
 `none` and `ambiguous` carry no branch and no sha, on purpose: there is no one
 branch to fingerprint, and the runner's poll keeps what it saw for those two in
@@ -4083,7 +4090,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped`, `worked`, `preempted` or `recused`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is none of those is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
-| `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner }`; answers `204`. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
+| `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner, headBranch? }`; answers `204`. `headBranch` is the branch the pull request comes from, kept beside the state and cleared with the url; blank or absent leaves what is kept, and writes no event. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be, or a head branch longer than a contribution's can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
 | `/issues/{key}/landing` | PUT | Keeps what a repository holds for an issue's branch — see [landing](#landing). `{ remote, sha, trunk?, containedBy?, runner? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an empty or non-hex sha, and `containedBy` given without a `trunk`; `404` on an unknown key. The column is not checked. A write that repeats the stored sha and `containedBy` writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
@@ -5981,7 +5988,8 @@ missing configuration:
     tip — because it merges cleanly and its build passes, is still running, was
     not read on that tip or has no checks, because it has no branch on origin
     (one already merged counts as none), because more than one branch is named
-    for it, or because no runner has checked yet. See [the review
+    for it (an issue whose pull request's branch is not known yet), or because
+    no runner has checked yet. See [the review
     dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
 …and then, before the hop is even asked: a story, bug or task standing left
@@ -6695,8 +6703,12 @@ order of what a person would do about each, and **conflicts come first**:
      held;
    - *more than one branch on origin is named for it - delete the ones that are
      not its branch*, when any verdict is `ambiguous` — the loop will not guess
-     which branch is the ticket's, and says why;
-   - *no branch on origin is named for it*, when every verdict is `none`.
+     which branch is the ticket's, and says why. An issue whose pull request's
+     head branch is known is never read this way: that branch is the pointer,
+     and a second branch named for the key is not consulted or counted;
+   - *no branch on origin is named for it*, when every verdict is `none` and no
+     pull request's head branch is known; where one is, *its recorded branch
+     `<name>` is not on origin*.
 3. For the repositories whose merge verdict is `clean`, **only build verdicts
    about that merge check's own branch sha count**: a verdict about any other sha
    says nothing about the branch as it stands. Any `failed` is **build work**,
@@ -6830,9 +6842,13 @@ the order the judge checks them:
    with the trunk - back to `<review>` to fix it"*.
 5. Any counted verdict `ambiguous` — more than one branch on origin named for
    it: **hold**, *"more than one branch on origin is named for it - delete
-   the ones that are not its branch"*.
+   the ones that are not its branch"*. Never said of an issue whose pull
+   request's head branch is known: the runner checks that branch alone, so
+   there is never more than one.
 6. Every counted verdict `none` — no branch on origin named for it at all:
-   **hold**, *"no branch on origin is named for it"*.
+   **hold**, *"no branch on origin is named for it"*; or, where the pull
+   request's head branch is known, *"its recorded branch `<name>` is not on
+   origin"*.
 7. A clean branch whose build, read about that same merge check's own sha,
    is `failed`: **pushback**, *"its build on `<sha>` failed - back to
    `<review>` to fix it"*.
@@ -6916,9 +6932,10 @@ build checks `MergeWork.Judge` reads in the first place.
 **A contribution in the approval column.** A pull request nobody on the board
 knew is filed by the project's elected driver as a ticket in review with a
 [contribution record](#contribution) naming its filer, author, association
-and head branch; that record's branch, where it has one, is the branch the
-review judge and the merge column's judge look for on origin before they fall
-back to a name made from the issue's key, and a missing one says so by name
+and head branch; that record's branch is the pull request's head branch, and
+is the same pointer every issue with a pull request has: the review judge and
+the merge column's judge look for it on origin and not for a name made from
+the issue's key, and a missing one says so by name
 (*"its recorded branch `…` is not on origin"*). A pull request Hatch itself
 opened brings its issue's chain in an envelope, and the filer stands the
 epic and story above it in review as a **mirrored tree**, each with its own
@@ -8763,11 +8780,16 @@ which branch is a ticket's was until now only prose in three places. So the
 runner does it, after the reset and after the [self-change check](#where-the-loop-lives),
 and before the spawn:
 
-- **The branch of record is the one branch on `origin` named for the key**:
+- **The branch of record is the pull request's head branch, once the issue has
+  one, and until then the one branch on `origin` named for the key**:
   `<key-lowercased>`, or that and a hyphen and anything after it, compared
-  case-insensitively. `ha-3-` is not `ha-31-…`. There is no field on the issue
-  for it, because the naming is already what every pull request here does, and a
-  second place to keep it is a second place for it to be wrong.
+  case-insensitively. `ha-3-` is not `ha-31-…`. The pull request is the only
+  pointer to an issue's change, so once the board holds its head branch
+  (`PullRequestHeadBranch`, or a contribution's recorded one) it is the only
+  branch looked at, whatever it is named, and no branch named for the key is
+  consulted or counted. The name is the rule only for an issue with no pull
+  request yet, or one the runner has not read: the first read of an open pull
+  request puts its head branch on the board, so that window is a tick or two.
 - **A branch whose changes are all in the trunk counts as absent.** The test is
   that `git merge-tree --write-tree` of the trunk and the branch yields the
   trunk's own tree — which is true of a squash merge too, where the branch's
@@ -9180,8 +9202,9 @@ and closing it afterward is a close, which this half does not act on. On
 `open` it puts the head sha,
 the merge state and the review decision to
 `PUT /api/issues/{key}/pull-request-state` wherever any of the three
-differs from what `/work/review` carried for that row, so a quiet pull request
-costs no call after the first; it does this for a review-column row and a
+differs from what `/work/review` carried for that row, or the board holds no
+head branch for it (`Branch` null): the put carries the pull request's head
+branch, read with it, so a quiet pull request costs no call after the first; it does this for a review-column row and a
 merge-column row alike, and an answer missing any of the three writes nothing.
 The route answers `204` and the board stores what it was given, with the head
 sha and when it was read; `MergeWork.Judge` reads the merge state and head sha (see
