@@ -169,7 +169,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Accelerator(r) + Bound(r) + Models(r) + Refuses(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Bound(r) + Models(r) + Refuses(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -216,7 +216,7 @@ public sealed class RunnersCommand(Cli cli)
     /// run and the dollars spent - each only where it has said so, so a row from
     /// an older runner reads as it always has.
     /// </summary>
-    private static string Facts(RunnerDto row)
+    private static string Facts(RunnerDto row, DateTimeOffset now)
     {
         var parts = new List<string>();
         if (row.Host is { Length: > 0 } host) parts.Add($"on {host}");
@@ -225,7 +225,8 @@ public sealed class RunnersCommand(Cli cli)
         if (row.Spent is { } spent) parts.Add(string.Create(CultureInfo.InvariantCulture, $"${spent:F2}"));
         if (row.TokensUsed is { } used)
             parts.Add($"{Format.Compact(used)} tokens" + (row.TokensLastHour is { } lastHour ? $" ({Format.Compact(lastHour)} last hour)" : ""));
-        if (row.AgentDownUntil is not null && row.AgentDownLine is { Length: > 0 } said) parts.Add($"agent said: {said}");
+        if (row.AgentDownUntil is { } downUntil && downUntil > now && row.AgentDownLine is { Length: > 0 } said)
+            parts.Add((row.AgentDownKind == RunnerAgentDownKinds.BoardPaused ? "board said: " : "agent said: ") + said);
         return parts.Count > 0 ? "  " + string.Join(" ", parts) : "";
     }
 
@@ -292,7 +293,10 @@ public sealed class RunnersCommand(Cli cli)
         DateTimeOffset lastSeenAt, int goneAfterSeconds, DateTimeOffset? exhaustedUntil, string state, string? claimKey, DateTimeOffset now,
         DateTimeOffset? agentDownUntil = null, string? agentDownKind = null) =>
         (now - lastSeenAt).TotalSeconds > goneAfterSeconds ? "gone"
-        : agentDownUntil is { } d && d > now ? (agentDownKind == RunnerAgentDownKinds.SignedOut ? "needs signing in" : "agent not starting")
+        : agentDownUntil is { } d && d > now
+            ? (agentDownKind == RunnerAgentDownKinds.SignedOut ? "needs signing in"
+                : agentDownKind == RunnerAgentDownKinds.BoardPaused ? "paused by the board"
+                : "agent not starting")
         : exhaustedUntil is { } u && u > now ? "out of usage"
         : state == "paused" ? "paused"
         : state == "stopping" ? "stopping"

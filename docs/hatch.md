@@ -10365,7 +10365,9 @@ composes `exhaustedUntil`, except whole: the one live session whose own
 copied alongside it, never a kind from one session and a line from another.
 The Runners page and `hatch runners` draw such a row *Agent not starting until
 7:40pm* or *Agent needs signing in*, with what the agent said where it gave
-one, ranked under *Gone* and over *Out of usage* — the agent itself is the
+one (a `board-paused` row reads *Paused by the board until 7:40pm*, with the
+board's line after a dash, and `hatch runners` prints `paused by the board` and
+`board said:`), ranked under *Gone* and over *Out of usage* — the agent itself is the
 problem, which outranks the account having no usage left. Unlike exhaustion, a
 runner down this way is left out of `Dispatch`'s own peer set
 (`Dispatch.IsLiveBeat`/`IsLiveSession`) and out of the election
@@ -10386,8 +10388,11 @@ since the claim or any other outcome leaves it. While the pause is ahead of now 
 heartbeat cannot clear, shorten or reword it (`TouchSession`), and a session row
 seeded at the same checkout inherits it. Nothing sweeps it; it ends when
 `agentDownUntil` passes. It is out of the peer set and the election like any
-other agent-down session. This does not yet stop the session taking work, and the
-Runners page does not yet word it or offer to lift it.
+other agent-down session. The Runners page and `hatch runners` word it as the
+board's pause, on the session's line and the runner's row, in the viewer's zone
+and ranked as any agent-down row; an older `hatch` prints *agent not starting*
+for it. This does not yet stop the session taking work, and the Runners page
+does not yet offer to lift it.
 
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and

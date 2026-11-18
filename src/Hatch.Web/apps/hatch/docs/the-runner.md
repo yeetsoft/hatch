@@ -1237,6 +1237,9 @@ each, pause it the same as one ticket three times.
   restarted into the same checkout starts with the same pause. A paused
   session is left out of the peer set and the driver election, as any session
   with an agent down is.
+- **Where you see it.** The Runners page reads `Paused by the board until
+  3:40pm`, with the board's line after a dash, on the session's line and on the
+  runner's row. `hatch runners` prints `paused by the board` and `board said:`.
 - **Setting it.** `Hatch__RunnerPauseAfter` (default `3`, `0` turns it off) and
   `Hatch__RunnerPauseMinutes` (default `60`); see
   [deployment overview](deployment-overview).
