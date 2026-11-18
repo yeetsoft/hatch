@@ -22,6 +22,17 @@ public sealed class MergeTrain : IAsyncDisposable
 {
     private readonly Dictionary<(string Path, string Key), string> _seenMergeRefusal = [];
     private readonly Dictionary<(string Path, string Key), string> _seenUpdate = [];
+
+    // The head sha a cause was last commented at, per cause and issue: a
+    // checkout that still matches none, a clean check that is still absent,
+    // or a pull request that still fails to read is said once per sha and
+    // not every tick - the same shape as _seenMergeRefusal above, keyed by
+    // cause rather than checkout since "no checkout" is read before one
+    // resolves. Shared between MergeApprovedAsync and UpdateApprovedAsync:
+    // the three causes are about reading state, not about which action was
+    // blocked, so the same issue at the same sha comments once whichever
+    // half sees it.
+    private readonly Dictionary<(string Cause, string Key), string> _seenSilentSkip = [];
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
     private readonly HashSet<string> _seenClosed = [];
     private HashSet<string> _saidBefore = [];
@@ -523,6 +534,36 @@ public sealed class MergeTrain : IAsyncDisposable
         }
     }
 
+    private const string NoCheckoutCause = "no checkout";
+    private const string NoCleanCheckCause = "no clean check";
+    private const string PullRequestReadFailedCause = "pull request read failed";
+
+    private const string NoCheckoutSentence =
+        "No checkout here matches its repository, so its pull request is not read.";
+
+    private static string NoCleanCheckSentence(string name) => $"There is no clean merge check for {name} yet to act on.";
+
+    private static string PullRequestReadFailedSentence(string name, string? why) =>
+        why is { Length: > 0 }
+            ? $"Could not read its pull request in {name} - {why}."
+            : $"Could not read its pull request in {name}.";
+
+    /// <summary>
+    /// Comments <paramref name="sentence"/> on <paramref name="issue"/>, once per
+    /// <paramref name="cause"/> and head sha (<see cref="ReviewCheckDto.PullRequestHeadSha"/>) -
+    /// the same shape <see cref="_seenMergeRefusal"/> dedupes "gh would not merge" on, but keyed
+    /// by cause and issue rather than checkout, since <see cref="NoCheckoutCause"/> is read before
+    /// any checkout resolves for the issue at all.
+    /// </summary>
+    private async Task SilentSkipAsync(Runtime runtime, string cause, ReviewCheckDto issue, string sentence, CancellationToken ct)
+    {
+        var sha = issue.PullRequestHeadSha ?? "unknown";
+        var key = (cause, issue.Key);
+        if (_seenSilentSkip.TryGetValue(key, out var seen) && seen == sha) return;
+        _seenSilentSkip[key] = sha;
+        await runtime.QuietBoard.CommentAsync(issue.Key, sentence, ct);
+    }
+
     /// <summary>
     /// The merge half: for every issue in the merges column the judge marked
     /// <see cref="WorkKinds.Merge"/>, merge its pull request and advance it -
@@ -549,7 +590,7 @@ public sealed class MergeTrain : IAsyncDisposable
     private async Task MergeApprovedAsync(
         Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
     {
-        var failed = new HashSet<string>();
+        var failed = new Dictionary<string, string?>();
         try
         {
             foreach (var issue in review)
@@ -561,18 +602,35 @@ public sealed class MergeTrain : IAsyncDisposable
 
                 var where = Checkouts.ForPullRequest(url, issue.Repositories,
                     Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch));
-                if (where is null || failed.Contains(where.Path)) continue;
+                if (where is null)
+                {
+                    await SilentSkipAsync(runtime, NoCheckoutCause, issue, NoCheckoutSentence, ct);
+                    continue;
+                }
+
+                var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
+                if (failed.TryGetValue(where.Path, out var priorWhy))
+                {
+                    await SilentSkipAsync(
+                        runtime, PullRequestReadFailedCause, issue, PullRequestReadFailedSentence(name, priorWhy), ct);
+                    continue;
+                }
 
                 var judgedSha = issue.MergeChecks
                     .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean)?.BranchSha;
-                if (judgedSha is null) continue;
+                if (judgedSha is null)
+                {
+                    await SilentSkipAsync(runtime, NoCleanCheckCause, issue, NoCleanCheckSentence(name), ct);
+                    continue;
+                }
 
-                var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
                 var pr = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
                 if (pr.State is not { } state)
                 {
-                    failed.Add(where.Path);
+                    failed[where.Path] = pr.Why;
                     if (pr.Why is { } why) complain($"hatch: could not read pull requests in {name} - {why}");
+                    await SilentSkipAsync(
+                        runtime, PullRequestReadFailedCause, issue, PullRequestReadFailedSentence(name, pr.Why), ct);
                     continue;
                 }
 
@@ -665,7 +723,7 @@ public sealed class MergeTrain : IAsyncDisposable
     private async Task UpdateApprovedAsync(
         Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
     {
-        var failed = new HashSet<string>();
+        var failed = new Dictionary<string, string?>();
         try
         {
             foreach (var issue in review)
@@ -677,18 +735,35 @@ public sealed class MergeTrain : IAsyncDisposable
 
                 var where = Checkouts.ForPullRequest(url, issue.Repositories,
                     Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch));
-                if (where is null || failed.Contains(where.Path)) continue;
+                if (where is null)
+                {
+                    await SilentSkipAsync(runtime, NoCheckoutCause, issue, NoCheckoutSentence, ct);
+                    continue;
+                }
+
+                var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
+                if (failed.TryGetValue(where.Path, out var priorWhy))
+                {
+                    await SilentSkipAsync(
+                        runtime, PullRequestReadFailedCause, issue, PullRequestReadFailedSentence(name, priorWhy), ct);
+                    continue;
+                }
 
                 var judged = issue.MergeChecks
                     .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean);
-                if (judged?.BranchSha is not { } judgedSha) continue;
+                if (judged?.BranchSha is not { } judgedSha)
+                {
+                    await SilentSkipAsync(runtime, NoCleanCheckCause, issue, NoCleanCheckSentence(name), ct);
+                    continue;
+                }
 
-                var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
                 var pr = await runtime.Forge(where.Path, where.Canonical).ReadPullRequestAsync(url, ct);
                 if (pr.State is not { } state)
                 {
-                    failed.Add(where.Path);
+                    failed[where.Path] = pr.Why;
                     if (pr.Why is { } why) complain($"hatch: could not read pull requests in {name} - {why}");
+                    await SilentSkipAsync(
+                        runtime, PullRequestReadFailedCause, issue, PullRequestReadFailedSentence(name, pr.Why), ct);
                     continue;
                 }
 
