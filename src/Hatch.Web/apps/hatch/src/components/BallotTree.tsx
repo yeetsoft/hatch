@@ -78,7 +78,7 @@ function BallotBranch({
         </Link>
         <span className="hatch-ballot-title">{node.title}</span>
         <span className="hatch-ballot-actions">
-          <Button size="sm" onClick={() => onPreview(node)}>
+          <Button onClick={() => onPreview(node)}>
             Preview
           </Button>
           {/* An anchor, not a <Link>, and not in the installed app: the same

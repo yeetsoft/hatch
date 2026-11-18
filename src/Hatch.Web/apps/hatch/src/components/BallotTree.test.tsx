@@ -159,7 +159,8 @@ describe('BallotTree', () => {
     expect(withOptions).toContain('keep');
     expect(withOptions).toContain('Costs nothing');
     expect(withOptions.split('recommended</span>').length - 1).toBe(1);
-    expect(withOptions).not.toContain('<button');
+    // The only button is the issue's Preview; an option is a plain row.
+    expect(withOptions.split('<button').length - 1).toBe(1);
 
     expect(render([node({ questions: [question()] })])).not.toContain('hatch-options');
   });
