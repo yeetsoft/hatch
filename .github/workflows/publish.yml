@@ -24,7 +24,7 @@ jobs:
   build-and-push-api-image:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 14
     permissions:
       contents: read
       packages: write
@@ -61,6 +61,9 @@ jobs:
       # of the Docs page. A repository with Pages off answers 404, the address
       # is empty, and the board offers no line - never a failed publish.
       - name: Find the setup guide
+        # A step's ceiling is three times the slowest of the last thirty green trunk runs,
+        # or twice where three times would reach the job's own, so it can fire first (HA-2428).
+        timeout-minutes: 2
         id: guide
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -89,6 +92,7 @@ jobs:
             type=raw,value={{date 'YYYYMMDDHHmmss'}}-${{ github.event.workflow_run.head_sha }}
 
       - name: Build and push Docker image
+        timeout-minutes: 13
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -106,7 +110,7 @@ jobs:
   build-and-push-hatch-runner-image:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 11
     permissions:
       contents: read
       packages: write
@@ -155,6 +159,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
       - name: Build and push Docker image
+        timeout-minutes: 10
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -175,7 +180,7 @@ jobs:
     needs: build-and-push-hatch-runner-image
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: read
@@ -200,12 +205,13 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build every recipe on arm64 and run every check
+        timeout-minutes: 24
         run: containers/hatch-runner/check-recipes.sh ${{ env.IMAGE_NAMESPACE }}/hatch-runner:${{ github.event.workflow_run.head_sha }} linux/arm64
 
   build-and-push-db-image:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     permissions:
       contents: read
       packages: write
@@ -238,6 +244,7 @@ jobs:
             type=raw,value=${{ github.event.workflow_run.head_sha }}
 
       - name: Build and push Docker image
+        timeout-minutes: 2
         uses: docker/build-push-action@v7
         with:
           context: ./containers/hatch-db

@@ -31,7 +31,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -48,6 +48,9 @@ jobs:
       # runnerImport, and docsDiagrams.ts imports
       # apps/hatch/src/lib/mermaidDraw.ts. A per-app install would not do.
       - name: Install dependencies
+        # A step's ceiling is three times the slowest of the last thirty green trunk runs,
+        # or twice where three times would reach the job's own, so it can fire first (HA-2428).
+        timeout-minutes: 2
         working-directory: src/Hatch.Web
         run: npm ci
 
@@ -56,6 +59,7 @@ jobs:
         uses: actions/configure-pages@v6
 
       - name: Build
+        timeout-minutes: 2
         working-directory: src/Hatch.Web
         run: npm run build -w apps/site
         env:
@@ -70,7 +74,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

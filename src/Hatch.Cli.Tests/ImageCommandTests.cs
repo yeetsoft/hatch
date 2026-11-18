@@ -1108,9 +1108,12 @@ public sealed class ImageCommandTests : IDisposable
                       password: ${{ secrets.GITHUB_TOKEN }}
 
                   - name: Pull the base image
+                    # These three ceilings are a starting point, not a measurement of your base image: raise one if a green run trips it.
+                    timeout-minutes: 5
                     run: docker pull "${{ vars.HATCH_RUNNER_BASE_IMAGE }}"
 
                   - name: Render the Dockerfile
+                    timeout-minutes: 3
                     run: |
                       docker run --rm \
                         -v "${{ github.workspace }}:/checkout" \
@@ -1138,6 +1141,7 @@ public sealed class ImageCommandTests : IDisposable
                         type=raw,value=${{ github.sha }}
 
                   - name: Build and push the image
+                    timeout-minutes: 30
                     uses: docker/build-push-action@v7
                     with:
                       context: .
