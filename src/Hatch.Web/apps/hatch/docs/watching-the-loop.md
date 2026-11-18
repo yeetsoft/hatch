@@ -63,10 +63,16 @@ A session is live when it has not ended and has been heard from within the
 runner's silence limit. Silence beats everything else: a runner that has stopped
 answering reads `Gone` whatever it was last asked to do. Silence is ninety
 seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
-zero or less is not believed, and ninety stands. `Agent not starting until …`
-and `Agent needs signing in` rank below `Gone` and above `Out of usage`: the
-agent itself, not the account, is the problem, and a runner stuck here is left
-out of the board's peer set and is never elected driver until the check passes.
+zero or less is not believed, and ninety stands. `Agent not starting until …`,
+`Agent needs signing in` and `Paused by the board until …` rank below `Gone`
+and above `Out of usage`: the agent itself, not the account, is the problem,
+and a runner stuck here is left out of the board's peer set and is never
+elected driver until the check passes. The last is not the agent's report: the
+board stood the session down after it dropped three tickets in a row without
+spending a token, and the line after the dash is the board's own. It reads the
+same on the session's line and on the runner's row, in your own time zone, and
+ends by itself when the time passes; the row then reads as it would without it.
+The go-to-work control's reason line uses the same words.
 `Over 200k tokens/hour until 3:40am` ranks below `Gone`, `Agent down` and `Out
 of usage` and above `Paused`. It means the loop is waiting out its hourly token
 cap and resumes by itself when the time passes. A runner that holds no hourly
@@ -429,6 +435,11 @@ again, so two sessions on one tag may have run different weights; it is read
 before the session starts, so it is never the weights of a later pull. The
 leaderboard's session list has the same model column. Nothing here measures
 trust: the log says what ran, and a person reads it.
+
+A row also says how the session ended, when its release said so: `worked`,
+`dropped` and the like. A `dropped` row that came with a reason names it too,
+as `dropped - quiet`, `dropped - run-time` or `dropped - error`. A row written
+before this, or one whose release named neither, shows nothing added.
 
 ## The battery
 

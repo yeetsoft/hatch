@@ -229,6 +229,32 @@ describe('an agent-down runner', () => {
     );
   });
 
+  it('ranks a board pause where a paused agent ranks, over exhausted', () => {
+    const paused = { agentDownUntil: at(60_000), agentDownKind: 'board-paused' };
+    expect(runnerActivity(runner(paused), NOW)).toBe('agent-down');
+    expect(runnerActivity(runner({ ...paused, exhaustedUntil: at(3_600_000) }), NOW)).toBe('agent-down');
+    expect(runnerActivity(runner({ ...GONE, ...paused }), NOW)).toBe('gone');
+  });
+
+  it('words a board pause with the clock and the board line, never as an agent not starting', () => {
+    const words = activityWords(
+      runner({ agentDownUntil: at(3_600_000), agentDownKind: 'board-paused', agentDownLine: 'three sessions ended in error' }),
+      NOW,
+    );
+    expect(words).toMatch(/^Paused by the board until \d{1,2}:\d{2}(am|pm) - three sessions ended in error$/);
+    expect(words).not.toContain('Agent not starting');
+  });
+
+  it('drops the dash from a board pause with no line', () => {
+    expect(activityWords(runner({ agentDownUntil: at(3_600_000), agentDownKind: 'board-paused' }), NOW)).toMatch(
+      /^Paused by the board until \d{1,2}:\d{2}(am|pm)$/,
+    );
+  });
+
+  it('reads a board pause that has passed as it would without one', () => {
+    expect(activityWords(runner({ agentDownUntil: at(-60_000), agentDownKind: 'board-paused', agentDownLine: 'x' }), NOW)).toBe('Idle');
+  });
+
   it('is drawn as a danger', () => {
     expect(ACTIVITY_TONES['agent-down']).toBe('danger');
   });

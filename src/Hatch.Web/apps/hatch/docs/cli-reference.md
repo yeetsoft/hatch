@@ -582,6 +582,14 @@ starting` or `needs signing in` in place of its ordinary state - ranked under
 and closes its line with `  agent said: <what it told the loop>` where it has
 one. A session beneath it reads the same word on its own line.
 
+A session the board itself stood down, after it dropped three tickets in a row
+without spending a token, reads `paused by the board` in the same place, on the
+runner's line and on the session's, and ranks the same. Its line closes with
+`  board said: <the board's line>`, not `agent said:`, since the agent said
+nothing. A pause whose time has passed is not printed, and the row reads as it
+would without it. An older `hatch` does not know the kind and prints `agent not
+starting` for it; that is accepted, and updating `hatch` fixes it.
+
 - `--json` prints the endpoint's own answer and nothing else.
 
 A runner's row is followed by one indented line per session of its own that is

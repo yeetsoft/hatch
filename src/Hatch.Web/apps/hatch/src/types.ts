@@ -2475,6 +2475,13 @@ export interface WorkLogEntry {
       run, and deducing it from an absent string is a client guessing. */
   described: boolean;
   isError: boolean;
+  /** How the release that ended the session said it ended - `worked`,
+      `dropped` and so on. Null on a row from before the server recorded it, or
+      one whose release named none. */
+  outcome: string | null;
+  /** Why a `dropped` session left the ticket where it found it - `quiet`,
+      `run-time` or `error`. Null where no reason was given. */
+  reason: string | null;
   turns: number;
   /** Notional API list price, not money that left an account. Secondary to the
       tokens everywhere it is drawn. Dollars, or null when the agent reported

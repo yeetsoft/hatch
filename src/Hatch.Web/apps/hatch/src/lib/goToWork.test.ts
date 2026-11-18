@@ -256,6 +256,16 @@ describe('statusLine', () => {
     expect(line).toMatchObject({ key: null, after: '', tone: 'danger', verb: 'Agent down' });
   });
 
+  it('reads a board pause in the same words for a row with no claim', () => {
+    const line = statusLine([runner({ agentDownUntil: at(3_600_000), agentDownKind: 'board-paused', agentDownLine: 'three in a row' })], NOW);
+    expect(line.before).toMatch(/^Paused by the board until .* - three in a row$/);
+    expect(line).toMatchObject({ key: null, after: '', tone: 'danger', verb: 'Paused by board' });
+  });
+
+  it('does not count a board pause in the past', () => {
+    expect(statusLine([runner({ agentDownUntil: at(-1000), agentDownKind: 'board-paused' })], NOW).before).toMatch(/^Idle/);
+  });
+
   it('does not count an agent-down check in the past', () => {
     expect(statusLine([runner({ agentDownUntil: at(-1000), agentDownKind: 'not-starting' })], NOW).before).toMatch(/^Idle/);
   });

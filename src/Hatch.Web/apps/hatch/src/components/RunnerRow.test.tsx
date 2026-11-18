@@ -166,4 +166,15 @@ describe('RunnerRow', () => {
     expect(html).toContain('Agent not starting until');
     expect(html).toContain('npm not found');
   });
+
+  it('draws a board-paused session as paused by the board, not as an agent not starting', () => {
+    const html = draw(
+      runner({ sessions: [session({ agentDownUntil: at(3_600_000), agentDownKind: 'board-paused', agentDownLine: 'three sessions ended in error' })] }),
+    );
+
+    expect(html).toContain('hatch-runner-glyph--agent-down');
+    expect(html).toContain('Paused by the board until');
+    expect(html).toContain('three sessions ended in error');
+    expect(html).not.toContain('Agent not starting');
+  });
 });

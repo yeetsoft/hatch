@@ -1237,6 +1237,9 @@ each, pause it the same as one ticket three times.
   restarted into the same checkout starts with the same pause. A paused
   session is left out of the peer set and the driver election, as any session
   with an agent down is.
+- **Where you see it.** The Runners page reads `Paused by the board until
+  3:40pm`, with the board's line after a dash, on the session's line and on the
+  runner's row. `hatch runners` prints `paused by the board` and `board said:`.
 - **What it stops.** While the pause lasts, the session's heartbeat is
   answered `paused`, so the loop takes nothing, and a claim from that
   checkout is refused `409` with a sentence naming the pause. A claim the

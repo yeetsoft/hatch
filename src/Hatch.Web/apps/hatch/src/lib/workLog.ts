@@ -262,6 +262,17 @@ export function modelEffortPhrase(entry: Pick<WorkLogEntry, 'playbookModel' | 'p
   return `${entry.playbookModel}/${entry.playbookEffort}`;
 }
 
+/** How a row's session ended, as the release that ended it said: the outcome
+    word, and for a `dropped` one that came with a reason, the two together -
+    `"dropped - quiet"`. Null when the outcome is - a row from before the server
+    recorded one, or a release that named none - so it says nothing rather than
+    something false. A reason on any other outcome is not drawn. */
+export function outcomePhrase(entry: Pick<WorkLogEntry, 'outcome' | 'reason'>): string | null {
+  if (!entry.outcome) return null;
+  if (entry.outcome === 'dropped' && entry.reason) return `${entry.outcome} - ${entry.reason}`;
+  return entry.outcome;
+}
+
 /** The front of a digest, enough to tell two pulls of one tag apart. The whole
     digest goes on a `title`, not here. A `sha256:` prefix is not part of it. */
 export function shortDigest(digest: string): string {
