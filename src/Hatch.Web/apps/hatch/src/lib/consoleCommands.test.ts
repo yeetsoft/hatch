@@ -195,12 +195,12 @@ describe('commandRows', () => {
     expect(names(rows)).toEqual([
       'Go to Board',
       'Go to Search',
+      'Go to Ballot',
       'Go to Dreams',
       'Go to Plan',
       'Go to Reports',
       'Go to History',
       'Go to Runners',
-      'Go to Playbooks',
     ]);
   });
 

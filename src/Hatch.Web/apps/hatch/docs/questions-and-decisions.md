@@ -65,7 +65,9 @@ and holds the ticket, and that one blocks exactly as an agent's does.
 
 An unanswered question shows in four places:
 
-- The **Ballot**, at `/ballot`, the first place a question shows. It lists every
+- The **Ballot**, at `/ballot`, the first place a question shows. It is a link
+  beside **Search** in the nav bar, a row straight after Search in the phone
+  menu, and **Go to Ballot** in the console. It lists every
   waiting question under the issues that enclose it, each issue drawn with the
   first lines of its description above its questions, and a child issue nested
   inside its parent. It answers in place: each question is drawn as the issue
