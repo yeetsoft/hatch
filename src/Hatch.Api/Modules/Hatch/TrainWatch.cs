@@ -33,17 +33,36 @@ public static class TrainWatch
     /// </remarks>
     public static bool Observe(EfHatchProject project, Dispatch.TrainHead? head, bool hasDriver, DateTimeOffset now, TimeSpan bound)
     {
-        if (head is null || head.Kind is not (WorkKinds.Merge or WorkKinds.Update) || !hasDriver)
+        if (head is null || head.Kind is not (WorkKinds.Merge or WorkKinds.Update))
         {
-            project.TrainWatchedIssueId = null;
-            project.TrainWatchedSince = null;
+            Clear(project);
+            return false;
+        }
+
+        if (!hasDriver)
+        {
+            // Every eligible runner may have been passed over on this head, so
+            // the election has nobody left to name. Clearing then would wipe the
+            // roster at the very moment it is true - keep it, and restart the
+            // clock so a runner that turns up later gets a full window. With no
+            // roster, or a different head, there is nothing to keep.
+            if (head.IssueId == project.TrainWatchedIssueId && RunnerTagColumn.Read(project.TrainStalledDrivers).Count > 0)
+            {
+                project.TrainWatchedSince = now;
+                return false;
+            }
+
+            Clear(project);
             return false;
         }
 
         if (head.IssueId != project.TrainWatchedIssueId || project.TrainWatchedSince is null)
         {
+            // A new head is a new case: the runners passed over on the last one
+            // say nothing about this one.
             project.TrainWatchedIssueId = head.IssueId;
             project.TrainWatchedSince = now;
+            project.TrainStalledDrivers = "[]";
             return false;
         }
 
@@ -51,5 +70,12 @@ public static class TrainWatch
         if (head.BroughtCurrentAt is { } broughtCurrentAt && broughtCurrentAt > since) since = broughtCurrentAt;
 
         return now - since >= bound;
+    }
+
+    private static void Clear(EfHatchProject project)
+    {
+        project.TrainWatchedIssueId = null;
+        project.TrainWatchedSince = null;
+        project.TrainStalledDrivers = "[]";
     }
 }

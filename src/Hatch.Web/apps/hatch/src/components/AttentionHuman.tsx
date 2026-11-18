@@ -17,6 +17,7 @@ import {
   runnerCapacityWords,
   stalledEmptyWords,
   stalledWords,
+  trainStalledReasonWords,
   trainStalledWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
@@ -213,20 +214,28 @@ export function AttentionHuman({
           <h3 className="hatch-attention-heading">Stalled merge trains</h3>
 
           <ul className="hatch-attention-rows">
-            {trainStalled.map((t) => (
-              <li key={t.projectKey}>
-                <Link className="hatch-attention-row" to={`/issues/${t.headKey}`}>
-                  <span className="hatch-attention-row-head">
-                    <span className="hatch-attention-key">{t.headKey}</span>
-                    <span className="hatch-attention-title">{t.projectName}</span>
-                  </span>
-                  {/* nowrap and ellipsis, and two runner names are long: the title keeps the whole sentence reachable. */}
-                  <span className="hatch-attention-files" title={trainStalledWords(t)}>
-                    {trainStalledWords(t)}
-                  </span>
-                </Link>
-              </li>
-            ))}
+            {trainStalled.map((t) => {
+              const reason = trainStalledReasonWords(t);
+              return (
+                <li key={t.projectKey}>
+                  <Link className="hatch-attention-row" to={`/issues/${t.headKey}`}>
+                    <span className="hatch-attention-row-head">
+                      <span className="hatch-attention-key">{t.headKey}</span>
+                      <span className="hatch-attention-title">{t.projectName}</span>
+                    </span>
+                    {/* nowrap and ellipsis, and two runner names are long: the title keeps the whole sentence reachable. */}
+                    <span className="hatch-attention-files" title={trainStalledWords(t)}>
+                      {trainStalledWords(t)}
+                    </span>
+                    {reason !== null && (
+                      <span className="hatch-attention-files" title={t.reason ?? undefined}>
+                        {reason}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

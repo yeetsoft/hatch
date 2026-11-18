@@ -416,6 +416,7 @@ public class HatchContext : DbContext, IModuleContext
             e.Property(p => p.BindsTracker).HasDefaultValue(false);
             e.HasIndex(p => p.BindsTracker).IsUnique().HasFilter("\"BindsTracker\" = true");
             e.Property(p => p.RunnerTags).HasColumnType("jsonb").HasDefaultValue("[]");
+            e.Property(p => p.TrainStalledDrivers).HasColumnType("jsonb").HasDefaultValue("[]");
             e.Property(p => p.StoriesOnEpics).HasDefaultValue(false);
             e.Property(p => p.CheckApprovesMerge).HasDefaultValue(false);
             e.Property(p => p.NoCodeCloses).HasDefaultValue(false);

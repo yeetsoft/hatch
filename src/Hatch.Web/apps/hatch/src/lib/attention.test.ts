@@ -28,6 +28,7 @@ import {
   sectionCollapsed,
   stalledEmptyWords,
   stalledWords,
+  trainStalledReasonWords,
   trainStalledWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
@@ -180,6 +181,7 @@ const trainStalled = (over: Partial<TrainStalled> = {}): TrainStalled => ({
   electedRunner: 'desk:/work/aerie',
   headKey: 'AER-31',
   at: '2026-09-09T12:00:00Z',
+  reason: null,
   ...over,
 });
 
@@ -727,6 +729,25 @@ describe('trainStalledWords', () => {
   it('is not counted: the row waits on a runner that may never beat again', () => {
     expect(attentionCount(attention({ trainStalled: [trainStalled()] }))).toBe(0);
     expect(pillCount(attention({ trainStalled: [trainStalled()] }))).toBe(0);
+  });
+});
+
+describe('trainStalledReasonWords', () => {
+  it('is null when the head has no comment, so the row draws one line', () => {
+    expect(trainStalledReasonWords(trainStalled())).toBeNull();
+    expect(trainStalledReasonWords(trainStalled({ reason: '  \n ' }))).toBeNull();
+  });
+
+  it('reads the first non-empty line of the comment, trimmed', () => {
+    expect(trainStalledReasonWords(trainStalled({ reason: '\n  The merge conflicts with main.  \nSecond line.' }))).toBe(
+      'The merge conflicts with main.',
+    );
+  });
+
+  it('cuts a long line with an ellipsis', () => {
+    const words = trainStalledReasonWords(trainStalled({ reason: 'x'.repeat(500) }));
+    expect(words?.length).toBe(200);
+    expect(words?.endsWith('…')).toBe(true);
   });
 });
 

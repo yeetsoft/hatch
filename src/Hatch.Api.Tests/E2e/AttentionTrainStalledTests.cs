@@ -35,7 +35,8 @@ public class AttentionTrainStalledTests(ITestOutputHelper output)
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     private static readonly TrainStalledDto Row = new(
-        "E2E", "Aerie", "laptop:/work/aerie", "desk:/work/aerie", "E2E-31", new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero));
+        "E2E", "Aerie", "laptop:/work/aerie", "desk:/work/aerie", "E2E-31", new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero),
+        "The merge conflicts with main.");
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public Task AStalledTrain_IsListedAndLeavesTheControlClear_AtTheDesktopProfile() =>
@@ -88,7 +89,7 @@ public class AttentionTrainStalledTests(ITestOutputHelper output)
             {
                 await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} h3:text-is(\"{Heading}\")");
                 await harness.WaitForVisibleAsync(
-                    deadline, $"{PanelSelector} a.hatch-attention-row[href$=\"/issues/{Row.HeadKey}\"]:has(.hatch-attention-key:text-is(\"{Row.HeadKey}\")):has(.hatch-attention-title:text-is(\"{Row.ProjectName}\")):has-text(\"{Row.PassedOverRunner} was passed over\"):has-text(\"handed to {Row.ElectedRunner}\")");
+                    deadline, $"{PanelSelector} a.hatch-attention-row[href$=\"/issues/{Row.HeadKey}\"]:has(.hatch-attention-key:text-is(\"{Row.HeadKey}\")):has(.hatch-attention-title:text-is(\"{Row.ProjectName}\")):has-text(\"{Row.PassedOverRunner} was passed over\"):has-text(\"handed to {Row.ElectedRunner}\"):has-text(\"{Row.Reason}\")");
             }
             else
             {

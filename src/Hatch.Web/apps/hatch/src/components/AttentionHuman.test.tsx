@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, ballotRowWords, contributionsHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
+import { approvedHeldEmptyWords, ballotRowWords, contributionsHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledReasonWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
 import type { Attention, ApprovedHeld, ContributionHeld, Deadlocked, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
@@ -150,6 +150,7 @@ const trainStalled = (over: Partial<TrainStalled> = {}): TrainStalled => ({
   electedRunner: 'desk:/work/aerie',
   headKey: 'AER-31',
   at: '2026-09-09T12:00:00Z',
+  reason: null,
   ...over,
 });
 
@@ -439,6 +440,19 @@ describe('AttentionHuman', () => {
     expect(html).toContain(trainStalledWords(row).replace("'", '&#x27;'));
     expect(html).toContain(`href="/issues/${row.headKey}"`);
     expect(html.indexOf('>Stalled merge trains</h3>')).toBeLessThan(html.indexOf('>Deadlocked</'));
+  });
+
+  it('draws a stalled train’s reason as a second line, and none when the head has no comment', () => {
+    const render = (row: TrainStalled) =>
+      renderToStaticMarkup(
+        <MemoryRouter>
+          <AttentionHuman attention={attention({ trainStalled: [row] })} now={new Date()} reload={noop} />
+        </MemoryRouter>,
+      );
+
+    const withReason = trainStalled({ reason: 'The merge conflicts with main.' });
+    expect(render(withReason)).toContain(trainStalledReasonWords(withReason)!);
+    expect(render(trainStalled()).match(/hatch-attention-files/g)?.length).toBe(1);
   });
 
   it('lists a deadlocked row’s key, title and sentence under Deadlocked, linked to the issue', () => {
