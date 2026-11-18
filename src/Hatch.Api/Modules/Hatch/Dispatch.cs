@@ -488,7 +488,7 @@ public sealed class Dispatch(
                         sentence is null ? hopKind : null,
                         sentence is null ? hopUnder : null,
                         sentence is null && hopKind == HopKinds.Approve
-                            ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now, pullRequestHeadSince: issue.PullRequestHeadSince).Sentence
+                            ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now, pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.RecordedBranch).Sentence
                             : sentence is null && issue.StalledAt is not null
                             ? ResumedClearNote(issue.StalledAt.Value, claimed.Now, claimed.Claims!.StallResumeSeconds)
                             : sentence is null && effective[issue.Id].Level == PriorityLevels.Economy ? pace?.Economy.ClearNote
@@ -1151,7 +1151,7 @@ public sealed class Dispatch(
             verdicts.TryGetValue(i.Id, out var v) ? v : [],
             builds.TryGetValue(i.Id, out var b) ? b : [],
             i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now,
-            pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.Contribution?.HeadBranch));
+            pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.RecordedBranch));
         var brought = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
         var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, brought, ct);
 
@@ -2255,7 +2255,7 @@ public sealed class Dispatch(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now,
                 Columns.AwaitingReview(statuses)?.Name, pullRequestHeadSince: issue.PullRequestHeadSince,
-                recordedBranch: issue.Contribution?.HeadBranch);
+                recordedBranch: issue.RecordedBranch);
 
             // A held or pushed-back row already explains itself, and so does
             // the head's own row - its kind word (merge/update/pending) says
@@ -2391,7 +2391,7 @@ public sealed class Dispatch(
         // whether or not a session is spawned for it. The one exemption is a
         // review self-move the review judge already folds - nothing is handed
         // to any runner on that row, and its own sentence says why.
-        var judged = conflicts ? ReviewWork.Judge(issue, verdicts, builds, issue.Contribution?.HeadBranch, gate.EffectivePreApproval(issue.Id).Level) : (ReviewWork.Judgement?)null;
+        var judged = conflicts ? ReviewWork.Judge(issue, verdicts, builds, issue.RecordedBranch, gate.EffectivePreApproval(issue.Id).Level) : (ReviewWork.Judgement?)null;
         var contributionHeld = judged is { } reviewJudged
             && ReviewWork.HeldContribution(issue.Project!.RunnersWorkContributions, issue.Contribution?.PullRequestUrl, reviewJudged);
         var reviewIdle = judged is { Fold: not null } || contributionHeld;

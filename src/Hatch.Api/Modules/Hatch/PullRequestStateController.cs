@@ -69,6 +69,10 @@ public class PullRequestStateController(
         if (headSha.Length > EfHatchMergeCheck.MaxShaLength)
             return BadRequest($"a sha is at most {EfHatchMergeCheck.MaxShaLength} characters");
 
+        var headBranch = request.HeadBranch?.Trim() ?? "";
+        if (headBranch.Length > ContributionRequest.MaxHeadBranchLength)
+            return BadRequest($"a branch name is at most {ContributionRequest.MaxHeadBranchLength} characters");
+
         var now = time.GetUtcNow();
         var actor = await caller.ActorNameAsync(ct);
 
@@ -89,6 +93,12 @@ public class PullRequestStateController(
         issue.PullRequestHeadSha = headSha;
         if (headMoved) issue.PullRequestHeadSince = now;
         issue.PullRequestReadAt = now;
+
+        // The head branch is fixed for a pull request, so it is kept beside the
+        // state and says nothing of its own: no event, and no move of UpdatedAt.
+        // A blank one leaves what is kept - a read that did not see the branch
+        // is not one that saw it gone.
+        if (headBranch.Length > 0) issue.PullRequestHeadBranch = headBranch;
 
         if (changed)
         {

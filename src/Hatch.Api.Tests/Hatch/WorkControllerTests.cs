@@ -11514,6 +11514,42 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task ReviewRead_CarriesTheHeadBranchARunnerReadOffThePullRequest_ForAnIssueOfOurOwn()
+    {
+        var h = await NewAsync();
+        var read = await h.FileAsync("story", "read", h.Review);
+        var unread = await h.FileAsync("story", "not read yet", h.Review);
+        await h.SetPullRequestAsync(read, "https://example.com/o/r/pull/1");
+        await h.SetPullRequestAsync(unread, "https://example.com/o/r/pull/2");
+        read.PullRequestHeadBranch = "feature/not-named-for-the-key";
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.Equal("feature/not-named-for-the-key", rows.Single(r => r.Key == Key(read)).Branch);
+        Assert.Null(rows.Single(r => r.Key == Key(unread)).Branch);
+    }
+
+    [Fact]
+    public async Task Review_NoBranchIsFolded_NamingThePullRequestsHeadBranchWhereARunnerReadOne()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "has a pull request", h.Review, rank: 1024);
+        var ours = await h.FileAsync("story", "has none yet", h.Review, rank: 2048);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        issue.PullRequestHeadBranch = "feature/x";
+        await h.Db.SaveChangesAsync();
+        await h.VerdictAsync(issue, MergeVerdicts.None);
+        await h.VerdictAsync(ours, MergeVerdicts.None);
+
+        var rows = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key, e => e.Blocked);
+
+        Assert.Equal("its recorded branch `feature/x` is not on origin", rows[Key(issue)]);
+        Assert.Equal("no branch on origin is named for it", rows[Key(ours)]);
+    }
+
+    [Fact]
     public async Task ReviewRead_CarriesWhatTheForgeLastSaidAboutThePullRequest()
     {
         var h = await NewAsync();

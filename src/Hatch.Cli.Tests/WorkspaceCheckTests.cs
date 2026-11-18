@@ -412,6 +412,34 @@ public sealed class WorkspaceCheckTests : RepoFixture
     }
 
     [Fact]
+    public void A_pull_requests_branch_is_clean_though_a_second_branch_is_named_for_the_key()
+    {
+        Publish("ha-31-first", "x.txt", "x");
+        Publish("ha-31-screenshots", "y.txt", "y");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Equal(MergeVerdicts.Ambiguous, ws.Check("HA-31")!.Kind);
+
+        var verdict = ws.Check("HA-31", recordedBranch: "ha-31-first")!;
+
+        Assert.Equal(MergeVerdicts.Clean, verdict.Kind);
+        Assert.Equal("ha-31-first", verdict.Branch);
+    }
+
+    [Fact]
+    public void A_pull_requests_branch_that_is_not_named_for_the_key_is_clean()
+    {
+        Publish("feature/x", "x.txt", "x");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Equal(MergeVerdicts.None, ws.Check("HA-31")!.Kind);
+        Assert.Equal("feature/x", ws.Check("HA-31", recordedBranch: "feature/x")!.Branch);
+        Assert.Equal(MergeVerdicts.Clean, ws.Check("HA-31", recordedBranch: "feature/x")!.Kind);
+    }
+
+    [Fact]
     public void A_recorded_branch_that_conflicts_names_the_files()
     {
         Publish("ar-77-something", "a.txt", "one\nBRANCH\nthree\n");
