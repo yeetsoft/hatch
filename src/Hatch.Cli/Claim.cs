@@ -482,7 +482,11 @@ public sealed class Claim : IAsyncDisposable
     /// given, so every release before this one - none of which named a
     /// reason - is unchanged.
     /// </param>
-    public async Task ReleaseAsync(string? outcome = null, string? reason = null)
+    /// <param name="sessionId">
+    /// The session the work-log row being stamped is keyed on. Sent only
+    /// alongside an outcome, and only when given, the way the reason is.
+    /// </param>
+    public async Task ReleaseAsync(string? outcome = null, string? reason = null, string? sessionId = null)
     {
         if (Interlocked.Exchange(ref _released, 1) == 1) return;
 
@@ -517,11 +521,19 @@ public sealed class Claim : IAsyncDisposable
         // real seconds this would otherwise cost.
         using var budget = new CancellationTokenSource(ReleaseBudget, _client.Clock);
 
-        var path = outcome is { Length: > 0 }
-            ? reason is { Length: > 0 }
-                ? $"/api/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}&reason={Uri.EscapeDataString(reason)}"
-                : $"/api/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}"
-            : $"/api/issues/{Key}/claim?token={Token}";
+        var path = $"/api/issues/{Key}/claim?token={Token}";
+        var outcomePath = path;
+        if (outcome is { Length: > 0 })
+        {
+            path += $"&outcome={Uri.EscapeDataString(outcome)}";
+            outcomePath = path;
+            if (reason is { Length: > 0 }) path += $"&reason={Uri.EscapeDataString(reason)}";
+            if (sessionId is { Length: > 0 })
+            {
+                path += $"&sessionId={Uri.EscapeDataString(sessionId)}";
+                outcomePath += $"&sessionId={Uri.EscapeDataString(sessionId)}";
+            }
+        }
 
         try
         {
@@ -537,6 +549,12 @@ public sealed class Claim : IAsyncDisposable
             // else. Otherwise the claim would sit out its lease.
             if (answer.Status == HttpStatusCode.BadRequest && outcome is ClaimOutcomes.Unservable or ClaimOutcomes.Unstarted)
                 await _client.Send(HttpMethod.Delete, $"/api/issues/{Key}/claim?token={Token}", null, budget.Token);
+
+            // A Hatch that already takes "dropped" but has never heard of
+            // the "error" reason balks at the reason alone: asked again with
+            // the outcome (and the session) kept and the reason dropped.
+            else if (answer.Status == HttpStatusCode.BadRequest && reason == ClaimLostReasons.Error)
+                await _client.Send(HttpMethod.Delete, outcomePath, null, budget.Token);
         }
         catch (OperationCanceledException)
         {
