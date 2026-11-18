@@ -377,6 +377,10 @@ public sealed class WorkCommand(Runtime runtime)
         // only for a quiet stop, dropped or flagged alike.
         string? releaseReason = null;
 
+        // The session the outcome above was reached in, so the work-log row
+        // the release stamps is the one for this session.
+        string? releaseSessionId = null;
+
         try
         {
             if (key is { Length: > 0 })
@@ -721,6 +725,7 @@ public sealed class WorkCommand(Runtime runtime)
                 owned = !report.LostLease;
                 releaseOutcome = report.ReleaseOutcome;
                 releaseReason = report.ReleaseReason;
+                releaseSessionId = report.SessionId;
                 return 0;
             }
             finally
@@ -783,12 +788,14 @@ public sealed class WorkCommand(Runtime runtime)
             // verdict, so the claim (where one was ever held) goes back the
             // same way any other stall does.
             releaseOutcome = ClaimOutcomes.Dropped;
+            releaseReason = ClaimLostReasons.Error;
+            releaseSessionId = increment?.SessionId;
 
             return 1;
         }
         finally
         {
-            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason);
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId);
         }
     }
 

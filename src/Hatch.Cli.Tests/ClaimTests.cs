@@ -672,6 +672,77 @@ public sealed class ClaimTests
         Assert.DoesNotContain("reason", released.Query, StringComparison.Ordinal);
     }
 
+    // ---- HA-2460: the session id on a release, and the error reason's retry ----
+
+    [Fact]
+    public async Task A_release_sends_the_session_id_when_given_one()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Dropped, ClaimLostReasons.Error, "s 1");
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+        Assert.Contains("reason=error", released.Query, StringComparison.Ordinal);
+        Assert.Contains("sessionId=s%201", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_release_sends_no_session_id_when_given_none()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Dropped, ClaimLostReasons.Error);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.DoesNotContain("sessionId", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_release_sends_no_session_id_when_it_has_no_outcome()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(null, null, "s-1");
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.DoesNotContain("outcome", released.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("sessionId", released.Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>A Hatch that takes "dropped" but has never heard of the "error" reason is asked again with the reason alone dropped.</summary>
+    [Fact]
+    public async Task An_error_release_a_hatch_400s_is_asked_again_keeping_the_outcome()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.BadRequest);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Dropped, ClaimLostReasons.Error, "s-1");
+
+        var released = h.Wire.To("DELETE", "/api/issues/AER-1/claim");
+        Assert.Equal(2, released.Count);
+        Assert.Contains("reason=error", released[0].Query, StringComparison.Ordinal);
+        Assert.Contains("outcome=dropped", released[1].Query, StringComparison.Ordinal);
+        Assert.Contains("sessionId=s-1", released[1].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("reason", released[1].Query, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void An_Answers_Sentence_and_Reason_read_an_object_body()
     {

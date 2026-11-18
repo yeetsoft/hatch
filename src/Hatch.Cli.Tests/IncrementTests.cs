@@ -1092,6 +1092,9 @@ public sealed class IncrementTests
         Assert.Equal("let go", report.Flag);
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
 
+        // It ran to the end and moved nothing: no reason of its own to give.
+        Assert.Null(report.ReleaseReason);
+
         // One comment naming the session, and no question: the ticket is free
         // for the very next pass to try again.
         var written = h.Wire.To("POST", "/api/issues/AER-1/comments");
@@ -1211,6 +1214,7 @@ public sealed class IncrementTests
         Assert.False(report.Unstarted);
         Assert.True(report.LetGo);
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Equal(ClaimLostReasons.Error, report.ReleaseReason);
         Assert.Contains("the session ended before it started", CommentBody(h), StringComparison.Ordinal);
     }
 
@@ -1979,6 +1983,7 @@ public sealed class IncrementTests
 
         Assert.True(report.LetGo);
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Equal(ClaimLostReasons.Error, report.ReleaseReason);
 
         var body = h.Wire.To("POST", "/api/issues/AER-1/comments")[0].Read<CommentCreateRequest>().Body;
         Assert.Contains("the session ended with an error", body, StringComparison.Ordinal);
