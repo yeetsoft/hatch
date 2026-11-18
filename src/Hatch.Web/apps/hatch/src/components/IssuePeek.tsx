@@ -9,6 +9,7 @@ import { MomentChip } from './MomentChip';
 import { Waiting } from './OpenQuestions';
 import { PullRequestLink } from './PullRequestLink';
 import { StatusPicker } from './StatusPicker';
+import { StatusPill } from './StatusPill';
 import { TypeBadge } from './TypeBadge';
 import { appHref } from '../lib/basename';
 import { askToDelete } from '../lib/deletion';
@@ -135,14 +136,16 @@ export function IssuePeek({
   /** Something on this card changed on the server: the board reloads. */
   onExpedited: () => void;
   /** Move the card to another column, the same path a drag takes. Rejects with
-      the server's own sentence on a refusal. */
-  onMove: (key: string, statusId: number) => Promise<void>;
+      the server's own sentence on a refusal. Absent where the host has no move
+      path of its own (the Ballot): the status then draws as a plain pill. */
+  onMove?: (key: string, statusId: number) => Promise<void>;
   /** Ask to remand the card to a dream in a deferred column. The board opens
-      the dialog; the peek stays open under it. */
-  onRemand: (key: string, statusId: number) => void;
+      the dialog; the peek stays open under it. Absent along with `onMove`. */
+  onRemand?: (key: string, statusId: number) => void;
   /** Delete the card. The board closes the peek and reloads on success; rejects
-      with the server's own sentence on a refusal. */
-  onDelete: (key: string) => Promise<void>;
+      with the server's own sentence on a refusal. Absent, the footer draws no
+      Delete. */
+  onDelete?: (key: string) => Promise<void>;
   onClose: () => void;
 }) {
   const key = card?.key ?? null;
@@ -281,7 +284,7 @@ export function IssuePeek({
       if (!key) return;
       apply(key, { moving: true, moveError: undefined });
       try {
-        await onMove(key, statusId);
+        await onMove?.(key, statusId);
         apply(key, { moving: false });
       } catch (err) {
         apply(key, { moving: false, moveError: message(err) });
@@ -294,7 +297,7 @@ export function IssuePeek({
      issue page. On success the board has already closed the peek, so there is
      nothing to apply; `apply` is key-guarded in any case. */
   const remove = useCallback(async () => {
-    if (!key) return;
+    if (!key || !onDelete) return;
     apply(key, { deleting: true, deleteError: undefined });
     const done = await askToDelete(key, (q) => confirm(q), onDelete);
     if (done.outcome === 'cancelled') apply(key, { deleting: false });
@@ -361,9 +364,11 @@ export function IssuePeek({
       footer={
         <div className="hatch-form-actions">
           {/* Leftmost, away from the primary "Open the issue". */}
-          <Button variant="danger" loading={asked.deleting ?? false} onClick={() => void remove()}>
-            Delete
-          </Button>
+          {onDelete && (
+            <Button variant="danger" loading={asked.deleting ?? false} onClick={() => void remove()}>
+              Delete
+            </Button>
+          )}
           {/* An anchor rather than a <Link>: target="_blank" opens a second
               document, which React Router does not route. appHref is what keeps
               that second document on the right prefix - see lib/basename.ts.
@@ -385,7 +390,8 @@ export function IssuePeek({
       <div className="hatch-peek" data-console-over="">
         <div className="hatch-peek-meta">
           <TypeBadge type={card.type} />
-          {status && (
+          {status && !onMove && <StatusPill status={status} size="sm" />}
+          {status && onMove && (
             <StatusPicker
               key={card.key}
               issueKey={card.key}
@@ -393,7 +399,7 @@ export function IssuePeek({
               statuses={statuses}
               busy={asked.moving ?? false}
               onMove={(statusId) => void move(statusId)}
-              onRemand={(statusId) => onRemand(card.key, statusId)}
+              onRemand={(statusId) => onRemand?.(card.key, statusId)}
               blocked={(target) => moveBlocked(target, moveProject, card)}
             />
           )}
