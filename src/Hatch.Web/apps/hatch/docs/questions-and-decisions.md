@@ -83,8 +83,10 @@ An unanswered question shows in four places:
   question answered elsewhere leaves it.
 - A `?` badge with a count, on the ticket's card on the board.
 - **Questions to answer**, in the **What is waiting on you** panel
-  ([watching the loop](watching-the-loop#what-is-waiting-on-you)). It has one row
-  per question, oldest first. A row opens the issue; it does not answer in place.
+  ([watching the loop](watching-the-loop#what-is-waiting-on-you)). It opens with
+  a row, **Answer on the Ballot**, with the count, that goes to the Ballot. One
+  smaller entry per question follows, oldest first, and opens the issue. The
+  panel does not answer in place.
 - The **Waiting on you** card on the issue page, where each question shows its
   options with the recommended one marked.
 - Clicking the card behind the badge opens the peek with the same card drawn
