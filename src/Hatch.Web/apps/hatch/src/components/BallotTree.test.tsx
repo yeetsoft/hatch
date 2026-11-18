@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { BallotTree } from './BallotTree';
@@ -37,14 +37,57 @@ const node = (over: Partial<BallotNode> = {}): BallotNode => ({
   ...over,
 });
 
-const render = (roots: BallotNode[], projects: Project[] = []) =>
-  renderToStaticMarkup(
+const noop = () => undefined;
+
+/* appHref and useStandalone read `window`; there is none here. The same stub
+   IssuePeek.test.tsx gives its New tab cases. */
+const stubWindow = (standalone: boolean) =>
+  vi.stubGlobal('window', {
+    matchMedia: () => ({ matches: standalone, addEventListener: noop, removeEventListener: noop }),
+    navigator: {},
+    location: { pathname: '/' },
+  });
+
+afterEach(() => vi.unstubAllGlobals());
+
+const render = (roots: BallotNode[], projects: Project[] = [], onPreview: (n: BallotNode) => void = noop) => {
+  stubWindow(false);
+  return renderToStaticMarkup(
     <MemoryRouter>
-      <BallotTree roots={roots} projects={projects} now={now} />
+      <BallotTree roots={roots} projects={projects} now={now} onPreview={onPreview} />
     </MemoryRouter>,
   );
+};
 
 describe('BallotTree', () => {
+  it('gives a root and a nested child each a Preview button and an Open in new tab link', () => {
+    const child = node({ key: 'PRJ-2', type: 'story', title: 'The story' });
+    const html = render([node({ children: [child] })]);
+
+    expect(html.split('>Preview<').length - 1).toBe(2);
+    for (const key of ['PRJ-1', 'PRJ-2']) {
+      const anchor = html.match(new RegExp(`<a [^>]*href="[^"]*/issues/${key}"[^>]*target="_blank"[^>]*>`));
+      expect(anchor?.[0]).toContain('rel="noreferrer noopener"');
+      // The key itself is still the in-tab link.
+      const keyLink = html.match(new RegExp(`<a [^>]*class="hatch-ballot-key"[^>]*>${key}</a>`));
+      expect(keyLink?.[0]).toContain(`href="/issues/${key}"`);
+      expect(keyLink?.[0]).not.toContain('_blank');
+    }
+    expect(html.split('Open in new tab').length - 1).toBe(2);
+  });
+
+  it('draws no new-tab link in the installed app, which has no second document', () => {
+    stubWindow(true);
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <BallotTree roots={[node()]} projects={[]} now={now} onPreview={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('>Preview<');
+    expect(html).not.toContain('Open in new tab');
+  });
+
   it('says nothing is waiting, in the attention panel\'s words, with no roots', () => {
     const html = render([]);
 

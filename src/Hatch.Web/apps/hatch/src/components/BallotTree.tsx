@@ -1,9 +1,13 @@
 import { Link } from 'react-router-dom';
-import { ProjectMark } from '@hatch/ui';
+import { Button, ProjectMark } from '@hatch/ui';
 import { QuestionOptions } from './OpenQuestions';
 import { TypeBadge } from './TypeBadge';
 import { questionEmptyWords, waitedWords } from '../lib/attention';
+import { appHref } from '../lib/basename';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { scopedPath } from '../lib/scope';
+import { useScope } from '../lib/useScope';
+import { useStandalone } from '../lib/viewport';
 import type { BallotNode, Project, Question } from '../types';
 
 /**
@@ -20,18 +24,21 @@ export function BallotTree({
   roots,
   projects,
   now,
+  onPreview,
 }: {
   roots: BallotNode[];
   /** Every project, for each node's mark; a key naming none is drawn as letters. */
   projects: Project[];
   now: Date;
+  /** Preview was pressed on an issue: the page opens the peek over the ballot. */
+  onPreview: (node: BallotNode) => void;
 }) {
   if (roots.length === 0) return <p className="hatch-attention-empty">{questionEmptyWords()}</p>;
 
   return (
     <div className="hatch-ballot">
       {roots.map((root) => (
-        <BallotBranch key={root.key} node={root} projects={projects} now={now} top />
+        <BallotBranch key={root.key} node={root} projects={projects} now={now} onPreview={onPreview} top />
       ))}
     </div>
   );
@@ -41,14 +48,18 @@ function BallotBranch({
   node,
   projects,
   now,
+  onPreview,
   top = false,
 }: {
   node: BallotNode;
   projects: Project[];
   now: Date;
+  onPreview: (node: BallotNode) => void;
   top?: boolean;
 }) {
   const project = projects.find((p) => p.key === node.projectKey) ?? null;
+  const standalone = useStandalone();
+  const { keys } = useScope();
 
   return (
     <section className={`hatch-ballot-node${top ? ' top' : ''}`}>
@@ -66,6 +77,22 @@ function BallotBranch({
           {node.key}
         </Link>
         <span className="hatch-ballot-title">{node.title}</span>
+        <span className="hatch-ballot-actions">
+          <Button size="sm" onClick={() => onPreview(node)}>
+            Preview
+          </Button>
+          {/* An anchor, not a <Link>, and not in the installed app: the same
+              two reasons as the peek's own "New tab" (components/IssuePeek.tsx). */}
+          {!standalone && (
+            <a
+              href={appHref(scopedPath(`/issues/${node.key}`, keys))}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Open in new tab ↗
+            </a>
+          )}
+        </span>
       </header>
 
       {/* Text, never markdown: it is the description's first lines as written,
@@ -85,7 +112,7 @@ function BallotBranch({
       {node.children.length > 0 && (
         <div className="hatch-ballot-nested">
           {node.children.map((child) => (
-            <BallotBranch key={child.key} node={child} projects={projects} now={now} />
+            <BallotBranch key={child.key} node={child} projects={projects} now={now} onPreview={onPreview} />
           ))}
         </div>
       )}
@@ -94,8 +121,8 @@ function BallotBranch({
 }
 
 /** A question in the attention panel's register, in full rather than clamped:
-    this page exists to read it beside the brief. The row opens its issue,
-    where it is answered until answering here arrives. */
+    this page exists to read it beside the brief. The row opens its issue; the
+    issue's Preview answers it in place. */
 function BallotQuestion({ question, now }: { question: Question; now: Date }) {
   return (
     <Link className="hatch-attention-row hatch-ballot-question" to={`/issues/${question.issueKey}`}>
