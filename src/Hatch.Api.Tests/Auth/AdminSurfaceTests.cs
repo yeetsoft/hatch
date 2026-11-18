@@ -140,6 +140,12 @@ public class AdminSurfaceTests
         // widens neither - a key that could not read the board could not read
         // this, and it says strictly less than the board does.
         "AttentionController.GetAttention",
+
+        // The same questions as GetQuestions, read as a tree of the issues that
+        // enclose them. Key-accepting like GetQuestions, and it widens
+        // nothing: it reads the same waiting comments, and the issues above
+        // them, under the same scope as the board.
+        "BallotController.GetBallot",
         "ImportController.Preview",
         "ImportController.PreviewText",
         "ImportController.Import",
@@ -836,6 +842,7 @@ public class AdminSurfaceTests
         "AttachmentsController.GetAttachments",
         "AttentionController.GetAttention",
         "BackupController.GetBackup",
+        "BallotController.GetBallot",
         "BoardController.GetBoard",
         "BroughtCurrentController.PutBroughtCurrent",
         "BuildCheckController.PutBuildCheck",
