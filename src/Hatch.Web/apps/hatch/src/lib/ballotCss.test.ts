@@ -43,13 +43,13 @@ describe('the ballot stylesheet', () => {
     '.hatch-ballot-title',
     '.hatch-ballot-excerpt',
     '.hatch-ballot-nested',
-    '.hatch-ballot-question',
-    '.hatch-ballot-question-body',
+    '.hatch-ballot .hatch-question',
+    '.hatch-ballot .hatch-answer-box input',
   ])('lets %s shrink below its content', (selector) => {
     expect(declarationsOf(selector)['min-width']).toBe('0');
   });
 
-  it.each(['.hatch-ballot-title', '.hatch-ballot-excerpt', '.hatch-ballot-question-body'])(
+  it.each(['.hatch-ballot-title', '.hatch-ballot-excerpt', '.hatch-ballot .hatch-question-body'])(
     'wraps a long unbroken token in %s',
     (selector) => {
       expect(declarationsOf(selector)['overflow-wrap']).toBe('anywhere');
