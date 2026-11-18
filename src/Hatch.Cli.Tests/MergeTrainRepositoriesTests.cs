@@ -97,13 +97,18 @@ public sealed partial class MergeTrainTests
             rig.H.Forge.MergeAnswer = new(true, null);
             rig.H.Forge.UpdateAnswer = new(UpdateOutcomes.Updated, null);
             rig.H.Forge.Answer = Built(BuildVerdicts.Passed);
+            rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
 
             await rig.Train.TickAsync(RuntimeHolding(rig, "/checkouts/one"), default);
 
             Assert.Empty(rig.H.Forge.MergeCalls);
             Assert.Empty(rig.H.Forge.UpdateCalls);
             Assert.Empty(rig.H.Forge.Reads);
-            Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+            var comments = rig.H.Wire.To("POST", Comments("AER-1"));
+            if (kind == WorkKinds.Hold) Assert.Empty(comments);
+            else Assert.Equal(
+                "No checkout here matches its repository, so its pull request is not read.",
+                Assert.Single(comments).Read<CommentCreateRequest>().Body);
             Assert.Empty(rig.H.Wire.To("PUT", BuildPut("AER-1")));
             Assert.Empty(rig.H.Say.Complained);
         }
