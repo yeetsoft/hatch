@@ -6727,6 +6727,16 @@ order of what a person would do about each, and **conflicts come first**:
 8. Otherwise, `none`: *its branch merges cleanly with `<trunk>` and no checks ran
    on it*.
 
+The two "nothing for an agent to do" sentences of steps 6 and 7 are clean and
+green, so they also say who the issue is waiting on. Only the approve hop carries
+an issue past review, and only `preapproved` arms it. Below that the sentence
+continues *; it waits for an owner or approver to approve it*, and where the
+issue's effective level is `express` it says *; express does not carry it past
+review, so it waits for an owner or approver to approve it*. A `preapproved`
+issue that still reaches this fold — no pull request recorded, or nothing for the
+merge judge to merge — keeps the bare sentence: an approver is not what holds it.
+The queue, `GET /api/work/queue` and the board's own row all print the same text.
+
 Where the project binds repositories only a verdict for one it still binds
 counts, for a merge check and a build alike, and an issue conflicts, or has a
 failing build, if any one of its counted verdicts says so. Every other fold still

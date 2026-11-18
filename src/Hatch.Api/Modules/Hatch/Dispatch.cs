@@ -2391,7 +2391,7 @@ public sealed class Dispatch(
         // whether or not a session is spawned for it. The one exemption is a
         // review self-move the review judge already folds - nothing is handed
         // to any runner on that row, and its own sentence says why.
-        var judged = conflicts ? ReviewWork.Judge(issue, verdicts, builds, issue.RecordedBranch) : (ReviewWork.Judgement?)null;
+        var judged = conflicts ? ReviewWork.Judge(issue, verdicts, builds, issue.RecordedBranch, gate.EffectivePreApproval(issue.Id).Level) : (ReviewWork.Judgement?)null;
         var contributionHeld = judged is { } reviewJudged
             && ReviewWork.HeldContribution(issue.Project!.RunnersWorkContributions, issue.Contribution?.PullRequestUrl, reviewJudged);
         var reviewIdle = judged is { Fold: not null } || contributionHeld;
