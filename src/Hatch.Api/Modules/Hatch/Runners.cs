@@ -489,6 +489,31 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     }
 
     /// <summary>
+    /// The names of every live runner eligible to drive each project, keyed by
+    /// the project's id, whether or not the project's train has passed it over
+    /// - the roster the attention page compares a train's pass-overs against.
+    /// Distinct, because one key with two sessions is two candidates of one
+    /// name. A project nobody is eligible for has no entry.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<int, IReadOnlyList<string>>> EligibleNamesAsync(
+        HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
+    {
+        var (candidates, people, projects, scopes) = await LiveCandidatesAsync(db, keys, now, ct);
+
+        var byProject = new Dictionary<int, IReadOnlyList<string>>();
+        foreach (var project in projects)
+        {
+            var names = CapableCandidates(candidates, people, scopes, project)
+                .Select(c => c.Name)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (names.Count > 0) byProject[project.Id] = names;
+        }
+
+        return byProject;
+    }
+
+    /// <summary>
     /// Every live candidate for a driver, board-wide, plus who a merge
     /// belongs to per project and the projects themselves - the shared read
     /// <see cref="DriversAsync"/> and <see cref="ProjectDriversAsync"/> both
@@ -618,6 +643,25 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         Dictionary<int, HashSet<Guid>> people,
         IReadOnlyDictionary<Guid, VisibleProjects> scopes,
         EfHatchProject project) =>
+        CapableCandidates(candidates, people, scopes, project)
+            // A candidate this project's train has just passed over stays
+            // eligible for every other project - see TrainWatch.Observe -
+            // so being stuck driving one merge column never costs a
+            // candidate its place on the rest of the board.
+            .Where(c => c.Name != project.TrainStalledDriver)
+            .OrderBy(c => c.FirstSeenAt).ThenBy(c => c.Name, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Every candidate able to drive <paramref name="project"/>, before the
+    /// train's own pass-over is applied - <see cref="EligibleCandidates"/>
+    /// without its last filter, so <see cref="EligibleNamesAsync"/> can ask
+    /// who could drive a project that has passed its driver over.
+    /// </summary>
+    private static IEnumerable<(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, Guid? ForPersonId, RepositoryDeclaration Repos)> CapableCandidates(
+        List<(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, Guid? ForPersonId, RepositoryDeclaration Repos)> candidates,
+        Dictionary<int, HashSet<Guid>> people,
+        IReadOnlyDictionary<Guid, VisibleProjects> scopes,
+        EfHatchProject project) =>
         candidates
             .Where(c => Dispatch.HoldsCheckout(project.Repositories, c.Repos))
             // A candidate whose owner cannot see this project cannot drive it.
@@ -626,13 +670,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 || !scopes.TryGetValue(owner, out var scope)
                 || scope.Sees(project.Id))
             .Where(c => !people.TryGetValue(project.Id, out var qualifying)
-                || (c.ForPersonId is { } person && qualifying.Contains(person)))
-            // A candidate this project's train has just passed over stays
-            // eligible for every other project - see TrainWatch.Observe -
-            // so being stuck driving one merge column never costs a
-            // candidate its place on the rest of the board.
-            .Where(c => c.Name != project.TrainStalledDriver)
-            .OrderBy(c => c.FirstSeenAt).ThenBy(c => c.Name, StringComparer.Ordinal);
+                || (c.ForPersonId is { } person && qualifying.Contains(person)));
 
     /// <summary>
     /// One line at most, trimmed and capped - <see cref="IssueClaimController"/>'s

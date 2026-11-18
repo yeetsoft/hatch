@@ -12,13 +12,14 @@ public class TrainWatchTests
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan Bound = TimeSpan.FromMinutes(10);
 
-    private static EfHatchProject Project(long? watchedIssueId = null, DateTimeOffset? watchedSince = null) => new()
+    private static EfHatchProject Project(long? watchedIssueId = null, DateTimeOffset? watchedSince = null, string[]? roster = null) => new()
     {
         Key = "AER",
         Name = "Hatch",
         CreatedAt = Now,
         TrainWatchedIssueId = watchedIssueId,
         TrainWatchedSince = watchedSince,
+        TrainStalledDrivers = RunnerTagColumn.Write(roster ?? []),
     };
 
     private static Dispatch.TrainHead Head(long issueId = 1, string kind = WorkKinds.Merge, DateTimeOffset? broughtCurrentAt = null) =>
@@ -34,6 +35,16 @@ public class TrainWatchTests
         Assert.False(stalled);
         Assert.Equal(1, project.TrainWatchedIssueId);
         Assert.Equal(Now, project.TrainWatchedSince);
+    }
+
+    [Fact]
+    public void ADifferentHeadThanTheOneWatched_EmptiesTheRoster()
+    {
+        var project = Project(watchedIssueId: 9, watchedSince: Now.AddMinutes(-20), roster: ["a", "b"]);
+
+        TrainWatch.Observe(project, Head(issueId: 1), hasDriver: true, Now, Bound);
+
+        Assert.Equal("[]", project.TrainStalledDrivers);
     }
 
     [Fact]
@@ -89,13 +100,14 @@ public class TrainWatchTests
     [Fact]
     public void ANullHead_ClearsTheWatchAndIsNotStalled()
     {
-        var project = Project(watchedIssueId: 1, watchedSince: Now.AddMinutes(-20));
+        var project = Project(watchedIssueId: 1, watchedSince: Now.AddMinutes(-20), roster: ["a"]);
 
         var stalled = TrainWatch.Observe(project, null, hasDriver: true, Now, Bound);
 
         Assert.False(stalled);
         Assert.Null(project.TrainWatchedIssueId);
         Assert.Null(project.TrainWatchedSince);
+        Assert.Equal("[]", project.TrainStalledDrivers);
     }
 
     [Theory]
@@ -105,13 +117,40 @@ public class TrainWatchTests
     [InlineData(WorkKinds.Land)]
     public void AHeadNotMergeOrUpdate_ClearsTheWatchAndIsNotStalled(string kind)
     {
-        var project = Project(watchedIssueId: 1, watchedSince: Now.AddMinutes(-20));
+        var project = Project(watchedIssueId: 1, watchedSince: Now.AddMinutes(-20), roster: ["a"]);
 
         var stalled = TrainWatch.Observe(project, Head(kind: kind), hasDriver: true, Now, Bound);
 
         Assert.False(stalled);
         Assert.Null(project.TrainWatchedIssueId);
         Assert.Null(project.TrainWatchedSince);
+        Assert.Equal("[]", project.TrainStalledDrivers);
+    }
+
+    [Fact]
+    public void NobodyLeftToDrive_OnTheSameHeadWithARoster_KeepsTheWatchAndRestartsTheClock()
+    {
+        // Every eligible runner has been passed over: the election is empty
+        // because of the roster, so the roster must survive it.
+        var project = Project(watchedIssueId: 1, watchedSince: Now.AddMinutes(-20), roster: ["a"]);
+
+        var stalled = TrainWatch.Observe(project, Head(issueId: 1), hasDriver: false, Now, Bound);
+
+        Assert.False(stalled);
+        Assert.Equal(1, project.TrainWatchedIssueId);
+        Assert.Equal(Now, project.TrainWatchedSince);
+        Assert.Equal(["a"], RunnerTagColumn.Read(project.TrainStalledDrivers));
+    }
+
+    [Fact]
+    public void NobodyLeftToDrive_OnADifferentHead_ClearsTheRosterToo()
+    {
+        var project = Project(watchedIssueId: 9, watchedSince: Now.AddMinutes(-20), roster: ["a"]);
+
+        TrainWatch.Observe(project, Head(issueId: 1), hasDriver: false, Now, Bound);
+
+        Assert.Null(project.TrainWatchedIssueId);
+        Assert.Equal("[]", project.TrainStalledDrivers);
     }
 
     [Fact]

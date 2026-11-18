@@ -472,10 +472,11 @@ take for want of a model, a tool, or a dependency its project declares - and lin
 **Backups**, it lights the control and adds no pill to the bar. **Backups**
 appears only when the configured backup is failing or stale, and links to
 Settings, where the folder is fixed. **Stalled merge trains** appears only when
-a project's train has passed a driver over; each row links to the issue at the
-head of the train and names the runner passed over and the one it went to. It
-clears when that runner next checks in, and it does not light the control, since
-a runner that died never will.
+a project's train has passed over every live runner that could drive it; each
+row links to the issue at the head of the train, names the runner passed over
+and the one it went to, and under that shows the newest comment on the head, which
+is where a driver that skipped it says why. A runner checking in again does not
+clear it. It clears when the head moves on, and it does not light the control.
 
 Each row under **Stalled issues** is the issue's key, a link, its title, the
 reason the stall gave when it gave one, and then one line for who has it: `resumes
