@@ -10,7 +10,7 @@ jobs:
     # A job that has stopped making progress should cost a coffee break, not
     # an afternoon: GitHub's default is six hours, and these are several times
     # what each of these takes on a green run.
-    timeout-minutes: 15
+    timeout-minutes: 13
     runs-on: ubuntu-latest
     env:
       # Hatch's claim (docs/hatch.md, "Claim") is built out of conditional
@@ -57,6 +57,9 @@ jobs:
       # PostgreSQL 16 pg_dump is ahead of the new one on PATH, so the 18 bin
       # directory is put first for every later step, dotnet test included.
       - name: Install postgresql-client-18 (PGDG)
+        # A step's ceiling is three times the slowest of the last thirty green trunk runs,
+        # or twice where three times would reach the job's own, so it can fire first (HA-2428).
+        timeout-minutes: 3
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-common
@@ -77,9 +80,11 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
+        timeout-minutes: 2
         run: dotnet restore src/Hatch.slnx
 
       - name: Build
+        timeout-minutes: 7
         run: dotnet build src/Hatch.slnx --no-restore --configuration Release
 
       # The solution, so this one step covers both suites: Hatch.Api.Tests
@@ -92,6 +97,7 @@ jobs:
       # HA-171's hang looked: the Cli suite reported, then nothing for fourteen
       # minutes. The dump of every thread it leaves is uploaded below.
       - name: Test
+        timeout-minutes: 8
         run: |
           dotnet test src/Hatch.slnx --no-build --configuration Release \
             --blame-hang-timeout 2m \
@@ -122,7 +128,7 @@ jobs:
   # result is a different question, and one the tests above already answer on
   # this platform.
   hatch-cli:
-    timeout-minutes: 15
+    timeout-minutes: 7
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -141,6 +147,7 @@ jobs:
       # rather than shelling out to make, so the matrix leg is the unit that
       # fails and the log says which platform it was.
       - name: Publish
+        timeout-minutes: 6
         run: |
           dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
             --runtime ${{ matrix.rid }} \
@@ -163,7 +170,7 @@ jobs:
           ls -lh "$binary"
 
   web:
-    timeout-minutes: 10
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -184,6 +191,7 @@ jobs:
       # matrix is what makes a PR check say *which* app broke, and a job per app
       # is worth more than the minutes a single job would save.
       - name: Install dependencies
+        timeout-minutes: 2
         working-directory: src/Hatch.Web
         run: npm ci
 
@@ -192,10 +200,12 @@ jobs:
         run: npm run lint -w apps/${{ matrix.app }}
 
       - name: Test
+        timeout-minutes: 3
         working-directory: src/Hatch.Web
         run: npm run test --if-present -w apps/${{ matrix.app }}
 
       - name: Build
+        timeout-minutes: 2
         working-directory: src/Hatch.Web
         run: npm run build -w apps/${{ matrix.app }}
 
@@ -267,26 +277,31 @@ jobs:
       # first keeps the build from shelling out to an `npm install` on whatever
       # Node the runner image carries.
       - name: Install dependencies
+        timeout-minutes: 2
         working-directory: src/Hatch.Web
         run: npm ci
 
       - name: Build the hatch bundle
+        timeout-minutes: 2
         working-directory: src/Hatch.Web
         run: npm run build -w apps/hatch
 
       # The Swagger page's bar and stylesheet, which SwaggerPaletteTests opens.
       # Built here, ahead of the dotnet build, for the same reason as above.
       - name: Build the chrome bundle
+        timeout-minutes: 2
         working-directory: src/Hatch.Web
         run: npm run build -w apps/chrome
 
       - name: Restore
+        timeout-minutes: 2
         run: dotnet restore src/Hatch.Api.Tests/Hatch.Api.Tests.csproj
 
       # The test project, which pulls Hatch.Api in with it; the Cli suite is the
       # api job's business. The auth target runs before every build and would
       # build an SPA this job never serves.
       - name: Build
+        timeout-minutes: 5
         run: |
           dotnet build src/Hatch.Api.Tests/Hatch.Api.Tests.csproj \
             --no-restore --configuration Release \
@@ -297,17 +312,18 @@ jobs:
       # browsers` installs them; --with-deps for the shared libraries a bare
       # runner lacks. The browser is the one Playwright puts there, not one the
       # runner image happens to carry.
-      # Retried, bounded to 8 minutes per attempt: a stalled apt mirror (the
+      # Retried, bounded to 5 minutes per attempt: a stalled apt mirror (the
       # ~181 shared-library packages `--with-deps` pulls for webkit) has twice
       # cost the whole job before a test ran, while a genuinely broken install
       # still fails every attempt and so still fails the job (HA-1819).
       - name: Install browsers
+        timeout-minutes: 18
         run: |
           for attempt in 1 2 3; do
-            if timeout 8m pwsh src/Hatch.Api.Tests/bin/Release/net10.0/playwright.ps1 install chromium webkit --with-deps; then
+            if timeout 5m pwsh src/Hatch.Api.Tests/bin/Release/net10.0/playwright.ps1 install chromium webkit --with-deps; then
               exit 0
             fi
-            echo "::warning::Install browsers attempt $attempt did not finish within 8 minutes; retrying"
+            echo "::warning::Install browsers attempt $attempt did not finish within 5 minutes; retrying"
             # A timed-out attempt's own apt-get can still be running past the
             # timeout, holding the dpkg lock, which fails every later attempt
             # instantly rather than ever reaching the mirror again. Clear it.
@@ -320,6 +336,7 @@ jobs:
 
       # Same hang clamp as the api job. The trx is what the next step reads.
       - name: Test
+        timeout-minutes: 22
         run: |
           dotnet test src/Hatch.Api.Tests/Hatch.Api.Tests.csproj \
             --no-build --configuration Release \
@@ -377,13 +394,14 @@ jobs:
   # install on top of it keeps the entrypoint, the user, the environment and
   # /etc/hatch.
   hatch-runner-image:
-    timeout-minutes: 15
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Build the runner image
+        timeout-minutes: 4
         run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
 
       - name: gh is on PATH and runs
@@ -393,6 +411,7 @@ jobs:
       # runner" shows under "Building on it", and must stay in step with it.
       # jq because the base deliberately carries none.
       - name: Build an image derived from it
+        timeout-minutes: 2
         run: |
           docker build -t hatch-runner-derived:ci - <<'EOF'
           FROM hatch-runner:ci
@@ -425,16 +444,18 @@ jobs:
   # the result. A job of its own rather than steps in hatch-runner-image,
   # because another story edits that job.
   hatch-runner-recipes:
-    timeout-minutes: 30
+    timeout-minutes: 13
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Build the runner image
+        timeout-minutes: 5
         run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
 
       - name: Build every recipe on it and run every check
+        timeout-minutes: 10
         run: containers/hatch-runner/check-recipes.sh hatch-runner:ci
 
   # Proves `hatch image build` against Hatch's own repository, for real
@@ -442,7 +463,7 @@ jobs:
   # hatch-runner-image or hatch-cli, because a slow Docker build is a
   # different risk from the C# around it.
   hatch-image-cli:
-    timeout-minutes: 45
+    timeout-minutes: 14
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -454,10 +475,12 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Build the runner image
+        timeout-minutes: 5
         run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
 
       # The same publish the hatch-cli matrix's linux-x64 leg runs.
       - name: Publish
+        timeout-minutes: 4
         run: |
           dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
             --runtime linux-x64 \
@@ -472,6 +495,7 @@ jobs:
       # hatch-runner:ci - a local image has no registry manifest, so this
       # falls back to `docker image inspect`, which is linux/amd64 here.
       - name: hatch image build
+        timeout-minutes: 10
         run: artifacts/hatch/linux-x64/hatch image build --base hatch-runner:ci --image hatch-image-cli:ci
 
       - name: hatch --help runs in the result
@@ -487,6 +511,7 @@ jobs:
       # Two checkouts with distinct declarations: --repo renders and builds
       # the union, and the baked label carries every one of their ids.
       - name: hatch image build --repo renders the union of two repositories
+        timeout-minutes: 3
         run: |
           set -euo pipefail
           a=$(mktemp -d) && git -C "$a" init --quiet
@@ -528,6 +553,7 @@ jobs:
         run: artifacts/hatch/linux-x64/hatch image dockerfile --base hatch-runner:ci > /tmp/Dockerfile.rendered
 
       - name: Build through docker/build-push-action
+        timeout-minutes: 2
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -551,6 +577,7 @@ jobs:
     name: CI
     if: always()
     needs: [api, hatch-cli, web, e2e, hatch-runner-image, hatch-runner-recipes, hatch-image-cli]
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
       - name: Check that every job succeeded
