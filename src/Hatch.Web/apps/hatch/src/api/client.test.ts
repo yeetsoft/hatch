@@ -8,6 +8,7 @@ import {
   getAuthMe,
   getActivityReport,
   getChangelogReport,
+  getBallot,
   getPlan,
   getQueue,
   getTimeline,
@@ -546,6 +547,37 @@ describe('getPlan', () => {
 
   it('treats an empty list as none', async () => {
     expect(await urlOf([])).toBe('/api/plan');
+  });
+});
+
+describe('getBallot', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (projectId?: number | number[]) => {
+    const fetchMock = vi.fn(async () => new Response('{"roots":[]}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getBallot(projectId);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string with no projectId', async () => {
+    expect(await urlOf()).toBe('/api/ballot');
+  });
+
+  it('sends one projectId, as a single value', async () => {
+    expect(await urlOf(3)).toBe('/api/ballot?projectId=3');
+  });
+
+  it('repeats projectId once per id, given a list', async () => {
+    expect(await urlOf([3, 5])).toBe('/api/ballot?projectId=3&projectId=5');
+  });
+
+  it('treats an empty list as none', async () => {
+    expect(await urlOf([])).toBe('/api/ballot');
   });
 });
 

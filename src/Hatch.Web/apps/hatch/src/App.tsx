@@ -17,6 +17,7 @@ import { PullToRefresh } from './components/PullToRefresh';
 import { ScopeControl } from './components/ScopeControl';
 import { DesignIndexPage, DesignPage } from './design/DesignPage';
 import { BoardPage } from './pages/BoardPage';
+import { BallotPage } from './pages/BallotPage';
 import { PlanPage } from './pages/PlanPage';
 import { DreamsPage } from './pages/DreamsPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -185,6 +186,7 @@ function AppShell() {
           <main className="hatch-content">
             <Routes>
               <Route path="/" element={<BoardPage />} />
+              <Route path="/ballot" element={<BallotPage />} />
               <Route path="/plan" element={<PlanPage />} />
               <Route path="/dreams" element={<DreamsPage />} />
               <Route path="/reports" element={<ReportsPage />} />

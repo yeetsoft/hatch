@@ -14,9 +14,11 @@ import type { NavEntry } from './nav';
 // literally, with no parent prefix - reached from a RunnerRow, never the nav.
 // /design/:slug is reached from the gallery's own rail, and /design itself
 // only redirects to its first slug - neither is a bar entry; /design alone
-// (below, in NAV) is the row that opens it.
+// (below, in NAV) is the row that opens it. /ballot is reached by its URL
+// until its link in the bar lands (HA-2438), which takes it off this list.
 const EXCLUDED_ROUTES = new Set([
   '/',
+  '/ballot',
   '/docs',
   '/issues/:key',
   '/reports/timeline',

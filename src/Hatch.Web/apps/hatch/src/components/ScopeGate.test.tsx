@@ -3,13 +3,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { ReactElement } from 'react';
 import { MeContext } from '../lib/useMe';
 import type { MeScope, Me } from '../types';
+import { BallotPage } from '../pages/BallotPage';
 import { BoardPage } from '../pages/BoardPage';
 import { DreamsPage } from '../pages/DreamsPage';
 import { PlanPage } from '../pages/PlanPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { NO_SCOPE_MESSAGE, ScopeGate } from './ScopeGate';
 
-/* No DOM runner, so only the gate's own answer is read: the four pages are
+/* No DOM runner, so only the gate's own answer is read: the five pages are
    rendered as exported, with no router around them, which is itself the
    proof that a `none` caller never reaches a page's hooks or its fetches. */
 
@@ -38,6 +39,7 @@ describe('ScopeGate', () => {
   it('says the sentence once, and nothing else of the page, for a caller with no project in scope', () => {
     const pages: [string, ReactElement][] = [
       ['board', <BoardPage />],
+      ['ballot', <BallotPage />],
       ['plan', <PlanPage />],
       ['projects', <ProjectsPage />],
       ['dreams', <DreamsPage />],

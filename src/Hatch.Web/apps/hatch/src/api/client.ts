@@ -48,6 +48,7 @@ import type {
   OvernightDto,
   ParsedEpic,
   PastedPlan,
+  Ballot,
   Plan,
   Person,
   PersonSession,
@@ -578,6 +579,16 @@ export const getPlan = (projectId?: number | number[]) => {
   for (const id of ([] as number[]).concat(projectId ?? [])) params.append('projectId', String(id));
   const qs = params.toString();
   return fetchJson<Plan>(`/api/plan${qs ? `?${qs}` : ''}`);
+};
+
+/** Every question waiting on a person, as a tree of the issues that enclose
+    them. `projectId`, given, narrows to those projects - repeated per id, and
+    left off when none, as `getPlan`'s is. */
+export const getBallot = (projectId?: number | number[]) => {
+  const params = new URLSearchParams();
+  for (const id of ([] as number[]).concat(projectId ?? [])) params.append('projectId', String(id));
+  const qs = params.toString();
+  return fetchJson<Ballot>(`/api/ballot${qs ? `?${qs}` : ''}`);
 };
 
 // ---- Work ----

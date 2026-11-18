@@ -7308,6 +7308,126 @@ button.hatch-option.chosen {
 }
 
 /* ---------------------------------------------------------------------------
+   The ballot: every question waiting on a person, under the issue it was asked
+   on and the issues that enclose it.
+
+   See components/BallotTree.tsx. A root is a card; what is inside it is
+   spaced and ruled like the Plan page's nested epics, one step of indent and
+   one rule per level. The questions are the attention panel's own rows.
+
+   Every flex child here has min-width: 0 and every run of user text wraps
+   anywhere: an issue's title, its excerpt and a question's body are pasted
+   prose, and one unbroken token must not widen the page past the screen. */
+
+.hatch-ballot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.hatch-ballot-node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hatch-ballot-node.top {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: var(--sp-4);
+  box-shadow: var(--shadow);
+}
+
+.hatch-ballot-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.hatch-ballot-node.top > .hatch-ballot-head .hatch-ballot-title {
+  font-size: var(--t-heading);
+  font-weight: 600;
+}
+
+/* Monospaced and quiet, as the Plan page's key is: a handle to click, with
+   the title beside it the thing the eye is scanning for. */
+.hatch-ballot-key {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.hatch-ballot-key:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.hatch-ballot-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The brief, as written. pre-line keeps its line breaks and nothing else. */
+.hatch-ballot-excerpt {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--t-label);
+  color: var(--muted);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.hatch-ballot-nested {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-2);
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+
+.hatch-ballot-question {
+  min-width: 0;
+}
+
+.hatch-ballot-asker {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+/* The whole of the question, not the panel's two clamped lines. */
+.hatch-ballot-question-body {
+  min-width: 0;
+  font-size: var(--t-label);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.hatch-ballot-question .hatch-options {
+  min-width: 0;
+}
+
+@media (max-width: 40rem) {
+  .hatch-ballot-node.top {
+    padding: var(--sp-3);
+  }
+
+  .hatch-ballot-nested {
+    padding-left: var(--sp-2);
+  }
+}
+
+/* ---------------------------------------------------------------------------
    The timeline: when the work happened, one row per issue.
 
    See components/TimelineChart.tsx. A label column beside a pane of lanes; the
