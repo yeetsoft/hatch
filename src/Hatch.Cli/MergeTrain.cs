@@ -222,7 +222,9 @@ public sealed class MergeTrain : IAsyncDisposable
     /// but a pull request url is one field on one issue however many
     /// repositories its project binds - so the checkout is only somewhere for
     /// <c>gh</c> to run, taken as the first one <see cref="Checkouts.ToPoll"/>
-    /// yields for the issue. The list is per checkout too: asked at most once a
+    /// yields for the issue (<c>gh pr view</c> resolves the repository from the
+    /// url itself, so any checkout reads a pull request in any repository; the
+    /// halves that act on it use <see cref="Checkouts.ForPullRequest"/>). The list is per checkout too: asked at most once a
     /// tick, by the first row that resolves to the path, and kept for the rest.
     /// A row is accounted for by it when its url is listed with a merge state
     /// that is not <see cref="MergeStates.Unknown"/>; any other row - absent
@@ -447,10 +449,11 @@ public sealed class MergeTrain : IAsyncDisposable
             foreach (var issue in review)
             {
                 if (issue.MergeWork?.IsHead != true || !runtime.Readout.Drives(issue.ProjectKey)) continue;
+                if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
-                var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
-                    .FirstOrDefault();
+                var where = Checkouts.ForPullRequest(url, issue.Repositories,
+                    Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch));
                 if (where is null || where.Remote is null || failed.Contains(where.Path)) continue;
 
                 var clean = issue.MergeChecks
@@ -526,8 +529,9 @@ public sealed class MergeTrain : IAsyncDisposable
     /// however many repositories its project binds. <c>judgedSha</c> is read
     /// from the resolved checkout's own clean verdict rather than any bound
     /// repository's, since the pull request lives in exactly one of them: the
-    /// primary, which is what <see cref="Checkouts.ToPoll"/> already resolved
-    /// <c>where</c> to. <c>failed</c> is the same per-checkout dedupe
+    /// one its url names, which <see cref="Checkouts.ForPullRequest"/> resolved
+    /// <c>where</c> to - null, and a skip, on a runner that holds no checkout
+    /// of it. <c>failed</c> is the same per-checkout dedupe
     /// <see cref="ReadPullRequestsAsync"/> keeps, and <c>_seenMergeRefusal</c>
     /// is the same idea again, remembered across intervals rather than within
     /// one: a head that has moved, or a merge <c>gh</c> refused, is reported
@@ -548,8 +552,8 @@ public sealed class MergeTrain : IAsyncDisposable
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
-                var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
-                    .FirstOrDefault();
+                var where = Checkouts.ForPullRequest(url, issue.Repositories,
+                    Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch));
                 if (where is null || failed.Contains(where.Path)) continue;
 
                 var judgedSha = issue.MergeChecks
@@ -664,8 +668,8 @@ public sealed class MergeTrain : IAsyncDisposable
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
-                var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
-                    .FirstOrDefault();
+                var where = Checkouts.ForPullRequest(url, issue.Repositories,
+                    Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch));
                 if (where is null || failed.Contains(where.Path)) continue;
 
                 var judged = issue.MergeChecks

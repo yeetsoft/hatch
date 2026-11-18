@@ -104,7 +104,7 @@ The head of the train is the first ticket in that order that is neither held nor
 
 A pull request merged by hand on the forge closes its ticket without the train: any runner holding a checkout reports the merge within a tick, driver or not, and even when the branch is already deleted. Merging, bringing a branch current and sending one back wait for the elected driver.
 
-Only the head is touched on a tick. A clean branch whose build passed merges; a clean branch that is behind the trunk is brought current with it first, and waits for the next tick. Nothing behind the head moves, whatever its own branch and build would otherwise allow.
+Only the head is touched on a tick. A clean branch whose build passed merges; a clean branch that is behind the trunk is brought current with it first, and waits for the next tick. Nothing behind the head moves, whatever its own branch and build would otherwise allow. The train acts in the repository the pull request is in, which its url names, even when the project binds several and that one is not the first; a runner without a checkout of that repository leaves the ticket to one that has.
 
 None of this spends an increment or a session. The runner acts on its own clock, separate from the clock that reads the build and merge checks above — [`--merge-interval`](cli-reference#go-to-work) against `--interval`. A ticket can therefore be merged under a session that is still working it: if that session's own earlier push already left the branch clean and green, and its turn in the train had come by the time the train ran, the train merges it. That is the design, not a race to fix.
 
