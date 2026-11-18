@@ -147,7 +147,9 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.PullRequestMergeState,
                 i.PullRequestHeadSha,
                 i.PullRequestHeadSince,
-                RecordedBranch = i.Contribution != null ? i.Contribution.HeadBranch : null,
+                RecordedBranch = i.Contribution != null && i.Contribution.HeadBranch != null && i.Contribution.HeadBranch != ""
+                    ? i.Contribution.HeadBranch
+                    : i.PullRequestHeadBranch,
             })
             .ToListAsync(ct);
 
@@ -436,7 +438,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 var j = MergeWork.Judge(
                     issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                     merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, time.GetUtcNow(), review.Name,
-                    pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.Contribution?.HeadBranch);
+                    pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.RecordedBranch);
 
                 var key = IssueKey.Format(issue.Project!.Key, issue.Number);
                 if (j.Kind is WorkKinds.Hold or WorkKinds.Pushback)

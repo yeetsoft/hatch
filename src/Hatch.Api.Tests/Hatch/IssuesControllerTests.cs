@@ -1783,6 +1783,7 @@ public class IssuesControllerTests
         issue.PullRequestMergeState = MergeStates.Clean;
         issue.PullRequestReviewDecision = ReviewDecisions.Approved;
         issue.PullRequestHeadSha = "0123456789abcdef0123456789abcdef01234567";
+        issue.PullRequestHeadBranch = "aer-1-the-work";
         issue.PullRequestHeadSince = Now;
         issue.PullRequestReadAt = Now;
         await h.Db.SaveChangesAsync();
@@ -1793,6 +1794,7 @@ public class IssuesControllerTests
         Assert.Null(after.PullRequestMergeState);
         Assert.Null(after.PullRequestReviewDecision);
         Assert.Null(after.PullRequestHeadSha);
+        Assert.Null(after.PullRequestHeadBranch);
         Assert.Null(after.PullRequestHeadSince);
         Assert.Null(after.PullRequestReadAt);
     }

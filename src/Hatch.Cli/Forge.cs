@@ -261,7 +261,7 @@ public sealed class GhForge(
         // The url names the host, the owner and the number, so gh resolves the
         // repository from it without --hostname - unlike gh api, which ignores
         // the host in GH_REPO and always needs it.
-        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], ct);
+        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "state,headRefOid,headRefName,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], ct);
         if (ran.Code != 0) return new PullRequestAnswer(null, Why(ran));
 
         try

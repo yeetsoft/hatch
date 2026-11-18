@@ -19,6 +19,31 @@ public sealed class BranchesTests
     public void A_branch_names_a_key_at_a_hyphen(string branch, string key, bool expected) =>
         Assert.Equal(expected, Branches.Names(branch, key));
 
+    [Fact]
+    public void A_dispatch_looks_for_the_branch_its_pull_request_comes_from_and_for_none_named_for_the_key()
+    {
+        var plain = Fixtures.Work("HA-31");
+        Assert.Null(Branches.RecordedFor(plain));
+
+        var read = plain with { Issue = plain.Issue with { PullRequestHeadBranch = "feature/x" } };
+        Assert.Equal("feature/x", Branches.RecordedFor(read));
+    }
+
+    [Fact]
+    public void A_contributions_recorded_branch_comes_before_the_one_read_off_the_forge()
+    {
+        var plain = Fixtures.Work("HA-31");
+        var contribution = new ContributionDto(
+            "https://forge.example/o/r/pull/7", "feature/theirs", "octocat", "NONE",
+            DateTimeOffset.UnixEpoch, "runner-1");
+        var work = plain with
+        {
+            Issue = plain.Issue with { Contribution = contribution, PullRequestHeadBranch = "feature/read" },
+        };
+
+        Assert.Equal("feature/theirs", Branches.RecordedFor(work));
+    }
+
     [Theory]
     [InlineData("Deterministic Lifecycle Elements", "ha-31-deterministic-lifecycle-elements")]
     [InlineData("Workspace: the loop enters the issue's branch on origin, with the trunk merged in", "ha-31-workspace-the-loop-enters-the-issue-s")]

@@ -157,7 +157,11 @@ request from merging, and they show up rather than sit silent: the nav
 bar's attention panel grows a section, **Approved, not merging**, between
 *Pull requests to review* and *Questions to answer* — each row names the
 issue and says why, in its own sentence: a closed pull request, more than
-one branch on origin named for it, no branch on origin named for it, a
+one branch on origin named for it, no branch on origin named for it (both
+only for an issue the runner has not yet read a pull request for: once it
+has, the pull request's own branch is the only one looked at, whatever else
+is named for the key, and a branch that is not on origin is said by name, as
+"its recorded branch `<name>` is not on origin"), a
 pull request that changes a playbook file or `.hatch/dependencies.json` —
 a person merges either on the forge after reading it, whatever the
 ticket's pre-approval — or — rarer — a branch that holds the trunk but
