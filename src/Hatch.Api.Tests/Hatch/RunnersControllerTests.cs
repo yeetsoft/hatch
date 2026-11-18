@@ -1692,6 +1692,159 @@ public class RunnersControllerTests
         Assert.Null(runner.AgentDownKind);
     }
 
+    // ---- A pause the board wrote is the board's to lift (HA-2455) ----
+
+    private const string PausedWhere = "host:/one";
+
+    private static EfHatchRunnerSession BoardPaused(Guid apiKeyId, DateTimeOffset until, string where = PausedWhere)
+    {
+        var session = NewSession(apiKeyId, Now, where);
+        session.AgentDownUntil = until;
+        session.AgentDownKind = RunnerAgentDownKinds.BoardPaused;
+        session.AgentDownLine = "3 sessions in a row ended in error without spending a token, the last on AER-9";
+        return session;
+    }
+
+    private static async Task<(Harness H, EfApiKey Key)> KeyedAsync()
+    {
+        var h = await NewAsync(program: true, wall: true, connectionString: await ConnectAsync());
+        var key = await h.AddKeyAsync(h.Caller.Key!.Name);
+        h.Caller.Key = key;
+        return (h, key);
+    }
+
+    private static Task<EfHatchRunnerSession> OnlySessionAsync(Harness h) =>
+        h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+
+    // Needs Postgres: HeartbeatSessionAsync's MarkGoneAsync runs a conditional
+    // UPDATE the in-memory provider refuses - see SkippableFact's own.
+    [SkippableTheory]
+    [InlineData(false, null, null)]
+    [InlineData(true, "signed-out", "logged out")]
+    [InlineData(true, "board-paused", "something else")]
+    [InlineData(null, null, null)]
+    public async Task ABeatDuringABoardPause_CannotClearShortenOrRewordIt(bool? agentDown, string? kind, string? line)
+    {
+        var (h, key) = await KeyedAsync();
+        var until = Now.AddMinutes(40);
+        var paused = BoardPaused(key.Id, until);
+        h.Db.RunnerSessions.Add(paused);
+        await h.Db.SaveChangesAsync();
+
+        Assert.IsNotType<ObjectResult>((await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: PausedWhere, AgentDown: agentDown,
+            AgentDownUntil: agentDown == true ? Now.AddMinutes(1) : null, AgentDownKind: kind, AgentDownLine: line))).Result);
+
+        var after = await OnlySessionAsync(h);
+        Assert.Equal(until, after.AgentDownUntil);
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, after.AgentDownKind);
+        Assert.Equal(paused.AgentDownLine, after.AgentDownLine);
+    }
+
+    [SkippableFact]
+    public async Task ABeatAfterABoardPauseHasPassed_WritesTheThreeFieldsAsItAlwaysDid()
+    {
+        var (h, key) = await KeyedAsync();
+        h.Db.RunnerSessions.Add(BoardPaused(key.Id, Now.AddMinutes(-1)));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: PausedWhere, AgentDown: false));
+        var cleared = await OnlySessionAsync(h);
+        Assert.Null(cleared.AgentDownUntil);
+        Assert.Null(cleared.AgentDownKind);
+        Assert.Null(cleared.AgentDownLine);
+
+        var checkAt = Now.AddHours(1);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: PausedWhere, AgentDown: true, AgentDownUntil: checkAt, AgentDownKind: "signed-out", AgentDownLine: "out"));
+        var down = await OnlySessionAsync(h);
+        Assert.Equal(checkAt, down.AgentDownUntil);
+        Assert.Equal("signed-out", down.AgentDownKind);
+        Assert.Equal("out", down.AgentDownLine);
+    }
+
+    [SkippableFact]
+    public async Task ASessionBeatThatSendsBoardPaused_IsStoredAsNotStarting()
+    {
+        var (h, _) = await KeyedAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: PausedWhere, AgentDown: true, AgentDownUntil: Now.AddHours(1), AgentDownKind: "board-paused"));
+
+        Assert.Equal(RunnerAgentDownKinds.NotStarting, (await OnlySessionAsync(h)).AgentDownKind);
+    }
+
+    [SkippableFact]
+    public async Task ANewSessionRowSeededDuringAPause_StartsWithTheSameThree()
+    {
+        var (h, key) = await KeyedAsync();
+        var until = Now.AddMinutes(40);
+        var previous = BoardPaused(key.Id, until);
+        previous.EndedAt = Now.AddSeconds(-5);
+        h.Db.RunnerSessions.Add(previous);
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: PausedWhere));
+
+        var seeded = await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.EndedAt == null);
+        Assert.Equal(until, seeded.AgentDownUntil);
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, seeded.AgentDownKind);
+        Assert.Equal(previous.AgentDownLine, seeded.AgentDownLine);
+    }
+
+    [SkippableFact]
+    public async Task ANewSessionRowSeededAfterAPauseHasPassed_OrAtAnotherCheckout_StartsClear()
+    {
+        var (h, key) = await KeyedAsync();
+        var passed = BoardPaused(key.Id, Now.AddMinutes(-1));
+        passed.EndedAt = Now.AddMinutes(-2);
+        var elsewhere = BoardPaused(key.Id, Now.AddMinutes(40), where: "host:/elsewhere");
+        elsewhere.EndedAt = Now.AddSeconds(-5);
+        h.Db.RunnerSessions.AddRange(passed, elsewhere);
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: PausedWhere));
+
+        var seeded = await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.EndedAt == null);
+        Assert.Null(seeded.AgentDownUntil);
+        Assert.Null(seeded.AgentDownKind);
+        Assert.Null(seeded.AgentDownLine);
+    }
+
+    [Fact]
+    public async Task ABoardPausedSession_CarriesItsKindAndLineOnTheSessionAndOnTheRunnersRow()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        var paused = BoardPaused(key.Id, Now.AddHours(1));
+        h.Db.RunnerSessions.Add(paused);
+        await h.Db.SaveChangesAsync();
+
+        var runner = await h.OneAsync();
+
+        var session = Assert.Single(runner.Sessions);
+        Assert.Equal(Now.AddHours(1), session.AgentDownUntil);
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, session.AgentDownKind);
+        Assert.Equal(paused.AgentDownLine, session.AgentDownLine);
+        Assert.Equal(Now.AddHours(1), runner.AgentDownUntil);
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, runner.AgentDownKind);
+        Assert.Equal(paused.AgentDownLine, runner.AgentDownLine);
+    }
+
+    [Fact]
+    public async Task ABoardPausedSession_IsNeitherAPeerNorElectedDriver()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var key = await h.AddKeyAsync("session-only");
+        var session = BoardPaused(key.Id, Now.AddHours(1), "here:/checkouts/one");
+        session.Remotes = "git@example.com:o/r.git";
+        h.Db.RunnerSessions.Add(session);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Empty((await h.OneAsync()).Drives);
+    }
+
     private static EfHatchRunnerSession NewSession(Guid apiKeyId, DateTimeOffset at, string? where, string? remotes = null) => new()
     {
         ApiKeyId = apiKeyId,

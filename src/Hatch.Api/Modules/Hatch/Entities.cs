@@ -3689,7 +3689,7 @@ public class EfHatchRunner
     public const int MaxAgentLength = 16;
     public const int MaxHostLength = 64;
 
-    /// <summary>Room for <see cref="RunnerAgentDownKinds.NotStarting"/> and <see cref="RunnerAgentDownKinds.SignedOut"/>, the longer of the two.</summary>
+    /// <summary>Room for <see cref="RunnerAgentDownKinds.NotStarting"/>, <see cref="RunnerAgentDownKinds.SignedOut"/> and <see cref="RunnerAgentDownKinds.BoardPaused"/>, the longest of the three.</summary>
     public const int MaxAgentDownKindLength = 16;
 
     /// <summary>Room for what the agent said, on the terms a claim's chatter has.</summary>
@@ -4240,6 +4240,13 @@ public class EfHatchRunnerSession
     /// <summary>What this session's agent said, as <see cref="EfHatchRunner.AgentDownLine"/>.</summary>
     [MaxLength(EfHatchRunner.MaxAgentDownLineLength)]
     public string? AgentDownLine { get; set; }
+
+    /// <summary>
+    /// How many of this session's releases in a row the board marked as having
+    /// spent nothing. At <see cref="IssueClaims.RunnerPauseAfter"/> the board
+    /// pauses the session and this goes back to zero.
+    /// </summary>
+    public int PauseStreak { get; set; }
 
     /// <summary>Whether this session's loop is pulling a model, as <see cref="EfHatchRunner.Pulling"/>.</summary>
     public bool Pulling { get; set; }

@@ -370,6 +370,21 @@ public class RunnersController(
         if (live is null)
         {
             session = SeedSession(key.Id, kind, where, line, request, now, Joined(normalisedModels), Joined(normalisedHas), ip);
+
+            // A pause the board wrote outlives the row it was written on: a
+            // loop restarted into the same checkout is the same loop.
+            var paused = await db.RunnerSessions.AsNoTracking()
+                .Where(s => s.ApiKeyId == key.Id && s.Where == where
+                    && s.AgentDownKind == RunnerAgentDownKinds.BoardPaused && s.AgentDownUntil > now)
+                .OrderByDescending(s => s.Id)
+                .FirstOrDefaultAsync(ct);
+            if (paused is not null)
+            {
+                session.AgentDownUntil = paused.AgentDownUntil;
+                session.AgentDownKind = paused.AgentDownKind;
+                session.AgentDownLine = paused.AgentDownLine;
+            }
+
             db.RunnerSessions.Add(session);
             await db.SaveChangesAsync(ct);
             await sessions.TrimHistoryAsync(db, key.Id, ct);
@@ -1919,13 +1934,16 @@ public class RunnersController(
         if (request.Exhausted == true) session.ExhaustedUntil = request.ExhaustedUntil;
         else if (request.Exhausted == false) session.ExhaustedUntil = null;
 
-        if (request.AgentDown == true)
+        // A pause the board wrote is the board's to lift: nothing a runner
+        // sends clears, shortens or rewords it before it passes.
+        var boardPaused = session.AgentDownKind == RunnerAgentDownKinds.BoardPaused && session.AgentDownUntil > now;
+        if (!boardPaused && request.AgentDown == true)
         {
             session.AgentDownUntil = request.AgentDownUntil;
             session.AgentDownKind = NormaliseAgentDownKind(request.AgentDownKind);
             session.AgentDownLine = Fits(request.AgentDownLine, EfHatchRunner.MaxAgentDownLineLength);
         }
-        else if (request.AgentDown == false)
+        else if (!boardPaused && request.AgentDown == false)
         {
             session.AgentDownUntil = null;
             session.AgentDownKind = null;
@@ -2018,7 +2036,11 @@ public class RunnersController(
         return trimmed.Length > max ? trimmed[..max] : trimmed;
     }
 
-    /// <summary>One of <see cref="RunnerAgentDownKinds"/> - anything else, including absent, reads as <see cref="RunnerAgentDownKinds.NotStarting"/>.</summary>
+    /// <summary>
+    /// One of the two kinds a runner may send - anything else, including absent
+    /// and <see cref="RunnerAgentDownKinds.BoardPaused"/>, which only the board
+    /// writes, reads as <see cref="RunnerAgentDownKinds.NotStarting"/>.
+    /// </summary>
     private static string NormaliseAgentDownKind(string? kind) =>
         kind == RunnerAgentDownKinds.SignedOut ? RunnerAgentDownKinds.SignedOut : RunnerAgentDownKinds.NotStarting;
 

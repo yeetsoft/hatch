@@ -3117,6 +3117,189 @@ public class IssueClaimTests
         Assert.Equal(comments, (await h.CommentsAsync(issue)).Select(c => c.Body).ToList());
     }
 
+    // ---- Three sessions that spent nothing pause the session (HA-2455) ----
+
+    private const string PauseWhere = "host-one:/work/tree";
+
+    private static async Task<(Harness H, int SessionId)> PausableAsync(
+        int pauseAfter = 3, int pauseMinutes = 60)
+    {
+        var h = await NewAsync();
+        h.Rule = TestClaims.With(runnerPauseAfter: pauseAfter, runnerPauseMinutes: pauseMinutes);
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("runner-one");
+        return (h, await h.AddSessionAsync(h.Caller.Key.Id, PauseWhere, Now));
+    }
+
+    /// <summary>One claim, a work-log row of the given kind (none for null tokens), and a release.</summary>
+    private static async Task DropAsync(
+        Harness h, string issue, string where = PauseWhere, long? tokens = 0, bool isError = true,
+        string outcome = ClaimOutcomes.Dropped)
+    {
+        var token = await h.TakeAsync(issue, where);
+        if (tokens is { } spent) await WorkLogRowAsync(h, issue, spent, isError);
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, outcome, default));
+        h.Time.Advance(TimeSpan.FromSeconds(1));
+    }
+
+    [SkippableFact]
+    public async Task ThreeTicketsThatSpentNothing_PauseTheSession()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+
+        var last = "";
+        DateTimeOffset at = default;
+        for (var i = 0; i < 3; i++)
+        {
+            last = await h.FileAsync();
+            at = h.Time.GetUtcNow();
+            await DropAsync(h, last);
+            if (i == 1) Assert.Equal(2, (await h.SessionAsync(id)).PauseStreak);
+        }
+
+        var session = await h.SessionAsync(id);
+        Assert.Equal(at.AddMinutes(60), session.AgentDownUntil);
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, session.AgentDownKind);
+        Assert.Equal(
+            $"3 sessions in a row ended in error without spending a token, the last on {last}", session.AgentDownLine);
+        Assert.True(session.AgentDownLine!.Length <= EfHatchRunner.MaxAgentDownLineLength);
+        Assert.Equal(0, session.PauseStreak);
+    }
+
+    [SkippableFact]
+    public async Task OneTicketThatSpentNothingThreeTimes_PausesTheSession()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        var issue = await h.FileAsync();
+        for (var i = 0; i < 3; i++) await DropAsync(h, issue);
+
+        var session = await h.SessionAsync(id);
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, session.AgentDownKind);
+        Assert.Contains(issue, session.AgentDownLine);
+    }
+
+    [SkippableFact]
+    public async Task TwoReleasesThatSpentNothing_DoNotPause()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        for (var i = 0; i < 2; i++) await DropAsync(h, await h.FileAsync());
+
+        var session = await h.SessionAsync(id);
+        Assert.Null(session.AgentDownUntil);
+        Assert.Null(session.AgentDownKind);
+        Assert.Null(session.AgentDownLine);
+        Assert.Equal(2, session.PauseStreak);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseThatSpentTokens_SetsTheCountToZero()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        await DropAsync(h, await h.FileAsync());
+        await DropAsync(h, await h.FileAsync());
+        await DropAsync(h, await h.FileAsync(), tokens: 500);
+        Assert.Equal(0, (await h.SessionAsync(id)).PauseStreak);
+
+        await DropAsync(h, await h.FileAsync());
+        await DropAsync(h, await h.FileAsync());
+        Assert.Null((await h.SessionAsync(id)).AgentDownUntil);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithNoWorkLogRow_LeavesTheCountAlone()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        await DropAsync(h, await h.FileAsync());
+        await DropAsync(h, await h.FileAsync(), tokens: null);
+        Assert.Equal(1, (await h.SessionAsync(id)).PauseStreak);
+    }
+
+    [SkippableFact]
+    public async Task AWorkedRelease_LeavesTheCountAlone()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        await DropAsync(h, await h.FileAsync());
+        await DropAsync(h, await h.FileAsync(), tokens: 500, outcome: ClaimOutcomes.Worked);
+        await DropAsync(h, await h.FileAsync(), tokens: 0, outcome: ClaimOutcomes.Worked);
+        Assert.Equal(1, (await h.SessionAsync(id)).PauseStreak);
+    }
+
+    [SkippableFact]
+    public async Task TwoSessionsUnderOneKey_OnlyTheOneThatFailedIsPaused()
+    {
+        var (h, failing) = await PausableAsync();
+        await using var _ = h;
+        var other = await h.AddSessionAsync(h.Caller.Key!.Id, "host-two:/work/other", Now);
+
+        for (var i = 0; i < 3; i++) await DropAsync(h, await h.FileAsync());
+
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, (await h.SessionAsync(failing)).AgentDownKind);
+        var untouched = await h.SessionAsync(other);
+        Assert.Null(untouched.AgentDownUntil);
+        Assert.Null(untouched.AgentDownKind);
+        Assert.Equal(0, untouched.PauseStreak);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseAtACheckoutWithNoLiveSession_CountsNothing()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        for (var i = 0; i < 3; i++) await DropAsync(h, await h.FileAsync(), where: "host-three:/work/none");
+
+        var session = await h.SessionAsync(id);
+        Assert.Equal(0, session.PauseStreak);
+        Assert.Null(session.AgentDownUntil);
+    }
+
+    [SkippableFact]
+    public async Task ARunnerPauseAfterOfZero_NeverPauses()
+    {
+        var (h, id) = await PausableAsync(pauseAfter: 0);
+        await using var _ = h;
+        for (var i = 0; i < 5; i++) await DropAsync(h, await h.FileAsync());
+
+        var session = await h.SessionAsync(id);
+        Assert.Null(session.AgentDownUntil);
+        Assert.Equal(0, session.PauseStreak);
+    }
+
+    [SkippableFact]
+    public async Task ARunnerPauseAfterOfOne_PausesOnTheFirst_ForTheConfiguredMinutes()
+    {
+        var (h, id) = await PausableAsync(pauseAfter: 1, pauseMinutes: 5);
+        await using var _ = h;
+        var at = h.Time.GetUtcNow();
+        await DropAsync(h, await h.FileAsync());
+        Assert.Equal(at.AddMinutes(5), (await h.SessionAsync(id)).AgentDownUntil);
+    }
+
+    [Theory]
+    [InlineData(-1, 0, 3, 60)]
+    [InlineData(0, -5, 0, 60)]
+    [InlineData(2, 15, 2, 15)]
+    [InlineData(5, 1, 5, 1)]
+    public void TheRunnerPauseSettings_AreGuardedInOnePlace(int after, int minutes, int wantAfter, int wantMinutes)
+    {
+        var rule = TestClaims.With(runnerPauseAfter: after, runnerPauseMinutes: minutes);
+        Assert.Equal(wantAfter, rule.RunnerPauseAfter);
+        Assert.Equal(wantMinutes, rule.RunnerPauseMinutes);
+    }
+
+    [Fact]
+    public void TheRunnerPauseDefaults_AreThreeAndSixtyMinutes()
+    {
+        var options = new HatchOptions();
+        Assert.Equal(3, options.RunnerPauseAfter);
+        Assert.Equal(60, options.RunnerPauseMinutes);
+    }
+
     // ---- A no-code declaration is the review column's (HA-2198) ----
     //
     // The take and the release are conditional UPDATEs, so this lives here and

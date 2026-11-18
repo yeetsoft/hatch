@@ -10350,7 +10350,9 @@ page draws it as the throttled status, ranked below *Gone* and *Out of usage*
 and above *Paused*, in the viewer's own time zone like *Out of usage until*.
 
 **`agentDownUntil`, `agentDownKind` and `agentDownLine` are a fact a runner
-reports about its own agent, never a person's to set** — the same tri-state
+reports about its own agent, never a person's to set** — and the board's own
+only in one case, below: a session whose releases spent no tokens three times
+in a row is paused by the board with kind `board-paused` — the same tri-state
 `exhaustedUntil` has, for *the agent will not start or is signed out* rather
 than *the account is out of usage*. `agentDown: true` writes `agentDownUntil`
 and normalises `agentDownKind` to one of `not-starting` or `signed-out`
@@ -10372,6 +10374,20 @@ runner down this way is left out of `Dispatch`'s own peer set
 own heartbeat, so it is never offered either. `go-to-work` writes the tri-state
 on every beat except a `once` one, which sends none of it so a single
 increment can never clear the loop's own pause out from under it.
+
+The board writes the three itself on a session (`IssueClaimController.ReleaseClaim`)
+that has dropped `Hatch:RunnerPauseAfter` (default 3, `0` is off) tickets in a row
+that `SpentNothing` marked as having spent no tokens: `agentDownUntil` is
+`Hatch:RunnerPauseMinutes` (default 60) ahead, `agentDownKind` is `board-paused`,
+and the line names the count and the last ticket. The count is
+`EfHatchRunnerSession.PauseStreak`, kept per session and not per ticket; a
+`dropped` release whose rows spent tokens zeroes it, and a release with no row
+since the claim or any other outcome leaves it. While the pause is ahead of now a
+heartbeat cannot clear, shorten or reword it (`TouchSession`), and a session row
+seeded at the same checkout inherits it. Nothing sweeps it; it ends when
+`agentDownUntil` passes. It is out of the peer set and the election like any
+other agent-down session. This does not yet stop the session taking work, and the
+Runners page does not yet word it or offer to lift it.
 
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and

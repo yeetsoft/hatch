@@ -114,6 +114,23 @@ public class HatchOptions
     public int StallResumeLimit { get; set; } = 3;
 
     /// <summary>
+    /// How many releases in a row that spent no tokens pause a runner
+    /// session. Zero turns the pause off.
+    /// </summary>
+    /// <remarks>
+    /// Read through <see cref="IssueClaims.RunnerPauseAfter"/> and nowhere
+    /// else.
+    /// </remarks>
+    public int RunnerPauseAfter { get; set; } = 3;
+
+    /// <summary>How long a paused session stands down, in minutes.</summary>
+    /// <remarks>
+    /// Read through <see cref="IssueClaims.RunnerPauseMinutes"/> and nowhere
+    /// else.
+    /// </remarks>
+    public int RunnerPauseMinutes { get; set; } = 60;
+
+    /// <summary>
     /// How long a card sits in a terminal column before the board stops handing
     /// it over - see <see cref="DoneHorizon.Cutoff"/>. Zero turns the fold off
     /// and is kept as the operator's own choice; only a negative falls back to

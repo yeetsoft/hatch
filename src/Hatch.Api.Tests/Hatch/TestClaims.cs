@@ -27,11 +27,13 @@ internal static class TestClaims
 
     public static IssueClaims With(
         int ttlSeconds = Ttl, int stallLapseMinutes = StallLapseMinutes,
-        int stallResumeMinutes = StallResumeMinutes, int stallResumeLimit = StallResumeLimit) =>
+        int stallResumeMinutes = StallResumeMinutes, int stallResumeLimit = StallResumeLimit,
+        int runnerPauseAfter = 3, int runnerPauseMinutes = 60) =>
         new(Options.Create(new HatchOptions
         {
             ClaimTtlSeconds = ttlSeconds, StallLapseMinutes = stallLapseMinutes,
             StallResumeMinutes = stallResumeMinutes, StallResumeLimit = stallResumeLimit,
+            RunnerPauseAfter = runnerPauseAfter, RunnerPauseMinutes = runnerPauseMinutes,
         }));
 
     /// <summary>
