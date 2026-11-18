@@ -17,6 +17,7 @@ import {
   noCodeHeldEmptyWords,
   contributionsHeldEmptyWords,
   pillCount,
+  ballotRowWords,
   questionEmptyWords,
   resetWords,
   resumeWords,
@@ -750,6 +751,18 @@ describe('landingHeldEmptyWords', () => {
 describe('questionEmptyWords', () => {
   it('says nothing is waiting on an answer', () => {
     expect(questionEmptyWords()).toBe('Nothing is waiting on an answer.');
+  });
+});
+
+describe('ballotRowWords', () => {
+  it('calls the operator to the Ballot', () => {
+    expect(ballotRowWords(1).call).toBe('Answer on the Ballot');
+    expect(ballotRowWords(3).call).toBe('Answer on the Ballot');
+  });
+
+  it('counts the questions, in the singular for one', () => {
+    expect(ballotRowWords(1).count).toBe('1 question');
+    expect(ballotRowWords(3).count).toBe('3 questions');
   });
 });
 

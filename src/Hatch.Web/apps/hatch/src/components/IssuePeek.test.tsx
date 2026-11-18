@@ -218,6 +218,35 @@ describe('IssuePeek', () => {
     expect(html).not.toContain('hatch-waiting');
   });
 
+  it('draws a plain status pill and no Delete when it has no way to move or delete', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+      location: { pathname: '/' },
+    });
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <IssuePeek
+          card={card()}
+          status={status()}
+          statuses={[status()]}
+          directory={null}
+          onExpedited={noop}
+          onClose={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('hatch-status-pill');
+    expect(html).toContain('To Do');
+    expect(html).not.toContain('Delete');
+    expect(html).not.toContain('hatch-btn--danger');
+    // The picker's caret is a button; the pill is not.
+    expect(html).not.toContain('aria-expanded');
+    expect(html).toContain('Open the issue');
+  });
+
   it('shows the open questions loading before the fetch answers', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),

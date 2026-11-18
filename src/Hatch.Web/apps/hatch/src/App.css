@@ -7375,6 +7375,15 @@ button.hatch-option.chosen {
   overflow-wrap: anywhere;
 }
 
+/* Preview and the new-tab link, kept together so the head's wrap moves them as
+   one when the line is too narrow for the title as well. */
+.hatch-ballot-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
 /* The brief, as written. pre-line keeps its line breaks and nothing else. */
 .hatch-ballot-excerpt {
   margin: 0;
@@ -8684,6 +8693,28 @@ button.hatch-option.chosen {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
+}
+
+/* The one row at the head of "Questions to answer" that is a call to action:
+   it goes to the Ballot, where a question is answered. Heavier than an entry
+   and filled at rest so it reads as the section's single action. */
+.hatch-attention-row-call {
+  background: var(--primary-bg);
+}
+
+.hatch-attention-call {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+/* A question under it: only a way to one issue, so smaller and lighter - the
+   key at the micro size and the body in the muted colour it already has. */
+.hatch-attention-row-quiet {
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.hatch-attention-row-quiet .hatch-attention-row-head {
+  font-size: var(--t-micro);
 }
 
 /* The detail modal: one row per window the account is enforcing, in the

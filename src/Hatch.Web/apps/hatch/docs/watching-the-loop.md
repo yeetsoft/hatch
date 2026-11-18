@@ -457,7 +457,11 @@ them: **Trunk builds that fail**, **Backups**, **Stalled merge trains**,
 **Pull requests to review**,
 **Approved, not merging**, **Landed, not done**, **Finished with no code**,
 **Contributions runners will not work**, **Runner capacity**,
-**Waiting on a runner**. **Contributions runners will not work** lists each
+**Waiting on a runner**. **Questions to answer** opens with one row,
+**Answer on the Ballot**, with the count of questions waiting, and it goes to
+the [Ballot](questions-and-decisions#how-the-operator-answers); each question
+is listed beneath it, smaller, with its issue key and what was asked, and goes
+to that issue. The panel does not answer in place. **Contributions runners will not work** lists each
 contribution in review whose branch conflicts with the trunk or whose build
 failed, in a project that has not turned on **Runners work contributions**:
 the key links to the issue, the pull request opens on the forge, and a

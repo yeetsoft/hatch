@@ -71,13 +71,19 @@ An unanswered question shows in four places:
   waiting question under the issues that enclose it, each issue drawn with the
   first lines of its description above its questions, and a child issue nested
   inside its parent. A question shows who asked, how long it has waited and its
-  options with the recommended one marked. A row opens the issue; the Ballot
-  does not answer in place yet. It follows the tab's project scope, and a
-  question answered elsewhere leaves it.
+  options with the recommended one marked. Each issue on it has **Preview**,
+  which opens the issue in a dialog where its questions are answered, and **Open
+  in new tab**; a row still opens the issue, and so does the key. The dialog is
+  the board's peek, without the move, remand and delete controls: the status
+  shows as a plain pill. Answering leaves it open and the Ballot behind it
+  refreshes. It follows the tab's project scope, and a question answered
+  elsewhere leaves it.
 - A `?` badge with a count, on the ticket's card on the board.
 - **Questions to answer**, in the **What is waiting on you** panel
-  ([watching the loop](watching-the-loop#what-is-waiting-on-you)). It has one row
-  per question, oldest first. A row opens the issue; it does not answer in place.
+  ([watching the loop](watching-the-loop#what-is-waiting-on-you)). It opens with
+  a row, **Answer on the Ballot**, with the count, that goes to the Ballot. One
+  smaller entry per question follows, oldest first, and opens the issue. The
+  panel does not answer in place.
 - The **Waiting on you** card on the issue page, where each question shows its
   options with the recommended one marked.
 - Clicking the card behind the badge opens the peek with the same card drawn
