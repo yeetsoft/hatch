@@ -654,7 +654,7 @@ public sealed class BoardCommandsTests
             new QueueEntryDto(
                 Fixtures.Issue("AER-8"), Fixtures.Status(3, "In Progress"), review, null),
             new QueueEntryDto(
-                Fixtures.Issue("AER-9"), review, review, "its branch merges cleanly with develop - nothing for an agent to do",
+                Fixtures.Issue("AER-9"), review, review, "its branch merges cleanly with develop - nothing for an agent to do; it waits for an owner or approver to approve it",
                 WorkKinds.Conflicts),
         });
 
@@ -664,7 +664,7 @@ public sealed class BoardCommandsTests
             """
             AER-7  [task]  In Review    resolving conflicts with develop
             AER-8  [task]  In Progress  -> In Review
-            AER-9  [task]  In Review    its branch merges cleanly with develop - nothing for an agent to do
+            AER-9  [task]  In Review    its branch merges cleanly with develop - nothing for an agent to do; it waits for an owner or approver to approve it
             """.ReplaceLineEndings("\n"),
             h.Said);
     }
@@ -1230,12 +1230,12 @@ public sealed class BoardCommandsTests
         using var h = new CliHarness();
         h.Wire.Json("GET", "/api/work/queue", new[]
         {
-            Fixtures.ConflictRow("AER-14") with { Blocked = "its branch merges cleanly with main - nothing for an agent to do" },
+            Fixtures.ConflictRow("AER-14") with { Blocked = "its branch merges cleanly with main - nothing for an agent to do; it waits for an owner or approver to approve it" },
         });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
-        Assert.EndsWith("its branch merges cleanly with main - nothing for an agent to do", h.Said);
+        Assert.EndsWith("its branch merges cleanly with main - nothing for an agent to do; it waits for an owner or approver to approve it", h.Said);
         Assert.DoesNotContain("resolving", h.Said);
     }
 

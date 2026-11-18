@@ -93,18 +93,24 @@ public static class ReviewWork
 
     public static Judgement Judge(
         EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
-        string? recordedBranch = null) =>
-        Judge(issue.NoCode, issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merges, builds, recordedBranch);
+        string? recordedBranch = null, int preApproval = PreApprovalLevels.PreApproved) =>
+        Judge(issue.NoCode, issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merges, builds, recordedBranch, preApproval);
 
     /// <summary>
     /// The judgement from the facts alone, for a caller that has projected rows
     /// rather than loaded issues: the issue's no-code declaration and the
     /// repositories its project binds, in sort order.
     /// </summary>
+    /// <param name="preApproval">
+    /// The issue's effective <see cref="PreApprovalLevels"/>, which decides what a
+    /// clean, green row says it waits on. It defaults to preapproved, which adds
+    /// nothing: a caller that reads only <see cref="Judgement.Fold"/> or
+    /// <see cref="Judgement.Kind"/> need not say.
+    /// </param>
     public static Judgement Judge(
         string? noCode, IReadOnlyList<EfHatchProjectRepository> bound,
         IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
-        string? recordedBranch = null)
+        string? recordedBranch = null, int preApproval = PreApprovalLevels.PreApproved)
     {
         if (NoCode.Declared(noCode)) return Fold(NoCode.Sentence);
 
@@ -146,10 +152,10 @@ public static class ReviewWork
         }
 
         if (builtAt.Count == 0)
-            return Fold($"its branch merges cleanly with {trunk} - nothing for an agent to do");
+            return Fold($"its branch merges cleanly with {trunk} - nothing for an agent to do{WaitsOnApprover(preApproval)}");
 
         return about.All(b => b.Verdict == BuildVerdicts.Passed)
-            ? Fold($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do")
+            ? Fold($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do{WaitsOnApprover(preApproval)}")
             : Fold($"its branch merges cleanly with {trunk} and no checks ran on it");
     }
 
@@ -165,6 +171,22 @@ public static class ReviewWork
     public static IReadOnlyList<EfHatchBuildCheck> AboutTheBranch(
         IReadOnlyList<EfHatchMergeCheck> clean, IReadOnlyList<EfHatchBuildCheck> builds) =>
         builds.Where(b => clean.Any(m => m.Canonical == b.Canonical && m.BranchSha == b.Sha)).ToList();
+
+    /// <summary>
+    /// What a clean, green review row adds to "nothing for an agent to do": that a
+    /// person has to approve it. Only the approve hop carries an issue past review,
+    /// and only <see cref="PreApprovalLevels.PreApproved"/> arms it, so anything
+    /// below that waits on an owner or approver, and express says it does not help.
+    /// A preapproved issue that still reaches the fold - no pull request recorded,
+    /// or nothing for the merge judge to merge - is not held by an approver, so it
+    /// keeps the bare sentence.
+    /// </summary>
+    private static string WaitsOnApprover(int preApproval) => preApproval switch
+    {
+        >= PreApprovalLevels.PreApproved => "",
+        PreApprovalLevels.Express => "; express does not carry it past review, so it waits for an owner or approver to approve it",
+        _ => "; it waits for an owner or approver to approve it",
+    };
 
     /// <summary>A folded row, which keeps the conflicts kind it has always had.</summary>
     private static Judgement Fold(string why) => new(WorkKinds.Conflicts, why);
