@@ -456,8 +456,8 @@ beneath first, and a node's own `questions` oldest first. `BallotDto` is
 (the first three non-blank lines of the description, markdown as written, cut
 to 300 characters with a `.` appended when cut, empty when there is none),
 `IsTerminal` (an ancestor can stand in a terminal column; the issue a waiting
-question is on never does), `Children` and `Questions`, each a `QuestionDto`
-as below.
+question is on never does), `Children` (more `BallotNodeDto`) and `Questions`
+(`QuestionDto`s, as below).
 
 `CommentDto` is `Id`, `Author`, `Body`, `Kind` (`""`, `question`, `answer` or
 `message`), an optional `AnswersId`, an optional `Options`, `CreatedAt`, an
