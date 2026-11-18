@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@hatch/ui';
 import {
   approvedHeldEmptyWords,
+  ballotRowWords,
   buildIconTone,
   buildIconWords,
   contributionsHeldEmptyWords,
@@ -21,7 +22,6 @@ import {
   trunkBuildHead,
   trunkIconTone,
   trunkIconWords,
-  waitedWords,
   waitingOnARunnerEmptyWords,
 } from '../lib/attention';
 import { lastSuccessWords } from '../lib/backup';
@@ -153,6 +153,7 @@ export function AttentionHuman({
 }) {
   const reviews = attention?.reviews ?? [];
   const questions = attention?.questions ?? [];
+  const ballot = ballotRowWords(questions.length);
   const trunkBuilds = attention?.trunkBuilds ?? [];
   const approvedHeld = attention?.approvedHeld ?? [];
   const landingHeld = attention?.landingHeld ?? [];
@@ -255,16 +256,24 @@ export function AttentionHuman({
           <p className="hatch-attention-empty">{questionEmptyWords()}</p>
         ) : (
           <ul className="hatch-attention-rows">
+            <li>
+              {/* The Ballot is the place to answer: every waiting question
+                  under its issue, with the options it was asked with. This
+                  tab, so the panel closes behind it like any other row. */}
+              <Link className="hatch-attention-row hatch-attention-row-call" to="/ballot">
+                <span className="hatch-attention-row-head">
+                  <span className="hatch-attention-call">{ballot.call}</span>
+                  <span className="hatch-attention-waited">{ballot.count}</span>
+                </span>
+              </Link>
+            </li>
             {questions.map((q) => (
               <li key={q.id}>
-                {/* This tab, and to the issue rather than to anything here: a
-                    question is answered on the issue page, with the options it
-                    was asked with. Answering from here is out of scope on
-                    purpose. */}
-                <Link className="hatch-attention-row" to={`/issues/${q.issueKey}`}>
+                {/* An entry is the way to one issue, not a place to answer.
+                    Answering from the panel is out of scope on purpose. */}
+                <Link className="hatch-attention-row hatch-attention-row-quiet" to={`/issues/${q.issueKey}`}>
                   <span className="hatch-attention-row-head">
                     <span className="hatch-attention-key">{q.issueKey}</span>
-                    <span className="hatch-attention-waited">{waitedWords(q.askedAt, now)}</span>
                   </span>
                   <span className="hatch-attention-question">{q.body}</span>
                 </Link>

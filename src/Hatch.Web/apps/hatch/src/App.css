@@ -8686,6 +8686,28 @@ button.hatch-option.chosen {
   overflow: hidden;
 }
 
+/* The one row at the head of "Questions to answer" that is a call to action:
+   it goes to the Ballot, where a question is answered. Heavier than an entry
+   and filled at rest so it reads as the section's single action. */
+.hatch-attention-row-call {
+  background: var(--primary-bg);
+}
+
+.hatch-attention-call {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+/* A question under it: only a way to one issue, so smaller and lighter - the
+   key at the micro size and the body in the muted colour it already has. */
+.hatch-attention-row-quiet {
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.hatch-attention-row-quiet .hatch-attention-row-head {
+  font-size: var(--t-micro);
+}
+
 /* The detail modal: one row per window the account is enforcing, in the
    account's own order, and what has been bought on top of the subscription. */
 
