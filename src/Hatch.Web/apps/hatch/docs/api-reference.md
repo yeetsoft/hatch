@@ -439,11 +439,25 @@ one; `404` for no such key.
 | GET | `/issues/{key}/events` | The audit trail, newest first |
 | GET | `/questions` | Every question in the house, oldest first |
 | GET | `/issues/{key}/questions` | The same, for one issue |
+| GET | `/ballot` | Every waiting question, each under the chain of issues that encloses it |
 | POST | `/issues/{key}/messages/deliver` | Marks messages read; answers with the ones this call marked |
 
-All six are a key's. Both question routes take `?open=` (default `true`):
+All seven are a key's. Both question routes take `?open=` (default `true`):
 open is unanswered and not terminal, `open=false` is every question,
 answered and obviated ones included.
+
+`GET /ballot` answers the waiting questions of `/questions` as a tree, in one
+read: `{ roots: [...] }`, each root the topmost issue of a chain with the
+questions waiting beneath it. `?projectId=` narrows it to the projects named,
+and repeats as `/plan`'s does. An issue appears once however many questions
+sit under it; roots, and each node's children, run oldest waiting question
+beneath first, and a node's own `questions` oldest first. `BallotDto` is
+`Roots`. `BallotNodeDto` is `Key`, `ProjectKey`, `Type`, `Title`, `Excerpt`
+(the first three non-blank lines of the description, markdown as written, cut
+to 300 characters with a `.` appended when cut, empty when there is none),
+`IsTerminal` (an ancestor can stand in a terminal column; the issue a waiting
+question is on never does), `Children` (more `BallotNodeDto`) and `Questions`
+(`QuestionDto`s, as below).
 
 `CommentDto` is `Id`, `Author`, `Body`, `Kind` (`""`, `question`, `answer` or
 `message`), an optional `AnswersId`, an optional `Options`, `CreatedAt`, an

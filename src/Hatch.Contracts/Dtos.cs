@@ -1462,6 +1462,40 @@ public record QuestionDto(
     IReadOnlyList<CommentDto> Answers,
     bool Obviated = false);
 
+/// <summary>
+/// Every waiting question in the house, each under the chain of issues that
+/// encloses it - what <c>GET /api/ballot</c> answers.
+/// </summary>
+/// <param name="Roots">
+/// The topmost issue of each chain, oldest waiting question beneath it first.
+/// </param>
+public record BallotDto(IReadOnlyList<BallotNodeDto> Roots);
+
+/// <summary>
+/// One issue on the ballot: a container for the issues below it that have a
+/// question waiting, and the holder of any waiting on itself.
+/// </summary>
+/// <param name="Excerpt">
+/// The first three non-blank lines of the description, markdown as written,
+/// cut to 300 characters with a full stop appended when cut. Empty when there
+/// is no description.
+/// </param>
+/// <param name="IsTerminal">
+/// Whether the issue stands in a terminal column. An ancestor can; the issue a
+/// waiting question is asked on never is.
+/// </param>
+/// <param name="Children">Oldest waiting question beneath each first.</param>
+/// <param name="Questions">The questions waiting on this issue itself, oldest first.</param>
+public record BallotNodeDto(
+    string Key,
+    string ProjectKey,
+    string Type,
+    string Title,
+    string Excerpt,
+    bool IsTerminal,
+    IReadOnlyList<BallotNodeDto> Children,
+    IReadOnlyList<QuestionDto> Questions);
+
 /// <param name="Payload">
 /// <c>{ "from": …, "to": … }</c> for an edit, the source filename for an
 /// import - served as JSON rather than as a string of JSON, so a client reads
