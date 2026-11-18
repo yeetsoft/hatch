@@ -44,6 +44,26 @@ public class IssueStallController(
         var why = Normalise(request.Why);
         var now = time.GetUtcNow();
 
+        // A session that spent nothing and ended in error never got as far as
+        // doing anything to the ticket, so it has no business marking it:
+        // the mark would walk the ticket toward a person's hold for a fault
+        // that is the runner's. The call still answers 200 with the issue, so
+        // a runner cannot tell it from any other stall, and the history says
+        // what the board declined.
+        if (await SpentNothing.ClaimAsync(db, issue.Id, issue.ClaimedAt, ct))
+        {
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = await caller.ActorNameAsync(ct),
+                Kind = EfHatchIssueEvent.StallDeclined,
+                Payload = JsonSerializer.Serialize(new { why, because = SpentNothing.Because }),
+                At = now,
+            });
+            await db.SaveChangesAsync(ct);
+
+            return await IssueProjection.ToDtoAsync(db, actors, issue, claims, time.GetUtcNow(), ct);
+        }
+
         issue.Events.Add(new EfHatchIssueEvent
         {
             Actor = await caller.ActorNameAsync(ct),

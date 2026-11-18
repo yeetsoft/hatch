@@ -990,6 +990,7 @@ export type IssueEventKind =
   | 'contribution_filed'
   | 'wip_overridden'
   | 'stalled'
+  | 'stall_declined'
   | 'playbook_proposed'
   | 'held'
   | 'resumed'

@@ -2648,6 +2648,22 @@ does, because the session's own `hatch recuse` is the decision, and the
 omission — not the let-go count — is what folds the ticket; a recusal never
 raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work. `abandoned` means the loop that ran the increment died - a crash, a closed window - and the next loop in that checkout ended the session it left and released the claim for it (see *A loop that died* under [What a runner does, in order](#what-a-runner-does-in-order)); it is skipped over exactly like `unservable`, because no increment chose to end there. `unstarted` means the session's agent never started on this runner - it printed nothing before the process ended - so the ticket was never touched; it is skipped over exactly like `unservable`, neither counted nor stopped at, because there was no increment to let go.
 
+**A `dropped` release whose claim spent nothing carries a mark the board added.**
+"Spent nothing" is one rule, in `SpentNothing`, and the stall route asks it too
+(see [the stall mark](#comment-question-and-answer)): it is true when at least
+one work-log row reached the board since the claim was taken, and every such row
+has zero tokens (all four counts) and `isError` true. A row is placed by when the
+board first wrote it, not by the runner's clock, so an old session's row is never
+pulled into a new claim, and a claim with two rows spent nothing only when both
+did. A claim with no row at all is judged as it always was. The release is
+written with the outcome the runner sent, `dropped`, and the payload gains
+`spentNothing: true`; the runner's own comment is neither edited nor removed.
+`letGo` neither counts a marked release nor stops at it, and the dropped-by
+record steps over it, so the runner is not named as having let the ticket go.
+The mark is added for `dropped` only: every other outcome is written as before.
+The cause is the runner's, not the ticket's - a session that never got as far as
+reading it - so it is not held against the ticket.
+
 **A release that gave an outcome also names the runner.** The event's `from`
 reads `"<who> on <runner>"`, which cannot be split reliably, so the
 `claim_released` payload gains `runner` — the claim's runner name — beside
@@ -3293,6 +3309,17 @@ trail keeps every sentence a dispatch ever left even though the row answers
 with only the newest. `Held` is set only by `PUT /issues/{key}/hold`, a
 person's call and never a key's.
 
+**A claim that spent nothing is not stall-marked.** Where the session a runner
+ran on the ticket spent no tokens and ended in error (the rule is under
+[Claim](#claim), "A `dropped` release whose claim spent nothing"), the board
+declines the mark: `StalledAt` and `StalledWhy` stay exactly as they were, the
+route still answers `200` with the issue, and the history gets one
+`stall_declined` event naming who sent it, the sentence they sent, and
+`because: spent_nothing`. The ticket is picked up again at once; the cause is
+the runner's, not the ticket's. A claim with no work-log row, a row that spent
+tokens, a row that is not an error, or a stall sent with no claim held is marked
+as always. Counting such sessions toward a pause is not done here.
+
 **A marked issue folds the dispatcher until it resumes itself, or a person
 clears it.** `Dispatch.Blocked` reads `Held` first, right after the claim and
 before a pause: a held issue is folded unconditionally, and only `PUT
@@ -3346,7 +3373,10 @@ whose outcome was `worked` or `recused`, a `status_changed`, a `resumed` event
 `held` event is stepped over: holding is not resuming.
 A release with no outcome is skipped over — it neither counts nor stops the
 count, which is what keeps an older CLI's releases, a restart, and the pick's
-own release from reading as a string of drops. `0` on a client too old to
+own release from reading as a string of drops. So is a `dropped` release marked
+`spentNothing` (see [Claim](#claim)): the session never got as far as the
+ticket, so three such releases leave `letGo` at `0` and the ticket is never held
+for a person on their account. `0` on a client too old to
 read the field. Once a marked issue's own `letGo` reaches
 `Hatch:StallResumeLimit`, the dispatcher folds it instead of resuming it —
 see the stall mark, above.
@@ -3479,7 +3509,12 @@ had already gone quiet past its terms and is taking it over — payload
 `{ from, heardAt }`, the previous holder and when it was last heard from,
 written immediately before the `claim_taken` for the runner taking over),
 `claim_released` (payload `{ from, to, outcome }`, `outcome` left out entirely
-rather than serialized as null where the release named none), `claim_cleared`,
+rather than serialized as null where the release named none; `spentNothing:
+true` is added on a `dropped` release whose claim spent nothing), `claim_cleared`,
+`stalled` (an increment left the ticket where it found it - payload `{ why }`),
+`stall_declined` (the board left a stall mark off because the claim spent
+nothing - payload `{ why, because }`, `because` being `spent_nothing`, the actor
+whoever sent the mark),
 `ordered` (a person ordered this runner, from the Runners page, to work this
 ticket — payload `{ runner, by }`),
 `verdict_recorded` (a [check](#check) session recorded its verdict - payload
@@ -4083,11 +4118,11 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/omitted-runners/{runner}` | DELETE | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. Lifts the issue's own omission of the runner — see [Omitted runners](#omitted-runners). `404` on an unknown issue, and `404` naming the ancestor for a runner the issue does not itself omit; writes `runner_omission_lifted` |
 | `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptKey = true)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. The one second claim accepted is the live claim of the changelog task the board recorded for `{key}` ([why that one](#the-changelog-task)); a change under it writes `{ from, to, via }`, `via` the task's key, and no other issue's claim is taken. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
-| `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
+| `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it - except on a claim that [spent nothing](#claim), where the row is left as it was, the answer is still `200` with the issue, and the event is `stall_declined` |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId` and giving the lease its quiet window (a repo-sourced file row's negative id works too, and sets the window without being stored), `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off — and `maxRunSeconds`, the playbook's run cap in seconds or `0` for none (also copied onto the claim, a file row's with no id stored). `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId?, usage?, usageReadAt? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it, and the claim's quiet window with it (`400` for an unknown playbook; a repo-sourced file row's negative id is accepted); a heartbeat cannot clear it. `usage` is the runner heartbeat's reading and follows its rule (absent or empty leaves the row alone); it is written to the holding session, or to the one runner row the beat kept live (never to every row at the checkout), only on a beat that renewed the lease, is not written when `usageReadAt` is absent or older than the row's own, and a `409` writes nothing |
-| `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped`, `worked`, `preempted` or `recused`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is none of those is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
+| `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped`, `worked`, `preempted` or `recused`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is none of those is `400`. A `dropped` release whose claim [spent nothing](#claim) is written with the outcome as sent plus `spentNothing: true`, and `letGo` does not count it. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
 | `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner, headBranch? }`; answers `204`. `headBranch` is the branch the pull request comes from, kept beside the state and cleared with the url; blank or absent leaves what is kept, and writes no event. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be, or a head branch longer than a contribution's can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |

@@ -292,6 +292,13 @@ public class IssueClaimController(
         // suppress a preemption that should fire the moment it is forced off.
         if (token is not null) await TouchRunnerAsync(claim, now, ct);
 
+        // A dropped release by a claim that spent nothing is marked, so the
+        // let-go count neither counts it nor stops at it - see SpentNothing.
+        // The outcome is the runner's own and stays as sent.
+        var spentNothing = token is not null
+            && given == ClaimOutcomes.Dropped
+            && await SpentNothing.ClaimAsync(db, issue.Id, claim.ClaimedAt, ct);
+
         await WithdrawDeclarationAsync(issue, actor, now, ct);
         Log(
             issue,
@@ -302,7 +309,8 @@ public class IssueClaimController(
             now,
             given,
             claim.Runner,
-            why);
+            why,
+            spentNothing);
 
         await db.SaveChangesAsync(ct);
         return NoContent();
@@ -536,6 +544,24 @@ public class IssueClaimController(
         ?? new ClaimSnapshot(null, null, null, null, null, null, null, null);
 
     /// <summary>
+    /// The release payload. Every key past <c>from</c> and <c>to</c> is left
+    /// out when there is nothing to say, so a release that named no outcome
+    /// writes the same payload it always has.
+    /// </summary>
+    private static string ReleasePayload(
+        string? from, string? to, string? outcome, string? runner, string? reason, bool spentNothing)
+    {
+        var payload = new Dictionary<string, object?> { ["from"] = from, ["to"] = to };
+        if (outcome is null) return JsonSerializer.Serialize(payload);
+
+        payload["outcome"] = outcome;
+        payload["runner"] = runner;
+        if (reason is not null) payload["reason"] = reason;
+        if (spentNothing) payload[SpentNothing.Marker] = true;
+        return JsonSerializer.Serialize(payload);
+    }
+
+    /// <summary>
     /// The trail row, in <c>DependencyAdded</c>'s <c>{ from, to }</c> shape so
     /// the issue page's event line needs no new case to read it. A take is
     /// null-to-holder and both releases are holder-to-null; which of the two a
@@ -543,7 +569,7 @@ public class IssueClaimController(
     /// </summary>
     private void Log(
         EfHatchIssue issue, string actor, string kind, string? from, string? to, DateTimeOffset at,
-        string? outcome = null, string? runner = null, string? reason = null)
+        string? outcome = null, string? runner = null, string? reason = null, bool spentNothing = false)
     {
         issue.Events.Add(new EfHatchIssueEvent
         {
@@ -555,11 +581,7 @@ public class IssueClaimController(
             // outcome only: "from" says "<who> on <runner>" and cannot be
             // split back apart, and LetGo.By needs the runner by itself. The
             // reason rides with an outcome too, and is left out the same way.
-            Payload = outcome is null
-                ? JsonSerializer.Serialize(new { from, to })
-                : reason is null
-                    ? JsonSerializer.Serialize(new { from, to, outcome, runner })
-                    : JsonSerializer.Serialize(new { from, to, outcome, runner, reason }),
+            Payload = ReleasePayload(from, to, outcome, runner, reason, spentNothing),
             At = at,
         });
 

@@ -19,6 +19,19 @@ public class LetGoTests
         return (EfHatchIssueEvent.ClaimReleased, JsonSerializer.Serialize(payload), At.AddMinutes(-minutesAgo));
     }
 
+    /// <summary>A dropped release the board marked as having spent nothing.</summary>
+    private static (string Kind, string? Payload, DateTimeOffset At) MarkedDrop(string runner, int minutesAgo) =>
+        (EfHatchIssueEvent.ClaimReleased,
+            JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                ["from"] = "someone on somewhere",
+                ["to"] = null,
+                ["outcome"] = ClaimOutcomes.Dropped,
+                ["runner"] = runner,
+                [SpentNothing.Marker] = true,
+            }),
+            At.AddMinutes(-minutesAgo));
+
     private static (string Kind, string? Payload, DateTimeOffset At) Other(string kind, string? payload, int minutesAgo) =>
         (kind, payload, At.AddMinutes(-minutesAgo));
 
@@ -116,6 +129,66 @@ public class LetGoTests
 
         Assert.Equal(2, Count(drop, held, drop));
     }
+
+    [Fact]
+    public void Count_NeitherCountsNorStopsAtADropThatSpentNothing()
+    {
+        var drop = Release(ClaimOutcomes.Dropped, "runner", 0);
+        var marked = MarkedDrop("runner", 1);
+        var worked = Release(ClaimOutcomes.Worked, "runner", 2);
+
+        // Not counted: two plain drops with a marked one between them are two.
+        Assert.Equal(2, Count(drop, marked, drop));
+        Assert.Equal(0, Count(marked, marked, marked));
+
+        // Not stopped at: the walk goes on through it to the drop behind.
+        Assert.Equal(1, Count(marked, marked, drop));
+
+        // And it is no worked release either: the walk still ends at one.
+        Assert.Equal(1, Count(drop, marked, worked, drop));
+    }
+
+    [Fact]
+    public void By_StepsOverADropThatSpentNothing_SoItsRunnerIsNotNamed()
+    {
+        var runner = $"runner-{Guid.NewGuid():N}";
+
+        Assert.Null(LetGo.By([MarkedDrop(runner, 1)]));
+        Assert.Null(LetGo.By([MarkedDrop(runner, 1), MarkedDrop(runner, 5)]));
+    }
+
+    [Fact]
+    public void By_NamesAnEarlierRealDrop_BehindADropThatSpentNothing()
+    {
+        var earlier = $"runner-{Guid.NewGuid():N}";
+        var marked = $"runner-{Guid.NewGuid():N}";
+
+        var by = LetGo.By([MarkedDrop(marked, 1), Release(ClaimOutcomes.Dropped, earlier, 5)]);
+
+        Assert.Equal(earlier, by?.Runner);
+    }
+
+    [Fact]
+    public void By_StillStopsAtAStatusChange_BehindADropThatSpentNothing()
+    {
+        var runner = $"runner-{Guid.NewGuid():N}";
+
+        Assert.Null(LetGo.By([
+            MarkedDrop(runner, 1),
+            Other(EfHatchIssueEvent.StatusChanged, "{}", 2),
+            Release(ClaimOutcomes.Dropped, runner, 5)]));
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("not json", false)]
+    [InlineData("{\"outcome\":\"dropped\"}", false)]
+    [InlineData("{\"outcome\":\"dropped\",\"spentNothing\":false}", false)]
+    [InlineData("{\"outcome\":\"dropped\",\"spentNothing\":\"true\"}", false)]
+    [InlineData("{\"outcome\":\"dropped\",\"spentNothing\":true}", true)]
+    public void IsSpentNothing_ReadsOnlyAnExplicitTrue(string? payload, bool expected) =>
+        Assert.Equal(expected, LetGo.IsSpentNothing(payload));
 
     [Fact]
     public void Count_StepsOverAnUnservableRelease()

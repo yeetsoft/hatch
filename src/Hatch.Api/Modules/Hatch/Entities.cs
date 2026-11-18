@@ -2664,6 +2664,15 @@ public class EfHatchIssueEvent
     /// <summary>An increment left this ticket where it found it - see <see cref="EfHatchIssue.StalledAt"/>.</summary>
     public const string Stalled = "stalled";
 
+    /// <summary>
+    /// A runner asked for a stall mark and the board declined, because the
+    /// claim spent nothing - see <see cref="SpentNothing"/>. The payload is
+    /// <c>{ why, because }</c>, <c>because</c> being <c>spent_nothing</c>;
+    /// the actor is whoever sent the mark. The issue's
+    /// <see cref="EfHatchIssue.StalledAt"/> is untouched.
+    /// </summary>
+    public const string StallDeclined = "stall_declined";
+
     /// <summary>A person marked this ticket for the loop to keep off - see <see cref="EfHatchIssue.Held"/>.</summary>
     public const string Held = "held";
 
