@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PageHeader } from '@hatch/ui';
 import { getBallot } from '../api/client';
+import { BallotPeek } from '../components/BallotPeek';
+import type { BallotPeekTarget } from '../components/BallotPeek';
 import { BallotTree } from '../components/BallotTree';
 import { ScopeGate } from '../components/ScopeGate';
 import { useAttentionContext } from '../lib/useAttentionContext';
@@ -32,6 +34,12 @@ export function BallotPage() {
 function BallotContent() {
   const scope = useScope();
   const { attention, reload: reloadAttention } = useAttentionContext();
+
+  /* The issue the dialog is open on, and the sentence for one that could not be
+     read. The dialog is the board's own peek, so answering there leaves it open
+     and reloads what is behind it, below. */
+  const [peeking, setPeeking] = useState<BallotPeekTarget | null>(null);
+  const [peekError, setPeekError] = useState<string | null>(null);
 
   /* The scope in force, as one string: `scope.ids` is empty until the
      provider's own project list lands, so a ballot fetched before that was
@@ -82,8 +90,22 @@ function BallotContent() {
       />
 
       {error && <p className="text-danger">{error}</p>}
+      {peekError && <p className="text-danger">{peekError}</p>}
 
-      <BallotTree roots={data.ballot.roots} projects={scope.allProjects} onAnswered={answered} />
+      <BallotTree
+        roots={data.ballot.roots}
+        projects={scope.allProjects}
+        onAnswered={answered}
+        onPreview={(node) => setPeeking({ key: node.key, openQuestions: node.questions.length })}
+      />
+
+      <BallotPeek
+        target={peeking}
+        projects={scope.allProjects}
+        onAnswered={answered}
+        onClose={() => setPeeking(null)}
+        onError={setPeekError}
+      />
     </div>
   );
 }

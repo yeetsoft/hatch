@@ -74,8 +74,13 @@ An unanswered question shows in four places:
   recommended option is one press and Enter away. Once the answer lands the
   question leaves the Ballot, an issue left with no question beneath it goes
   too, and the count in the bar drops without a reload. A refused answer shows
-  its error beside the row, which stays with what was typed. It follows the
-  tab's project scope, and a question answered elsewhere leaves it.
+  its error beside the row, which stays with what was typed. Each issue on it
+  also has **Preview**, which opens the issue in a dialog where its questions
+  are answered the same way, and **Open in new tab**; the key opens the issue.
+  The dialog is the board's peek, without the move, remand and delete
+  controls: the status shows as a plain pill. Answering leaves it open and the
+  Ballot behind it refreshes. It follows the tab's project scope, and a
+  question answered elsewhere leaves it.
 - A `?` badge with a count, on the ticket's card on the board.
 - **Questions to answer**, in the **What is waiting on you** panel
   ([watching the loop](watching-the-loop#what-is-waiting-on-you)). It has one row

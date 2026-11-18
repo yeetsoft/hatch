@@ -1,10 +1,14 @@
 import { Link } from 'react-router-dom';
-import { ProjectMark } from '@hatch/ui';
+import { Button, ProjectMark } from '@hatch/ui';
 import { Asked } from './OpenQuestions';
 import { TypeBadge } from './TypeBadge';
 import { questionEmptyWords } from '../lib/attention';
+import { appHref } from '../lib/basename';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { fromQuestion } from '../lib/questions';
+import { scopedPath } from '../lib/scope';
+import { useScope } from '../lib/useScope';
+import { useStandalone } from '../lib/viewport';
 import type { BallotNode, Project } from '../types';
 
 /**
@@ -21,19 +25,22 @@ export function BallotTree({
   roots,
   projects,
   onAnswered,
+  onPreview,
 }: {
   roots: BallotNode[];
   /** Every project, for each node's mark; a key naming none is drawn as letters. */
   projects: Project[];
   /** An answer landed: the page re-reads, and the question leaves. */
   onAnswered: () => void;
+  /** Preview was pressed on an issue: the page opens the peek over the ballot. */
+  onPreview: (node: BallotNode) => void;
 }) {
   if (roots.length === 0) return <p className="hatch-attention-empty">{questionEmptyWords()}</p>;
 
   return (
     <div className="hatch-ballot">
       {roots.map((root) => (
-        <BallotBranch key={root.key} node={root} projects={projects} onAnswered={onAnswered} top />
+        <BallotBranch key={root.key} node={root} projects={projects} onAnswered={onAnswered} onPreview={onPreview} top />
       ))}
     </div>
   );
@@ -43,14 +50,18 @@ function BallotBranch({
   node,
   projects,
   onAnswered,
+  onPreview,
   top = false,
 }: {
   node: BallotNode;
   projects: Project[];
   onAnswered: () => void;
+  onPreview: (node: BallotNode) => void;
   top?: boolean;
 }) {
   const project = projects.find((p) => p.key === node.projectKey) ?? null;
+  const standalone = useStandalone();
+  const { keys } = useScope();
 
   return (
     <section className={`hatch-ballot-node${top ? ' top' : ''}`}>
@@ -68,6 +79,20 @@ function BallotBranch({
           {node.key}
         </Link>
         <span className="hatch-ballot-title">{node.title}</span>
+        <span className="hatch-ballot-actions">
+          <Button onClick={() => onPreview(node)}>Preview</Button>
+          {/* An anchor, not a <Link>, and not in the installed app: the same
+              two reasons as the peek's own "New tab" (components/IssuePeek.tsx). */}
+          {!standalone && (
+            <a
+              href={appHref(scopedPath(`/issues/${node.key}`, keys))}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Open in new tab ↗
+            </a>
+          )}
+        </span>
       </header>
 
       {/* Text, never markdown: it is the description's first lines as written,
@@ -85,7 +110,13 @@ function BallotBranch({
       {node.children.length > 0 && (
         <div className="hatch-ballot-nested">
           {node.children.map((child) => (
-            <BallotBranch key={child.key} node={child} projects={projects} onAnswered={onAnswered} />
+            <BallotBranch
+              key={child.key}
+              node={child}
+              projects={projects}
+              onAnswered={onAnswered}
+              onPreview={onPreview}
+            />
           ))}
         </div>
       )}
