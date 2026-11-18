@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
 import { ProjectMark } from '@hatch/ui';
-import { QuestionOptions } from './OpenQuestions';
+import { Asked } from './OpenQuestions';
 import { TypeBadge } from './TypeBadge';
-import { questionEmptyWords, waitedWords } from '../lib/attention';
+import { questionEmptyWords } from '../lib/attention';
 import { projectLogoUrl } from '../lib/projectLogo';
-import type { BallotNode, Project, Question } from '../types';
+import { fromQuestion } from '../lib/questions';
+import type { BallotNode, Project } from '../types';
 
 /**
  * The ballot's drawing, apart from the page that fetches it, so it can be read
@@ -19,19 +20,20 @@ import type { BallotNode, Project, Question } from '../types';
 export function BallotTree({
   roots,
   projects,
-  now,
+  onAnswered,
 }: {
   roots: BallotNode[];
   /** Every project, for each node's mark; a key naming none is drawn as letters. */
   projects: Project[];
-  now: Date;
+  /** An answer landed: the page re-reads, and the question leaves. */
+  onAnswered: () => void;
 }) {
   if (roots.length === 0) return <p className="hatch-attention-empty">{questionEmptyWords()}</p>;
 
   return (
     <div className="hatch-ballot">
       {roots.map((root) => (
-        <BallotBranch key={root.key} node={root} projects={projects} now={now} top />
+        <BallotBranch key={root.key} node={root} projects={projects} onAnswered={onAnswered} top />
       ))}
     </div>
   );
@@ -40,12 +42,12 @@ export function BallotTree({
 function BallotBranch({
   node,
   projects,
-  now,
+  onAnswered,
   top = false,
 }: {
   node: BallotNode;
   projects: Project[];
-  now: Date;
+  onAnswered: () => void;
   top?: boolean;
 }) {
   const project = projects.find((p) => p.key === node.projectKey) ?? null;
@@ -73,11 +75,9 @@ function BallotBranch({
       {node.excerpt && <p className="hatch-ballot-excerpt">{node.excerpt}</p>}
 
       {node.questions.length > 0 && (
-        <ul className="hatch-attention-rows">
+        <ul className="hatch-question-list">
           {node.questions.map((q) => (
-            <li key={q.id}>
-              <BallotQuestion question={q} now={now} />
-            </li>
+            <Asked key={q.id} issueKey={q.issueKey} question={fromQuestion(q)} onAnswered={onAnswered} />
           ))}
         </ul>
       )}
@@ -85,26 +85,10 @@ function BallotBranch({
       {node.children.length > 0 && (
         <div className="hatch-ballot-nested">
           {node.children.map((child) => (
-            <BallotBranch key={child.key} node={child} projects={projects} now={now} />
+            <BallotBranch key={child.key} node={child} projects={projects} onAnswered={onAnswered} />
           ))}
         </div>
       )}
     </section>
-  );
-}
-
-/** A question in the attention panel's register, in full rather than clamped:
-    this page exists to read it beside the brief. The row opens its issue,
-    where it is answered until answering here arrives. */
-function BallotQuestion({ question, now }: { question: Question; now: Date }) {
-  return (
-    <Link className="hatch-attention-row hatch-ballot-question" to={`/issues/${question.issueKey}`}>
-      <span className="hatch-attention-row-head">
-        <span className="hatch-ballot-asker">{question.askedBy}</span>
-        <span className="hatch-attention-waited">{waitedWords(question.askedAt, now)}</span>
-      </span>
-      <span className="hatch-ballot-question-body">{question.body}</span>
-      {question.options && <QuestionOptions options={question.options} />}
-    </Link>
   );
 }

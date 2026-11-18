@@ -4,7 +4,6 @@ import { getBallot } from '../api/client';
 import { BallotTree } from '../components/BallotTree';
 import { ScopeGate } from '../components/ScopeGate';
 import { useAttentionContext } from '../lib/useAttentionContext';
-import { useAttentionNow } from '../lib/useAttentionNow';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
 import type { Ballot } from '../types';
@@ -32,8 +31,7 @@ export function BallotPage() {
 
 function BallotContent() {
   const scope = useScope();
-  const { attention } = useAttentionContext();
-  const now = useAttentionNow(true);
+  const { attention, reload: reloadAttention } = useAttentionContext();
 
   /* The scope in force, as one string: `scope.ids` is empty until the
      provider's own project list lands, so a ballot fetched before that was
@@ -59,6 +57,15 @@ function BallotContent() {
     void reload();
   }, [attention, reload]);
 
+  /* An answer landed. Both reads are asked for here rather than leaning on the
+     effect above, so an attention read that fails still clears the row; the
+     effect then re-reads once more on the change, and `useLoaded` is
+     latest-wins, so that is harmless. The bar's count comes from the second. */
+  const answered = useCallback(() => {
+    void reload();
+    void reloadAttention();
+  }, [reload, reloadAttention]);
+
   /* Only a ballot fetched for the scope now in force is drawn, so an unscoped
      read that lands before the project list never flashes another project's
      questions. */
@@ -76,7 +83,7 @@ function BallotContent() {
 
       {error && <p className="text-danger">{error}</p>}
 
-      <BallotTree roots={data.ballot.roots} projects={scope.allProjects} now={now} />
+      <BallotTree roots={data.ballot.roots} projects={scope.allProjects} onAnswered={answered} />
     </div>
   );
 }

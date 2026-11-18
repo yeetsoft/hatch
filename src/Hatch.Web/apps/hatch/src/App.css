@@ -7395,26 +7395,16 @@ button.hatch-option.chosen {
   min-width: 0;
 }
 
-.hatch-ballot-question {
+/* A question on the ballot is the issue page's own row, so what it needs here is
+   the standing rule: nothing in it widens the page. A long option label or a
+   long typed answer shrinks the row instead. */
+.hatch-ballot .hatch-question,
+.hatch-ballot .hatch-answer-box input {
   min-width: 0;
 }
 
-.hatch-ballot-asker {
-  min-width: 0;
+.hatch-ballot .hatch-question-body {
   overflow-wrap: anywhere;
-  color: var(--muted);
-}
-
-/* The whole of the question, not the panel's two clamped lines. */
-.hatch-ballot-question-body {
-  min-width: 0;
-  font-size: var(--t-label);
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-
-.hatch-ballot-question .hatch-options {
-  min-width: 0;
 }
 
 @media (max-width: 40rem) {

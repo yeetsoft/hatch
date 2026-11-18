@@ -2,15 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { BallotTree } from './BallotTree';
-import { questionEmptyWords, waitedWords } from '../lib/attention';
+import { questionEmptyWords } from '../lib/attention';
 import type { BallotNode, Project, Question } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    AttentionHuman.test.tsx reads. */
 
+/* The answer row renders the question as markdown, whose sanitiser needs a real
+   DOM; the identity stub still lets these check what the row decided to show. */
+vi.mock('../lib/markdown', () => ({ renderMarkdown: (source: string) => source }));
 vi.mock('../lib/clientLogger', () => ({ clientLogger: { info() {}, warn() {}, error() {} } }));
 
-const now = new Date('2026-01-10T12:00:00Z');
 const askedAt = '2026-01-10T09:00:00Z';
 
 const question = (over: Partial<Question> = {}): Question => ({
@@ -40,7 +42,7 @@ const node = (over: Partial<BallotNode> = {}): BallotNode => ({
 const render = (roots: BallotNode[], projects: Project[] = []) =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <BallotTree roots={roots} projects={projects} now={now} />
+      <BallotTree roots={roots} projects={projects} onAnswered={() => {}} />
     </MemoryRouter>,
   );
 
@@ -89,17 +91,26 @@ describe('BallotTree', () => {
     expect(html.split('hatch-ballot-node top').length - 1).toBe(1);
   });
 
-  it('draws a question under its own issue: body, asker, how long it has waited, and a link', () => {
+  it('draws a question under its own issue: body, asker and when it was asked', () => {
     const html = render([node({ questions: [question()] })]);
 
     expect(html).toContain('Which of the two should it be?');
     expect(html).toContain('a-runner');
-    expect(html).toContain(waitedWords(askedAt, now));
-    expect(html).toContain('3 hours');
-    expect(html).toContain('href="/issues/PRJ-3"');
+    expect(html).toContain('asked ');
+    expect(html).toContain('hatch-question-list');
+    // The key link in the issue's header is the one way to the issue.
+    expect(html.split('href="/issues/PRJ-3"').length - 1).toBe(0);
   });
 
-  it('marks the recommended option, and draws no options for a question asked in prose', () => {
+  it('gives a question the answer box and the Answer button the issue page has', () => {
+    const html = render([node({ questions: [question()] })]);
+
+    expect(html).toContain('aria-label="Your answer"');
+    expect(html).toContain('The decision, in a sentence.');
+    expect(html).toContain('Answer</button>');
+  });
+
+  it('draws the options as buttons to press, the recommended one marked, and asks for prose otherwise', () => {
     const withOptions = render([
       node({
         questions: [
@@ -116,9 +127,17 @@ describe('BallotTree', () => {
     expect(withOptions).toContain('keep');
     expect(withOptions).toContain('Costs nothing');
     expect(withOptions.split('recommended</span>').length - 1).toBe(1);
-    expect(withOptions).not.toContain('<button');
+    expect(withOptions.split('aria-pressed').length - 1).toBe(2);
+    expect(withOptions).toContain('Or say something else.');
 
     expect(render([node({ questions: [question()] })])).not.toContain('hatch-options');
+  });
+
+  it('gives each of two questions on one issue its own box', () => {
+    const html = render([node({ questions: [question({ id: 1 }), question({ id: 2, body: 'And the other?' })] })]);
+
+    expect(html.split('aria-label="Your answer"').length - 1).toBe(2);
+    expect(html.split('Answer</button>').length - 1).toBe(2);
   });
 
   it('draws a terminal ancestor like any other', () => {

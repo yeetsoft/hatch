@@ -62,7 +62,7 @@ export function Waiting({
  * things should cost one press, and the free text should be the escape hatch
  * rather than the only door.
  */
-function Asked({
+export function Asked({
   issueKey,
   question,
   onAnswered,
