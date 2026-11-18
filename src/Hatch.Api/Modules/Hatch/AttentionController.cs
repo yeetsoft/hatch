@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -30,7 +31,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/attention")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup) : ControllerBase
+public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup, IAuthService keys) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AttentionDto>> GetAttention(CancellationToken ct)
@@ -477,45 +478,80 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
     }
 
     /// <summary>
-    /// Every project whose merge train passed its driver over and has not
-    /// reinstated it, with the head issue the pass-over was written on. The
+    /// Every project whose merge train has passed over every runner that could
+    /// drive it, with the head issue the newest pass-over was written on. The
     /// head is not on the project: the newest <c>driver_stalled</c> event naming
-    /// the project's current driver carries it, and a project with no such
+    /// a runner on the project's roster carries it, and a project with no such
     /// event - its issue was deleted - is left out rather than given a head.
+    /// A project with a live eligible runner not yet tried is still being
+    /// worked, so it is not listed.
     /// </summary>
     private async Task<IReadOnlyList<TrainStalledDto>> TrainStalledAsync(CancellationToken ct)
     {
         var stalled = await db.Projects.AsNoTracking()
-            .Where(p => p.TrainStalledDriver != null)
+            .Where(p => p.TrainStalledDrivers != "[]")
             .OrderBy(p => p.Key)
-            .Select(p => new { p.Id, p.Key, p.Name, Driver = p.TrainStalledDriver! })
+            .Select(p => new { p.Id, p.Key, p.Name, p.TrainStalledDrivers })
             .ToListAsync(ct);
 
         if (stalled.Count == 0) return [];
 
-        var ids = stalled.Select(p => p.Id).ToList();
+        // Covered only when no live eligible runner is missing from the roster:
+        // a project nobody is eligible for has no entry and is covered by
+        // whatever it has already passed over.
+        var eligible = await runners.EligibleNamesAsync(db, keys, time.GetUtcNow(), ct);
+        var covered = stalled
+            .Select(p => (Project: p, Roster: RunnerTagColumn.Read(p.TrainStalledDrivers)))
+            .Where(p => p.Roster.Count > 0
+                && eligible.GetValueOrDefault(p.Project.Id, []).All(name => p.Roster.Contains(name, StringComparer.Ordinal)))
+            .ToList();
+
+        if (covered.Count == 0) return [];
+
+        var ids = covered.Select(p => p.Project.Id).ToList();
         var events = await db.IssueEvents.AsNoTracking()
             .Where(e => e.Kind == EfHatchIssueEvent.DriverStalled && ids.Contains(e.Issue!.ProjectId))
-            .Select(e => new { e.Id, e.At, e.Payload, e.Issue!.ProjectId, e.Issue.Number })
+            .Select(e => new { e.Id, e.At, e.Payload, e.Issue!.ProjectId, e.Issue.Number, e.IssueId })
             .ToListAsync(ct);
 
         // In memory: ordering a DateTimeOffset in SQL is not portable across providers.
         var newestFirst = events.OrderByDescending(e => e.At).ThenByDescending(e => e.Id).ToList();
 
-        var rows = new List<TrainStalledDto>();
-        foreach (var project in stalled)
+        var rows = new List<(string ProjectKey, string ProjectName, string PassedOver, string? Elected, long IssueId, string HeadKey, DateTimeOffset At)>();
+        foreach (var (project, roster) in covered)
         {
             foreach (var e in newestFirst.Where(e => e.ProjectId == project.Id))
             {
                 var (passedOver, elected) = StalledPayload(e.Payload);
-                if (!string.Equals(passedOver, project.Driver, StringComparison.Ordinal)) continue;
+                if (passedOver is null || !roster.Contains(passedOver, StringComparer.Ordinal)) continue;
 
-                rows.Add(new TrainStalledDto(project.Key, project.Name, project.Driver, elected, IssueKey.Format(project.Key, e.Number), e.At));
+                rows.Add((project.Key, project.Name, passedOver, elected, e.IssueId, IssueKey.Format(project.Key, e.Number), e.At));
                 break;
             }
         }
 
-        return rows;
+        if (rows.Count == 0) return [];
+
+        // Why it stalled is whatever the head's newest comment says: a driver
+        // that skips a head comments the reason on it.
+        var headIds = rows.Select(r => r.IssueId).ToList();
+        var stamps = await db.Comments.AsNoTracking()
+            .Where(c => headIds.Contains(c.IssueId))
+            .Select(c => new { c.IssueId, c.Id, c.CreatedAt })
+            .ToListAsync(ct);
+
+        // Only the newest comment's body is read back, since a comment can run to 100 KB.
+        var newestIds = stamps
+            .GroupBy(c => c.IssueId)
+            .Select(g => g.OrderByDescending(c => c.CreatedAt).ThenByDescending(c => c.Id).First().Id)
+            .ToList();
+        var reasons = await db.Comments.AsNoTracking()
+            .Where(c => newestIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.IssueId, c => c.Body, ct);
+
+        return rows
+            .Select(r => new TrainStalledDto(r.ProjectKey, r.ProjectName, r.PassedOver, r.Elected, r.HeadKey, r.At, reasons.GetValueOrDefault(r.IssueId)))
+            .ToList();
     }
 
     /// <summary>The runner a <c>driver_stalled</c> event passed over and the one it elected, each null where the payload did not say.</summary>

@@ -788,6 +788,15 @@ public class RunnersController(
         {
             project.TrainStalledDriver = passedOver;
             project.TrainWatchedSince = now;
+
+            // The latest alone is cleared the moment it heartbeats; the roster
+            // is what lets the attention page see every runner has failed.
+            var roster = RunnerTagColumn.Read(project.TrainStalledDrivers).ToList();
+            if (!roster.Contains(passedOver, StringComparer.Ordinal))
+            {
+                roster.Add(passedOver);
+                project.TrainStalledDrivers = RunnerTagColumn.Write(roster);
+            }
         }
         await db.SaveChangesAsync(ct);
 

@@ -2421,9 +2421,18 @@ public class AttentionControllerTests : IDisposable
 
     private const string StalledPayload = """{"passedOver":"here:/one","elected":"here:/two"}""";
 
-    private static async Task StallAsync(Harness h, EfHatchIssue head, string payload, DateTimeOffset at, string? driver = "here:/one")
+    /// <summary>
+    /// Records a pass-over the way the train writes one: the event, the latest
+    /// driver and the roster. <paramref name="driver"/> is what a reinstatement
+    /// clears; <paramref name="roster"/> is what it leaves, and defaults to the
+    /// runner the payload passed over.
+    /// </summary>
+    private static async Task StallAsync(
+        Harness h, EfHatchIssue head, string payload, DateTimeOffset at, string? driver = "here:/one", string[]? roster = null)
     {
-        (await h.Db.Projects.SingleAsync()).TrainStalledDriver = driver;
+        var project = await h.Db.Projects.SingleAsync();
+        project.TrainStalledDriver = driver;
+        project.TrainStalledDrivers = RunnerTagColumn.Write(roster ?? ["here:/one"]);
         h.Db.IssueEvents.Add(new EfHatchIssueEvent
         {
             IssueId = head.Id,
@@ -2461,16 +2470,99 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task Attention_LeavesOutAProjectWhoseDriverWasReinstated()
+    public async Task Attention_KeepsListingAProjectWhoseDriverWasReinstated()
     {
         var h = await NewAsync();
         var head = await h.FileAsync("story", "head", h.Todo);
         await StallAsync(h, head, StalledPayload, Now, driver: null);
 
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+
+        Assert.Equal("here:/one", row.PassedOverRunner);
+        Assert.Equal(Key(head), row.HeadKey);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAProjectWithNoRoster()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, StalledPayload, Now, roster: []);
+
         var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
 
         Assert.NotNull(stalled);
         Assert.Empty(stalled);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutATrainWhileALiveEligibleRunnerIsUntried()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await h.RunnerAsync("here:/one", null, standing: true);
+        await h.RunnerAsync("here:/two", null, standing: true);
+        await StallAsync(h, head, StalledPayload, Now, roster: ["here:/one"]);
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.NotNull(stalled);
+        Assert.Empty(stalled);
+    }
+
+    [Fact]
+    public async Task Attention_ListsATrainOnceEveryLiveEligibleRunnerWasPassedOver_WithTheNewestCommentAsItsReason()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await h.RunnerAsync("here:/one", null, standing: true);
+        await h.RunnerAsync("here:/two", null, standing: true);
+        h.Db.Comments.Add(new EfHatchComment { IssueId = head.Id, Author = "here:/one", Body = "older reason", CreatedAt = Now.AddMinutes(-10) });
+        h.Db.Comments.Add(new EfHatchComment { IssueId = head.Id, Author = "here:/two", Body = "newest reason", CreatedAt = Now.AddMinutes(-5) });
+        await StallAsync(h, head, StalledPayload, Now, roster: ["here:/one", "here:/two"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+
+        Assert.Equal(new TrainStalledDto("AER", "Hatch", "here:/one", "here:/two", Key(head), Now, "newest reason"), row);
+    }
+
+    [Fact]
+    public async Task Attention_ListsATrainAfterItsFirstRunnerIsReinstated()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await h.RunnerAsync("here:/one", null, standing: true);
+        await h.RunnerAsync("here:/two", null, standing: true);
+        // ReinstateAsync clears the driver the moment it heartbeats, and leaves the roster.
+        await StallAsync(h, head, StalledPayload, Now, driver: null, roster: ["here:/one", "here:/two"]);
+
+        Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutATrainWhenAThirdLiveEligibleRunnerIsNotOnItsRoster()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await h.RunnerAsync("here:/one", null, standing: true);
+        await h.RunnerAsync("here:/two", null, standing: true);
+        await h.RunnerAsync("here:/three", null, standing: true);
+        await StallAsync(h, head, StalledPayload, Now, roster: ["here:/one", "here:/two"]);
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.NotNull(stalled);
+        Assert.Empty(stalled);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAStalledTrainWithNoCommentOnItsHeadWithANullReason()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, StalledPayload, Now);
+
+        Assert.Null(Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!).Reason);
     }
 
     [Fact]
@@ -2506,7 +2598,7 @@ public class AttentionControllerTests : IDisposable
     public async Task Attention_LeavesOutAStalledProjectWithNoEventToNameAHead()
     {
         var h = await NewAsync();
-        (await h.Db.Projects.SingleAsync()).TrainStalledDriver = "here:/one";
+        (await h.Db.Projects.SingleAsync()).TrainStalledDrivers = RunnerTagColumn.Write(["here:/one"]);
         await h.Db.SaveChangesAsync();
 
         var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
@@ -2711,7 +2803,7 @@ public class AttentionControllerTests : IDisposable
         /// <summary>A runner row, placed directly - this is not RunnersController's own heartbeat rules to pin.</summary>
         public async Task RunnerAsync(
             string name, DateTimeOffset? exhaustedUntil, DateTimeOffset? lastSeenAt = null, string[]? models = null,
-            string[]? has = null, string? agent = null, string state = "running")
+            string[]? has = null, string? agent = null, string state = "running", bool? standing = null)
         {
             Db.LegacyRunners.Add(new EfHatchRunner
             {
@@ -2725,6 +2817,7 @@ public class AttentionControllerTests : IDisposable
                 Models = models is null ? null : string.Join('\n', models),
                 Has = has is null ? null : string.Join('\n', has),
                 Agent = agent,
+                Standing = standing,
             });
             await Db.SaveChangesAsync();
         }
@@ -3083,7 +3176,7 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), claims ?? TestClaims.With(), time, keys, sessions), backup),
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), claims ?? TestClaims.With(), time, keys, sessions), backup, keys),
             Time = time,
             Backup = backup,
             Status = status,
@@ -3125,7 +3218,7 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time, keys, sessions), backup),
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time, keys, sessions), backup, keys),
             Time = time,
             Backup = backup,
             Status = status,

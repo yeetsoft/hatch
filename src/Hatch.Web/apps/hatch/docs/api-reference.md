@@ -1541,13 +1541,17 @@ model, and that no live runner lists, reads `requires <id> locally - no live
 runner lists it`; each entry carries `key`, `title`, `type`,
 `move` (the column the move starts from) and `missing` (what no live runner
 has), ordered by tier and then rank, and the list is empty when no runner is
-live. `trainStalled` lists the projects whose merge train passed its driver
-over and has not heard from that runner since, ordered by project key; each
-entry carries `projectKey`, `projectName`, `passedOverRunner`, `electedRunner`
-(null when no other runner was eligible), `headKey` (the issue at the head of
-the train) and `at`. It is empty, not null, when no train is stalled, and the
-panel draws nothing for an empty list; unlike `waitingOnARunner` it is not
-counted, since a runner that died never checks in to clear it. `runnerCapacity`
+live. `trainStalled` lists the projects whose merge train has passed over every
+live runner eligible to drive it while the head stayed on one issue, ordered by
+project key. A runner that keeps checking in is still counted as passed over,
+and a project with a live eligible runner the train has not yet tried is not
+listed. Each entry carries `projectKey`, `projectName`, `passedOverRunner`,
+`electedRunner` (null when no other runner was eligible), `headKey` (the issue
+at the head of the train), `at` and `reason` (the head issue's newest comment,
+which a driver that skips a head writes, or null when it has none). It is
+empty, not null, when no train is stalled, and the panel draws nothing for an
+empty list; unlike `waitingOnARunner` it is not counted, since the row clears
+only when the head moves on. `runnerCapacity`
 lists the projects whose clear implementation steps no live runner, or only
 one, can take - always computed, with no query flag - ordered by project key;
 each entry carries `projectKey`, `steps` (how many clear implementation steps

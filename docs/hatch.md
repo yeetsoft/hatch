@@ -7113,8 +7113,11 @@ route gives a `409` to a row outside the merges column.
 the `TrainWatch.Observe` call at `:600`). A head is judged only when its
 `MergeWork.Judge` kind is `merge` or `update` and some live eligible runner
 drives the project; any other state - no head, `hold`, `pushback`, `pending`,
-or no driver - clears both watch columns on the project
-(`TrainWatch.cs:36-41`). The clock, `TrainWatchedSince`, is when this head
+or no driver - clears both watch columns on the project and
+empties the roster described below (`TrainWatch.cs`). The one exception is a
+project with a non-empty roster whose head has not changed: with nobody left
+to elect, the watch and roster stay and the clock restarts, so a runner that
+turns up later gets a full window. The clock, `TrainWatchedSince`, is when this head
 was first *seen* acting, not when it entered the column; a different head,
 or a null `since`, restarts it (`:43-48`). The bound is measured from that
 `since`, raised to `BroughtCurrentAt` when that is later (`:50-53`): a
@@ -7130,7 +7133,13 @@ out `c.Name != project.TrainStalledDriver` (`Runners.cs:525`), so the next
 election skips that runner on this project only; it stays eligible on every
 other (comment at `:521-524`). The runner's own next heartbeat clears the
 mark, with a fresh window (`ReinstateAsync`, `RunnersController.cs:558-571`,
-called from the beat at `:342`). Each window writes one `driver_stalled`
+called from the beat at `:342`). The mark is only the latest pass-over, so the
+beat also adds the runner to `EfHatchProject.TrainStalledDrivers`, a roster of
+every runner passed over on the current head; a reinstatement leaves it, and a
+changed or cleared head empties it. `GET /api/attention` lists the project's
+`trainStalled` row exactly when the roster is non-empty and holds every live
+runner eligible to drive the project (`Runners.EligibleNamesAsync`), carrying
+the head issue's newest comment as `reason`. Each window writes one `driver_stalled`
 event on the head issue, actor `Hatch` (`RunnersController.cs:510, 630`),
 with payload `{ passedOver, elected }`, and `elected` null when nobody else
 was eligible (`:628-634`; `Entities.cs:2360-2367`).
