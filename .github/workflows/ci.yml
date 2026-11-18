@@ -230,7 +230,7 @@ jobs:
   # attempt; it is orthogonal to caching, not a substitute for it - caching
   # still would not touch the apt packages that are the slow part.
   e2e:
-    timeout-minutes: 30
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     env:
       # The same variable, and the same stock image, as the api job. The harness
@@ -313,13 +313,16 @@ jobs:
       # runner lacks. The browser is the one Playwright puts there, not one the
       # runner image happens to carry.
       # Retried, bounded to 5 minutes per attempt: a stalled apt mirror (the
-      # ~181 shared-library packages `--with-deps` pulls for webkit) has twice
-      # cost the whole job before a test ran, while a genuinely broken install
-      # still fails every attempt and so still fails the job (HA-1819).
+      # ~181 shared-library packages `--with-deps` pulls for webkit) has cost
+      # the whole job before a test ran, while a genuinely broken install
+      # still fails every attempt and so still fails the job (HA-1819). Five
+      # attempts, not three: a mirror slow enough to need three can still be
+      # making real progress per attempt, and three ran out before it landed
+      # (HA-2462).
       - name: Install browsers
-        timeout-minutes: 18
+        timeout-minutes: 27
         run: |
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4 5; do
             if timeout 5m pwsh src/Hatch.Api.Tests/bin/Release/net10.0/playwright.ps1 install chromium webkit --with-deps; then
               exit 0
             fi
