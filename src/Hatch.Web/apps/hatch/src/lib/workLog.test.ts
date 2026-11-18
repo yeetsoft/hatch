@@ -10,6 +10,7 @@ import {
   errorPhrase,
   hasDescendantSpend,
   modelEffortPhrase,
+  outcomePhrase,
   modelRunPhrase,
   shortDigest,
   moneyPhrase,
@@ -52,6 +53,8 @@ const entry = (over: Partial<WorkLogEntry> = {}): WorkLogEntry => ({
   summary: 'Read the headroom server-side and drew the ring.',
   described: true,
   isError: false,
+  outcome: null,
+  reason: null,
   turns: 41,
   costUsd: 3.41,
   inputTokens: 900,
@@ -352,6 +355,29 @@ describe('modelEffortPhrase', () => {
 
   it('says nothing for a row with neither - an older runner', () => {
     expect(modelEffortPhrase(entry({ playbookModel: null, playbookEffort: null }))).toBeNull();
+  });
+});
+
+describe('outcomePhrase', () => {
+  it('says nothing for a row with no outcome', () => {
+    expect(outcomePhrase(entry({ outcome: null, reason: null }))).toBeNull();
+  });
+
+  it('says nothing about a reason with no outcome', () => {
+    expect(outcomePhrase(entry({ outcome: null, reason: 'quiet' }))).toBeNull();
+  });
+
+  it('names an outcome that has no reason', () => {
+    expect(outcomePhrase(entry({ outcome: 'worked', reason: null }))).toBe('worked');
+    expect(outcomePhrase(entry({ outcome: 'dropped', reason: null }))).toBe('dropped');
+  });
+
+  it.each(['quiet', 'run-time', 'error'])('joins a dropped outcome to its %s reason', (reason) => {
+    expect(outcomePhrase(entry({ outcome: 'dropped', reason }))).toBe(`dropped - ${reason}`);
+  });
+
+  it('does not draw a reason on an outcome other than dropped', () => {
+    expect(outcomePhrase(entry({ outcome: 'worked', reason: 'quiet' }))).toBe('worked');
   });
 });
 
