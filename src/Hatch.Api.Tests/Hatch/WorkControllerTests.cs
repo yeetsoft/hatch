@@ -7491,7 +7491,7 @@ public class WorkControllerTests
 
         Assert.False(entry.Hop);
         Assert.Equal(
-            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do; express does not carry it past review, so it waits for an owner or approver to approve it",
             entry.Blocked);
     }
 
@@ -9922,7 +9922,7 @@ public class WorkControllerTests
         await h.VerdictAsync(issue, MergeVerdicts.Clean, trunk: "develop");
 
         Assert.Equal(
-            "its branch merges cleanly with develop - nothing for an agent to do",
+            "its branch merges cleanly with develop - nothing for an agent to do; it waits for an owner or approver to approve it",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
@@ -10076,7 +10076,7 @@ public class WorkControllerTests
         await h.BuildAsync(issue, BuildVerdicts.Passed);
 
         Assert.Equal(
-            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do; it waits for an owner or approver to approve it",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
 
         var work = Value(await h.Work.GetWork(Key(issue), null, default));
@@ -10098,7 +10098,7 @@ public class WorkControllerTests
         await h.BuildAsync(issue, BuildVerdicts.Passed);
 
         Assert.Equal(
-            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do; it waits for an owner or approver to approve it",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
@@ -10235,7 +10235,7 @@ public class WorkControllerTests
         await h.BuildAsync(issue, BuildVerdicts.Passed);
 
         Assert.Equal(
-            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do; it waits for an owner or approver to approve it",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
@@ -10252,7 +10252,7 @@ public class WorkControllerTests
         await h.BuildAsync(issue, BuildVerdicts.Passed);
 
         Assert.Equal(
-            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do; it waits for an owner or approver to approve it",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
@@ -10706,7 +10706,7 @@ public class WorkControllerTests
         await h.BuildAsync(issue, BuildVerdicts.Passed);
 
         Assert.Equal(
-            "its branch merges cleanly with develop and its build passes - nothing for an agent to do",
+            "its branch merges cleanly with develop and its build passes - nothing for an agent to do; it waits for an owner or approver to approve it",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
@@ -10749,7 +10749,7 @@ public class WorkControllerTests
         await h.VerdictAsync(issue, MergeVerdicts.Clean, trunk: "develop");
 
         Assert.Equal(
-            "its branch merges cleanly with develop - nothing for an agent to do",
+            "its branch merges cleanly with develop - nothing for an agent to do; it waits for an owner or approver to approve it",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
@@ -10803,7 +10803,7 @@ public class WorkControllerTests
         await h.BuildAsync(issue, BuildVerdicts.Failed, remote: "https://example.com/let-go");
 
         Assert.Equal(
-            "its branch merges cleanly with main - nothing for an agent to do",
+            "its branch merges cleanly with main - nothing for an agent to do; it waits for an owner or approver to approve it",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
     }
 
