@@ -1052,6 +1052,7 @@ public sealed class Increment(
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
                         if (report.QuietStopped) report.ReleaseReason = ClaimLostReasons.Quiet;
                         else if (report.RunTimeStopped) report.ReleaseReason = ClaimLostReasons.RunTime;
+                        else if (!report.Started || said is { Length: > 0 }) report.ReleaseReason = ClaimLostReasons.Error;
                         say.Line("");
                         say.Line($"hatch: {report.Key} moved nothing - let go, and going on to the next");
                         if (report.SteppedOff) say.Line($"hatch: {report.Key} - {runnerName} stepped off it after a stalled local attempt on {report.LocalModelRan}");
@@ -1067,6 +1068,7 @@ public sealed class Increment(
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
                         if (report.QuietStopped) report.ReleaseReason = ClaimLostReasons.Quiet;
                         else if (report.RunTimeStopped) report.ReleaseReason = ClaimLostReasons.RunTime;
+                        else if (!report.Started || said is { Length: > 0 }) report.ReleaseReason = ClaimLostReasons.Error;
                     }
                 }
 

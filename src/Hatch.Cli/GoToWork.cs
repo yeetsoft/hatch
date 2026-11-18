@@ -2501,6 +2501,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // only for a quiet stop, dropped or flagged alike.
         string? releaseReason = null;
 
+        // The session the outcome above was reached in, so the work-log row
+        // the release stamps is the one for this session.
+        string? releaseSessionId = null;
+
         try
         {
             // A person's order names the ticket, so the walk over the queue -
@@ -2830,6 +2834,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             releaseOutcome = report.ReleaseOutcome;
             releaseReason = report.ReleaseReason;
+            releaseSessionId = report.SessionId;
 
             // A fresh clock read, not the `now` taken before the session ran:
             // the narrowing's own "until" is read against when it actually
@@ -2928,6 +2933,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // verdict, so the claim (where one was ever held) goes back the
             // same way any other stall does.
             releaseOutcome = ClaimOutcomes.Dropped;
+            releaseReason = ClaimLostReasons.Error;
+            releaseSessionId = increment?.SessionId;
 
             tally.Record(new IncrementReport
             {
@@ -2945,7 +2952,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             // The lease covers the bookkeeping too, and this is the door every
             // path out of a pass goes through.
-            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason);
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId);
         }
     }
 

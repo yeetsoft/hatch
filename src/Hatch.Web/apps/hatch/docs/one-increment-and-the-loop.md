@@ -94,6 +94,12 @@ reports it as a stall rather than a lost lease, so the usual
 let-go-then-flag ladder ([Stalls](#stalls)) applies to it the same as a
 session that simply ended without moving the ticket.
 
+A runner's own release says why it let go the same way. A session that ended
+in an error, or never started, releases with the reason `error`, and every
+release that names an outcome carries the session's id, so the work-log row
+it stamps is that session's. A Hatch that does not know `error` is asked
+again with the outcome kept and the reason dropped.
+
 What counts as a word on the claim is a line the session prints, and, while a
 tool call is running, the runner's own `still running: <the call>, <n>m`,
 carried at least once a minute. A long test run inside one call therefore needs
