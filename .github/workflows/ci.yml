@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Runs every job, e2e included, on a branch of your choosing:
+  #   gh workflow run ci.yml --ref <branch>
+  workflow_dispatch:
 
 jobs:
   api:
@@ -229,7 +232,14 @@ jobs:
   # ever ran. A bounded retry on the install step is the fix for a slow single
   # attempt; it is orthogonal to caching, not a substitute for it - caching
   # still would not touch the apt packages that are the slow part.
+  #
+  # Off on push and pull_request for now: between the apt mirror stalling the
+  # browser install and a ~10 minute Test step on every run, the job was
+  # costing more CI time and dev time than it caught. It still runs on a
+  # manual dispatch (see `on:` above). A skipped job is neither a failure nor
+  # a cancellation, so the CI gate below passes over it.
   e2e:
+    if: github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     runs-on: ubuntu-latest
     env:
