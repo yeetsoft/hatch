@@ -3300,6 +3300,124 @@ public class IssueClaimTests
         Assert.Equal(60, options.RunnerPauseMinutes);
     }
 
+    // ---- A paused session gets no work (HA-2456) ----
+
+    private static RunnerInstructionDto Told(Harness h, EfHatchRunnerSession session) =>
+        RunnerSessions.Instruct(session, null, "runner-one", "runner-one", [], now: h.Time.GetUtcNow());
+
+    /// <summary>A session the board has already paused, written straight - the pause is not what is under test.</summary>
+    private static async Task PauseSessionAsync(
+        Harness h, int id, string kind = RunnerAgentDownKinds.BoardPaused, int minutes = 60)
+    {
+        var until = h.Time.GetUtcNow().AddMinutes(minutes);
+        await h.Connect().RunnerSessions.Where(s => s.Id == id).ExecuteUpdateAsync(s => s
+            .SetProperty(r => r.AgentDownUntil, until)
+            .SetProperty(r => r.AgentDownKind, kind)
+            .SetProperty(r => r.AgentDownLine, "three in a row"));
+    }
+
+    /// <summary>
+    /// The epic's first check: a session that never said it was down, three
+    /// tickets that spent nothing, then no work until the pause has passed.
+    /// </summary>
+    [SkippableFact]
+    public async Task ThreeSessionsThatSpentNothing_PauseTheSessionAndRefuseItsNextClaim()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        Assert.Equal(RunnerStates.Running, Told(h, await h.SessionAsync(id)).State);
+
+        string issue = "";
+        for (var round = 1; round <= 3; round++)
+        {
+            issue = await h.FileAsync();
+            var token = await h.TakeAsync(issue, PauseWhere);
+
+            var at = h.Time.GetUtcNow();
+            var posted = await new IssueWorkLogController(h.Connect(), h.Time, h.Caller).PostEntry(
+                issue,
+                new WorkLogEntryRequest(
+                    $"session-{round}", at, at.AddSeconds(2), 2000, null, null, IsError: true, Turns: 0, CostUsd: null, Models: []),
+                default);
+            Assert.IsNotType<ObjectResult>(posted.Result);
+            Value(await h.Thread.AddComment(issue, new CommentCreateRequest($"round {round}: ended in error"), default));
+
+            Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default));
+            h.Time.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        Assert.Null((await h.RowAsync(issue)).StalledAt);
+
+        var session = await h.SessionAsync(id);
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, session.AgentDownKind);
+        Assert.Equal(RunnerStates.Running, session.State);
+
+        var told = Told(h, session);
+        Assert.Equal(RunnerStates.Paused, told.State);
+
+        var next = await h.FileAsync();
+        var events = (await h.EventsAllAsync(next)).Count;
+        var refusal = Conflict(await h.Claims.TakeClaim(next, new ClaimRequest(PauseWhere), default));
+        Assert.Contains("the board paused this runner", refusal);
+        Assert.Contains("Runners page", refusal);
+        Assert.Contains("3 sessions in a row", refusal);
+        Assert.Equal(events, (await h.EventsAllAsync(next)).Count);
+        Assert.Null((await h.RowAsync(next)).ClaimToken);
+
+        h.Time.Advance(TimeSpan.FromMinutes(61));
+        Assert.Equal(RunnerStates.Running, Told(h, await h.SessionAsync(id)).State);
+        Assert.NotNull(Value(await h.Claims.TakeClaim(next, new ClaimRequest(PauseWhere), default)));
+    }
+
+    [SkippableFact]
+    public async Task APausedSession_StillBeatsAndReleasesAClaimItAlreadyHolds()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, PauseWhere);
+
+        await PauseSessionAsync(h, id);
+
+        Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still here"), default));
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Worked, default));
+    }
+
+    [SkippableFact]
+    public async Task ASessionAtAnotherCheckoutUnderTheSameKey_ClaimsAsBefore()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        await h.AddSessionAsync(h.Caller.Key!.Id, "host-two:/work/other", Now);
+        await PauseSessionAsync(h, id);
+
+        var issue = await h.FileAsync();
+        Assert.NotNull(Value(await h.Claims.TakeClaim(issue, new ClaimRequest("host-two:/work/other"), default)));
+    }
+
+    [SkippableTheory]
+    [InlineData(RunnerAgentDownKinds.NotStarting)]
+    [InlineData(RunnerAgentDownKinds.SignedOut)]
+    public async Task APauseTheRunnerSetItself_ChangesNothing(string kind)
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        await PauseSessionAsync(h, id, kind);
+
+        Assert.Equal(RunnerStates.Running, Told(h, await h.SessionAsync(id)).State);
+
+        var issue = await h.FileAsync();
+        Assert.NotNull(Value(await h.Claims.TakeClaim(issue, new ClaimRequest(PauseWhere), default)));
+    }
+
+    [SkippableFact]
+    public async Task ACallerWithNoKey_ClaimsAsBefore()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        Assert.NotNull(Value(await h.Claims.TakeClaim(issue, new ClaimRequest(PauseWhere), default)));
+    }
+
     // ---- A no-code declaration is the review column's (HA-2198) ----
     //
     // The take and the release are conditional UPDATEs, so this lives here and

@@ -67,6 +67,19 @@ public class IssueClaimController(
 
         var now = time.GetUtcNow();
 
+        // A session the board has paused takes no new claim until the pause
+        // ends. One claim it already holds is not touched: its heartbeats and
+        // its release do not come through here.
+        if (await caller.ApiKeyAsync(ct) is { } paused)
+        {
+            var pausedSession = await db.RunnerSessions.AsNoTracking()
+                .Where(s => s.ApiKeyId == paused.Id && s.Where == runner && s.EndedAt == null)
+                .OrderBy(s => s.Id)
+                .FirstOrDefaultAsync(ct);
+            if (pausedSession is not null && RunnerSessions.BoardPausedAt(pausedSession, now))
+                return Conflict(PausedSentence(pausedSession, now));
+        }
+
         // Read first, because the refusal has to name a holder and that
         // sentence can only be written from the row. The guarantee is not in
         // this read - it is in the predicate on the write below, which is what
@@ -117,6 +130,19 @@ public class IssueClaimController(
 
         var window = claims.WindowFor(new ClaimSnapshot(null, null, null, null, null, null, null, playbook?.Limit, playbook?.MaxRun));
         return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, window, playbook?.MaxRun ?? 0);
+    }
+
+    /// <summary>
+    /// Why a paused session was refused a claim: the board paused it, for how
+    /// much longer, what it saw, and who can lift it.
+    /// </summary>
+    private static string PausedSentence(EfHatchRunnerSession session, DateTimeOffset now)
+    {
+        var minutes = Math.Max(1, (int)Math.Ceiling((session.AgentDownUntil!.Value - now).TotalMinutes));
+        var line = string.IsNullOrWhiteSpace(session.AgentDownLine) ? "" : $" ({session.AgentDownLine})";
+        return $"the board paused this runner until {session.AgentDownUntil:HH:mm} UTC, " +
+            $"{(minutes == 1 ? "1 minute" : $"{minutes} minutes")} from now{line}; " +
+            "a person can lift the pause on the Runners page";
     }
 
     /// <summary>The name an answer nobody pressed is written under.</summary>

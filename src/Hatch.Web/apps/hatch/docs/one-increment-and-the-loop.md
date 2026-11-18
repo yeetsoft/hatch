@@ -307,7 +307,10 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
 4. **Pause.** Paused from the board or from the keyboard, it keeps
    heartbeating and takes nothing. The board wins if both are true. A
    `--standby` start is paused the same way, until the board's Go to Work sets
-   it running.
+   it running. The board can also pause a session itself, after three releases
+   in a row that spent nothing: its heartbeat is then answered *paused* for an
+   hour, a claim from that checkout is refused, and a restart in the same
+   checkout inherits the pause until it ends.
 5. **Usage-limit wait.** A runner whose account ran out of usage takes
    nothing until it resets, obeying every bound and Ctrl-C meanwhile.
    A runner whose last two runs never started their agent waits the same

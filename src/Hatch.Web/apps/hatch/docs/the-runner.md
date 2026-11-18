@@ -1237,6 +1237,10 @@ each, pause it the same as one ticket three times.
   restarted into the same checkout starts with the same pause. A paused
   session is left out of the peer set and the driver election, as any session
   with an agent down is.
+- **What it stops.** While the pause lasts, the session's heartbeat is
+  answered `paused`, so the loop takes nothing, and a claim from that
+  checkout is refused `409` with a sentence naming the pause. A claim the
+  session already holds is left alone. The stored state is not changed.
 - **Setting it.** `Hatch__RunnerPauseAfter` (default `3`, `0` turns it off) and
   `Hatch__RunnerPauseMinutes` (default `60`); see
   [deployment overview](deployment-overview).

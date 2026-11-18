@@ -352,6 +352,62 @@ public class RunnerSessionsTests
 
     // ---- Helpers ----
 
+    // ---- A pause the board wrote ----
+
+    private static EfHatchRunnerSession Paused(string kind, DateTimeOffset until, string state = EfHatchRunner.Running)
+    {
+        var session = Session();
+        session.State = state;
+        session.AgentDownKind = kind;
+        session.AgentDownUntil = until;
+        return session;
+    }
+
+    private static string Told(EfHatchRunnerSession session, DateTimeOffset at) =>
+        RunnerSessions.Instruct(session, null, "runner-one", "runner-one", [], now: at).State;
+
+    [Fact]
+    public void ABoardPause_IsAnsweredPaused_AndTheStoredStateIsLeftAlone()
+    {
+        var session = Paused(RunnerAgentDownKinds.BoardPaused, Now.AddMinutes(30));
+
+        Assert.Equal(RunnerStates.Paused, Told(session, Now));
+        Assert.Equal(EfHatchRunner.Running, session.State);
+    }
+
+    [Fact]
+    public void ABoardPause_PastItsInstant_AnswersTheStoredState()
+    {
+        var session = Paused(RunnerAgentDownKinds.BoardPaused, Now.AddMinutes(30));
+
+        Assert.Equal(RunnerStates.Running, Told(session, Now.AddMinutes(30)));
+        Assert.Equal(RunnerStates.Running, Told(session, Now.AddHours(2)));
+    }
+
+    [Fact]
+    public void ABoardPause_NeverSoftensAStop()
+    {
+        var session = Paused(RunnerAgentDownKinds.BoardPaused, Now.AddMinutes(30), EfHatchRunner.Stopping);
+
+        Assert.Equal(RunnerStates.Stopping, Told(session, Now));
+    }
+
+    [Theory]
+    [InlineData(RunnerAgentDownKinds.NotStarting)]
+    [InlineData(RunnerAgentDownKinds.SignedOut)]
+    public void APauseTheRunnerSetItself_IsNotAPause(string kind)
+    {
+        Assert.Equal(RunnerStates.Running, Told(Paused(kind, Now.AddMinutes(30)), Now));
+    }
+
+    [Fact]
+    public void AnInstructionWithNoInstant_IsTheStoredState()
+    {
+        var session = Paused(RunnerAgentDownKinds.BoardPaused, Now.AddMinutes(30));
+
+        Assert.Equal(RunnerStates.Running, RunnerSessions.Instruct(session, null, "runner-one", null, []).State);
+    }
+
     private static RunnerSessions With(int goneAfterSeconds = 90) =>
         new(new Runners(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = goneAfterSeconds }), Options.Create(new AuthOptions()), new StubHatchRevision()));
 
