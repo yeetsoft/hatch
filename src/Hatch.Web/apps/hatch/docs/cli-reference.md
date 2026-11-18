@@ -1181,6 +1181,12 @@ again after 14:05`) and on the terminal, and the id is not asked for again for
 an hour, a restart included. After a pull the adapter's list is read again and a
 beat with `pulling` cleared carries what it now holds.
 
+**Refusing a model that did not fit.** After a session on a local model, the
+loop asks the server what it has loaded. A model that spilled off the
+accelerator is added to the runner's own refused models and said on its line
+(`<id> did not fit on the accelerator - refused`); one that fit, or is no longer
+loaded, writes nothing ([Refused models](the-runner#refused-models)).
+
 None of the bounds, `--project` included, is set by default. Each is read
 between increments, so the increment in flight always finishes. The two restart flags do nothing in a
 `hatch` started by hand, which has no supervisor to rebuild and run it again.

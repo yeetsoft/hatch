@@ -201,6 +201,18 @@ public sealed class FakeAdapter : IAgentAdapter
 
     public string? Digest(string? model) => model is not null && Digests.TryGetValue(model, out var d) ? d : null;
 
+    /// <summary>The Ollama id a model name spilled as, as a server's loaded list would say; absent fit or is not loaded.</summary>
+    public Dictionary<string, string> Spills { get; } = [];
+
+    /// <summary>Every model name the loop asked <see cref="SpilledAsync"/> about, in order.</summary>
+    public List<string?> Asked { get; } = [];
+
+    public Task<string?> SpilledAsync(string? model, CancellationToken ct)
+    {
+        Asked.Add(model);
+        return Task.FromResult(model is not null && Spills.TryGetValue(model, out var id) ? id : null);
+    }
+
     /// <summary>
     /// Set to make <see cref="CanDeny"/> refuse a row carrying at least one
     /// denied-tools rule, with this sentence; null, or a row with no rules at

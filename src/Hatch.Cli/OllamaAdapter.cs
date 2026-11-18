@@ -226,6 +226,65 @@ public sealed class OllamaAdapter : CodexAdapter, IAgentAdapter
         }
     }
 
+    /// <summary>
+    /// The id of <paramref name="model"/> where <c>/api/ps</c> lists it loaded with
+    /// less of it in video memory than it takes (<c>size_vram</c> under <c>size</c>),
+    /// an alias going through the tiers as <see cref="Digest"/> does. Null where it
+    /// fit, is not loaded, reports no usable sizes, or the server did not answer.
+    /// Never touches the list <see cref="Models"/> reads.
+    /// </summary>
+    /// <remarks>
+    /// Per Ollama's documented API, not a live server:
+    /// <c>{"models":[{"name","model","size","size_vram"}]}</c>.
+    /// </remarks>
+    public async Task<string?> SpilledAsync(string? model, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(model)) return null;
+
+        var id = _tiers.TryGetValue(model, out var mapped) ? mapped : model;
+        if (id is null) return null;
+
+        try
+        {
+            using var response = await _http.GetAsync($"{_host.Url}/api/ps", ct);
+            if (!response.IsSuccessStatusCode) return null;
+
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            if (!doc.RootElement.TryGetProperty("models", out var list) || list.ValueKind != JsonValueKind.Array)
+                return null;
+
+            foreach (var entry in list.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object
+                    || (StringOf(entry, "name") != id && StringOf(entry, "model") != id))
+                    continue;
+
+                return entry.TryGetProperty("size", out var size) && size.TryGetInt64(out var total) && total > 0
+                    && entry.TryGetProperty("size_vram", out var vram) && vram.TryGetInt64(out var resident)
+                    && resident < total
+                    ? id
+                    : null;
+            }
+
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? StringOf(JsonElement entry, string name) =>
+        entry.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
     /// <summary>The <c>error</c> text of a body, or null where it is not JSON or names none.</summary>
     private static string? ErrorOf(string text)
     {
