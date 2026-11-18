@@ -64,6 +64,8 @@ An issue in review is dispatched on these two and nothing else. The board reads 
 - Only a `failed` build, on the sha the merge check read, in a repository that merges cleanly, is build work.
 - `pending`, a verdict about a different sha, no verdict at all, `passed` and `none` are all nothing for an agent to do.
 
+A clean branch whose build passes, or that has no build verdict at all, is also waiting on a person: the row says "it waits for an owner or approver to approve it". An `express` issue is carried through the columns marked to be skipped but not past review, so its row adds "express does not carry it past review". Only a `preapproved` issue is carried past review by the board itself, and one of those that still shows this row, with no pull request recorded, keeps the plain "nothing for an agent to do".
+
 A runner that cannot read builds - no forge CLI, not signed in, a host it cannot reach - costs nothing: the issue is explained as it was before builds were read.
 
 Neither check costs an increment. The runner takes both on a clock between increments, asking `ls-remote` first and fetching only where a branch moved, and only a conflict or a failed build is ever handed to a session. A flaky check on a branch is a failure, and the board does not re-run it. A build that fails again on the tip an increment itself pushed is not sent to another agent: the board marks the ticket stalled and resumes it after a pause, and holds it for a person after several in a row. [One increment and the loop](one-increment-and-the-loop#stalls) has the counts.

@@ -627,8 +627,52 @@ public class DispatchTests
 
         var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
-        Assert.Equal("its branch merges cleanly with main and its build passes - nothing for an agent to do", row.Blocked);
+        Assert.Equal("its branch merges cleanly with main and its build passes - nothing for an agent to do; it waits for an owner or approver to approve it", row.Blocked);
         Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ACleanPassingExpressIssue_SaysExpressDoesNotCarryItPastReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "express, clean and green", h.Review);
+        await h.ExpressAsync(issue);
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+
+        Assert.Equal(
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do; express does not carry it past review, so it waits for an owner or approver to approve it",
+            row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ACleanPassingPreApprovedIssueThatReachesTheFold_KeepsTheBareSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "pre-approved, no pull request", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+
+        Assert.Equal("its branch merges cleanly with main and its build passes - nothing for an agent to do", row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ACleanIssueWithNoBuildVerdict_AlsoSaysItWaitsOnAnApprover()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "clean, no build verdict", h.Review);
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+
+        Assert.Equal(
+            "its branch merges cleanly with main - nothing for an agent to do; it waits for an owner or approver to approve it",
+            row.Blocked);
     }
 
     [Fact]
