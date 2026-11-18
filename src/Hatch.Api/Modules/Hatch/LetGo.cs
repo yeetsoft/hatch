@@ -23,8 +23,10 @@ public static class LetGo
     /// a status change, a person's resume, or an answer a person wrote -
     /// whichever comes first. A release with no outcome or an outcome of
     /// <see cref="ClaimOutcomes.Unservable"/>, <see cref="ClaimOutcomes.Abandoned"/>
-    /// or <see cref="ClaimOutcomes.Unstarted"/> (or preempted), a hold, and an
-    /// answer written by a lapse, are skipped rather than counted or stopped at.
+    /// or <see cref="ClaimOutcomes.Unstarted"/> (or preempted), a hold, an
+    /// answer written by a lapse, and a drop marked as having spent nothing
+    /// (see <see cref="SpentNothing"/>), are skipped rather than counted or
+    /// stopped at.
     /// </summary>
     public static int Count(IEnumerable<(string Kind, string? Payload)> eventsNewestFirst)
     {
@@ -36,7 +38,12 @@ public static class LetGo
             if (e.Kind == EfHatchIssueEvent.ClaimReleased)
             {
                 var outcome = ReleaseOutcome(e.Payload);
-                if (outcome == ClaimOutcomes.Dropped) { letGo++; continue; }
+                if (outcome == ClaimOutcomes.Dropped)
+                {
+                    if (IsSpentNothing(e.Payload)) continue; // the session spent nothing: neither a drop nor a stop
+                    letGo++;
+                    continue;
+                }
                 if (outcome == ClaimOutcomes.Worked || outcome == ClaimOutcomes.Recused) break;
                 if (outcome == ClaimOutcomes.Unservable) continue; // unservable: skipped over, as preempted is
                 if (outcome == ClaimOutcomes.Abandoned) continue; // abandoned: the loop died, the increment did not choose
@@ -93,7 +100,8 @@ public static class LetGo
     /// runner is the record; the first release that is anything else (worked,
     /// preempted, recused, unservable, unstarted, no outcome), the first status change, or the first
     /// answer a person wrote, or the first resume, means there is none. Takes,
-    /// lapses, holds, clears and comments are stepped over. A drop with no
+    /// lapses, holds, clears, comments and drops marked as having spent nothing
+    /// (see <see cref="SpentNothing"/>) are stepped over. A drop with no
     /// runner - one written before the payload carried it - records nothing.
     /// </summary>
     public static LetGoBy? By(IEnumerable<(string Kind, string? Payload, DateTimeOffset At)> eventsNewestFirst)
@@ -104,7 +112,9 @@ public static class LetGo
 
             if (e.Kind == EfHatchIssueEvent.ClaimReleased)
             {
-                if (ReleaseOutcome(e.Payload) == ClaimOutcomes.Dropped && ReleaseRunner(e.Payload) is { } runner)
+                var outcome = ReleaseOutcome(e.Payload);
+                if (outcome == ClaimOutcomes.Dropped && IsSpentNothing(e.Payload)) continue; // stepped over, as Count does
+                if (outcome == ClaimOutcomes.Dropped && ReleaseRunner(e.Payload) is { } runner)
                     return new LetGoBy(runner, e.At);
                 return null;
             }
@@ -203,6 +213,23 @@ public static class LetGo
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    /// <summary>Whether a release's payload carries the board's mark that its claim spent nothing.</summary>
+    internal static bool IsSpentNothing(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return doc.RootElement.TryGetProperty(SpentNothing.Marker, out var value)
+                && value.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 

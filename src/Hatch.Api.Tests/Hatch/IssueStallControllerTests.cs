@@ -50,6 +50,137 @@ public class IssueStallControllerTests
         Assert.Null(resumed.StalledWhy);
     }
 
+    // ---- A session that spent nothing leaves no mark ----
+
+    private const string Declined = EfHatchIssueEvent.StallDeclined;
+
+    [Fact]
+    public async Task AStallOnAClaimThatSpentNothing_LeavesTheMarkAsItWasAndSaysSo()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key);
+        await h.WorkLogAsync(issue.Key, tokens: 0, isError: true);
+        h.Caller.Person = null;
+        h.Caller.Key = AKey();
+
+        var answered = await h.StallAsync(issue.Key, "the session ended without moving it");
+
+        Assert.Equal(issue.Key, answered.Key);
+        Assert.Null(answered.StalledAt);
+        Assert.Null(answered.StalledWhy);
+        Assert.Empty(await h.EventsAsync(issue.Key, EfHatchIssueEvent.Stalled));
+
+        var declined = Assert.Single(await h.EventsAsync(issue.Key, Declined));
+        Assert.Equal("hatch", declined.Actor);
+        Assert.Equal("the session ended without moving it", declined.Payload!.Value.GetProperty("why").GetString());
+        Assert.Equal("spent_nothing", declined.Payload!.Value.GetProperty("because").GetString());
+    }
+
+    [Fact]
+    public async Task AStallOnAClaimThatSpentNothing_KeepsAMarkAlreadyThere()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.StallAsync(issue.Key, "an earlier increment");
+        var before = await h.RowAsync(issue.Key);
+        await h.ClaimAsync(issue.Key);
+        await h.WorkLogAsync(issue.Key, tokens: 0, isError: true);
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+
+        await h.StallAsync(issue.Key, "this one spent nothing");
+
+        var after = await h.RowAsync(issue.Key);
+        Assert.Equal(before.StalledAt, after.StalledAt);
+        Assert.Equal("an earlier increment", after.StalledWhy);
+    }
+
+    [Fact]
+    public async Task AClaimWithNoWorkLogRow_IsStalledAsItAlwaysWas()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key);
+
+        var stalled = await h.StallAsync(issue.Key, "no row yet");
+
+        Assert.NotNull(stalled.StalledAt);
+        Assert.Empty(await h.EventsAsync(issue.Key, Declined));
+        Assert.Single(await h.EventsAsync(issue.Key, EfHatchIssueEvent.Stalled));
+    }
+
+    [Fact]
+    public async Task ARowThatSpentTokens_IsStalledAsItAlwaysWas()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key);
+        await h.WorkLogAsync(issue.Key, tokens: 1200, isError: true);
+
+        var stalled = await h.StallAsync(issue.Key, "it worked and stopped");
+
+        Assert.NotNull(stalled.StalledAt);
+        Assert.Empty(await h.EventsAsync(issue.Key, Declined));
+    }
+
+    [Fact]
+    public async Task ARowThatIsNotAnError_IsStalledAsItAlwaysWas()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key);
+        await h.WorkLogAsync(issue.Key, tokens: 0, isError: false);
+
+        var stalled = await h.StallAsync(issue.Key, "ended cleanly, moved nothing");
+
+        Assert.NotNull(stalled.StalledAt);
+        Assert.Empty(await h.EventsAsync(issue.Key, Declined));
+    }
+
+    [Fact]
+    public async Task ARowThatReachedTheBoardBeforeTheClaim_IsNotThisClaims()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.WorkLogAsync(issue.Key, tokens: 0, isError: true);
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.ClaimAsync(issue.Key);
+
+        var stalled = await h.StallAsync(issue.Key, "an old row is not this claim's");
+
+        Assert.NotNull(stalled.StalledAt);
+        Assert.Empty(await h.EventsAsync(issue.Key, Declined));
+    }
+
+    [Fact]
+    public async Task AStallWithNoClaimHeld_IsStalledAsItAlwaysWas()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.WorkLogAsync(issue.Key, tokens: 0, isError: true);
+
+        var stalled = await h.StallAsync(issue.Key, "nobody holds it");
+
+        Assert.NotNull(stalled.StalledAt);
+        Assert.Empty(await h.EventsAsync(issue.Key, Declined));
+    }
+
+    [Fact]
+    public async Task ATwoRowClaimSpentNothingOnlyWhenBothDid()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key);
+        await h.WorkLogAsync(issue.Key, tokens: 0, isError: true);
+        await h.WorkLogAsync(issue.Key, tokens: 0, isError: true);
+
+        Assert.Null((await h.StallAsync(issue.Key, "both spent nothing")).StalledAt);
+
+        await h.WorkLogAsync(issue.Key, tokens: 9, isError: true);
+
+        Assert.NotNull((await h.StallAsync(issue.Key, "one of three did")).StalledAt);
+    }
+
     // ---- Holding and resuming: a person's, never a key's ----
 
     [Fact]
@@ -216,6 +347,39 @@ public class IssueStallControllerTests
 
         public async Task<IssueDto> HoldAsync(string key, bool held) =>
             Value(await Hold.PutHold(key, new HoldRequest(held), default));
+
+        /// <summary>Takes the claim the way the table holds it: the columns set directly, <c>ClaimedAt</c> on the harness clock.</summary>
+        public async Task ClaimAsync(string key)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var row = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            row.ClaimToken = Guid.NewGuid();
+            row.ClaimedBy = "hatch";
+            row.ClaimRunner = "runner-one at host-one:/work/tree";
+            row.ClaimedAt = Time.GetUtcNow();
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A work-log row that reached the board just now, spending <paramref name="tokens"/> in all.</summary>
+        public async Task WorkLogAsync(string key, long tokens, bool isError)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issueId = await Db.Issues.AsNoTracking().WithKey(projectKey, number).Select(i => i.Id).FirstAsync();
+            var at = Time.GetUtcNow();
+            Db.WorkLog.Add(new EfHatchWorkLogEntry
+            {
+                IssueId = issueId,
+                SessionId = Guid.NewGuid().ToString("N"),
+                StartedAt = at,
+                EndedAt = at,
+                DurationMs = 0,
+                CreatedAt = at,
+                InputTokens = tokens,
+                IsError = isError,
+            });
+            await Db.SaveChangesAsync();
+            Time.Advance(TimeSpan.FromSeconds(1));
+        }
 
         public async Task<IssueDto> ReadAsync(string key) => Value(await Issues.GetIssue(key, default));
 

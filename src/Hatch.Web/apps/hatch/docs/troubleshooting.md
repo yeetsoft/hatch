@@ -283,6 +283,23 @@ run](the-runner#when-it-will-not-run).
 - **`hatch work` does not clean up.** It writes and clears its own record but
   never reads another's; use `go-to-work`.
 
+## A ticket was not stall-marked because the session spent nothing
+
+- **The session never got as far as the ticket.** The runner's work-log row for
+  the claim shows no tokens and ended in error - an agent that failed to start
+  properly, a login that lapsed, a model that refused. The board leaves the
+  ticket's record alone: no stall mark, and the release is not counted
+  against it, so it is never held for a person on that account.
+- **The ticket is picked up again at once.** Nothing waits out a resume
+  window. A runner that keeps failing this way will keep taking and dropping
+  it, so read the runner's own comment on the ticket and fix that end: the
+  runner's terminal and its work-log rows say what the session saw.
+- **Two sessions on one claim count together.** The mark is left off only when
+  every row since the claim was taken spent nothing. One row that spent tokens,
+  or that did not end in error, and the stall is marked as usual.
+- **How the stall mark works otherwise:** [when an increment does
+  nothing](flow-wip-and-the-battery#when-an-increment-does-nothing).
+
 ## A ticket stalls on a missing toolchain
 
 - **The repository builds with tools the runner's machine lacks, and nothing

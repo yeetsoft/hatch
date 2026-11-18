@@ -331,7 +331,7 @@ not mint an issue number - try again".
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
 | contribution | PUT | `/issues/{key}/contribution` | key | That the issue came from outside: pull request URL, head branch, author login and association, origin. Write-once, unique per pull request URL; answers the `IssueDto` |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue. A key may also write it under a changelog task's live claim |
-| stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
+| stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why. On a claim whose session spent nothing (no tokens, ended in error) the board leaves the mark off, still answers `200` with the issue, and writes a `stall_declined` event instead |
 | hold | PUT | `/issues/{key}/hold` | **person** | Parks/resumes a ticket; clears any stall mark |
 | playbook | PATCH | `/issues/{key}/playbook` | **person, at the browser** | Per-ticket model/effort override, beating every playbook |
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
@@ -783,7 +783,11 @@ token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
 `outcome` - one of `dropped`, `worked`, `preempted`, `recused`, `unservable`, `abandoned`, `unstarted` - and an optional
 `reason` - `quiet` or `run-time` - both read only alongside a token, and `reason`
-written into the event only beside an `outcome`. `abandoned` is what a
+written into the event only beside an `outcome`. A `dropped` release whose
+claim spent nothing - at least one work-log row reached the board since the
+claim was taken, and every such row has zero tokens and `isError` true - is
+written with the outcome the runner sent plus `spentNothing: true`, and
+`letGo` neither counts it nor stops at it. `abandoned` is what a
 starting loop sends for the claim its dead predecessor left (a crash, a closed
 window): it is skipped over by `letGo`, neither counted nor resetting the
 count. `unstarted` is what a runner sends when the session's agent never started

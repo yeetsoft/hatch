@@ -111,6 +111,15 @@ export function describe(event: IssueEvent): string {
   if (event.kind === 'stalled') return typeof event.payload?.why === 'string' ? event.payload.why : '';
   if (event.kind === 'held' || event.kind === 'resumed') return '';
 
+  /* stall_declined carries { why, because } - the board left a runner's stall
+     mark off because the session spent nothing (see docs/hatch.md, "The stall
+     mark"). The runner's own sentence follows when it sent one. */
+  if (event.kind === 'stall_declined') {
+    const why = typeof event.payload?.why === 'string' ? event.payload.why : '';
+    const lead = 'No stall mark: the session spent nothing';
+    return why === '' ? lead : `${lead} (the runner said: ${short(why)})`;
+  }
+
   /* ordered carries { runner, by } - no from/to - a person's own order from
      the Runners page, placed on the issue it names. */
   if (event.kind === 'ordered') {

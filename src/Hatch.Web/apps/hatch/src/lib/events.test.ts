@@ -174,6 +174,20 @@ describe('describe', () => {
     );
   });
 
+  it('says the board declined a stall mark because the session spent nothing', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'stall_declined', payload: { why: 'left where it was found', because: 'spent_nothing' } }),
+      ),
+    ).toBe('No stall mark: the session spent nothing (the runner said: left where it was found)');
+  });
+
+  it('says it without the runner\'s sentence when there was none', () => {
+    expect(describeEvent(event({ kind: 'stall_declined', payload: { why: null, because: 'spent_nothing' } }))).toBe(
+      'No stall mark: the session spent nothing',
+    );
+  });
+
   it('draws a held event as blank - the badge already says held', () => {
     expect(describeEvent(event({ kind: 'held', payload: { from: false, to: true } }))).toBe('');
   });

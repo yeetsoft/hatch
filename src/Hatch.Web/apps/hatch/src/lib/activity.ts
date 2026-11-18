@@ -170,6 +170,7 @@ const KIND_WORDS: Record<string, [string, string]> = {
   pull_request_changed: ['pull request change', 'pull request changes'],
   claim_taken: ['claim taken', 'claims taken'],
   claim_released: ['claim released', 'claims released'],
+  stall_declined: ['declined stall mark', 'declined stall marks'],
   messaged: ['message', 'messages'],
   asked: ['question', 'questions'],
   answered: ['answer', 'answers'],
