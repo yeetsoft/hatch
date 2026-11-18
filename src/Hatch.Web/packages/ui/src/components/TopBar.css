@@ -20,24 +20,38 @@
   box-shadow: inset 0 -1px 0 var(--on-chrome-wash), var(--shadow);
 }
 
+/* The bar wraps (HA-2447). It used to be one row that could not break: the
+   trailing side is `flex: none` and the leading side shrinks, so between the
+   phone breakpoint and about 1150px (scope control drawn, battery showing)
+   the brand gave way first and then the nav's entries were painted over the
+   overnight and attention controls. The wrap answers to the widths as they
+   are - nav, scope, battery, pills - where a second breakpoint would carry a
+   literal that goes stale. The block padding keeps the one-row bar at
+   --topbar-h (36px control and 2 x --sp-1) and puts air above and below the
+   two-row one. */
 .hatch-topbar__inner {
   max-width: var(--measure);
   min-height: var(--topbar-h);
   margin: 0 auto;
   padding-inline: var(--sp-5);
+  padding-block: var(--sp-1);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
+  row-gap: var(--sp-1);
 }
 
 /* This div also wears .hatch-menu-bar (it now hosts the gear's Menu), whose
    own gap (--sp-1) is equal specificity with the rule above - the winner
    would otherwise depend on which stylesheet's import happens to run last.
    The compound selector outranks both single-class rules regardless of
-   import order. */
+   import order. It restates the row-gap too, since this `gap` would reset the
+   wrapped bar's row-gap to the column gap. */
 .hatch-topbar__inner.hatch-menu-bar {
   gap: var(--sp-4);
+  row-gap: var(--sp-1);
 }
 
 /* `width="full"`: the bar runs to the window's edges instead of centring at
@@ -53,6 +67,9 @@
   /* Without this a long app name or a wide slot refuses to shrink and pushes
      the theme switch off the end instead of ellipsing. */
   min-width: 0;
+  /* So brand, nav and scope control break among themselves when this side is
+     alone on a line, rather than overflowing it. */
+  flex-wrap: wrap;
 }
 
 /* The bar's padding and each side's gap step down one token at phone width,
@@ -75,6 +92,9 @@
 .hatch-topbar__side--end {
   flex: none;
   justify-content: flex-end;
+  /* On the second row it keeps the right edge `space-between` gives it on the
+     first. */
+  margin-left: auto;
 }
 
 .hatch-topbar__name {

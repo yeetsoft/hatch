@@ -210,7 +210,7 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
     /// unseen on the egg, and two digits in each of the four attention pills.
     /// <c>ExhaustedRunners</c> stays null: its dot adds no width.
     /// </summary>
-    private static async Task StubTheSessionReads(IBrowserContext context)
+    internal static async Task StubTheSessionReads(IBrowserContext context)
     {
         var now = DateTimeOffset.UtcNow;
         var rows = Enumerable.Range(0, RowsPerSection).ToList();

@@ -48,6 +48,42 @@ internal sealed record BarMeasurement(
     }
 }
 
+/// <summary>One direct child of the primary nav's menu bar: its text, its box, and its own <c>scrollWidth</c> against <c>clientWidth</c> (a clipped label overflows its element without moving the element's box).</summary>
+internal sealed record NavEntry(string Name, Box Box, int ScrollWidth, int ClientWidth)
+{
+    public override string ToString() => $"{Name}: {Box} scrollWidth={ScrollWidth} clientWidth={ClientWidth}";
+}
+
+/// <summary>
+/// The desk top bar as it stood when read: the viewport, the document's width
+/// against it, every primary nav entry in bar order, and the other things the
+/// nav can run into by name (scope, brand, battery, overnight, attention,
+/// gear). A null <see cref="Box"/> means absent from the document.
+/// </summary>
+internal sealed record NavMeasurement(
+    int InnerWidth,
+    int ScrollWidth,
+    int ClientWidth,
+    IReadOnlyList<NavEntry> Entries,
+    IReadOnlyDictionary<string, Box?> Controls)
+{
+    public override string ToString()
+    {
+        var lines = new List<string>
+        {
+            $"innerWidth: {InnerWidth}",
+            $"document scrollWidth: {ScrollWidth}",
+            $"document clientWidth: {ClientWidth}",
+        };
+
+        lines.AddRange(Entries.Select(e => $"nav {e}"));
+        foreach (var (name, box) in Controls)
+            lines.Add($"{name}: {(box is null ? "absent" : box.ToString())}");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+}
+
 /// <summary>
 /// What the board's filter bar looks like at the moment it was read: the
 /// viewport, the document's width against it, whether a coarse pointer matches,

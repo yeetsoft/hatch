@@ -1115,6 +1115,26 @@
   width: 18rem;
 }
 
+/* Closed, a Menu panel is visibility: hidden but still laid out, so this
+   one's 18rem hanging right of a trigger that sits past the middle of a
+   narrow bar widens the document and a scrollbar appears (HA-2447: 800px
+   wide with the bar wrapped). Closed it is held to its trigger's width and
+   clipped; the clip waits out the fade (--transition), so the panel closes
+   whole. Open it is as wide as it asks. */
+.hatch-scope-control .hatch-menu__panel {
+  max-width: 100vw;
+}
+
+.hatch-scope-control .hatch-menu__panel:not(.hatch-menu__panel--open) {
+  max-width: 100%;
+  overflow: hidden;
+  transition:
+    opacity var(--transition),
+    translate var(--transition),
+    visibility var(--transition),
+    max-width 0s linear var(--transition);
+}
+
 /* flex: 1 and min-width: 0 let the name shrink inside the row's now-fixed
    width, so the ellipsis is reachable instead of being pre-empted by the
    row's own natural (unwrapped) content width. */
