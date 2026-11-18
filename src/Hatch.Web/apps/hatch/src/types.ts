@@ -933,6 +933,25 @@ export interface Question {
   answers: Comment[];
 }
 
+/** One issue on the ballot: a container for the issues below it that have a
+    question waiting, and the holder of any waiting on itself. `excerpt` is the
+    description's first lines, markdown as written - drawn as plain text. */
+export interface BallotNode {
+  key: string;
+  projectKey: string;
+  type: IssueType;
+  title: string;
+  excerpt: string;
+  isTerminal: boolean;
+  children: BallotNode[];
+  questions: Question[];
+}
+
+/** Every question waiting on a person, under the topmost issue of each chain. */
+export interface Ballot {
+  roots: BallotNode[];
+}
+
 export type IssueEventKind =
   | 'created'
   | 'retitled'

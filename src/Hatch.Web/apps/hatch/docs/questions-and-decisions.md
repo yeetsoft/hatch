@@ -63,8 +63,15 @@ and holds the ticket, and that one blocks exactly as an agent's does.
 
 ## How the operator answers
 
-An unanswered question shows in three places:
+An unanswered question shows in four places:
 
+- The **Ballot**, at `/ballot`, the first place a question shows. It lists every
+  waiting question under the issues that enclose it, each issue drawn with the
+  first lines of its description above its questions, and a child issue nested
+  inside its parent. A question shows who asked, how long it has waited and its
+  options with the recommended one marked. A row opens the issue; the Ballot
+  does not answer in place yet. It follows the tab's project scope, and a
+  question answered elsewhere leaves it.
 - A `?` badge with a count, on the ticket's card on the board.
 - **Questions to answer**, in the **What is waiting on you** panel
   ([watching the loop](watching-the-loop#what-is-waiting-on-you)). It has one row
