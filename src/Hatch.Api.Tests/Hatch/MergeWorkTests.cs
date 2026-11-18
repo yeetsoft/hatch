@@ -127,6 +127,34 @@ public class MergeWorkTests
     }
 
     [Fact]
+    public void ACleanVerdictOnTheRecordedBranch_Merges_WhateverElseIsNamedForTheKey()
+    {
+        // The runner checked the pull request's own branch and found it clean; the board
+        // never learns what else is on origin named for the key, so nothing can hold it.
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.Clean, holdsTrunk: true) };
+        var builds = new[] { Build(Remote, BuildVerdicts.Passed) };
+
+        var judgement = MergeWork.Judge(
+            bound, merges, builds, null, true, null, null, Now, recordedBranch: "feature/not-named-for-the-key");
+
+        Assert.Equal(WorkKinds.Merge, judgement.Kind);
+    }
+
+    [Fact]
+    public void ARecordedBranchNotOnOrigin_IsHeldOnItsOwnName_NeverOnTheKeyNamingSentences()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.None) };
+
+        var judgement = MergeWork.Judge(bound, merges, [], null, true, null, null, Now, recordedBranch: "feature/x");
+
+        Assert.Equal(WorkKinds.Hold, judgement.Kind);
+        Assert.Equal("its recorded branch `feature/x` is not on origin", judgement.Sentence);
+        Assert.DoesNotContain("is named for it", judgement.Sentence);
+    }
+
+    [Fact]
     public void ARecordedBranch_ChangesNoOtherSentence()
     {
         var bound = new[] { Repo(Remote) };

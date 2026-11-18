@@ -97,6 +97,65 @@ public class PullRequestStateControllerTests
         Assert.Equal(Now.AddMinutes(5), row.PullRequestHeadSince);
     }
 
+    // ---- The head branch ----
+
+    [Fact]
+    public async Task AHeadBranch_IsKeptBesideTheState_AndIsNoEventOfItsOwn()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request());
+        var updated = h.Db.Issues.Single().UpdatedAt;
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        Assert.IsType<NoContentResult>(await h.PutAsync(issue, Request() with { HeadBranch = "feature/x" }));
+
+        var row = h.Db.Issues.Single();
+        Assert.Equal("feature/x", row.PullRequestHeadBranch);
+        Assert.Equal("feature/x", row.RecordedBranch);
+        Assert.Equal(updated, row.UpdatedAt);
+        Assert.Single(await h.EventsAsync(issue.Key));
+    }
+
+    [Fact]
+    public async Task ABlankOrAbsentHeadBranch_LeavesTheOneKept()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request() with { HeadBranch = "feature/x" });
+
+        await h.PutAsync(issue, Request());
+        Assert.Equal("feature/x", h.Db.Issues.Single().PullRequestHeadBranch);
+
+        await h.PutAsync(issue, Request() with { HeadBranch = "  " });
+        Assert.Equal("feature/x", h.Db.Issues.Single().PullRequestHeadBranch);
+    }
+
+    [Fact]
+    public async Task AHeadBranch_IsReplacedByANewerOne()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+        await h.PutAsync(issue, Request() with { HeadBranch = "feature/x" });
+
+        await h.PutAsync(issue, Request() with { HeadBranch = "feature/y" });
+
+        Assert.Equal("feature/y", h.Db.Issues.Single().PullRequestHeadBranch);
+    }
+
+    [Fact]
+    public async Task AHeadBranchTooLongToKeep_IsRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileWithPullRequestAsync();
+
+        var result = await h.RefusedAsync(
+            issue, Request() with { HeadBranch = new string('a', ContributionRequest.MaxHeadBranchLength + 1) });
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Null(h.Db.Issues.Single().PullRequestHeadBranch);
+    }
+
     // ---- Each of the three, alone ----
 
     [Fact]

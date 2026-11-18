@@ -408,14 +408,21 @@ public sealed class MergeTrain : IAsyncDisposable
         if (answer.HeadSha is not { } sha || answer.MergeState is not { } merge
             || answer.ReviewDecision is not { } review) return;
 
-        if (string.Equals(sha, issue.PullRequestHeadSha, StringComparison.Ordinal)
+        // The pull request is the pointer to the issue's change, so the branch it comes
+        // from is kept beside its state. News only while the board holds none: the head
+        // branch of a pull request does not change, and a blank is never sent.
+        var headBranch = answer.HeadBranch is { Length: > 0 } read && !string.IsNullOrWhiteSpace(read) ? read : null;
+        var branchIsNews = headBranch is not null && issue.Branch is not { Length: > 0 };
+
+        if (!branchIsNews
+            && string.Equals(sha, issue.PullRequestHeadSha, StringComparison.Ordinal)
             && string.Equals(merge, issue.PullRequestMergeState, StringComparison.Ordinal)
             && string.Equals(review, issue.PullRequestReviewDecision, StringComparison.Ordinal)) return;
 
         try
         {
             await runtime.QuietBoard.PullRequestStateAsync(
-                issue.Key, new PullRequestStateRequest(url, sha, merge, review, runtime.RunnerName), ct);
+                issue.Key, new PullRequestStateRequest(url, sha, merge, review, runtime.RunnerName, headBranch), ct);
         }
         catch (HatchException e) when (e.Status == HttpStatusCode.NotFound)
         {

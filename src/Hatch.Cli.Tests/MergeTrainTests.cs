@@ -462,6 +462,59 @@ public sealed partial class MergeTrainTests
     }
 
     [Fact]
+    public async Task The_branch_the_pull_request_comes_from_rides_the_put_so_the_board_can_check_that_branch()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged() with { HeadBranch = "feature/not-named-for-the-key" };
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-1"))).Read<PullRequestStateRequest>();
+        Assert.Equal("feature/not-named-for-the-key", put.HeadBranch);
+    }
+
+    [Fact]
+    public async Task A_board_that_holds_the_three_but_no_branch_is_told_the_branch_once()
+    {
+        using var rig = new Rig().Board(Holding("AER-1", PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged() with { HeadBranch = "aer-1-thing" };
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Equal("aer-1-thing", Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-1"))).Read<PullRequestStateRequest>().HeadBranch);
+    }
+
+    [Fact]
+    public async Task A_board_that_holds_the_three_and_the_branch_is_never_put()
+    {
+        using var rig = new Rig().Board(Holding("AER-1", PrUrl) with { Branch = "aer-1-thing" });
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged() with { HeadBranch = "aer-1-thing" };
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+    }
+
+    [Fact]
+    public async Task An_answer_that_read_no_branch_is_put_without_one_never_with_a_blank()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = Forged() with { HeadBranch = "  " };
+        rig.H.Wire.Reply("PUT", StatePath("AER-1"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Null(Assert.Single(rig.H.Wire.To("PUT", StatePath("AER-1"))).Read<PullRequestStateRequest>().HeadBranch);
+    }
+
+    [Fact]
     public async Task An_open_pull_request_the_board_already_holds_the_same_three_of_is_never_put_on_any_tick()
     {
         using var rig = new Rig().Board(Holding("AER-1", PrUrl));

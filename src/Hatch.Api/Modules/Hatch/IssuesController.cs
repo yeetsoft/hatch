@@ -983,6 +983,7 @@ public class IssuesController(
             issue.PullRequestMergeState = null;
             issue.PullRequestReviewDecision = null;
             issue.PullRequestHeadSha = null;
+            issue.PullRequestHeadBranch = null;
             issue.PullRequestHeadSince = null;
             issue.PullRequestReadAt = null;
         }

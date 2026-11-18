@@ -481,7 +481,7 @@ public sealed class ForgeTests
         Assert.Equal("abc123", answer.HeadSha);
         Assert.Null(answer.Why);
         var call = Assert.Single(runs.Calls);
-        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], call.Args);
+        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/7", "--json", "state,headRefOid,headRefName,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], call.Args);
         Assert.DoesNotContain("--hostname", call.Args);
         Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
     }
@@ -905,7 +905,21 @@ public sealed class ForgeTests
 
         Assert.Equal(42, answer.Number);
         var call = Assert.Single(runs.Calls);
-        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/42", "--json", "state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], call.Args);
+        Assert.Equal(["pr", "view", "https://forge.example/owner/repo/pull/42", "--json", "state,headRefOid,headRefName,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], call.Args);
+    }
+
+    [Fact]
+    public async Task A_pull_request_read_carries_the_branch_it_comes_from()
+    {
+        var runs = new Runs
+        {
+            Answer = _ => new GhForge.Ran(
+                0, """{"state":"OPEN","headRefOid":"abc123","headRefName":"feature/not-named-for-the-key"}""", ""),
+        };
+
+        var answer = await runs.Forge().ReadPullRequestAsync("https://forge.example/owner/repo/pull/7", default);
+
+        Assert.Equal("feature/not-named-for-the-key", answer.HeadBranch);
     }
 
     [Fact]

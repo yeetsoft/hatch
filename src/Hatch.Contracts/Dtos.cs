@@ -718,6 +718,7 @@ public record IssueClaimDto(
 /// </param>
 /// <param name="PullRequestReviewDecision">What the forge last said of the pull request's reviews - one of <see cref="ReviewDecisions"/> - or null where none has been read.</param>
 /// <param name="PullRequestHeadSha">The head commit of the pull request when the forge was last read, or null where none has been read.</param>
+/// <param name="PullRequestHeadBranch">The branch the recorded pull request comes from, as a runner read it off the forge, or null where none has been read. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.</param>
 /// <param name="PullRequestReadAt">When the forge was last read for the pull request, or null where it has not been.</param>
 /// <param name="ClosedAt">
 /// The instant this issue last entered a terminal column, or null - see
@@ -808,7 +809,8 @@ public record IssueDto(
     ContributionDto? Contribution = null,
     string LocalModel = LocalModelLevels.NoneName,
     string LocalModelOwn = LocalModelLevels.NoneName,
-    string? LocalModelFrom = null)
+    string? LocalModelFrom = null,
+    string? PullRequestHeadBranch = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -3109,7 +3111,7 @@ public record RunnerReasonDto(string Runner, string Reason);
 /// <param name="PullRequestReviewDecision">What the board holds of the pull request's review decision - one of <see cref="ReviewDecisions"/> - for the same comparison. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestHeadSha">The head commit the board last read the pull request at, for the same comparison. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestHeadSince">The moment the board first saw the pull request at that head - when the forge's pull request reached the branch tip, as far as the board can tell. Null where none is held, and from a board that predates it.</param>
-/// <param name="Branch">The head branch recorded on the issue's contribution, for an issue that came from outside. Null on the board's own rows, which have no recorded head, and from a board that predates it.</param>
+/// <param name="Branch">The head branch of the issue's recorded pull request - from its contribution where it came from outside, else the one a runner read off the forge - which is the issue's change, and the only branch looked for in place of one named for the key. Null where no pull request is recorded, or none has been read yet, and from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -4163,7 +4165,8 @@ public record PullRequestClosedRequest(string Url, string Runner);
 /// <param name="MergeState">One of <see cref="MergeStates"/>.</param>
 /// <param name="ReviewDecision">One of <see cref="ReviewDecisions"/>.</param>
 /// <param name="Runner">The checkout that read it - <c>host:/path/to/checkout</c>, as <see cref="ClaimRequest.Runner"/> is. Not validated or persisted; it rides the body for shape parity with the requests that do use it.</param>
-public record PullRequestStateRequest(string Url, string HeadSha, string MergeState, string ReviewDecision, string Runner);
+/// <param name="HeadBranch">The branch the pull request comes from, by name - the issue's change, wherever the board looks for it. Kept beside the state; a blank or absent one leaves what is kept.</param>
+public record PullRequestStateRequest(string Url, string HeadSha, string MergeState, string ReviewDecision, string Runner, string? HeadBranch = null);
 
 /// <summary>
 /// A runner reporting that the merge train has just brought the issue's branch

@@ -656,6 +656,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset?>("PullRequestClosedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PullRequestHeadBranch")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("PullRequestHeadSha")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
