@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, contributionsHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, ContributionHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import { approvedHeldEmptyWords, ballotRowWords, contributionsHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, ContributionHeld, Deadlocked, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -53,6 +53,18 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
   questions: [],
   conflicts: [],
   reviewsHeldBack: 0,
+  ...over,
+});
+
+const question = (over: Partial<Question> = {}): Question => ({
+  id: 1,
+  issueKey: 'AER-30',
+  issueTitle: 'A story with a question',
+  body: 'Which of the two should it be?',
+  askedBy: 'a-runner',
+  askedAt: new Date().toISOString(),
+  options: null,
+  answers: [],
   ...over,
 });
 
@@ -625,6 +637,54 @@ describe('AttentionHuman', () => {
     expect(html).not.toContain('File a bug');
     expect(html).toContain('HA-1');
     expect(dialogProps).toMatchObject({ open: false, buildId: build.id });
+  });
+});
+
+describe('AttentionHuman questions', () => {
+  const render = (questions: Question[]) =>
+    renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ questions })} now={new Date()} reload={noop} startOpen />
+      </MemoryRouter>,
+    );
+
+  it('opens the section with a row to the Ballot and the count, before the first question', () => {
+    const html = render([
+      question({ id: 1, issueKey: 'AER-30', body: 'Which of the two should it be?' }),
+      question({ id: 2, issueKey: 'AER-31', body: 'Keep the old name?' }),
+    ]);
+    const words = ballotRowWords(2);
+
+    expect(html).toContain('href="/ballot"');
+    expect(html).toContain(words.call);
+    expect(html).toContain('2 questions');
+    expect(html).not.toContain(questionEmptyWords());
+    expect(html.indexOf('href="/ballot"')).toBeLessThan(html.indexOf('href="/issues/AER-30"'));
+  });
+
+  it('still links each question to its issue, with its body', () => {
+    const html = render([
+      question({ id: 1, issueKey: 'AER-30', body: 'Which of the two should it be?' }),
+      question({ id: 2, issueKey: 'AER-31', body: 'Keep the old name?' }),
+    ]);
+
+    expect(html).toContain('href="/issues/AER-30"');
+    expect(html).toContain('Which of the two should it be?');
+    expect(html).toContain('href="/issues/AER-31"');
+    expect(html).toContain('Keep the old name?');
+    expect(html.indexOf('AER-30')).toBeLessThan(html.indexOf('AER-31'));
+  });
+
+  it('counts one question in the singular', () => {
+    expect(render([question()])).toContain('1 question<');
+  });
+
+  it('draws no Ballot row with no question, and keeps the empty wording', () => {
+    const html = render([]);
+
+    expect(html).not.toContain('/ballot');
+    expect(html).not.toContain('Answer on the Ballot');
+    expect(html).toContain(questionEmptyWords());
   });
 });
 

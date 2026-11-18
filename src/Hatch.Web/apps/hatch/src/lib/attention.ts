@@ -187,6 +187,17 @@ export function reviewWordsCarryAFact(attention: Attention | null): boolean {
     does not, and there is no second kind of nothing to tell apart. */
 export const questionEmptyWords = (): string => 'Nothing is waiting on an answer.';
 
+/**
+ * The row at the head of "Questions to answer" that sends the operator to the
+ * Ballot. The call and the count are two strings rather than one sentence
+ * because the row draws them apart: the call at the head, the count at the far
+ * end where the other rows keep their time.
+ */
+export const ballotRowWords = (questions: number): { call: string; count: string } => ({
+  call: 'Answer on the Ballot',
+  count: count(questions, 'question'),
+});
+
 /** The stalled section's empty state - one wording, like the questions'. */
 export const stalledEmptyWords = (): string => 'Nothing is stalled.';
 
