@@ -2368,6 +2368,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("ModelUsage")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<long>("OutputTokens")
                         .HasColumnType("bigint");
 
@@ -2413,6 +2417,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<string>("Reads")
                         .HasColumnType("jsonb");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
 
                     b.Property<int?>("Requests")
                         .HasColumnType("integer");

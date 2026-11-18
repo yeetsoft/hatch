@@ -1243,6 +1243,108 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AReleaseWithTheErrorReason_RecordsItBesideTheOutcome()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, ClaimLostReasons.Error, null, default));
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.Equal(ClaimOutcomes.Dropped, payload.GetProperty("outcome").GetString());
+        Assert.Equal(ClaimLostReasons.Error, payload.GetProperty("reason").GetString());
+    }
+
+    [SkippableFact]
+    public async Task AReleaseNamingASession_StampsThatRowAndOnlyThatRow()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var other = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SeedRowAsync(h, issue, "s-1");
+        await SeedRowAsync(h, issue, "s-2");
+        await SeedRowAsync(h, other, "s-1");
+
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, ClaimLostReasons.RunTime, "s-1", default));
+
+        var rows = await h.Connect().WorkLog.AsNoTracking().ToListAsync();
+        var stamped = Assert.Single(rows, w => w.Outcome is not null);
+        Assert.Equal("s-1", stamped.SessionId);
+        Assert.Equal((await h.RowAsync(issue)).Id, stamped.IssueId);
+        Assert.Equal(ClaimOutcomes.Dropped, stamped.Outcome);
+        Assert.Equal(ClaimLostReasons.RunTime, stamped.Reason);
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.Equal("s-1", payload.GetProperty("sessionId").GetString());
+    }
+
+    [SkippableFact]
+    public async Task AReleaseNamingASessionWithNoRow_WritesTheEventAlone()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SeedRowAsync(h, issue, "s-1");
+
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Worked, null, "s-nope", default));
+
+        var row = await h.Connect().WorkLog.AsNoTracking().SingleAsync();
+        Assert.Null(row.Outcome);
+        Assert.Null(row.Reason);
+        Assert.Single((await h.EventsAsync(issue)), e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseNamingNoSession_StampsNothingAndWritesTheSamePayloadAsBefore()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SeedRowAsync(h, issue, "s-1");
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Worked, default));
+
+        Assert.Null((await h.Connect().WorkLog.AsNoTracking().SingleAsync()).Outcome);
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.False(payload.TryGetProperty("sessionId", out _));
+    }
+
+    [SkippableFact]
+    public async Task AReleaseNamingASessionButNoOutcome_StampsNothingAndCarriesNoSession()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SeedRowAsync(h, issue, "s-1");
+
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, token, null, ClaimLostReasons.Quiet, "s-1", default));
+
+        Assert.Null((await h.Connect().WorkLog.AsNoTracking().SingleAsync()).Outcome);
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.False(payload.TryGetProperty("sessionId", out _));
+    }
+
+    [SkippableFact]
+    public async Task ATokenlessClearNamingASession_StampsNothing()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue);
+        await SeedRowAsync(h, issue, "s-1");
+
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, null, ClaimOutcomes.Dropped, null, "s-1", default));
+
+        Assert.Null((await h.Connect().WorkLog.AsNoTracking().SingleAsync()).Outcome);
+    }
+
+    [SkippableFact]
     public async Task AReleaseWithAReason_RecordsItBesideTheOutcome()
     {
         await using var h = await NewAsync();
@@ -1279,11 +1381,11 @@ public class IssueClaimTests
         var token = await h.TakeAsync(issue);
 
         Assert.Equal(
-            "\"bogus\" is not a reason - it is \"quiet\", \"run-time\", or nothing at all",
+            "\"bogus\" is not a reason - it is \"quiet\", \"run-time\", \"error\", or nothing at all",
             BadRequest(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, "bogus", default)));
 
         Assert.Equal(
-            "\"expired\" is not a reason - it is \"quiet\", \"run-time\", or nothing at all",
+            "\"expired\" is not a reason - it is \"quiet\", \"run-time\", \"error\", or nothing at all",
             BadRequest(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, ClaimLostReasons.Expired, default)));
 
         Assert.Equal(token, (await h.RowAsync(issue)).ClaimToken);
@@ -2703,6 +2805,21 @@ public class IssueClaimTests
             Assert.Equal(["AER"], drivers["elder"]);
             Assert.Empty(drivers["younger"]);
         }
+    }
+
+    private static async Task SeedRowAsync(Harness h, string issue, string sessionId)
+    {
+        var db = h.Connect();
+        db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = (await h.RowAsync(issue)).Id,
+            SessionId = sessionId,
+            StartedAt = Now,
+            EndedAt = Now,
+            DurationMs = 1,
+            CreatedAt = Now,
+        });
+        await db.SaveChangesAsync();
     }
 
     // ---- Who let go of what ----

@@ -946,11 +946,15 @@ public static class ClaimOutcomes
 /// <summary>
 /// Why a runner's claim was refused, on the <c>409</c> of a heartbeat or a
 /// release (<see cref="ClaimRefusedDto"/>) - the five shapes a presented
-/// token can be refused in. A release may also name <see cref="Quiet"/> or
-/// <see cref="RunTime"/> as the reason it is letting go, and accepts no other.
+/// token can be refused in. A release may also name <see cref="Quiet"/>,
+/// <see cref="RunTime"/> or <see cref="Error"/> as the reason it is letting go,
+/// and accepts no other.
 /// </summary>
 public static class ClaimLostReasons
 {
+    /// <summary>A release only: the increment ended in an error. Never a refusal, so <see cref="IsValid"/> leaves it out.</summary>
+    public const string Error = "error";
+
     /// <summary>The runner's own lease, gone quiet for the stall lapse.</summary>
     public const string Quiet = "quiet";
 
@@ -3503,6 +3507,8 @@ public record WorkLogEntryRequest(
 /// <param name="ModelPlacement">Where that model ran: <c>local</c>, <c>fallback</c> (a preferred local model was wanted and the ordinary model ran instead) or <c>cloud</c>. Null from a CLI built before this shipped, and for any other value; never guessed by the server.</param>
 /// <param name="ModelDigest">The digest of a local model as the local server's model list reported it before the session started. Null unless the model ran locally.</param>
 /// <param name="Reads">The files the session read, heaviest first. Empty for a row posted without any, including every row written before this shipped.</param>
+/// <param name="Outcome">Whether the increment moved its ticket: a claim outcome such as <c>worked</c> or <c>dropped</c>, stamped by the claim release. Null for a row never stamped, including every row written before this shipped.</param>
+/// <param name="Reason">Why the runner let go: <c>quiet</c>, <c>run-time</c> or <c>error</c>, stamped beside the outcome. Null where the release named none.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -3538,7 +3544,9 @@ public record WorkLogEntryDto(
     string? DispatchModel,
     string? ModelPlacement,
     string? ModelDigest,
-    IReadOnlyList<WorkLogReadDto> Reads);
+    IReadOnlyList<WorkLogReadDto> Reads,
+    string? Outcome,
+    string? Reason);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for

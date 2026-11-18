@@ -2586,7 +2586,7 @@ reason }` - `error` the sentence it always printed, `reason` one of
 `quiet`, `run-time` (past its cap, below), `expired`, `cleared` (no token on the
 claim) or `taken` (somebody else's) - so a client can act on which without
 parsing prose; a take's own `409`s are unchanged, bare strings. A release may
-say `quiet` or `run-time` the same way: `DELETE
+say `quiet`, `run-time` or `error` the same way: `DELETE
 …/claim?token=…&outcome=…&reason=quiet` is read only alongside both a
 token and an outcome, and rides into the `claim_released` payload beside
 them; any other reason is `400`, naming both. `Hatch:StallLapseMinutes = 0` turns
@@ -2676,6 +2676,14 @@ other outcome (or none), a `status_changed`, a `resumed` event, or an `answered`
 event a person wrote — claim takes, lapses, holds, clears and comments are
 stepped over — that
 runner is the one that let it go.
+
+**A release may also name the session it ran as**, with `sessionId`. Where it
+names a work-log row of this issue and an outcome was given, that row's
+`outcome` and `reason` are stamped in the same save as the `claim_released`
+event, and the payload gains `sessionId` beside `outcome` and `reason`, present
+only then. A `sessionId` naming no row, or given with no outcome, stamps
+nothing and is never refused for it: the row the CLI posts before it releases
+is what the stamp looks for, and a mismatch is not a failure.
 
 **A heartbeat may answer that this runner has been preempted.** Ordinarily a
 heartbeat that refreshed the lease answers `204`. Where the board has chosen
@@ -4163,7 +4171,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it. It also carries the site's default token caps, `defaultMaxTokens` and `defaultMaxTokensPerHour` (`500k`, `2M`, a whole number; zero or junk is a `400` that writes nothing) — **admin-only to write** inside this person-only route: a `403` for a person who is not an admin with the wall up, and for a key, but only when either default is present in the body. Runners with no cap of their own run under them — see [Runners on the board](#runners-on-the-board) |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set. Kept for an older container; new callers use `/settings/credentials/{agent}` below |
 | `/settings/credentials/{agent}` | GET | The same kind of route, generalised past Claude: `{agent}` is `claude`, `codex` or `grok`, else `404`. Wrapped with the same `SecretProtector`, taken by a key the same way, and refused outright wherever the wall is up — all exactly as `/settings/claude-token`'s row above. `204` when that agent's credential is unset |
-| `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`), and the playbook, transition, issue type, model and effort it ran under (`PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`, `IssueType`, `PlaybookModel`, `PlaybookEffort`), and the model dispatch chose, where it ran and a local model's digest (`DispatchModel`, `ModelPlacement` of `local`, `fallback`, `cloud` or null, `ModelDigest`; `/work-log/sessions` rows carry the same three); an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
+| `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`), and the playbook, transition, issue type, model and effort it ran under (`PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`, `IssueType`, `PlaybookModel`, `PlaybookEffort`), and the model dispatch chose, where it ran and a local model's digest (`DispatchModel`, `ModelPlacement` of `local`, `fallback`, `cloud` or null, `ModelDigest`; `/work-log/sessions` rows carry the same three), and whether the increment moved its ticket and why (`Outcome`, `Reason`), stamped by the claim release that named this row's session id and null on a row never stamped; an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |

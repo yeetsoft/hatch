@@ -633,6 +633,32 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
+    public async Task AStampedRow_ReadsBackItsVerdict_AndSurvivesARepostOfItsSession()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var fresh = await h.PostAsync(issue.Key, Reported());
+        Assert.Null(fresh.Outcome);
+        Assert.Null(fresh.Reason);
+
+        var row = await h.Db.WorkLog.SingleAsync();
+        row.Outcome = ClaimOutcomes.Dropped;
+        row.Reason = ClaimLostReasons.Error;
+        await h.Db.SaveChangesAsync();
+
+        var read = (await h.ReadAsync(issue.Key)).Entries.Single();
+        Assert.Equal(ClaimOutcomes.Dropped, read.Outcome);
+        Assert.Equal(ClaimLostReasons.Error, read.Reason);
+
+        await h.PostAsync(issue.Key, Reported());
+
+        var again = (await h.ReadAsync(issue.Key)).Entries.Single();
+        Assert.Equal(ClaimOutcomes.Dropped, again.Outcome);
+        Assert.Equal(ClaimLostReasons.Error, again.Reason);
+    }
+
+    [Fact]
     public async Task ThePerson_MayReadTheLogEvenThoughOnlyAKeyMayWriteIt()
     {
         var h = await NewAsync();

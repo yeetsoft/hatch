@@ -231,15 +231,21 @@ public class IssueClaimController(
     /// </param>
     /// <param name="reason">
     /// Why the runner let go - <see cref="ClaimLostReasons.Quiet"/> or
-    /// <see cref="ClaimLostReasons.RunTime"/>, written beside the outcome on the event. Read only where
-    /// <paramref name="token"/> is given, and written only where
-    /// <paramref name="outcome"/> is too: a reason with no outcome is accepted
+    /// <see cref="ClaimLostReasons.RunTime"/> or <see cref="ClaimLostReasons.Error"/>, written beside
+    /// the outcome on the event. Read only where <paramref name="token"/> is given, and written only
+    /// where <paramref name="outcome"/> is too: a reason with no outcome is accepted
     /// and not written. Absent is accepted as it always has been.
+    /// </param>
+    /// <param name="sessionId">
+    /// The work-log session this increment ran as. Where it names a row of this issue and an outcome
+    /// is given, the row's outcome and reason are stamped in the same save as the event, and the
+    /// event carries the session id too. Absent, or matching no row, writes the event alone: a
+    /// release is never refused for it.
     /// </param>
     [HttpDelete]
     public async Task<IActionResult> ReleaseClaim(
         string key, [FromQuery] Guid? token, [FromQuery] string? outcome, [FromQuery] string? reason = null,
-        CancellationToken ct = default)
+        [FromQuery] string? sessionId = null, CancellationToken ct = default)
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
 
@@ -259,10 +265,10 @@ public class IssueClaimController(
         string? why = null;
         if (token is not null && !string.IsNullOrEmpty(reason))
         {
-            if (reason is not (ClaimLostReasons.Quiet or ClaimLostReasons.RunTime))
+            if (reason is not (ClaimLostReasons.Quiet or ClaimLostReasons.RunTime or ClaimLostReasons.Error))
                 return BadRequest(
                     $"\"{reason}\" is not a reason - it is \"{ClaimLostReasons.Quiet}\", " +
-                    $"\"{ClaimLostReasons.RunTime}\", or nothing at all");
+                    $"\"{ClaimLostReasons.RunTime}\", \"{ClaimLostReasons.Error}\", or nothing at all");
             why = reason;
         }
 
@@ -292,6 +298,17 @@ public class IssueClaimController(
         // suppress a preemption that should fire the moment it is forced off.
         if (token is not null) await TouchRunnerAsync(claim, now, ct);
 
+        // The verdict goes on the row the session posted, in the save below. No
+        // row is not a failure: the release is the state a DELETE asked for.
+        var session = given is not null ? sessionId?.Trim() : null;
+        if (string.IsNullOrEmpty(session)) session = null;
+        if (session is not null
+            && await db.WorkLog.FirstOrDefaultAsync(w => w.IssueId == issue.Id && w.SessionId == session, ct) is { } row)
+        {
+            row.Outcome = given;
+            row.Reason = why;
+        }
+
         // A dropped release by a claim that spent nothing is marked, so the
         // let-go count neither counts it nor stops at it - see SpentNothing.
         // The outcome is the runner's own and stays as sent.
@@ -310,6 +327,7 @@ public class IssueClaimController(
             given,
             claim.Runner,
             why,
+            session,
             spentNothing);
 
         await db.SaveChangesAsync(ct);
@@ -549,7 +567,7 @@ public class IssueClaimController(
     /// writes the same payload it always has.
     /// </summary>
     private static string ReleasePayload(
-        string? from, string? to, string? outcome, string? runner, string? reason, bool spentNothing)
+        string? from, string? to, string? outcome, string? runner, string? reason, string? sessionId, bool spentNothing)
     {
         var payload = new Dictionary<string, object?> { ["from"] = from, ["to"] = to };
         if (outcome is null) return JsonSerializer.Serialize(payload);
@@ -557,6 +575,7 @@ public class IssueClaimController(
         payload["outcome"] = outcome;
         payload["runner"] = runner;
         if (reason is not null) payload["reason"] = reason;
+        if (sessionId is not null) payload["sessionId"] = sessionId;
         if (spentNothing) payload[SpentNothing.Marker] = true;
         return JsonSerializer.Serialize(payload);
     }
@@ -569,7 +588,8 @@ public class IssueClaimController(
     /// </summary>
     private void Log(
         EfHatchIssue issue, string actor, string kind, string? from, string? to, DateTimeOffset at,
-        string? outcome = null, string? runner = null, string? reason = null, bool spentNothing = false)
+        string? outcome = null, string? runner = null, string? reason = null, string? sessionId = null,
+        bool spentNothing = false)
     {
         issue.Events.Add(new EfHatchIssueEvent
         {
@@ -580,8 +600,8 @@ public class IssueClaimController(
             // same payload it always has. The runner rides along with an
             // outcome only: "from" says "<who> on <runner>" and cannot be
             // split back apart, and LetGo.By needs the runner by itself. The
-            // reason rides with an outcome too, and is left out the same way.
-            Payload = ReleasePayload(from, to, outcome, runner, reason, spentNothing),
+            // reason and the session id ride with an outcome too, and are left out the same way.
+            Payload = ReleasePayload(from, to, outcome, runner, reason, sessionId, spentNothing),
             At = at,
         });
 

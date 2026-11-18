@@ -781,9 +781,12 @@ cap its playbook set - `this claim ran past its 60-minute limit`), `expired` (it
 lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
 token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
-`outcome` - one of `dropped`, `worked`, `preempted`, `recused`, `unservable`, `abandoned`, `unstarted` - and an optional
-`reason` - `quiet` or `run-time` - both read only alongside a token, and `reason`
-written into the event only beside an `outcome`. A `dropped` release whose
+`outcome` - one of `dropped`, `worked`, `preempted`, `recused`, `unservable`, `abandoned`, `unstarted` - an optional
+`reason` - `quiet`, `run-time` or `error` - and an optional `sessionId`, all three read only alongside a token, and `reason`
+written into the event only beside an `outcome`. Where `sessionId` names a work-log row of this issue
+and an `outcome` is given, that row's `outcome` and `reason` are stamped in the same save as the
+event, and the event's own payload carries the session id too; a `sessionId` naming no row, or
+given with no `outcome`, stamps nothing and is never refused for it. A `dropped` release whose
 claim spent nothing - at least one work-log row reached the board since the
 claim was taken, and every such row has zero tokens and `isError` true - is
 written with the outcome the runner sent plus `spentNothing: true`, and
@@ -1420,7 +1423,9 @@ that ran: `dispatchModel`, `modelPlacement` (`local`, `fallback`, `cloud`, or
 null from a CLI built before it was recorded) and `modelDigest` (a local
 model's digest as the local server listed it before the session, null
 otherwise); the `POST` accepts the same three, stores any other placement as
-null and keeps a digest only on a `local` row. `/work-log/history` buckets by `hour` or `day`, chosen from the
+null and keeps a digest only on a `local` row. Each entry also carries `outcome` and `reason`,
+stamped by the claim release that named this session's id - null on a row never stamped, including
+every row written before this shipped. `/work-log/history` buckets by `hour` or `day`, chosen from the
 range's length unless named, and answers the bucket size it actually used;
 `/work-log/sessions` ranks by `tokens` (the default), `cost`, `ended`,
 `requests` or `peakContext`, each descending. Both take an optional

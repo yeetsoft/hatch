@@ -3442,6 +3442,8 @@ public class EfHatchWorkLogEntry
     public const int MaxSummaryLength = 2000;
     public const int MaxModelPlacementLength = 8;
     public const int MaxModelDigestLength = 80;
+    public const int MaxOutcomeLength = 10;
+    public const int MaxReasonLength = 8;
 
     /// <summary>The placements a row may carry. Anything else is stored as null, never guessed.</summary>
     public static readonly string[] ModelPlacements = ["local", "fallback", "cloud"];
@@ -3569,6 +3571,19 @@ public class EfHatchWorkLogEntry
 
     /// <summary><c>local</c>, <c>fallback</c> or <c>cloud</c>. Null on a row posted by an older runner.</summary>
     [MaxLength(MaxModelPlacementLength)] public string? ModelPlacement { get; set; }
+
+    /// <summary>
+    /// Whether the increment moved its ticket - a <see cref="ClaimOutcomes"/> value, stamped by the
+    /// claim release that carries it. Null for a row never stamped, including every row written
+    /// before this shipped.
+    /// </summary>
+    [MaxLength(MaxOutcomeLength)] public string? Outcome { get; set; }
+
+    /// <summary>
+    /// Why the runner let go - a <see cref="ClaimLostReasons"/> value, stamped beside
+    /// <see cref="Outcome"/>. Null where the release named none.
+    /// </summary>
+    [MaxLength(MaxReasonLength)] public string? Reason { get; set; }
 
     /// <summary>
     /// A local model's digest as the server's model list reported it before the
