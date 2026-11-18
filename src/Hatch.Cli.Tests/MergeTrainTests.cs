@@ -727,12 +727,15 @@ public sealed partial class MergeTrainTests
         // checkout still gets its trunk build read every poll, stubbed quiet
         // here so the only thing under test is this half's silence.
         rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
 
         await rig.RunAsync();
 
         Assert.Empty(rig.H.Forge.PullRequestReads);
         Assert.Empty(rig.H.Forge.MergeCalls);
-        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+        Assert.Equal(
+            "No checkout here matches its repository, so its pull request is not read.",
+            Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body);
         Assert.Equal(
             "hatch: AER-1 - no checkout here matches its repository, so its pull request is not read",
             Assert.Single(rig.H.Say.Complained));
@@ -744,11 +747,14 @@ public sealed partial class MergeTrainTests
         using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
         rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
         rig.H.Forge.PullRequestAnswer = new(null, "gh is not installed");
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
 
         await rig.RunAsync();
 
         Assert.Empty(rig.H.Forge.MergeCalls);
-        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+        Assert.Equal(
+            "Could not read its pull request in checkout - gh is not installed.",
+            Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body);
 
         // The pull-request half above complains about the same checkout too -
         // its own, separate dedupe - so this proves no crash and nothing else
@@ -757,6 +763,111 @@ public sealed partial class MergeTrainTests
         Assert.All(
             rig.H.Say.Complained,
             l => Assert.Equal("hatch: could not read pull requests in checkout - gh is not installed", l));
+    }
+
+    [Fact]
+    public async Task A_merge_row_whose_chosen_repository_holds_no_clean_check_comments_once()
+    {
+        var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
+        var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", matchedRemote: "https://example.test/two.git");
+        var cleanOnTwo = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", "example.test/two", holdsTrunk: true) with
+        {
+            Remote = "https://example.test/two.git", Branch = "aer-1-thing", BranchSha = Tip,
+        };
+        var review = Fixtures.Review(
+            "AER-1", [one, two], pullRequestUrl: PrUrl,
+            mergeWork: new MergeWorkDto(WorkKinds.Merge, "its branch holds main and its build passes"),
+            checks: [cleanOnTwo]);
+        using var rig = new Rig().Board(review);
+        var runtime = rig.H.Runtime with
+        {
+            Clock = rig.Clock,
+            Checkouts =
+            [
+                new CheckoutEntry("/checkouts/one", "https://example.test/one.git", Standing: true),
+                new CheckoutEntry("/checkouts/two", "https://example.test/two.git", Standing: false),
+            ],
+        };
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.Train.TickAsync(runtime, default);
+
+        Assert.Empty(rig.H.Forge.MergeCalls);
+        Assert.Equal(
+            "There is no clean merge check for one yet to act on.",
+            Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body);
+    }
+
+    [Fact]
+    public async Task No_checkout_comments_once_across_two_ticks_and_again_once_the_head_sha_moves()
+    {
+        var repo = Fixtures.Repository("https://example.other/repo.git", MergeCanonical);
+        ReviewCheckDto Row(string? sha) =>
+            Fixtures.Review(
+                "AER-1", [repo], pullRequestUrl: PrUrl,
+                mergeWork: new MergeWorkDto(WorkKinds.Merge, "its branch holds main and its build passes")) with
+            {
+                PullRequestHeadSha = sha,
+            };
+        using var rig = new Rig().Board(Row(Tip));
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", Comments("AER-1")));
+
+        rig.H.Wire.Replace(
+            "GET", Review, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Row(Moved) }, Fixtures.Json));
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Wire.To("POST", Comments("AER-1")).Count);
+    }
+
+    [Fact]
+    public async Task No_clean_check_comments_once_across_two_ticks_and_again_once_the_head_sha_moves()
+    {
+        var repo = Fixtures.Repository("https://example.test/repo.git", MergeCanonical);
+        ReviewCheckDto Row(string? sha) =>
+            Fixtures.Review(
+                "AER-1", [repo], pullRequestUrl: PrUrl,
+                mergeWork: new MergeWorkDto(WorkKinds.Merge, "its branch holds main and its build passes")) with
+            {
+                PullRequestHeadSha = sha,
+            };
+        using var rig = new Rig().Board(Row(Tip));
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", Comments("AER-1")));
+
+        rig.H.Wire.Replace(
+            "GET", Review, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Row(Moved) }, Fixtures.Json));
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Wire.To("POST", Comments("AER-1")).Count);
+    }
+
+    [Fact]
+    public async Task A_pull_request_read_failure_comments_once_across_two_ticks_and_again_once_the_head_sha_moves()
+    {
+        ReviewCheckDto Row(string? sha) => MergeRow("AER-1", "aer-1-thing", PrUrl) with { PullRequestHeadSha = sha };
+        using var rig = new Rig().Board(Row(Tip));
+        rig.H.Forge.PullRequestAnswer = new(null, "gh is not installed");
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", Comments("AER-1")));
+
+        rig.H.Wire.Replace(
+            "GET", Review, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Row(Moved) }, Fixtures.Json));
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.H.Wire.To("POST", Comments("AER-1")).Count);
     }
 
     // ---- The update half ----
@@ -1021,11 +1132,15 @@ public sealed partial class MergeTrainTests
             checks: [stored]);
         using var rig = new Rig().Board(review);
         rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
 
         await rig.RunAsync();
 
         Assert.Empty(rig.H.Forge.PullRequestReads);
         Assert.Empty(rig.H.Forge.UpdateCalls);
+        Assert.Equal(
+            "No checkout here matches its repository, so its pull request is not read.",
+            Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body);
         Assert.Equal(
             "hatch: AER-1 - no checkout here matches its repository, so its pull request is not read",
             Assert.Single(rig.H.Say.Complained));
@@ -1037,15 +1152,51 @@ public sealed partial class MergeTrainTests
         using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing"));
         rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
         rig.H.Forge.PullRequestAnswer = new(null, "gh is not installed");
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
 
         await rig.RunAsync();
 
         Assert.Empty(rig.H.Forge.UpdateCalls);
-        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+        Assert.Equal(
+            "Could not read its pull request in checkout - gh is not installed.",
+            Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body);
         Assert.NotEmpty(rig.H.Say.Complained);
         Assert.All(
             rig.H.Say.Complained,
             l => Assert.Equal("hatch: could not read pull requests in checkout - gh is not installed", l));
+    }
+
+    [Fact]
+    public async Task An_update_row_whose_chosen_repository_holds_no_clean_check_comments_once()
+    {
+        var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
+        var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", matchedRemote: "https://example.test/two.git");
+        var cleanOnTwo = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", "example.test/two", holdsTrunk: true) with
+        {
+            Remote = "https://example.test/two.git", Branch = "aer-1-thing", BranchSha = Tip,
+        };
+        var review = Fixtures.Review(
+            "AER-1", [one, two], pullRequestUrl: PrUrl,
+            mergeWork: new MergeWorkDto(WorkKinds.Update, "its branch holds main but needs the trunk brought in"),
+            checks: [cleanOnTwo]);
+        using var rig = new Rig().Board(review);
+        var runtime = rig.H.Runtime with
+        {
+            Clock = rig.Clock,
+            Checkouts =
+            [
+                new CheckoutEntry("/checkouts/one", "https://example.test/one.git", Standing: true),
+                new CheckoutEntry("/checkouts/two", "https://example.test/two.git", Standing: false),
+            ],
+        };
+        rig.H.Wire.Json("POST", Comments("AER-1"), Fixtures.Comment());
+
+        await rig.Train.TickAsync(runtime, default);
+
+        Assert.Empty(rig.H.Forge.UpdateCalls);
+        Assert.Equal(
+            "There is no clean merge check for one yet to act on.",
+            Assert.Single(rig.H.Wire.To("POST", Comments("AER-1"))).Read<CommentCreateRequest>().Body);
     }
 
     [Fact]
