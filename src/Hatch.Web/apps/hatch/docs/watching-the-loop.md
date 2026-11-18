@@ -436,6 +436,11 @@ before the session starts, so it is never the weights of a later pull. The
 leaderboard's session list has the same model column. Nothing here measures
 trust: the log says what ran, and a person reads it.
 
+A row also says how the session ended, when its release said so: `worked`,
+`dropped` and the like. A `dropped` row that came with a reason names it too,
+as `dropped - quiet`, `dropped - run-time` or `dropped - error`. A row written
+before this, or one whose release named neither, shows nothing added.
+
 ## The battery
 
 In the nav bar, with no page of its own: your own Claude usage, as your own
