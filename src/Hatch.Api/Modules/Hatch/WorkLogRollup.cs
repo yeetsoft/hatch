@@ -127,12 +127,20 @@ public static class WorkLogRollup
     /// intersection, and narrows the totals, the buckets and the
     /// <c>first</c>/<c>last</c> bounds alike.
     /// </param>
+    /// <param name="outcome">
+    /// Narrows to sessions that ended this way, or to those with no outcome
+    /// when it is <see cref="NoOutcome"/>; null is no filter. It narrows the
+    /// buckets and the totals but not the <c>first</c>/<c>last</c> bounds,
+    /// which describe the log and ignore the range - read exactly as
+    /// <see cref="SessionsAsync"/> states it.
+    /// </param>
     public static async Task<WorkLogHistoryDto> SeriesAsync(
         HatchContext db,
         WorkLogWindow window,
         WorkLogBucketSize bucket,
         long? ancestorId,
         IReadOnlyList<int>? projectIds,
+        string? outcome,
         CancellationToken ct)
     {
         var to = window.From + window.Length * window.Buckets;
@@ -143,7 +151,8 @@ public static class WorkLogRollup
         // walk rather than three.
         var scope = ancestorId is { } id ? await ScopeAsync(db, id, includeDescendants: true, ct) : null;
 
-        var rows = await Project(Scoped(db, scope, projectIds).Where(w => w.EndedAt >= window.From && w.EndedAt < to))
+        var rows = await Project(ByOutcome(Scoped(db, scope, projectIds), outcome)
+                .Where(w => w.EndedAt >= window.From && w.EndedAt < to))
             .ToListAsync(ct);
 
         var byBucket = rows
@@ -301,12 +310,20 @@ public static class WorkLogRollup
     /// <paramref name="outcome"/> narrows the sessions folded, and the totals
     /// with them, as <see cref="SessionsAsync"/> states it.
     /// </remarks>
+    /// <param name="ancestorId">
+    /// One issue and everything beneath it, that issue included - resolved and
+    /// scoped exactly as <see cref="SeriesAsync"/> and <see cref="SessionsAsync"/>
+    /// read it, so the graph, the table and this fold can never describe
+    /// different populations. Null is no filter.
+    /// </param>
     public static async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
-        HatchContext db, DateTimeOffset from, DateTimeOffset to, IReadOnlyList<int>? projectIds, string? outcome,
-        CancellationToken ct)
+        HatchContext db, DateTimeOffset from, DateTimeOffset to, long? ancestorId,
+        IReadOnlyList<int>? projectIds, string? outcome, CancellationToken ct)
     {
-        var entries = ByOutcome(db.WorkLog.AsNoTracking(), outcome).Where(w => w.EndedAt >= from && w.EndedAt < to);
-        if (projectIds is { Count: > 0 }) entries = entries.Where(w => projectIds.Contains(w.Issue!.ProjectId));
+        var scope = ancestorId is { } id ? await ScopeAsync(db, id, includeDescendants: true, ct) : null;
+
+        var entries = ByOutcome(Scoped(db, scope, projectIds), outcome).AsNoTracking()
+            .Where(w => w.EndedAt >= from && w.EndedAt < to);
 
         var rows = await entries
             .Select(w => new ByPlaybookRow(

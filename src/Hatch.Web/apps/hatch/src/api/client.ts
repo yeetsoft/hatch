@@ -108,6 +108,7 @@ import type {
   WipSectionRequest,
   Work,
   WorkLog,
+  WorkLogByPlaybook,
   WorkLogHistory,
   WorkLogSessions,
 } from '../types';
@@ -843,6 +844,9 @@ export interface WorkLogHistoryQuery {
       overnight run split across UTC midnight is two half-nights nobody
       worked. */
   offsetMinutes: number;
+  /** One of the claim outcomes, or `none` for sessions with no outcome; left
+      out of the URL rather than sent empty when unset. */
+  outcome?: string | null;
 }
 
 /** When the work happened: the top-level epics active in a range and the work
@@ -998,6 +1002,36 @@ export interface WorkLogSessionQuery {
   sort?: SessionSort;
   /** 1 to 500; the server refuses anything outside it. */
   limit?: number;
+  /** One of the claim outcomes, or `none` for sessions with no outcome; left
+      out of the URL rather than sent empty when unset. */
+  outcome?: string | null;
+}
+
+/** One row per playbook/transition/type/model/effort/outcome/reason
+    combination in a range, heaviest first - and what each cost.
+
+    Anything null or undefined is left out rather than sent empty, as
+    `getWorkLogSessions` does. */
+export const getWorkLogByPlaybook = (query: WorkLogByPlaybookQuery) => {
+  const { projectId, ...rest } = query;
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(rest)) {
+    if (value !== null && value !== undefined) params.set(name, String(value));
+  }
+  for (const id of projectId ?? []) params.append('projectId', String(id));
+  return fetchJson<WorkLogByPlaybook>(`/api/work-log/by-playbook?${params.toString()}`);
+};
+
+export interface WorkLogByPlaybookQuery {
+  from: string;
+  to: string;
+  /** One issue and everything beneath it, that issue included. */
+  ancestorKey?: string | null;
+  /** Any of these projects; omitted or empty means every project. */
+  projectId?: number[] | null;
+  /** One of the claim outcomes, or `none` for sessions with no outcome; left
+      out of the URL rather than sent empty when unset. */
+  outcome?: string | null;
 }
 
 // ---- Overnight ----

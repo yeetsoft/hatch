@@ -4,16 +4,20 @@ import {
   PODIUM,
   capPhrase,
   dayLabel,
+  droppedRowLabel,
   emptiness,
+  foldDropped,
   inScopeCards,
+  parseOutcome,
   presetRange,
   rankedTop,
   rankingCaption,
+  reasonPhrase,
   resolveQuery,
   sessionWindow,
   windowPhrase,
 } from './leaderboard';
-import type { IssueCard, WorkLogSession, WorkLogSessions, WorkLogTotals } from '../types';
+import type { IssueCard, WorkLogByPlaybookRow, WorkLogSession, WorkLogSessions, WorkLogTotals } from '../types';
 
 const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
   sessions: 31,
@@ -118,15 +122,27 @@ describe('resolveQuery', () => {
     expect(query.sort).toBe('tokens');
     expect(query.measure).toBe('tokens');
     expect(query.issue).toBeNull();
+    expect(query.outcome).toBe('any');
     expect(query).toMatchObject(presetRange(DEFAULT_PRESET, now, 0));
   });
 
   it('falls back rather than refusing what it does not recognise', () => {
-    const query = resolveQuery(new URLSearchParams({ range: 'fortnight', sort: 'turns', measure: 'turns' }), now, 0);
+    const query = resolveQuery(
+      new URLSearchParams({ range: 'fortnight', sort: 'turns', measure: 'turns', outcome: 'finished' }),
+      now,
+      0,
+    );
 
     expect(query.preset).toBe(DEFAULT_PRESET);
     expect(query.sort).toBe('tokens');
     expect(query.measure).toBe('tokens');
+    expect(query.outcome).toBe('any');
+  });
+
+  it('takes a recognised outcome as written', () => {
+    expect(resolveQuery(new URLSearchParams({ outcome: 'worked' }), now, 0).outcome).toBe('worked');
+    expect(resolveQuery(new URLSearchParams({ outcome: 'dropped' }), now, 0).outcome).toBe('dropped');
+    expect(resolveQuery(new URLSearchParams({ outcome: 'none' }), now, 0).outcome).toBe('none');
   });
 
   it('takes the sort, the measure and the issue filter as written', () => {
@@ -249,6 +265,136 @@ describe('sessionWindow', () => {
       ancestorKey: 'AER-12',
       projectId: [2, 5],
     });
+  });
+
+  it('leaves outcome out at any, and names it otherwise', () => {
+    expect(sessionWindow({ ...query, outcome: 'any' }, [])).toEqual({
+      from: query.from,
+      to: query.to,
+      ancestorKey: null,
+    });
+
+    expect(sessionWindow({ ...query, outcome: 'dropped' }, [])).toEqual({
+      from: query.from,
+      to: query.to,
+      ancestorKey: null,
+      outcome: 'dropped',
+    });
+  });
+});
+
+describe('parseOutcome', () => {
+  it('falls back to any for what it does not recognise', () => {
+    expect(parseOutcome(null)).toBe('any');
+    expect(parseOutcome('')).toBe('any');
+    expect(parseOutcome('finished')).toBe('any');
+  });
+
+  it('takes a recognised value as written', () => {
+    expect(parseOutcome('worked')).toBe('worked');
+    expect(parseOutcome('dropped')).toBe('dropped');
+    expect(parseOutcome('none')).toBe('none');
+  });
+});
+
+describe('reasonPhrase', () => {
+  it('reads the three stall reasons in words', () => {
+    expect(reasonPhrase('quiet')).toBe('quiet limit');
+    expect(reasonPhrase('run-time')).toBe('run-time limit');
+    expect(reasonPhrase('error')).toBe('error');
+  });
+
+  it('reads no reason as plain moved-nothing, and an unknown one as itself', () => {
+    expect(reasonPhrase(null)).toBe('moved nothing');
+    expect(reasonPhrase('expired')).toBe('expired');
+  });
+});
+
+describe('foldDropped and droppedRowLabel', () => {
+  const byPlaybookRow = (over: Partial<WorkLogByPlaybookRow> = {}): WorkLogByPlaybookRow => ({
+    playbookKey: '7',
+    fromStatusId: 1,
+    fromStatusName: 'To Do',
+    toStatusId: 2,
+    toStatusName: 'Doing',
+    issueType: 'task',
+    model: 'sonnet',
+    effort: 'high',
+    outcome: 'dropped',
+    reason: 'quiet',
+    sessions: 1,
+    errors: 0,
+    undescribed: 0,
+    turns: 1,
+    inputTokens: 100,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    totalTokens: 100,
+    costUsd: 1,
+    unpricedSessions: 0,
+    medianPeakContextTokens: null,
+    maxPeakContextTokens: null,
+    medianPromptChars: null,
+    ...over,
+  });
+
+  it('groups by playbook, transition and reason, ignoring type, model and effort', () => {
+    const rows = [
+      byPlaybookRow({ model: 'sonnet', totalTokens: 100, sessions: 1, costUsd: 1 }),
+      byPlaybookRow({ model: 'opus', totalTokens: 50, sessions: 2, costUsd: 2 }),
+    ];
+
+    const folded = foldDropped(rows);
+
+    expect(folded).toHaveLength(1);
+    expect(folded[0].sessions).toBe(3);
+    expect(folded[0].totalTokens).toBe(150);
+    expect(folded[0].costUsd).toBe(3);
+  });
+
+  it('keeps a different reason or transition as its own row, heaviest first', () => {
+    const rows = [
+      byPlaybookRow({ reason: 'quiet', totalTokens: 100 }),
+      byPlaybookRow({ reason: 'run-time', totalTokens: 400 }),
+      byPlaybookRow({ toStatusId: 3, toStatusName: 'Done', reason: 'quiet', totalTokens: 200 }),
+    ];
+
+    const folded = foldDropped(rows);
+
+    expect(folded.map((r) => r.totalTokens)).toEqual([400, 200, 100]);
+  });
+
+  it("the folded cost equals the sum of what went in", () => {
+    const rows = [
+      byPlaybookRow({ costUsd: 1.5, totalTokens: 100 }),
+      byPlaybookRow({ reason: 'run-time', costUsd: 2.25, totalTokens: 50 }),
+    ];
+
+    const total = rows.reduce((sum, r) => sum + r.costUsd, 0);
+
+    expect(foldDropped(rows).reduce((sum, r) => sum + r.costUsd, 0)).toBe(total);
+  });
+
+  it('folds every all-null row an older runner wrote into one group, labelled unknown', () => {
+    const rows = [
+      byPlaybookRow({ playbookKey: null, fromStatusId: null, fromStatusName: null, toStatusId: null, toStatusName: null, reason: null, totalTokens: 10 }),
+      byPlaybookRow({ playbookKey: null, fromStatusId: null, fromStatusName: null, toStatusId: null, toStatusName: null, reason: null, totalTokens: 20 }),
+    ];
+
+    const folded = foldDropped(rows);
+
+    expect(folded).toHaveLength(1);
+    expect(folded[0].totalTokens).toBe(30);
+    expect(droppedRowLabel(folded[0])).toBe('Unknown playbook');
+  });
+
+  it('labels an ordinary row by its transition, falling back to the id for a deleted column', () => {
+    const row = foldDropped([byPlaybookRow()])[0];
+    expect(droppedRowLabel(row)).toBe('To Do → Doing');
+
+    const gone = foldDropped([byPlaybookRow({ toStatusId: 9, toStatusName: null })])[0];
+    expect(droppedRowLabel(gone)).toBe('To Do → 9');
   });
 });
 

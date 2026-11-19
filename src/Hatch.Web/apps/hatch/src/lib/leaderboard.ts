@@ -21,7 +21,7 @@
      row count - and the page says whichever is true once, at the top, rather
      than three times in three empty sections. */
 
-import type { IssueCard, SessionSort, WorkLogSession, WorkLogSessions, WorkLogTotals } from '../types';
+import type { IssueCard, SessionSort, WorkLogByPlaybookRow, WorkLogSession, WorkLogSessions, WorkLogTotals } from '../types';
 
 /** How many sessions the ranking draws: enough to be a podium, few enough to
     read before scrolling. The table below it is where the rest lives. */
@@ -40,6 +40,27 @@ export const SORT = 'sort';
 export const FROM = 'from';
 export const TO = 'to';
 export const MEASURE = 'measure';
+export const OUTCOME = 'outcome';
+
+/** What the Outcome control narrows the graph, Top billing and Every session
+    to alike, so the three never describe different populations. `any` is the
+    default and is left out of the URL rather than written empty. */
+export type OutcomeFilter = 'any' | 'worked' | 'dropped' | 'none';
+
+export const DEFAULT_OUTCOME: OutcomeFilter = 'any';
+
+/** In the order the control draws them. `dropped` and `none` are the server's
+    own filter words, read back in the house's voice: a session that moved
+    nothing, and a session too old to say either way. */
+export const OUTCOMES: { key: OutcomeFilter; label: string }[] = [
+  { key: 'any', label: 'Any' },
+  { key: 'worked', label: 'Worked' },
+  { key: 'dropped', label: 'Moved nothing' },
+  { key: 'none', label: 'Not known' },
+];
+
+export const parseOutcome = (raw: string | null): OutcomeFilter =>
+  OUTCOMES.some((o) => o.key === raw) ? (raw as OutcomeFilter) : DEFAULT_OUTCOME;
 
 /** Which of the two figures the graph draws. They differ by six orders of
     magnitude and never share an axis - a second y-axis would draw two lies
@@ -128,6 +149,8 @@ export interface LeaderboardQuery {
       a pasted link that opens on dollars is the same argument as a pasted
       sort. */
   measure: SpendMeasure;
+  /** Narrows the graph, Top billing and Every session alike - see `OUTCOME`. */
+  outcome: OutcomeFilter;
 }
 
 /**
@@ -146,14 +169,15 @@ export function resolveQuery(params: URLSearchParams, now: Date, offsetMinutes: 
   const issue = params.get(ISSUE)?.trim() || null;
   const sort = parseSort(params.get(SORT));
   const measure = parseMeasure(params.get(MEASURE));
+  const outcome = parseOutcome(params.get(OUTCOME));
 
   const from = params.get(FROM)?.trim();
   const to = params.get(TO)?.trim();
-  if (from && to) return { from, to, preset: null, issue, sort, measure };
+  if (from && to) return { from, to, preset: null, issue, sort, measure, outcome };
 
   const preset = parsePreset(params.get(RANGE));
 
-  return { ...presetRange(preset, now, offsetMinutes), preset, issue, sort, measure };
+  return { ...presetRange(preset, now, offsetMinutes), preset, issue, sort, measure, outcome };
 }
 
 export const parsePreset = (raw: string | null): RangePreset =>
@@ -167,14 +191,21 @@ export const parseSort = (raw: string | null): SessionSort =>
 export const parseMeasure = (raw: string | null): SpendMeasure =>
   raw === 'tokens' || raw === 'cost' ? raw : DEFAULT_MEASURE;
 
-/** What the three reads are asked for over: the range and the ancestor every
-    page already sent, with the scope's project ids added - left out when
-    there are none, so an unscoped page sends exactly what it always has. */
+/** What the reads are asked for over: the range and the ancestor every page
+    already sent, with the scope's project ids added - left out when there are
+    none, so an unscoped page sends exactly what it always has - and `outcome`
+    added only when it narrows anything, so a page left at Any sends exactly
+    what it always has too. */
 export function sessionWindow(
-  query: { from: string; to: string; issue: string | null },
+  query: { from: string; to: string; issue: string | null; outcome?: OutcomeFilter },
   ids: number[],
-): { from: string; to: string; ancestorKey: string | null; projectId?: number[] } {
-  const window = { from: query.from, to: query.to, ancestorKey: query.issue };
+): { from: string; to: string; ancestorKey: string | null; outcome?: string; projectId?: number[] } {
+  const window: { from: string; to: string; ancestorKey: string | null; outcome?: string } = {
+    from: query.from,
+    to: query.to,
+    ancestorKey: query.issue,
+  };
+  if (query.outcome && query.outcome !== DEFAULT_OUTCOME) window.outcome = query.outcome;
   return ids.length > 0 ? { ...window, projectId: ids } : window;
 }
 
@@ -262,3 +293,95 @@ export const windowPhrase = (from: string, to: string, locale?: string): string 
 /** A session id, short enough for a table cell. The whole one goes in a
     `title`, so the cell is readable and the id is still copyable. */
 export const shortSession = (sessionId: string): string => sessionId.slice(0, 8);
+
+/** The reason a dropped session names, in words: `quiet` and `run-time` are
+    the two caps a lease can run into, `error` is a release that said so, and
+    no reason at all is the plain case - the increment simply moved nothing.
+    Anything else the server might one day send is drawn as itself rather
+    than hidden. */
+export function reasonPhrase(reason: string | null): string {
+  switch (reason) {
+    case 'quiet':
+      return 'quiet limit';
+    case 'run-time':
+      return 'run-time limit';
+    case 'error':
+      return 'error';
+    case null:
+      return 'moved nothing';
+    default:
+      return reason;
+  }
+}
+
+/** One playbook-and-reason row of **What moved nothing cost**: `by-playbook`'s
+    own fold, folded once more onto just the three fields this section groups
+    on. Mirrors `WorkLogByPlaybookRow` for the fields it keeps. */
+export interface DroppedRow {
+  playbookKey: string | null;
+  fromStatusId: number | null;
+  fromStatusName: string | null;
+  toStatusId: number | null;
+  toStatusName: string | null;
+  reason: string | null;
+  sessions: number;
+  totalTokens: number;
+  costUsd: number;
+  unpricedSessions: number;
+}
+
+/**
+ * `by-playbook`'s rows (already read at `outcome=dropped`), folded onto
+ * playbook, transition and reason alone - the type, model and effort a
+ * dropped session ran under are not this section's business.
+ *
+ * Heaviest first by total tokens, the same rule the server's own fold uses,
+ * so the two agree on order; the folded cost is exactly the sum of the rows
+ * that went in, which is what keeps the section's totals honest.
+ */
+export function foldDropped(rows: WorkLogByPlaybookRow[]): DroppedRow[] {
+  const groups = new Map<string, DroppedRow>();
+
+  for (const row of rows) {
+    const key = JSON.stringify([row.playbookKey, row.fromStatusId, row.toStatusId, row.reason]);
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.sessions += row.sessions;
+      existing.totalTokens += row.totalTokens;
+      existing.costUsd += row.costUsd;
+      existing.unpricedSessions += row.unpricedSessions;
+    } else {
+      groups.set(key, {
+        playbookKey: row.playbookKey,
+        fromStatusId: row.fromStatusId,
+        fromStatusName: row.fromStatusName,
+        toStatusId: row.toStatusId,
+        toStatusName: row.toStatusName,
+        reason: row.reason,
+        sessions: row.sessions,
+        totalTokens: row.totalTokens,
+        costUsd: row.costUsd,
+        unpricedSessions: row.unpricedSessions,
+      });
+    }
+  }
+
+  return [...groups.values()].sort((a, b) => b.totalTokens - a.totalTokens);
+}
+
+/** The label a `DroppedRow` draws under Playbook: the transition it ran,
+    `From → To`, falling back to the raw id for a column since deleted - the
+    same fallback `transitionPhrase` makes - or `"Unknown playbook"` for the
+    all-null group an older runner's sessions fold into. The playbook key
+    itself is not in the label; it goes on the row's `title` instead. */
+export function droppedRowLabel(row: DroppedRow): string {
+  if (row.playbookKey === null && row.fromStatusId === null && row.toStatusId === null) return 'Unknown playbook';
+
+  const name = (id: number | null, named: string | null): string => {
+    if (id === null) return '';
+    return named ?? String(id);
+  };
+
+  return `${name(row.fromStatusId, row.fromStatusName)} → ${name(row.toStatusId, row.toStatusName)}`;
+}

@@ -4187,7 +4187,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`), and the playbook, transition, issue type, model and effort it ran under (`PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`, `IssueType`, `PlaybookModel`, `PlaybookEffort`), and the model dispatch chose, where it ran and a local model's digest (`DispatchModel`, `ModelPlacement` of `local`, `fallback`, `cloud` or null, `ModelDigest`; `/work-log/sessions` rows carry the same three), and whether the increment moved its ticket and why (`Outcome`, `Reason`), stamped by the claim release that named this row's session id and null on a row never stamped; an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
-| `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort/outcome/reason combination in a range, heaviest first; `sessions` and `by-playbook` take an optional `outcome` (one of the claim outcomes, or `none`), and both carry `outcome` and `reason` on their rows — see [the leaderboard](#the-leaderboard) |
+| `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort/outcome/reason combination in a range, heaviest first; all three of `history`, `sessions` and `by-playbook` take an optional `outcome` (one of the claim outcomes, or `none`) and `ancestorKey`, and `sessions`/`by-playbook` carry `outcome` and `reason` on their rows — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
@@ -4902,19 +4902,20 @@ unpriced count beside its total.
 
 ```
 GET /api/work-log/sessions?from=&to=&ancestorKey=&sort=&limit=&outcome=
-GET /api/work-log/history?from=&to=&ancestorKey=&bucket=&offsetMinutes=
-GET /api/work-log/by-playbook?from=&to=&projectId=&outcome=
+GET /api/work-log/history?from=&to=&ancestorKey=&bucket=&offsetMinutes=&outcome=
+GET /api/work-log/by-playbook?from=&to=&ancestorKey=&projectId=&outcome=
 ```
 
 The first two are what the page draws; the third is [what each playbook
-costs](#what-each-playbook-costs), and takes no `ancestorKey`.
+costs](#what-each-playbook-costs).
 
-They take the same range and the same `ancestorKey`, and **`ancestorKey` means
-the same thing on both**: the issue itself *and* everything beneath it at any
-depth, from `Rollup.DescendantIdsAsync`. That is deliberately not how the same
-word reads on `GET /api/issues`, and the reason is that a planning session
-run against an epic is money no child holds. It is also what keeps the ranking,
-the table and the graph from ever describing different populations.
+All three take the same range and the same `ancestorKey`, and **`ancestorKey`
+means the same thing on all three**: the issue itself *and* everything
+beneath it at any depth, from `Rollup.DescendantIdsAsync`. That is
+deliberately not how the same word reads on `GET /api/issues`, and the reason
+is that a planning session run against an epic is money no child holds. It is
+also what keeps the ranking, the table and the graph from ever describing
+different populations.
 
 Four rules worth knowing before reading either:
 
@@ -4985,16 +4986,19 @@ its sessions, errors, turns, the four token counts and `TotalTokens`.
   any other: those sessions fold together as a single "unknown" row, with no
   branch in the fold that treats them specially. A session with no outcome or
   reason groups under null for those two the same way.
-- **`outcome` narrows the read.** `sessions` and `by-playbook` both take an
-  optional `outcome`: one of the claim outcomes, or `none` for sessions with no
-  outcome. Given, it narrows the sessions listed or folded and the totals with
-  them, as `projectId` does; absent, every session is read. A value the route
-  does not know is a `400` naming the accepted ones. It leaves `sessions`'
-  `first`/`last` bounds alone, which describe the log and not the range.
-- **The same window and the same `projectId` as the other reads.** The range is
-  the half-open `EndedAt` rule `sessions` and `history` use, and `projectId`
-  reads as it does on `GET /api/issues` - an id that matches no project
-  answers no rows, not a refusal.
+- **`outcome` narrows the read.** `history`, `sessions` and `by-playbook` all
+  take an optional `outcome`: one of the claim outcomes, or `none` for
+  sessions with no outcome. Given, it narrows the buckets, the sessions
+  listed or folded, and the totals with them, as `projectId` does; absent,
+  every session is read. A value the route does not know is a `400` naming
+  the accepted ones. It leaves `history`'s and `sessions`' `first`/`last`
+  bounds alone, which describe the log and not the range.
+- **The same window, the same `ancestorKey` and the same `projectId` as the
+  other reads.** The range is the half-open `EndedAt` rule `sessions` and
+  `history` use, `ancestorKey` reads exactly as it does on those two reads -
+  the issue itself and everything beneath it, an unknown key a `400` - and
+  `projectId` reads as it does on `GET /api/issues` - an id that matches no
+  project answers no rows, not a refusal.
 - **Status names are today's names.** `FromStatusName` and `ToStatusName` are the
   board's *current* names for the stored ids, resolved fresh on every read, and
   null where the id is null or no longer names a column. Neither is a re-read of

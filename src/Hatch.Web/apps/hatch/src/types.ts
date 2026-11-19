@@ -2726,6 +2726,59 @@ export interface WorkLogHistory {
   buckets: WorkLogBucket[];
 }
 
+/** One playbook/transition/type/model/effort/outcome/reason combination, and
+    what its sessions cost. Mirrors WorkLogByPlaybookRowDto.
+
+    A row whose eight grouping fields are all null is every session an older
+    runner wrote, folded together as the unknown group. */
+export interface WorkLogByPlaybookRow {
+  /** The stored playbook key, never re-read against the playbook's current
+      prompt - null for the older-runner group. */
+  playbookKey: string | null;
+  fromStatusId: number | null;
+  /** The board's *current* name for `fromStatusId`, or null where the id is
+      null or no longer names a column. */
+  fromStatusName: string | null;
+  toStatusId: number | null;
+  toStatusName: string | null;
+  issueType: string | null;
+  model: string | null;
+  effort: string | null;
+  /** How the sessions' claims ended - one of the claim outcomes, or null for
+      sessions that recorded none. */
+  outcome: string | null;
+  reason: string | null;
+  sessions: number;
+  errors: number;
+  /** Sessions that never wrote a work-log block. */
+  undescribed: number;
+  turns: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+  /** The priced sessions' sum - `unpricedSessions` counts the rest, so this
+      reads as a floor. */
+  costUsd: number;
+  unpricedSessions: number;
+  medianPeakContextTokens: number | null;
+  maxPeakContextTokens: number | null;
+  medianPromptChars: number | null;
+}
+
+/** The sessions in a range, folded by the playbook they ran under. Mirrors
+    WorkLogByPlaybookDto.
+
+    The range is as given, half-open, the same rule `WorkLogSessions` states.
+    Every group in the window comes back - there is no sort and no limit. */
+export interface WorkLogByPlaybook {
+  from: string;
+  to: string;
+  /** Heaviest first by total tokens, ties broken on the grouping fields. */
+  rows: WorkLogByPlaybookRow[];
+}
+
 // ---- Overnight ----
 
 /** The newest night the loop ran, and what landed in it - `OvernightController`'s
