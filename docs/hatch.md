@@ -5201,8 +5201,9 @@ and a run reads as not found. The reader's page is
 ### Findings
 
 A finding is a stored row a person can read and act on, with the evidence
-beside it - `train-ready` below is the first check that opens one, `questions-waiting`
-and `claim-repeating` follow it, and a later check files a bug from one. `FindingCheck` (`GooseFindings.cs`) is the one
+beside it - `train-ready` below is the first check that opens one, `ready-unclaimed`,
+`ready-no-runner`, `claim-repeating` and `questions-waiting` follow it, and a later
+check files a bug from one. `FindingCheck` (`GooseFindings.cs`) is the one
 reconciler every such check shares, so none of them can disagree about when a
 clock starts, when a row opens, or when it closes: a subclass says only what it
 is watching (`ReadAsync`: a sentence for the run, the check's own bound, and
@@ -5281,6 +5282,56 @@ the driver last wrote an event on an issue in the project's merges column (or
 that it never has), how many other rows share the merges column, and how many
 times a driver has been passed over on this head since the condition began,
 with which runners.
+
+#### `ready-unclaimed` and `ready-no-runner`
+
+Tells a person when ready work has sat unclaimed - once while a runner that
+could take it sits idle, and once while no live runner can take any of it at
+all (HA-2497). Both share one reader, `ReadyWork`, so a sweep scans the board
+once rather than twice and the two checks can never disagree about what is
+ready.
+
+**What is ready.** `Dispatch.ReadyBoardAsync` is the board's own read, beside
+`TakersAsync`'s: a row the walk calls clear, or parked only behind
+higher-ranking work (`Blocked is null || BlockedKind == Turn`), that is not a
+hop and whose `Kind` is `advance`, `conflicts` or `build` - the merge train's
+own kinds (`merge`, `update`, `pushback`, `hold`) are the train's rows, not a
+session's to claim. For every such row it also names which live peers - by id,
+not only by name, since a name's two sessions can hold different checkouts -
+take it, the same way `TakersAsync` does, plus the live fleet itself and every
+runner this Hatch has ever heard from, live or not. `ReadyWork` then drops a
+step filed as the bug for another finding (`GooseFindings.FiledFromAFindingAsync`),
+groups what remains by project, and reads each project's newest `claim_taken`
+event and, from `Runners.HeldAsync`, which of its able peers hold no live
+claim at all - idle, in other words.
+
+**`ready-unclaimed`.** Subject is the project; a candidate when it has ready
+steps and an idle peer able to take one of them. The token is the project's
+newest `claim_taken` event's own id, or `none` - a claim taken and released
+again between two sweeps still changes the token, so the clock restarts with
+no bookkeeping of its own. The bound is `Hatch__GooseUnclaimedMinutes`
+(default 10); zero turns the check off, and a negative falls back to the
+default. The sentence names the project and the count, for example `AER has 3
+steps ready and no runner has taken one`; the evidence names the steps (the
+first ten keys, and the count), each idle runner and when it was last heard
+from, and the project's newest claim, or `none`.
+
+**`ready-no-runner`.** Subject is the project; a candidate when it has ready
+steps and no live peer takes any of them - including a project with no live
+peer at all. The token is a constant: the condition is "ready and taken by
+nobody," not any one step or claim. The bound is `Hatch__GooseNoRunnerMinutes`
+(default 15); guarded the same way. The sentence reads `AER has 3 steps ready
+and no live runner can take them`; the evidence names the steps the same way,
+then, for each live runner, the distinct reasons the queue gives across the
+project's steps, joined; with no live runner at all it says so and lists when
+each known runner - live or not - was last heard from.
+
+The two never both open for one project: an idle taker makes it
+`ready-unclaimed`'s, and having none at all makes it `ready-no-runner`'s. Unlike
+the attention panel's **Runner capacity** and **Waiting on a runner**
+([watching the loop](../src/Hatch.Web/apps/hatch/docs/watching-the-loop.md)),
+which only ever say what is true right now, these say a project has stood
+that way for a while.
 
 #### `claim-repeating`
 

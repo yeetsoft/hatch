@@ -178,6 +178,8 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Hatch__GooseIntervalSeconds` | `60` | Seconds between the goose's sweeps of the board. Zero or less falls back to `60`. |
 | `Hatch__GooseKeepDays` | `7` | How many days a goose run is kept after its last sweep; `0` keeps everything, and less than that falls back to `7`. |
 | `Hatch__GooseTrainReadyMinutes` | `30` | How long a merge train's head may be judged mergeable before the goose's `train-ready` check opens a finding. `0` turns the check off; a negative value falls back to `30`. |
+| `Hatch__GooseUnclaimedMinutes` | `10` | How long a project may have ready work and a live, idle runner able to take some of it before the goose's `ready-unclaimed` check opens a finding. `0` turns the check off; a negative value falls back to `10`. |
+| `Hatch__GooseNoRunnerMinutes` | `15` | How long a project may have ready work that no live runner can take before the goose's `ready-no-runner` check opens a finding. `0` turns the check off; a negative value falls back to `15`. |
 | `Hatch__GooseRepeatClaims` | `5` | How many claims by one runner on one ticket, with nothing about the ticket moving, make the goose's `claim-repeating` check open a finding. `0` turns the check off; a negative value falls back to `5`. |
 | `Hatch__GooseQuestionHours` | `24` | How many hours a question may wait on a person before the goose's `questions-waiting` check opens a finding. `0` turns the check off; a negative value falls back to `24`. |
 | **The database** | | |
