@@ -505,7 +505,8 @@ public sealed class Dispatch(
                         WaitsOn: blocking.WaitsOn,
                         AnyOf: blocking.AnyOf,
                         ProjectLevel: gate.ProjectLevel(issue.Id),
-                        ModelIsLocal: ResolveModel(issue, playbook, localLevel, models).Local));
+                        ModelIsLocal: ResolveModel(issue, playbook, localLevel, models).Local,
+                        Across: blocking.Across));
                 }
             }
 
@@ -830,6 +831,27 @@ public sealed class Dispatch(
         }
 
         return listed;
+    }
+
+    /// <summary>
+    /// The reader's visible issues the loop would carry now were every inherited
+    /// level and pull honoured, and does not, because the walk passed it over at
+    /// a project line - and which line. Only a row held for nothing but that is
+    /// listed: one folded earlier (a claim, a dependency, a full column) or
+    /// parked behind a higher tier is not. Ordered as
+    /// <see cref="WaitingOnARunnerAsync"/> orders: priority, rank, id.
+    /// </summary>
+    public async Task<IReadOnlyList<AcrossHold>> HeldAtProjectLineAsync(CancellationToken ct)
+    {
+        var board = await ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct);
+
+        return board.Rows
+            .Where(r => !r.Hop && r.Across is not null && r.BlockedKind == BlockedKinds.Person)
+            .OrderByDescending(r => r.EffectivePriority)
+            .ThenBy(r => r.Issue.Rank)
+            .ThenBy(r => r.Issue.Id)
+            .Select(r => new AcrossHold(r, r.Across!))
+            .ToList();
     }
 
     /// <summary>
@@ -2190,7 +2212,36 @@ public sealed class Dispatch(
     /// person reading the queue moves it either way.
     /// </summary>
     private static string PullNotHonoured(string parentKey, string projectKey) =>
-        $"{parentKey} is in progress, but the person who started it has no say in {projectKey}, so a person moves it";
+        AcrossSentence(new AcrossLine(parentKey, false, null), projectKey, false);
+
+    /// <summary>
+    /// The one place the two cross-project holds are worded: a level the walk
+    /// passed over (<see cref="AcrossLine.IsLevel"/>) and a pull it did not
+    /// honour. The queue asks with the ancestor's key; a reader who cannot see
+    /// that ancestor asks with <paramref name="hideKey"/> and is told it is in
+    /// another project instead. Both always name <paramref name="projectKey"/>,
+    /// the project whose approver is needed.
+    /// </summary>
+    public static string AcrossSentence(AcrossLine line, string projectKey, bool hideKey) =>
+        line.IsLevel
+            ? $"{(line.Level == PreApprovalLevels.PreApproved ? "pre-approved" : "express")} on {(hideKey ? "an ancestor in another project" : line.FromKey)}, not honoured in {projectKey} - " +
+              "its setter has no say there, so a person moves it"
+            : $"{(hideKey ? "its parent in another project" : line.FromKey)} is in progress, but the person who started it has no say in {projectKey}, so a person moves it";
+
+    /// <summary>
+    /// The pull hold's <see cref="AcrossLine"/> where honouring the pull would
+    /// carry the issue - <see cref="HopKind"/> asked again with the parent's
+    /// starter given their say - and null where it would not (a child in
+    /// Backlog, which no hop leaves, is held, but not for the line alone).
+    /// </summary>
+    private static AcrossLine? PullAcross(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate.Parent parent, FamilyGate family,
+        EfHatchPlaybook? playbook, int sendBackStreak, WipSection? wip, DependencyGate gate,
+        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, ClaimGate claimed, List<EfHatchStatus> statuses) =>
+        HopKind(issue, from, to, family.WithPullsHonoured(), statuses, wip, parent, playbook, sendBackStreak,
+            claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, verdicts, builds, claimed.Now) is not null
+            ? new AcrossLine(parent.Key, false, null)
+            : null;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -2314,10 +2365,10 @@ public sealed class Dispatch(
                  && family.ParentOf(issue.Id) is { } pullParent && FamilyGate.PullHeld(pullParent, issue.ProjectId, from, statuses, family.Authority))
             && HopKind(issue, from, to, family, statuses, wip, family.ParentOf(issue.Id), playbook, sendBackStreak,
                 claimed.Claims!.StallResumeLimit, passedOver.Level, verdicts, builds, claimed.Now) is HopKinds.Express or HopKinds.Approve or HopKinds.Close)
-            return new Blocking(
-                $"{(passedOver.Level == PreApprovalLevels.PreApproved ? "pre-approved" : "express")} on {passedOver.Key}, not honoured in {issue.Project!.Key} - " +
-                "its setter has no say there, so a person moves it",
-                BlockedKinds.Person);
+        {
+            var across = new AcrossLine(passedOver.Key, true, passedOver.Level);
+            return new Blocking(AcrossSentence(across, issue.Project!.Key, false), BlockedKinds.Person, Across: across);
+        }
 
         if (to.IsTerminal && hopKind != HopKinds.Close)
             return new Blocking($"the next column is \"{to.Name}\", and only the operator moves work there", BlockedKinds.Person);
@@ -2541,7 +2592,9 @@ public sealed class Dispatch(
             && !Columns.AtOrPastImplementation(statuses, from.Id)
             && family.ParentOf(issue.Id) is { } heldParent
             && FamilyGate.PullHeld(heldParent, issue.ProjectId, from, statuses, family.Authority))
-            return new Blocking(PullNotHonoured(heldParent.Key, issue.Project!.Key), BlockedKinds.Person);
+            return new Blocking(
+                PullNotHonoured(heldParent.Key, issue.Project!.Key), BlockedKinds.Person,
+                Across: PullAcross(issue, from, to, heldParent, family, playbook, sendBackStreak, wip, gate, verdicts, builds, claimed, statuses));
 
         if (issue.Type is "story" or "bug" or "task"
             && issue.ParentId is { } holdParentId
@@ -2569,7 +2622,9 @@ public sealed class Dispatch(
 
             if (epicParent is { } heldEpicParent
                 && FamilyGate.PullHeld(heldEpicParent, issue.ProjectId, from, statuses, family.Authority))
-                return new Blocking(PullNotHonoured(heldEpicParent.Key, issue.Project!.Key), BlockedKinds.Person);
+                return new Blocking(
+                    PullNotHonoured(heldEpicParent.Key, issue.Project!.Key), BlockedKinds.Person,
+                    Across: PullAcross(issue, from, to, heldEpicParent, family, playbook, sendBackStreak, wip, gate, verdicts, builds, claimed, statuses));
 
             if (epicParent is not null
                 && (!IssueTypeKinds.RunsChildren(epicParent.Type) || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId)))
@@ -3142,7 +3197,17 @@ public sealed record ScanRow(
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
     string? Model = null, IReadOnlyList<string>? DeniedTools = null,
     IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false,
-    string? ProjectLevel = null, bool ModelIsLocal = false);
+    string? ProjectLevel = null, bool ModelIsLocal = false, AcrossLine? Across = null);
+
+/// <summary>A row <see cref="Dispatch.HeldAtProjectLineAsync"/> lists, and the line it stands at.</summary>
+public sealed record AcrossHold(ScanRow Row, AcrossLine Line);
+
+/// <summary>
+/// The project line a hold stands at: the ancestor whose level or pull was not
+/// honoured, whether it is a level (<see cref="Level"/> then says which, one of
+/// <see cref="PreApprovalLevels"/>) or a pull. See <see cref="Dispatch.AcrossSentence"/>.
+/// </summary>
+public sealed record AcrossLine(string FromKey, bool IsLevel, int? Level = null);
 
 /// <summary>
 /// <see cref="Dispatch.BlockedWithKind"/>'s answer: the sentence and its kind,
@@ -3152,7 +3217,7 @@ public sealed record ScanRow(
 /// one of them leaving is enough (a WIP limit), false where all must (a
 /// dependency).
 /// </summary>
-public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false)
+public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, AcrossLine? Across = null)
 {
     /// <summary>A fold on a list that could in principle be empty: empty means it waits on no issue, so null.</summary>
     public static Blocking Waiting(string sentence, string kind, IReadOnlyList<long> ids, bool anyOf = false) =>
@@ -4284,6 +4349,10 @@ public sealed class FamilyGate
     private readonly Dictionary<long, int> _projectById;
     private readonly SetterAuthority _authority;
 
+    // Set only on the copy WithPullsHonoured returns: every pull across a
+    // project line reads as honoured, for the question "would this carry now".
+    private bool _honourAcross;
+
     /// <summary>What a parent's starter may do across a project line - see <see cref="PullHeld"/>.</summary>
     public SetterAuthority Authority => _authority;
 
@@ -4486,7 +4555,20 @@ public sealed class FamilyGate
     /// </summary>
     public bool Honours(EfHatchIssue issue, Parent parent, EfHatchStatus? into) =>
         !parent.OtherProject
+        || _honourAcross
         || (into is not null && _authority.MayPull(parent.StartedBy, issue.ProjectId, into));
+
+    /// <summary>
+    /// A copy that honours every pull across a project line, whoever started
+    /// the parent - so <see cref="Dispatch.HopKind"/> can say what would carry
+    /// a child were the line not there. The rows it reads are shared.
+    /// </summary>
+    public FamilyGate WithPullsHonoured()
+    {
+        var copy = (FamilyGate)MemberwiseClone();
+        copy._honourAcross = true;
+        return copy;
+    }
 
     /// <summary>
     /// <see cref="ParentStarted"/> for this issue's own parent, where that

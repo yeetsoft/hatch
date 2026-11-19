@@ -1654,6 +1654,21 @@ only a person can move it on - held, stalled on a board that never resumes, or
 stalled past the window at the resume limit - and `loop` when the board
 resumes it by itself. `stallResumeSeconds` is the board's resume window, 0 when
 it never resumes one. `stalled` is empty, not null, when there is none.
+`heldAtProjectLine` lists the issues you can see that the loop would carry now
+if every level and pull they inherit were honoured, and does not, because the
+level or pull comes from another project whose setter has no say there: an
+issue in review with a clean branch under a pre-approved ancestor, one in a
+column marked for express under an express ancestor, or a child left of
+implementation under a parent in progress, each in another project. Only an
+issue held for nothing but that is listed - one a claim, a dependency or a full
+column already holds is not. Each entry carries `key`, `title`, `type`,
+`projectKey` (the issue's own project, the one whose approver is needed) and
+`sentence` (the queue's own words). Where the ancestor is outside your scope the
+sentence names no key, only "an ancestor in another project" or "its parent in
+another project". An entry leaves when an approver of `projectKey` sets the level
+on the issue itself, or when the issue moves; a child held for its parent's pull
+has no level to set, so it leaves only by a move. It is in the queue's order,
+and empty, not null, whatever the board's shape. It is not counted here.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.
