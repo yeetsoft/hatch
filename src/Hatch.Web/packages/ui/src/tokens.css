@@ -313,6 +313,12 @@
   --type-bug: var(--danger);
   --type-reflection: #b97a00;
 
+  /* The flame a tile wears for priority: an amber body with a paler core. Heat
+     is amber so that red stays the bug's. The same in both themes, as
+     --on-series is: declared here and in neither dark block. */
+  --heat: #f08c00;
+  --heat-core: #ffd43b;
+
   /* -------------------------------------------------------------------------
      6. Motion and elevation. Calm: nothing moves unless a person moved it. */
   --transition: 200ms ease;

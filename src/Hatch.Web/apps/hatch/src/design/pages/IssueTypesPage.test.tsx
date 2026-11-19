@@ -57,6 +57,68 @@ describe('IssueTypesPage', () => {
   });
 });
 
+/* Each marks section is cut from its heading to the next section's. */
+const section = (title: string) => {
+  const from = html.indexOf(`>${title}</`);
+  return html.slice(from, html.indexOf('</section>', from));
+};
+
+describe.each([
+  ['Trail', ['none', 'express', 'preapproved'], 'Lines for pre-approval'],
+  ['Heat', ['normal', 'economy', 'expedited', 'emergency', 'emergency, pre-approved'], 'Flame for priority'],
+  ['Fill', ['outline', 'solid', 'landed'], 'Fill for where a ticket stands'],
+])('the %s section', (title, states, rule) => {
+  const markup = section(title);
+  const rowsOf = markup.split('class="design-mark-row"').slice(1);
+
+  it('has a row for every type and a cell for every state in it', () => {
+    expect(rowsOf).toHaveLength(ISSUE_TYPE_ROWS.length);
+    ISSUE_TYPE_ROWS.forEach((row, i) => {
+      expect(rowsOf[i]).toContain(`>${row.word}<`);
+      expect(rowsOf[i].match(/class="design-mark-cell"/g)).toHaveLength(states.length);
+      states.forEach((state) => expect(rowsOf[i]).toContain(`class="design-mark-state">${state}<`));
+    });
+  });
+
+  it('draws every cell at the card\'s 14 pixels and at 72, the real tile in each', () => {
+    for (const row of rowsOf) {
+      expect(row.match(/design-type-tile design-type-tile--14"><svg/g)).toHaveLength(states.length);
+      expect(row.match(/design-type-tile design-type-tile--72"><svg/g)).toHaveLength(states.length);
+      expect(row).not.toMatch(/design-type-tile--(16|24)/);
+    }
+  });
+
+  it('carries its rule in the note', () => {
+    expect(markup).toContain(rule);
+  });
+});
+
+describe('the marks sections', () => {
+  it('sit after the ambition and before the card size, in order', () => {
+    const at = ['The ambition', 'Trail', 'Heat', 'Fill', 'At the size a card uses'].map((title) => html.indexOf(`>${title}</`));
+
+    expect(at.every((index) => index > 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  it('leaves red to the bug', () => {
+    expect(section('Heat')).toContain('red is left to the bug');
+  });
+
+  it('draws each flame state, and the trail and tick, in the right cells', () => {
+    const heat = section('Heat');
+    const trail = section('Trail');
+    const fill = section('Fill');
+
+    expect(heat).toContain('fill:var(--heat)');
+    expect(heat).toContain('rotate(-74)');
+    expect(trail).toContain('hatch-type-tile-trail');
+    expect(trail).not.toContain('--heat');
+    expect(fill).toContain('hatch-type-tile-landed');
+    expect(fill).toContain('hatch-type-tile-outlined');
+  });
+});
+
 describe('SECTIONS', () => {
   it('lists Issue types straight after Project mark', () => {
     const slugs = SECTIONS.map((section) => section.slug);

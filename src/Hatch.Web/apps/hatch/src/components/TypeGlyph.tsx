@@ -3,6 +3,9 @@ import { HATCH_MARK_BODY, HATCH_MARK_CAP } from '@hatch/ui';
 import type { IssueType } from '../types';
 import { issueTypeRow } from '../lib/issueType';
 import type { TypePicture } from '../lib/issueType';
+import type { PreApproval } from '../lib/preApproval';
+import { DIM_OPACITY, LEAN, TILE_BOX, WIDE_BOX, tileMarks } from '../lib/tileMarks';
+import type { Priority } from '../lib/tileMarks';
 
 const LABEL: Record<IssueType, string> = {
   epic: 'epic',
@@ -46,6 +49,38 @@ const PICTURES: Record<TypePicture, Picture> = {
   },
 };
 
+/* The flame, in a 24 box: tip at (12, 3), base centred on (12, 22). Drawn for
+   Hatch, not taken from an icon set. The core is the body again at 0.52 of the
+   size about the base, so the two share it. */
+const FLAME_BODY =
+  'M12 3C13 6 18.8 9.4 18.8 15.2A6.8 6.8 0 0 1 5.2 15.2C5.2 12.4 5.8 9.6 6.8 7 7.6 8.8 8.6 10.2 10 10.8 9.4 8 10.2 5.2 12 3Z';
+const FLAME_CORE = 'translate(12 22) scale(0.52) translate(-12 -22)';
+
+/** The ground the tile sits on: whoever draws it on another sets `--tile-ground`. */
+const GROUND = 'var(--tile-ground, var(--bg))';
+
+/* The landed tick's disc, and the ring it is drawn with: the disc's own stroke,
+   centred on its edge, so the ring's outer edge is 4.2 from the centre. That
+   reaches 17.8 on x and 17.4 on y: past the 16 box and past the wide box. */
+const LANDED = { cx: 13.6, cy: 13.2, r: 3.6, ring: 1.2, tick: 'M12 13.3 13.2 14.5 15.3 12.1' };
+
+/** Where a ticket stands: not begun, under way, or landed. */
+export type TileFill = 'outline' | 'solid' | 'landed';
+
+/* A wide tile is drawn in a box bigger than its wrapper, so it has to be sized
+   to put the 16 box back where the bare tile's would be: the wrapper is square,
+   and 29 by 25 units are 181.25% by 156.25% of 16. The margins are percentages
+   of the wrapper's width. It never shrinks in a flex wrapper. */
+const WIDE_STYLE = {
+  width: '181.25%',
+  height: '156.25%',
+  maxWidth: 'none',
+  marginLeft: '-75%',
+  marginTop: '-50%',
+  flexShrink: 0,
+  overflow: 'visible',
+} as const;
+
 /**
  * The type's tile: a coloured outline with a picture on it. What the card's
  * corner glyph and the type pill both draw.
@@ -56,24 +91,119 @@ const PICTURES: Record<TypePicture, Picture> = {
  * to register hue. The colour is still the fast read: the outline is filled
  * with the type's own token, and the picture is `--on-accent` on it.
  *
+ * It can also wear marks. `preApproval` draws a trail of lines to its left and
+ * leans it, `priority` draws a flame behind it (or fades it, for economy), and
+ * `fill` says where a ticket stands. With none of them given it draws what it
+ * always drew, in the 16 box. With a trail or a flame it draws in a wider box
+ * and the tile inside stays the size its caller asked for.
+ *
  * The fill is set as a style because `var()` in a presentation attribute is
  * not trusted everywhere.
  */
-export function TypeTile({ type }: { type: IssueType }) {
+export function TypeTile({
+  type,
+  preApproval = 'none',
+  priority = 'normal',
+  fill = 'solid',
+}: {
+  type: IssueType;
+  preApproval?: PreApproval;
+  priority?: Priority;
+  fill?: TileFill;
+}) {
   const { outline, picture } = issueTypeRow(type);
   const { filled, stroked } = PICTURES[picture];
-  const fill = { fill: `var(--type-${type})` };
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      {outline === 'disc' ? (
-        <circle className="hatch-type-tile-face" cx="8" cy="8" r="7" style={fill} />
-      ) : (
-        <path className="hatch-type-tile-face" d={ROUNDED_FACE} style={fill} />
-      )}
-      <g transform="translate(8 8) scale(1.1) translate(-8 -8)">
+  const marks = tileMarks(preApproval, priority);
+  const colour = `var(--type-${type})`;
+  const outlined = fill === 'outline';
+  const landed = fill === 'landed';
+
+  const faceStyle = outlined
+    ? { fill: 'none', stroke: colour, strokeWidth: 1.2 }
+    : marks.flame
+      ? { fill: colour, stroke: GROUND, strokeWidth: 1.8, paintOrder: 'stroke' as const }
+      : { fill: colour };
+  const face = (className: string | undefined, style: object) =>
+    outline === 'disc' ? (
+      <circle className={className} cx="8" cy="8" r="7" style={style} />
+    ) : (
+      <path className={className} d={ROUNDED_FACE} style={style} />
+    );
+
+  const body = (
+    <>
+      {/* A hollow face lets the flame through, so it takes a ground-coloured face behind it. */}
+      {outlined && marks.flame && face(undefined, { fill: GROUND, stroke: GROUND, strokeWidth: 1.8 })}
+      {face('hatch-type-tile-face', faceStyle)}
+      <g
+        transform="translate(8 8) scale(1.1) translate(-8 -8)"
+        className={outlined ? 'hatch-type-tile-outlined' : undefined}
+        style={outlined ? { color: colour } : undefined}
+      >
         {filled && <path className="hatch-type-tile-picture" d={filled} />}
         {stroked && <path className="hatch-type-tile-stroke" d={stroked.d} strokeWidth={stroked.width} />}
       </g>
+    </>
+  );
+
+  return (
+    <svg
+      viewBox={marks.wide ? WIDE_BOX : TILE_BOX}
+      overflow={landed ? 'visible' : undefined}
+      style={marks.wide ? WIDE_STYLE : undefined}
+      aria-hidden="true"
+      focusable="false"
+    >
+      {marks.flame && (
+        <g transform={marks.flameTransform} className="hatch-type-tile-flame">
+          <path d={FLAME_BODY} style={{ fill: 'var(--heat)' }} />
+          <path d={FLAME_BODY} transform={FLAME_CORE} style={{ fill: 'var(--heat-core)' }} />
+        </g>
+      )}
+      {marks.trail && (
+        <path
+          className="hatch-type-tile-trail"
+          d={marks.trail}
+          style={{
+            fill: 'none',
+            stroke: colour,
+            strokeOpacity: 0.65,
+            strokeWidth: 1.3,
+            strokeLinecap: 'round',
+          }}
+        />
+      )}
+      {marks.lean || marks.dim ? (
+        <g
+          className={marks.lean ? 'hatch-type-tile-lean' : undefined}
+          transform={marks.lean ? LEAN : undefined}
+          opacity={marks.dim ? DIM_OPACITY : undefined}
+        >
+          {body}
+        </g>
+      ) : (
+        body
+      )}
+      {landed && (
+        <g className="hatch-type-tile-landed">
+          <circle
+            cx={LANDED.cx}
+            cy={LANDED.cy}
+            r={LANDED.r}
+            style={{ fill: 'var(--success-fill)', stroke: GROUND, strokeWidth: LANDED.ring, paintOrder: 'stroke' }}
+          />
+          <path
+            d={LANDED.tick}
+            style={{
+              fill: 'none',
+              stroke: 'var(--on-accent)',
+              strokeWidth: 1.3,
+              strokeLinecap: 'round',
+              strokeLinejoin: 'round',
+            }}
+          />
+        </g>
+      )}
     </svg>
   );
 }
