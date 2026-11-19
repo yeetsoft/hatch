@@ -1409,7 +1409,7 @@ a key.
 | GET | `/issues/{key}/work-log` | key | This issue's own sessions, and what its whole subtree has cost |
 | GET | `/work-log/history` | key | Spend over time, in equal buckets |
 | GET | `/work-log/sessions` | key | The sessions in a range, ranked, and what the range cost in total |
-| GET | `/work-log/by-playbook` | key | The sessions in a range, folded by the playbook, transition, issue type, model and effort they ran under |
+| GET | `/work-log/by-playbook` | key | The sessions in a range, folded by the playbook, transition, issue type, model, effort, outcome and reason they ran under |
 | GET | `/overnight` | key | What landed in the newest night |
 | POST | `/overnight/seen` | **person** | Marks the night read, for the caller |
 | GET | `/activity` | key | The event trail across every issue, newest first, a page at a time |
@@ -1445,12 +1445,22 @@ nothing rather than a refusal. It is ANDed with `ancestorKey` when both are
 given, and narrows the totals, the buckets and the `first`/`last` bounds
 alike.
 `/work-log/by-playbook` folds the same range by the playbook, transition,
-issue type, model and effort each session ran under, and takes a repeatable
-`projectId` in place of `ancestorKey`; it answers every group, heaviest first
-by total tokens, with no sort or limit to choose, and an id naming no project
-contributes nothing and is not a refusal. Sessions from an older runner, which did not
-record those, fold into one row of nulls, and a status name is the board's
-current one - null where the column has since gone.
+issue type, model, effort, outcome and reason each session ran under - eight
+fields - and takes a repeatable `projectId` in place of `ancestorKey`; it
+answers every group, heaviest first by total tokens, ties broken on the eight
+fields in that order, with no sort or limit to choose, and an id naming no
+project contributes nothing and is not a refusal. Sessions from an older
+runner, which did not record those, fold into one row of nulls, and a status
+name is the board's current one - null where the column has since gone.
+Both `/work-log/sessions` and `/work-log/by-playbook` also take an optional
+`outcome`: one of `dropped`, `worked`, `preempted`, `recused`, `unservable`,
+`abandoned` or `unstarted`, or `none` for sessions with no outcome. It is not
+case-sensitive, and blank is the same as absent. Given, it narrows the
+sessions listed or folded and the totals with them, ANDed with `projectId`
+and `ancestorKey`; it leaves the `first`/`last` bounds on `sessions` alone,
+since they describe the log and not the range. Absent, every session is read.
+Each row of `/work-log/sessions` and of `/work-log/by-playbook` carries
+`outcome` and `reason`, null where the session recorded none.
 
 `/overnight` answers an `OvernightDto(From, To, Count, Rows, Unseen)`,
 grouping and gap-splitting the newest night's terminal landings; `seen` is a
@@ -1485,7 +1495,9 @@ file on disk rather than a client reading a response body.
 **Refusals worth naming.** `work-log`'s `POST` 400s a missing session id.
 `history` 400s an offset outside +-1440 minutes, an unrecognised bucket
 name, or a request whose buckets would exceed 1000. `sessions` 400s an
-unrecognised sort or a limit outside 1-500. `activity` 400s a limit outside
+unrecognised sort or a limit outside 1-500. `sessions` and `by-playbook` 400
+an `outcome` that is neither one of the seven outcomes nor `none`, naming
+the accepted values. `activity` 400s a limit outside
 1-500 or a negative offset. `changelog` 400s a window under one day.
 `history`/`sessions`/`by-playbook`/`changelog` all 400 an
 unparseable range bound, in the order `to`, then `from`, then the inversion.

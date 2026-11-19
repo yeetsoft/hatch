@@ -198,6 +198,12 @@ public static class WorkLogRollup
     /// intersection, and narrows the totals and the <c>first</c>/<c>last</c>
     /// bounds alike.
     /// </param>
+    /// <param name="outcome">
+    /// Narrows to sessions that ended this way, or to those with no outcome
+    /// when it is <see cref="NoOutcome"/>; null is no filter. It narrows the
+    /// rows and the totals but not the <c>first</c>/<c>last</c> bounds, which
+    /// describe the log and ignore the range.
+    /// </param>
     public static async Task<WorkLogSessionsDto> SessionsAsync(
         HatchContext db,
         DateTimeOffset from,
@@ -206,13 +212,14 @@ public static class WorkLogRollup
         IReadOnlyList<int>? projectIds,
         WorkLogSort sort,
         int limit,
+        string? outcome,
         CancellationToken ct)
     {
         // One tree walk, shared with the two bound reads below - as SeriesAsync
         // does it.
         var scope = ancestorId is { } id ? await ScopeAsync(db, id, includeDescendants: true, ct) : null;
 
-        var rows = await Scoped(db, scope, projectIds)
+        var rows = await ByOutcome(Scoped(db, scope, projectIds), outcome)
             .AsNoTracking()
             .Where(w => w.EndedAt >= from && w.EndedAt < to)
             .Select(w => new SessionRow(
@@ -240,7 +247,9 @@ public static class WorkLogRollup
                 w.DispatchModel,
                 w.ModelPlacement,
                 w.ModelDigest,
-                w.Reads))
+                w.Reads,
+                w.Outcome,
+                w.Reason))
             .ToListAsync(ct);
 
         var ranked = sort switch
@@ -274,7 +283,8 @@ public static class WorkLogRollup
 
     /// <summary>
     /// The sessions in a range, folded by the playbook they ran under - one row
-    /// per distinct playbook, transition, issue type, model and effort.
+    /// per distinct playbook, transition, issue type, model, effort, outcome and
+    /// reason.
     /// </summary>
     /// <remarks>
     /// The range is used as given and is half-open, the same rule
@@ -287,11 +297,15 @@ public static class WorkLogRollup
     /// stored id. The label never re-reads the playbook, so a deleted or
     /// reworded playbook leaves its sessions labelled by the transition they
     /// ran - and a column since deleted is a null name beside an id that stays.
+    ///
+    /// <paramref name="outcome"/> narrows the sessions folded, and the totals
+    /// with them, as <see cref="SessionsAsync"/> states it.
     /// </remarks>
     public static async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
-        HatchContext db, DateTimeOffset from, DateTimeOffset to, IReadOnlyList<int>? projectIds, CancellationToken ct)
+        HatchContext db, DateTimeOffset from, DateTimeOffset to, IReadOnlyList<int>? projectIds, string? outcome,
+        CancellationToken ct)
     {
-        var entries = db.WorkLog.AsNoTracking().Where(w => w.EndedAt >= from && w.EndedAt < to);
+        var entries = ByOutcome(db.WorkLog.AsNoTracking(), outcome).Where(w => w.EndedAt >= from && w.EndedAt < to);
         if (projectIds is { Count: > 0 }) entries = entries.Where(w => projectIds.Contains(w.Issue!.ProjectId));
 
         var rows = await entries
@@ -302,6 +316,8 @@ public static class WorkLogRollup
                 w.IssueType,
                 w.PlaybookModel,
                 w.PlaybookEffort,
+                w.Outcome,
+                w.Reason,
                 w.IsError,
                 w.Described,
                 w.Turns,
@@ -463,7 +479,9 @@ public static class WorkLogRollup
         string? DispatchModel,
         string? ModelPlacement,
         string? ModelDigest,
-        string? Reads);
+        string? Reads,
+        string? Outcome,
+        string? Reason);
 
     /// <summary>The headline, added the one way it is added - see <see cref="Fold"/>.</summary>
     private static long Tokens(SessionRow r) =>
@@ -498,7 +516,9 @@ public static class WorkLogRollup
         r.Agent,
         r.DispatchModel,
         r.ModelPlacement,
-        r.ModelDigest);
+        r.ModelDigest,
+        r.Outcome,
+        r.Reason);
 
     /// <summary>
     /// The log, narrowed to a set of issues - or the whole of it when there is
@@ -513,6 +533,21 @@ public static class WorkLogRollup
         if (projectIds is { Count: > 0 }) q = q.Where(w => projectIds.Contains(w.Issue!.ProjectId));
         return q;
     }
+
+    /// <summary>
+    /// The filter word for sessions with no outcome. Not an outcome itself, so
+    /// it is not in <see cref="ClaimOutcomes"/>.
+    /// </summary>
+    public const string NoOutcome = "none";
+
+    /// <summary>Null is no filter, <see cref="NoOutcome"/> is the sessions with none, anything else is an exact match.</summary>
+    private static IQueryable<EfHatchWorkLogEntry> ByOutcome(IQueryable<EfHatchWorkLogEntry> q, string? outcome) =>
+        outcome switch
+        {
+            null => q,
+            NoOutcome => q.Where(w => w.Outcome == null),
+            _ => q.Where(w => w.Outcome == outcome),
+        };
 
     private static IQueryable<Row> Project(IQueryable<EfHatchWorkLogEntry> entries) =>
         entries.AsNoTracking()
@@ -564,7 +599,7 @@ public static class WorkLogRollup
     }
 
     /// <summary>
-    /// One session as the by-playbook fold reads it: the six fields it groups on,
+    /// One session as the by-playbook fold reads it: the eight fields it groups on,
     /// and the figures it adds up.
     /// </summary>
     internal readonly record struct ByPlaybookRow(
@@ -574,6 +609,8 @@ public static class WorkLogRollup
         string? IssueType,
         string? PlaybookModel,
         string? PlaybookEffort,
+        string? Outcome,
+        string? Reason,
         bool IsError,
         bool Described,
         int Turns,
@@ -588,10 +625,10 @@ public static class WorkLogRollup
 
     /// <summary>
     /// Folds sessions into one row per distinct playbook, transition, issue
-    /// type, model and effort. Pure: no database, so it is tested directly.
+    /// type, model, effort, outcome and reason. Pure: no database, so it is tested directly.
     /// </summary>
     /// <remarks>
-    /// A plain <c>GroupBy</c> on the six-tuple already treats an all-null tuple as
+    /// A plain <c>GroupBy</c> on the eight-tuple already treats an all-null tuple as
     /// one group, so every row an older runner wrote folds into a single
     /// "unknown" row with no special case. The status names are left null for
     /// the caller to resolve - they come from the board, not from the rows.
@@ -604,7 +641,7 @@ public static class WorkLogRollup
     internal static IReadOnlyList<WorkLogByPlaybookRowDto> FoldByPlaybook(IReadOnlyList<ByPlaybookRow> rows) =>
         rows
             .GroupBy(r => (r.PlaybookKey, r.PlaybookFromStatusId, r.PlaybookToStatusId, r.IssueType,
-                r.PlaybookModel, r.PlaybookEffort))
+                r.PlaybookModel, r.PlaybookEffort, r.Outcome, r.Reason))
             .Select(g =>
             {
                 var input = g.Sum(r => r.InputTokens);
@@ -623,6 +660,8 @@ public static class WorkLogRollup
                     g.Key.IssueType,
                     g.Key.PlaybookModel,
                     g.Key.PlaybookEffort,
+                    g.Key.Outcome,
+                    g.Key.Reason,
                     g.Count(),
                     g.Count(r => r.IsError),
                     g.Count(r => !r.Described),
@@ -645,6 +684,8 @@ public static class WorkLogRollup
             .ThenBy(r => r.IssueType, StringComparer.Ordinal)
             .ThenBy(r => r.Model, StringComparer.Ordinal)
             .ThenBy(r => r.Effort, StringComparer.Ordinal)
+            .ThenBy(r => r.Outcome, StringComparer.Ordinal)
+            .ThenBy(r => r.Reason, StringComparer.Ordinal)
             .ToList();
 
     /// <summary>
