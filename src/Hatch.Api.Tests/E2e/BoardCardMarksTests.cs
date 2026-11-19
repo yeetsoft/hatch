@@ -47,7 +47,7 @@ public class BoardCardMarksTests(ITestOutputHelper output)
         "Paused task",
     ];
 
-    private enum Drag { None, Mouse, Touch }
+    internal enum Drag { None, Mouse, Touch }
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public Task TheDesktopBoard_DrawsEveryLevel_WithNothingClippedOrOverlapping() =>
@@ -292,7 +292,7 @@ public class BoardCardMarksTests(ITestOutputHelper output)
     }
 
     /// <summary>A screenshot of the cards alone, a margin round them, so the flame's edge is in the frame.</summary>
-    private static async Task CardsAsync(E2eHarness harness, Deadline deadline, string label)
+    internal static async Task CardsAsync(E2eHarness harness, Deadline deadline, string label)
     {
         var page = harness.Page!;
         var directory = Path.Combine(MinimalDatabases.RepositoryRoot(), "src", "Hatch.Api.Tests", "TestResults", "e2e", $"{label}-{Environment.ProcessId}");
@@ -325,7 +325,7 @@ public class BoardCardMarksTests(ITestOutputHelper output)
     }
 
     /// <summary>Picks up the pre-approved emergency bug, and returns what puts it back where it was.</summary>
-    private static async Task<Func<Task>> PickUpAsync(E2eHarness harness, Deadline deadline, Drag drag)
+    internal static async Task<Func<Task>> PickUpAsync(E2eHarness harness, Deadline deadline, Drag drag)
     {
         var page = harness.Page!;
         var from = Centre((await page.Locator(".hatch-card", new() { HasText = Cards[0] }).First.BoundingBoxAsync())!);

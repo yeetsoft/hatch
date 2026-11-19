@@ -1526,6 +1526,89 @@
   stroke: currentColor;
 }
 
+/* An emergency is the one mark that moves: its flame flickers and its speed
+   lines streak, so a person watching the board is drawn to it. An expedited
+   ember, an economy fade and a trail on any other card stay still - the
+   modifier is what scopes this. Only transform and opacity change, and the
+   flame is scaled about its base (the box's bottom edge), so it stays where
+   the still drawing puts it. The rhythms (1.3s, 0.9s, 0.7s) are uneven and
+   none divides the attention lamp's 2s blink, so they never lock step with
+   it; no opacity falls below 0.8, so the tile never blinks. */
+.hatch-type-tile-flame--emergency .hatch-type-tile-flame-body {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: hatch-flame-flicker 1.3s ease-in-out infinite;
+}
+
+.hatch-type-tile-flame--emergency .hatch-type-tile-flame-core {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: hatch-flame-core-flicker 0.9s ease-in-out infinite;
+}
+
+.hatch-type-tile-trail--emergency {
+  transform-box: fill-box;
+  transform-origin: 100% 50%;
+  animation: hatch-trail-streak 0.7s ease-in-out infinite;
+}
+
+@keyframes hatch-flame-flicker {
+  0%,
+  100% {
+    transform: scale(1, 1) skewX(0deg);
+    opacity: 1;
+  }
+
+  30% {
+    transform: scale(0.94, 1.08) skewX(-3deg);
+    opacity: 0.9;
+  }
+
+  65% {
+    transform: scale(1.04, 0.95) skewX(2.5deg);
+    opacity: 0.95;
+  }
+}
+
+@keyframes hatch-flame-core-flicker {
+  0%,
+  100% {
+    transform: scale(1, 1) skewX(0deg);
+    opacity: 1;
+  }
+
+  40% {
+    transform: scale(0.9, 1.12) skewX(3deg);
+    opacity: 0.85;
+  }
+
+  75% {
+    transform: scale(1.06, 0.92) skewX(-2deg);
+    opacity: 0.92;
+  }
+}
+
+@keyframes hatch-trail-streak {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scaleX(0.7);
+    opacity: 0.8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-type-tile-flame--emergency .hatch-type-tile-flame-body,
+  .hatch-type-tile-flame--emergency .hatch-type-tile-flame-core,
+  .hatch-type-tile-trail--emergency {
+    animation: none;
+  }
+}
+
 /* The contribution mark: an open stroke, so it is never one of the type
    glyphs' filled shapes, in greyscale or out of it. Colour is the page's own
    ink - the shape is what tells it apart. On a card it sits in the corner

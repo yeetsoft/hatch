@@ -70,6 +70,8 @@ export interface TileMarks {
   dim: boolean;
   /** The tile needs the wider box. */
   wide: boolean;
+  /** The ticket is an emergency: the only priority whose marks move. */
+  emergency: boolean;
 }
 
 export function tileMarks(preApproval: PreApproval, priority: Priority): TileMarks {
@@ -85,5 +87,6 @@ export function tileMarks(preApproval: PreApproval, priority: Priority): TileMar
     flameTransform: streaming ? STREAMING.transform : heat.transform,
     dim: heat.flame === 'dim',
     wide: lines !== '' || flame,
+    emergency: priority === 'emergency',
   };
 }
