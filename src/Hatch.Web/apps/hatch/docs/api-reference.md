@@ -302,7 +302,7 @@ and a cross-project `ProjectId` on a patch, are person-only even on this
 key-open controller: a program sending either is 403'd before the issue is
 even loaded. Create has person-only fields of its own the same way: a program
 that names `priority`, `preApproval` or `localModel`, even as `normal` or `none`, is 403'd
-before the project is looked up or a number is minted. A person who names
+before the project is looked up or a number is minted. The caller is recorded as the setter of a level named at create, the same way the two routes below record it. A person who names
 `preapproved` must be an owner or approver of the project, and one who names
 `express` must be allowed to move work into the board's send-back column - the
 two questions `PUT /issues/{key}/pre-approval` asks - and a refusal files
@@ -322,9 +322,9 @@ not mint an issue number - try again".
 | Field | Method | Path | Who | What it does |
 |---|---|---|---|---|
 | assignee | PUT | `/issues/{key}/assignee` | **person** | Sets/clears who it belongs to |
-| priority | PUT | `/issues/{key}/priority` | **person** | One of six named levels |
+| priority | PUT | `/issues/{key}/priority` | **person** | One of six named levels. Records the caller as `PrioritySetBy` (cleared at `normal`); a priority crosses a project line only while that person is live and has the descendant's project in scope |
 | expedite | PUT | `/issues/{key}/expedite` | **person** | Legacy two-level alias for priority (`expedited`/`normal`) |
-| pre-approval | PUT | `/issues/{key}/pre-approval` | **person** | One of three named levels |
+| pre-approval | PUT | `/issues/{key}/pre-approval` | **person** | One of three named levels. Records the caller as `PreApprovalSetBy` (cleared at `none`); a level crosses a project line only while that person could set it on the descendant - an owner or approver for `preapproved`, someone who may move work into the send-back column for `express` |
 | express | PUT | `/issues/{key}/express` | **person** | Legacy two-level alias for pre-approval (`express`/`none`) |
 | local-model | PUT | `/issues/{key}/local-model` | **person** | One of three named levels |
 | one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs; `on`/`off` 409 under an `enforced` project |
@@ -421,6 +421,9 @@ event naming both sides, and needs no approver - any person may set it, and a ke
 403'd. `IssueDto` and `IssueCardDto` carry `localModel`, `localModelOwn` and
 `localModelFrom`, read live from the nearest ancestor that is not `none`. An unknown
 name 400s, naming the levels. Nothing in dispatch reads the level yet.
+`IssueDto` and `IssueCardDto` also carry `preApprovalPassedOver` and `priorityPassedOver`: the key of the
+nearest ancestor whose level was passed over at a project line because its setter has no say in this
+ticket's project (or none was recorded), or null. Read live, beside `preApprovalFrom` and `priorityFrom`.
 `playbook` 400s an unknown model or effort - the same validation a playbook
 file is held to. `landing` 400s a malformed remote, sha or trunk, and the
 first write for a repository 400s if it omits `trunk`. Every field here

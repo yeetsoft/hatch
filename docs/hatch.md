@@ -1488,6 +1488,32 @@ at once, both ways, and lets a person raise or lower an epic's level and
 have every descendant that hasn't set its own answer differently from the
 next read.
 
+**A level crosses a project line only on its setter's authority.** The
+issue row records who set its level and its priority - `PreApprovalSetBy` and
+`PrioritySetBy`, a person id written by `IssuePreApprovalController`,
+`IssueExpediteController` and the filing path from `IActorDirectory.MeAsync`,
+cleared when the level goes back to `none` or `normal`. The trunk-failure bug
+and the changelog task file with no setter. Inside one project a level is
+honoured as it always was, with or without a setter and whatever role the
+setter holds. Found on an ancestor in *another* project, the walk honours it
+only while the setter could set the same level on the descendant now: for
+`preapproved`, a live person who is an owner or approver of the descendant's
+project; for `express`, a live person who may move an issue of that project
+into the column that feeds implementation (the `CanMoveIntoAsync` test); for a
+priority, a live person. In every case the descendant's project must be in the
+setter's scope. A deleted person is not live - their membership row lingers
+and counts for nothing. A level with no setter recorded, including every level
+set before setters were recorded, is never honoured across a line. Where the
+test fails the walk passes over the level as if it were not set and carries on
+up. The rule is `SetterAuthority`, which `ProjectAccess` applies to the caller
+too, so the two cannot disagree; `PriorityTree.ForAsync` reads the members,
+scopes and live people once, past the caller's own scope, so the judgement is
+live - take the setter's role away and every descendant reads the change on
+the next request - and nothing is copied onto a descendant. `preApprovalPassedOver`
+and `priorityPassedOver` on the issue and its card name the nearest ancestor
+whose level was passed over, which is what a card needs to say *"pre-approved
+on AER-1, not honoured in OPS"*.
+
 **Setting it asks one of two questions, depending which way the level
 moves.** Setting `express` — or clearing it back to `none` — asks the same
 question an ordinary move into `Columns.SendBack` would: whether the
@@ -6172,10 +6198,14 @@ self-dispatches review ahead of any other protected column — so `crosses`
 reads false there, and the express, epic and under arms stay withheld from it
 exactly as they are from a review self-move.
 
-A hop never crosses a project line. A parent in another project hands down no
-pre-approval and no priority, the epic, under and parent kinds do not fire for
-its child, and the queue says "its parent is in another project, so nothing
-pulls it - a person moves it". Runner tags, a dangerous reason, omitted
+A hop never crosses a project line. The epic, under and parent kinds do not
+fire for a child whose parent is in another project, and the queue says "its
+parent is in another project, so nothing pulls it - a person moves it". A
+level crosses only on its setter's authority ([Pre-approval](#pre-approval)):
+the express, approve and close hops make no check of their own, they take the
+effective level, so a level the walk passed over at the line carries nothing
+and the queue says "pre-approved on AER-1, not honoured in OPS - its setter has
+no say there, so a person moves it". Runner tags, a dangerous reason, omitted
 runners, the epic's story limit and the local-model level still cross.
 
 1. **express** — an issue that is [express](#pre-approval) and stands in a column
