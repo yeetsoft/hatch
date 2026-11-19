@@ -159,6 +159,8 @@ width, since the fold is work one click away. A drag does not widen the narrow
 columns; each is still a full-height drop target. The phone's stacked layout
 is unchanged.
 
+On a touch screen, press and hold a card until it lifts, then drag it to a column. A quick tap opens the issue and a swipe scrolls the board. Hold a lifted card near the top or bottom edge to scroll.
+
 ## Scoping a tab to projects
 
 Above the board, the bar carries a second control: which projects *this

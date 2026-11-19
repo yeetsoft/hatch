@@ -173,6 +173,8 @@ export function BoardCard({
         className={classes(false)}
         // How the board finds the element again: the console's take scrolls to it and focuses it.
         data-issue-key={card.key}
+        // iOS starts its own link drag on a held <a>, which would take the touch from the sensor.
+        draggable={false}
         style={style}
         onClick={onFaceClick}
         {...(band ? tip.focus : null)}
@@ -196,6 +198,7 @@ export function BoardCard({
         to={`/issues/${card.key}`}
         className="hatch-card-face"
         data-issue-key={card.key}
+        draggable={false}
         onClick={onFaceClick}
         {...(band ? tip.focus : null)}
         {...attributes}
