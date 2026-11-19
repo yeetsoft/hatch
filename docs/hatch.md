@@ -5156,7 +5156,7 @@ and a run reads as not found. The reader's page is
 ### Findings
 
 A finding is a stored row a person can read and act on, with the evidence
-beside it - `train-ready` below is the first check that opens one, and a later
+beside it - `train-ready` below is the first check that opens one, `claim-repeating` the second, and a later
 check files a bug from one. `FindingCheck` (`GooseFindings.cs`) is the one
 reconciler every such check shares, so none of them can disagree about when a
 clock starts, when a row opens, or when it closes: a subclass says only what it
@@ -5236,6 +5236,44 @@ the driver last wrote an event on an issue in the project's merges column (or
 that it never has), how many other rows share the merges column, and how many
 times a driver has been passed over on this head since the condition began,
 with which runners.
+
+#### `claim-repeating`
+
+One runner claiming one ticket again and again with the ticket not moving
+(HA-2499). `LetGo.Count` skips several release outcomes (`unservable`,
+`abandoned`, `unstarted`, none, and a drop marked `SpentNothing`), so a runner
+can take one ticket many times and no counter on the board moves; this check
+counts `claim_taken` events instead, whatever outcome the release carried
+(`RepeatClaimsCheck.cs`). Its subject is the issue's key and its project the
+issue's; the token is the id of the streak's oldest claim event, so a further
+claim refreshes the same row and a new streak after a break is a new condition.
+
+A **streak** (`RepeatClaimsCheck.Streak.Read`, a pure fold over the trail)
+is one holder's `claim_taken` events on one issue, newest first, back to the
+first event that shows movement: `status_changed`, a `pull_request_state_changed`
+whose `to.headSha` differs from `from.headSha`, a `build_check_changed` whose
+`to.sha` differs the same way, or a claim by another holder. Movement newer than
+the newest claim means no streak. Unlike `LetGo`, a `resumed` event does not
+stop it. The trail shows a new commit only through those two events, so a push
+made before a pull request or a build verdict exists is invisible here.
+
+The check is true for an issue when its streak holds at least
+`Hatch__GooseRepeatClaims` claims (default 5; zero turns the check off, a
+negative falls back to 5) and its newest claim is younger than two hours - a
+constant on the check, not an option. The issue must stand outside terminal and
+deferred columns and must not have been filed from a finding. The bound is
+zero, so a finding opens on the sweep that sees the fifth claim; the condition
+began at the oldest claim's time, which the check hands the reconciler as
+`FindingCandidate.Began` (every other check passes none, and a sighting then
+begins on the sweep that first saw it). The run's entry says how many issues
+with a claim in the last two hours it looked at.
+
+The sentence names the runner, the issue and the count, for example
+`here:/one has claimed AER-12 7 times and it has not moved`. The evidence
+carries the runner, the claims, the first and the newest, the release outcomes
+within the streak's span, the issue's column, its stall mark and whether it is
+held. The check pauses nothing, marks nothing stalled and changes nothing
+`LetGo` counts.
 
 ## Reports
 

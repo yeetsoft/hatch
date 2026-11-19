@@ -75,6 +75,13 @@ public static class GooseSettings
     /// </summary>
     public static TimeSpan TrainReadyBound(HatchOptions options) => TimeSpan.FromMinutes(
         options.GooseTrainReadyMinutes >= 0 ? options.GooseTrainReadyMinutes : new HatchOptions().GooseTrainReadyMinutes);
+
+    /// <summary>
+    /// How many repeated claims <see cref="RepeatClaimsCheck"/> waits for. Zero
+    /// turns the check off, and only a negative falls back to the default.
+    /// </summary>
+    public static int RepeatClaims(HatchOptions options) =>
+        options.GooseRepeatClaims >= 0 ? options.GooseRepeatClaims : new HatchOptions().GooseRepeatClaims;
 }
 
 /// <summary>One label and value a <see cref="FindingCheck"/> reported for a finding, as stored in <see cref="EfHatchGooseFinding.Evidence"/>.</summary>

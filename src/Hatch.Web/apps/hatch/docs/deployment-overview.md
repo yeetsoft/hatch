@@ -178,6 +178,7 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Hatch__GooseIntervalSeconds` | `60` | Seconds between the goose's sweeps of the board. Zero or less falls back to `60`. |
 | `Hatch__GooseKeepDays` | `7` | How many days a goose run is kept after its last sweep; `0` keeps everything, and less than that falls back to `7`. |
 | `Hatch__GooseTrainReadyMinutes` | `30` | How long a merge train's head may be judged mergeable before the goose's `train-ready` check opens a finding. `0` turns the check off; a negative value falls back to `30`. |
+| `Hatch__GooseRepeatClaims` | `5` | How many claims by one runner on one ticket, with nothing about the ticket moving, make the goose's `claim-repeating` check open a finding. `0` turns the check off; a negative value falls back to `5`. |
 | **The database** | | |
 | `ConnectionStrings__Hatch` | `Host=localhost` | Where `hatch`'s own schema lives. Under `DOTNET_ENVIRONMENT=Docker`, which `compose.yaml` sets, the default is `Host=db` instead. |
 | `ConnectionStrings__Quartz` | `Host=localhost` | Where Quartz's tables live - created only by `containers/hatch-db/pginit.sql`. Also `Host=db` under `DOTNET_ENVIRONMENT=Docker`. |

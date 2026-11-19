@@ -188,6 +188,18 @@ public class HatchOptions
     public int GooseTrainReadyMinutes { get; set; } = 30;
 
     /// <summary>
+    /// How many claims by one runner on one ticket, with nothing about the
+    /// ticket moving between them, make the <c>claim-repeating</c> check open a
+    /// finding - see <see cref="RepeatClaimsCheck"/>.
+    /// </summary>
+    /// <remarks>
+    /// Zero turns the check off, as <see cref="GooseTrainReadyMinutes"/>'s zero
+    /// does. A negative falls back to the default. The guard is
+    /// <see cref="GooseSettings.RepeatClaims"/>.
+    /// </remarks>
+    public int GooseRepeatClaims { get; set; } = 5;
+
+    /// <summary>
     /// Absolute base URL of this Hatch install as it should be *printed* -
     /// e.g. "https://home.example.com". Empty by default and supplied at
     /// deploy (compose.yaml passes <c>Hatch__PublicBaseUrl</c> from the
