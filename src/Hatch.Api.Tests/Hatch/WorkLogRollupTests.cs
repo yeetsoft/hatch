@@ -421,9 +421,11 @@ public class WorkLogRollupTests
         WorkLogBucketSize bucket,
         int offsetMinutes = 0,
         long? ancestorId = null,
-        IReadOnlyList<int>? projectIds = null) =>
+        IReadOnlyList<int>? projectIds = null,
+        string? outcome = null) =>
         WorkLogRollup.SeriesAsync(
-            db, WorkLogRollup.Align(from, to, bucket, offsetMinutes), bucket, ancestorId, projectIds, default);
+            db, WorkLogRollup.Align(from, to, bucket, offsetMinutes), bucket, ancestorId, projectIds, outcome,
+            default);
 
     private static async Task<HatchContext> NewAsync()
     {

@@ -1,13 +1,15 @@
 import { useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Badge, Card, EmptyState, Field, PageHeader, Table } from '@hatch/ui';
-import { getBoard, getWorkLogHistory, getWorkLogSessions } from '../api/client';
+import { getBoard, getWorkLogByPlaybook, getWorkLogHistory, getWorkLogSessions } from '../api/client';
 import { IssuePicker } from '../components/IssuePicker';
 import { SpendGraph } from '../components/SpendGraph';
 import {
   FROM,
   ISSUE,
   MEASURE,
+  OUTCOME,
+  OUTCOMES,
   PODIUM,
   PRESETS,
   RANGE,
@@ -15,10 +17,13 @@ import {
   TABLE_LIMIT,
   TO,
   capPhrase,
+  droppedRowLabel,
   emptiness,
+  foldDropped,
   inScopeCards,
   rankedTop,
   rankingCaption,
+  reasonPhrase,
   resolveQuery,
   sessionWindow,
   shortSession,
@@ -35,18 +40,21 @@ import {
   entryMark,
   entryTitle,
   errorPhrase,
+  moneyPhrase,
   resumeCommand,
   totalsPhrase,
 } from '../lib/workLog';
-import type { Board, SessionSort, WorkLogHistory, WorkLogSession, WorkLogSessions } from '../types';
+import type { Board, SessionSort, WorkLogByPlaybook, WorkLogHistory, WorkLogSession, WorkLogSessions } from '../types';
 
-/** The podium, the table and the graph, arriving together so a half-drawn page
-    is never a state - and so the three cannot end up describing different
-    windows. */
+/** The podium, the table, the graph and the dropped fold, arriving together so
+    a half-drawn page is never a state - and so the four cannot end up
+    describing different windows. `byPlaybook` is null whenever the control is
+    not at Moved nothing, which is also when nothing asked for it. */
 interface LeaderboardView {
   podium: WorkLogSessions;
   table: WorkLogSessions;
   history: WorkLogHistory;
+  byPlaybook: WorkLogByPlaybook | null;
 }
 
 /** The sortable columns, in the order they are drawn. Requests and peak
@@ -124,7 +132,7 @@ function LeaderboardBody({
      sort beats a branch that only sometimes fetches. */
   const load = useCallback(async (): Promise<LeaderboardView> => {
     const window = sessionWindow(query, ids);
-    const [podium, table, history] = await Promise.all([
+    const [podium, table, history, byPlaybook] = await Promise.all([
       getWorkLogSessions({ ...window, sort: 'tokens', limit: PODIUM }),
       getWorkLogSessions({ ...window, sort: query.sort, limit: TABLE_LIMIT }),
       /* No bucket size is sent: the server chooses it from the length of the
@@ -133,9 +141,12 @@ function LeaderboardBody({
          page aligned to and the daily grid the server buckets on are one
          grid. */
       getWorkLogHistory({ ...window, offsetMinutes }),
+      /* Only asked for at Moved nothing - every other setting makes no extra
+         request, since the section it feeds draws nothing either. */
+      query.outcome === 'dropped' ? getWorkLogByPlaybook(window) : Promise.resolve(null),
     ]);
 
-    return { podium, table, history };
+    return { podium, table, history, byPlaybook };
   }, [query, offsetMinutes, ids]);
 
   const { data, error } = useLoaded<LeaderboardView>(load);
@@ -167,11 +178,12 @@ function LeaderboardBody({
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
 
-  const { podium, table, history } = data;
+  const { podium, table, history, byPlaybook } = data;
   const empty = emptiness(table, query.issue);
   const top = rankedTop(podium.sessions);
   const errors = errorPhrase(table.totals);
   const cap = capPhrase(table.totals, table.sessions.length);
+  const dropped = query.outcome === 'dropped' ? foldDropped(byPlaybook?.rows ?? []) : null;
 
   return (
     <div className="hatch-page">
@@ -192,6 +204,20 @@ function LeaderboardBody({
                 onClick={() => choosePreset(preset.key)}
               >
                 {preset.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="hatch-leaderboard-presets" role="group" aria-label="Outcome">
+            {OUTCOMES.map((outcome) => (
+              <button
+                key={outcome.key}
+                type="button"
+                className={`hatch-leaderboard-preset${query.outcome === outcome.key ? ' active' : ''}`}
+                aria-pressed={query.outcome === outcome.key}
+                onClick={() => write(OUTCOME, outcome.key === 'any' ? '' : outcome.key)}
+              >
+                {outcome.label}
               </button>
             ))}
           </div>
@@ -243,6 +269,36 @@ function LeaderboardBody({
 
       {empty ? null : (
         <>
+          {dropped && (
+            <Card>
+              <h2 className="hatch-section-title">What moved nothing cost</h2>
+              <p className="hatch-section-hint text-muted">{totalsPhrase(table.totals)}</p>
+
+              <Table scroll>
+                <thead>
+                  <tr>
+                    <th scope="col">Playbook</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col">Sessions</th>
+                    <th scope="col">Tokens</th>
+                    <th scope="col">Notional USD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dropped.map((row, i) => (
+                    <tr key={i}>
+                      <td title={row.playbookKey ?? undefined}>{droppedRowLabel(row)}</td>
+                      <td>{reasonPhrase(row.reason)}</td>
+                      <td>{row.sessions}</td>
+                      <td>{compactTokens(row.totalTokens)}</td>
+                      <td>{moneyPhrase(row.costUsd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+          )}
+
           <Card>
             <h2 className="hatch-section-title">Top billing</h2>
             <p className="hatch-section-hint text-muted">{rankingCaption(podium.totals, top.length)}</p>
@@ -283,6 +339,7 @@ function LeaderboardBody({
                     </th>
                   ))}
                   <th scope="col">Took</th>
+                  <th scope="col">Outcome</th>
                 </tr>
               </thead>
               <tbody>
@@ -355,6 +412,9 @@ function Row({ session }: { session: WorkLogSession }) {
       <td title={costTitle(session.costUsd)}>{costPhrase(session.costUsd)}</td>
       <td>{new Date(session.endedAt).toLocaleString()}</td>
       <td>{durationPhrase(session.durationMs)}</td>
+      <td title={session.outcome === 'dropped' && session.reason ? reasonPhrase(session.reason) : undefined}>
+        {session.outcome ?? '—'}
+      </td>
     </tr>
   );
 }

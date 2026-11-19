@@ -1447,10 +1447,10 @@ stamped by the claim release that named this session's id - null on a row never 
 every row written before this shipped. `/work-log/history` buckets by `hour` or `day`, chosen from the
 range's length unless named, and answers the bucket size it actually used;
 `/work-log/sessions` ranks by `tokens` (the default), `cost`, `ended`,
-`requests` or `peakContext`, each descending. Both take an optional
+`requests` or `peakContext`, each descending. All three take an optional
 `ancestorKey`, read inclusive of the issue itself - deliberately unlike the
-same parameter on `GET /issues` - so the graph, the table and the issue
-page's own meter can never describe different populations. Both also take a
+same parameter on `GET /issues` - so the graph, the table and the by-playbook
+fold can never describe different populations. All three also take a
 repeatable `projectId`, narrowing to sessions whose issue is in any of those
 projects; none names every project, and an id naming no project contributes
 nothing rather than a refusal. It is ANDed with `ancestorKey` when both are
@@ -1458,19 +1458,21 @@ given, and narrows the totals, the buckets and the `first`/`last` bounds
 alike.
 `/work-log/by-playbook` folds the same range by the playbook, transition,
 issue type, model, effort, outcome and reason each session ran under - eight
-fields - and takes a repeatable `projectId` in place of `ancestorKey`; it
-answers every group, heaviest first by total tokens, ties broken on the eight
-fields in that order, with no sort or limit to choose, and an id naming no
-project contributes nothing and is not a refusal. Sessions from an older
-runner, which did not record those, fold into one row of nulls, and a status
-name is the board's current one - null where the column has since gone.
-Both `/work-log/sessions` and `/work-log/by-playbook` also take an optional
-`outcome`: one of `dropped`, `worked`, `preempted`, `recused`, `unservable`,
-`abandoned` or `unstarted`, or `none` for sessions with no outcome. It is not
-case-sensitive, and blank is the same as absent. Given, it narrows the
-sessions listed or folded and the totals with them, ANDed with `projectId`
-and `ancestorKey`; it leaves the `first`/`last` bounds on `sessions` alone,
-since they describe the log and not the range. Absent, every session is read.
+fields; it answers every group, heaviest first by total tokens, ties broken on
+the eight fields in that order, with no sort or limit to choose, and an id
+naming no project or an `ancestorKey` matching nothing contributes no rows
+rather than a refusal (an `ancestorKey` naming no issue at all is still a
+400). Sessions from an older runner, which did not record those, fold into one
+row of nulls, and a status name is the board's current one - null where the
+column has since gone.
+All three of `/work-log/history`, `/work-log/sessions` and
+`/work-log/by-playbook` also take an optional `outcome`: one of `dropped`,
+`worked`, `preempted`, `recused`, `unservable`, `abandoned` or `unstarted`, or
+`none` for sessions with no outcome. It is not case-sensitive, and blank is
+the same as absent. Given, it narrows the buckets, the sessions listed or
+folded, and the totals with them, ANDed with `projectId` and `ancestorKey`; it
+leaves the `first`/`last` bounds on `history` and `sessions` alone, since they
+describe the log and not the range. Absent, every session is read.
 Each row of `/work-log/sessions` and of `/work-log/by-playbook` carries
 `outcome` and `reason`, null where the session recorded none.
 
@@ -1507,9 +1509,10 @@ file on disk rather than a client reading a response body.
 **Refusals worth naming.** `work-log`'s `POST` 400s a missing session id.
 `history` 400s an offset outside +-1440 minutes, an unrecognised bucket
 name, or a request whose buckets would exceed 1000. `sessions` 400s an
-unrecognised sort or a limit outside 1-500. `sessions` and `by-playbook` 400
-an `outcome` that is neither one of the seven outcomes nor `none`, naming
-the accepted values. `activity` 400s a limit outside
+unrecognised sort or a limit outside 1-500. `history`, `sessions` and
+`by-playbook` all 400 an `outcome` that is neither one of the seven outcomes
+nor `none`, naming the accepted values, and all three 400 an `ancestorKey`
+naming no issue. `activity` 400s a limit outside
 1-500 or a negative offset. `changelog` 400s a window under one day.
 `history`/`sessions`/`by-playbook`/`changelog` all 400 an
 unparseable range bound, in the order `to`, then `from`, then the inversion.

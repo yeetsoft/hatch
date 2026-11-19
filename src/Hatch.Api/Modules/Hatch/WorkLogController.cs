@@ -91,6 +91,13 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// contributes nothing and is not a refusal. ANDed with
     /// <paramref name="ancestorKey"/> when both are given.
     /// </param>
+    /// <param name="outcome">
+    /// One of <see cref="ClaimOutcomes"/>, or <c>none</c> for sessions with no
+    /// outcome; case-insensitive, and blank is absent. Narrows the buckets and
+    /// the totals, ANDed with the other filters, but not the <c>first</c>/<c>last</c>
+    /// bounds - read exactly as <see cref="GetSessions"/> states it. Absent
+    /// reads every session.
+    /// </param>
     [HttpGet("history")]
     public async Task<ActionResult<WorkLogHistoryDto>> GetHistory(
         [FromQuery] string? from,
@@ -99,12 +106,16 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         [FromQuery] int offsetMinutes = 0,
         [FromQuery] string? ancestorKey = null,
         [FromQuery] List<int>? projectId = null,
+        [FromQuery] string? outcome = null,
         CancellationToken ct = default)
     {
         if (offsetMinutes is < -1440 or > 1440)
             return BadRequest($"an offset from UTC is minutes between -1440 and 1440 - not {offsetMinutes}");
 
         if (Range(from, to, out var start, out var end) is { } badRange) return badRange;
+
+        var (outcomeFilter, outcomeRefusal) = Outcome(outcome);
+        if (outcomeRefusal is not null) return outcomeRefusal;
 
         var trimmed = bucket?.Trim();
         WorkLogBucketSize size;
@@ -140,7 +151,7 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
 
         var projectIds = (projectId ?? []).Distinct().ToList();
 
-        return await WorkLogRollup.SeriesAsync(db, window, size, ancestorId, projectIds, ct);
+        return await WorkLogRollup.SeriesAsync(db, window, size, ancestorId, projectIds, outcomeFilter, ct);
     }
 
     /// <summary>
@@ -250,18 +261,23 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// </summary>
     /// <remarks>
     /// The range is used as given, half-open, as <see cref="GetSessions"/> reads
-    /// it. Every group in the window is answered - there is no sort, no limit and
-    /// no <c>ancestorKey</c> here. Rows come back heaviest first (total tokens,
-    /// descending), ties broken on the grouping fields, so two reads agree.
+    /// it. Every group in the window is answered - there is no sort and no
+    /// limit here. Rows come back heaviest first (total tokens, descending),
+    /// ties broken on the grouping fields, so two reads agree.
     ///
     /// Sessions an older runner wrote carry none of the grouping fields and fold
     /// into one row with every field null. Status names are the board's current
     /// ones, null where the stored id no longer names a column.
     /// </remarks>
+    /// <param name="ancestorKey">
+    /// One issue and everything beneath it, that issue included - read exactly
+    /// as <see cref="GetHistory"/> reads it, so the graph and this fold can
+    /// never describe different populations.
+    /// </param>
     /// <param name="projectId">
     /// Narrows to these projects' issues, repeatable; every project when absent
     /// or empty. An id naming no project contributes nothing and is not a
-    /// refusal.
+    /// refusal. ANDed with <paramref name="ancestorKey"/> when both are given.
     /// </param>
     /// <param name="outcome">
     /// One of <see cref="ClaimOutcomes"/>, or <c>none</c> for sessions with no
@@ -272,6 +288,7 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     public async Task<ActionResult<WorkLogByPlaybookDto>> GetByPlaybook(
         [FromQuery] string? from,
         [FromQuery] string? to,
+        [FromQuery] string? ancestorKey = null,
         [FromQuery] List<int>? projectId = null,
         [FromQuery] string? outcome = null,
         CancellationToken ct = default)
@@ -281,9 +298,12 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         var (outcomeFilter, outcomeRefusal) = Outcome(outcome);
         if (outcomeRefusal is not null) return outcomeRefusal;
 
+        var (ancestorId, refusal) = await AncestorAsync(ancestorKey, ct);
+        if (refusal is not null) return refusal;
+
         var projectIds = (projectId ?? []).Distinct().ToList();
 
-        return await WorkLogRollup.ByPlaybookAsync(db, start, end, projectIds, outcomeFilter, ct);
+        return await WorkLogRollup.ByPlaybookAsync(db, start, end, ancestorId, projectIds, outcomeFilter, ct);
     }
 
     /// <summary>
