@@ -40,8 +40,9 @@ public class DisclosureTests
             [2] = [("runner-b", null, "operator", At)],
         };
         var localModels = new Dictionary<long, int> { [1] = LocalModelLevels.Prefer };
+        var humanWork = new Dictionary<long, bool?> { [1] = true };
 
-        return new PriorityTree(rows, onePr, tags, dangerous, omissions, localModels: localModels, visible: visible);
+        return new PriorityTree(rows, onePr, tags, dangerous, omissions, localModels: localModels, humanWork: humanWork, visible: visible);
     }
 
     [Fact]
@@ -66,6 +67,7 @@ public class DisclosureTests
         var (priority, priorityFrom) = tree.Effective(3);
         var (preApproval, preApprovalFrom) = tree.EffectivePreApproval(3);
         var (localModel, localModelFrom) = tree.EffectiveLocalModel(3);
+        var (humanWork, _, humanWorkFrom) = tree.EffectiveHumanWork(3);
         var (onePr, _, onePrFrom) = tree.EffectiveOnePr(3);
         var (dangerous, dangerousFrom) = tree.EffectiveDangerous(3);
 
@@ -73,6 +75,7 @@ public class DisclosureTests
         Assert.Equal(PriorityLevels.Expedited, priority);
         Assert.Equal(PreApprovalLevels.Express, preApproval);
         Assert.Equal(LocalModelLevels.Prefer, localModel);
+        Assert.True(humanWork);
         Assert.True(onePr);
         Assert.Equal("load test", dangerous);
 
@@ -83,6 +86,7 @@ public class DisclosureTests
         Assert.Null(d.Key(DisclosedValues.Priority, priorityFrom));
         Assert.Null(d.Key(DisclosedValues.PreApproval, preApprovalFrom));
         Assert.Null(d.Key(DisclosedValues.LocalModel, localModelFrom));
+        Assert.Null(d.Key(DisclosedValues.HumanWork, humanWorkFrom));
         Assert.Null(d.Key(DisclosedValues.OnePr, onePrFrom));
         Assert.Null(d.Key(DisclosedValues.Dangerous, dangerousFrom));
         Assert.Null(d.Key(DisclosedValues.PreApprovalPassedOver, "BBB-1"));
@@ -90,7 +94,7 @@ public class DisclosureTests
         Assert.Null(d.Key(DisclosedValues.PullPassedOver, "BBB-1"));
 
         Assert.Equal(
-            ["priority", "preApproval", "localModel", "onePr", "dangerous", "preApprovalPassedOver", "priorityPassedOver", "pullPassedOver"],
+            ["priority", "preApproval", "localModel", "humanWork", "onePr", "dangerous", "preApprovalPassedOver", "priorityPassedOver", "pullPassedOver"],
             d.FromBeyondScope);
     }
 

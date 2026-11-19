@@ -4921,6 +4921,68 @@ public class WorkControllerTests
         Assert.Equal(Key(task), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
     }
 
+    // ---- HA-2515: human work - a person's own, and no runner picks it up ----
+
+    [Fact]
+    public async Task AHumanIssue_IsFoldedOnAPassWithItsOwnSentence()
+    {
+        var h = await NewAsync();
+        var human = await h.FileAsync("story", "a person does this one", h.Todo, rank: 1024);
+        var next = await h.FileAsync("story", "unrelated", h.Todo, rank: 2048);
+        await h.HumanWorkAsync(human, true);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(human));
+        Assert.Equal("human work - a person does this one, and no runner picks it up", entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+
+        Assert.Equal(entry.Blocked, Value(await h.Work.GetWork(Key(human), null, default)).Blocked);
+
+        // Never offered by next, and the pass carries on to the next issue.
+        Assert.Equal(Key(next), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task AStoryUnderAHumanEpic_IsFoldedNamingTheEpic()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "a person works this epic", h.Todo);
+        await h.HumanWorkAsync(epic, true);
+        var story = await h.FileAsync("story", "inherits the override", h.InProgress, parentId: epic.Id);
+
+        Assert.Equal(
+            $"human work from {Key(epic)} - a person does this one, and no runner picks it up",
+            Value(await h.Work.GetWork(Key(story), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task AnAgentTaskUnderAHumanEpic_DispatchesNormally()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "a person works this epic", h.Todo);
+        await h.HumanWorkAsync(epic, true);
+        var story = await h.FileAsync("story", "inherits the override", h.InProgress, parentId: epic.Id);
+        var task = await h.FileAsync("task", "opts back out", h.Todo, parentId: story.Id);
+        await h.HumanWorkAsync(task, false);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(task), null, default)).Blocked);
+        Assert.Equal(Key(task), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task AHumanIssue_InATickedColumn_IsNotHopped()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "a person works this one, would otherwise be carried on", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.HumanWorkAsync(issue, true);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal("human work - a person does this one, and no runner picks it up", entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+        Assert.False(entry.Hop);
+    }
+
     [Fact]
     public async Task Queue_LeavesOutTheColumnsWithNowhereToGo_AndListsReview()
     {
@@ -15811,6 +15873,18 @@ public class WorkControllerTests
         public async Task HoldAsync(EfHatchIssue issue)
         {
             issue.Held = true;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A person's human-work override, written straight onto the row -
+        /// what sets it from the API is <see cref="IssueHumanWorkControllerTests"/>'s
+        /// business; these tests are about what <see cref="Dispatch.Blocked"/>
+        /// does with it once set. <see langword="null"/> is inherit.
+        /// </summary>
+        public async Task HumanWorkAsync(EfHatchIssue issue, bool? value)
+        {
+            issue.HumanWork = value;
             await Db.SaveChangesAsync();
         }
 
