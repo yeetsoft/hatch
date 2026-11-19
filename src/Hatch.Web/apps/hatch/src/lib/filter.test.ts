@@ -494,8 +494,8 @@ describe('toggleType', () => {
     expect(toggleType(filter({ types: ['bug'] }), 'epic').types).toEqual(['epic', 'bug']);
   });
 
-  it('removes one of five and leaves four', () => {
-    expect(toggleType(DEFAULT_FILTER, 'bug').types).toEqual(['epic', 'reflection', 'story', 'task']);
+  it('removes one of six and leaves five', () => {
+    expect(toggleType(DEFAULT_FILTER, 'bug').types).toEqual(['ambition', 'epic', 'reflection', 'story', 'task']);
   });
 
   it('removes the only type left, giving an empty choice in a new object', () => {
@@ -514,7 +514,7 @@ describe('toggleType', () => {
 
 describe('revealType', () => {
   it('adds a type that is missing, in canonical order', () => {
-    expect(revealType(DEFAULT_FILTER, 'task').types).toEqual(['epic', 'reflection', 'story', 'task', 'bug']);
+    expect(revealType(DEFAULT_FILTER, 'task').types).toEqual(['ambition', 'epic', 'reflection', 'story', 'task', 'bug']);
   });
 
   it('hands back the same filter when the type is already drawn', () => {
@@ -538,12 +538,14 @@ describe('typesSummary', () => {
   it('says All for every type and All but for the one missing', () => {
     expect(typesSummary([...ISSUE_TYPES])).toBe('All');
     expect(typesSummary(DEFAULT_FILTER.types)).toBe('All');
-    expect(typesSummary(['epic', 'reflection', 'story', 'bug'])).toBe('All but tasks');
-    expect(typesSummary(['epic', 'reflection', 'task', 'bug'])).toBe('All but stories');
-    expect(typesSummary(['epic', 'story', 'task', 'bug'])).toBe('All but reflections');
+    expect(typesSummary(['ambition', 'epic', 'reflection', 'story', 'bug'])).toBe('All but tasks');
+    expect(typesSummary(['ambition', 'epic', 'reflection', 'task', 'bug'])).toBe('All but stories');
+    expect(typesSummary(['ambition', 'epic', 'story', 'task', 'bug'])).toBe('All but reflections');
+    expect(typesSummary(['epic', 'reflection', 'story', 'task', 'bug'])).toBe('All but ambitions');
   });
 
   it('lists one or two types, plural and capitalised, in canonical order', () => {
+    expect(typesSummary(['ambition'])).toBe('Ambitions');
     expect(typesSummary(['epic'])).toBe('Epics');
     expect(typesSummary(['story'])).toBe('Stories');
     expect(typesSummary(['task'])).toBe('Tasks');
@@ -562,7 +564,7 @@ describe('typeCounts', () => {
   ];
 
   it('counts every type, and says zero for one with no cards', () => {
-    expect(typeCounts(board)).toEqual({ epic: 1, reflection: 0, story: 0, task: 2, bug: 0 });
+    expect(typeCounts(board)).toEqual({ ambition: 0, epic: 1, reflection: 0, story: 0, task: 2, bug: 0 });
   });
 
   it('counts the cards a filter would hide', () => {
@@ -621,6 +623,23 @@ describe('readBoardTypes / writeBoardTypes', () => {
       expect(readBoardTypes()).toEqual(DEFAULT_TYPES);
     },
   );
+
+  it('reads a saved list of exactly the five older types as all six, in any order', () => {
+    stubStorage({ [BOARD_TYPES_STORAGE_KEY]: '["epic","reflection","story","task","bug"]' });
+    expect(readBoardTypes()).toEqual(DEFAULT_TYPES);
+
+    stubStorage({ [BOARD_TYPES_STORAGE_KEY]: '["bug","task","story","reflection","epic"]' });
+    expect(readBoardTypes()).toEqual(DEFAULT_TYPES);
+    expect(readBoardTypes()).toContain('ambition');
+  });
+
+  it('leaves a saved four as four, and a saved six as six', () => {
+    stubStorage({ [BOARD_TYPES_STORAGE_KEY]: '["epic","reflection","story","task"]' });
+    expect(readBoardTypes()).toEqual(['epic', 'reflection', 'story', 'task']);
+
+    stubStorage({ [BOARD_TYPES_STORAGE_KEY]: '["ambition","epic","reflection","story","task","bug"]' });
+    expect(readBoardTypes()).toEqual(DEFAULT_TYPES);
+  });
 
   it('reads a stored empty list as none, not as the default', () => {
     stubStorage({ [BOARD_TYPES_STORAGE_KEY]: '[]' });

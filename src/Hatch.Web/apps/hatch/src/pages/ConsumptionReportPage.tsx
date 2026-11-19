@@ -226,6 +226,7 @@ interface ConsumptionReportView {
 const REPORT_ANSWERS = 'What each epic consumed - tokens, notional dollars and runner time - and how that is trending.';
 
 const TYPE_OPTIONS: { value: ConsumptionType; text: string }[] = [
+  { value: 'ambition', text: 'Ambition' },
   { value: 'epic', text: 'Epic' },
   { value: 'reflection', text: 'Reflection' },
   { value: 'story', text: 'Story' },

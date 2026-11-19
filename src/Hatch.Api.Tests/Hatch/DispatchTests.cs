@@ -474,6 +474,37 @@ public class DispatchTests
     }
 
     [Fact]
+    public async Task ScanAsync_AnEpicUnderARunningAmbition_IsCarriedByTheEpicHop()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var ambition = await h.FileAsync("ambition", "running above it", h.InProgress);
+        var epic = await h.FileAsync("epic", "E", h.Todo, parentId: ambition.Id);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.True(RowFor(scan, epic).Hop);
+        Assert.Equal(HopKinds.Epic, RowFor(scan, epic).HopKind);
+        Assert.Null(RowFor(scan, epic).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnEpicUnderAnAmbitionLeftOfTheImplementationColumn_IsFoldedAsItsParentNotRunning()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var ambition = await h.FileAsync("ambition", "not started", h.Todo);
+        var epic = await h.FileAsync("epic", "E", h.Todo, parentId: ambition.Id);
+        await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(RowFor(scan, epic).HopKind);
+        Assert.Equal("its parent epic is not running, so nothing pulls it in", RowFor(scan, epic).Blocked);
+    }
+
+    [Fact]
     public async Task ScanAsync_AnEpicHopInATagRequiringProject_IsTagGated()
     {
         var h = await NewAsync();

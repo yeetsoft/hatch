@@ -18,6 +18,7 @@ import { PreApprovalControl, type PreApproval } from './PreApprovalControl';
 import { PriorityControl, type Priority } from './PriorityControl';
 import { ProjectChooser } from './ProjectChooser';
 import { TypeControl } from './TypeControl';
+import { LEGAL_PARENT_TYPES } from '../types';
 import type { AssigneeDirectory, Issue, IssueCard, IssueType, Project } from '../types';
 
 /** What a filing sends for a level the dialog carries with a default: the
@@ -260,16 +261,18 @@ export function NewIssueDialog({
 
               {/* `as="div"` for the reason on the issue page's Parent field: the
                   popup would otherwise join the control's accessible name. */}
-              <Field label="Parent" as="div" hint={parentHint(type)}>
-                <IssuePicker
-                  label="Parent"
-                  value={parent}
-                  candidates={parents}
-                  emptyMessage={parentEmptyMessage(projectKey, type)}
-                  homeProject={projectKey}
-                  onChange={async (key) => setParentKey(key || null)}
-                />
-              </Field>
+              {LEGAL_PARENT_TYPES[type].length > 0 && (
+                <Field label="Parent" as="div" hint={parentHint(type)}>
+                  <IssuePicker
+                    label="Parent"
+                    value={parent}
+                    candidates={parents}
+                    emptyMessage={parentEmptyMessage(projectKey, type)}
+                    homeProject={projectKey}
+                    onChange={async (key) => setParentKey(key || null)}
+                  />
+                </Field>
+              )}
 
               <Field label="Description" as="div" hint="Markdown, rendered on the issue page.">
                 <MarkdownEditor

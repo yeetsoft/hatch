@@ -132,6 +132,11 @@ describe('IssueFacts', () => {
     expect(render(issue({ parentKey: 'OPS-1' }))).not.toContain('pull is not honoured');
   });
 
+  it('draws no Parent for an ambition, which takes none, and one for every other type', () => {
+    expect(render(issue({ type: 'ambition' }))).not.toContain('Parent');
+    expect(render(issue({ type: 'epic' }))).toContain('Parent');
+  });
+
   it('says a masked pull as outside your scope', () => {
     expect(render(issue({ fromBeyondScope: ['pullPassedOver'] }))).toContain(
       'from an issue outside your scope, not honoured in AER',

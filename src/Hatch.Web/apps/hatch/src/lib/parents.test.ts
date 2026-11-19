@@ -66,6 +66,12 @@ describe('parentCandidates', () => {
     }
   });
 
+  it('offers an epic the ambitions, and an ambition nothing', () => {
+    expect(keys(parentCandidates(board, 'HATCH', 'epic'))).toContain('HATCH-1');
+    expect(board[0].type).toBe('ambition');
+    expect(parentCandidates(board, 'HATCH', 'ambition')).toEqual([]);
+  });
+
   it('offers cards from every project, whatever the project', () => {
     const elsewhere = ISSUE_TYPES.map((type, i) => card({ key: `OTHER-${i + 1}`, projectKey: 'OTHER', type }));
     for (const type of ISSUE_TYPES) {
@@ -119,9 +125,14 @@ describe('parentCandidates', () => {
 
 describe('parentHint', () => {
   it('puts an article on every type', () => {
-    expect(parentHint('epic')).toBe('An epic hangs under an epic or a reflection, in any project.');
+    expect(parentHint('epic')).toBe('An epic hangs under an epic, a reflection or an ambition, in any project.');
     expect(parentHint('bug')).toBe('A bug hangs under an epic, a story or a reflection, in any project.');
     expect(parentHint('reflection')).toBe('A reflection hangs under an epic, in any project.');
+  });
+
+  it('says an ambition takes no parent, and offers an epic its ambitions', () => {
+    expect(parentHint('ambition')).toBe('An ambition takes no parent.');
+    expect(parentHint('epic')).toBe('An epic hangs under an epic, a reflection or an ambition, in any project.');
   });
 
   it('joins three with commas and a last "or"', () => {

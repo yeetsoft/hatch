@@ -21,7 +21,7 @@ public static class PullRequestEnvelopeReader
     private const int MaxInstanceLength = 2048;
     private const int MaxProjectLength = 64;
 
-    private static readonly HashSet<string> KnownTypes = ["epic", "story", "task", "bug", "reflection"];
+    private static readonly HashSet<string> KnownTypes = ["ambition", "epic", "story", "task", "bug", "reflection"];
 
     private static readonly Regex FencePattern = new("```hatch\\r?\\n?(.*?)```", RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex KeyPattern = new("^[A-Za-z][A-Za-z0-9]*-\\d+$", RegexOptions.Compiled);

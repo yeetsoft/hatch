@@ -710,6 +710,18 @@ public sealed partial class MergeTrainTests
     }
 
     [Fact]
+    public async Task An_ambition_root_mirrors_as_an_epic()
+    {
+        var chain = new[] { Chained("HA-2", "Own", "task"), Chained("HA-1", "The long view", "ambition") };
+        using var rig = Mirror(Enveloped(chain));
+
+        await rig.RunAsync();
+
+        var created = rig.H.Wire.To("POST", Issues).Select(c => c.Read<IssueCreateRequest>()).ToList();
+        Assert.Equal("epic", created[0].Type);
+    }
+
+    [Fact]
     public async Task A_type_this_board_does_not_know_mirrors_as_a_task()
     {
         var chain = new[] { Chained("HA-2", "Own", "task"), Chained("HA-1", "Something else") };

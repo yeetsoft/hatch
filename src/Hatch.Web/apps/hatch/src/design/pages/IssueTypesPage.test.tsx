@@ -15,6 +15,7 @@ const html = renderToStaticMarkup(
 );
 
 /* The last row runs on into the next section, so each is cut at the section's end. */
+const TOKEN_ROWS = ISSUE_TYPE_ROWS.filter((row) => row.name !== 'ambition');
 const rows = html
   .split('class="design-type-row"')
   .slice(1)
@@ -22,9 +23,10 @@ const rows = html
 const card = html.slice(html.indexOf('class="design-type-card"'));
 
 describe('IssueTypesPage', () => {
-  it('has one row per type, each naming its token', () => {
-    expect(rows).toHaveLength(ISSUE_TYPE_ROWS.length);
-    ISSUE_TYPE_ROWS.forEach((row, i) => {
+  it('has one row per type with a token, each naming it, and none for the ambition', () => {
+    expect(rows).toHaveLength(TOKEN_ROWS.length);
+    expect(rows.join('')).not.toContain('--type-ambition');
+    TOKEN_ROWS.forEach((row, i) => {
       expect(rows[i]).toContain(`--type-${row.name}`);
       expect(rows[i]).toContain(`>${row.word}<`);
     });
@@ -48,10 +50,11 @@ describe('IssueTypesPage', () => {
     expect(row.match(/design-type-tile design-type-tile--/g)).toHaveLength(4);
     expect(row).toContain('--gradient-ink-from');
     expect(row).toContain('--gradient-ink-to');
-    expect(html).toContain('The ambition is not an issue type on the trunk yet');
+    expect(html).toContain('The ambition is an issue type');
+    expect(html).not.toContain('not an issue type on the trunk yet');
   });
 
-  it('shows the five tiles side by side at 14 pixels on a card', () => {
+  it('shows the six tiles side by side at 14 pixels on a card', () => {
     expect(card.match(/design-type-tile design-type-tile--14"><svg/g)).toHaveLength(ISSUE_TYPE_ROWS.length);
     expect(card).not.toMatch(/design-type-tile--(16|24|72)/);
   });

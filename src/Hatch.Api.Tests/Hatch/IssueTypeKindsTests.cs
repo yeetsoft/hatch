@@ -9,13 +9,14 @@ namespace Hatch.Api.Tests.Hatch;
 public class IssueTypeKindsTests
 {
     [Theory]
+    [InlineData("ambition", true)]
     [InlineData("epic", true)]
     [InlineData("reflection", true)]
     [InlineData("story", false)]
     [InlineData("task", false)]
     [InlineData("bug", false)]
     [InlineData("nonsense", false)]
-    public void RunsChildren_MatchesEpicAndReflectionOnly(string type, bool expected)
+    public void RunsChildren_MatchesAmbitionEpicAndReflectionOnly(string type, bool expected)
     {
         Assert.Equal(expected, IssueTypeKinds.RunsChildren(type));
     }

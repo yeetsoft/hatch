@@ -24,8 +24,10 @@ namespace Hatch.Api.Modules.Hatch;
 public class PlanController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time) : ControllerBase
 {
-    /// <summary>The type the Plan page is a list of. Everything else is what an epic is a total over.</summary>
+    /// <summary>The types the Plan page is a list of: an epic, and an ambition above its epics. Everything else is what they are a total over.</summary>
     private const string Epic = "epic";
+
+    private const string Ambition = "ambition";
 
     /// <summary>
     /// One issue's progress and its children's, in one request - what the issue
@@ -167,7 +169,7 @@ public class PlanController(
         var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
         var projectIds = (projectId ?? []).Distinct().ToList();
 
-        var epics = await InProject(db.Issues.AsNoTracking().Where(i => i.Type == Epic), projectIds)
+        var epics = await InProject(db.Issues.AsNoTracking().Where(i => i.Type == Epic || i.Type == Ambition), projectIds)
             .Select(i => new
             {
                 i.Id,
@@ -202,10 +204,10 @@ public class PlanController(
             .ToListAsync(ct);
 
         // The work hanging under no epic at all, which is the roots that are
-        // not epics - a bug filed on its own, a story somebody forgot to
+        // neither epics nor ambitions - a bug filed on its own, a story somebody forgot to
         // parent, and everything beneath them.
         var looseRoots = await InProject(
-                db.Issues.AsNoTracking().Where(i => i.ParentId == null && i.Type != Epic), projectIds)
+                db.Issues.AsNoTracking().Where(i => i.ParentId == null && i.Type != Epic && i.Type != Ambition), projectIds)
             .Select(i => i.Id)
             .ToListAsync(ct);
 
@@ -213,7 +215,7 @@ public class PlanController(
         var byId = epics.ToDictionary(e => e.Id);
         var keys = epics.ToDictionary(e => e.Id, e => IssueKey.Format(e.ProjectKey, e.Number));
 
-        // An epic whose parent is not among the epics listed: a parent in
+        // An epic or ambition whose parent is not among those listed: a parent in
         // another project when the page is narrowed, a story the type rules
         // would refuse (imported or hand-edited data), or one the reader's
         // scope hides. One query for all of them, and none at all in the
