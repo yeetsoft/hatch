@@ -530,8 +530,10 @@ public class WorkController(
 
         // The pull request is the pointer to an issue's change: its contribution's
         // recorded head where it came from outside, else the one a runner read off
-        // the forge. Null only before either is known.
-        var recordedBranches = held.Concat(merging)
+        // the forge. Null only before either is known. A merges-column row this
+        // runner holds a checkout of is in both held and merging, so the two are
+        // joined by id rather than concatenated.
+        var recordedBranches = held.UnionBy(merging, i => i.Id)
             .Select(i => (i.Id, Branch: contributedBranches.GetValueOrDefault(i.Id) is { Length: > 0 } c ? c : i.PullRequestHeadBranch))
             .Where(r => r.Branch is { Length: > 0 })
             .ToDictionary(r => r.Id, r => r.Branch);
