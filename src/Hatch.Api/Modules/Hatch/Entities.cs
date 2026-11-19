@@ -4437,3 +4437,43 @@ public class EfHatchRunnerSession
     /// <summary>When this session's process itself started.</summary>
     public DateTimeOffset? ProcessStartedAt { get; set; }
 }
+
+/// <summary>
+/// One row of the goose's record: a run of sweeps that reached the same
+/// conclusions. A sweep whose conclusions equal the newest run's is folded into
+/// it (<see cref="LastRanAt"/> moves, <see cref="Sweeps"/> counts up) rather
+/// than adding a row, so a quiet board costs one row however long it stays
+/// quiet. See <see cref="GooseJob"/>.
+///
+/// Belongs to no project and has no foreign key into one - a sweep reads every
+/// project - so it carries no query filter, and <c>QueryFilterModelAuditTests</c>,
+/// which audits only tables that reach a project, does not list it. The routes
+/// that read it are what keep a bounded caller out.
+/// </summary>
+[Table("GooseRuns")]
+[Index(nameof(LastRanAt))]
+public class EfHatchGooseRun
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>When the first sweep of this run started.</summary>
+    public DateTimeOffset FirstRanAt { get; set; }
+
+    /// <summary>When the latest sweep of this run started.</summary>
+    public DateTimeOffset LastRanAt { get; set; }
+
+    /// <summary>How many sweeps this run holds.</summary>
+    public int Sweeps { get; set; }
+
+    /// <summary>The longest any sweep in this run took, in milliseconds.</summary>
+    public long LongestMs { get; set; }
+
+    /// <summary>
+    /// The latest sweep's entries, one per check in the order they ran, as JSON
+    /// (<see cref="GooseEntry"/>). Free-form on purpose, so a new check needs no
+    /// new column.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public string Entries { get; set; } = "[]";
+}

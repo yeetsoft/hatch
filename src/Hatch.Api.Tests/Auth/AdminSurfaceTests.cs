@@ -141,6 +141,11 @@ public class AdminSurfaceTests
         // this, and it says strictly less than the board does.
         "AttentionController.GetAttention",
 
+        // The goose's record of its own sweeps. A key reads it like the board;
+        // the routes answer nothing to a caller who cannot see every project.
+        "GooseController.ListRuns",
+        "GooseController.GetRun",
+
         // The same questions as GetQuestions, read as a tree of the issues that
         // enclose them. Key-accepting like GetQuestions, and it widens
         // nothing: it reads the same waiting comments, and the issues above
@@ -843,6 +848,8 @@ public class AdminSurfaceTests
         "AttachmentsController.GetAttachment",
         "AttachmentsController.GetAttachments",
         "AttentionController.GetAttention",
+        "GooseController.GetRun",
+        "GooseController.ListRuns",
         "BackupController.GetBackup",
         "BallotController.GetBallot",
         "BoardController.GetBoard",

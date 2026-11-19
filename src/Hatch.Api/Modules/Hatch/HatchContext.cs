@@ -5,7 +5,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, thirty-six tables.
+/// migration history, thirty-seven tables.
 /// </summary>
 public class HatchContext : DbContext, IModuleContext
 {
@@ -84,6 +84,9 @@ public class HatchContext : DbContext, IModuleContext
     public DbSet<EfHatchDependencyFile> DependencyFiles => Set<EfHatchDependencyFile>();
     public DbSet<EfHatchChangelogFile> ChangelogFiles => Set<EfHatchChangelogFile>();
     public DbSet<EfHatchVerdict> Verdicts => Set<EfHatchVerdict>();
+
+    /// <summary>The goose's record of its sweeps. Belongs to no project, so it has no query filter.</summary>
+    public DbSet<EfHatchGooseRun> GooseRuns => Set<EfHatchGooseRun>();
 
     /// <summary>
     /// The processes that have spoken to this Hatch lately, and what the board

@@ -159,6 +159,19 @@ public class HatchOptions
     public int BackupKeepDays { get; set; } = 14;
 
     /// <summary>
+    /// Seconds between the goose's sweeps of the board. Zero or negative falls
+    /// back to <see cref="HatchOptions"/>'s own default, as
+    /// <see cref="BackupKeepDays"/> does. The guard is <see cref="GooseSettings"/>.
+    /// </summary>
+    public int GooseIntervalSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// How many days a goose run is kept after its last sweep. Zero keeps every
+    /// run; negative falls back to the default. The guard is <see cref="GooseSettings"/>.
+    /// </summary>
+    public int GooseKeepDays { get; set; } = 7;
+
+    /// <summary>
     /// Absolute base URL of this Hatch install as it should be *printed* -
     /// e.g. "https://home.example.com". Empty by default and supplied at
     /// deploy (compose.yaml passes <c>Hatch__PublicBaseUrl</c> from the
