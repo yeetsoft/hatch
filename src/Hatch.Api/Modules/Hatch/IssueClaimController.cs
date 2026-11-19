@@ -34,7 +34,7 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueClaimController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption,
-    Runners runners, Dispatch dispatch) : ControllerBase
+    Runners runners, Dispatch dispatch, RunnerSessions runnerSessions) : ControllerBase
 {
     /// <summary>
     /// Takes the lease, or says who already has it.
@@ -129,7 +129,7 @@ public class IssueClaimController(
         await db.SaveChangesAsync(ct);
 
         var window = claims.WindowFor(new ClaimSnapshot(null, null, null, null, null, null, null, playbook?.Limit, playbook?.MaxRun));
-        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, window, playbook?.MaxRun ?? 0);
+        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, window, playbook?.MaxRun ?? 0, runners.GoneAfterSeconds);
     }
 
     /// <summary>
@@ -500,6 +500,8 @@ public class IssueClaimController(
     /// already gone by then, so it is never revived (HA-2074's ghost), and a
     /// checkout with a live session never reaches this step.</item>
     /// </list>
+    /// Where no live session matched, the one the sweep ended is revived - see
+    /// <see cref="RunnerSessions.ReviveAsync"/>.
     /// A heartbeat racing the runner's own first beat matches nothing and does
     /// nothing - there is nothing yet to bump. This is what keeps
     /// <see cref="EfHatchRunner.LastSeenAt"/> and
@@ -518,6 +520,12 @@ public class IssueClaimController(
             sessions = await db.RunnerSessions
                 .Where(s => s.ApiKeyId == key.Id && s.Where == claim.Runner && s.EndedAt == null)
                 .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
+
+            // The sweep may have ended this session while the claim was still
+            // being renewed - a read of the runner list after one late beat. A
+            // renewed claim is the proof it is working, so it reads live again.
+            if (sessions == 0)
+                sessions = await runnerSessions.ReviveAsync(db, key.Id, claim.Runner, now, ct);
 
             if (sessions > 0) keyId = key.Id;
         }

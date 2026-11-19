@@ -263,6 +263,14 @@ budget.
 
 ### On the board
 
+What keeps a runner's row live during an increment is its claim heartbeat, sent
+every 30 seconds by default - a third of the time the board waits before it reads
+a row as gone, so one missed beat is survived. A beat that lands after a read of
+the runner list had already marked the session ended puts it back, so a working
+runner never reads as gone for the rest of its increment. An issue page left open
+on a claimed issue keeps itself current: it re-reads the issue every 15 seconds,
+so it does not say *not heard from lately* while the claim is being renewed.
+
 A runner holding a ticket shows on that ticket too. On the board, its card
 carries a small robot head - blue while the runner is live, amber once it has gone
 quiet on a lease it still holds. Live is judged per session: the key's own

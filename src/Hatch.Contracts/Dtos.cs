@@ -898,9 +898,15 @@ public record ClaimRequest(string Runner, int? PlaybookId = null)
 /// it is refused with <see cref="ClaimLostReasons.RunTime"/>, however
 /// recently it spoke.
 /// </param>
+/// <param name="RunnerGoneAfterSeconds">
+/// How long the board waits without hearing from a runner before its row reads
+/// gone, in seconds, or <c>0</c> from a server that does not say. The holder
+/// beats its claim often enough that one missed beat does not reach it - see
+/// <c>Claim.Interval</c>.
+/// </param>
 public record ClaimTakenDto(
     Guid Token, string ClaimedBy, DateTimeOffset ClaimedAt, int TtlSeconds, int StallLapseSeconds = 0,
-    int MaxRunSeconds = 0);
+    int MaxRunSeconds = 0, int RunnerGoneAfterSeconds = 0);
 
 /// <summary>
 /// What a heartbeat answers where the caller is the runner the board has
