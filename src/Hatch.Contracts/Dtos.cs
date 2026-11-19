@@ -501,14 +501,32 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// priority was passed over because its setter is not a live person in scope
 /// of this issue's project, or none was recorded. Null where nothing was.
 /// </param>
+/// <param name="PullPassedOver">
+/// The key of this issue's parent where the parent is in another project and
+/// in progress, yet may not pull this issue - the person who started it has
+/// no say in this issue's project, or none was recorded - or null where
+/// nothing was withheld. It is what a card needs to say "AER-1 is running, but
+/// does not pull this". Read live, never stored. See <see cref="IssueDto.PullPassedOver"/>.
+/// </param>
+/// <param name="PreApprovalPassedOverLevel">
+/// The name of the level <paramref name="PreApprovalPassedOver"/>'s ancestor
+/// carried - <c>"express"</c> or <c>"preapproved"</c> - or null where nothing
+/// was passed over. Never disclosed: the value, not the key, and the value
+/// already applies with no ancestor named.
+/// </param>
+/// <param name="PriorityPassedOverLevel">
+/// The same for <paramref name="PriorityPassedOver"/>'s level, or null where
+/// nothing was passed over.
+/// </param>
 /// <param name="ParentBeyondScope">This issue has a parent in a project the reader's scope does not hold. The parent's key is null and nothing else of it is told.</param>
 /// <param name="ChildBeyondScope">Some child of this issue is in a project the reader's scope does not hold. No key and no count of it is told.</param>
 /// <param name="FromBeyondScope">
 /// The values whose from-key was blanked because the ancestor it names is in a
 /// project the reader's scope does not hold: any of <c>priority</c>,
 /// <c>preApproval</c>, <c>localModel</c>, <c>onePr</c>, <c>dangerous</c>,
-/// <c>preApprovalPassedOver</c> and <c>priorityPassedOver</c>. The value
-/// itself still applies. Empty for a reader whose scope holds everything.
+/// <c>preApprovalPassedOver</c>, <c>priorityPassedOver</c> and
+/// <c>pullPassedOver</c>. The value itself still applies. Empty for a reader
+/// whose scope holds everything.
 /// </param>
 public record IssueCardDto(
     string Key,
@@ -556,6 +574,9 @@ public record IssueCardDto(
     string? LocalModelFrom = null,
     string? PreApprovalPassedOver = null,
     string? PriorityPassedOver = null,
+    string? PullPassedOver = null,
+    string? PreApprovalPassedOverLevel = null,
+    string? PriorityPassedOverLevel = null,
     bool ParentBeyondScope = false,
     bool ChildBeyondScope = false,
     IReadOnlyList<string> FromBeyondScope = null!)
@@ -783,14 +804,25 @@ public record IssueClaimDto(
 /// priority was passed over because its setter is not a live person in scope
 /// of this issue's project, or none was recorded. Null where nothing was.
 /// </param>
+/// <param name="PreApprovalPassedOverLevel">
+/// The name of the level <paramref name="PreApprovalPassedOver"/>'s ancestor
+/// carried - <c>"express"</c> or <c>"preapproved"</c> - or null where nothing
+/// was passed over. Never disclosed: the value, not the key, and the value
+/// already applies with no ancestor named.
+/// </param>
+/// <param name="PriorityPassedOverLevel">
+/// The same for <paramref name="PriorityPassedOver"/>'s level, or null where
+/// nothing was passed over.
+/// </param>
 /// <param name="ParentBeyondScope">This issue has a parent in a project the reader's scope does not hold. The parent's key is null and nothing else of it is told.</param>
 /// <param name="ChildBeyondScope">Some child of this issue is in a project the reader's scope does not hold. No key and no count of it is told.</param>
 /// <param name="FromBeyondScope">
 /// The values whose from-key was blanked because the ancestor it names is in a
 /// project the reader's scope does not hold: any of <c>priority</c>,
 /// <c>preApproval</c>, <c>localModel</c>, <c>onePr</c>, <c>dangerous</c>,
-/// <c>preApprovalPassedOver</c> and <c>priorityPassedOver</c>. The value
-/// itself still applies. Empty for a reader whose scope holds everything.
+/// <c>preApprovalPassedOver</c>, <c>priorityPassedOver</c> and
+/// <c>pullPassedOver</c>. The value itself still applies. Empty for a reader
+/// whose scope holds everything.
 /// </param>
 /// <param name="StartedBy">
 /// The name of whoever first moved this issue rightward into the column
@@ -886,7 +918,9 @@ public record IssueDto(
     bool ParentBeyondScope = false,
     bool ChildBeyondScope = false,
     IReadOnlyList<string> FromBeyondScope = null!,
-    string? PullPassedOver = null)
+    string? PullPassedOver = null,
+    string? PreApprovalPassedOverLevel = null,
+    string? PriorityPassedOverLevel = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -

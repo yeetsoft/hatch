@@ -2532,6 +2532,61 @@ public class DispatchTests
         Assert.Null(dtos[honoured.Id].PullPassedOver);
         Assert.Null(dtos[early.Id].PullPassedOver);
         Assert.Null(dtos[parent.Id].PullPassedOver);
+
+        var tree = await h.TreeAsync();
+        Assert.Equal(IssueKey.Format("OTH", parent.Number), tree.PullPassedOver(held.Id));
+        Assert.Null(tree.PullPassedOver(inside.Id));
+        Assert.Null(tree.PullPassedOver(honoured.Id));
+        Assert.Null(tree.PullPassedOver(early.Id));
+        Assert.Null(tree.PullPassedOver(parent.Id));
+
+        var board = new BoardController(h.Db, h.Actors, TestClaims.With(), new FakeTimeProvider(Now), TestClaims.DoneHorizon());
+        var cards = (await board.GetBoard(default)).Value!.Issues;
+        Assert.Equal(dtos[held.Id].PullPassedOver, cards.Single(c => c.Key == dtos[held.Id].Key).PullPassedOver);
+    }
+
+    [Theory]
+    [InlineData(PreApprovalLevels.PreApproved, PreApprovalLevels.PreApprovedName)]
+    [InlineData(PreApprovalLevels.Express, PreApprovalLevels.ExpressName)]
+    public async Task ToDtosAsync_PreApprovalPassedOverLevel_NamesTheLevelPassedOverAndIsNullOtherwise(int level, string name)
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var (_, story, _) = await CrossAsync(h, level, null, other);
+        var untouched = await h.FileAsync("task", "plain", h.Todo);
+
+        var rows = await h.Db.Issues.ToListAsync();
+        var dtos = await IssueProjection.ToDtosAsync(h.Db, h.Actors, rows, TestClaims.With(), Now, default);
+
+        Assert.Equal(name, dtos[story.Id].PreApprovalPassedOverLevel);
+        Assert.Null(dtos[untouched.Id].PreApprovalPassedOverLevel);
+
+        var board = new BoardController(h.Db, h.Actors, TestClaims.With(), new FakeTimeProvider(Now), TestClaims.DoneHorizon());
+        var cards = (await board.GetBoard(default)).Value!.Issues;
+        Assert.Equal(name, cards.Single(c => c.Key == dtos[story.Id].Key).PreApprovalPassedOverLevel);
+    }
+
+    [Theory]
+    [InlineData(PriorityLevels.Expedited, PriorityLevels.ExpeditedName)]
+    [InlineData(PriorityLevels.Low, PriorityLevels.LowName)]
+    public async Task ToDtosAsync_PriorityPassedOverLevel_NamesTheLevelPassedOverAndIsNullOtherwise(int level, string name)
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        await h.SetLevelAsync(epic, PreApprovalLevels.None, null, level);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+        var untouched = await h.FileAsync("task", "plain", h.Todo);
+
+        var rows = await h.Db.Issues.ToListAsync();
+        var dtos = await IssueProjection.ToDtosAsync(h.Db, h.Actors, rows, TestClaims.With(), Now, default);
+
+        Assert.Equal(name, dtos[story.Id].PriorityPassedOverLevel);
+        Assert.Null(dtos[untouched.Id].PriorityPassedOverLevel);
+
+        var board = new BoardController(h.Db, h.Actors, TestClaims.With(), new FakeTimeProvider(Now), TestClaims.DoneHorizon());
+        var cards = (await board.GetBoard(default)).Value!.Issues;
+        Assert.Equal(name, cards.Single(c => c.Key == dtos[story.Id].Key).PriorityPassedOverLevel);
     }
 
     [Fact]

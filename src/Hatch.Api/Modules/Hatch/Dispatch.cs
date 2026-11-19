@@ -3479,6 +3479,7 @@ public static class DisclosedValues
     public const string Dangerous = "dangerous";
     public const string PreApprovalPassedOver = "preApprovalPassedOver";
     public const string PriorityPassedOver = "priorityPassedOver";
+    public const string PullPassedOver = "pullPassedOver";
 }
 
 /// <summary>
@@ -3572,6 +3573,15 @@ public sealed class PriorityTree
     // Kept beside _rows rather than widening its tuple, as _projects is.
     private readonly Dictionary<long, (Guid? PreApprovalSetBy, Guid? PrioritySetBy)> _setters;
 
+    // Who first started each issue, null where nobody has, or nobody live did -
+    // what PullPassedOver hands FamilyGate.Parent as its own StartedBy. Kept
+    // beside _rows rather than widening its tuple, as _projects is.
+    private readonly Dictionary<long, Guid?> _startedBy;
+
+    // The statuses PullPassedOver and FamilyGate.PullHeld both read, to find
+    // the issue's own row among them - read once here rather than per call.
+    private readonly List<EfHatchStatus> _statuses;
+
     // What those people may do, read once. A level on an ancestor in another
     // project is honoured only while its setter passes it; see HonoursAcross.
     private readonly SetterAuthority _authority;
@@ -3614,13 +3624,17 @@ public sealed class PriorityTree
         Dictionary<long, int>? projects = null,
         Dictionary<long, (Guid?, Guid?)>? setters = null,
         SetterAuthority? authority = null,
-        HashSet<long>? visible = null)
+        HashSet<long>? visible = null,
+        Dictionary<long, Guid?>? startedBy = null,
+        List<EfHatchStatus>? statuses = null)
     {
         _rows = rows;
         _visible = visible;
         _setters = setters ?? new();
         _authority = authority ?? SetterAuthority.Nobody;
         _projects = projects ?? new();
+        _startedBy = startedBy ?? new();
+        _statuses = statuses ?? [];
         _localModels = localModels ?? new();
         _projectLevels = projectLevels ?? new();
         _onePr = onePr ?? new();
@@ -3654,6 +3668,8 @@ public sealed class PriorityTree
         _projectLevels = whole._projectLevels;
         _omissions = whole._omissions;
         _parents = whole._parents;
+        _startedBy = whole._startedBy;
+        _statuses = whole._statuses;
         _visible = visible;
         _hiddenChildParents = whole._rows.Where(r => r.Value.ParentId is not null && !visible.Contains(r.Key))
             .Select(r => r.Value.ParentId!.Value)
@@ -3711,7 +3727,7 @@ public sealed class PriorityTree
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous, ProjectPriority = i.Project!.Priority,
-                i.LocalModel, i.ProjectId, i.PreApprovalSetBy, i.PrioritySetBy,
+                i.LocalModel, i.ProjectId, i.PreApprovalSetBy, i.PrioritySetBy, i.StartedBy,
             })
             .ToListAsync(ct);
 
@@ -3740,7 +3756,9 @@ public sealed class PriorityTree
             rows.ToDictionary(r => r.Id, r => r.ProjectId),
             rows.ToDictionary(r => r.Id, r => (r.PreApprovalSetBy, r.PrioritySetBy)),
             authority,
-            visible);
+            visible,
+            rows.ToDictionary(r => r.Id, r => (Guid?)r.StartedBy),
+            statuses);
     }
 
     /// <summary>
@@ -3820,6 +3838,26 @@ public sealed class PriorityTree
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The key of this issue's parent where the parent is across a project
+    /// line, in progress, and may not pull it - <see cref="FamilyGate.PullHeld"/>,
+    /// the very test the queue's hold is made of - or null where nothing was
+    /// withheld. See <see cref="IssueDto.PullPassedOver"/>.
+    /// </summary>
+    public string? PullPassedOver(long issueId)
+    {
+        if (!TryGet(issueId, out var row) || row.ParentId is not { } parentId) return null;
+        if (SameProject(issueId, parentId)) return null;
+        if (!_onePr.TryGetValue(issueId, out var own) || !_onePr.TryGetValue(parentId, out var parentOnePr)) return null;
+        if (!TryGet(parentId, out var parentRow)) return null;
+        if (_statuses.FirstOrDefault(s => s.Id == own.StatusId) is not { } from) return null;
+
+        var parent = new FamilyGate.Parent(parentRow.Key, parentOnePr.Type, parentOnePr.StatusId, true,
+            _projects.GetValueOrDefault(parentId), _startedBy.GetValueOrDefault(parentId));
+        return FamilyGate.PullHeld(parent, _projects.GetValueOrDefault(issueId), from, _statuses, _authority)
+            ? parentRow.Key : null;
     }
 
     /// <summary>
@@ -4277,6 +4315,9 @@ public sealed class DependencyGate
 
     /// <summary>The levels passed over at a project line - see <see cref="PriorityTree.PassedOver"/>.</summary>
     public (PassedOverLevel? PreApproval, PassedOverLevel? Priority) PassedOver(long issueId) => _tree.PassedOver(issueId);
+
+    /// <summary>The key of the parent across a project line that may not pull this issue - see <see cref="PriorityTree.PullPassedOver"/>.</summary>
+    public string? PullPassedOver(long issueId) => _tree.PullPassedOver(issueId);
 
     /// <summary>The local-model level live on this issue - see <see cref="PriorityTree.EffectiveLocalModel"/>.</summary>
     public (int Level, string? FromKey) EffectiveLocalModel(long issueId) => _tree.EffectiveLocalModel(issueId);
