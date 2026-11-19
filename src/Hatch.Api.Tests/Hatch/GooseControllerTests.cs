@@ -111,11 +111,131 @@ public class GooseControllerTests
         Assert.Single(Value(await new GooseController(everything).ListRuns(null, default)));
     }
 
+    // ---- GET /api/goose/findings (HA-2496) ----
+
+    [Fact]
+    public async Task ListFindings_OpenFirstLongestStandingFirst_ThenClosedNewestFirst()
+    {
+        var (_, db) = Open();
+        db.GooseFindings.AddRange(
+            Finding("open-old", "a", began: Now.AddHours(-3), opened: Now.AddHours(-2)),
+            Finding("open-new", "b", began: Now.AddHours(-1), opened: Now),
+            Finding("closed-old", "c", began: Now.AddHours(-5), opened: Now.AddHours(-4), closed: Now.AddHours(-3)),
+            Finding("closed-new", "d", began: Now.AddHours(-4), opened: Now.AddHours(-3), closed: Now.AddHours(-1)));
+        await db.SaveChangesAsync();
+
+        var findings = Value(await new GooseController(db).ListFindings(null, default));
+
+        Assert.Equal(["open-old", "open-new", "closed-new", "closed-old"], findings.Select(f => f.Subject));
+    }
+
+    [Fact]
+    public async Task ListFindings_OpenTrue_NarrowsToTheOpenOnes()
+    {
+        var (_, db) = Open();
+        db.GooseFindings.AddRange(
+            Finding("open", "a", began: Now, opened: Now),
+            Finding("closed", "b", began: Now, opened: Now, closed: Now));
+        await db.SaveChangesAsync();
+
+        var findings = Value(await new GooseController(db).ListFindings(true, default));
+
+        Assert.Equal("open", Assert.Single(findings).Subject);
+    }
+
+    [Fact]
+    public async Task ListFindings_CarriesTheProjectKeyTheSentenceTheEvidenceTheTimesAndTheBugKey()
+    {
+        var (_, db) = Open();
+        var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+        db.Projects.Add(project);
+        var status = new EfHatchStatus { Name = "todo", SortOrder = 10 };
+        db.Add(status);
+        db.Issues.Add(new EfHatchIssue
+        {
+            ProjectId = project.Id, Number = 1, Type = "bug", Title = "fix it", Description = "",
+            StatusId = status.Id, Rank = 1, CreatedAt = Now, UpdatedAt = Now, CreatedBy = "test",
+        });
+        await db.SaveChangesAsync();
+        var bug = await db.Issues.SingleAsync();
+
+        db.GooseFindings.Add(new EfHatchGooseFinding
+        {
+            Check = "train-ready", Subject = "AER", Token = "AER-9", ProjectId = project.Id,
+            BeganAt = Now.AddMinutes(-40), OpenedAt = Now.AddMinutes(-10), Sentence = "AER's train is standing",
+            Evidence = GooseFindingEvidence.Write([new GooseFindingEvidence("head", "AER-9")]),
+            BugIssueId = bug.Id,
+        });
+        await db.SaveChangesAsync();
+
+        var finding = Assert.Single(Value(await new GooseController(db).ListFindings(null, default)));
+
+        Assert.Equal("train-ready", finding.Check);
+        Assert.Equal("AER", finding.Subject);
+        Assert.Equal("AER", finding.ProjectKey);
+        Assert.Equal("AER's train is standing", finding.Sentence);
+        Assert.Equal("head", Assert.Single(finding.Evidence).Label);
+        Assert.Equal("AER-9", Assert.Single(finding.Evidence).Value);
+        Assert.Equal(Now.AddMinutes(-40), finding.BeganAt);
+        Assert.Equal(Now.AddMinutes(-10), finding.OpenedAt);
+        Assert.Null(finding.ClosedAt);
+        Assert.Equal("AER-1", finding.BugIssueKey);
+    }
+
+    [Fact]
+    public async Task AFindingWithAProject_IsReadOnlyByACallerWhoCanSeeThatProject()
+    {
+        var (options, db) = Open();
+        var visible = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+        var hidden = new EfHatchProject { Key = "OPS", Name = "Ops", CreatedAt = Now };
+        db.Projects.AddRange(visible, hidden);
+        await db.SaveChangesAsync();
+
+        db.GooseFindings.AddRange(
+            Finding("visible", "AER-1", Now, Now, projectId: visible.Id),
+            Finding("hidden", "OPS-1", Now, Now, projectId: hidden.Id));
+        await db.SaveChangesAsync();
+
+        await using var scoped = ScopeSeed.Request(options, ScopeSeed.Only(visible.Id));
+
+        var findings = Value(await new GooseController(scoped).ListFindings(null, default));
+
+        Assert.Equal("visible", Assert.Single(findings).Subject);
+    }
+
+    [Fact]
+    public async Task AFindingWithNoProject_IsReadOnlyByAnUnboundedCaller()
+    {
+        var (options, db) = Open();
+        var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+        db.Projects.Add(project);
+        await db.SaveChangesAsync();
+
+        db.GooseFindings.Add(Finding("none", "no-project", Now, Now, projectId: null));
+        await db.SaveChangesAsync();
+
+        await using var scoped = ScopeSeed.Request(options, ScopeSeed.Only(project.Id));
+        Assert.Empty(Value(await new GooseController(scoped).ListFindings(null, default)));
+
+        await using var everything = ScopeSeed.Request(options, VisibleProjects.Everything);
+        Assert.Single(Value(await new GooseController(everything).ListFindings(null, default)));
+    }
+
     private static (DbContextOptions<HatchContext> Options, HatchContext Db) Open()
     {
         var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         return (options, new HatchContext(options));
     }
+
+    private static EfHatchGooseFinding Finding(
+        string subject, string token, DateTimeOffset began, DateTimeOffset opened, DateTimeOffset? closed = null, int? projectId = null) => new()
+    {
+        Check = "train-ready", Subject = subject, Token = token, ProjectId = projectId,
+        BeganAt = began, OpenedAt = opened, ClosedAt = closed, Sentence = $"{subject} standing",
+    };
+
+    private static IReadOnlyList<GooseFindingDto> Value(ActionResult<IReadOnlyList<GooseFindingDto>> result) =>
+        Assert.IsAssignableFrom<IReadOnlyList<GooseFindingDto>>(Assert.IsType<OkObjectResult>(result.Result).Value);
 
     private static EfHatchGooseRun Run(DateTimeOffset last, string check) => new()
     {

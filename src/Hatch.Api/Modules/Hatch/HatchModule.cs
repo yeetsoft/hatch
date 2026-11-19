@@ -113,12 +113,14 @@ public static class HatchModule
         services.AddSingleton<IBackupProcess, SystemBackupProcess>();
         services.AddSingleton<BackupService>();
 
-        // Scoped like the two jobs above. No IGooseCheck is registered here:
-        // the sweep takes whatever is, in registration order, and a sweep with
-        // none still records a run. The lock is a singleton because it holds no
-        // state, only takes a connection of its own per sweep.
+        // Scoped like the two jobs above. The lock is a singleton because it
+        // holds no state, only takes a connection of its own per sweep.
         services.AddScoped<IAppJob, GooseJob>();
         services.AddSingleton<IGooseLock, PostgresGooseLock>();
+
+        // The sweep's own checks, in registration order - a sweep with none
+        // still records a run, so this list is additive and never required.
+        services.AddScoped<IGooseCheck, TrainReadyCheck>();
 
         return services;
     }

@@ -2439,6 +2439,119 @@ public class RunnersControllerTests
         Assert.Equal(["AER"], passedOver.Drives);
     }
 
+    // ---- The goose's own clock on a stuck train (HA-2496) ----
+    //
+    // A second clock beside the board's own stall watch above: this one opens
+    // a stored finding a person can read, rather than only passing a driver
+    // over. Only a beat writes a driver_stalled event, so these two tests are
+    // the only place that can exercise the "pass-overs since began" evidence
+    // for real, rather than through a seeded event.
+
+    [Fact]
+    public async Task AStuckTrain_OpensExactlyOneFindingAtTheBound_ThenClosesOnceItMerges()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var head = await h.SeedMergingHeadAsync();
+
+        async Task BeatBothAsync()
+        {
+            await h.BeatAsync("here:/sunfish", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+            await h.BeatAsync("here:/moonfish", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        }
+
+        await BeatBothAsync();
+        await h.SweepGooseAsync();
+        Assert.Empty(await h.Db.GooseFindings.ToListAsync());
+
+        // Four hours in five-minute steps - long enough for many pass-overs
+        // between the two runners, none of which should touch the finding's
+        // own clock. Nothing merges throughout.
+        for (var elapsed = 0; elapsed < 240; elapsed += 5)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(5));
+            await BeatBothAsync();
+            await h.SweepGooseAsync();
+        }
+
+        var finding = await h.Db.GooseFindings.SingleAsync();
+        Assert.Equal("train-ready", finding.Check);
+        Assert.Equal("AER", finding.Subject);
+        Assert.Null(finding.ClosedAt);
+        Assert.Equal(finding.BeganAt.AddMinutes(30), finding.OpenedAt);
+
+        // Later evidence: by four hours in, at least one pass-over has been
+        // written on this head, and the finding's own row carries it.
+        var evidence = GooseFindingEvidence.Read(finding.Evidence);
+        Assert.NotEqual("0", evidence.Single(e => e.Label == "pass-overs").Value);
+
+        // The head merges: carried out of the merges column entirely.
+        var issue = await h.Db.Issues.SingleAsync(i => i.Id == head.Id);
+        issue.StatusId = await h.Db.Statuses.Where(s => !s.MergesPullRequest).Select(s => s.Id).FirstAsync();
+        await h.Db.SaveChangesAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.SweepGooseAsync();
+
+        var closed = await h.Db.GooseFindings.SingleAsync();
+        Assert.Equal(h.Time.GetUtcNow(), closed.ClosedAt);
+    }
+
+    [Fact]
+    public async Task AHeadThatChangesBeforeTheBound_OpensNoFinding_AndTheNewHeadsClockStartsAtItsOwnFirstSighting()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var firstHead = await h.SeedMergingHeadAsync();
+
+        await h.BeatAsync("here:/sunfish", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.SweepGooseAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(15));
+        await h.BeatAsync("here:/sunfish", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.SweepGooseAsync();
+        Assert.Empty(await h.Db.GooseFindings.ToListAsync());
+
+        // The first head merges, out of the column; a second one replaces it
+        // as head - the same merges column SeedMergingHeadAsync's own first
+        // call created, not a second one of its own.
+        var firstIssue = await h.Db.Issues.SingleAsync(i => i.Id == firstHead.Id);
+        var mergesStatusId = firstIssue.StatusId;
+        firstIssue.StatusId = await h.Db.Statuses.Where(s => !s.MergesPullRequest).Select(s => s.Id).FirstAsync();
+        await h.Db.SaveChangesAsync();
+
+        var secondCreated = await h.FileAsync("a second thing");
+        IssueKey.TryParse(secondCreated.Key, out var secondProjectKey, out var secondNumber);
+        var secondHead = await h.Db.Issues.WithKey(secondProjectKey, secondNumber).FirstAsync();
+        secondHead.StatusId = mergesStatusId;
+        secondHead.PullRequestUrl = "https://example.com/o/r/pull/2";
+        await h.Db.SaveChangesAsync();
+
+        var (secondCanonical, _) = RemoteIdentity.Canonical("https://example.com/o/r");
+        h.Db.MergeChecks.Add(new EfHatchMergeCheck
+        {
+            IssueId = secondHead.Id, Remote = "https://example.com/o/r", Canonical = secondCanonical!, Trunk = "main",
+            TrunkSha = new string('a', 40), Verdict = MergeVerdicts.Clean, Branch = "aer-2-a-second-thing",
+            BranchSha = new string('c', 40), HoldsTrunk = true, CheckedAt = Now, Runner = "host:/checkout", CheckedBy = "runner",
+        });
+        h.Db.BuildChecks.Add(new EfHatchBuildCheck
+        {
+            IssueId = secondHead.Id, Remote = "https://example.com/o/r", Canonical = secondCanonical!, Branch = "aer-2-a-second-thing",
+            Sha = new string('c', 40), ShaSince = Now, Verdict = BuildVerdicts.Passed,
+            CheckedAt = Now, Runner = "host:/checkout", CheckedBy = "runner",
+        });
+        await h.Db.SaveChangesAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.BeatAsync("here:/sunfish", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.SweepGooseAsync();
+
+        var sighting = await h.Db.GooseSightings.SingleAsync();
+        Assert.Equal(IssueKey.Format("AER", secondHead.Number), sighting.Token);
+        Assert.Equal(h.Time.GetUtcNow(), sighting.BeganAt);
+        Assert.Empty(await h.Db.GooseFindings.Where(f => f.ClosedAt == null).ToListAsync());
+    }
+
     // ---- Driving a project: whose runner may ----
 
     [Fact]
@@ -6445,6 +6558,16 @@ public class RunnersControllerTests
         public required Func<HatchContext, ProjectsController> BuildProjects { get; init; }
         public required Func<AttentionController> BuildAttention { get; init; }
 
+        /// <summary>A fresh <see cref="TrainReadyCheck"/> over the shared store - fresh because its own cache between <c>ReadAsync</c> and <c>DescribeAsync</c> is good for one sweep only.</summary>
+        public required Func<TrainReadyCheck> BuildGooseCheck { get; init; }
+
+        /// <summary>One sweep of the goose's <c>train-ready</c> check: run it, then save - <see cref="FindingCheck.RunAsync"/> never saves on its own.</summary>
+        public async Task SweepGooseAsync()
+        {
+            await BuildGooseCheck().RunAsync(default);
+            await Db.SaveChangesAsync();
+        }
+
         private int nextRepoOrder;
 
         /// <summary>
@@ -6792,6 +6915,8 @@ public class RunnersControllerTests
             BuildProjects = BuildProjects,
             BuildAttention = () => new AttentionController(
                 db, actors, runners, time, new Dispatch(db, actors, claims, time, keys, sessions), NewBackup(time), keys),
+            BuildGooseCheck = () => new TrainReadyCheck(
+                db, new Dispatch(db, actors, claims, time, keys, sessions), runners, keys, Options.Create(new HatchOptions()), time),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
