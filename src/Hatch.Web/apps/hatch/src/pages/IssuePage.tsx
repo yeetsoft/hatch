@@ -11,7 +11,9 @@ import {
   getComments,
   getDreams,
   getEvents,
+  getIssueCapabilities,
   getIssueDreams,
+  getIssueServes,
   getIssue,
   getIssuePlan,
   getNextWorkUnder,
@@ -73,7 +75,8 @@ import { assigneeHint } from '../lib/assignee';
 import { onePrSaid } from '../lib/onePr';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
-import { repoSourcedOverrideHint } from '../lib/playbookFiles';
+import { repoSourcedOverrideHint, shortSha } from '../lib/playbookFiles';
+import { capabilityStateLabel } from '../lib/capabilities';
 import { submitOmission } from '../lib/runnerOmissions';
 import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, sameTags } from '../lib/runnerTags';
 import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
@@ -115,6 +118,7 @@ import type {
   AssigneeDirectory,
   AssigneeRequest,
   Board,
+  Capability,
   ChildRollup,
   Comment,
   Dream,
@@ -127,6 +131,7 @@ import type {
   HumanWork,
   Project,
   RunnerTagSource,
+  ServedCapability,
   Status,
   Work,
   WorkLog as WorkLogData,
@@ -151,6 +156,9 @@ export function IssuePage() {
   const [next, setNext] = useState<NextAnswer | null>(null);
   const [workLog, setWorkLog] = useState<WorkLogData | null>(null);
   const [workLogError, setWorkLogError] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<Capability[] | null>(null);
+  const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
+  const [serves, setServes] = useState<ServedCapability[] | null>(null);
   /* The speed bump in front of taking a ticket off a runner, and whether the
      clear is in flight. Two flags rather than one, because the dialog stays up
      while the request runs and says so on its own button. */
@@ -237,6 +245,23 @@ export function IssuePage() {
       () => null,
     );
 
+    /* And the ninth: an ambition's capabilities, on the same tolerant terms as
+       the rollup. Sent for every issue type - a non-ambition's 400 is caught
+       here and left for `Capabilities` to never draw, since that section gates
+       on `issue.type` before it looks at the error at all. */
+    const capping = getIssueCapabilities(key).then(
+      (loaded) => ({ loaded, failure: null as string | null }),
+      (err: unknown) => ({ loaded: null, failure: message(err) }),
+    );
+
+    /* And the tenth: what this issue serves. On the same terms as `whom` - a
+       200 for every type, so a failure is dropped rather than given its own
+       line; `Serves` draws nothing until this arrives either way. */
+    const serving = getIssueServes(key).then(
+      (loaded) => loaded,
+      () => null,
+    );
+
     try {
       const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams, loadedRemanded] = await Promise.all([
         getIssue(key),
@@ -268,6 +293,12 @@ export function IssuePage() {
     const metered = await metering;
     setWorkLog(metered.loaded);
     setWorkLogError(metered.failure);
+
+    const capped = await capping;
+    setCapabilities(capped.loaded);
+    setCapabilitiesError(capped.failure);
+
+    setServes(await serving);
   }, [key]);
 
   useEffect(() => {
@@ -1064,6 +1095,8 @@ export function IssuePage() {
           It sits above the dependency chain and the description: an issue's
           children are the work, so "what is this made of" is read before
           "what is it waiting on". */}
+      <Capabilities issue={issue} board={board} capabilities={capabilities} error={capabilitiesError} />
+
       {(filings.length > 0 || issue.childKeys.length > 0) && (
         <Progress
           rollup={rollup}
@@ -1078,6 +1111,8 @@ export function IssuePage() {
           onFiled={() => void load()}
         />
       )}
+
+      <Serves issue={issue} serves={serves} />
 
       <OriginSection issue={issue} board={board} />
 
@@ -1330,6 +1365,37 @@ function DreamsRemandedTo({ dreams, issue, deferred }: { dreams: Dream[]; issue:
 }
 
 /**
+ * What an epic serves: each capability it was filed to further, with the
+ * ambition it belongs to and whether that capability holds.
+ *
+ * Read-only - writing what an epic serves stays HA-2491's, on the CLI.
+ * Omitted entirely off any type but an epic, and off an epic that serves
+ * nothing - the same way FiledSection is omitted when there is nothing to show.
+ */
+export function Serves({ issue, serves }: { issue: Issue; serves: ServedCapability[] | null }) {
+  if (issue.type !== 'epic' || !serves?.length) return null;
+
+  return (
+    <IssueSection id="serves" title="Serves" count={serves.length}>
+      <ul className="hatch-progress-list">
+        {serves.map((row) => (
+          <li key={row.capabilityId} className="hatch-progress-row">
+            <Link to={`/issues/${row.ambitionKey}`} className="hatch-plan-key">
+              {row.ambitionKey}
+            </Link>
+            <span className="text-muted">#{row.position}</span>
+            <span className="hatch-progress-title">{row.statement}</span>
+            <span className={`hatch-capability-state hatch-capability-state-${row.state.replace(/_/g, '-')}`}>
+              {capabilityStateLabel(row.state)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </IssueSection>
+  );
+}
+
+/**
  * The mirrored ancestors of this issue, root first, each with where it came
  * from - read off the parents' own records on the board, so a person reading a
  * task sees the epic it came from. Omitted entirely when no ancestor has a
@@ -1402,6 +1468,110 @@ function DependencyRow({
         </Button>
       )}
     </li>
+  );
+}
+
+/**
+ * An ambition's capabilities: what must be true, how anyone would tell, and
+ * what already holds.
+ *
+ * Read-only - adding and editing a capability stays HA-2491's, on the CLI;
+ * this section only draws the `hatch capability add` command to start one.
+ * Omitted entirely off any type but an ambition.
+ */
+export function Capabilities({
+  issue,
+  board,
+  capabilities,
+  error,
+}: {
+  issue: Issue;
+  board: Board;
+  capabilities: Capability[] | null;
+  error: string | null;
+}) {
+  if (issue.type !== 'ambition') return null;
+
+  const now = new Date();
+
+  return (
+    <IssueSection id="capabilities" title="Capabilities" count={capabilities ? capabilities.length : undefined}>
+      {error && <p className="text-danger">{error}</p>}
+      {!capabilities && !error && <p className="text-muted">Loading…</p>}
+
+      {capabilities && capabilities.length === 0 && (
+        <>
+          <p className="text-muted">This ambition has no capabilities yet.</p>
+          <Command command={`hatch capability add ${issue.key} "<statement>" --how "<how to tell>"`} />
+        </>
+      )}
+
+      {capabilities && capabilities.length > 0 && (
+        <ul className="hatch-capability-list">
+          {capabilities.map((capability) => (
+            <CapabilityRow key={capability.id} capability={capability} board={board} now={now} />
+          ))}
+        </ul>
+      )}
+    </IssueSection>
+  );
+}
+
+/**
+ * One capability: its statement and how to tell, its state and, where the
+ * state came from a verdict, that verdict's own trail - and the epics serving
+ * it.
+ */
+function CapabilityRow({ capability, board, now }: { capability: Capability; board: Board; now: Date }) {
+  const verdict = capability.newestVerdict;
+
+  return (
+    <li className="hatch-capability-row">
+      <span className="text-muted">#{capability.position}</span>
+
+      <div className="hatch-progress-title">
+        <p>{capability.statement}</p>
+        <p className="text-muted">{capability.howToTell}</p>
+      </div>
+
+      <div>
+        <span className={`hatch-capability-state hatch-capability-state-${capability.state.replace(/_/g, '-')}`}>
+          {capabilityStateLabel(capability.state)}
+        </span>
+        {verdict && (
+          <p className="text-muted">
+            {verdict.lookedAt}, {shortSha(verdict.sha)}, by {verdict.author} {agoPhrase(verdict.at, now)}
+          </p>
+        )}
+      </div>
+
+      <div className="hatch-capability-served-by">
+        {capability.servedBy.length === 0 ? (
+          <span className="text-muted">&mdash;</span>
+        ) : (
+          capability.servedBy.map((key) => <ServedByLink key={key} issueKey={key} board={board} />)
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** One epic serving a capability, drawn from the board rather than fetched -
+    the key and its status pill where the board carries it, the bare key
+    otherwise, the same fallback DependencyRow uses. */
+function ServedByLink({ issueKey, board }: { issueKey: string; board: Board }) {
+  const card = board.issues.find((i) => i.key === issueKey);
+  const status = board.statuses.find((s) => s.id === card?.statusId);
+
+  if (!card) return <span className="hatch-plan-key">{issueKey}</span>;
+
+  return (
+    <>
+      <Link to={`/issues/${issueKey}`} className="hatch-plan-key">
+        {issueKey}
+      </Link>
+      {status && <StatusPill status={status} size="sm" />}
+    </>
   );
 }
 
