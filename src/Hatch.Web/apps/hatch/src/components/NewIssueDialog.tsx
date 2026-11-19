@@ -266,6 +266,7 @@ export function NewIssueDialog({
                   value={parent}
                   candidates={parents}
                   emptyMessage={parentEmptyMessage(projectKey, type)}
+                  homeProject={projectKey}
                   onChange={async (key) => setParentKey(key || null)}
                 />
               </Field>

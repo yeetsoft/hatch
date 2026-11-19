@@ -62,7 +62,9 @@ be a legal type for this one (above), and form no cycle. It may stand in
 another project. The one exception is a task under a story or bug that shares
 [one pull request](#one-pull-request): the task has to stay in that story's
 project, since one pull request is one branch in one repository, and the
-refusal names the story. Moving an issue to another project carries only the
+refusal names the story. The web picker - the issue page's Details card and
+the New issue dialog - lists candidates from every project you can see, the
+issue's own project first. Moving an issue to another project carries only the
 children that are in its own project, and the parent stays: the moved issue
 keeps its own parent, and a child in another project, or one left behind with
 `moveDescendants: false`, stays where it is and keeps its link to the moved
