@@ -424,6 +424,15 @@ name 400s, naming the levels. Nothing in dispatch reads the level yet.
 `IssueDto` and `IssueCardDto` also carry `preApprovalPassedOver` and `priorityPassedOver`: the key of the
 nearest ancestor whose level was passed over at a project line because its setter has no say in this
 ticket's project (or none was recorded), or null. Read live, beside `preApprovalFrom` and `priorityFrom`.
+`IssueDto` and `IssueCardDto` also say what a reader is told of a link with a hidden side,
+where the project at the other end is outside the reader's scope. `parentBeyondScope` is true when the
+parent is there and `parentKey` is null; `childBeyondScope` is true when some child is there and
+`childKeys` holds none of it, with no count. `fromBeyondScope` lists the values whose from-key was blanked
+because the ancestor it names is outside the scope - any of `priority`, `preApproval`, `localModel`,
+`onePr`, `dangerous`, `preApprovalPassedOver` and `priorityPassedOver` - and the value itself still
+applies. A `runnerTagsFrom` source or an `omittedRunners` entry from such an ancestor has a blank key and
+`beyondScope: true`; a null omission `fromKey` still means the issue's own. All default to false or
+empty, and a reader whose scope holds everything never sees one set.
 `IssueDto` also carries `startedBy` (a name, or null for a key's move, an issue started before this was
 recorded, or one never started) and `startedAt` (null only where it never crossed): written the first time
 a move, a PATCH, a bulk edit or a hop carries the issue rightward across the board's send-back column, and

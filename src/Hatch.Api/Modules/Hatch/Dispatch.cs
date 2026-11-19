@@ -178,8 +178,12 @@ public sealed class Dispatch(
         // between two rows could fold one card and not its neighbour for a
         // reason nobody could reconstruct afterwards.
         // Read once for the pass: the claim lineage, the dependency gate and the
-        // family gate all answer one-PR questions from it.
-        var tree = await PriorityTree.ForAsync(db, actors, ct);
+        // family gate all answer one-PR questions from it. Read whole, whatever
+        // the calling key's owner may see: a level on a hidden ancestor still
+        // applies, and a parent is never closed over a child the key cannot
+        // see. The issue dispatched is still one the key can see - the
+        // candidates below come through the filter.
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, actors, now, ct, tree));
 
@@ -1282,7 +1286,7 @@ public sealed class Dispatch(
             .ToListAsync(ct);
         if (inTrain.Count == 0) return [];
 
-        var tree = await PriorityTree.ForAsync(db, actors, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         // The same fold ScanAsync's own FamilyGate wraps as IsWaiting, read
         // directly rather than through it: a merges column is a handful of
@@ -3400,6 +3404,69 @@ public sealed record HasDeclaration(IReadOnlyList<string> Has, bool Judged)
 /// <summary>A level the walk passed over at a project line: what it was, and the key of the ancestor that carries it.</summary>
 public readonly record struct PassedOverLevel(int Level, string Key);
 
+/// <summary>The names <see cref="Disclosure.FromBeyondScope"/> lists - the value whose from-key was blanked.</summary>
+public static class DisclosedValues
+{
+    public const string Priority = "priority";
+    public const string PreApproval = "preApproval";
+    public const string LocalModel = "localModel";
+    public const string OnePr = "onePr";
+    public const string Dangerous = "dangerous";
+    public const string PreApprovalPassedOver = "preApprovalPassedOver";
+    public const string PriorityPassedOver = "priorityPassedOver";
+}
+
+/// <summary>
+/// What one reader is told about the links of one issue - see
+/// <see cref="PriorityTree.Disclose"/>. A value that came from an ancestor in
+/// a project the reader cannot see still applies; what leaves is the value and
+/// a flag that it came from outside the scope, never the ancestor's key.
+/// </summary>
+public sealed class Disclosure
+{
+    private readonly HashSet<string>? visibleKeys;
+    private readonly List<string> beyond = [];
+
+    internal Disclosure(HashSet<string>? visibleKeys, bool parentBeyondScope, bool childBeyondScope)
+    {
+        this.visibleKeys = visibleKeys;
+        ParentBeyondScope = parentBeyondScope;
+        ChildBeyondScope = childBeyondScope;
+    }
+
+    /// <summary>The issue has a parent in a project the reader cannot see.</summary>
+    public bool ParentBeyondScope { get; }
+
+    /// <summary>Some child of the issue is in a project the reader cannot see.</summary>
+    public bool ChildBeyondScope { get; }
+
+    /// <summary>The value names whose from-key was blanked, in the order they were asked - see <see cref="DisclosedValues"/>.</summary>
+    public IReadOnlyList<string> FromBeyondScope => beyond.Count == 0 ? [] : beyond;
+
+    private bool Hidden(string key) => visibleKeys is not null && !visibleKeys.Contains(key);
+
+    /// <summary>The from-key of <paramref name="value"/>, or null where it names an issue the reader cannot see - and then the value is recorded in <see cref="FromBeyondScope"/>.</summary>
+    public string? Key(string value, string? fromKey)
+    {
+        if (fromKey is null || !Hidden(fromKey)) return fromKey;
+
+        if (!beyond.Contains(value)) beyond.Add(value);
+        return null;
+    }
+
+    /// <summary>The runner-tag sources, each from an issue the reader cannot see with its key blank and <c>BeyondScope</c> set. The tags themselves stay.</summary>
+    public IReadOnlyList<RunnerTagSourceDto> Tags(IReadOnlyList<RunnerTagSourceDto> from) =>
+        visibleKeys is null || !from.Any(s => s.Kind == RunnerTagSourceKinds.Issue && Hidden(s.Key))
+            ? from
+            : from.Select(s => s.Kind == RunnerTagSourceKinds.Issue && Hidden(s.Key) ? s with { Key = "", BeyondScope = true } : s).ToList();
+
+    /// <summary>The omissions, each from an issue the reader cannot see with its key blank - not null, which means the issue's own - and <c>BeyondScope</c> set.</summary>
+    public IReadOnlyList<RunnerOmissionDto> Omissions(IReadOnlyList<RunnerOmissionDto> list) =>
+        visibleKeys is null || !list.Any(o => o.FromKey is { } key && Hidden(key))
+            ? list
+            : list.Select(o => o.FromKey is { } key && Hidden(key) ? o with { FromKey = "", BeyondScope = true } : o).ToList();
+}
+
 /// <summary>
 /// The parent/key/priority of every issue, read once, and the question
 /// "what priority is live here" answered against it by walking to the
@@ -3460,6 +3527,17 @@ public sealed class PriorityTree
     // the set contains the id, never which children.
     private readonly HashSet<long> _parents;
 
+    // The ids a reader's scope holds, or null where every row read is seen -
+    // a tree read whole for the dispatcher, or built by hand. Only a display
+    // path sets it; see ForReaderAsync and Disclose.
+    private readonly HashSet<long>? _visible;
+
+    // The ids of parents with at least one child outside _visible, and the
+    // display keys of the rows inside it - both built once beside _parents,
+    // since Disclose asks of each issue and each key.
+    private readonly HashSet<long> _hiddenChildParents;
+    private readonly HashSet<string>? _visibleKeys;
+
     internal PriorityTree(
         Dictionary<long, (long?, string, int, int)> rows,
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
@@ -3470,9 +3548,11 @@ public sealed class PriorityTree
         Dictionary<long, int>? localModels = null,
         Dictionary<long, int>? projects = null,
         Dictionary<long, (Guid?, Guid?)>? setters = null,
-        SetterAuthority? authority = null)
+        SetterAuthority? authority = null,
+        HashSet<long>? visible = null)
     {
         _rows = rows;
+        _visible = visible;
         _setters = setters ?? new();
         _authority = authority ?? SetterAuthority.Nobody;
         _projects = projects ?? new();
@@ -3486,7 +3566,45 @@ public sealed class PriorityTree
             .Where(r => r.Item1 is not null)
             .Select(r => r.Item1!.Value)
             .ToHashSet();
+        _hiddenChildParents = visible is null
+            ? []
+            : rows.Where(r => r.Value.Item1 is not null && !visible.Contains(r.Key))
+                .Select(r => r.Value.Item1!.Value)
+                .ToHashSet();
+        _visibleKeys = visible?.Where(rows.ContainsKey).Select(id => rows[id].Item2).ToHashSet(StringComparer.Ordinal);
     }
+
+    // The same rows, read for one reader: what WithVisible returns. Every
+    // dictionary is shared - none is written after construction.
+    private PriorityTree(PriorityTree whole, HashSet<long> visible)
+    {
+        _rows = whole._rows;
+        _onePr = whole._onePr;
+        _runnerTags = whole._runnerTags;
+        _dangerous = whole._dangerous;
+        _localModels = whole._localModels;
+        _projects = whole._projects;
+        _setters = whole._setters;
+        _authority = whole._authority;
+        _projectLevels = whole._projectLevels;
+        _omissions = whole._omissions;
+        _parents = whole._parents;
+        _visible = visible;
+        _hiddenChildParents = whole._rows.Where(r => r.Value.ParentId is not null && !visible.Contains(r.Key))
+            .Select(r => r.Value.ParentId!.Value)
+            .ToHashSet();
+        _visibleKeys = visible.Where(whole._rows.ContainsKey).Select(id => whole._rows[id].Key).ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The ids of the issues the context's scope holds, or null for a context
+    /// that reads every project, where nothing is to be disclosed.
+    /// </summary>
+    public static async Task<HashSet<long>?> VisibleIdsAsync(HatchContext db, CancellationToken ct) =>
+        db.ScopeUnbounded ? null : (await db.Issues.AsNoTracking().Select(i => i.Id).ToListAsync(ct)).ToHashSet();
+
+    /// <summary>This tree's rows read for a reader whose scope holds <paramref name="visible"/>; this tree itself when that is null.</summary>
+    public PriorityTree WithVisible(HashSet<long>? visible) => visible is null ? this : new(this, visible);
 
     /// <param name="ignoreFilters">
     /// Read every project, not the caller's. Only the house-wide counts in
@@ -3499,7 +3617,24 @@ public sealed class PriorityTree
     /// Required, not optional: a tree built without it would honour nothing
     /// across a line and say nothing about why.
     /// </param>
-    public static async Task<PriorityTree> ForAsync(HatchContext db, IActorDirectory actors, CancellationToken ct, bool ignoreFilters = false)
+    public static Task<PriorityTree> ForAsync(HatchContext db, IActorDirectory actors, CancellationToken ct, bool ignoreFilters = false) =>
+        ForAsync(db, actors, ct, ignoreFilters, visible: null);
+
+    /// <summary>
+    /// The tree a display path reads: every project, so a level that came from
+    /// an ancestor in a project the reader cannot see still applies, and the
+    /// ids the reader's own scope holds beside it, so <see cref="Disclose"/>
+    /// can blank what would name a hidden issue. An unbounded context skips
+    /// the second read and discloses nothing. It adds no opt-out of its own:
+    /// the whole read is <see cref="ForAsync"/>'s, and the scoped read is an
+    /// ordinary filtered query.
+    /// </summary>
+    public static async Task<PriorityTree> ForReaderAsync(HatchContext db, IActorDirectory actors, CancellationToken ct)
+    {
+        return await ForAsync(db, actors, ct, ignoreFilters: true, await VisibleIdsAsync(db, ct));
+    }
+
+    private static async Task<PriorityTree> ForAsync(HatchContext db, IActorDirectory actors, CancellationToken ct, bool ignoreFilters, HashSet<long>? visible)
     {
         var issues = ignoreFilters ? db.Issues.IgnoreQueryFilters() : db.Issues;
         var omissions = ignoreFilters ? db.RunnerOmissions.IgnoreQueryFilters() : db.RunnerOmissions;
@@ -3539,8 +3674,20 @@ public sealed class PriorityTree
             rows.ToDictionary(r => r.Id, r => r.LocalModel),
             rows.ToDictionary(r => r.Id, r => r.ProjectId),
             rows.ToDictionary(r => r.Id, r => (r.PreApprovalSetBy, r.PrioritySetBy)),
-            authority);
+            authority,
+            visible);
     }
+
+    /// <summary>
+    /// What a reader may be told about the links of one issue: whether its
+    /// parent, or some child, sits outside the reader's scope, and each
+    /// from-key run through the reader's scope. A tree built with no visible
+    /// set discloses nothing, and every key passes unchanged.
+    /// </summary>
+    public Disclosure Disclose(long id) => new(
+        _visibleKeys,
+        _visible is not null && TryGet(id, out var row) && row.ParentId is { } parent && _rows.ContainsKey(parent) && !_visible.Contains(parent),
+        _hiddenChildParents.Contains(id));
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
 
@@ -4049,6 +4196,9 @@ public sealed class DependencyGate
     }
 
     /// <summary>The priority live on this issue - see <see cref="PriorityTree.Effective"/>.</summary>
+    /// <summary>The gate's tree read for a reader whose scope holds <paramref name="visible"/> - see <see cref="PriorityTree.WithVisible"/>.</summary>
+    public PriorityTree ForReader(HashSet<long>? visible) => _tree.WithVisible(visible);
+
     public (int Level, string? FromKey) Effective(long issueId) => _tree.Effective(issueId);
 
     /// <summary>The level of this issue's project - see <see cref="PriorityTree.ProjectLevel"/>.</summary>

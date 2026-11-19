@@ -44,6 +44,13 @@ public class HatchContext : DbContext, IModuleContext
     private bool Unbounded => Scope.Unbounded;
     private int[] Visible => Scope.Ids;
 
+    /// <summary>
+    /// Whether this context reads every project - the same answer the query
+    /// filters open with. For the one reader that needs to know whether a
+    /// second, scoped read would add anything: <see cref="PriorityTree.ForReaderAsync"/>.
+    /// </summary>
+    public bool ScopeUnbounded => Unbounded;
+
     public DbSet<EfHatchProject> Projects => Set<EfHatchProject>();
     public DbSet<EfHatchProjectRepository> ProjectRepositories => Set<EfHatchProjectRepository>();
     public DbSet<EfHatchProjectMember> ProjectMembers => Set<EfHatchProjectMember>();

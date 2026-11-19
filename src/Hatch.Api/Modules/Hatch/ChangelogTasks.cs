@@ -176,7 +176,7 @@ public static class ChangelogTasks
         // above it will.
         var parentless = !EfHatchIssue.LegalParentTypes["task"].Contains(closed.Type);
         var preApproval = parentless
-            ? (await PriorityTree.ForAsync(db, actors, ct)).EffectivePreApproval(closed.Id).Level
+            ? (await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true)).EffectivePreApproval(closed.Id).Level
             : PreApprovalLevels.None;
 
         for (var attempt = 1; ; attempt++)

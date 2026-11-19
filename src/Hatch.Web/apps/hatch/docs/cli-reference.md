@@ -679,7 +679,9 @@ ancestor. A ticket at a local-model level of `prefer` or `require` prints a
 `local model:` line, naming the ancestor when the level is inherited, and a
 ticket at `none` prints nothing. A ticket in an expedited or paused project also gets a
 `priority:  project <KEY> expedited` or `paused` line after its own, and a
-normal project prints nothing. A ticket that requires a runner tag says so too, naming the project or
+normal project prints nothing. A ticket whose parent is in a project outside your scope prints `parent:   in a project outside your scope`
+instead of a key, and one with a child there adds `children: some are in a project outside your scope`;
+neither names the hidden ticket. A ticket that requires a runner tag says so too, naming the project or
 the ancestor issue each tag beyond its own came from. A ticket with omitted runners lists each one with its reason, who omitted it and how long ago, in the shape `hatch omit AER-12` reads, with `(from AER-3)` on one an ancestor carries, and says nothing of them when there are none. None of those can be set from here: the key is a key, and each is a
 person's write. A ticket a live runner holds says so on a `runner:` line - who
 holds it, since when, and how long ago it was last heard from, with what it

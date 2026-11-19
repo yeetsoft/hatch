@@ -778,15 +778,33 @@ every project to answer correctly and returns no content:
 
 1. House-wide WIP counts, in `Wip`: the limit is the house's. The priority tree
    it reads is read the same way (`PriorityTree.ForAsync(ignoreFilters: true)`).
+   So is the dispatcher's: the dispatch scan, the merge-train read, the claim
+   lineage, the close-with-story read and the attention counts read the tree
+   whole, whatever the calling key's owner may see, so a level on a hidden
+   ancestor counts and a parent is never closed over a child the key cannot see.
 2. Rank placement, in `RankService`: a column is shared by every project.
-3. The dependency gate, in `Dispatch`: a blocker in a hidden project still
-   blocks. It reads the same tree.
+3. The dependency gate and the family gate, in `Dispatch`: a blocker in a
+   hidden project still blocks, and a child in one still counts as open. Each
+   reads the same tree, and neither is ever handed a scoped one.
 4. `ProjectRepositoryBinding.WinnersAsync`: the project a repository belongs to
    is the same whoever asks.
 5. The changelog file, in `ChangelogFiles`: the same bytes for every caller.
 6. Whether a project key is taken, in `ProjectsController.KeyTakenAsync`: a key
    is unique across the house, so a hidden project's key is taken too. It
    returns one bool, no row.
+
+**The reader tree.** A projection reads that same whole tree - a level that came
+from a hidden ancestor still applies, since the loop acts on it - and lays the
+reader's scope over it: `PriorityTree.ForReaderAsync` reads the ids the context
+holds, with no opt-out of its own, and skips that read for an unbounded context.
+`PriorityTree.Disclose` then says, for one issue, whether its parent or some
+child is hidden, and runs every from-key through the scope: a key naming a
+hidden issue leaves as null and its value is listed in `FromBeyondScope`; a
+runner-tag source or omission from one leaves with a blank key and
+`BeyondScope` set. The `Effective*` reads keep returning the real keys, since
+the dispatcher's own sentences use them. What leaves is a level or a flag,
+never a hidden key. `IssueRunnerOmissionsController` still reads scoped: its
+`404` sentence names the ancestor.
 
 A seventh sits inside the model, in the playbook proposal filter, to break a loop:
 a change's filter reads its proposal and the proposal's filter reads its changes,

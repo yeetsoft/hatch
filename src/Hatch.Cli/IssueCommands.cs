@@ -208,8 +208,12 @@ public sealed class IssueCommands(Cli cli)
                 ? $"stories at once: {limit}"
                 : "stories at once: no limit");
         }
+        // A link with a hidden side is told as a sentence and never as a key:
+        // the reader's scope does not hold that project.
         if (issue.ParentKey is { Length: > 0 } parent) cli.Say.Line($"parent:   {parent}");
+        else if (issue.ParentBeyondScope) cli.Say.Line("parent:   in a project outside your scope");
         if (issue.ChildKeys.Count > 0) cli.Say.Line($"children: {string.Join(", ", issue.ChildKeys)}");
+        if (issue.ChildBeyondScope) cli.Say.Line("children: some are in a project outside your scope");
         if (issue.FiledFromKey is { Length: > 0 } filedFrom) cli.Say.Line($"filed from: {filedFrom}");
         if (issue.FiledKeys.Count > 0) cli.Say.Line($"filed:    {string.Join(", ", issue.FiledKeys)}");
         if (issue.DependsOnKeys.Count > 0) cli.Say.Line($"depends:  {string.Join(", ", issue.DependsOnKeys)}");
