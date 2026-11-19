@@ -188,6 +188,18 @@ public class HatchOptions
     public int GooseTrainReadyMinutes { get; set; } = 30;
 
     /// <summary>
+    /// How many hours a question may wait on a person before the
+    /// <c>questions-waiting</c> check opens a finding - see
+    /// <see cref="QuestionsWaitingCheck"/>. A question counts once it is this old.
+    /// </summary>
+    /// <remarks>
+    /// Zero turns the check off, as <see cref="GooseTrainReadyMinutes"/>'s zero
+    /// does. A negative falls back to the default. The guard is
+    /// <see cref="GooseSettings.QuestionBound"/>.
+    /// </remarks>
+    public int GooseQuestionHours { get; set; } = 24;
+
+    /// <summary>
     /// Absolute base URL of this Hatch install as it should be *printed* -
     /// e.g. "https://home.example.com". Empty by default and supplied at
     /// deploy (compose.yaml passes <c>Hatch__PublicBaseUrl</c> from the
