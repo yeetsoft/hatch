@@ -317,7 +317,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         var shared = new Dictionary<long, long>();
         if (live.Count > 0)
         {
-            priorities ??= await PriorityTree.ForAsync(db, actors, ct);
+            priorities ??= await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
             foreach (var id in keys.Keys)
                 if (priorities.SharedStoryOf(id) is { } story) shared[id] = story;
         }

@@ -44,10 +44,10 @@ public class SearchControllerTests
             .ToDictionary(c => c.Key);
         foreach (var hit in result.Hits)
         {
-            // The runner-tag and omitted-runner fields are lists, which a record compares by reference.
+            // The runner-tag, omitted-runner and from-beyond-scope fields are lists, which a record compares by reference.
             Assert.Equal(
-                cards[hit.Card.Key] with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [] },
-                hit.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [] });
+                cards[hit.Card.Key] with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [], FromBeyondScope = [] },
+                hit.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [], FromBeyondScope = [] });
             Assert.Equal(cards[hit.Card.Key].RunnerTagsOwn, hit.Card.RunnerTagsOwn);
             Assert.Equal(cards[hit.Card.Key].RunnerTags, hit.Card.RunnerTags);
             Assert.Equal(cards[hit.Card.Key].RunnerTagsFrom, hit.Card.RunnerTagsFrom);
@@ -395,9 +395,9 @@ public class SearchControllerTests
         public bool Equals(SearchDto? x, SearchDto? y) =>
             x is not null && y is not null && x.Total == y.Total && x.Hits.Count == y.Hits.Count &&
             x.Hits.Zip(y.Hits).All(p =>
-                // The runner-tag and omitted-runner fields are lists, which a record compares by reference.
-                p.First.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [] } ==
-                p.Second.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [] } &&
+                // The runner-tag, omitted-runner and from-beyond-scope fields are lists, which a record compares by reference.
+                p.First.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [], FromBeyondScope = [] } ==
+                p.Second.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [], FromBeyondScope = [] } &&
                 p.First.Card.RunnerTagsOwn.SequenceEqual(p.Second.Card.RunnerTagsOwn) &&
                 p.First.Card.RunnerTags.SequenceEqual(p.Second.Card.RunnerTags) &&
                 p.First.Card.RunnerTagsFrom.SequenceEqual(p.Second.Card.RunnerTagsFrom) &&

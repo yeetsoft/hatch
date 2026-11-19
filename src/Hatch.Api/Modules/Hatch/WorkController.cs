@@ -503,7 +503,7 @@ public class WorkController(
         // to check - its work is on the story's, which is checked as the story
         // - so a poll that went looking for one named for the task would find
         // none and report that, for every task, until the story merged.
-        var tree = await PriorityTree.ForAsync(db, actors, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
         var held = rows
             .Where(i => Dispatch.HoldsCheckout(i.Project!.Repositories, repos) && tree.WaitingOn(i.Id, statuses) is null)
             .ToList();
@@ -1096,7 +1096,7 @@ public class WorkController(
         // change a merge writes, naming the story.
         if (issue.Type is "story" or "bug")
         {
-            var tree = await PriorityTree.ForAsync(db, actors, ct);
+            var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
             var storyKey = IssueKey.Format(projectKey, number);
             var waitingIds = tree.WaitingUnder(issue.Id, statuses);
 
@@ -1467,11 +1467,15 @@ public class WorkController(
             })
             .ToListAsync(ct);
 
+        // What the caller is told about each child's links: the gate's tree is
+        // read whole, so the reader's scope is laid over it here.
+        var reader = gate.ForReader(await PriorityTree.VisibleIdsAsync(db, ct));
         var childCards = new List<IssueCardDto>(children.Count);
         foreach (var c in children)
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = gate.EffectivePreApproval(c.Id);
             var passedOver = gate.PassedOver(c.Id);
+            var disclosed = reader.Disclose(c.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = gate.EffectiveLocalModel(c.Id);
             var (onePr, onePrOwn, onePrFrom) = gate.EffectiveOnePr(c.Id);
             childCards.Add(new IssueCardDto(
@@ -1491,22 +1495,25 @@ public class WorkController(
                 Priority: PriorityLevels.Name(c.Priority),
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
-                PreApprovalFrom: effectivePreApprovalFrom,
-                PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                PriorityPassedOver: passedOver.Priority?.Key,
+                PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(c.LocalModel),
-                LocalModelFrom: effectiveLocalModelFrom,
+                LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                 StalledAt: c.StalledAt,
                 StalledWhy: c.StalledWhy,
                 Held: c.Held,
                 PullRequestUrl: c.PullRequestUrl,
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
-                OnePrFrom: onePrFrom,
+                OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                 ClosedAt: c.ClosedAt,
                 NoCode: c.NoCode,
-                CreatedBy: c.CreatedBy));
+                CreatedBy: c.CreatedBy,
+                ParentBeyondScope: disclosed.ParentBeyondScope,
+                ChildBeyondScope: disclosed.ChildBeyondScope,
+                FromBeyondScope: disclosed.FromBeyondScope));
         }
 
         // What runners reported about the branch, for an issue in review: the

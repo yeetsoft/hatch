@@ -43,7 +43,7 @@ public class PlanController(
         if (issue is null) return NotFound();
 
         var tree = await Rollup.LoadAsync(db, ct);
-        var priorities = await PriorityTree.ForAsync(db, actors, ct);
+        var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
 
         var children = await db.Issues.AsNoTracking()
             .Where(i => i.ParentId == issue.Id)
@@ -89,6 +89,7 @@ public class PlanController(
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(c.Id);
             var passedOver = priorities.PassedOver(c.Id);
+            var disclosed = priorities.Disclose(c.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(c.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(c.Id);
             rows.Add(new ChildRollupDto(
@@ -109,22 +110,25 @@ public class PlanController(
                     Priority: PriorityLevels.Name(c.Priority),
                     PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                     PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
-                    PreApprovalFrom: effectivePreApprovalFrom,
-                    PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                    PriorityPassedOver: passedOver.Priority?.Key,
+                    PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                    PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                    PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                     LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                     LocalModelOwn: LocalModelLevels.Name(c.LocalModel),
-                    LocalModelFrom: effectiveLocalModelFrom,
+                    LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                     StalledAt: c.StalledAt,
                     StalledWhy: c.StalledWhy,
                     Held: c.Held,
                     PullRequestUrl: c.PullRequestUrl,
                     OnePr: onePr,
                     OnePrOwn: onePrOwn,
-                    OnePrFrom: onePrFrom,
+                    OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                     ClosedAt: c.ClosedAt,
                     NoCode: NoCode.OnCard(c.NoCode, c.Id, priorities),
-                    CreatedBy: c.CreatedBy),
+                    CreatedBy: c.CreatedBy,
+                    ParentBeyondScope: disclosed.ParentBeyondScope,
+                    ChildBeyondScope: disclosed.ChildBeyondScope,
+                    FromBeyondScope: disclosed.FromBeyondScope),
                 tree.IsLeaf(c.Id),
                 tree.Of(c.Id)));
         }
@@ -154,7 +158,7 @@ public class PlanController(
     public async Task<ActionResult<PlanDto>> GetPlan([FromQuery] List<int>? projectId, CancellationToken ct)
     {
         var tree = await Rollup.LoadAsync(db, ct);
-        var priorities = await PriorityTree.ForAsync(db, actors, ct);
+        var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
         var projectIds = (projectId ?? []).Distinct().ToList();
 
         var epics = await InProject(db.Issues.AsNoTracking().Where(i => i.Type == Epic), projectIds)
@@ -251,6 +255,7 @@ public class PlanController(
                 var row = byId[id];
                 var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(id);
                 var passedOver = priorities.PassedOver(id);
+                var disclosed = priorities.Disclose(id);
                 var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(id);
                 var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(id);
 
@@ -272,22 +277,25 @@ public class PlanController(
                         Priority: PriorityLevels.Name(row.Priority),
                         PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                         PreApprovalOwn: PreApprovalLevels.Name(row.PreApproval),
-                        PreApprovalFrom: effectivePreApprovalFrom,
-                        PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                        PriorityPassedOver: passedOver.Priority?.Key,
+                        PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                        PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                        PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                         LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                         LocalModelOwn: LocalModelLevels.Name(row.LocalModel),
-                        LocalModelFrom: effectiveLocalModelFrom,
+                        LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                         StalledAt: row.StalledAt,
                         StalledWhy: row.StalledWhy,
                         Held: row.Held,
                         PullRequestUrl: row.PullRequestUrl,
                         OnePr: onePr,
                         OnePrOwn: onePrOwn,
-                        OnePrFrom: onePrFrom,
+                        OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                         ClosedAt: row.ClosedAt,
                         NoCode: NoCode.OnCard(row.NoCode, id, priorities),
-                        CreatedBy: row.CreatedBy),
+                        CreatedBy: row.CreatedBy,
+                        ParentBeyondScope: disclosed.ParentBeyondScope,
+                        ChildBeyondScope: disclosed.ChildBeyondScope,
+                        FromBeyondScope: disclosed.FromBeyondScope),
                     tree.IsLeaf(id),
                     // The whole subtree, not the epics below it: an epic's
                     // meter is its stories and their tasks, and the nested

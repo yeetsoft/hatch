@@ -216,7 +216,7 @@ public class SearchController(
             .ToListAsync(ct);
 
         var now = time.GetUtcNow();
-        var priorities = await PriorityTree.ForAsync(db, actors, ct);
+        var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
 
         var hits = new List<SearchHitDto>(rows.Count);
         foreach (var i in rows)
@@ -224,6 +224,7 @@ public class SearchController(
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
             var passedOver = priorities.PassedOver(i.Id);
+            var disclosed = priorities.Disclose(i.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
@@ -252,31 +253,34 @@ public class SearchController(
                 PriorityOwn: PriorityLevels.Name(i.Priority),
                 RunnerTagsOwn: RunnerTagColumn.Read(i.RunnerTags),
                 RunnerTags: effectiveRunnerTags,
-                RunnerTagsFrom: effectiveRunnerTagsFrom,
+                RunnerTagsFrom: disclosed.Tags(effectiveRunnerTagsFrom),
                 DangerousOwn: i.Dangerous,
                 Dangerous: dangerous,
-                DangerousFrom: dangerousFrom,
+                DangerousFrom: disclosed.Key(DisclosedValues.Dangerous, dangerousFrom),
                 OmittedRunnersOwn: omittedRunnersOwn,
-                OmittedRunners: omittedRunners,
-                PriorityFrom: effectiveFrom,
+                OmittedRunners: disclosed.Omissions(omittedRunners),
+                PriorityFrom: disclosed.Key(DisclosedValues.Priority, effectiveFrom),
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
-                PreApprovalFrom: effectivePreApprovalFrom,
-                PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                PriorityPassedOver: passedOver.Priority?.Key,
+                PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
-                LocalModelFrom: effectiveLocalModelFrom,
+                LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,
                 PullRequestUrl: i.PullRequestUrl,
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
-                OnePrFrom: onePrFrom,
+                OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                 ClosedAt: i.ClosedAt,
                 NoCode: i.NoCode,
-                CreatedBy: i.CreatedBy);
+                CreatedBy: i.CreatedBy,
+                ParentBeyondScope: disclosed.ParentBeyondScope,
+                ChildBeyondScope: disclosed.ChildBeyondScope,
+                FromBeyondScope: disclosed.FromBeyondScope);
 
             var matched = new List<string>(4);
             if (i.TitleMatched) matched.Add("title");

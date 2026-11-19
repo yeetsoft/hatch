@@ -2073,6 +2073,92 @@ public class DispatchTests
         Assert.Null(RowFor(scan, passed).HopKind);
     }
 
+    // ---- A parent link with a hidden side (HA-2468): the dispatcher reads the whole tree ----
+
+    /// <summary>A scan as a key whose owner can see only <paramref name="projects"/> would run it.</summary>
+    private static Task<Scan> ScanAsAsync(Harness h, params int[] projects) =>
+        new Dispatch(ScopeSeed.Request(h.Options, ScopeSeed.Only(projects)), h.Actors, TestClaims.With(), new FakeTimeProvider(Now))
+            .ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+    [Fact]
+    public async Task ScanAsync_AKeyWhoseOwnerSeesOneProject_IsDispatchedTheLevelOfAHiddenAncestor_AndClosesTheSameHop()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+
+        // A story in AER under a pre-approved epic in OTH, whose only child is done: an honoured level that closes.
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        await h.SetLevelAsync(epic, PreApprovalLevels.PreApproved, ada.Id);
+        var story = await h.FileAsync("story", "ready to close", h.Review, parentId: epic.Id);
+        await h.FileAsync("task", "the only child", h.Done, parentId: story.Id);
+
+        var whole = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var narrow = await ScanAsAsync(h, h.ProjectId);
+
+        Assert.Equal(HopKinds.Close, RowFor(whole, story).HopKind);
+        Assert.Equal(HopKinds.Close, RowFor(narrow, story).HopKind);
+        Assert.Equal(RowFor(whole, story).Blocked, RowFor(narrow, story).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AKeyWhoseOwnerSeesOneProject_RanksAHiddenAncestorsPriorityExactlyAsAnUnboundedKeyDoes()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet");
+        var plain = await h.FileAsync("story", "plain", h.Todo);
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        await h.SetLevelAsync(epic, PreApprovalLevels.None, ada.Id, priority: PriorityLevels.Emergency);
+        var under = await h.FileAsync("story", "under the emergency", h.Todo, rank: 2048, parentId: epic.Id);
+
+        var whole = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var narrow = await ScanAsAsync(h, h.ProjectId);
+
+        Assert.Equal(PriorityLevels.Emergency, RowFor(whole, under).EffectivePriority);
+        Assert.Equal(PriorityLevels.Emergency, RowFor(narrow, under).EffectivePriority);
+        // The same order for what the key can see: the hidden epic is the only row it lacks.
+        Assert.Equal(whole.Rows.Select(r => r.Issue.Id).Where(id => id != epic.Id), narrow.Rows.Select(r => r.Issue.Id));
+
+        // What the key is not told is the hidden epic as a row of its own: it is no candidate for
+        // this key, so no sentence of the key's scan names it.
+        Assert.DoesNotContain(narrow.Rows, r => r.Issue.Id == epic.Id);
+        Assert.DoesNotContain(narrow.Rows, r => r.Blocked is { } b && b.Contains("OTH-"));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AKeyWhoseOwnerSeesOneProject_NeverClosesAParentOverAChildItCannotSee()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+
+        // Both parents are pre-approved and in review with a done child in their own project; one also
+        // has a child in OTH that is not done - which the key cannot see.
+        var closable = await h.FileAsync("story", "all done", h.Review);
+        await h.SetLevelAsync(closable, PreApprovalLevels.PreApproved, ada.Id);
+        await h.FileAsync("task", "done", h.Done, parentId: closable.Id);
+        var hidden = await h.FileAsync("story", "a child elsewhere", h.Review);
+        await h.SetLevelAsync(hidden, PreApprovalLevels.PreApproved, ada.Id);
+        await h.FileAsync("task", "done", h.Done, parentId: hidden.Id);
+        await h.FileAsync("task", "not done, hidden", h.Todo, projectId: other, parentId: hidden.Id);
+
+        var whole = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var narrow = await ScanAsAsync(h, h.ProjectId);
+
+        Assert.Equal(HopKinds.Close, RowFor(whole, closable).HopKind);
+        Assert.Equal(HopKinds.Close, RowFor(narrow, closable).HopKind);
+        Assert.Null(RowFor(whole, hidden).HopKind);
+        Assert.Null(RowFor(narrow, hidden).HopKind);
+        Assert.Equal(RowFor(whole, hidden).Blocked, RowFor(narrow, hidden).Blocked);
+        Assert.DoesNotContain(narrow.Rows, r => r.Issue.ProjectId == other);
+    }
+
     [Fact]
     public async Task ScanAsync_AReviewChildUnderAnEpicPreApprovedByAStranger_IsNotApprovedMergedOrClosed_UntilAnApproverSetsTheLevelOnTheChild()
     {

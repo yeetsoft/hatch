@@ -349,6 +349,20 @@ export interface IssueCard {
       effective level is this issue's own, or none. See
       IssueCardDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** This issue has a parent in a project the reader's scope does not hold.
+      `parentKey` is null and nothing else of the parent is told. Absent is
+      false. See IssueCardDto.ParentBeyondScope. */
+  parentBeyondScope?: boolean;
+  /** Some child of this issue is in a project the reader's scope does not
+      hold. No key and no count of it is told. Absent is false. See
+      IssueCardDto.ChildBeyondScope. */
+  childBeyondScope?: boolean;
+  /** The values whose from-key was blanked because the ancestor it names is
+      outside the reader's scope - any of 'priority', 'preApproval',
+      'localModel', 'onePr', 'dangerous', 'preApprovalPassedOver' and
+      'priorityPassedOver'. The value itself still applies. Absent is none.
+      See IssueCardDto.FromBeyondScope. */
+  fromBeyondScope?: string[];
   /** The local-model level in effect - `'none'`, `'prefer'` or `'require'` -
       walked live to the nearest ancestor that is not none. Recorded and shown
       only: the loop does not act on it yet. See IssueCardDto.LocalModel. */
@@ -785,6 +799,12 @@ export interface Issue {
       effective level is this issue's own, or none. See
       IssueCard.preApprovalFrom and IssueDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** See IssueCard.parentBeyondScope and IssueDto.ParentBeyondScope. */
+  parentBeyondScope?: boolean;
+  /** See IssueCard.childBeyondScope and IssueDto.ChildBeyondScope. */
+  childBeyondScope?: boolean;
+  /** See IssueCard.fromBeyondScope and IssueDto.FromBeyondScope. */
+  fromBeyondScope?: string[];
   /** The local-model level in effect - see IssueCard.localModel and
       IssueDto.LocalModel. */
   localModel: LocalModel;
@@ -1308,8 +1328,12 @@ export interface ProjectRunnerTagsWriteRequest {
     key; kind: 'issue' means key is the ancestor issue's. */
 export interface RunnerTagSource {
   kind: 'project' | 'issue';
+  /** Blank where `beyondScope`. */
   key: string;
   tags: string[];
+  /** The ancestor is in a project the reader's scope does not hold: the tags
+      still apply and the key is blank. Absent is false. */
+  beyondScope?: boolean;
 }
 
 /** Mirrors IssueRunnerTagsWriteRequest. */
@@ -1334,7 +1358,11 @@ export interface RunnerOmission {
   reason: string | null;
   by: string;
   at: string;
+  /** Blank where `beyondScope`; null is the issue's own row. */
   fromKey: string | null;
+  /** The ancestor is in a project the reader's scope does not hold: the
+      omission still applies and the key is blank. Absent is false. */
+  beyondScope?: boolean;
 }
 
 /** Mirrors OmitRunnerRequest. */

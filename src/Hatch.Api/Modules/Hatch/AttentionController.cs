@@ -50,7 +50,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // Only the ancestor walk MergeWork.Judge needs below, for a
         // pre-approved review row - not the full DependencyGate, which this
         // endpoint has no dependency-gating need for.
-        var tree = await PriorityTree.ForAsync(db, actors, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         // A repository's trunk is nobody's issue, so this does not wait on
         // there being a review column at all - a person's row here even on a

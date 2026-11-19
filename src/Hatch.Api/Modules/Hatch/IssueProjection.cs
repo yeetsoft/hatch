@@ -94,7 +94,7 @@ public static class IssueProjection
             .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number })
             .ToDictionaryAsync(r => r.Id, r => IssueKey.Format(r.ProjectKey, r.Number), ct);
 
-        var priorities = await PriorityTree.ForAsync(db, actors, ct);
+        var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
 
         var childRows = await db.Issues.AsNoTracking()
             .Where(i => i.ParentId != null && ids.Contains(i.ParentId!.Value))
@@ -206,6 +206,7 @@ public static class IssueProjection
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(issue.Id);
             var omittedRunnersOwn = priorities.OwnOmittedRunners(issue.Id);
             var omittedRunners = priorities.EffectiveOmittedRunners(issue.Id);
+            var disclosed = priorities.Disclose(issue.Id);
 
             MergeWorkDto? mergeWork = null;
             if (issue.StatusId == mergesId)
@@ -250,10 +251,10 @@ public static class IssueProjection
                 effectivePreApproval >= PreApprovalLevels.Express,
                 PriorityLevels.Name(effective),
                 PriorityLevels.Name(issue.Priority),
-                effectiveFrom,
+                disclosed.Key(DisclosedValues.Priority, effectiveFrom),
                 PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalLevels.Name(issue.PreApproval),
-                effectivePreApprovalFrom,
+                disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
                 issue.WipLimit,
                 issue.StalledAt,
                 issue.StalledWhy,
@@ -263,7 +264,7 @@ public static class IssueProjection
                 landings.TryGetValue(issue.Id, out var landed) ? landed : [],
                 onePr,
                 onePrOwn,
-                onePrFrom,
+                disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                 issue.PullRequestMergeState,
                 issue.PullRequestReviewDecision,
                 issue.PullRequestHeadSha,
@@ -272,24 +273,27 @@ public static class IssueProjection
                 issue.ReleaseNote,
                 RunnerTagColumn.Read(issue.RunnerTags),
                 effectiveRunnerTags,
-                effectiveRunnerTagsFrom,
+                disclosed.Tags(effectiveRunnerTagsFrom),
                 issue.Dangerous,
                 dangerous,
-                dangerousFrom,
+                disclosed.Key(DisclosedValues.Dangerous, dangerousFrom),
                 issue.NoCode,
                 issue.NoCodeAt,
                 omittedRunnersOwn,
-                omittedRunners,
+                disclosed.Omissions(omittedRunners),
                 (issue.Project?.OnePullRequestPolicy ?? projects[issue.ProjectId].OnePullRequestPolicy) == global::Hatch.Contracts.OnePullRequestPolicies.Enforced,
                 FiledFromKey: issue.FiledFromId is { } filedFromId && parentKeys.TryGetValue(filedFromId, out var filedFromKey) ? filedFromKey : null,
                 FiledKeys: filedKeys.TryGetValue(issue.Id, out var filed) ? filed : [],
                 Contribution: contributions.GetValueOrDefault(issue.Id),
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(issue.LocalModel),
-                LocalModelFrom: effectiveLocalModelFrom,
+                LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                 PullRequestHeadBranch: issue.PullRequestHeadBranch,
-                PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                PriorityPassedOver: passedOver.Priority?.Key);
+                PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
+                ParentBeyondScope: disclosed.ParentBeyondScope,
+                ChildBeyondScope: disclosed.ChildBeyondScope,
+                FromBeyondScope: disclosed.FromBeyondScope);
         });
     }
 

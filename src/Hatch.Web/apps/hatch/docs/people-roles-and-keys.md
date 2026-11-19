@@ -166,6 +166,20 @@ projects not there.
   unbounded: it sees every project, as the wall being off does. A route a key
   may not call at all, such as every playbook edit, answers `403 key_not_accepted`
   to it whatever the project, before scope is read.
+- **A parent link with a hidden side is told as a flag.** A reader who can see
+  `AAA-2` and not its parent in project BBB is told the parent is there, and
+  nothing more: the card carries no parent key and no title, and a flag says
+  the parent is outside the scope. The same holds the other way round: a parent
+  whose child is in a hidden project says some child is, with no key and no
+  count. A level, priority, danger reason, runner tag, omitted runner, local
+  model or pull that came from a hidden ancestor still applies to what the
+  reader sees, because the loop acts on it. It shows no ancestor key, and a
+  flag says it came from outside the scope. `hatch show` says it in a
+  sentence.
+- **A key is dispatched what an unbounded key is.** The loop reads the whole
+  tree, whatever the owner's scope: a level on a hidden ancestor counts, and a
+  parent is never closed over a child the key cannot see. The issue it is
+  dispatched is still one it can see.
 - **The Runners page leaves out what the caller cannot see.** A runner may hold
   a claim on an issue of a project the caller is scoped out of. That claim is
   dropped from the caller's view of the runner, so the page does not name an
