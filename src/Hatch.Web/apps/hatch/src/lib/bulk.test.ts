@@ -32,6 +32,13 @@ describe('buildBulkEdit', () => {
     expect(buildBulkEdit(KEYS, form({ parent: 'AER-9' }))?.parentKey).toBe('AER-9');
   });
 
+  it('sends a parent from another project untouched', () => {
+    expect(buildBulkEdit(['AER-1', 'AER-2'], form({ parent: 'HATCH-9' }))).toEqual({
+      keys: ['AER-1', 'AER-2'],
+      parentKey: 'HATCH-9',
+    });
+  });
+
   it('sends the empty string when the parent is being cleared', () => {
     expect(buildBulkEdit(KEYS, form({ parent: '' }))?.parentKey).toBe('');
   });

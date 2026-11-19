@@ -103,6 +103,34 @@ describe('compareIssueKeys', () => {
   });
 });
 
+describe('compareIssueKeys with a home project', () => {
+  const sorted = (home: string | undefined, ...keys: string[]): string[] =>
+    [...keys].sort((a, b) => compareIssueKeys(a, b, home));
+
+  it('puts the home project first, then the rest A to Z by number', () => {
+    expect(sorted('HATCH', 'AER-2', 'HATCH-10', 'ZED-1', 'HATCH-9', 'AER-10')).toEqual([
+      'HATCH-9',
+      'HATCH-10',
+      'AER-2',
+      'AER-10',
+      'ZED-1',
+    ]);
+  });
+
+  it('reads the home project without regard to case', () => {
+    expect(sorted('hatch', 'AER-1', 'HATCH-1')).toEqual(['HATCH-1', 'AER-1']);
+  });
+
+  it('is today\'s order when no home is given or the home has no keys', () => {
+    expect(sorted(undefined, 'HATCH-1', 'AER-2')).toEqual(['AER-2', 'HATCH-1']);
+    expect(sorted('NOPE', 'HATCH-1', 'AER-2')).toEqual(['AER-2', 'HATCH-1']);
+  });
+
+  it('still sorts an unreadable key last', () => {
+    expect(sorted('HATCH', 'junk', 'AER-1', 'HATCH-1')).toEqual(['HATCH-1', 'AER-1', 'junk']);
+  });
+});
+
 describe('matchesText', () => {
   it('needs every term, in any order, ignoring case', () => {
     expect(matchesText('Board: filters live in the URL', 'URL filters')).toBe(true);
@@ -163,6 +191,12 @@ describe('pickerRows', () => {
       'HATCH-10',
       'HATCH-1000',
     ]);
+  });
+
+  it('lists the home project first when one is given', () => {
+    const mixed = [card({ key: 'AER-1' }), card({ key: 'HATCH-3' }), card({ key: 'HATCH-1' })];
+    expect(pickerRows(mixed, '', 'HATCH').map((c) => c.key)).toEqual(['HATCH-1', 'HATCH-3', 'AER-1']);
+    expect(pickerRows(mixed, '').map((c) => c.key)).toEqual(['AER-1', 'HATCH-1', 'HATCH-3']);
   });
 
   it('filters and orders in one pass', () => {

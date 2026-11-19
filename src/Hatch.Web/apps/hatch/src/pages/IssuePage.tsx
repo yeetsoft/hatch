@@ -71,7 +71,7 @@ import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
 import { onePrSaid } from '../lib/onePr';
 import { childTypes } from '../lib/childTypes';
-import { parentCandidates, parentHint } from '../lib/parents';
+import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
 import { repoSourcedOverrideHint } from '../lib/playbookFiles';
 import { submitOmission } from '../lib/runnerOmissions';
 import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, sameTags } from '../lib/runnerTags';
@@ -886,7 +886,8 @@ export function IssuePage() {
               label="Parent"
               value={issue.parentKey}
               candidates={parents}
-              emptyMessage={`Nothing in ${issue.projectKey} can be a parent of a ${issue.type} yet.`}
+              emptyMessage={parentEmptyMessage(issue.projectKey, issue.type)}
+              homeProject={issue.projectKey}
               onChange={(parentKey) => save({ parentKey })}
             />
           </Field>
