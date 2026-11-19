@@ -343,7 +343,7 @@ public class ProjectsController(
             await db.SaveChangesAsync(ct);
 
             foreach (var canonical in turnedOn)
-                await ChangelogTasks.FileForRepositoryAsync(db, ranks, time, id, canonical, ct, logger);
+                await ChangelogTasks.FileForRepositoryAsync(db, actors, ranks, time, id, canonical, ct, logger);
         }
 
         return await RepositoriesAsync(id, ct);

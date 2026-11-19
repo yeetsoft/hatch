@@ -1,3 +1,4 @@
+using Hatch.Api.Services.Auth;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -272,7 +273,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// already in the order the board draws them, which is the order
     /// <see cref="ClaimLineage.Holder"/> names a holder in.
     /// </remarks>
-    public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct, PriorityTree? priorities = null)
+    public async Task<ClaimLineage> LineageAsync(HatchContext db, IActorDirectory actors, DateTimeOffset now, CancellationToken ct, PriorityTree? priorities = null)
     {
         var tree = await db.Issues.AsNoTracking()
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
@@ -316,7 +317,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         var shared = new Dictionary<long, long>();
         if (live.Count > 0)
         {
-            priorities ??= await PriorityTree.ForAsync(db, ct);
+            priorities ??= await PriorityTree.ForAsync(db, actors, ct);
             foreach (var id in keys.Keys)
                 if (priorities.SharedStoryOf(id) is { } story) shared[id] = story;
         }
@@ -339,9 +340,9 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// keep a claim.
     /// </remarks>
     public async Task<string?> ConfirmLineAsync(
-        HatchContext db, long issueId, Guid token, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, IActorDirectory actors, long issueId, Guid token, DateTimeOffset now, CancellationToken ct)
     {
-        var lineage = await LineageAsync(db, now, ct);
+        var lineage = await LineageAsync(db, actors, now, ct);
         if (lineage.Holder(issueId, token) is not { } sentence) return null;
 
         await TryReleaseAsync(db, issueId, token, ct);

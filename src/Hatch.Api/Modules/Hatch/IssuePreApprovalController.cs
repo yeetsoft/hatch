@@ -129,7 +129,10 @@ public class IssuePreApprovalController(
                 At = now,
             });
 
+            // Who set it, for the walk that carries a level across a project
+            // line (SetterAuthority). Lowered to none, nobody set it.
             issue.PreApproval = level;
+            issue.PreApprovalSetBy = level == PreApprovalLevels.None ? null : await SetterAuthority.CallerAsync(actors, ct);
             issue.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
         }

@@ -1242,6 +1242,16 @@ public class EfHatchIssue
     public int Priority { get; set; }
 
     /// <summary>
+    /// The person who set <see cref="Priority"/>, a bare <see cref="Guid"/> as
+    /// <see cref="EfHatchProjectMember.PersonId"/> is. Null where the level is
+    /// normal, or where no person set it - a level set before this was
+    /// recorded. A priority found on an ancestor in another project is honoured
+    /// only while this person is live (<see cref="SetterAuthority"/>); inside
+    /// its own project it is honoured with or without one.
+    /// </summary>
+    public Guid? PrioritySetBy { get; set; }
+
+    /// <summary>
     /// A gate-passer, not a sort key - the opposite shape from
     /// <see cref="Priority"/>. An issue at <see cref="PreApprovalLevels.Express"/>
     /// or above is carried past a column marked <see cref="EfHatchStatus.ExpressSkips"/>
@@ -1279,6 +1289,17 @@ public class EfHatchIssue
     /// out, it reads whatever it reads next.</para>
     /// </remarks>
     public int PreApproval { get; set; }
+
+    /// <summary>
+    /// The person who set <see cref="PreApproval"/>, a bare <see cref="Guid"/>
+    /// as <see cref="EfHatchProjectMember.PersonId"/> is. Null where the level
+    /// is none, or where no person set it: a level set before this was
+    /// recorded, a trunk-failure bug's and a changelog task's. A level found on
+    /// an ancestor in another project is honoured only while this person could
+    /// set the same level on the descendant (<see cref="SetterAuthority"/>);
+    /// inside its own project it is honoured with or without one.
+    /// </summary>
+    public Guid? PreApprovalSetBy { get; set; }
 
     /// <summary>
     /// Whether this issue's work prefers or requires a local model - a

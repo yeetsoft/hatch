@@ -33,7 +33,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/issues/{key}/claim")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueClaimController(
-    HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption,
+    HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption,
     Runners runners, Dispatch dispatch) : ControllerBase
 {
     /// <summary>
@@ -93,7 +93,7 @@ public class IssueClaimController(
 
         // One runner per line of the tree: a live claim on an ancestor or a
         // descendant refuses this one with the same kind of sentence.
-        if ((await claims.LineageAsync(db, now, ct)).Holder(issue.Id, null) is { } relative)
+        if ((await claims.LineageAsync(db, actors, now, ct)).Holder(issue.Id, null) is { } relative)
             return Conflict(relative);
 
         var token = Guid.NewGuid();
@@ -114,7 +114,7 @@ public class IssueClaimController(
         // Take first, then look - see IssueClaims.ConfirmLineAsync for why the
         // check above is not enough. A take that loses lets go and writes no
         // event, so the trail never says a claim was taken that was not kept.
-        if (await claims.ConfirmLineAsync(db, issue.Id, token, now, ct) is { } lost)
+        if (await claims.ConfirmLineAsync(db, actors, issue.Id, token, now, ct) is { } lost)
             return Conflict(lost);
 
         // The previous token survives only when its lease lapsed rather than

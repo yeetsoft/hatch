@@ -7880,7 +7880,7 @@ public class WorkControllerTests
         var served = await new ChangelogController(h.Db, h.Time, options).GetChangelogFile(remote, default);
         var yaml = Assert.IsType<ContentResult>(served).Content!;
         var issuesBefore = await h.Db.Issues.CountAsync();
-        var put = new ChangelogFileController(h.Db, h.Caller, h.Time, options, new RankService(h.Db), NullLogger<ChangelogFileController>.Instance);
+        var put = new ChangelogFileController(h.Db, new StubActorDirectory(), h.Caller, h.Time, options, new RankService(h.Db), NullLogger<ChangelogFileController>.Instance);
 
         var stored = Value(await put.PutChangelogFile(
             new ChangelogFileRequest(
@@ -14109,7 +14109,7 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(first), token, default)).Blocked);
 
         var statuses = await h.Db.Statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
-        var section = await Wip.LoadAsync(h.Db, TestClaims.With(), statuses, h.Time.GetUtcNow(), default);
+        var section = await Wip.LoadAsync(h.Db, new StubActorDirectory(), TestClaims.With(), statuses, h.Time.GetUtcNow(), default);
         Assert.Equal(1, section!.SliceFor("story")!.ClaimedInbound);
 
         // A second pass, over the same board: the claim now counts against the
@@ -16248,7 +16248,7 @@ public class WorkControllerTests
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new HatchOptions { PublicBaseUrl = publicBaseUrl }),
                 new RankService(db), caller, runners, keys, sessions),
             Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
-            Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
+            Statuses = new StatusesController(db, new StubActorDirectory(), caller, time, NullLogger<StatusesController>.Instance),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now), new StubCallerIdentity())
             {
                 ControllerContext = new ControllerContext

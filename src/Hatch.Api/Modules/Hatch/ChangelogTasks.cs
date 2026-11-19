@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -65,7 +66,7 @@ public static class ChangelogTasks
     /// first's task and files nothing. Call it after the caller's own save.
     /// </summary>
     public static async Task FileForAsync(
-        HatchContext db, RankService ranks, TimeProvider time, IEnumerable<EfHatchIssue> closed, CancellationToken ct, ILogger? log = null)
+        HatchContext db, IActorDirectory actors, RankService ranks, TimeProvider time, IEnumerable<EfHatchIssue> closed, CancellationToken ct, ILogger? log = null)
     {
         var issues = closed.Where(i => i.ParentId == null && i.ClosedAt != null).DistinctBy(i => i.Id).ToList();
         if (issues.Count == 0) return;
@@ -85,7 +86,7 @@ public static class ChangelogTasks
                 .ToListAsync(ct);
 
             foreach (var canonical in canonicals.Distinct())
-                await FileOneAsync(db, ranks, time, statuses, issue, canonical, log, ct);
+                await FileOneAsync(db, actors, ranks, time, statuses, issue, canonical, log, ct);
         }
     }
 
@@ -96,7 +97,7 @@ public static class ChangelogTasks
     /// none filed. The same dedupe applies.
     /// </summary>
     public static async Task FileForRepositoryAsync(
-        HatchContext db, RankService ranks, TimeProvider time, int projectId, string canonical, CancellationToken ct, ILogger? log = null)
+        HatchContext db, IActorDirectory actors, RankService ranks, TimeProvider time, int projectId, string canonical, CancellationToken ct, ILogger? log = null)
     {
         var latest = await db.Issues
             .Where(i => i.ProjectId == projectId && i.ParentId == null && i.Status!.IsTerminal && i.ClosedAt != null
@@ -105,19 +106,19 @@ public static class ChangelogTasks
             .FirstOrDefaultAsync(ct);
         if (latest is null) return;
 
-        await FileOneAsync(db, ranks, time, await LoadStatusesAsync(db, ct), latest, canonical, log, ct);
+        await FileOneAsync(db, actors, ranks, time, await LoadStatusesAsync(db, ct), latest, canonical, log, ct);
     }
 
     private static Task<List<EfHatchStatus>> LoadStatusesAsync(HatchContext db, CancellationToken ct) =>
         db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
 
     private static async Task FileOneAsync(
-        HatchContext db, RankService ranks, TimeProvider time, List<EfHatchStatus> statuses,
+        HatchContext db, IActorDirectory actors, RankService ranks, TimeProvider time, List<EfHatchStatus> statuses,
         EfHatchIssue closed, string canonical, ILogger? log, CancellationToken ct)
     {
         if (await StandsAsync(db, statuses, canonical, ct)) return;
 
-        await MintAsync(db, ranks, time, statuses, closed, canonical, log, ct);
+        await MintAsync(db, actors, ranks, time, statuses, closed, canonical, log, ct);
     }
 
     /// <summary>
@@ -140,7 +141,7 @@ public static class ChangelogTasks
     /// close has the same window.
     /// </remarks>
     public static async Task FileForGapAsync(
-        HatchContext db, RankService ranks, TimeProvider time, string canonical,
+        HatchContext db, IActorDirectory actors, RankService ranks, TimeProvider time, string canonical,
         IReadOnlyList<Changelog.Entry> projection, IReadOnlySet<string> lacking, CancellationToken ct, ILogger? log = null)
     {
         if (projection.Count == 0) return;
@@ -156,11 +157,11 @@ public static class ChangelogTasks
         var closed = await db.Issues.FirstOrDefaultAsync(i => i.Id == newest.IssueId, ct);
         if (closed is null) return;
 
-        await MintAsync(db, ranks, time, statuses, closed, canonical, log, ct);
+        await MintAsync(db, actors, ranks, time, statuses, closed, canonical, log, ct);
     }
 
     private static async Task MintAsync(
-        HatchContext db, RankService ranks, TimeProvider time, List<EfHatchStatus> statuses,
+        HatchContext db, IActorDirectory actors, RankService ranks, TimeProvider time, List<EfHatchStatus> statuses,
         EfHatchIssue closed, string canonical, ILogger? log, CancellationToken ct)
     {
         var column = Columns.SendBack(statuses)
@@ -175,7 +176,7 @@ public static class ChangelogTasks
         // above it will.
         var parentless = !EfHatchIssue.LegalParentTypes["task"].Contains(closed.Type);
         var preApproval = parentless
-            ? (await PriorityTree.ForAsync(db, ct)).EffectivePreApproval(closed.Id).Level
+            ? (await PriorityTree.ForAsync(db, actors, ct)).EffectivePreApproval(closed.Id).Level
             : PreApprovalLevels.None;
 
         for (var attempt = 1; ; attempt++)

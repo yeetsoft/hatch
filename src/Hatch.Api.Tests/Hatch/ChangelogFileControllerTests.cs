@@ -433,7 +433,7 @@ public class ChangelogFileControllerTests
         return new Harness
         {
             Db = db,
-            Controller = new ChangelogFileController(db, caller, time, options, new RankService(db), NullLogger<ChangelogFileController>.Instance),
+            Controller = new ChangelogFileController(db, new StubActorDirectory(), caller, time, options, new RankService(db), NullLogger<ChangelogFileController>.Instance),
             ProjectId = project.Id,
             Todo = todo.Id,
             Doing = doing.Id,

@@ -800,8 +800,8 @@ public class IssueClaimTests
         // second's claim and releases its own, and the second then sees
         // nothing and keeps its own. The assertion is the guarantee - at most
         // one, never both - not the ordering.
-        var first = await claims.ConfirmLineAsync(one, parentId, mine, Now, default);
-        var second = await claims.ConfirmLineAsync(two, childId, theirs, Now, default);
+        var first = await claims.ConfirmLineAsync(one, new StubActorDirectory(), parentId, mine, Now, default);
+        var second = await claims.ConfirmLineAsync(two, new StubActorDirectory(), childId, theirs, Now, default);
 
         Assert.NotNull(first);
         Assert.Null(second);
@@ -1678,7 +1678,7 @@ public class IssueClaimTests
         Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
 
         h.Time.Advance(TimeSpan.FromMinutes(2));
-        var lineage = await h.Rule.LineageAsync(h.Connect(), h.Time.GetUtcNow(), default);
+        var lineage = await h.Rule.LineageAsync(h.Connect(), new StubActorDirectory(), h.Time.GetUtcNow(), default);
         Assert.Null(lineage.Holder((await h.RowAsync(child)).Id, null));
     }
 
@@ -1793,12 +1793,12 @@ public class IssueClaimTests
 
         var childId = (await h.RowAsync(child)).Id;
         Assert.NotNull(h.Rule.Project(ClaimSnapshot.Of(await h.RowAsync(issue)), h.Time.GetUtcNow()));
-        Assert.NotNull((await h.Rule.LineageAsync(h.Connect(), h.Time.GetUtcNow(), default)).Holder(childId, null));
+        Assert.NotNull((await h.Rule.LineageAsync(h.Connect(), new StubActorDirectory(), h.Time.GetUtcNow(), default)).Holder(childId, null));
 
         // Postgres keeps microseconds: a tick (100ns) would round away in the SQL.
         h.Time.Advance(TimeSpan.FromTicks(10));
         Assert.Null(h.Rule.Project(ClaimSnapshot.Of(await h.RowAsync(issue)), h.Time.GetUtcNow()));
-        Assert.Null((await h.Rule.LineageAsync(h.Connect(), h.Time.GetUtcNow(), default)).Holder(childId, null));
+        Assert.Null((await h.Rule.LineageAsync(h.Connect(), new StubActorDirectory(), h.Time.GetUtcNow(), default)).Holder(childId, null));
     }
 
     [SkippableFact]
@@ -3653,7 +3653,7 @@ public class IssueClaimTests
                 var db = Connect();
                 var dispatch = new Dispatch(db, Actors, Rule, Time);
                 var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time, Keys);
-                return new IssueClaimController(db, Rule, Caller, Time, preemption, RunnersRule, dispatch);
+                return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch);
             }
         }
 
