@@ -49,7 +49,7 @@ how fresh the watcher is.
 
 ## Settings
 
-All three are server settings, set in the environment like any other
+All seven are server settings, set in the environment like any other
 ([Deployment overview](deployment-overview)):
 
 | Variable | Default | Meaning |
@@ -59,6 +59,7 @@ All three are server settings, set in the environment like any other
 | `Hatch__GooseTrainReadyMinutes` | `30` | How long a merge train's head may be judged mergeable before the `train-ready` check below opens a finding. `0` turns the check off; less than that falls back to `30`. |
 | `Hatch__GooseUnclaimedMinutes` | `10` | How long a project may have ready work and a live, idle runner able to take some of it before the `ready-unclaimed` check below opens a finding. `0` turns the check off; a negative value falls back to `10`. |
 | `Hatch__GooseNoRunnerMinutes` | `15` | How long a project may have ready work that no live runner can take before the `ready-no-runner` check below opens a finding. `0` turns the check off; a negative value falls back to `15`. |
+| `Hatch__GooseRepeatClaims` | `5` | How many claims by one runner on one ticket, with the ticket not moving, make the `claim-repeating` check below open a finding. `0` turns the check off; less than that falls back to `5`. |
 | `Hatch__GooseQuestionHours` | `24` | How long a question may wait before the `questions-waiting` check below opens a finding. `0` turns the check off; less than that falls back to `24`. |
 
 Each sweep also deletes the runs whose last sweep is older than the keep
@@ -128,6 +129,38 @@ and no live runner can take them"*; the evidence names the steps the same way,
 then, for each live runner, why it cannot take them, in the same words the
 queue uses. With no live runner at all it says so, and lists when each known
 runner - live or not - was last heard from.
+
+### `claim-repeating`
+
+Watches for one runner claiming one ticket again and again while the ticket
+does not move. The board already counts the releases it can read as a runner
+letting go, but it skips several ways a release can end - the agent never
+started, the loop died, the ticket could not be served - so a runner can take
+the same ticket many times and nothing else says so. This check counts the
+claims instead, whatever outcome each release carried.
+
+A **streak** is one runner's claims on one ticket, newest first, back to the
+first thing that shows the ticket moved: a column change, a new commit seen on
+its pull request or its build, or a claim by another runner. A finding opens
+when a streak holds at least `Hatch__GooseRepeatClaims` claims and its newest
+claim is under two hours old. It closes when the streak breaks, or when two
+hours pass with no further claim. A ticket in a done or deferred column, and
+one filed from a finding, is left alone.
+
+The sentence names the runner, the ticket and the count, for example *"here:/one
+has claimed AER-12 7 times and it has not moved"*. The evidence names the
+runner, the number of claims, the first and the newest, how many releases
+carried each outcome, the ticket's column, and whether it carries a stall mark
+or a hold. Its first-claim time is when the finding says the condition began.
+
+A new commit shows only once a pull request or a build verdict exists for it. A
+push made before either leaves no mark on the ticket, so the check cannot see
+it, and a runner that pushes every time without opening a pull request can
+still read as a streak.
+
+The check only says what it saw. It does not pause the runner, stall-mark the
+ticket or change what is counted against it. If you see one, see [a runner
+keeps claiming one ticket](troubleshooting#a-runner-keeps-claiming-one-ticket).
 
 ### `questions-waiting`
 
