@@ -6151,6 +6151,12 @@ self-dispatches review ahead of any other protected column — so `crosses`
 reads false there, and the express, epic and under arms stay withheld from it
 exactly as they are from a review self-move.
 
+A hop never crosses a project line. A parent in another project hands down no
+pre-approval and no priority, the epic, under and parent kinds do not fire for
+its child, and the queue says "its parent is in another project, so nothing
+pulls it - a person moves it". Runner tags, a dangerous reason, omitted
+runners, the epic's story limit and the local-model level still cross.
+
 1. **express** — an issue that is [express](#pre-approval) and stands in a column
    marked [`ExpressSkips`](#status), with no unanswered question.
 2. **epic** — an epic standing in a column short of the implementation
