@@ -51,6 +51,37 @@ public static class OnePrLock
     }
 
     /// <summary>
+    /// How many <c>task</c> children of the given stories or bugs stand in a
+    /// different project from their parent. A task in another project cannot
+    /// share its story's branch, so any one-PR setting that reads true must not
+    /// stand over one. Read past the caller's project scope and without
+    /// tracking, so a project the caller cannot see still counts - and only the
+    /// count is ever reported, never the hidden task's key.
+    /// </summary>
+    /// <param name="exceptProjectId">
+    /// A project whose tasks do not count - the one a story is about to move into,
+    /// where its tasks stop being across a line.
+    /// </param>
+    public static async Task<int> CrossProjectTaskCountAsync(
+        HatchContext db, IReadOnlyCollection<long> storyIds, CancellationToken ct, int? exceptProjectId = null)
+    {
+        if (storyIds.Count == 0) return 0;
+
+        return await db.Issues.IgnoreQueryFilters().AsNoTracking()
+            .Where(i => i.Type == "task" && i.ParentId != null && storyIds.Contains(i.ParentId.Value)
+                && i.ProjectId != i.Parent!.ProjectId && i.ProjectId != exceptProjectId)
+            .CountAsync(ct);
+    }
+
+    /// <summary>
+    /// The refusal for a one-PR setting that would read true over tasks in
+    /// another project; <paramref name="what"/> names the story or the project.
+    /// </summary>
+    public static string CrossProjectRefusal(string what, int count) =>
+        $"{what} has {count} {(count == 1 ? "task" : "tasks")} in another project, so its tasks cannot share one pull request - " +
+        "move them or turn one-PR off first";
+
+    /// <summary>
     /// The stories of a project that have started work and carry no setting of
     /// their own - the ones that read the project's default, and so the ones a
     /// change to it would move under their tasks. Tracked, with their trail, for

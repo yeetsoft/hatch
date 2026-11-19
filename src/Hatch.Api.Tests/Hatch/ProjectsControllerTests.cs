@@ -2762,6 +2762,164 @@ public class ProjectsControllerTests
     private static async Task SetDefaultAsync(Harness h, bool on) =>
         Value(await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, on), default));
 
+    // ---- Across a project line ----
+    //
+    // A task in another project cannot share its story's branch, so neither the
+    // default nor the policy may be turned toward "on" over one.
+
+    private static async Task<int> OtherProjectAsync(Harness h)
+    {
+        var project = new EfHatchProject { Key = "OPS", Name = "Ops", CreatedAt = Now };
+        h.Db.Projects.Add(project);
+        await h.Db.SaveChangesAsync();
+        return project.Id;
+    }
+
+    private static string Said(IActionResult? result) =>
+        Assert.IsAssignableFrom<ObjectResult>(result).Value!.ToString()!;
+
+    [Fact]
+    public async Task TurningTheDefaultOn_IsRefusedWithACount_WhileAStoryHasATaskInAnotherProject()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        var ops = await OtherProjectAsync(h);
+        var story = await IssueAsync(h, "story", todo.Id);
+        var hidden = await IssueAsync(h, "task", todo.Id, story.Id, projectId: ops);
+        await IssueAsync(h, "task", todo.Id, story.Id);
+
+        var refused = await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, true), default);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        var said = Said(refused.Result);
+        Assert.Contains("1 task in another project", said);
+        Assert.DoesNotContain($"OPS-{hidden.Number}", said);
+        h.Db.ChangeTracker.Clear();
+        Assert.False((await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task TurningTheDefaultOn_IsRefusedBeforeAnyStoryIsWritten()
+    {
+        var h = await NewAsync();
+        var (todo, doing) = await BoardAsync(h);
+        var ops = await OtherProjectAsync(h);
+        var started = await IssueAsync(h, "story", doing.Id);
+        await IssueAsync(h, "task", doing.Id, started.Id);
+        var crossing = await IssueAsync(h, "story", todo.Id);
+        await IssueAsync(h, "task", todo.Id, crossing.Id, projectId: ops);
+
+        Assert.IsType<ConflictObjectResult>(
+            (await h.Projects.PutLanding(h.ProjectId, new ProjectLandingWriteRequest(null, null, true), default)).Result);
+
+        h.Db.ChangeTracker.Clear();
+        var row = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == started.Id);
+        Assert.Null(row.OnePullRequest);
+        Assert.Empty(row.Events);
+    }
+
+    [Fact]
+    public async Task TurningTheDefaultOn_IsAllowed_WhenNoTaskIsInAnotherProject_OrItIsBeingTurnedOff()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        var ops = await OtherProjectAsync(h);
+        var story = await IssueAsync(h, "story", todo.Id);
+        await IssueAsync(h, "task", todo.Id, story.Id);
+        var elsewhere = await IssueAsync(h, "story", todo.Id, projectId: ops);
+        await IssueAsync(h, "task", todo.Id, elsewhere.Id);
+
+        await SetDefaultAsync(h, true);
+        Assert.True((await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).OnePullRequest);
+
+        await IssueAsync(h, "task", todo.Id, story.Id, projectId: ops);
+        await SetDefaultAsync(h, false);
+        Assert.False((await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task TurningTheDefaultOn_IsNotHeldBack_ByAStartedStoryThatKeepsTheOldValue()
+    {
+        var h = await NewAsync();
+        var (todo, doing) = await BoardAsync(h);
+        var ops = await OtherProjectAsync(h);
+        var story = await IssueAsync(h, "story", doing.Id);
+        await IssueAsync(h, "task", doing.Id, story.Id);
+        await IssueAsync(h, "task", todo.Id, story.Id, projectId: ops);
+
+        await SetDefaultAsync(h, true);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.True((await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).OnePullRequest);
+        Assert.False((await h.Db.Issues.SingleAsync(i => i.Id == story.Id)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task Enforcing_IsRefusedWithACount_WhenAnOverrideHandedBackWouldReadOnOverATaskInAnotherProject()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        var ops = await OtherProjectAsync(h);
+        await SetDefaultAsync(h, true);
+        var story = await IssueAsync(h, "story", todo.Id, onePr: false);
+        await IssueAsync(h, "task", todo.Id, story.Id, projectId: ops);
+
+        var refused = await h.Projects.PutOnePrPolicy(h.ProjectId, new ProjectOnePrPolicyWriteRequest(OnePullRequestPolicies.Enforced), default);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Contains("1 task in another project", Said(refused.Result));
+        h.Db.ChangeTracker.Clear();
+        Assert.Equal(OnePullRequestPolicies.Optional, (await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).OnePullRequestPolicy);
+        var row = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == story.Id);
+        Assert.False(row.OnePullRequest);
+        Assert.Empty(row.Events);
+    }
+
+    [Fact]
+    public async Task Enforcing_IsAllowed_WhenTheDefaultIsOff()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        var ops = await OtherProjectAsync(h);
+        var story = await IssueAsync(h, "story", todo.Id, onePr: false);
+        await IssueAsync(h, "task", todo.Id, story.Id, projectId: ops);
+
+        var enforced = await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Enforced);
+
+        Assert.Equal(OnePullRequestPolicies.Enforced, enforced.OnePullRequestPolicy);
+    }
+
+    [Fact]
+    public async Task Enforcing_IsAllowed_WhenNoTaskIsInAnotherProject()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        await SetDefaultAsync(h, true);
+        var story = await IssueAsync(h, "story", todo.Id, onePr: false);
+        await IssueAsync(h, "task", todo.Id, story.Id);
+
+        var enforced = await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Enforced);
+
+        Assert.Equal(OnePullRequestPolicies.Enforced, enforced.OnePullRequestPolicy);
+    }
+
+    [Fact]
+    public async Task Enforcing_IsNotHeldBack_ByAStartedOverrideThatKeepsItsOwnValue()
+    {
+        var h = await NewAsync();
+        var (_, doing) = await BoardAsync(h);
+        var ops = await OtherProjectAsync(h);
+        await SetDefaultAsync(h, true);
+        var started = await IssueAsync(h, "story", doing.Id, onePr: false);
+        await IssueAsync(h, "task", doing.Id, started.Id);
+        await IssueAsync(h, "task", doing.Id, started.Id, projectId: ops);
+
+        await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Enforced);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.False((await h.Db.Issues.SingleAsync(i => i.Id == started.Id)).OnePullRequest);
+    }
+
     [Fact]
     public async Task ChangingTheDefault_FixesAStartedStoryAtTheValueItWasReading()
     {

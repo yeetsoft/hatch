@@ -57,8 +57,13 @@ number there, and its old key goes dead the same way.
 ## Parent and children
 
 Parentage is optional, and checked on every write: the parent has to exist,
-sit in the same project, be a legal type for this one (above), and form no
-cycle. A parent's own progress is read from its children, not from its own
+be a legal type for this one (above), and form no cycle. It may stand in
+another project. The one exception is a task under a story or bug that shares
+[one pull request](#one-pull-request): the task has to stay in that story's
+project, since one pull request is one branch in one repository, and the
+refusal names the story. Moving an issue to another project carries only the
+children that are in its own project; a child in another project stays where
+it is and keeps its link to the moved parent. A parent's own progress is read from its children, not from its own
 column — the totals count **leaves**, issues with no children of their own,
 so a story standing in review with every task still in To Do reads as To Do,
 because the tasks are the work and not the story's own column.

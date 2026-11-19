@@ -26,6 +26,10 @@ public class QueryFilterAuditTests
             "The house-wide work-in-progress count. The limit is the house's, so a count that left out a hidden "
             + "project's cards would let a scoped caller push past it. It reads ids and parents and returns "
             + "numbers. Its priority tree is read the same way, through PriorityTree.ForAsync."),
+        ["OnePrLock.CrossProjectTaskCountAsync"] = (1,
+            "How many tasks of a story stand in another project. A task in a project the caller cannot see still "
+            + "keeps its story from sharing one pull request, so a count that left it out would let a scoped caller "
+            + "turn the setting on over it. What leaves is a number, never the hidden task's key."),
         ["Wip.EpicsAsync"] = (1,
             "An epic's own limit, which is one number whoever asks. Returns the limit and the key it prints."),
         ["RankService.PlaceAsync"] = (1,

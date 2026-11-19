@@ -1147,11 +1147,21 @@ never stored, so there is exactly one fact about a key anywhere and no chance of
 two copies disagreeing after a rename.
 
 Types are `epic | reflection | story | task | bug`. Parentage is optional and
-validated server-side: the parent must exist, be in the same project, form no
+validated server-side: the parent must exist, form no
 cycle, and be a legal type — epic→epic or reflection, reflection→epic,
 story→epic or reflection, task→story, bug, epic or reflection, bug→epic, story
 or reflection. A reflection with children answers [the hop](#the-hop) and [an
 epic's own limit](#an-epics-own-limit) exactly the way an epic does.
+
+A parent may stand in another project. The one refusal that keeps a line is
+[one pull request](#one-pull-request): a task cannot be filed, moved or
+retyped under a story or bug of another project whose tasks share one pull
+request, and the `400` names the story. Only `task` children count - a bug
+under a story is its own sharer. The reverse holds as well: one pull request
+cannot be turned on for a story with a task in another project, and neither
+the project's default nor its `enforced` policy can be turned toward on while a
+story that would read it has one; each `409` is a sentence with a count and
+never the hidden task's key.
 
 **An issue records the issue it was filed from.** `FiledFromId` is a nullable
 foreign key to another issue, `SetNull` on delete and indexed: the issue whose
@@ -1685,16 +1695,18 @@ retry on a lost race; its old key goes dead, the same cost a project's own
 key rename pays (see [Project](#project)), just paid by one issue instead of
 every issue under it.
 
-A parent and its child always share a project — `ResolveParentAsync` refuses
-otherwise, on every write — so a move has to settle the tree. An ancestor
-never moves *with* its descendant, only a descendant moves down, so the
-moved issue's own parent is always left behind unless the same request also
-re-parents it: `parentKey`, resolved against the *target* project rather
+A parent may stand in another project, so a move has to settle the tree. An
+ancestor never moves *with* its descendant, only a descendant moves down, so
+the moved issue's own parent is always left behind unless the same request
+also re-parents it: `parentKey`, resolved against the *target* project rather
 than the old one. `moveDescendants: true` — the default when the field is
-absent — carries everything below the moved issue along with it, so the
-subtree's own parentage survives inside it; `moveDescendants: false`
-detaches its direct children instead, and they stay in the old project with
-their own subtrees under them intact.
+absent — carries the descendants reached through links inside the moved
+issue's own project, so that subtree's parentage survives inside it. A child
+in another project is not carried and not re-keyed: it keeps its link to the
+moved parent, and nothing under it moves either, even a grandchild in the
+moving project. `moveDescendants: false` detaches only the direct children in
+the old project instead, and they stay there with their own subtrees under
+them intact.
 
 What refuses, before anything is written: an unknown target project (`400`);
 the issue's own project, read as no opinion at all rather than a move
@@ -1702,7 +1714,9 @@ the issue's own project, read as no opinion at all rather than a move
 issue's project decides which repository it is dispatched to, the same
 routing-power argument that keeps [binding a remote](#repository) closed to
 a key); any issue in the moving set holding a live [claim](#claim) (`409`,
-naming it).
+naming it); a story or bug in the moving set whose one-PR setting would read
+on in the target while a task of it stands in a third project (`409`, with a
+count - see "One pull request").
 
 Every issue that moves, the one named and each descendant carried with it,
 gets a `project_changed` event, `{ from, to }` as display keys; the named

@@ -806,7 +806,7 @@ public class IssuesController(
         if (targetProject is not null)
         {
             movingIds = (edit.MoveDescendants ?? true)
-                ? [issue.Id, ..await Rollup.DescendantIdsAsync(db, issue.Id, ct)]
+                ? [issue.Id, ..await Rollup.DescendantIdsInProjectAsync(db, issue.Id, issue.ProjectId, ct)]
                 : [issue.Id];
 
             var holders = await db.Issues
@@ -860,6 +860,19 @@ public class IssuesController(
             parent = await ResolveParentAsync(parentKey, parentProjectId, edit.Type ?? issue.Type, issue.Id, ct);
             if (parent.Error is { } parentError) return (false, parentError, null, null, [], null);
         }
+        else if (edit.Type == "task" && issue.Type != "task" && issue.ParentId is { } keptParentId)
+        {
+            // A retype to task keeps the parent the issue has, which the parent
+            // walk above never reads - so the shared-pull-request rule is asked
+            // here, of the parent it keeps.
+            var kept = await db.Issues.Include(i => i.Project).FirstOrDefaultAsync(i => i.Id == keptParentId, ct);
+            if (kept is not null
+                && SharedPullRequestRefusal(kept, (await KeyOfAsync(kept, ct))!, issue.ProjectId, "task") is { } sharedKept)
+                return (false, sharedKept, null, null, [], null);
+        }
+
+        if (targetProject is not null && await MovedStoryRefusalAsync(movingIds!, issue, targetProject, ct) is { } crossing)
+            return (false, null, crossing, null, [], null);
 
         (EfHatchIssue? Issue, string? Error) filedFrom = (null, null);
         if (edit.FiledFromKey is not null)
@@ -1023,6 +1036,7 @@ public class IssuesController(
             // after its own fields change below would read the new project
             // instead.
             var oldProjectKey = issue.Project!.Key;
+            var oldProjectId = issue.ProjectId;
             var oldKeys = moving.ToDictionary(m => m.Id, m => IssueKey.Format(oldProjectKey, m.Number));
 
             foreach (var m in moving)
@@ -1063,7 +1077,7 @@ public class IssuesController(
             // own trail is the only place that says why it lost it.
             if (!(edit.MoveDescendants ?? true))
             {
-                var children = await db.Issues.Where(i => i.ParentId == issue.Id).ToListAsync(ct);
+                var children = await db.Issues.Where(i => i.ParentId == issue.Id && i.ProjectId == oldProjectId).ToListAsync(ct);
                 foreach (var child in children)
                 {
                     child.ParentId = null;
@@ -1240,8 +1254,10 @@ public class IssuesController(
 
     /// <summary>
     /// The parent a key names, checked against every rule that makes a
-    /// hierarchy a hierarchy: it exists, it is in the same project, the type
-    /// pairing is legal, and it is not below the issue being parented.
+    /// hierarchy a hierarchy: it exists, the type pairing is legal, and it is not
+    /// below the issue being parented. A parent may stand in another project,
+    /// except that a task cannot hang under a story or bug that shares one pull
+    /// request across its tasks (<see cref="SharedPullRequestRefusal"/>).
     /// </summary>
     /// <param name="parentKey">Null for "no opinion", empty for "no parent".</param>
     /// <param name="selfId">The issue being parented, when it already exists - what the cycle walk is looking for.</param>
@@ -1256,15 +1272,14 @@ public class IssuesController(
             .WithKey(projectKeyPart, number).FirstOrDefaultAsync(ct);
         if (parent is null) return (null, $"there is no {parentKey}");
 
-        if (parent.ProjectId != projectId)
-            return (null, $"{parentKey} is in another project - an issue and its parent share one");
-
         if (parent.Id == selfId) return (null, "an issue cannot be its own parent");
 
         if (EfHatchIssue.LegalParentTypes.TryGetValue(type, out var legal) && !legal.Contains(parent.Type))
             return (null,
                 $"{Article(type)} {type} hangs under {string.Join(" or ", legal.Select(t => $"{Article(t)} {t}"))}, "
                 + $"not {Article(parent.Type)} {parent.Type}");
+
+        if (SharedPullRequestRefusal(parent, parentKey, projectId, type) is { } shared) return (null, shared);
 
         // Walk up from the proposed parent. Reaching the issue being parented
         // means the link would close a loop - which is not merely untidy: the
@@ -1283,6 +1298,54 @@ public class IssuesController(
 
         return (parent, null);
     }
+
+    /// <summary>
+    /// The refusal for moving a story or bug into a project where its one-PR setting
+    /// reads true while a task of its stands in a third project. The tasks in the
+    /// project it leaves go with it or lose it as parent, and those already in the
+    /// target stop being across a line; the rest stay where they are. Read off the
+    /// setting the story will have after the move, as the write below works it out:
+    /// an enforced target returns an unstarted override to inherit. Null when
+    /// nothing crosses.
+    /// </summary>
+    private async Task<string?> MovedStoryRefusalAsync(
+        IReadOnlyList<long> movingIds, EfHatchIssue root, EfHatchProject target, CancellationToken ct)
+    {
+        var moving = await db.Issues.Where(i => movingIds.Contains(i.Id)).ToListAsync(ct);
+        var stories = moving.Where(m => m.Type is "story" or "bug").ToList();
+        if (stories.Count == 0) return null;
+
+        var returned = new HashSet<long>();
+        if (target.OnePullRequestPolicy == OnePullRequestPolicies.Enforced)
+        {
+            var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+            returned = OnePrLock.OverriddenAndUnstartedAmong(moving, statuses).Select(m => m.Id).ToHashSet();
+        }
+
+        foreach (var story in stories)
+        {
+            var reads = returned.Contains(story.Id) ? target.OnePullRequest : story.OnePullRequest ?? target.OnePullRequest;
+            if (!reads) continue;
+
+            var count = await OnePrLock.CrossProjectTaskCountAsync(db, [story.Id], ct, exceptProjectId: target.Id);
+            if (count > 0)
+                return OnePrLock.CrossProjectRefusal(IssueKey.Format(root.Project!.Key, story.Number), count);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The refusal for a task that would stand in another project from a story or
+    /// bug whose tasks share one pull request: one pull request is one branch in
+    /// one repository, and a project owns its repositories. Null for every other
+    /// pairing. <paramref name="parent"/> must have its project loaded.
+    /// </summary>
+    private static string? SharedPullRequestRefusal(EfHatchIssue parent, string parentKey, int projectId, string type) =>
+        type == "task" && parent.Type is "story" or "bug" && parent.ProjectId != projectId
+        && (parent.OnePullRequest ?? parent.Project!.OnePullRequest)
+            ? $"{parentKey} shares one pull request across its tasks, so they stay in {parent.Project!.Key}"
+            : null;
 
     // ---- The one narrowing ----
 

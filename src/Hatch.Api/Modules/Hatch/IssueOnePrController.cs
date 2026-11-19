@@ -35,6 +35,12 @@ namespace Hatch.Api.Modules.Hatch;
 /// a story's own say, and an enforced project takes none. That refusal comes
 /// before the lock's, so a started story hears the policy's sentence.
 /// <c>inherit</c> is never refused by the policy.</para>
+///
+/// <para>Refused too when the setting would read true over a task that stands in
+/// another project, since one pull request is one branch in one repository and a
+/// project owns its repositories. Turning it off, or letting it inherit a default
+/// that is off, is never refused. The sentence carries a count and never the
+/// hidden task's key (<see cref="OnePrLock.CrossProjectRefusal"/>).</para>
 /// </remarks>
 [ApiController]
 [Route("api/issues")]
@@ -79,6 +85,10 @@ public class IssueOnePrController(
                 return Conflict(
                     $"{key} has work under it that has already started ({started}), so whether its tasks share one " +
                     "pull request can no longer be changed - a task begun on one branch cannot be moved onto the other");
+
+            if (value ?? issue.Project!.OnePullRequest)
+                if (await OnePrLock.CrossProjectTaskCountAsync(db, [issue.Id], ct) is > 0 and var crossing)
+                    return Conflict(OnePrLock.CrossProjectRefusal(key, crossing));
 
             var now = time.GetUtcNow();
 
