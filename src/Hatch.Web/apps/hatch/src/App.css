@@ -1011,6 +1011,7 @@
   width: 14rem;
   cursor: grabbing;
   background: var(--card);
+  --tile-ground: var(--card);
   border-color: var(--primary);
   box-shadow: var(--shadow);
   transform: rotate(1.5deg);
@@ -1090,11 +1091,23 @@
   --flow-ink: var(--on-flow-other);
 }
 
+/* The key never runs under the marks in the card's corner: the tile is 18px
+   in from the card's edge, the trail takes another 10.5px to its left, and a
+   contribution mark 18px more. Each modifier names what the card draws. */
 .hatch-card-head {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
   margin-bottom: var(--sp-1);
+  padding-right: calc(1.125rem + var(--head-trail, 0px) + var(--head-contribution, 0px));
+}
+
+.hatch-card-head--trailed {
+  --head-trail: 0.65625rem;
+}
+
+.hatch-card-head--contribution {
+  --head-contribution: 1.125rem;
 }
 
 .hatch-card-key {
@@ -1541,6 +1554,12 @@
   position: absolute;
   top: var(--sp-1);
   right: calc(var(--sp-1) + 0.875rem + var(--sp-1));
+}
+
+/* The trail takes 12 units of the tile's wide box to the left of the tile: 12
+   at 14px per 16 units, and the mark steps left by that much. */
+.hatch-contribution-mark--trailed {
+  right: calc(var(--sp-1) + 0.875rem + var(--sp-1) + 0.65625rem);
 }
 
 .hatch-contribution-badge {
@@ -5796,6 +5815,7 @@ input.hatch-inline-title-input {
    border-color and not the border shorthand, so a card that is also `waiting`
    keeps the dashed edge that says it is held back. */
 .hatch-card.asking {
+  --tile-ground: var(--warn-ground);
   background-color: var(--bg);
   background-image: linear-gradient(var(--warn-bg), var(--warn-bg));
   border-color: var(--warn);
@@ -5875,20 +5895,22 @@ input.hatch-inline-title-input {
   box-shadow: inset 3px 0 0 var(--primary), var(--shadow);
 }
 
-/* The highest level: red rather than the expedited inset, so a column
-   carrying both never lets an emergency card read as merely expedited. */
+/* The highest level: the flame's amber rather than the expedited inset, so a
+   column carrying both never lets an emergency card read as merely expedited.
+   Not red: red on a card means a bug and nothing else, and the flame on the
+   card's tile is --heat, so the stripe and the flame are one colour. */
 .hatch-card.emergency {
-  box-shadow: inset 3px 0 0 var(--danger);
+  box-shadow: inset 3px 0 0 var(--heat);
 }
 
 .hatch-card-preview.emergency {
-  box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
+  box-shadow: inset 3px 0 0 var(--heat), var(--shadow);
 }
 
 /* The changelog report's entry row: a board card's emergency inset and none of
-   the rest of `hatch-card`, which is draggable. */
+   the rest of `hatch-card`, which is draggable. It keeps a bare tile. */
 .hatch-changelog-report-entry.emergency {
-  box-shadow: inset 3px 0 0 var(--danger);
+  box-shadow: inset 3px 0 0 var(--heat);
 }
 
 /* Low: a grey between normal's plain ink and economy's flat muted - later,
@@ -5933,46 +5955,11 @@ input.hatch-inline-title-input {
   line-height: 1.6;
 }
 
-/* The beacon: the emergency badge's own glyph, pulsing - the second thing on
-   this page (after .hatch-attention-glyph .hatch-robot-lamp.lit, App.css:3457) allowed to move
-   without a person having moved it, for the same reason: this exists to be
-   noticed. Slower than the attention lamp's 2s blink, so the two don't read
-   as the same rhythm on a board carrying both. */
-.hatch-card-expedited.emergency {
-  background: var(--danger-bg);
-  color: var(--danger-ink);
-  animation: hatch-emergency-beacon 3s ease-in-out infinite;
-}
-
-@keyframes hatch-emergency-beacon {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.35;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hatch-card-expedited.emergency {
-    animation: none;
-  }
-}
-
 /* Low's badge: no pulse either, and a shade louder than economy's - the same
    blended grey the stripe above uses. */
 .hatch-card-expedited.low {
   background: color-mix(in srgb, var(--muted) 25%, transparent);
   color: color-mix(in srgb, var(--muted) 60%, var(--ink));
-}
-
-/* Economy's badge: no pulse. The story asks only for a glyph, not a beacon -
-   economy is a quiet state, the opposite of "notice this now". */
-.hatch-card-expedited.economy {
-  background: color-mix(in srgb, var(--muted) 15%, transparent);
-  color: var(--muted);
 }
 
 /* Paused: a muted tint, not a beacon - nothing here is asking to be noticed. */
@@ -6541,31 +6528,8 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
-/* Carried past a column marked Express skips, with no session.
- *
- * No stripe on the card - that is expedite's, and a card marked both would
- * otherwise wear two stripes arguing about which one the eye should trust.
- * The badge alone is enough: express changes no order, so there is nothing
- * about *where* the card sits for a stripe to explain.
- *
- * --success rather than --primary (expedite's) or --warn (a question's owed
- * answer): a third fact about a card needs a colour neither of the other two
- * already speaks for. */
-.hatch-card-express {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--sp-1-5);
-  border-radius: var(--r-pill);
-  background: var(--success-bg);
-  color: var(--success-ink);
-  font-size: var(--t-micro);
-  font-weight: 700;
-  line-height: 1.6;
-}
-
-/* Pre-approved, beside Express and drawn the same way - a visibly stronger
-   tint than Express's plain --success-bg/--success-ink, so the two marks
-   read as two different facts rather than one fact twice. */
+/* Pre-approved, as the passed-over mark draws it: a card that honours the level
+   shows it on its tile, as a trail, and wears no mark of this class. */
 .hatch-card-preapproved {
   display: inline-flex;
   align-items: center;
@@ -6580,8 +6544,7 @@ input.hatch-inline-title-input {
 
 /* A level that was set on an ancestor and not honoured here: the mark it would
    have worn, dimmed and dashed so it reads as absent and not as in effect. No
-   colour of its own - it keeps its level's, a good deal fainter. The beacon
-   animation is expedited's emergency class alone, which this never takes. */
+   colour of its own - it keeps its level's, a good deal fainter. */
 .hatch-card-expedited.passedover,
 .hatch-card-preapproved.passedover {
   opacity: 0.55;
