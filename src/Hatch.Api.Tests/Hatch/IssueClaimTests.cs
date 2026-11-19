@@ -6,6 +6,7 @@ using Hatch.Api.Tests.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -3280,6 +3281,29 @@ public class IssueClaimTests
         Assert.Equal(at.AddMinutes(5), (await h.SessionAsync(id)).AgentDownUntil);
     }
 
+    [SkippableFact]
+    public async Task LiftingAPause_AndThreeMoreFailures_PausesTheSessionAgain()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        for (var i = 0; i < 3; i++) await DropAsync(h, await h.FileAsync());
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, (await h.SessionAsync(id)).AgentDownKind);
+
+        var runner = h.Caller.Key!;
+        h.Keys.Keys.Add(runner);
+        h.Caller.Key = null;
+        var lifted = await h.Runners.DeleteRunnerSessionPause(runner.Name, id, default);
+        h.Caller.Key = runner;
+
+        Assert.IsType<NoContentResult>(lifted);
+        var cleared = await h.SessionAsync(id);
+        Assert.Null(cleared.AgentDownUntil);
+        Assert.Equal(0, cleared.PauseStreak);
+
+        for (var i = 0; i < 3; i++) await DropAsync(h, await h.FileAsync());
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, (await h.SessionAsync(id)).AgentDownKind);
+    }
+
     [Theory]
     [InlineData(-1, 0, 3, 60)]
     [InlineData(0, -5, 0, 60)]
@@ -3634,6 +3658,19 @@ public class IssueClaimTests
         }
 
         public IssueThreadController Thread => new(Connect(), Caller, Time);
+
+        /// <summary>A controller on a connection of its own, for the one test that lifts a pause mid-sequence - see <see cref="Claims"/>.</summary>
+        public RunnersController Runners
+        {
+            get
+            {
+                var db = Connect();
+                var dispatch = new Dispatch(db, Actors, Rule, Time);
+                return new RunnersController(
+                    db, RunnersRule, Rule, Caller, Actors, Time, Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()),
+                    new StubSiteSettings(), Keys, new RunnerSessions(RunnersRule), dispatch, NullLogger<RunnersController>.Instance);
+            }
+        }
 
         /// <summary>The keys the account's reading is mapped to an owner through.</summary>
         public StubAuthService Keys { get; } = new();

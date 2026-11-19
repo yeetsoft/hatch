@@ -1403,6 +1403,64 @@ public class RunnersController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Lifts a <c>board-paused</c> pause the board set on one session, so its
+    /// next heartbeat is answered with its stored state and its next claim is
+    /// taken, rather than waiting out <see cref="IssueClaims.RunnerPauseMinutes"/>.
+    /// </summary>
+    /// <remarks>
+    /// A person's, never a key's or a keyless runner's - the same reason
+    /// <see cref="IssueStallController.PutHold"/> is: an agent that could lift
+    /// its own pause could undo the one thing the board did about it dropping
+    /// tickets without spending a token. Checked ahead of <see cref="GateAsync"/>
+    /// with its own sentence, since <see cref="NotAPerson"/>'s talks about
+    /// spending, which would read wrong for a pause.
+    /// </remarks>
+    [HttpDelete("{name}/sessions/{id:int}/pause")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult> DeleteRunnerSessionPause(string name, int id, CancellationToken ct)
+    {
+        if (await caller.IsProgramAsync(ct))
+        {
+            return new ObjectResult("lifting a pause is the operator's, not an agent's")
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            };
+        }
+
+        var (key, refusal) = await GateAsync(name, ct);
+        if (refusal is not null) return refusal;
+
+        var session = await SessionNamedAsync(key!.Id, id, ct);
+        if (session is null) return NotFound();
+
+        var now = time.GetUtcNow();
+        if (session.AgentDownUntil is null || session.AgentDownUntil <= now) return NoContent();
+
+        if (session.AgentDownKind != RunnerAgentDownKinds.BoardPaused)
+            return Conflict($"{session.AgentDownKind} is the runner's own to clear, not the board's");
+
+        // A pause the board wrote outlives the row it was written on - see the
+        // same comment on HeartbeatSessionAsync - so a restart in this checkout
+        // would otherwise inherit it straight back. Cleared everywhere at once,
+        // ended rows included.
+        var siblings = await db.RunnerSessions
+            .Where(s => s.ApiKeyId == key.Id && s.Where == session.Where
+                && s.AgentDownKind == RunnerAgentDownKinds.BoardPaused && s.AgentDownUntil > now)
+            .ToListAsync(ct);
+
+        foreach (var sibling in siblings)
+        {
+            sibling.AgentDownUntil = null;
+            sibling.AgentDownKind = null;
+            sibling.AgentDownLine = null;
+            sibling.PauseStreak = 0;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
     /// <summary>Pauses every live <c>loop</c> session under this key at once - see <see cref="FanOutAsync"/>.</summary>
     [HttpPost("{name}/pause-all")]
     [RequireRole(PersonRole.User)]

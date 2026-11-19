@@ -1232,7 +1232,8 @@ each, pause it the same as one ticket three times.
   ahead, `agentDownKind` `board-paused`, and `agentDownLine` saying how many
   sessions ended in error and the last ticket's key. Another session under the
   same key is untouched. The count goes back to zero.
-- **How it ends.** When `agentDownUntil` passes. Nothing sweeps it. Until then
+- **How it ends.** When `agentDownUntil` passes, or an operator lifts it early
+  on the Runners page - see below. Nothing else sweeps it. Until then
   a heartbeat from the session cannot clear or reword it, and a session
   restarted into the same checkout starts with the same pause. A paused
   session is left out of the peer set and the driver election, as any session
@@ -1244,6 +1245,19 @@ each, pause it the same as one ticket three times.
   answered `paused`, so the loop takes nothing, and a claim from that
   checkout is refused `409` with a sentence naming the pause. A claim the
   session already holds is left alone. The stored state is not changed.
+- **Lifting it.** A person, never a key or a keyless runner, can end the pause
+  without waiting out the hour: the Runners page draws a *Lift pause* button
+  on a session the board paused, and nowhere else. It clears
+  `agentDownUntil`, `agentDownKind` and `agentDownLine` on that session and on
+  any ended row at the same key and checkout, so a restarted loop does not
+  inherit the pause back from the row it replaced, and resets the failure
+  streak to zero. The next heartbeat is answered with the session's own
+  stored state, and its next claim is taken as normal - but three more
+  releases that spend nothing pause it again. It does not touch a pause the
+  session set on itself (`not-starting` or `signed-out`); those are the
+  runner's own to clear. See [watching the loop](watching-the-loop) for the
+  button, and [troubleshooting](troubleshooting#a-session-keeps-getting-paused-by-the-board)
+  for what to fix before lifting it.
 - **Setting it.** `Hatch__RunnerPauseAfter` (default `3`, `0` turns it off) and
   `Hatch__RunnerPauseMinutes` (default `60`); see
   [deployment overview](deployment-overview).

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Text } from '@hatch/ui';
-import { isIssueKeyShape, orderSentence, sessionControllable, sessionOrder } from '../lib/runners';
+import { isBoardPaused, isIssueKeyShape, orderSentence, sessionControllable, sessionOrder } from '../lib/runners';
 import type { SessionActions } from '../lib/sessionActions';
 import type { Runner, RunnerSession } from '../types';
 
@@ -45,6 +45,7 @@ export function SessionControls({
       <Button variant="danger" onClick={() => press(actions.stop(session))} disabled={stopping}>
         Stop after this one
       </Button>
+      {isBoardPaused(session, now) && <Button onClick={() => press(actions.lift(session))}>Lift pause</Button>}
       {order ? (
         <>
           <Text tone="muted">{orderSentence(order, now)}</Text>

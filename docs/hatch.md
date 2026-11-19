@@ -10415,8 +10415,27 @@ and ranked as any agent-down row; an older `hatch` prints *agent not starting*
 for it. While it is ahead of now, `RunnerSessions.Instruct` answers the
 session's heartbeat `paused` (a stored `stopping` stays `stopping`; `State`
 itself is never written, so the page does not read it as a person's pause), and
-`POST …/claim` from that key and checkout is refused — see [Claim](#claim). The
-Runners page does not yet offer to lift it.
+`POST …/claim` from that key and checkout is refused — see [Claim](#claim).
+
+A person can end a board pause before the hour is out:
+`DELETE /api/runners/{name}/sessions/{id}/pause` (`RunnersController.DeleteRunnerSessionPause`)
+clears the three fields and zeroes `PauseStreak` on that session and on every
+other row at the same key and `Where` with a live `board-paused` pause —
+ended rows included, since `TouchSession`'s own seed copies an unexpired
+board pause from any row at that key and `Where`, not only a live one, and
+clearing just the one row a person can see would let a restart bring the
+pause straight back. It refuses a key or a keyless runner the same way
+`IssueStallController.PutHold` does, `403` with its own sentence rather than
+`GateAsync`'s — that one talks about spending, which reads wrong for a
+pause — and refuses to touch a pause the runner set on itself
+(`not-starting` or `signed-out`), `409` naming whose it is to clear. A
+session with no live board pause is `204` and writes nothing. The next
+heartbeat is then answered with the session's own stored state — nothing
+about the heartbeat guard changes, since it only ever held while
+`AgentDownKind` was still `board-paused` and ahead of now — and its next
+claim is taken as normal; three more releases that spend nothing pause it
+again. The Runners page draws **Lift pause** on a session with a live board
+pause and nowhere else, beside the other session controls.
 
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and

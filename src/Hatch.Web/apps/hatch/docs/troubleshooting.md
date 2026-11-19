@@ -317,6 +317,25 @@ run](the-runner#when-it-will-not-run).
 - **How the stall mark works otherwise:** [when an increment does
   nothing](flow-wip-and-the-battery#when-an-increment-does-nothing).
 
+## A session keeps getting paused by the board
+
+- **Three releases in a row spent nothing.** The board stands the session
+  down for an hour rather than let it keep taking and dropping tickets:
+  [when the board pauses a
+  session](the-runner#when-the-board-pauses-a-session).
+- **Fix the cause first, not just the pause.** The usual causes are the same
+  three as a session paused on its own agent - a signed-out agent, a full
+  disk, or a bad or expired key - plus a model or binary that stopped
+  resolving. Read the runner's terminal and its work-log rows for the
+  session's claims; the board's own line on the paused session names the
+  last ticket it dropped.
+- **Lifting it without fixing the cause re-pauses it.** The Runners page's
+  **Lift pause** button ends the hour early, but it does nothing about why
+  three releases spent nothing - the same cause will fail the next three
+  the same way, and the board pauses it again.
+- **Want it sooner, once the cause is fixed.** Press **Lift pause** on the
+  session's row. Its next heartbeat and its next claim run as normal.
+
 ## A ticket stalls on a missing toolchain
 
 - **The repository builds with tools the runner's machine lacks, and nothing

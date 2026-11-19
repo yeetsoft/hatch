@@ -23,6 +23,7 @@ const deps = () => ({
     patchRunnerSession: vi.fn(async () => undefined),
     orderRunnerSession: vi.fn(async () => undefined),
     withdrawSessionOrder: vi.fn(async () => undefined),
+    liftBoardPause: vi.fn(async () => undefined),
     pauseAllSessions: vi.fn(async () => undefined),
     stopAllSessions: vi.fn(async () => undefined),
   },
@@ -64,6 +65,16 @@ describe('sessionActions', () => {
     expect(client.orderRunnerSession).toHaveBeenNthCalledWith(2, 'Quill', 2, { kind: 'pass' });
     expect(client.withdrawSessionOrder).toHaveBeenCalledTimes(1);
     expect(client.withdrawSessionOrder).toHaveBeenCalledWith('Quill', 2);
+  });
+
+  it('lifts a pause on the session it was given', async () => {
+    const { client, reload } = deps();
+
+    await expect(sessionActions('Quill', client, reload).lift(session(2))).resolves.toBeNull();
+
+    expect(client.liftBoardPause).toHaveBeenCalledTimes(1);
+    expect(client.liftBoardPause).toHaveBeenCalledWith('Quill', 2);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('pauses all and stops all with one call each, and touches no single session', async () => {
