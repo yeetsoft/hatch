@@ -420,7 +420,7 @@ dollars and runner time, the epic's own and everything beneath it - one row to
 an epic. It opens on the last three months, with the same window controls -
 **Earlier**, **Today**, **Later** and a **Length**. **Projects** (drawn only
 where there is more than one) is the same checkbox per project, with **All** and
-**None**. **Type** picks what a row is, epic to begin with, or reflection, story,
+**None**. **Type** picks what a row is, epic to begin with, or ambition, reflection, story,
 task, bug, or **All**; **Status** keeps the issues now standing in one column,
 **Any** to begin with. The table is sorted by clicking a column head - **Tokens**,
 **Notional USD**, **Runner time** or **Last session**, the most recent first to
@@ -503,7 +503,8 @@ them: **Trunk builds that fail**, **Backups**, **Stalled merge trains**,
 **Pull requests to review**,
 **Approved, not merging**, **Landed, not done**, **Finished with no code**,
 **Contributions runners will not work**, **Runner capacity**,
-**Waiting on a runner**. **Questions to answer** opens with one row,
+**Waiting on a runner**, **Waiting on another project's approver**.
+**Questions to answer** opens with one row,
 **Answer on the Ballot**, with the count of questions waiting, and it goes to
 the [Ballot](questions-and-decisions#how-the-operator-answers); each question
 is listed beneath it, smaller, with its issue key and what was asked, and goes
@@ -515,7 +516,14 @@ contribution mirrored from another instance names where it came from.
 **Waiting on a runner** lists every issue whose next move no live runner can
 take for want of a model, a tool, or a dependency its project declares - and links to the Runners page, where each runner shows what it offers
 ([the runner](the-runner#what-a-runner-advertises) covers what that is); like
-**Backups**, it lights the control and adds no pill to the bar. **Backups**
+**Backups**, it lights the control and adds no pill to the bar.
+**Waiting on another project's approver** lists each issue that a level or a
+pull from another project would carry, but that the loop does not honour,
+because the person who set it has no say in this project. Each row is the
+issue's key, its title and one sentence saying whose approval it needs, and it
+opens the issue: set the level on the issue there, or move it. It lights the
+control and adds no pill. Where you cannot see the epic it comes from, the
+sentence says it is in another project and does not name it. **Backups**
 appears only when the configured backup is failing or stale, and links to
 Settings, where the folder is fixed. **Stalled merge trains** appears only when
 a project's train has passed over every live runner that could drive it; each

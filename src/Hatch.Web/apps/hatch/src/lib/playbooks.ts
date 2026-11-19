@@ -173,6 +173,7 @@ export function coverageOf(boardRow: CoverageRow, ownRows: CoverageRow[]): Cover
 }
 
 const TYPE_PLURALS: Record<IssueType, string> = {
+  ambition: 'ambitions',
   epic: 'epics',
   reflection: 'reflections',
   story: 'stories',

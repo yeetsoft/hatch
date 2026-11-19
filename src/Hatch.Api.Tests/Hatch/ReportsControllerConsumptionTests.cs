@@ -205,6 +205,21 @@ public class ReportsControllerConsumptionTests
     }
 
     [Fact]
+    public async Task TypeAmbition_IsAccepted_AndListsOnlyAmbitions()
+    {
+        var h = await NewAsync();
+        var ambition = await AddIssueAsync(h, "ambition", h.StatusId);
+        var epic = await AddIssueAsync(h, "epic", h.StatusId, parentId: ambition.Id);
+        await SpendAsync(h, ambition.Id, Now.AddDays(-1));
+        await SpendAsync(h, epic.Id, Now.AddDays(-1));
+
+        var report = Value(await h.Reports.GetConsumption(null, null, "ambition", null, ct: default));
+
+        Assert.Equal("ambition", report.Type);
+        Assert.Equal([$"AER-{ambition.Number}"], report.Rows.Select(r => r.Key));
+    }
+
+    [Fact]
     public async Task TypeAll_ListsEveryType()
     {
         var h = await NewAsync();

@@ -29,7 +29,7 @@ const TYPES: ConsumptionType[] = [...ISSUE_TYPES, 'all'];
 const SORTS: ConsumptionSort[] = ['activity', 'tokens', 'cost', 'time'];
 
 /** The type the URL names, or `epic`: trimmed and lower-cased first, and
-    anything that is not one of the five types or `all` is a typo, not an error. */
+    anything that is not one of the six types or `all` is a typo, not an error. */
 export function resolveType(params: URLSearchParams): ConsumptionType {
   const raw = params.get(TYPE)?.trim().toLowerCase();
 

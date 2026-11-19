@@ -68,6 +68,17 @@ public class IssueWipLimitControllerTests
     }
 
     [Fact]
+    public async Task AnAmbition_TakesALimit()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "the long view");
+
+        var set = await h.SetAsync(ambition.Key, "2");
+
+        Assert.Equal(2, set.WipLimit);
+    }
+
+    [Fact]
     public async Task ANullLimit_WritesNothingAndReadsBackTheDto()
     {
         var h = await NewAsync();
@@ -112,7 +123,7 @@ public class IssueWipLimitControllerTests
         var refusal = await h.Wip.PatchIssueWipLimit(issue.Key, new IssueWipLimitRequest("2"), default);
 
         Assert.Equal(
-            $"only an epic or a reflection takes a limit on its children at once - {issue.Key} is a {type}",
+            $"only an epic, a reflection or an ambition takes a limit on its children at once - {issue.Key} is a {type}",
             Reason(refusal.Result));
         Assert.Empty(await h.EventsAsync(issue.Key));
     }

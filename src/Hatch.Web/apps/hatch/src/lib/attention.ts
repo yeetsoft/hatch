@@ -65,6 +65,10 @@ export type AttentionTone = 'rest' | 'asking';
  * information, not breakage (HA-2079's decision), while a no-taker row is a
  * person's to fix, the same as `waitingOnARunner`.
  *
+ * `heldAtProjectLine` counts every row: the level or pull comes from another
+ * project and is not honoured, so nothing dispatches until a person sets the
+ * level on the issue or moves it.
+ *
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
@@ -86,6 +90,7 @@ export function attentionCount(attention: Attention | null): number {
     (attention.contributionsHeld?.length ?? 0) +
     (attention.deadlocked?.length ?? 0) +
     (attention.waitingOnARunner?.length ?? 0) +
+    (attention.heldAtProjectLine?.length ?? 0) +
     (attention.runnerCapacity?.filter((r) => r.takers.length === 0).length ?? 0) +
     (attention.backup ? 1 : 0) +
     (attention.stalled?.filter((s) => s.kind === 'person' && !s.held).length ?? 0)
@@ -96,8 +101,8 @@ export function attentionCount(attention: Attention | null): number {
  * What the bar's attention pills add up to at phone width, where they fold
  * into one count: exactly the four sections that draw a pill - deadlocked,
  * trunk, review and question. Deliberately not `attentionCount`, which also
- * counts `approvedHeld`, `landingHeld`, `noCodeHeld`, `waitingOnARunner`, `runnerCapacity` and `backup`: those light the control and have
- * a row in the panel, but no pill, so a total that included them would not
+ * counts `approvedHeld`, `landingHeld`, `noCodeHeld`, `waitingOnARunner`, `heldAtProjectLine`, `runnerCapacity` and `backup`: those light
+ * the control and have a row in the panel, but no pill, so a total that included them would not
  * be the sum of the pills it stands in for.
  */
 export function pillCount(attention: Attention | null): number {
@@ -293,6 +298,9 @@ export const deadlockedEmptyWords = (): string => 'Nothing is deadlocked.';
 /** The empty state of the "Waiting on a runner" section. */
 export const waitingOnARunnerEmptyWords = (): string => 'Nothing is waiting on a runner.';
 
+/** The empty state of the "Waiting on another project's approver" section. */
+export const heldAtProjectLineEmptyWords = (): string => "Nothing is waiting on another project's approver.";
+
 const NO_LIVE_RUNNER = 'no live runner ';
 
 /**
@@ -484,7 +492,8 @@ export function groupCollapsed(sectionRowCounts: number[]): boolean {
  * One row count per Human section, in the panel's own order, for
  * `groupCollapsed` to fold over: trunk builds, backup, stalled merge trains,
  * deadlocked, questions, stalled, reviews, approved-held, landing-held,
- * no-code-held, contributions-held, runner capacity, waiting on a runner.
+ * no-code-held, contributions-held, runner capacity, waiting on a runner, waiting on another project's
+ * approver.
  *
  * `backup` is a single fact rather than a list - one row when it is not
  * null, none when it is. `reviews` counts at least one row whenever
@@ -493,7 +502,7 @@ export function groupCollapsed(sectionRowCounts: number[]): boolean {
  * would.
  */
 export function humanSectionRowCounts(attention: Attention | null): number[] {
-  if (attention === null) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  if (attention === null) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   return [
     (attention.trunkBuilds ?? []).length,
     attention.backup ? 1 : 0,
@@ -508,6 +517,7 @@ export function humanSectionRowCounts(attention: Attention | null): number[] {
     (attention.contributionsHeld ?? []).length,
     (attention.runnerCapacity ?? []).length,
     (attention.waitingOnARunner ?? []).length,
+    (attention.heldAtProjectLine ?? []).length,
   ];
 }
 
