@@ -520,8 +520,11 @@ jobs:
 
       # Two checkouts with distinct declarations: --repo renders and builds
       # the union, and the baked label carries every one of their ids.
+      # A step's ceiling is three times the slowest of the last thirty green trunk runs,
+      # or twice where three times would reach the job's own, so it can fire first (HA-2428).
+      # Raised from 3 to 10: the step now needs ~192s, not the 55s HA-2429 measured (HA-2513).
       - name: hatch image build --repo renders the union of two repositories
-        timeout-minutes: 3
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           a=$(mktemp -d) && git -C "$a" init --quiet
