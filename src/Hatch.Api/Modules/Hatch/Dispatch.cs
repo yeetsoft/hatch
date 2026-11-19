@@ -178,8 +178,12 @@ public sealed class Dispatch(
         // between two rows could fold one card and not its neighbour for a
         // reason nobody could reconstruct afterwards.
         // Read once for the pass: the claim lineage, the dependency gate and the
-        // family gate all answer one-PR questions from it.
-        var tree = await PriorityTree.ForAsync(db, actors, ct);
+        // family gate all answer one-PR questions from it. Read whole, whatever
+        // the calling key's owner may see: a level on a hidden ancestor still
+        // applies, and a parent is never closed over a child the key cannot
+        // see. The issue dispatched is still one the key can see - the
+        // candidates below come through the filter.
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, actors, now, ct, tree));
 
@@ -501,7 +505,8 @@ public sealed class Dispatch(
                         WaitsOn: blocking.WaitsOn,
                         AnyOf: blocking.AnyOf,
                         ProjectLevel: gate.ProjectLevel(issue.Id),
-                        ModelIsLocal: ResolveModel(issue, playbook, localLevel, models).Local));
+                        ModelIsLocal: ResolveModel(issue, playbook, localLevel, models).Local,
+                        Across: blocking.Across));
                 }
             }
 
@@ -826,6 +831,27 @@ public sealed class Dispatch(
         }
 
         return listed;
+    }
+
+    /// <summary>
+    /// The reader's visible issues the loop would carry now were every inherited
+    /// level and pull honoured, and does not, because the walk passed it over at
+    /// a project line - and which line. Only a row held for nothing but that is
+    /// listed: one folded earlier (a claim, a dependency, a full column) or
+    /// parked behind a higher tier is not. Ordered as
+    /// <see cref="WaitingOnARunnerAsync"/> orders: priority, rank, id.
+    /// </summary>
+    public async Task<IReadOnlyList<AcrossHold>> HeldAtProjectLineAsync(CancellationToken ct)
+    {
+        var board = await ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct);
+
+        return board.Rows
+            .Where(r => !r.Hop && r.Across is not null && r.BlockedKind == BlockedKinds.Person)
+            .OrderByDescending(r => r.EffectivePriority)
+            .ThenBy(r => r.Issue.Rank)
+            .ThenBy(r => r.Issue.Id)
+            .Select(r => new AcrossHold(r, r.Across!))
+            .ToList();
     }
 
     /// <summary>
@@ -1282,7 +1308,7 @@ public sealed class Dispatch(
             .ToListAsync(ct);
         if (inTrain.Count == 0) return [];
 
-        var tree = await PriorityTree.ForAsync(db, actors, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         // The same fold ScanAsync's own FamilyGate wraps as IsWaiting, read
         // directly rather than through it: a merges column is a handful of
@@ -2186,7 +2212,36 @@ public sealed class Dispatch(
     /// person reading the queue moves it either way.
     /// </summary>
     private static string PullNotHonoured(string parentKey, string projectKey) =>
-        $"{parentKey} is in progress, but the person who started it has no say in {projectKey}, so a person moves it";
+        AcrossSentence(new AcrossLine(parentKey, false, null), projectKey, false);
+
+    /// <summary>
+    /// The one place the two cross-project holds are worded: a level the walk
+    /// passed over (<see cref="AcrossLine.IsLevel"/>) and a pull it did not
+    /// honour. The queue asks with the ancestor's key; a reader who cannot see
+    /// that ancestor asks with <paramref name="hideKey"/> and is told it is in
+    /// another project instead. Both always name <paramref name="projectKey"/>,
+    /// the project whose approver is needed.
+    /// </summary>
+    public static string AcrossSentence(AcrossLine line, string projectKey, bool hideKey) =>
+        line.IsLevel
+            ? $"{(line.Level == PreApprovalLevels.PreApproved ? "pre-approved" : "express")} on {(hideKey ? "an ancestor in another project" : line.FromKey)}, not honoured in {projectKey} - " +
+              "its setter has no say there, so a person moves it"
+            : $"{(hideKey ? "its parent in another project" : line.FromKey)} is in progress, but the person who started it has no say in {projectKey}, so a person moves it";
+
+    /// <summary>
+    /// The pull hold's <see cref="AcrossLine"/> where honouring the pull would
+    /// carry the issue - <see cref="HopKind"/> asked again with the parent's
+    /// starter given their say - and null where it would not (a child in
+    /// Backlog, which no hop leaves, is held, but not for the line alone).
+    /// </summary>
+    private static AcrossLine? PullAcross(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate.Parent parent, FamilyGate family,
+        EfHatchPlaybook? playbook, int sendBackStreak, WipSection? wip, DependencyGate gate,
+        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, ClaimGate claimed, List<EfHatchStatus> statuses) =>
+        HopKind(issue, from, to, family.WithPullsHonoured(), statuses, wip, parent, playbook, sendBackStreak,
+            claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, verdicts, builds, claimed.Now) is not null
+            ? new AcrossLine(parent.Key, false, null)
+            : null;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -2310,10 +2365,10 @@ public sealed class Dispatch(
                  && family.ParentOf(issue.Id) is { } pullParent && FamilyGate.PullHeld(pullParent, issue.ProjectId, from, statuses, family.Authority))
             && HopKind(issue, from, to, family, statuses, wip, family.ParentOf(issue.Id), playbook, sendBackStreak,
                 claimed.Claims!.StallResumeLimit, passedOver.Level, verdicts, builds, claimed.Now) is HopKinds.Express or HopKinds.Approve or HopKinds.Close)
-            return new Blocking(
-                $"{(passedOver.Level == PreApprovalLevels.PreApproved ? "pre-approved" : "express")} on {passedOver.Key}, not honoured in {issue.Project!.Key} - " +
-                "its setter has no say there, so a person moves it",
-                BlockedKinds.Person);
+        {
+            var across = new AcrossLine(passedOver.Key, true, passedOver.Level);
+            return new Blocking(AcrossSentence(across, issue.Project!.Key, false), BlockedKinds.Person, Across: across);
+        }
 
         if (to.IsTerminal && hopKind != HopKinds.Close)
             return new Blocking($"the next column is \"{to.Name}\", and only the operator moves work there", BlockedKinds.Person);
@@ -2537,7 +2592,9 @@ public sealed class Dispatch(
             && !Columns.AtOrPastImplementation(statuses, from.Id)
             && family.ParentOf(issue.Id) is { } heldParent
             && FamilyGate.PullHeld(heldParent, issue.ProjectId, from, statuses, family.Authority))
-            return new Blocking(PullNotHonoured(heldParent.Key, issue.Project!.Key), BlockedKinds.Person);
+            return new Blocking(
+                PullNotHonoured(heldParent.Key, issue.Project!.Key), BlockedKinds.Person,
+                Across: PullAcross(issue, from, to, heldParent, family, playbook, sendBackStreak, wip, gate, verdicts, builds, claimed, statuses));
 
         if (issue.Type is "story" or "bug" or "task"
             && issue.ParentId is { } holdParentId
@@ -2565,7 +2622,9 @@ public sealed class Dispatch(
 
             if (epicParent is { } heldEpicParent
                 && FamilyGate.PullHeld(heldEpicParent, issue.ProjectId, from, statuses, family.Authority))
-                return new Blocking(PullNotHonoured(heldEpicParent.Key, issue.Project!.Key), BlockedKinds.Person);
+                return new Blocking(
+                    PullNotHonoured(heldEpicParent.Key, issue.Project!.Key), BlockedKinds.Person,
+                    Across: PullAcross(issue, from, to, heldEpicParent, family, playbook, sendBackStreak, wip, gate, verdicts, builds, claimed, statuses));
 
             if (epicParent is not null
                 && (!IssueTypeKinds.RunsChildren(epicParent.Type) || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId)))
@@ -3138,7 +3197,17 @@ public sealed record ScanRow(
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
     string? Model = null, IReadOnlyList<string>? DeniedTools = null,
     IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false,
-    string? ProjectLevel = null, bool ModelIsLocal = false);
+    string? ProjectLevel = null, bool ModelIsLocal = false, AcrossLine? Across = null);
+
+/// <summary>A row <see cref="Dispatch.HeldAtProjectLineAsync"/> lists, and the line it stands at.</summary>
+public sealed record AcrossHold(ScanRow Row, AcrossLine Line);
+
+/// <summary>
+/// The project line a hold stands at: the ancestor whose level or pull was not
+/// honoured, whether it is a level (<see cref="Level"/> then says which, one of
+/// <see cref="PreApprovalLevels"/>) or a pull. See <see cref="Dispatch.AcrossSentence"/>.
+/// </summary>
+public sealed record AcrossLine(string FromKey, bool IsLevel, int? Level = null);
 
 /// <summary>
 /// <see cref="Dispatch.BlockedWithKind"/>'s answer: the sentence and its kind,
@@ -3148,7 +3217,7 @@ public sealed record ScanRow(
 /// one of them leaving is enough (a WIP limit), false where all must (a
 /// dependency).
 /// </summary>
-public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false)
+public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, AcrossLine? Across = null)
 {
     /// <summary>A fold on a list that could in principle be empty: empty means it waits on no issue, so null.</summary>
     public static Blocking Waiting(string sentence, string kind, IReadOnlyList<long> ids, bool anyOf = false) =>
@@ -3400,6 +3469,69 @@ public sealed record HasDeclaration(IReadOnlyList<string> Has, bool Judged)
 /// <summary>A level the walk passed over at a project line: what it was, and the key of the ancestor that carries it.</summary>
 public readonly record struct PassedOverLevel(int Level, string Key);
 
+/// <summary>The names <see cref="Disclosure.FromBeyondScope"/> lists - the value whose from-key was blanked.</summary>
+public static class DisclosedValues
+{
+    public const string Priority = "priority";
+    public const string PreApproval = "preApproval";
+    public const string LocalModel = "localModel";
+    public const string OnePr = "onePr";
+    public const string Dangerous = "dangerous";
+    public const string PreApprovalPassedOver = "preApprovalPassedOver";
+    public const string PriorityPassedOver = "priorityPassedOver";
+}
+
+/// <summary>
+/// What one reader is told about the links of one issue - see
+/// <see cref="PriorityTree.Disclose"/>. A value that came from an ancestor in
+/// a project the reader cannot see still applies; what leaves is the value and
+/// a flag that it came from outside the scope, never the ancestor's key.
+/// </summary>
+public sealed class Disclosure
+{
+    private readonly HashSet<string>? visibleKeys;
+    private readonly List<string> beyond = [];
+
+    internal Disclosure(HashSet<string>? visibleKeys, bool parentBeyondScope, bool childBeyondScope)
+    {
+        this.visibleKeys = visibleKeys;
+        ParentBeyondScope = parentBeyondScope;
+        ChildBeyondScope = childBeyondScope;
+    }
+
+    /// <summary>The issue has a parent in a project the reader cannot see.</summary>
+    public bool ParentBeyondScope { get; }
+
+    /// <summary>Some child of the issue is in a project the reader cannot see.</summary>
+    public bool ChildBeyondScope { get; }
+
+    /// <summary>The value names whose from-key was blanked, in the order they were asked - see <see cref="DisclosedValues"/>.</summary>
+    public IReadOnlyList<string> FromBeyondScope => beyond.Count == 0 ? [] : beyond;
+
+    private bool Hidden(string key) => visibleKeys is not null && !visibleKeys.Contains(key);
+
+    /// <summary>The from-key of <paramref name="value"/>, or null where it names an issue the reader cannot see - and then the value is recorded in <see cref="FromBeyondScope"/>.</summary>
+    public string? Key(string value, string? fromKey)
+    {
+        if (fromKey is null || !Hidden(fromKey)) return fromKey;
+
+        if (!beyond.Contains(value)) beyond.Add(value);
+        return null;
+    }
+
+    /// <summary>The runner-tag sources, each from an issue the reader cannot see with its key blank and <c>BeyondScope</c> set. The tags themselves stay.</summary>
+    public IReadOnlyList<RunnerTagSourceDto> Tags(IReadOnlyList<RunnerTagSourceDto> from) =>
+        visibleKeys is null || !from.Any(s => s.Kind == RunnerTagSourceKinds.Issue && Hidden(s.Key))
+            ? from
+            : from.Select(s => s.Kind == RunnerTagSourceKinds.Issue && Hidden(s.Key) ? s with { Key = "", BeyondScope = true } : s).ToList();
+
+    /// <summary>The omissions, each from an issue the reader cannot see with its key blank - not null, which means the issue's own - and <c>BeyondScope</c> set.</summary>
+    public IReadOnlyList<RunnerOmissionDto> Omissions(IReadOnlyList<RunnerOmissionDto> list) =>
+        visibleKeys is null || !list.Any(o => o.FromKey is { } key && Hidden(key))
+            ? list
+            : list.Select(o => o.FromKey is { } key && Hidden(key) ? o with { FromKey = "", BeyondScope = true } : o).ToList();
+}
+
 /// <summary>
 /// The parent/key/priority of every issue, read once, and the question
 /// "what priority is live here" answered against it by walking to the
@@ -3460,6 +3592,17 @@ public sealed class PriorityTree
     // the set contains the id, never which children.
     private readonly HashSet<long> _parents;
 
+    // The ids a reader's scope holds, or null where every row read is seen -
+    // a tree read whole for the dispatcher, or built by hand. Only a display
+    // path sets it; see ForReaderAsync and Disclose.
+    private readonly HashSet<long>? _visible;
+
+    // The ids of parents with at least one child outside _visible, and the
+    // display keys of the rows inside it - both built once beside _parents,
+    // since Disclose asks of each issue and each key.
+    private readonly HashSet<long> _hiddenChildParents;
+    private readonly HashSet<string>? _visibleKeys;
+
     internal PriorityTree(
         Dictionary<long, (long?, string, int, int)> rows,
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
@@ -3470,9 +3613,11 @@ public sealed class PriorityTree
         Dictionary<long, int>? localModels = null,
         Dictionary<long, int>? projects = null,
         Dictionary<long, (Guid?, Guid?)>? setters = null,
-        SetterAuthority? authority = null)
+        SetterAuthority? authority = null,
+        HashSet<long>? visible = null)
     {
         _rows = rows;
+        _visible = visible;
         _setters = setters ?? new();
         _authority = authority ?? SetterAuthority.Nobody;
         _projects = projects ?? new();
@@ -3486,7 +3631,45 @@ public sealed class PriorityTree
             .Where(r => r.Item1 is not null)
             .Select(r => r.Item1!.Value)
             .ToHashSet();
+        _hiddenChildParents = visible is null
+            ? []
+            : rows.Where(r => r.Value.Item1 is not null && !visible.Contains(r.Key))
+                .Select(r => r.Value.Item1!.Value)
+                .ToHashSet();
+        _visibleKeys = visible?.Where(rows.ContainsKey).Select(id => rows[id].Item2).ToHashSet(StringComparer.Ordinal);
     }
+
+    // The same rows, read for one reader: what WithVisible returns. Every
+    // dictionary is shared - none is written after construction.
+    private PriorityTree(PriorityTree whole, HashSet<long> visible)
+    {
+        _rows = whole._rows;
+        _onePr = whole._onePr;
+        _runnerTags = whole._runnerTags;
+        _dangerous = whole._dangerous;
+        _localModels = whole._localModels;
+        _projects = whole._projects;
+        _setters = whole._setters;
+        _authority = whole._authority;
+        _projectLevels = whole._projectLevels;
+        _omissions = whole._omissions;
+        _parents = whole._parents;
+        _visible = visible;
+        _hiddenChildParents = whole._rows.Where(r => r.Value.ParentId is not null && !visible.Contains(r.Key))
+            .Select(r => r.Value.ParentId!.Value)
+            .ToHashSet();
+        _visibleKeys = visible.Where(whole._rows.ContainsKey).Select(id => whole._rows[id].Key).ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The ids of the issues the context's scope holds, or null for a context
+    /// that reads every project, where nothing is to be disclosed.
+    /// </summary>
+    public static async Task<HashSet<long>?> VisibleIdsAsync(HatchContext db, CancellationToken ct) =>
+        db.ScopeUnbounded ? null : (await db.Issues.AsNoTracking().Select(i => i.Id).ToListAsync(ct)).ToHashSet();
+
+    /// <summary>This tree's rows read for a reader whose scope holds <paramref name="visible"/>; this tree itself when that is null.</summary>
+    public PriorityTree WithVisible(HashSet<long>? visible) => visible is null ? this : new(this, visible);
 
     /// <param name="ignoreFilters">
     /// Read every project, not the caller's. Only the house-wide counts in
@@ -3499,7 +3682,24 @@ public sealed class PriorityTree
     /// Required, not optional: a tree built without it would honour nothing
     /// across a line and say nothing about why.
     /// </param>
-    public static async Task<PriorityTree> ForAsync(HatchContext db, IActorDirectory actors, CancellationToken ct, bool ignoreFilters = false)
+    public static Task<PriorityTree> ForAsync(HatchContext db, IActorDirectory actors, CancellationToken ct, bool ignoreFilters = false) =>
+        ForAsync(db, actors, ct, ignoreFilters, visible: null);
+
+    /// <summary>
+    /// The tree a display path reads: every project, so a level that came from
+    /// an ancestor in a project the reader cannot see still applies, and the
+    /// ids the reader's own scope holds beside it, so <see cref="Disclose"/>
+    /// can blank what would name a hidden issue. An unbounded context skips
+    /// the second read and discloses nothing. It adds no opt-out of its own:
+    /// the whole read is <see cref="ForAsync"/>'s, and the scoped read is an
+    /// ordinary filtered query.
+    /// </summary>
+    public static async Task<PriorityTree> ForReaderAsync(HatchContext db, IActorDirectory actors, CancellationToken ct)
+    {
+        return await ForAsync(db, actors, ct, ignoreFilters: true, await VisibleIdsAsync(db, ct));
+    }
+
+    private static async Task<PriorityTree> ForAsync(HatchContext db, IActorDirectory actors, CancellationToken ct, bool ignoreFilters, HashSet<long>? visible)
     {
         var issues = ignoreFilters ? db.Issues.IgnoreQueryFilters() : db.Issues;
         var omissions = ignoreFilters ? db.RunnerOmissions.IgnoreQueryFilters() : db.RunnerOmissions;
@@ -3539,8 +3739,20 @@ public sealed class PriorityTree
             rows.ToDictionary(r => r.Id, r => r.LocalModel),
             rows.ToDictionary(r => r.Id, r => r.ProjectId),
             rows.ToDictionary(r => r.Id, r => (r.PreApprovalSetBy, r.PrioritySetBy)),
-            authority);
+            authority,
+            visible);
     }
+
+    /// <summary>
+    /// What a reader may be told about the links of one issue: whether its
+    /// parent, or some child, sits outside the reader's scope, and each
+    /// from-key run through the reader's scope. A tree built with no visible
+    /// set discloses nothing, and every key passes unchanged.
+    /// </summary>
+    public Disclosure Disclose(long id) => new(
+        _visibleKeys,
+        _visible is not null && TryGet(id, out var row) && row.ParentId is { } parent && _rows.ContainsKey(parent) && !_visible.Contains(parent),
+        _hiddenChildParents.Contains(id));
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
 
@@ -4049,6 +4261,9 @@ public sealed class DependencyGate
     }
 
     /// <summary>The priority live on this issue - see <see cref="PriorityTree.Effective"/>.</summary>
+    /// <summary>The gate's tree read for a reader whose scope holds <paramref name="visible"/> - see <see cref="PriorityTree.WithVisible"/>.</summary>
+    public PriorityTree ForReader(HashSet<long>? visible) => _tree.WithVisible(visible);
+
     public (int Level, string? FromKey) Effective(long issueId) => _tree.Effective(issueId);
 
     /// <summary>The level of this issue's project - see <see cref="PriorityTree.ProjectLevel"/>.</summary>
@@ -4133,6 +4348,10 @@ public sealed class FamilyGate
     private readonly HashSet<long> _changelogTasks;
     private readonly Dictionary<long, int> _projectById;
     private readonly SetterAuthority _authority;
+
+    // Set only on the copy WithPullsHonoured returns: every pull across a
+    // project line reads as honoured, for the question "would this carry now".
+    private bool _honourAcross;
 
     /// <summary>What a parent's starter may do across a project line - see <see cref="PullHeld"/>.</summary>
     public SetterAuthority Authority => _authority;
@@ -4336,7 +4555,20 @@ public sealed class FamilyGate
     /// </summary>
     public bool Honours(EfHatchIssue issue, Parent parent, EfHatchStatus? into) =>
         !parent.OtherProject
+        || _honourAcross
         || (into is not null && _authority.MayPull(parent.StartedBy, issue.ProjectId, into));
+
+    /// <summary>
+    /// A copy that honours every pull across a project line, whoever started
+    /// the parent - so <see cref="Dispatch.HopKind"/> can say what would carry
+    /// a child were the line not there. The rows it reads are shared.
+    /// </summary>
+    public FamilyGate WithPullsHonoured()
+    {
+        var copy = (FamilyGate)MemberwiseClone();
+        copy._honourAcross = true;
+        return copy;
+    }
 
     /// <summary>
     /// <see cref="ParentStarted"/> for this issue's own parent, where that

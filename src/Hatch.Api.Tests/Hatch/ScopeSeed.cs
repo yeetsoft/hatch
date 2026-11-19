@@ -12,7 +12,8 @@ namespace Hatch.Api.Tests.Hatch;
 /// Project A and project B each own two issues and one of everything that hangs
 /// off an issue. A playbook, a dream and an attachment with no project stand
 /// beside them, and so do three repositories: one bound by A, one by B, and
-/// one bound by both.
+/// one bound by both. The second issue of each project hangs under the first
+/// of the other, so each has a parent and a child the other cannot see.
 /// </remarks>
 internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long IssueB, long DreamA, long DreamB)
 {
@@ -119,6 +120,15 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
             issues[project.Id] = (one, two);
         }
 
+        await db.SaveChangesAsync();
+
+        // A link with a hidden side from each project's point of view: the
+        // second issue of each hangs under the first of the other. Data only,
+        // so no probe count moves; but every list a caller of one project reads
+        // now holds a visible child of a hidden parent, and a visible parent of
+        // a hidden child.
+        issues[a.Id].Two.ParentId = issues[b.Id].One.Id;
+        issues[b.Id].Two.ParentId = issues[a.Id].One.Id;
         await db.SaveChangesAsync();
 
         foreach (var (project, playbook, dream, canonical) in new[]

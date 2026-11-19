@@ -430,6 +430,15 @@ name 400s, naming the levels. Nothing in dispatch reads the level yet.
 `IssueDto` and `IssueCardDto` also carry `preApprovalPassedOver` and `priorityPassedOver`: the key of the
 nearest ancestor whose level was passed over at a project line because its setter has no say in this
 ticket's project (or none was recorded), or null. Read live, beside `preApprovalFrom` and `priorityFrom`.
+`IssueDto` and `IssueCardDto` also say what a reader is told of a link with a hidden side,
+where the project at the other end is outside the reader's scope. `parentBeyondScope` is true when the
+parent is there and `parentKey` is null; `childBeyondScope` is true when some child is there and
+`childKeys` holds none of it, with no count. `fromBeyondScope` lists the values whose from-key was blanked
+because the ancestor it names is outside the scope - any of `priority`, `preApproval`, `localModel`,
+`onePr`, `dangerous`, `preApprovalPassedOver` and `priorityPassedOver` - and the value itself still
+applies. A `runnerTagsFrom` source or an `omittedRunners` entry from such an ancestor has a blank key and
+`beyondScope: true`; a null omission `fromKey` still means the issue's own. All default to false or
+empty, and a reader whose scope holds everything never sees one set.
 `IssueDto` also carries `startedBy` (a name, or null for a key's move, an issue started before this was
 recorded, or one never started) and `startedAt` (null only where it never crossed): written the first time
 a move, a PATCH, a bulk edit or a hop carries the issue rightward across the board's send-back column, and
@@ -535,16 +544,20 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/search` | Full-text search across title, description, comments and work log, paged |
-| GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request |
-| GET | `/plan/{key}` | One issue's rollup and its children's |
+| GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
+| GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
 All four a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
 `createdFrom`/`createdTo`, `closedFrom`/`closedTo`, `limit` (1-200, default
 50) and `offset`; with `q`, best match first and closed-ahead-of-open among
 equals, without it newest first (closed, else created). `/plan` takes an
-optional, repeatable `projectId`. `/plan` roots on parentless epics and ambitions; an ambition comes back among
-the roots with its epics as entries beneath it, and never under `loose`.
+optional, repeatable `projectId`; with none, an epic under an epic of another
+project is nested under it, and with one, an epic whose parent is outside the
+answer is a root, its card carrying `parentKey` or `parentBeyondScope`, and
+`childBeyondScope` where its tree goes on past the reader's scope. `/plan`
+roots on parentless epics and ambitions; an ambition comes back among the
+roots with its epics as entries beneath it, and never under `loose`.
 `/assignees` takes nothing, and answers an
 `AssigneeDirectoryDto(Me?, Assignees)`. `docs/hatch-planning.md` has the
 plan's arithmetic in full.
@@ -1650,6 +1663,21 @@ only a person can move it on - held, stalled on a board that never resumes, or
 stalled past the window at the resume limit - and `loop` when the board
 resumes it by itself. `stallResumeSeconds` is the board's resume window, 0 when
 it never resumes one. `stalled` is empty, not null, when there is none.
+`heldAtProjectLine` lists the issues you can see that the loop would carry now
+if every level and pull they inherit were honoured, and does not, because the
+level or pull comes from another project whose setter has no say there: an
+issue in review with a clean branch under a pre-approved ancestor, one in a
+column marked for express under an express ancestor, or a child left of
+implementation under a parent in progress, each in another project. Only an
+issue held for nothing but that is listed - one a claim, a dependency or a full
+column already holds is not. Each entry carries `key`, `title`, `type`,
+`projectKey` (the issue's own project, the one whose approver is needed) and
+`sentence` (the queue's own words). Where the ancestor is outside your scope the
+sentence names no key, only "an ancestor in another project" or "its parent in
+another project". An entry leaves when an approver of `projectKey` sets the level
+on the issue itself, or when the issue moves; a child held for its parent's pull
+has no level to set, so it leaves only by a move. It is in the queue's order,
+and empty, not null, whatever the board's shape. It is not counted here.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.

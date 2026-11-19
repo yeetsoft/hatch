@@ -2777,6 +2777,228 @@ public class AttentionControllerTests : IDisposable
     private void Seed(DateTimeOffset at) =>
         File.WriteAllBytes(Path.Combine(_dir, BackupNames.Final(at)), [1]);
 
+    // ---- HeldAtProjectLine: a level or pull from another project the loop does not honour ----
+
+    private static async Task AddApprovedColumnAsync(Harness h)
+    {
+        h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+        await h.Db.SaveChangesAsync();
+    }
+
+    /// <summary>A person with a role in the other project only: a setter with no say in AER.</summary>
+    private static async Task<Guid> StrangerAsync(Harness h, int other)
+    {
+        var stranger = h.Actors.AddPerson("Stranger");
+        await h.MemberAsync(other, stranger.Id, ProjectMemberRole.Owner);
+        return stranger.Id;
+    }
+
+    private static async Task<Guid> ApproverAsync(Harness h)
+    {
+        var approver = h.Actors.AddPerson("Approver");
+        await h.MemberAsync(h.ProjectId, approver.Id, ProjectMemberRole.Approver);
+        return approver.Id;
+    }
+
+    /// <summary>A story in review with a clean, passing branch, under a pre-approved epic in project <paramref name="other"/>.</summary>
+    private static async Task<(EfHatchIssue Epic, EfHatchIssue Story)> ReviewStoryUnderOtherEpicAsync(Harness h, int other, Guid? setter)
+    {
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        await h.SetLevelAsync(epic, PreApprovalLevels.PreApproved, setter);
+        var story = await h.FileAsync("story", "in review", h.Review, parentId: epic.Id, pullRequestUrl: "https://example.com/o/r/pull/1");
+        await h.CheckAsync(story, MergeVerdicts.Clean);
+        await h.BuildAsync(story, BuildVerdicts.Passed);
+        return (epic, story);
+    }
+
+    public enum Pull { Epic, Under, Parent }
+
+    /// <summary>
+    /// A parent running in project <paramref name="other"/> that nobody with a say in AER started, and a
+    /// child in AER standing in To Do for the pull to carry: a sub-epic, a story under an express-skipping
+    /// column, or a task under a pulling one.
+    /// </summary>
+    private static async Task<(EfHatchIssue Parent, EfHatchIssue Child)> RunningAcrossTheLineAsync(Harness h, Pull pull, int other)
+    {
+        // A task is pulled by a running story: a story under a running epic is analysed, not carried.
+        var parent = await h.FileAsync(pull == Pull.Parent ? "story" : "epic", "running", h.InProgress, projectId: other);
+
+        switch (pull)
+        {
+            case Pull.Epic:
+                await h.TickAsync(h.InProgress, s => s.IsWip = true);
+                await h.TickAsync(h.Review, s => s.IsWip = true);
+                var sub = await h.FileAsync("epic", "sub", h.Todo, parentId: parent.Id);
+                await h.FileAsync("story", "under sub", h.Todo, parentId: sub.Id);
+                return (parent, sub);
+            case Pull.Under:
+                await h.TickAsync(h.InProgress, s => s.IsWip = true);
+                await h.TickAsync(h.Review, s => s.IsWip = true);
+                await h.TickAsync(h.Todo, s => s.ExpressSkips = true);
+                return (parent, await h.FileAsync("story", "S", h.Todo, parentId: parent.Id));
+            default:
+                await h.TickAsync(h.Todo, s => s.ParentPulls = true);
+                return (parent, await h.FileAsync("task", "T", h.Todo, parentId: parent.Id));
+        }
+    }
+
+    [Fact]
+    public async Task HeldAtProjectLine_ListsAReviewIssueUnderAnAncestorPreApprovedInAnotherProject_UntilAnApproverSetsTheLevelOnIt()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await AddApprovedColumnAsync(h);
+        var (epic, story) = await ReviewStoryUnderOtherEpicAsync(h, other, await StrangerAsync(h, other));
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+
+        Assert.Equal(
+            new ProjectLineHeldDto(
+                Key(story), "in review", "story", "AER",
+                $"pre-approved on {IssueKey.Format("OTH", epic.Number)}, not honoured in AER - its setter has no say there, so a person moves it"),
+            row);
+
+        await h.SetLevelAsync(story, PreApprovalLevels.PreApproved, await ApproverAsync(h));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+    }
+
+    [Fact]
+    public async Task HeldAtProjectLine_ListsAClosableIssueUnderAnAncestorPreApprovedInAnotherProject()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        await h.SetLevelAsync(epic, PreApprovalLevels.PreApproved, await StrangerAsync(h, other));
+        var story = await h.FileAsync("story", "all its tasks done", h.Review, parentId: epic.Id);
+        await h.FileAsync("task", "done", h.Done, parentId: story.Id);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+
+        Assert.Equal(Key(story), row.Key);
+        Assert.Equal("AER", row.ProjectKey);
+        Assert.Contains("not honoured in AER", row.Sentence);
+
+        await h.SetLevelAsync(story, PreApprovalLevels.PreApproved, await ApproverAsync(h));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+    }
+
+    [Fact]
+    public async Task HeldAtProjectLine_ListsAnIssueInAnExpressColumnUnderAnExpressAncestorInAnotherProject_UntilAnApproverSetsTheLevelOnIt()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.TickAsync(h.Todo, s => s.ExpressSkips = true);
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        // An express level is honoured for anyone with the project in scope, so the one passed over is
+        // a level nobody recorded.
+        await h.SetLevelAsync(epic, PreApprovalLevels.Express, null);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+
+        Assert.Equal(Key(story), row.Key);
+        Assert.Equal("AER", row.ProjectKey);
+        Assert.Equal($"express on {IssueKey.Format("OTH", epic.Number)}, not honoured in AER - its setter has no say there, so a person moves it", row.Sentence);
+
+        await h.SetLevelAsync(story, PreApprovalLevels.Express, await ApproverAsync(h));
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+    }
+
+    [Theory]
+    [InlineData(Pull.Epic)]
+    [InlineData(Pull.Under)]
+    [InlineData(Pull.Parent)]
+    public async Task HeldAtProjectLine_ListsAChildLeftOfImplementationUnderAParentInProgressInAnotherProject_UntilItMoves(Pull pull)
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var (parent, child) = await RunningAcrossTheLineAsync(h, pull, other);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+
+        Assert.Equal(Key(child), row.Key);
+        Assert.Equal("AER", row.ProjectKey);
+        Assert.Equal($"{IssueKey.Format("OTH", parent.Number)} is in progress, but the person who started it has no say in AER, so a person moves it", row.Sentence);
+
+        child.StatusId = h.InProgress;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+    }
+
+    [Fact]
+    public async Task HeldAtProjectLine_ListsNoChildInAColumnNoHopLeaves()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.TickAsync(h.Todo, s => s.ParentPulls = true);
+        var parent = await h.FileAsync("story", "running", h.InProgress, projectId: other);
+
+        // Inbox is ticked for nothing, so no hop leaves it: held, but not for the line alone.
+        await h.FileAsync("task", "in the inbox", h.Inbox, parentId: parent.Id);
+        var pulled = await h.FileAsync("task", "in to do", h.Todo, parentId: parent.Id);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+
+        Assert.Equal(Key(pulled), row.Key);
+    }
+
+    [Fact]
+    public async Task HeldAtProjectLine_ListsNothingInsideOneProject()
+    {
+        var h = await NewAsync();
+        await AddApprovedColumnAsync(h);
+        await h.TickAsync(h.Todo, s => s.ParentPulls = true);
+        var person = h.Actors.AddPerson("Ada").Id;
+
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+        await h.SetLevelAsync(epic, PreApprovalLevels.PreApproved, person);
+        var story = await h.FileAsync("story", "in review", h.Review, parentId: epic.Id, pullRequestUrl: "https://example.com/o/r/pull/1");
+        await h.CheckAsync(story, MergeVerdicts.Clean);
+        await h.BuildAsync(story, BuildVerdicts.Passed);
+        var running = await h.FileAsync("story", "running", h.InProgress);
+        await h.FileAsync("task", "T", h.Todo, parentId: running.Id);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+    }
+
+    [Fact]
+    public async Task HeldAtProjectLine_IsAnsweredEvenOnABoardWithNoReviewColumn()
+    {
+        var h = await OneColumnAsync();
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!);
+    }
+
+    [Fact]
+    public async Task HeldAtProjectLine_ForAReaderWhoCannotSeeTheAncestor_StillListsTheRow_AndNamesNoKeyOfTheOtherProject()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await AddApprovedColumnAsync(h);
+        var (_, reviewed) = await ReviewStoryUnderOtherEpicAsync(h, other, await StrangerAsync(h, other));
+        var (_, child) = await RunningAcrossTheLineAsync(h, Pull.Parent, other);
+
+        var whole = Value(await h.Attention.GetAttention(default)).HeldAtProjectLine!;
+        var seen = Value(await h.AttentionFor(h.ProjectId).GetAttention(default)).HeldAtProjectLine!;
+
+        Assert.Equal(2, whole.Count);
+        Assert.All(whole, r => Assert.Contains("OTH-", r.Sentence));
+
+        Assert.Equal(
+            new[] { Key(reviewed), Key(child) }.OrderBy(k => k, StringComparer.Ordinal),
+            seen.Select(r => r.Key).OrderBy(k => k, StringComparer.Ordinal));
+        var level = Assert.Single(seen, r => r.Key == Key(reviewed));
+        var pull = Assert.Single(seen, r => r.Key == Key(child));
+        Assert.Equal("pre-approved on an ancestor in another project, not honoured in AER - its setter has no say there, so a person moves it", level.Sentence);
+        Assert.Equal("its parent in another project is in progress, but the person who started it has no say in AER, so a person moves it", pull.Sentence);
+        Assert.All(seen, r => Assert.Equal("AER", r.ProjectKey));
+        Assert.DoesNotContain("OTH", System.Text.Json.JsonSerializer.Serialize(seen));
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
@@ -2790,6 +3012,10 @@ public class AttentionControllerTests : IDisposable
         public required BackupService Backup { get; init; }
         public required BackupStatus Status { get; init; }
         public required FakeBackupProcess Process { get; init; }
+        public required DbContextOptions<HatchContext> Options { get; init; }
+        public required StubActorDirectory Actors { get; init; }
+        public required Runners RunnerList { get; init; }
+        public required RunnerSessions Sessions { get; init; }
         public required int ProjectId { get; init; }
         public required int Inbox { get; init; }
         public required int Todo { get; init; }
@@ -2828,6 +3054,41 @@ public class AttentionControllerTests : IDisposable
             Db.Projects.Add(project);
             await Db.SaveChangesAsync();
             return project.Id;
+        }
+
+        /// <summary>A role on a project, written straight to the table.</summary>
+        public async Task MemberAsync(int projectId, Guid personId, string role)
+        {
+            Db.ProjectMembers.Add(new EfHatchProjectMember { ProjectId = projectId, PersonId = personId, Role = role, CreatedAt = Now });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A level and the person who set it, written straight to the row. A null person is a level no one recorded.</summary>
+        public async Task SetLevelAsync(EfHatchIssue issue, int preApproval, Guid? setter)
+        {
+            issue.PreApproval = preApproval;
+            issue.PreApprovalSetBy = preApproval == PreApprovalLevels.None ? null : setter;
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task SetScopeAsync(Guid personId, string mode, params int[] projects)
+        {
+            Db.PersonScopes.Add(new EfHatchPersonScope { PersonId = personId, Mode = mode, UpdatedBy = "test", UpdatedAt = Now });
+            Db.PersonScopeProjects.AddRange(projects.Select(id => new EfHatchPersonScopeProject { PersonId = personId, ProjectId = id }));
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task TickAsync(int statusId, Action<EfHatchStatus> tick)
+        {
+            tick(await Db.Statuses.FirstAsync(s => s.Id == statusId));
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The same controller, for a reader whose scope holds only <paramref name="projects"/>.</summary>
+        public AttentionController AttentionFor(params int[] projects)
+        {
+            var scoped = ScopeSeed.Request(Options, ScopeSeed.Only(projects));
+            return new AttentionController(scoped, Actors, RunnerList, Time, new Dispatch(scoped, Actors, TestClaims.With(), Time, Keys, Sessions), Backup, Keys);
         }
 
         /// <summary>A live key with no beat of its own, minted through <see cref="Keys"/> - the identity a session is held against.</summary>
@@ -3151,7 +3412,9 @@ public class AttentionControllerTests : IDisposable
     /// <summary>A board with the shape the Playbooks migration leaves behind.</summary>
     private static async Task<Harness> NewAsync(string backupPath = "", IssueClaims? claims = null)
     {
-        var db = NewDb();
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var db = new HatchContext(options);
+        var actors = new StubActorDirectory();
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var inbox = new EfHatchStatus { Name = "inbox", SortOrder = 10 };
@@ -3176,7 +3439,11 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, new StubActorDirectory(), runners, time, new Dispatch(db, new StubActorDirectory(), claims ?? TestClaims.With(), time, keys, sessions), backup, keys),
+            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, claims ?? TestClaims.With(), time, keys, sessions), backup, keys),
+            Options = options,
+            Actors = actors,
+            RunnerList = runners,
+            Sessions = sessions,
             Time = time,
             Backup = backup,
             Status = status,
@@ -3197,7 +3464,9 @@ public class AttentionControllerTests : IDisposable
     /// </summary>
     private static async Task<Harness> OneColumnAsync(string backupPath = "")
     {
-        var db = NewDb();
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var db = new HatchContext(options);
+        var actors = new StubActorDirectory();
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var done = new EfHatchStatus { Name = "done", SortOrder = 10, IsTerminal = true };
@@ -3218,7 +3487,11 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, new StubActorDirectory(), runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time, keys, sessions), backup, keys),
+            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, TestClaims.With(), time, keys, sessions), backup, keys),
+            Options = options,
+            Actors = actors,
+            RunnerList = runners,
+            Sessions = sessions,
             Time = time,
             Backup = backup,
             Status = status,
@@ -3266,9 +3539,6 @@ public class AttentionControllerTests : IDisposable
             return new BackupProcessResult(ExitCode, Stderr);
         }
     }
-
-    private static HatchContext NewDb() => new(
-        new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
     /// <summary>The display key of an issue these tests filed directly.</summary>
     private static string Key(EfHatchIssue issue) => IssueKey.Format("AER", issue.Number);

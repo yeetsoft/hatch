@@ -50,7 +50,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // Only the ancestor walk MergeWork.Judge needs below, for a
         // pre-approved review row - not the full DependencyGate, which this
         // endpoint has no dependency-gating need for.
-        var tree = await PriorityTree.ForAsync(db, actors, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         // A repository's trunk is nobody's issue, so this does not wait on
         // there being a review column at all - a person's row here even on a
@@ -88,6 +88,21 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // The controller holds Runners, so the cutoff comes from here.
         var waitingOnARunner = await dispatch.WaitingOnARunnerAsync(0, runners.Cutoff(time.GetUtcNow()), ct);
 
+        // The issues held only because a level or pull from another project is
+        // not honoured, read for this reader: an ancestor they cannot see is
+        // never named. Whatever the board's shape, as the list above is.
+        var reader = tree.WithVisible(await PriorityTree.VisibleIdsAsync(db, ct));
+        var heldAtProjectLine = (await dispatch.HeldAtProjectLineAsync(ct))
+            .Select(h =>
+            {
+                var hide = reader.Disclose(h.Row.Issue.Id).Key(DisclosedValues.PreApprovalPassedOver, h.Line.FromKey) is null;
+                var projectKey = h.Row.Issue.Project!.Key;
+                return new ProjectLineHeldDto(
+                    IssueKey.Format(projectKey, h.Row.Issue.Number), h.Row.Issue.Title, h.Row.Issue.Type, projectKey,
+                    Dispatch.AcrossSentence(h.Line, projectKey, hide));
+            })
+            .ToList();
+
         // A stalled train is a project's, not a column's - whatever the board's shape.
         var trainStalled = await TrainStalledAsync(ct);
 
@@ -117,7 +132,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity, Stalled: stalled, StallResumeSeconds: dispatch.StallResumeSeconds);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity, Stalled: stalled, StallResumeSeconds: dispatch.StallResumeSeconds, HeldAtProjectLine: heldAtProjectLine);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -452,7 +467,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
             approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity, stalled, dispatch.StallResumeSeconds,
-            ContributionsHeld: contributionsHeld);
+            ContributionsHeld: contributionsHeld, HeldAtProjectLine: heldAtProjectLine);
     }
 
     /// <summary>

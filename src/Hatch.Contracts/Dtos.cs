@@ -368,8 +368,9 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 /// or one ancestor's own - see <see cref="RunnerTagSourceKinds"/>.
 /// </summary>
 /// <param name="Kind"><c>project</c> or <c>issue</c> - see <see cref="RunnerTagSourceKinds"/>.</param>
-/// <param name="Key">The project's key, or the ancestor's issue key.</param>
-public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> Tags);
+/// <param name="Key">The project's key, or the ancestor's issue key. Blank where <paramref name="BeyondScope"/>.</param>
+/// <param name="BeyondScope">The ancestor is in a project the reader's scope does not hold: the tags still apply, and the key is blank.</param>
+public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> Tags, bool BeyondScope = false);
 
 /// <summary>
 /// One runner an issue is kept off - its own omission, or one inherited from
@@ -379,8 +380,9 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// <param name="Reason">Why it is omitted; null where none was given.</param>
 /// <param name="By">Who omitted it.</param>
 /// <param name="At">When it was omitted.</param>
-/// <param name="FromKey">The key of the ancestor the omission comes from; null when it is the issue's own.</param>
-public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTimeOffset At, string? FromKey);
+/// <param name="FromKey">The key of the ancestor the omission comes from; null when it is the issue's own, blank where <paramref name="BeyondScope"/>.</param>
+/// <param name="BeyondScope">The ancestor is in a project the reader's scope does not hold: the omission still applies, and the key is blank.</param>
+public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTimeOffset At, string? FromKey, bool BeyondScope = false);
 
 /// <summary>
 /// A card. What the board draws, and nothing more - descriptions and comments
@@ -499,6 +501,15 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// priority was passed over because its setter is not a live person in scope
 /// of this issue's project, or none was recorded. Null where nothing was.
 /// </param>
+/// <param name="ParentBeyondScope">This issue has a parent in a project the reader's scope does not hold. The parent's key is null and nothing else of it is told.</param>
+/// <param name="ChildBeyondScope">Some child of this issue is in a project the reader's scope does not hold. No key and no count of it is told.</param>
+/// <param name="FromBeyondScope">
+/// The values whose from-key was blanked because the ancestor it names is in a
+/// project the reader's scope does not hold: any of <c>priority</c>,
+/// <c>preApproval</c>, <c>localModel</c>, <c>onePr</c>, <c>dangerous</c>,
+/// <c>preApprovalPassedOver</c> and <c>priorityPassedOver</c>. The value
+/// itself still applies. Empty for a reader whose scope holds everything.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -544,7 +555,10 @@ public record IssueCardDto(
     string LocalModelOwn = LocalModelLevels.NoneName,
     string? LocalModelFrom = null,
     string? PreApprovalPassedOver = null,
-    string? PriorityPassedOver = null)
+    string? PriorityPassedOver = null,
+    bool ParentBeyondScope = false,
+    bool ChildBeyondScope = false,
+    IReadOnlyList<string> FromBeyondScope = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -554,6 +568,7 @@ public record IssueCardDto(
     public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
     public IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn { get; init; } = OmittedRunnersOwn ?? [];
     public IReadOnlyList<RunnerOmissionDto> OmittedRunners { get; init; } = OmittedRunners ?? [];
+    public IReadOnlyList<string> FromBeyondScope { get; init; } = FromBeyondScope ?? [];
 }
 
 /// <summary>
@@ -768,6 +783,15 @@ public record IssueClaimDto(
 /// priority was passed over because its setter is not a live person in scope
 /// of this issue's project, or none was recorded. Null where nothing was.
 /// </param>
+/// <param name="ParentBeyondScope">This issue has a parent in a project the reader's scope does not hold. The parent's key is null and nothing else of it is told.</param>
+/// <param name="ChildBeyondScope">Some child of this issue is in a project the reader's scope does not hold. No key and no count of it is told.</param>
+/// <param name="FromBeyondScope">
+/// The values whose from-key was blanked because the ancestor it names is in a
+/// project the reader's scope does not hold: any of <c>priority</c>,
+/// <c>preApproval</c>, <c>localModel</c>, <c>onePr</c>, <c>dangerous</c>,
+/// <c>preApprovalPassedOver</c> and <c>priorityPassedOver</c>. The value
+/// itself still applies. Empty for a reader whose scope holds everything.
+/// </param>
 /// <param name="StartedBy">
 /// The name of whoever first moved this issue rightward into the column
 /// work gets started in, or null for a key's move, for an issue started
@@ -859,6 +883,9 @@ public record IssueDto(
     string? PriorityPassedOver = null,
     string? StartedBy = null,
     DateTimeOffset? StartedAt = null,
+    bool ParentBeyondScope = false,
+    bool ChildBeyondScope = false,
+    IReadOnlyList<string> FromBeyondScope = null!,
     string? PullPassedOver = null)
 {
     // A default parameter value must be a compile-time constant, so the
@@ -869,6 +896,7 @@ public record IssueDto(
     public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
     public IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn { get; init; } = OmittedRunnersOwn ?? [];
     public IReadOnlyList<RunnerOmissionDto> OmittedRunners { get; init; } = OmittedRunners ?? [];
+    public IReadOnlyList<string> FromBeyondScope { get; init; } = FromBeyondScope ?? [];
     public IReadOnlyList<string> FiledKeys { get; init; } = FiledKeys ?? [];
 }
 
@@ -1808,6 +1836,18 @@ public record ReviewDto(
 /// stalled issue on its own. Answered on every board shape. Defaults to 0 so an
 /// older client still reads.
 /// </param>
+/// <param name="HeldAtProjectLine">
+/// Every issue the reader can see that the loop would carry now if every level
+/// and pull it inherits were honoured, and does not, because the level or the
+/// pull comes from another project whose setter has no say here: in review under
+/// a pre-approved ancestor, in an express column under an express one, or left of
+/// implementation under a parent in progress. Only an issue held for nothing but
+/// that is listed. Each row names the issue's own project - the one whose approver
+/// is needed - and never the key of an ancestor the reader cannot see. A row
+/// leaves when an approver sets the level on the issue itself, or the issue
+/// moves. In the queue's order: priority, then rank. Empty, not null, whatever the
+/// board's shape. Defaults to null so an older client still reads.
+/// </param>
 /// <param name="ContributionsHeld">
 /// The review column's issues whose branch is a contribution's - its issue
 /// carries a pull request - that conflicts with the trunk or whose build failed,
@@ -1837,7 +1877,8 @@ public record AttentionDto(
     IReadOnlyList<RunnerCapacityDto>? RunnerCapacity = null,
     IReadOnlyList<StalledIssueDto>? Stalled = null,
     int StallResumeSeconds = 0,
-    IReadOnlyList<ContributionHeldDto>? ContributionsHeld = null);
+    IReadOnlyList<ContributionHeldDto>? ContributionsHeld = null,
+    IReadOnlyList<ProjectLineHeldDto>? HeldAtProjectLine = null);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -
@@ -1975,6 +2016,16 @@ public record StalledIssueDto(string Key, string Title, string Type, DateTimeOff
 /// or <c>no live runner has pwsh 7 or newer and playwright-browsers</c>.
 /// </param>
 public record WaitingOnARunnerDto(string Key, string Title, string Type, string Move, string Missing);
+
+/// <summary>
+/// An issue held only at a project line - see <see cref="AttentionDto.HeldAtProjectLine"/>.
+/// </summary>
+/// <param name="ProjectKey">The issue's own project: the one whose approver is needed.</param>
+/// <param name="Sentence">
+/// The queue's own words for the hold; where the ancestor is outside the reader's
+/// scope it names no key, only that it is in another project.
+/// </param>
+public record ProjectLineHeldDto(string Key, string Title, string Type, string ProjectKey, string Sentence);
 
 /// <summary>
 /// A project whose merge train passed its driver over - see

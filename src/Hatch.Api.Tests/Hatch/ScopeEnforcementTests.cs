@@ -239,6 +239,10 @@ public class ScopeEnforcementTests
             {
                 issue.StatusId = done.Id;
                 issue.ClosedAt = DateTimeOffset.UnixEpoch;
+
+                // The changelog lists top-level issues only, and this test is about who
+                // may read it, not about links: take the seed's cross-project parents off.
+                issue.ParentId = null;
             }
 
             await seed.SaveChangesAsync();
@@ -397,6 +401,14 @@ public class ScopeEnforcementTests
 
         request.Current = VisibleProjects.Nothing;
         Assert.Equal(0, await db.Issues.CountAsync());
+    }
+
+    [Fact]
+    public async Task AParentLinkWithAHiddenSide_IsToldAsAFlagAndNeverAKey()
+    {
+        var h = await NewAsync();
+
+        await ScopeLinkExpectations.AssertAsync(h.Options, h.Seed);
     }
 
     private static async Task RunFilterAsync(ICallerScope scope, Type controller, Action? action = null)

@@ -243,7 +243,7 @@ public class IssuesController(
             .ToListAsync(ct);
 
         var now = time.GetUtcNow();
-        var priorities = await PriorityTree.ForAsync(db, actors, ct);
+        var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
 
         var contributions = await IssueContributions.ForIssuesAsync(db, rows.Select(r => r.Id).ToList(), ct);
 
@@ -259,6 +259,7 @@ public class IssuesController(
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
             var omittedRunnersOwn = priorities.OwnOmittedRunners(i.Id);
             var omittedRunners = priorities.EffectiveOmittedRunners(i.Id);
+            var disclosed = priorities.Disclose(i.Id);
 
             cards.Add(new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
@@ -281,32 +282,35 @@ public class IssuesController(
                 PriorityOwn: PriorityLevels.Name(i.Priority),
                 RunnerTagsOwn: RunnerTagColumn.Read(i.RunnerTags),
                 RunnerTags: effectiveRunnerTags,
-                RunnerTagsFrom: effectiveRunnerTagsFrom,
+                RunnerTagsFrom: disclosed.Tags(effectiveRunnerTagsFrom),
                 DangerousOwn: i.Dangerous,
                 Dangerous: dangerous,
-                DangerousFrom: dangerousFrom,
+                DangerousFrom: disclosed.Key(DisclosedValues.Dangerous, dangerousFrom),
                 OmittedRunnersOwn: omittedRunnersOwn,
-                OmittedRunners: omittedRunners,
-                PriorityFrom: effectiveFrom,
+                OmittedRunners: disclosed.Omissions(omittedRunners),
+                PriorityFrom: disclosed.Key(DisclosedValues.Priority, effectiveFrom),
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
-                PreApprovalFrom: effectivePreApprovalFrom,
-                PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                PriorityPassedOver: passedOver.Priority?.Key,
+                PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
-                LocalModelFrom: effectiveLocalModelFrom,
+                LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,
                 PullRequestUrl: i.PullRequestUrl,
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
-                OnePrFrom: onePrFrom,
+                OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                 ClosedAt: i.ClosedAt,
                 NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
                 Contribution: contributions.GetValueOrDefault(i.Id),
-                CreatedBy: i.CreatedBy));
+                CreatedBy: i.CreatedBy,
+                ParentBeyondScope: disclosed.ParentBeyondScope,
+                ChildBeyondScope: disclosed.ChildBeyondScope,
+                FromBeyondScope: disclosed.FromBeyondScope));
         }
 
         return cards;

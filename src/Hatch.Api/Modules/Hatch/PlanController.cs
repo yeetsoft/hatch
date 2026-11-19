@@ -45,7 +45,7 @@ public class PlanController(
         if (issue is null) return NotFound();
 
         var tree = await Rollup.LoadAsync(db, ct);
-        var priorities = await PriorityTree.ForAsync(db, actors, ct);
+        var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
 
         var children = await db.Issues.AsNoTracking()
             .Where(i => i.ParentId == issue.Id)
@@ -91,6 +91,7 @@ public class PlanController(
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(c.Id);
             var passedOver = priorities.PassedOver(c.Id);
+            var disclosed = priorities.Disclose(c.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(c.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(c.Id);
             rows.Add(new ChildRollupDto(
@@ -111,22 +112,25 @@ public class PlanController(
                     Priority: PriorityLevels.Name(c.Priority),
                     PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                     PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
-                    PreApprovalFrom: effectivePreApprovalFrom,
-                    PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                    PriorityPassedOver: passedOver.Priority?.Key,
+                    PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                    PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                    PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                     LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                     LocalModelOwn: LocalModelLevels.Name(c.LocalModel),
-                    LocalModelFrom: effectiveLocalModelFrom,
+                    LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                     StalledAt: c.StalledAt,
                     StalledWhy: c.StalledWhy,
                     Held: c.Held,
                     PullRequestUrl: c.PullRequestUrl,
                     OnePr: onePr,
                     OnePrOwn: onePrOwn,
-                    OnePrFrom: onePrFrom,
+                    OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                     ClosedAt: c.ClosedAt,
                     NoCode: NoCode.OnCard(c.NoCode, c.Id, priorities),
-                    CreatedBy: c.CreatedBy),
+                    CreatedBy: c.CreatedBy,
+                    ParentBeyondScope: disclosed.ParentBeyondScope,
+                    ChildBeyondScope: disclosed.ChildBeyondScope,
+                    FromBeyondScope: disclosed.FromBeyondScope),
                 tree.IsLeaf(c.Id),
                 tree.Of(c.Id)));
         }
@@ -156,7 +160,7 @@ public class PlanController(
     public async Task<ActionResult<PlanDto>> GetPlan([FromQuery] List<int>? projectId, CancellationToken ct)
     {
         var tree = await Rollup.LoadAsync(db, ct);
-        var priorities = await PriorityTree.ForAsync(db, actors, ct);
+        var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
         var projectIds = (projectId ?? []).Distinct().ToList();
 
         var epics = await InProject(db.Issues.AsNoTracking().Where(i => i.Type == Epic || i.Type == Ambition), projectIds)
@@ -205,11 +209,14 @@ public class PlanController(
         var byId = epics.ToDictionary(e => e.Id);
         var keys = epics.ToDictionary(e => e.Id, e => IssueKey.Format(e.ProjectKey, e.Number));
 
-        // An epic parented to something that is neither an epic nor an ambition: the type rules
-        // refuse it, so this is imported or hand-edited data. One query for all
-        // of them, and none at all in the ordinary case - a card whose
-        // parentKey came back null would send the page to no issue rather than
-        // to the wrong one, which is the worse of the two.
+        // An epic or ambition whose parent is not among those listed: a parent in
+        // another project when the page is narrowed, a story the type rules
+        // would refuse (imported or hand-edited data), or one the reader's
+        // scope hides. One query for all of them, and none at all in the
+        // ordinary case - a card whose parentKey came back null for a parent
+        // the reader may see would send the page to no issue rather than to
+        // the wrong one, which is the worse of the two. A parent the scope
+        // hides is not found here, and Disclose says so instead.
         var strangers = epics.Select(e => e.ParentId).OfType<long>().Where(id => !keys.ContainsKey(id)).Distinct().ToList();
         if (strangers.Count > 0)
         {
@@ -236,8 +243,18 @@ public class PlanController(
         foreach (var e in epics)
             assignees[e.Id] = await IssueProjection.ToAssigneeAsync(actors, e.AssigneePersonId, e.AssigneeApiKeyId, ct);
 
+        // The roots are the epics that no other listed epic draws, and that
+        // are not counted under a loose root. An epic with no parent is the
+        // ordinary one; the rest are an epic whose parent lies outside the
+        // answer - in another project, when the page is narrowed, or beyond
+        // the reader's scope - which would otherwise be drawn nowhere. An epic
+        // under a loose root is counted there already, and is not drawn on a
+        // meter of its own as well.
+        var nestedUnder = byId.Keys.SelectMany(Nested).ToHashSet();
+        var underLoose = looseRoots.SelectMany(tree.DescendantIds).ToHashSet();
+
         return new PlanDto(
-            Entries(epics.Where(e => e.ParentId is null).Select(e => e.Id).ToList()),
+            Entries(epics.Where(e => !nestedUnder.Contains(e.Id) && !underLoose.Contains(e.Id)).Select(e => e.Id).ToList()),
             tree.Of(looseRoots));
 
         List<PlanEntryDto> Entries(List<long> ids)
@@ -253,6 +270,7 @@ public class PlanController(
                 var row = byId[id];
                 var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(id);
                 var passedOver = priorities.PassedOver(id);
+                var disclosed = priorities.Disclose(id);
                 var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(id);
                 var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(id);
 
@@ -274,22 +292,25 @@ public class PlanController(
                         Priority: PriorityLevels.Name(row.Priority),
                         PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                         PreApprovalOwn: PreApprovalLevels.Name(row.PreApproval),
-                        PreApprovalFrom: effectivePreApprovalFrom,
-                        PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                        PriorityPassedOver: passedOver.Priority?.Key,
+                        PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                        PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                        PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                         LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                         LocalModelOwn: LocalModelLevels.Name(row.LocalModel),
-                        LocalModelFrom: effectiveLocalModelFrom,
+                        LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                         StalledAt: row.StalledAt,
                         StalledWhy: row.StalledWhy,
                         Held: row.Held,
                         PullRequestUrl: row.PullRequestUrl,
                         OnePr: onePr,
                         OnePrOwn: onePrOwn,
-                        OnePrFrom: onePrFrom,
+                        OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                         ClosedAt: row.ClosedAt,
                         NoCode: NoCode.OnCard(row.NoCode, id, priorities),
-                        CreatedBy: row.CreatedBy),
+                        CreatedBy: row.CreatedBy,
+                        ParentBeyondScope: disclosed.ParentBeyondScope,
+                        ChildBeyondScope: disclosed.ChildBeyondScope,
+                        FromBeyondScope: disclosed.FromBeyondScope),
                     tree.IsLeaf(id),
                     // The whole subtree, not the epics below it: an epic's
                     // meter is its stories and their tasks, and the nested

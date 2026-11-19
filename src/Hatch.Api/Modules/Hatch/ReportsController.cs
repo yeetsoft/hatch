@@ -80,7 +80,7 @@ public class ReportsController(
 
         if (ids.Count > 0)
         {
-            var priorities = await PriorityTree.ForAsync(db, actors, ct);
+            var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
 
             var issues = await db.Issues.AsNoTracking()
                 .Where(i => ids.Contains(i.Id))
@@ -128,6 +128,7 @@ public class ReportsController(
             {
                 var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
                 var passedOver = priorities.PassedOver(i.Id);
+                var disclosed = priorities.Disclose(i.Id);
                 var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
                 var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
 
@@ -148,22 +149,25 @@ public class ReportsController(
                     Priority: PriorityLevels.Name(i.Priority),
                     PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                     PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
-                    PreApprovalFrom: effectivePreApprovalFrom,
-                    PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                    PriorityPassedOver: passedOver.Priority?.Key,
+                    PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                    PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                    PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                     LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                     LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
-                    LocalModelFrom: effectiveLocalModelFrom,
+                    LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                     StalledAt: i.StalledAt,
                     StalledWhy: i.StalledWhy,
                     Held: i.Held,
                     PullRequestUrl: i.PullRequestUrl,
                     OnePr: onePr,
                     OnePrOwn: onePrOwn,
-                    OnePrFrom: onePrFrom,
+                    OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                     ClosedAt: i.ClosedAt,
                     NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
-                    CreatedBy: i.CreatedBy);
+                    CreatedBy: i.CreatedBy,
+                    ParentBeyondScope: disclosed.ParentBeyondScope,
+                    ChildBeyondScope: disclosed.ChildBeyondScope,
+                    FromBeyondScope: disclosed.FromBeyondScope);
             }
         }
 
@@ -1022,7 +1026,7 @@ public class ReportsController(
         var cards = new Dictionary<long, IssueCardDto>();
         if (ids.Count == 0) return (cards, null);
 
-        var priorities = await PriorityTree.ForAsync(db, actors, ct);
+        var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
         var tree = withTree ? await Rollup.LoadAsync(db, ct) : null;
 
         var issues = await db.Issues.AsNoTracking()
@@ -1069,6 +1073,7 @@ public class ReportsController(
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
             var passedOver = priorities.PassedOver(i.Id);
+            var disclosed = priorities.Disclose(i.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
 
@@ -1089,22 +1094,25 @@ public class ReportsController(
                 Priority: PriorityLevels.Name(i.Priority),
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
-                PreApprovalFrom: effectivePreApprovalFrom,
-                PreApprovalPassedOver: passedOver.PreApproval?.Key,
-                PriorityPassedOver: passedOver.Priority?.Key,
+                PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
+                PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
+                PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
-                LocalModelFrom: effectiveLocalModelFrom,
+                LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,
                 PullRequestUrl: i.PullRequestUrl,
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
-                OnePrFrom: onePrFrom,
+                OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
                 ClosedAt: i.ClosedAt,
                 NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
-                CreatedBy: i.CreatedBy);
+                CreatedBy: i.CreatedBy,
+                ParentBeyondScope: disclosed.ParentBeyondScope,
+                ChildBeyondScope: disclosed.ChildBeyondScope,
+                FromBeyondScope: disclosed.FromBeyondScope);
         }
 
         return (cards, tree);

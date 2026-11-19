@@ -216,6 +216,9 @@ public static class Rollup
         /// folded rather than a second query.</summary>
         public int DescendantCount(long id) => Descend(children, id).Count;
 
+        /// <summary>The ids behind <see cref="DescendantCount"/>, for a caller that has to know which issues they are.</summary>
+        public IReadOnlyList<long> DescendantIds(long id) => Descend(children, id);
+
         /// <summary>What this subtree adds up to.</summary>
         public RollupDto Of(long id) => Shape(Fold(id));
 

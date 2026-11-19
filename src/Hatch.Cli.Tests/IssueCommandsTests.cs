@@ -474,6 +474,48 @@ public sealed class IssueCommandsTests
         Assert.Contains("pre-approval:  preapproved - approved and closed by the loop once green (inherited from HA-12)", h.Said);
     }
 
+    [Fact]
+    public async Task Show_says_in_a_sentence_that_the_parent_is_outside_the_scope()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { ParentBeyondScope = true });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("parent:   in a project outside your scope", h.Said);
+        Assert.DoesNotContain("children:", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_in_a_sentence_that_some_child_is_outside_the_scope_beside_the_ones_it_can_see()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(children: ["AER-13"]) with { ChildBeyondScope = true });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("children: AER-13", h.Said);
+        Assert.Contains("children: some are in a project outside your scope", h.Said);
+        Assert.DoesNotContain("parent:", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_nothing_of_scope_where_no_link_has_a_hidden_side()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(parent: "AER-1", children: ["AER-13"]));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.DoesNotContain("outside your scope", h.Said);
+    }
+
     [Theory]
     [InlineData("prefer")]
     [InlineData("require")]

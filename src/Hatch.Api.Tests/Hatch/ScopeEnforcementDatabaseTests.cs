@@ -56,6 +56,14 @@ public class ScopeEnforcementDatabaseTests
     }
 
     [SkippableFact]
+    public async Task AParentLinkWithAHiddenSide_IsToldAsAFlagAndNeverAKey()
+    {
+        var h = await NewAsync();
+
+        await ScopeLinkExpectations.AssertAsync(h.Options, h.Seed);
+    }
+
+    [SkippableFact]
     public async Task ABulkUpdate_TouchesNoRowTheCallerCannotSee()
     {
         var h = await NewAsync();
