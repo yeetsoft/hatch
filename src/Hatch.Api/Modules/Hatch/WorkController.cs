@@ -1054,6 +1054,34 @@ public class WorkController(
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
+        // Two runners can report one merge at once (the train driver and any
+        // runner that sees it on the forge). The issue's StatusId is a
+        // concurrency token, so the one that reads second and writes second
+        // loses its save whole: nothing written, no changelog task filed.
+        // Go round again from a clean tracker - the re-read meets the gate,
+        // which answers the loser with its own 409 sentence. A few rounds,
+        // not a loop without end: an issue that keeps moving under this
+        // request is answered, not chased.
+        for (var round = 0; round < MergeRounds; round++)
+            if (await MergeOnceAsync(projectKey, number, request, ct) is { } answer)
+                return answer;
+
+        return Conflict($"{IssueKey.Format(projectKey, number)} moved while this merge ran, so nothing was written - read it again.");
+    }
+
+    /// <summary>How many times <see cref="MergedWork"/> reads the issue afresh after losing a race.</summary>
+    private const int MergeRounds = 3;
+
+    /// <summary>
+    /// One read, one judgement and one save of a merge. Null when the save
+    /// lost its race - the tracker is cleared, nothing was written, and the
+    /// caller goes round again. Only that save is caught: a changelog task
+    /// filed after it is not a lost merge, and what goes wrong there is
+    /// no business of the race.
+    /// </summary>
+    private async Task<ActionResult<IssueDto>?> MergeOnceAsync(
+        string projectKey, int number, PullRequestMergedRequest request, CancellationToken ct)
+    {
         var issue = await db.Issues.Include(i => i.Project)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
@@ -1133,7 +1161,16 @@ public class WorkController(
             }
         }
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            return null;
+        }
+
         if (closedNow) await ChangelogTasks.FileForAsync(db, actors, ranks, time, [issue], ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
