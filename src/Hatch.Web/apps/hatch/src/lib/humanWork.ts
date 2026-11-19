@@ -34,7 +34,7 @@ export const HUMAN_WORK_VALUES: HumanWorkValue[] = [
     name: 'agent',
     word: 'Agent',
     glyph: '',
-    class: '',
+    class: 'agent',
     title: "The loop's to pick up, even under a human ancestor.",
   },
 ];
