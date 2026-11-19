@@ -17,7 +17,7 @@ internal sealed record WalledKey(string Name, Guid? OwnerId, string Secret);
 
 /// <summary>
 /// Ids the seed does not hand back and a probe needs: a playbook and the
-/// proposals on each side, a trunk build on each side, and two columns a
+/// proposals on each side, a trunk build and a finding on each side, and two columns a
 /// playbook can run between.
 /// </summary>
 /// <param name="ProposalsA">
@@ -27,7 +27,7 @@ internal sealed record WalledKey(string Name, Guid? OwnerId, string Secret);
 /// </param>
 internal sealed record WalledIds(
     int PlaybookA, int PlaybookB, int[] ProposalsA, int[] ProposalsB, long TrunkBuildA, long TrunkBuildB,
-    int Todo, int Done);
+    long FindingA, long FindingB, int Todo, int Done);
 
 /// <summary>
 /// The real host with the wall up, over a migrated scratch database that holds
@@ -159,10 +159,13 @@ internal sealed class WalledHost : IAsyncDisposable
         var proposalsB = proposals.Where(p => p.IssueId == seed.IssueB).Select(p => p.Id).Order().ToArray();
 
         var trunkBuilds = await db.TrunkBuilds.AsNoTracking().ToListAsync();
+        var findings = await db.GooseFindings.AsNoTracking().ToListAsync();
         var ids = new WalledIds(
             playbookA.Id, playbookB.Id, proposalsA, proposalsB,
             trunkBuilds.Single(t => t.Canonical == ScopeSeed.CanonicalA).Id,
             trunkBuilds.Single(t => t.Canonical == ScopeSeed.CanonicalB).Id,
+            findings.Single(f => f.ProjectId == seed.ProjectA).Id,
+            findings.Single(f => f.ProjectId == seed.ProjectB).Id,
             todo.Id, done.Id);
 
         // People straight in the database. A grant and a key are made later,

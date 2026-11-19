@@ -81,6 +81,17 @@ began and opened never change once set. A closed finding is kept for the same
 `Hatch__GooseKeepDays` window a run is, and only once its bug, if it has one,
 has landed in a terminal column - an open finding is never deleted.
 
+The goose never files that bug. A person does, by handing the finding to an
+agent with `POST /api/goose/findings/{id}/bug`: it files one bug, in the
+finding's own project, and stores it on the finding. The bug's title names the
+problem, and its description is the brief - the sentence, when the condition
+began, the evidence written out one line each, the check and its bound, and one
+line asking for the cause and then either a fix or what a person has to do. A
+finding that has already cleared can still be handed over, and its brief says
+so. A second call answers the bug already filed. A finding that names no project
+needs a `projectKey` in the call. No check counts a bug filed this way, so a
+finding never watches its own fix.
+
 ### `train-ready`
 
 Watches every project's merge train for a head - the row the train is acting
@@ -209,7 +220,7 @@ run can still be hurt by there being none.
 and takes a `limit`. `GET /api/goose/runs/{id}` answers one run with its
 entries. `GET /api/goose/findings` lists findings, open ones first
 (longest-standing first), then closed ones (newest first); `?open=true`
-narrows it to the open ones. An API key may call all three. A run holds what
+narrows it to the open ones. An API key may call all three; filing a bug from a finding is a person's press, and a key is refused it. A run holds what
 was seen in every project, so a caller who may see only some projects gets an
 empty list and reads every run as not found; a finding instead follows the
 same scoping as the rest of the board - one naming a project is left out for a

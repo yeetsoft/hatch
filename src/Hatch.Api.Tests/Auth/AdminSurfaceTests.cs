@@ -150,6 +150,10 @@ public class AdminSurfaceTests
         // project-bearing reads are, not all-or-nothing like the two above.
         "GooseController.ListFindings",
 
+        // A person hands a finding to an agent: it files a bug expedited, and
+        // may pre-approve it. Person-only - see PersonOnly below.
+        "GooseFindingBugController.PostBug",
+
         // The same questions as GetQuestions, read as a tree of the issues that
         // enclose them. Key-accepting like GetQuestions, and it widens
         // nothing: it reads the same waiting comments, and the issues above
@@ -798,6 +802,12 @@ public class AdminSurfaceTests
         "AssigneeController.PutIssueAssignee",
         "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
+
+        // A key filing work for itself is the loop the goose must never become:
+        // the goose says what it saw, and a person decides to act on it. The
+        // sibling trunk-build route accepts a key at the project's own auto-heal
+        // settings; this one has no setting a key could read, so it takes none.
+        "GooseFindingBugController.PostBug",
 
         // The night train's edge, now three levels instead of a flag - HA-470.
         "IssuePreApprovalController.PutIssueExpress",

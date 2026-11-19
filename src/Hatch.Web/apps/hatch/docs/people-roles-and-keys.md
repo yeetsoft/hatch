@@ -87,6 +87,10 @@ project rather than globally.
   regardless of membership. With the wall off, the one local person is a real
   person rather than a program, and may move work into a Protected column
   from the browser the same as anyone else; a key still may not.
+- **A key files no bug from a finding.** `POST /goose/findings/{id}/bug` is a
+  person's press, refused to a key with `403 key_not_accepted`, and no project
+  setting changes that: a key filing work for itself is the loop the goose must
+  never become.
 - **The approve hop** carries a pre-approved issue into a Protected column
   with no session and nobody pressing anything by hand: the pre-approval was
   that owner's or approver's own permission, given in advance.
