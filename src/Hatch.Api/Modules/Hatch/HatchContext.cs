@@ -5,7 +5,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, thirty-seven tables.
+/// migration history, thirty-nine tables.
 /// </summary>
 public class HatchContext : DbContext, IModuleContext
 {
@@ -87,6 +87,12 @@ public class HatchContext : DbContext, IModuleContext
 
     /// <summary>The goose's record of its sweeps. Belongs to no project, so it has no query filter.</summary>
     public DbSet<EfHatchGooseRun> GooseRuns => Set<EfHatchGooseRun>();
+
+    /// <summary>When a <see cref="FindingCheck"/>'s condition began, before it stands long enough to open a <see cref="GooseFindings"/> row.</summary>
+    public DbSet<EfHatchGooseSighting> GooseSightings => Set<EfHatchGooseSighting>();
+
+    /// <summary>The goose's stored findings - see <see cref="EfHatchGooseFinding"/>.</summary>
+    public DbSet<EfHatchGooseFinding> GooseFindings => Set<EfHatchGooseFinding>();
 
     /// <summary>
     /// The processes that have spoken to this Hatch lately, and what the board
@@ -590,6 +596,40 @@ public class HatchContext : DbContext, IModuleContext
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
+        // A sighting is deleted outright once its condition is gone (FindingCheck.RunAsync),
+        // never orphaned by a deleted project - SetNull, the same shape as
+        // EfHatchDream.ProjectId above.
+        modelBuilder.Entity<EfHatchGooseSighting>(e =>
+        {
+            e.HasOne(s => s.Project)
+                .WithMany()
+                .HasForeignKey(s => s.ProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // A finding outlives the project its condition was about, the same
+        // shape as EfHatchDream.ProjectId above, and outlives the bug filed
+        // from it too - SetNull, the same shape as EfHatchTrunkBuild.BugIssueId.
+        // At most one finding is open (ClosedAt null) for a given Check and
+        // Subject: a filtered unique index, the same shape as EfHatchProject's
+        // own BindsTracker above.
+        modelBuilder.Entity<EfHatchGooseFinding>(e =>
+        {
+            e.HasOne(f => f.Project)
+                .WithMany()
+                .HasForeignKey(f => f.ProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(f => f.BugIssue)
+                .WithMany()
+                .HasForeignKey(f => f.BugIssueId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.Property(f => f.Evidence).HasColumnType("jsonb");
+
+            e.HasIndex(f => new { f.Check, f.Subject }).IsUnique().HasFilter("\"ClosedAt\" IS NULL");
+        });
+
         // An attachment that names a project is that project's - cascading,
         // not the SetNull a dream's own FK above is: there is no meaning to
         // an attachment surviving the deletion of the project it was
@@ -656,6 +696,15 @@ public class HatchContext : DbContext, IModuleContext
         modelBuilder.Entity<EfHatchDreamThread>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchDreamRemand>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchChangelogTask>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+
+        // Unlike EfHatchPlaybook/EfHatchDream/EfHatchAttachment above, a
+        // finding or a sighting with no project is nobody's - a check that
+        // names no project (none exists yet) is read only by a caller whose
+        // scope is everything, not by every caller the way a global playbook is.
+        modelBuilder.Entity<EfHatchGooseSighting>().HasQueryFilter(e =>
+            Unbounded || (e.ProjectId != null && Visible.Contains(e.ProjectId.Value)));
+        modelBuilder.Entity<EfHatchGooseFinding>().HasQueryFilter(e =>
+            Unbounded || (e.ProjectId != null && Visible.Contains(e.ProjectId.Value)));
 
         // A proposal belongs to its issue; with no issue, to the playbooks its
         // changes edit. One with neither is nobody's, and only an unbounded

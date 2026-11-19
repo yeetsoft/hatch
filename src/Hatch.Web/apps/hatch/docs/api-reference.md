@@ -1694,6 +1694,7 @@ The server's own sweep of the board, and the record it keeps of each one. See
 |---|---|---|
 | GET | `/goose/runs` | Runs newest first by last sweep, as `[{ id, firstRanAt, lastRanAt, sweeps, longestMs }]`, without the per-check detail. `limit` is 1-200 (default 50); a value outside it is clamped. A caller whose scope is not every project reads `[]`. Open to a key |
 | GET | `/goose/runs/{id}` | One run with its detail: the same fields and `entries`, one per check in the order the checks ran, each `{ check, looked, concluded, failed, error }`. `404` for an id that is not there, and for every id when the caller's scope is not every project - a run holds what was seen in all of them. Open to a key |
+| GET | `/goose/findings` | Findings, open ones first (longest-standing first), then closed ones (newest first), as `[{ id, check, subject, projectKey, sentence, evidence, beganAt, openedAt, closedAt, bugIssueKey }]`, `evidence` a list of `{ label, value }`. `?open=true` narrows it to the open ones. A finding that names a project is left out for a caller who cannot see it; one that names none is only in an unbounded caller's list. Open to a key |
 
 **Refusals.** `404` as above; nothing else beyond the ordinary ones.
 

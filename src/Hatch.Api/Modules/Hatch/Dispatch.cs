@@ -1287,7 +1287,18 @@ public sealed class Dispatch(
     /// every project's merges column on its own instead, judges it exactly as
     /// <see cref="ScanAsync"/> does, and says only which row is the head.
     /// </summary>
-    public sealed record TrainHead(int ProjectId, long IssueId, string Key, string Kind, DateTimeOffset? BroughtCurrentAt);
+    /// <param name="Sentence">
+    /// The sentence <see cref="TrainReadyCheck"/> stores on the finding it
+    /// opens for this head, filled only when <paramref name="Kind"/> is
+    /// <see cref="WorkKinds.Merge"/> or <see cref="WorkKinds.Update"/> - empty
+    /// for every other kind, which that check never watches. Read here rather
+    /// than composed again by the check, so the two can never disagree about
+    /// what a person is told.
+    /// </param>
+    /// <param name="Behind">How many other rows share this head's project's merges column.</param>
+    public sealed record TrainHead(
+        int ProjectId, long IssueId, string Key, string Kind, DateTimeOffset? BroughtCurrentAt,
+        string Sentence = "", int Behind = 0);
 
     /// <summary>
     /// Every project whose merges column has a head, judged and ordered the
@@ -1332,9 +1343,14 @@ public sealed class Dispatch(
             .Select(s =>
             {
                 var issue = byId[s.Key];
-                return new TrainHead(
-                    issue.ProjectId, issue.Id, IssueKey.Format(issue.Project!.Key, issue.Number),
-                    judged[s.Key].Kind, issue.BroughtCurrentAt);
+                var kind = judged[s.Key].Kind;
+                var key = IssueKey.Format(issue.Project!.Key, issue.Number);
+                var sentence = kind is WorkKinds.Merge or WorkKinds.Update
+                    ? $"{issue.Project!.Key}'s merge train is standing: {key} is ready to merge and has not"
+                    : "";
+                var behind = merging.Count(i => i.ProjectId == issue.ProjectId) - 1;
+
+                return new TrainHead(issue.ProjectId, issue.Id, key, kind, issue.BroughtCurrentAt, sentence, behind);
             })
             .ToList();
     }

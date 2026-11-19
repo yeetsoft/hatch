@@ -4478,3 +4478,106 @@ public class EfHatchGooseRun
     [Column(TypeName = "jsonb")]
     public string Entries { get; set; } = "[]";
 }
+
+/// <summary>
+/// When a condition a <see cref="FindingCheck"/> watches began, before it has
+/// stood long enough to open a row in <see cref="EfHatchGooseFinding"/> - see
+/// <see cref="FindingCheck.RunAsync"/>. At most one per <see cref="Check"/> and
+/// <see cref="Subject"/>: a sweep that sees <see cref="Token"/> change restarts
+/// the clock in place, and a sweep that stops seeing the subject at all deletes
+/// the row.
+/// </summary>
+[Table("GooseSightings")]
+[Index(nameof(Check), nameof(Subject), IsUnique = true)]
+public class EfHatchGooseSighting
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>The check's own name - see <see cref="IGooseCheck.Name"/>.</summary>
+    [MaxLength(EfHatchIssueEvent.MaxKindLength)]
+    public required string Check { get; set; }
+
+    /// <summary>What the condition is about - a project's key, for <c>train-ready</c>.</summary>
+    [MaxLength(200)]
+    public required string Subject { get; set; }
+
+    /// <summary>
+    /// What the condition is currently of - a head's key, for <c>train-ready</c>.
+    /// A sweep that sees this change restarts <see cref="BeganAt"/>, because the
+    /// condition it was timing is over and a new one has begun.
+    /// </summary>
+    [MaxLength(200)]
+    public required string Token { get; set; }
+
+    public int? ProjectId { get; set; }
+
+    public EfHatchProject? Project { get; set; }
+
+    /// <summary>When a sweep first saw this condition, of this token.</summary>
+    public DateTimeOffset BeganAt { get; set; }
+}
+
+/// <summary>
+/// One condition a <see cref="FindingCheck"/> has watched stand longer than its
+/// bound - see <see cref="FindingCheck.RunAsync"/>. At most one is open (
+/// <see cref="ClosedAt"/> null) for a given <see cref="Check"/> and
+/// <see cref="Subject"/> at a time; the database enforces it with a filtered
+/// unique index (<c>HatchContext.OnModelCreating</c>).
+/// </summary>
+[Table("GooseFindings")]
+public class EfHatchGooseFinding
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>The check's own name - see <see cref="IGooseCheck.Name"/>.</summary>
+    [MaxLength(EfHatchIssueEvent.MaxKindLength)]
+    public required string Check { get; set; }
+
+    /// <summary>What the condition is about - a project's key, for <c>train-ready</c>.</summary>
+    [MaxLength(200)]
+    public required string Subject { get; set; }
+
+    /// <summary>
+    /// What the condition was of when this finding opened - a head's key, for
+    /// <c>train-ready</c>. A later sweep that sees a different token for this
+    /// subject closes this finding; it never changes in place.
+    /// </summary>
+    [MaxLength(200)]
+    public required string Token { get; set; }
+
+    public int? ProjectId { get; set; }
+
+    public EfHatchProject? Project { get; set; }
+
+    /// <summary>
+    /// When the condition began - copied from <see cref="EfHatchGooseSighting.BeganAt"/>
+    /// the sweep that opened this finding, and never touched again.
+    /// </summary>
+    public DateTimeOffset BeganAt { get; set; }
+
+    /// <summary>When the condition had stood long enough that this row was written.</summary>
+    public DateTimeOffset OpenedAt { get; set; }
+
+    /// <summary>When a sweep stopped seeing this condition, or null while it is still open.</summary>
+    public DateTimeOffset? ClosedAt { get; set; }
+
+    /// <summary>A sentence a person can act on. Refreshed by every sweep the finding stays open for.</summary>
+    public required string Sentence { get; set; }
+
+    /// <summary>
+    /// What the check saw, as a list of <c>{label, value}</c> pairs (<see
+    /// cref="GooseFindingEvidence"/>). Refreshed alongside <see cref="Sentence"/>.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public string Evidence { get; set; } = "[]";
+
+    /// <summary>
+    /// The bug filed from this finding, or null until one is. In the table from
+    /// the start, so a later story that files one needs no migration of its own.
+    /// </summary>
+    public long? BugIssueId { get; set; }
+
+    public EfHatchIssue? BugIssue { get; set; }
+}

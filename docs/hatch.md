@@ -85,6 +85,8 @@ the next heading of the same level and stop.
   which epics?
 - [The goose](#the-goose) - What checks the board every minute with nobody
   connected, and what record does it keep?
+  - [Findings](#findings) - What has a check seen stand too long, and what
+    does it say about it?
 - [Reports](#reports) - When did things happen on the board, which the board
   as it stands cannot say?
 - [The overnight](#the-overnight) - What did the loop actually land while
@@ -5101,8 +5103,8 @@ The goose is the server watching the board by itself. Every
 `Hatch__GooseIntervalSeconds` (default 60; zero or less falls back to 60) a
 sweep runs with no runner and no browser connected, and the fact that it ran
 is kept, so a person can see the watcher is alive. A sweep asks each registered
-check what it looked at and what it concluded and records the answers. No check
-is registered yet, and a sweep with none still records a run.
+check what it looked at and what it concluded and records the answers. A sweep
+with no registered checks still records a run.
 
 **The job.** `GooseJob` is an `IAppJob`, scheduled like the backup and the
 reflection cadence by `JobsInit` on the clustered Quartz store and registered in
@@ -5150,6 +5152,90 @@ back to 7. Both options are guarded in `GooseSettings`.
 every project, so for a caller whose scope is not everything the list is empty
 and a run reads as not found. The reader's page is
 [The goose](../src/Hatch.Web/apps/hatch/docs/the-goose.md).
+
+### Findings
+
+A finding is a stored row a person can read and act on, with the evidence
+beside it - `train-ready` below is the first check that opens one, and a later
+check files a bug from one. `FindingCheck` (`GooseFindings.cs`) is the one
+reconciler every such check shares, so none of them can disagree about when a
+clock starts, when a row opens, or when it closes: a subclass says only what it
+is watching (`ReadAsync`: a sentence for the run, the check's own bound, and
+every condition currently true, one per subject) and, once a condition has
+stood its bound, what to say about it (`DescribeAsync`: a sentence and a list
+of `{ label, value }` evidence).
+
+**The clock.** `hatch."GooseSightings"` (`EfHatchGooseSighting`) holds when a
+condition began, for a check and subject, before it has stood long enough to
+open a finding - unique on `(Check, Subject)`. The first sweep that sees a
+subject's condition creates its row; a sweep that sees the same subject with a
+different token (what the condition is *of* - a head's key, for `train-ready`)
+restarts the clock, because the condition it was timing has ended and a new one
+has begun; a sweep that no longer sees the subject at all deletes it. A pass-over,
+a `brought_current` mark or a changed driver are none of these - the token is
+the head's key alone, so none of them touch the clock.
+
+**The row.** `hatch."GooseFindings"` (`EfHatchGooseFinding`) holds the check's
+name, the subject, the token the condition was of when the finding opened,
+the project it names or none, `BeganAt` (copied from the sighting and never
+touched again), `OpenedAt`, `ClosedAt` (null while open), a `Sentence`, a jsonb
+`Evidence` list, and a nullable `BugIssueId` - in the table from the start, so
+a later check that files a bug needs no migration of its own. At most one
+finding is open (`ClosedAt` null) for a given check and subject: a filtered
+unique index on `(Check, Subject) WHERE "ClosedAt" IS NULL`, the database's own
+enforcement. `GooseFindings.FiledFromAFindingAsync(db, issueId)` answers
+whether an issue was filed as some finding's bug, the one helper every later
+check reads so each agrees on what "filed from a finding" means.
+
+A condition that has stood its bound opens a finding, `BeganAt` carried over
+from the sighting; every later sweep the condition is still true refreshes the
+open finding's `Sentence` and `Evidence` and never its two start times. A sweep
+that stops seeing the condition - the subject is gone, or is now a different
+token - closes it. A check that throws reads first and mutates only
+afterwards, with no `await` in between, so a throw anywhere in the read half
+touches neither table; `GooseJob` already catches it and tries again next
+sweep.
+
+**Scope.** Both tables reach a project and carry a query filter
+(`HatchContext.OnModelCreating`): `Unbounded || (ProjectId != null &&
+Visible.Contains(ProjectId.Value))`. Unlike a global playbook or an unlinked
+dream, a finding or a sighting naming no project is nobody's but an unbounded
+caller's - a check that names no project is not everyone's the way a global
+playbook is.
+
+**Retention.** Each sweep deletes a closed finding once it has been closed
+longer than `Hatch__GooseKeepDays` and its bug, if it has one, stands in a
+terminal column; an open finding is never deleted, however old.
+
+**`GET /api/goose/findings`**, `[RequireRole(PersonRole.User, AcceptKey =
+true)]`, the same as the run routes. Open findings first, longest-standing
+first, then closed ones, newest first; `?open=true` narrows it to the open
+ones. Each carries its id, check, subject, project key, sentence, evidence,
+its three times and the bug's key. See the
+[API reference](../src/Hatch.Web/apps/hatch/docs/api-reference.md).
+
+#### `train-ready`
+
+The goose's own clock on a stuck merge train, beside [the merge
+train](#the-merge-train)'s own stall watch, which only ever passes a driver
+over. Its subject is the project; the condition is that the project's train
+has a head (`Dispatch.TrainHeadsAsync`) judged `merge` or `update`, and the
+token is the head's own key. The bound is `Hatch__GooseTrainReadyMinutes`
+(default 30 - three of the train's own `Hatch__TrainStallMinutes` windows, so
+the board's own pass-over goes first); zero turns the check off, and a
+negative falls back to 30.
+
+It needs no driver: a ready head with no live, eligible one is the same
+standstill, and the finding opens either way. A head filed from a finding
+opens no finding of its own. The sentence names the project and the head and
+says nothing has merged, for example `AER's merge train is standing: AER-12
+is ready to merge and has not` - it carries no duration, since whoever reads it
+can work that out from `BeganAt`. The evidence carries the head's key and its
+judgement in the queue's own words, the driver or that none is eligible, when
+the driver last wrote an event on an issue in the project's merges column (or
+that it never has), how many other rows share the merges column, and how many
+times a driver has been passed over on this head since the condition began,
+with which runners.
 
 ## Reports
 
@@ -7361,6 +7447,10 @@ the head issue's newest comment as `reason`. Each window writes one `driver_stal
 event on the head issue, actor `Hatch` (`RunnersController.cs:510, 630`),
 with payload `{ passedOver, elected }`, and `elected` null when nobody else
 was eligible (`:628-634`; `Entities.cs:2360-2367`).
+
+A second clock stands beside this one: the [`train-ready` finding](#train-ready)
+opens a stored row a person can read, on its own bound, independently of
+whether this one has passed anybody over.
 
 **The queue says who is driving.** A merges-column row that reads as
 actionable - kind `merge`, `update` or `pending` - and is not waiting behind

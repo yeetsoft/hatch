@@ -172,6 +172,22 @@ public class HatchOptions
     public int GooseKeepDays { get; set; } = 7;
 
     /// <summary>
+    /// How long a project's merge train may have a head judged
+    /// <see cref="WorkKinds.Merge"/> or <see cref="WorkKinds.Update"/> continuously
+    /// before the <c>train-ready</c> check opens a finding - see
+    /// <see cref="TrainReadyCheck"/>. Three of <see cref="TrainStallMinutes"/>'s
+    /// own default window, so the board's own pass-over goes first.
+    /// </summary>
+    /// <remarks>
+    /// Zero turns the check off - every open finding it holds then closes, the
+    /// next sweep that sees no candidate at all - unlike every other guarded
+    /// setting here, where zero is the thing a misconfiguration produces. A
+    /// negative falls back to the default, as <see cref="GooseKeepDays"/> does.
+    /// The guard is <see cref="GooseSettings.TrainReadyBound"/>.
+    /// </remarks>
+    public int GooseTrainReadyMinutes { get; set; } = 30;
+
+    /// <summary>
     /// Absolute base URL of this Hatch install as it should be *printed* -
     /// e.g. "https://home.example.com". Empty by default and supplied at
     /// deploy (compose.yaml passes <c>Hatch__PublicBaseUrl</c> from the

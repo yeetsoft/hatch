@@ -77,6 +77,14 @@ public class QueryFilterAuditTests
             "Whether a project key is taken. A key is unique across the house, so a hidden project's key is "
             + "just as taken as a visible one, and a filtered read would let a scoped caller through to the "
             + "unique index. What leaves is one bool, no row."),
+        ["GooseFindings.FiledFromAFindingAsync"] = (1,
+            "Whether an issue was filed as the bug for some finding, asked board-wide so every check agrees on "
+            + "the answer regardless of the caller's own scope - a job's context already reads every project, "
+            + "but a later caller must get the same answer a job would. What leaves is one bool, no row."),
+        ["GooseJob.SweepAsync"] = (1,
+            "The goose's own retention prune of closed findings, on a timer with no request and no caller scope "
+            + "at all - the same reason the run pruning beside it reads every project. Nothing leaves the "
+            + "process; a row is only ever deleted, never returned."),
     };
 
     private static readonly Regex Call = new(@"\.IgnoreQueryFilters\(", RegexOptions.Compiled);
