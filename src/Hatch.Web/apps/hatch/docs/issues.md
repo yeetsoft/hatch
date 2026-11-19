@@ -89,7 +89,12 @@ alongside the issues filed from this one — omitted when there is neither a
 source nor anything filed.
 
 **Plan** draws its own meter from this same rollup, one row per epic in the
-house. In a tab scoped to projects its own Project picker follows the same rule
+house. An epic under an epic of another project is drawn inside it, with its
+project key beside its own. Narrowed to one project, an epic whose parent is
+elsewhere is drawn as a root of its own, with a line saying what it is part
+of, or only that it is part of work outside your scope. Where a reader's
+scope hides some of an epic's tree, the total is over what they can see and
+a line says the tree goes on. In a tab scoped to projects its own Project picker follows the same rule
 as the board's: see
 [Scoping a tab to projects](the-board-and-its-columns#scoping-a-tab-to-projects).
 

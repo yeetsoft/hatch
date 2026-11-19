@@ -329,6 +329,109 @@ public class PlanTests
         Assert.Empty(plan.Epics);
     }
 
+    // ---- A tree across projects ----
+
+    [Fact]
+    public async Task AnEpicUnderAnEpicOfAnotherProject_IsDrawnOnceUnderItsParent()
+    {
+        var h = await NewAsync();
+        var (parent, child) = await h.AcrossAsync();
+
+        var top = Assert.Single(Value(await h.Plan.GetPlan(null, default)).Epics);
+        Assert.Equal(h.Key(parent), top.Issue.Key);
+
+        var nested = Assert.Single(top.Children);
+        Assert.Equal(h.Key(child, "OPS"), nested.Issue.Key);
+        Assert.Equal("OPS", nested.Issue.ProjectKey);
+        Assert.Equal(h.Key(parent), nested.Issue.ParentKey);
+    }
+
+    [Fact]
+    public async Task NarrowedToTheChildsProject_TheChildIsARootWithItsParentsKey()
+    {
+        var h = await NewAsync();
+        var (parent, child) = await h.AcrossAsync();
+
+        var root = Assert.Single(Value(await h.Plan.GetPlan([h.Other], default)).Epics);
+
+        Assert.Equal(h.Key(child, "OPS"), root.Issue.Key);
+        Assert.Equal(h.Key(parent), root.Issue.ParentKey);
+        Assert.False(root.Issue.ParentBeyondScope);
+    }
+
+    [Fact]
+    public async Task NarrowedToTheParentsProject_TheTotalStillCountsTheOtherProjectsLeaves()
+    {
+        var h = await NewAsync();
+        var (parent, _) = await h.AcrossAsync();
+
+        var top = Assert.Single(Value(await h.Plan.GetPlan([h.ProjectId], default)).Epics);
+
+        // The OPS epic is not in the narrowed list, so it is not drawn - but
+        // what it adds up to is part of the parent's total.
+        Assert.Equal(h.Key(parent), top.Issue.Key);
+        Assert.Empty(top.Children);
+        Assert.Equal(2, top.Rollup.Leaves);
+        Assert.Equal(1, top.Rollup.Done);
+    }
+
+    [Fact]
+    public async Task AnUnboundedReadersTotal_CountsTheStoryAndTaskInTheOtherProject()
+    {
+        var h = await NewAsync();
+        await h.AcrossAsync();
+
+        var top = Assert.Single(Value(await h.Plan.GetPlan(null, default)).Epics);
+
+        Assert.Equal(2, top.Rollup.Leaves);
+        Assert.False(top.Issue.ChildBeyondScope);
+        Assert.False(top.Issue.ParentBeyondScope);
+    }
+
+    [Fact]
+    public async Task AReaderWhoCannotSeeTheChildsProject_GetsATotalOverWhatTheySeeAndTheFlag()
+    {
+        var h = await NewAsync();
+        var (parent, _) = await h.AcrossAsync();
+
+        var top = Assert.Single(Value(await h.PlanFor(h.ProjectId).GetPlan(null, default)).Epics);
+
+        Assert.Equal(h.Key(parent), top.Issue.Key);
+        Assert.Equal(1, top.Rollup.Leaves);
+        Assert.True(top.Issue.ChildBeyondScope);
+        Assert.Empty(top.Children);
+    }
+
+    [Fact]
+    public async Task AReaderWhoCannotSeeTheParentsProject_GetsARootWithNoKeyAndTheFlag()
+    {
+        var h = await NewAsync();
+        var (_, child) = await h.AcrossAsync();
+
+        var plan = Value(await h.PlanFor(h.Other).GetPlan(null, default));
+        var root = Assert.Single(plan.Epics);
+
+        Assert.Equal(h.Key(child, "OPS"), root.Issue.Key);
+        Assert.Null(root.Issue.ParentKey);
+        Assert.True(root.Issue.ParentBeyondScope);
+        Assert.False(root.Issue.ChildBeyondScope);
+        Assert.DoesNotContain("AER", System.Text.Json.JsonSerializer.Serialize(plan, System.Text.Json.JsonSerializerOptions.Web));
+    }
+
+    [Fact]
+    public async Task TheIssuePlan_ListsAChildInAnotherProjectWithItsOwnProjectKey()
+    {
+        var h = await NewAsync();
+        var (parent, child) = await h.AcrossAsync();
+
+        var rollup = Value(await h.Plan.GetIssuePlan(h.Key(parent), default));
+
+        var card = rollup.Children.Single(c => c.Issue.Type == "epic").Issue;
+        Assert.Equal("OPS", card.ProjectKey);
+        Assert.Equal(h.Key(child, "OPS"), card.Key);
+        Assert.Equal(h.Key(parent), card.ParentKey);
+    }
+
     // ---- The harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
@@ -336,6 +439,7 @@ public class PlanTests
     private class Harness
     {
         public required HatchContext Db { get; init; }
+        public required DbContextOptions<HatchContext> Options { get; init; }
         public required PlanController Plan { get; init; }
         public required int ProjectId { get; init; }
         public required int Other { get; init; }
@@ -371,13 +475,30 @@ public class PlanTests
 
         public string Key(EfHatchIssue issue, string projectKey = "AER") =>
             IssueKey.Format(projectKey, issue.Number);
+
+        /// <summary>A controller for a reader whose scope is exactly these projects.</summary>
+        public PlanController PlanFor(params int[] projectIds) =>
+            new(ScopeSeed.Request(Options, ScopeSeed.Only(projectIds)), new StubActorDirectory(), TestClaims.With(), new FakeTimeProvider(Now));
+
+        /// <summary>An AER epic with a story and a task, and an OPS epic under it with a story and a task of its own.</summary>
+        public async Task<(EfHatchIssue Parent, EfHatchIssue Child)> AcrossAsync()
+        {
+            var parent = await FileAsync("epic", "the programme", Todo);
+            var own = await FileAsync("story", "in AER", Todo, parentId: parent.Id);
+            await FileAsync("task", "a", Done, parentId: own.Id);
+
+            var child = await FileAsync("epic", "the operations half", Todo, parentId: parent.Id, project: Other);
+            var story = await FileAsync("story", "in OPS", Todo, parentId: child.Id, project: Other);
+            await FileAsync("task", "b", Todo, parentId: story.Id, project: Other);
+            return (parent, child);
+        }
     }
 
     /// <summary>Two projects, and a board with the shape the seed leaves behind.</summary>
     private static async Task<Harness> NewAsync()
     {
-        var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var db = new HatchContext(options);
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var other = new EfHatchProject { Key = "OPS", Name = "Operations", CreatedAt = Now };
@@ -390,6 +511,7 @@ public class PlanTests
         return new Harness
         {
             Db = db,
+            Options = options,
             Plan = new PlanController(db, new StubActorDirectory(), TestClaims.With(), new FakeTimeProvider(Now)),
             ProjectId = project.Id,
             Other = other.Id,

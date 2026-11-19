@@ -186,7 +186,7 @@ function PlanContent() {
 }
 
 /** One root epic and everything drawn inside it. */
-function EpicCard({ entry, statuses }: { entry: PlanEntry; statuses: Status[] }) {
+export function EpicCard({ entry, statuses }: { entry: PlanEntry; statuses: Status[] }) {
   return (
     <Card>
       <EpicRow entry={entry} statuses={statuses} top />
@@ -207,8 +207,22 @@ function EpicCard({ entry, statuses }: { entry: PlanEntry; statuses: Status[] })
  * epic; the ones inside it are what it is made of, and a page of equal bars
  * says nothing about which is which.
  */
-function EpicRow({ entry, statuses, top = false }: { entry: PlanEntry; statuses: Status[]; top?: boolean }) {
-  const status = statuses.find((s) => s.id === entry.issue.statusId);
+function EpicRow({
+  entry,
+  statuses,
+  top = false,
+  parentProject,
+}: {
+  entry: PlanEntry;
+  statuses: Status[];
+  top?: boolean;
+  /** The project of the epic this one is drawn inside, so a nested epic from
+      another project can say which it is from. Absent on a root. */
+  parentProject?: string;
+}) {
+  const { issue } = entry;
+  const status = statuses.find((s) => s.id === issue.statusId);
+  const elsewhere = parentProject !== undefined && parentProject !== issue.projectKey;
 
   return (
     <div className={`hatch-plan-row${top ? ' top' : ''}`}>
@@ -216,6 +230,9 @@ function EpicRow({ entry, statuses, top = false }: { entry: PlanEntry; statuses:
         <Link to={`/issues/${entry.issue.key}`} className="hatch-plan-key">
           {entry.issue.key}
         </Link>
+        {/* Only where the tree crosses a line: inside one project the key's own
+            prefix already says it, and a chip on every row would be noise. */}
+        {elsewhere && <span className="hatch-plan-project">{issue.projectKey}</span>}
         <span className="hatch-plan-title">{entry.issue.title}</span>
         {/* Its own column, which is not what the meter says. An epic sitting in
             the inbox with half its stories done is a thing worth seeing, and
@@ -223,15 +240,36 @@ function EpicRow({ entry, statuses, top = false }: { entry: PlanEntry; statuses:
         {status && <StatusPill status={status} />}
       </div>
 
+      {/* A root drawn beside its parent's project, not inside it: the reader
+          would otherwise take it for the top of its tree. Either the parent's
+          key, where they may open it, or only the fact, where they may not. */}
+      {top && issue.parentKey && (
+        <Text tone="muted">
+          Part of{' '}
+          <Link to={`/issues/${issue.parentKey}`} className="hatch-plan-key">
+            {issue.parentKey}
+          </Link>
+        </Text>
+      )}
+      {top && !issue.parentKey && issue.parentBeyondScope && (
+        <Text tone="muted">Part of work outside your scope</Text>
+      )}
+
+      {issue.childBeyondScope && <Text tone="muted">More of this tree is outside your scope</Text>}
+
       {/* Renders nothing when there is nothing filed under it - see
           StatusMeter. An epic with no stories is at the start of its life, and
-          an empty trough would read as stalled at zero. */}
-      <StatusMeter rollup={entry.rollup} statuses={statuses} size={top ? 'lg' : 'sm'} counts />
+          an empty trough would read as stalled at zero. Likewise a leaf whose
+          children the reader cannot see: its one bar would be the epic itself,
+          and read as a whole tree of one. */}
+      {!(issue.childBeyondScope && entry.isLeaf) && (
+        <StatusMeter rollup={entry.rollup} statuses={statuses} size={top ? 'lg' : 'sm'} counts />
+      )}
 
       {entry.children.length > 0 && (
         <div className="hatch-plan-nested">
           {entry.children.map((child) => (
-            <EpicRow key={child.issue.key} entry={child} statuses={statuses} />
+            <EpicRow key={child.issue.key} entry={child} statuses={statuses} parentProject={issue.projectKey} />
           ))}
         </div>
       )}
