@@ -240,6 +240,15 @@ describe('describe, capability events', () => {
     );
   });
 
+  it('counts the capabilities an epic serves, now and before', () => {
+    expect(describeEvent(event({ kind: 'serves_changed', payload: { from: [], to: [4, 5] } }))).toBe(
+      'serves 2 capabilities, was 0',
+    );
+    expect(describeEvent(event({ kind: 'serves_changed', payload: { from: [4, 5], to: [5] } }))).toBe(
+      'serves 1 capability, was 2',
+    );
+  });
+
   it('says a capability was judged, and at what sha', () => {
     expect(
       describeEvent(

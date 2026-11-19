@@ -331,6 +331,8 @@ public class ScopeRouteMatrixTests
 
         ("IssueDreamsController.GetIssueDreams", Lookup(t => Get($"/api/issues/{t.Key}/dreams"))),
         ("IssueDreamsController.PutIssueDreams", Lookup(t => Put($"/api/issues/{t.Key}/dreams", new { dreamIds = Array.Empty<long>() }))),
+        ("IssueServesController.GetServes", Lookup(t => Get($"/api/issues/{t.Key}/serves"))),
+        ("IssueServesController.PutServes", Lookup(t => Put($"/api/issues/{t.Key}/serves", new { capabilityIds = Array.Empty<long>() }))),
         ("IssueCapabilitiesController.GetCapabilities", Lookup(t => Get($"/api/issues/{t.Key}/capabilities"))),
         ("IssueCapabilitiesController.PostCapability", Lookup(t => Post($"/api/issues/{t.Key}/capabilities", new { statement = "s", howToTell = "h" }))),
         ("IssueCapabilitiesController.PatchCapability", Lookup(t => Patch($"/api/issues/{t.Key}/capabilities/1", new { statement = "s" }))),

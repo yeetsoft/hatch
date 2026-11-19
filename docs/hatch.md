@@ -3601,6 +3601,21 @@ has to be true, and the line that says how anyone would tell.
   gets `403` on every write and a person is never refused. What an ambition
   asks for is settled before the work starts; changing it after is a
   person's call.
+- **An epic serves capabilities through `CapabilityLinks`.**
+  `EfHatchCapabilityLink` — `CapabilityId`, `IssueId`, `Actor`, `At`,
+  composite-keyed on the pair, each a cascade-delete FK, the shape of a
+  [dream thread](#dream): deleting the epic or the capability removes the
+  link alone and leaves the other side standing. `PUT /issues/{key}/serves`
+  replaces an epic's whole set; every id must belong to the one ambition the
+  epic hangs beneath, at any depth - `LegalParentTypes` lets at most one
+  ambition stand anywhere above an epic, reached through any number of
+  intervening epics and reflections - else `400`, naming the capability and
+  the ambition it belongs to. A reparent that would leave an epic (or one
+  below it) serving a capability of an ambition it no longer hangs beneath is
+  refused, naming the capability. `GET` reads from any issue, and
+  `CapabilityDto.ServedBy` reads from the ambition: the keys of every epic
+  linked, in key order. A key may write in any column - a link says which
+  work serves which line, not what the line asks for.
 
 ### CapabilityVerdict
 
@@ -3676,7 +3691,10 @@ position, statement }` as it stood), `capability_judged` (`POST
 sha, author }`; not `verdict_recorded`, which is a check session's own),
 `dreams_woven` (`PUT /issues/{key}/dreams` replaced the
 set of dreams this issue drew on - payload `{ from, to }`, both sides every
-dream id sorted ascending), `remanded` (`POST /issues/{key}/remand` shelved
+dream id sorted ascending), `serves_changed` (`PUT /issues/{key}/serves`
+replaced the set of [capabilities](#capability) this epic serves - payload `{
+from, to }`, both sides every capability id sorted ascending; one per change,
+none for a set already there), `remanded` (`POST /issues/{key}/remand` shelved
 this issue into a [dream](#dream) - payload `{ dreamId, to, toId, root }`, the
 column named and numbered as `status_changed` does, `root` true on the issue
 the remand was made from; written on the root and on every descendant that
@@ -4283,6 +4301,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/capabilities` | GET, POST | An ambition's [capabilities](#capability). GET reads them in position order, open to a key anywhere; POST `{ statement, howToTell, position? }` adds one, at the end when no `position` is given, else at it with the rest shifted down - `201`. `400` on an issue that is not an ambition, a blank line, or a `position` outside `1..n+1` |
 | `/issues/{key}/capabilities/{id}` | PATCH, DELETE | PATCH `{ statement?, howToTell? }` - a field left out keeps its value, one sent blank is a `400`; `404` on an unknown id. DELETE closes the gap, `204` |
 | `/issues/{key}/capabilities/order` | PUT | `{ ids }` - every capability's id once, in the wanted order; `400` when the list misses, repeats or names an id that is not this ambition's. Answers the reordered list. A write (POST, PATCH, PUT or DELETE) from a key is `403` once the ambition is at or past the implementation column, or deferred; a person is never refused |
+| `/issues/{key}/serves` | GET, PUT | The [capabilities](#capability) an epic serves. GET reads them on an issue of any type - each row `{ ambitionKey, capabilityId, position, statement, state }`, empty for an issue that serves none. PUT `{ capabilityIds }` replaces the whole set and answers the same list; `400` on an issue that is not an epic, an id that is no capability, or one that belongs to an ambition the epic does not hang beneath (naming both). A set already there writes nothing and leaves the event log and `UpdatedAt` alone. Open to a key in every column |
 | `/issues/{key}/capabilities/{id}/verdicts` | GET, POST | A capability's [verdicts](#capabilityverdict), not `EfHatchVerdict`'s. GET answers them newest first. POST `{ verdict, lookedAt, sha }` - `verdict` one of `holds`, `does_not_hold`, `cannot_tell` - answers `201`. `400` on an unknown word (naming the three), a blank `lookedAt` or `sha`, or either over its bound; `404` on an unknown capability, or another ambition's. Never gated on the column: a key may write here in any column |
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
 | `/issues/{key}/wip` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ limit }` — see [Stories at once](#stories-at-once). `""` clears it to no limit; a number below one, or not a number, is `400`; anything but an epic is `400` naming its type |

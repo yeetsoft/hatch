@@ -160,6 +160,14 @@ export function describe(event: IssueEvent): string {
     return `#${position} judged ${verdict} at ${sha.slice(0, 7)}`;
   }
 
+  /* A serves change carries the capability ids each side. Either side may be
+     empty, which the generic arrow would draw as a bare blank. */
+  if (event.kind === 'serves_changed') {
+    const before = Array.isArray(from) ? from.length : 0;
+    const after = Array.isArray(to) ? to.length : 0;
+    return `serves ${after} ${after === 1 ? 'capability' : 'capabilities'}, was ${before}`;
+  }
+
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }
