@@ -5405,8 +5405,9 @@ and never a project-less one, with no second filter to drift from it. Each adds
 `IssueKey`, derived and never stored: the finding's token when it parses as an
 issue key whose project half is the finding's own project, else null, and the
 panel then links the row to the project's board. The attention panel draws them
-first under **Findings**. A stuck merge train can show twice there, as the
-board's own row under **Stalled merge trains** and as a `train-ready` finding;
+first under **Findings**, and each row without a bug has a **File a bug** button
+that posts to `/api/goose/findings/{id}/bug`. A stuck merge train can show twice
+there, as the board's own row under **Stalled merge trains** and as a `train-ready` finding;
 the two are different watchers and neither hides the other.
 
 #### `train-ready`

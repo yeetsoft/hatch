@@ -508,9 +508,13 @@ them: **Findings**, **Trunk builds that fail**, **Backups**, **Stalled merge tra
 judged wrong. Each row is the finding's sentence and how long it has been true,
 counted from when the condition began, the way a question's wait is; it links to
 the issue the finding is about, or to the project's board when it is about the
-project. When a bug has already been filed from the finding, its key is a link
-of its own beside the row. If the goose has stopped, the first row says so and
-says when it last ran, and links to [The goose](the-goose#when-the-goose-stops).
+project. A finding with no bug yet has a **File a bug** button beside the row. It
+opens a dialog that asks for the bug's Priority, Pre-approval and Column, as the
+one on a failing trunk does; a finding that names no project also asks which
+**Project** the bug goes in, and **File it** waits until one is chosen. Once the
+bug is filed, its key is a link of its own in the button's place, beside the
+row, with no wait for the next poll. If the goose has stopped, the first row says
+so and says when it last ran, and links to [The goose](the-goose#when-the-goose-stops).
 The section is simply absent when nothing was found and the goose is running,
 like **Stalled merge trains**. Every finding lights the control and is counted,
 and so is a stopped goose, once; neither adds a pill. A stuck merge train can
