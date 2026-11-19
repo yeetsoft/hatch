@@ -566,6 +566,13 @@ export interface TrunkBuildBugRequest {
   statusId?: number | null;
 }
 
+/** Mirrors GooseFindingBugRequest: the trunk build's fields, plus the project
+    to file under. `projectKey` is sent only for a finding that names no
+    project of its own - the route refuses one that differs from the finding's. */
+export interface GooseFindingBugRequest extends TrunkBuildBugRequest {
+  projectKey?: string | null;
+}
+
 /** Mirrors PlaybookFileRequest. */
 export interface PlaybookFileRequest {
   remote: string;

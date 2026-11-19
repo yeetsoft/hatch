@@ -33,8 +33,9 @@ import { scopedPath } from '../lib/scope';
 import { playbookFileWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import { AttentionSection } from './AttentionFold';
+import { FindingBugDialog } from './FindingBugDialog';
 import { TrunkBuildBugDialog } from './TrunkBuildBugDialog';
-import type { Attention, TrunkBuild } from '../types';
+import type { Attention, AttentionFinding, TrunkBuild } from '../types';
 
 /**
  * The build icon: a plain dot, coloured and named for one of the three build
@@ -128,6 +129,49 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
 }
 
 /**
+ * One goose finding: the row that links to the issue, or the project's board
+ * when the finding is about the project, and beside it either the button that
+ * files a bug or the bug already filed.
+ *
+ * The row is the link, and the bug's own link or button sits beside it, never
+ * inside it: an anchor never holds an anchor, nor a button.
+ */
+function FindingRow({ finding: f, now, onFiled }: { finding: AttentionFinding; now: Date; onFiled: () => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Link
+        className="hatch-attention-row"
+        to={f.issueKey ? `/issues/${f.issueKey}` : scopedPath('/', f.projectKey ? [f.projectKey] : [])}
+      >
+        <span className="hatch-attention-row-head">
+          {(f.issueKey ?? f.projectKey) && <span className="hatch-attention-key">{f.issueKey ?? f.projectKey}</span>}
+          <span className="hatch-attention-waited">{findingWords(f, now)}</span>
+        </span>
+        <span className="hatch-attention-files" title={f.sentence}>
+          {f.sentence}
+        </span>
+      </Link>
+
+      <span className="hatch-attention-row-actions hatch-attention-bug">
+        {f.bugIssueKey ? (
+          <Link to={`/issues/${f.bugIssueKey}`}>{f.bugIssueKey}</Link>
+        ) : (
+          <Button variant="primary" onClick={() => setOpen(true)}>
+            File a bug
+          </Button>
+        )}
+      </span>
+
+      {!f.bugIssueKey && (
+        <FindingBugDialog open={open} findingId={f.id} projectKey={f.projectKey} onClose={() => setOpen(false)} onFiled={onFiled} />
+      )}
+    </>
+  );
+}
+
+/**
  * The Human half of what the loop is waiting on a person for: what the goose
  * found, trunk builds that fail, a backup that needs attention, stalled merge
  * trains, deadlocked
@@ -203,27 +247,7 @@ export function AttentionHuman({
             )}
             {findings.map((f) => (
               <li key={f.id}>
-                {/* The row is the link to the issue, or the project's board
-                    when the finding is about the project. The bug's own link
-                    sits beside it, never inside it: an anchor never holds an
-                    anchor. */}
-                <Link
-                  className="hatch-attention-row"
-                  to={f.issueKey ? `/issues/${f.issueKey}` : scopedPath('/', f.projectKey ? [f.projectKey] : [])}
-                >
-                  <span className="hatch-attention-row-head">
-                    {(f.issueKey ?? f.projectKey) && <span className="hatch-attention-key">{f.issueKey ?? f.projectKey}</span>}
-                    <span className="hatch-attention-waited">{findingWords(f, now)}</span>
-                  </span>
-                  <span className="hatch-attention-files" title={f.sentence}>
-                    {f.sentence}
-                  </span>
-                </Link>
-                {f.bugIssueKey && (
-                  <span className="hatch-attention-row-actions hatch-attention-bug">
-                    <Link to={`/issues/${f.bugIssueKey}`}>{f.bugIssueKey}</Link>
-                  </span>
-                )}
+                <FindingRow finding={f} now={now} onFiled={() => void reload()} />
               </li>
             ))}
           </ul>

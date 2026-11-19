@@ -28,6 +28,14 @@ vi.mock('./TrunkBuildBugDialog', () => ({
   },
 }));
 
+let findingDialogProps: { open: boolean; findingId: number; projectKey: string | null } | null = null;
+vi.mock('./FindingBugDialog', () => ({
+  FindingBugDialog: (props: typeof findingDialogProps) => {
+    findingDialogProps = props;
+    return null;
+  },
+}));
+
 // Same six-field shape lib/attention.test.ts's own trunkBuild() builds - a
 // test fixture, not imported.
 const trunkBuild = (over: Partial<TrunkBuild> = {}): TrunkBuild => ({
@@ -198,6 +206,7 @@ const stalledIssue = (over: Partial<StalledIssue> = {}): StalledIssue => ({
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/' } });
   dialogProps = null;
+  findingDialogProps = null;
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -874,6 +883,22 @@ describe('AttentionHuman findings', () => {
     expect(html).toContain('href="/issues/AER-77" data-discover="true">AER-77</a>');
     expect(html.match(/<a /g)?.length).toBe(2);
     expect(html).not.toMatch(/<a [^>]*>(?:(?!<\/a>).)*<a /s);
+  });
+
+  it('draws File a bug on a finding with no bug yet, beside the row link and not inside it', () => {
+    const html = draw(attention({ findings: [finding({ issueKey: 'AER-9' })] }));
+
+    expect(html).toMatch(/<button[^>]*>File a bug<\/button>/);
+    expect(html.match(/<a /g)?.length).toBe(1);
+    expect(html).not.toMatch(/<a [^>]*>(?:(?!<\/a>).)*<button/s);
+    expect(findingDialogProps).toMatchObject({ open: false, findingId: finding().id, projectKey: finding().projectKey });
+  });
+
+  it('draws a finding’s bug key and no File a bug button once it has a bug', () => {
+    const html = draw(attention({ findings: [finding({ issueKey: 'AER-9', bugIssueKey: 'AER-77' })] }));
+
+    expect(html).toContain('>AER-77</a>');
+    expect(html).not.toContain('File a bug');
   });
 
   it('says first that the goose has stopped and when it last ran, linked to its docs page', () => {

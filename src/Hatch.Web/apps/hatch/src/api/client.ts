@@ -105,6 +105,7 @@ import type {
   StatusPatchRequest,
   StatusRunnerTagsWriteRequest,
   Timeline,
+  GooseFindingBugRequest,
   TrunkBuildBugRequest,
   Utilization,
   WipSection,
@@ -754,6 +755,12 @@ export const getAttention = () => fetchJson<Attention>('/api/attention');
     refused `403`, because the bug it files is expedited. */
 export const fileTrunkBuildBug = (id: number, request?: TrunkBuildBugRequest) =>
   fetchJson<Issue>(`/api/trunk-builds/${id}/bug`, { method: 'POST', ...(request ? asJson(request) : {}) });
+
+/** Files the bug a goose finding's *File a bug* button asks for, or answers the
+    one already filed - see GooseFindingBugController. Person-only, as
+    `fileTrunkBuildBug` is of a key: the bug it files is expedited. */
+export const fileGooseFindingBug = (id: number, request?: GooseFindingBugRequest) =>
+  fetchJson<Issue>(`/api/goose/findings/${id}/bug`, { method: 'POST', ...(request ? asJson(request) : {}) });
 
 // ---- Who is sitting here ----
 
