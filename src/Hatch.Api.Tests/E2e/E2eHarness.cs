@@ -476,6 +476,16 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         return path;
     }
 
+    /// <summary>Saves the whole scrollable page as <c>{label}.png</c> - for a section the plain screenshot would leave below the fold.</summary>
+    public async Task<string> FullPageScreenshotAsync(Deadline deadline, string label)
+    {
+        var directory = ArtifactDirectory();
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{label}.png");
+        await deadline.BoundAsync($"taking the {label} screenshot", () => page!.ScreenshotAsync(new() { Path = path, FullPage = true }));
+        return path;
+    }
+
     /// <summary>
     /// The top bar's geometry as the page stands: nothing is scrolled or
     /// resized first, so a case that wants a settled page waits for it before
