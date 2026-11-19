@@ -774,7 +774,13 @@ make room for an emergency ticket and is the one case a heartbeat answers a
 A live claim refuses a second `POST`, including the same runner's own -
 re-claiming is not a thing a runner does, it heartbeats - and a claim on an
 ancestor or descendant issue refuses it too: one runner per line of the tree.
-A heartbeat or release refused for its token answers `409` with `{ error,
+A take from a session the board has paused (kind `board-paused`, still ahead of
+now) is refused `409` too, at the checkout the request's `runner` names: the
+sentence says the board paused this runner, until when, what it saw, and that a
+person can lift the pause on the Runners page. It takes no claim and writes no
+event. A claim the session already holds keeps its heartbeats and its release,
+another session under the same key at another checkout claims as before, and a
+pause the runner set itself (`not-starting`, `signed-out`) refuses nothing. A heartbeat or release refused for its token answers `409` with `{ error,
 reason }` - `error` the sentence a person reads, `reason` one of `quiet`
 (the holder's own token, gone quiet), `run-time` (its own token, past the run
 cap its playbook set - `this claim ran past its 60-minute limit`), `expired` (its own token, simply
@@ -1047,7 +1053,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil` |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts |
-| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way |
+| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause |
 | POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |

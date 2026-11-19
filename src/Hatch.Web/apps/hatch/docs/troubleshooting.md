@@ -263,6 +263,23 @@ run](the-runner#when-it-will-not-run).
 - **Want it sooner.** The same as the agent not starting: stop the loop and
   start it again by hand once signed in.
 
+## The runner says the board has it paused
+
+- **Three tickets in a row ended in error without spending a token.** The
+  board paused that session for an hour. The runner prints *the board has this
+  runner paused - nothing will be picked up until it is set running*, keeps
+  heartbeating and takes nothing; a claim sent from that checkout is refused
+  with a sentence saying the board paused it, until when, and what it saw.
+  Nothing is wrong with the tickets.
+- **Read why first.** The sentence names the last ticket. Fix what made the
+  sessions fail: usually the agent, the checkout or the account.
+- **Wait it out or lift it.** The pause ends by itself at the time named. A
+  person can lift it on the Runners page.
+- **A fresh start does not clear it.** Unlike the agent not starting, a loop
+  started again in the same checkout inherits the board's pause until it
+  passes. A session under the same key at another checkout is not paused.
+  A ticket the session already held keeps its claim and is released as usual.
+
 ## A session is still running in the checkout after the loop died
 
 - **The loop was killed or its window closed mid-increment.** The agent it

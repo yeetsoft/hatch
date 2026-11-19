@@ -2522,6 +2522,19 @@ whole of why it exists. Columns rather than a table because a claim is a fact
 about the issue with at most one of it at a time, and because taking one is then
 a single conditional `UPDATE` against a row the dispatcher is already reading.
 
+**A session the board has paused takes no new claim.** `POST …/claim` looks up
+the calling key's live session at the checkout `request.Runner` names, and where
+that session's `AgentDownKind` is `board-paused` and `AgentDownUntil` is ahead of
+now it answers `409` — the board paused this runner, until when, the session's
+`AgentDownLine`, and that a person can lift it on the Runners page. It runs
+before the live-claim read, takes no claim and writes no event. A claim the
+session already holds is not touched: the heartbeat and the release routes do not
+look at the pause. A session of the same key at another checkout, a call with no
+key, and a pause the runner set itself (`not-starting`, `signed-out`) are not
+refused. `GET /api/work/next` is left alone: it is sent no checkout, so it cannot
+tell two sessions under one key apart; the loop's own heartbeat answer is what
+keeps it from asking.
+
 **A claim and an assignee are different nouns.** An assignee is a person's
 intent, answered in days and written by a person. A claim is a process's grip,
 answered in minutes and written by a machine, and it is gone the moment the
@@ -8605,6 +8618,14 @@ loop's belongs to a checkout pointed at another board: it is reported and left.
 Only the loop cleans up: `hatch work` writes and clears its own record and never
 reads another's.
 
+**A session the board has paused** reads `paused` off its heartbeat for as long
+as the pause is ahead of now, and so runs no pass: it keeps heartbeating, prints
+*the board has this runner paused*, and takes nothing, the same wait a person's
+pause gives. A build that never learned the board's own pause still waits, since
+it already waits on `state: paused`; and if one asked anyway, the claim is
+refused. A restart into the same checkout inherits the pause. See
+[Runners on the board](#runners-on-the-board).
+
 **A runner whose agent is not starting** does not reach the pass at all. After
 two `unstarted` increments in a row it waits out a back-off of five, fifteen,
 then sixty minutes, heartbeating and claiming nothing, and a cheap headless
@@ -10412,7 +10433,10 @@ seeded at the same checkout inherits it. Nothing sweeps it; it ends when
 other agent-down session. The Runners page and `hatch runners` word it as the
 board's pause, on the session's line and the runner's row, in the viewer's zone
 and ranked as any agent-down row; an older `hatch` prints *agent not starting*
-for it. This does not yet stop the session taking work.
+for it. While it is ahead of now, `RunnerSessions.Instruct` answers the
+session's heartbeat `paused` (a stored `stopping` stays `stopping`; `State`
+itself is never written, so the page does not read it as a person's pause), and
+`POST …/claim` from that key and checkout is refused — see [Claim](#claim).
 
 A person can end a board pause before the hour is out:
 `DELETE /api/runners/{name}/sessions/{id}/pause` (`RunnersController.DeleteRunnerSessionPause`)

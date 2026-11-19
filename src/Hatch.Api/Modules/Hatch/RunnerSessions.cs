@@ -214,15 +214,20 @@ public sealed class RunnerSessions(Runners runners)
     public static RunnerInstructionDto Instruct(
         EfHatchRunnerSession session, EfHatchRunnerConfig? ceiling, string runnerName, string? forName,
         IReadOnlyList<string> drives, long? siteMaxTokens = null, long? siteMaxTokensPerHour = null,
-        IReadOnlyList<EfHatchLocalModel>? localModels = null)
+        IReadOnlyList<EfHatchLocalModel>? localModels = null, DateTimeOffset? now = null)
     {
         var bounds = Effective(ceiling, session, siteMaxTokens, siteMaxTokensPerHour);
         var tags = ceiling is not null ? RunnerTagColumn.Read(ceiling.Tags).Order(StringComparer.Ordinal).ToArray() : [];
         var refusedModels = ceiling is not null ? RunnerTagColumn.Read(ceiling.RefusedModels).Order(StringComparer.Ordinal).ToArray() : [];
         var hold = LocalModelFit.Hold(localModels ?? [], session.Agent, session.AcceleratorMemoryBytes, refusedModels);
 
+        // A pause the board wrote is answered as a pause for as long as it is in
+        // force, and the stored state is left alone so the page does not read
+        // it as a person's pause. A stop is the stronger word and stays.
+        var state = session.State == RunnerStates.Running && BoardPausedAt(session, now) ? RunnerStates.Paused : session.State;
+
         return new RunnerInstructionDto(
-            session.State, bounds.Under, bounds.MaxRuns.Value, bounds.MaxSpend.Value, bounds.UntilAt.Value, forName,
+            state, bounds.Under, bounds.MaxRuns.Value, bounds.MaxSpend.Value, bounds.UntilAt.Value, forName,
             Drives: drives,
             Tags: tags,
             Order: null,
@@ -233,6 +238,15 @@ public sealed class RunnerSessions(Runners runners)
             RefusedModels: refusedModels,
             Hold: hold);
     }
+
+    /// <summary>
+    /// Whether the board's own pause is in force on a session at an instant.
+    /// A pause the runner set itself (<see cref="RunnerAgentDownKinds.NotStarting"/>,
+    /// <see cref="RunnerAgentDownKinds.SignedOut"/>) is not one, and with no
+    /// instant it is never in force.
+    /// </summary>
+    public static bool BoardPausedAt(EfHatchRunnerSession session, DateTimeOffset? now) =>
+        now is { } at && session.AgentDownKind == RunnerAgentDownKinds.BoardPaused && session.AgentDownUntil > at;
 
     /// <summary>
     /// The smaller of a session's own value and a ceiling, with which of the
