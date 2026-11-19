@@ -1640,6 +1640,48 @@ that applies - its own, else the nearest flagged ancestor's, else null; and
 own or there is none. The issue, the card list, search and the board all
 carry them. Nothing acts on the flag yet.
 
+#### Human work
+
+**A person's own say over who works an issue - a card for a person to move
+around the board, with no runner ever reaching for it.** `HumanWork` is a
+nullable boolean column on the issue: null is `inherit` (the default), true
+is `human`, false is `agent`. Written only through its own route, `PUT
+/issues/{key}/human-work` (`IssueHumanWorkController.PutIssueHumanWork`),
+`{ value }` one of `human`, `agent` or `inherit` - a person's call, never a
+key's, the same reach as Local model (`IssueLocalModelController`). An unknown value is
+`400`, naming the three. Sending the value the issue already holds writes
+nothing, adds no event and leaves `UpdatedAt` where it was; a change writes
+`human_work_changed` with `{ from, to }`, each one of the three names, and
+sets `UpdatedAt`.
+
+**The value that applies is read live, the same shape `EffectiveLocalModel`
+is, and nothing else.** `PriorityTree.EffectiveHumanWork` walks from the
+issue up its parents and answers the first value that is not `inherit`,
+with the key of the ancestor it came from - `agent` with no ancestor
+flagged. Unlike priority and [Dangerous](#dangerous), where
+only an explicit flag on an ancestor propagates and a child cannot clear
+it, the human-work walk stops at an explicit `agent` the same as at an
+explicit `human`: a descendant may set itself back to `agent` under a
+human parent, and dispatch honours it. Nothing is copied onto a row, so
+reparenting an issue changes the live value at once, with no write of its
+own. A card or an issue carries three fields: `humanWorkOwn` is the
+issue's own row, exactly what `PUT .../human-work` last wrote, by name;
+`humanWork` is the value that applies - `human` or `agent`, never
+`inherit`; and `humanWorkFrom` is the ancestor's key the value came from,
+null when it is the issue's own or nothing is set anywhere. The issue, the
+card list, search, the plan and the board all carry them.
+
+**Folded in `Dispatch.Blocked`, beside the paused fold and ahead of every
+loop-only one.** An issue whose `EffectiveHumanWork` reads `human` is
+refused by `work/next`, `work/queue`, `work/{key}` and a hop alike, with
+kind `BlockedKinds.Person`: *"human work - a person does this one, and
+no runner picks it up"*, or *"human work from `HA-12` - ..."* when the
+value is inherited from an ancestor. Not conditional on a hop the way the
+economy and low-priority folds are: a hop is exactly a move with no
+session, and a human issue gets none. Moving it by hand - the board, or
+`hatch move` - is unaffected; dispatch is the only reader of the override,
+so a person moving their own card is never refused by it.
+
 #### Omitted runners
 
 **A runner an issue - and everything beneath it - is closed to.**
@@ -8607,11 +8649,12 @@ moot while no session sets `CODEX_HOME`.
 
 ### What makes an issue actionable
 
-Twenty-four conditions, the twenty-second a way out of the twenty-first rather than
+Twenty-five conditions, the twenty-second a way out of the twenty-first rather than
 one more gate, the twenty-third a fact about the issue rather than another way
-out, and the twenty-fourth a fact about the walk rather than either. An issue is the
-loop's to pick up when it meets every one before it, and the sentence saying
-which one it failed is what `work/queue` reports:
+out, the twenty-fourth a fact about the walk rather than either, and the
+twenty-fifth a fact about the issue again, the same shape as the fifth. An
+issue is the loop's to pick up when it meets every one before it, and the
+sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is somewhere for it to go, and that place is neither terminal
    nor protected — unless this is the close hop or the approve hop, each
@@ -8939,9 +8982,21 @@ which one it failed is what `work/queue` reports:
     and a tier parked behind one would be a tier that never runs for as long
     as it stands — so a fold is never live for this rule's purposes, and the
     only thing that parks a lower tier is a row with no fold at all.
+25. **It is not human work, on its own row or on an ancestor's.** [Human
+    work](#human-work) is read the same shape `EffectiveLocalModel` is:
+    the nearest ancestor — itself first — whose own value is not `inherit`,
+    `agent` with nothing set anywhere. Folded with *human work - a person
+    does this one, and no runner picks it up*, named with the ancestor when
+    the value is inherited, kind `person`; asked beside the paused fold,
+    ahead of every loop-only one, and not conditional on a hop — a hop is a
+    move with no session, and a human issue gets none. Unlike the paused
+    fold, an explicit `agent` on a nearer row stops the walk the same as an
+    explicit `human` does, so a descendant may opt back out from under a
+    human ancestor and dispatch honours it. A fact about the issue like the
+    claim and the pause before it, so `work/{key}` asks it too.
 
-Eighteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-21 and 23 — are facts about the issue, and `work/{key}` asks them too. The
+Nineteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+21, 23 and 25 — are facts about the issue, and `work/{key}` asks them too. The
 twenty-second is as well, and `work/{key}` answers it the same way `work/queue`
 does: `WorkDto.Hop`. The other four — 6, 7, 8 and 9 — are the loop's policy and
 are asked only when the pass is asking;

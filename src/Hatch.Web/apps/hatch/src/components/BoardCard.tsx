@@ -102,6 +102,7 @@ const hasMarks = (card: IssueCard) =>
   !!card.preApprovalPassedOverLevel ||
   !!card.priorityPassedOverLevel ||
   card.localModel !== 'none' ||
+  card.humanWork === 'human' ||
   !!card.dangerous ||
   !!card.claim ||
   card.openQuestions > 0 ||
@@ -390,6 +391,14 @@ function CardFace({
               title={`Local model: ${card.localModel}${card.localModelFrom ? `, inherited from ${card.localModelFrom}` : ''}`}
             >
               {localModelLevel(card.localModel).glyph}
+            </span>
+          )}
+          {card.humanWork === 'human' && (
+            <span
+              className="hatch-card-humanwork"
+              title={`Human work - a person does this one, and no runner picks it up${card.humanWorkFrom ? `, inherited from ${card.humanWorkFrom}` : ''}`}
+            >
+              ◆
             </span>
           )}
           {card.noCode && (
