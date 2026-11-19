@@ -3379,7 +3379,7 @@ public class IssueClaimTests
 
         await PauseSessionAsync(h, id);
 
-        Assert.IsType<NoContentResult>(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still here"), default));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still here"), default)).Result);
         Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Worked, default));
     }
 
