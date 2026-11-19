@@ -15,7 +15,7 @@ namespace Hatch.Api.Tests.E2e;
 /// steps; the current type's step is marked and cannot be pressed; Escape folds the
 /// band and leaves the card in edit mode; pressing another step saves that type and
 /// folds the band. A screenshot with the band open is left in the case's artifact
-/// directory, and the pill's and each step's colours are written to the test output.
+/// directory, and the pill's and each step's tile fill and background are in the output the case writes.
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class TypePillTests(ITestOutputHelper output)
@@ -35,7 +35,7 @@ public class TypePillTests(ITestOutputHelper output)
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Runs in the page: each step's word, state, glyph tile and painted colours, then the pill's word.</summary>
+    /// <summary>Runs in the page: each step's word, state, the tile's fill and the step's painted colours, then the pill's word.</summary>
     private const string ReadScript = """
         () => {
           const steps = [...document.querySelectorAll('.hatch-issue-controls .hatch-type-pill-step')].map((el) => {
@@ -45,6 +45,7 @@ public class TypePillTests(ITestOutputHelper output)
               pressed: el.getAttribute('aria-pressed'),
               disabled: el.disabled,
               hasTile: el.querySelector('svg .hatch-type-tile-face') !== null,
+              tile: getComputedStyle(el.querySelector('svg .hatch-type-tile-face')).fill,
               color: style.color,
               background: style.backgroundColor,
               border: style.borderTopColor,
@@ -170,6 +171,9 @@ public class TypePillTests(ITestOutputHelper output)
         var steps = read.GetProperty("steps").EnumerateArray().ToArray();
         Assert.Equal(["epic", "reflection", "story", "task", "bug"], steps.Select(s => s.GetProperty("word").GetString()).ToArray());
         Assert.All(steps, s => Assert.True(s.GetProperty("hasTile").GetBoolean(), $"a step has no tile: {read}"));
+
+        // The tile carries the type: five steps, five fills. No step is filled with a type's colour.
+        Assert.Equal(steps.Length, steps.Select(s => s.GetProperty("tile").GetString()).Distinct().Count());
 
         var marked = steps.Where(s => s.GetProperty("pressed").GetString() == "true").ToArray();
         var one = Assert.Single(marked);
