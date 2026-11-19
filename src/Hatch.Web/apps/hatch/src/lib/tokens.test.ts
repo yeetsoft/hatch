@@ -103,6 +103,15 @@ describe('tokens.css', () => {
     expect(darkMedia).not.toHaveProperty('--on-series');
   });
 
+  /* The flame's two colours: amber in both themes, so red stays the bug's. */
+  it('declares --heat and --heat-core on :root and in neither dark block', () => {
+    for (const token of ['--heat', '--heat-core']) {
+      expect(light).toHaveProperty(token);
+      expect(darkAttr).not.toHaveProperty(token);
+      expect(darkMedia).not.toHaveProperty(token);
+    }
+  });
+
   /* The scope control's expedite arrow (HA-2358): the glyph sits directly on
      the panel's card ground, so this is the pairing that has to read, not
      --level-up against --bg. */
