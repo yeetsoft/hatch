@@ -12,7 +12,7 @@ public class TrainWatchTests
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan Bound = TimeSpan.FromMinutes(10);
 
-    private static EfHatchProject Project(long? watchedIssueId = null, DateTimeOffset? watchedSince = null, string[]? roster = null) => new()
+    private static EfHatchProject Project(long? watchedIssueId = null, DateTimeOffset? watchedSince = null, string[]? roster = null, string? passedOver = null) => new()
     {
         Key = "AER",
         Name = "Hatch",
@@ -20,6 +20,7 @@ public class TrainWatchTests
         TrainWatchedIssueId = watchedIssueId,
         TrainWatchedSince = watchedSince,
         TrainStalledDrivers = RunnerTagColumn.Write(roster ?? []),
+        TrainStalledDriver = passedOver,
     };
 
     private static Dispatch.TrainHead Head(long issueId = 1, string kind = WorkKinds.Merge, DateTimeOffset? broughtCurrentAt = null) =>
@@ -35,6 +36,36 @@ public class TrainWatchTests
         Assert.False(stalled);
         Assert.Equal(1, project.TrainWatchedIssueId);
         Assert.Equal(Now, project.TrainWatchedSince);
+    }
+
+    [Fact]
+    public void ADifferentHeadThanTheOneWatched_ClearsTheLatestPassOverToo()
+    {
+        var project = Project(watchedIssueId: 9, watchedSince: Now.AddMinutes(-20), roster: ["a"], passedOver: "a");
+
+        TrainWatch.Observe(project, Head(issueId: 1), hasDriver: true, Now, Bound);
+
+        Assert.Null(project.TrainStalledDriver);
+    }
+
+    [Fact]
+    public void AClearedHead_ClearsTheLatestPassOverToo()
+    {
+        var project = Project(watchedIssueId: 1, watchedSince: Now.AddMinutes(-20), roster: ["a"], passedOver: "a");
+
+        TrainWatch.Observe(project, null, hasDriver: true, Now, Bound);
+
+        Assert.Null(project.TrainStalledDriver);
+    }
+
+    [Fact]
+    public void ASameHeadWithNobodyToDrive_KeepsTheLatestPassOver()
+    {
+        var project = Project(watchedIssueId: 1, watchedSince: Now.AddMinutes(-20), roster: ["a"], passedOver: "a");
+
+        TrainWatch.Observe(project, Head(issueId: 1), hasDriver: false, Now, Bound);
+
+        Assert.Equal("a", project.TrainStalledDriver);
     }
 
     [Fact]

@@ -1597,7 +1597,8 @@ has), ordered by tier and then rank, and the list is empty when no runner is
 live. `trainStalled` lists the projects whose merge train has passed over every
 live runner eligible to drive it while the head stayed on one issue, ordered by
 project key. A runner that keeps checking in is still counted as passed over,
-and a project with a live eligible runner the train has not yet tried is not
+and is not elected to that head again until another eligible runner has been passed
+over in turn, or no other is live. A project with a live eligible runner the train has not yet tried is not
 listed. Each entry carries `projectKey`, `projectName`, `passedOverRunner`,
 `electedRunner` (null when no other runner was eligible), `headKey` (the issue
 at the head of the train), `at` and `reason` (the head issue's newest comment,
