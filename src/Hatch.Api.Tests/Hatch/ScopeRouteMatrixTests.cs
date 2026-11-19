@@ -331,6 +331,11 @@ public class ScopeRouteMatrixTests
 
         ("IssueDreamsController.GetIssueDreams", Lookup(t => Get($"/api/issues/{t.Key}/dreams"))),
         ("IssueDreamsController.PutIssueDreams", Lookup(t => Put($"/api/issues/{t.Key}/dreams", new { dreamIds = Array.Empty<long>() }))),
+        ("IssueCapabilitiesController.GetCapabilities", Lookup(t => Get($"/api/issues/{t.Key}/capabilities"))),
+        ("IssueCapabilitiesController.PostCapability", Lookup(t => Post($"/api/issues/{t.Key}/capabilities", new { statement = "s", howToTell = "h" }))),
+        ("IssueCapabilitiesController.PatchCapability", Lookup(t => Patch($"/api/issues/{t.Key}/capabilities/1", new { statement = "s" }))),
+        ("IssueCapabilitiesController.PutOrder", Lookup(t => Put($"/api/issues/{t.Key}/capabilities/order", new { ids = Array.Empty<long>() }))),
+        ("IssueCapabilitiesController.DeleteCapability", Lookup(t => Delete($"/api/issues/{t.Key}/capabilities/1")) with { Destructive = true }),
         ("IssueDependenciesController.AddDependency", Lookup(t => Post($"/api/issues/{t.Key}/dependencies", new { dependsOnKey = OtherIssue }))),
         ("IssueDependenciesController.RemoveDependency", Lookup(t => Delete($"/api/issues/{t.Key}/dependencies/{OtherIssue}")) with { Destructive = true }),
         ("IssueRunnerOmissionsController.PutOmittedRunner", Lookup(t => Put($"/api/issues/{t.Key}/omitted-runners/r", new { reason = "x" }))),

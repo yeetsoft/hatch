@@ -2745,6 +2745,24 @@ public record AssigneeDirectoryDto(AssigneeDto? Me, IReadOnlyList<AssigneeDto> A
 /// </remarks>
 public record IssueDependencyRequest(string DependsOnKey);
 
+/// <summary>
+/// One capability of an ambition: what has to be true, and how anyone would tell.
+/// </summary>
+/// <param name="Position">1 to n within the ambition, with no gaps.</param>
+public record CapabilityDto(
+    long Id, int Position, string Statement, string HowToTell,
+    string CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+/// <summary>Adds a capability. Neither line may be blank.</summary>
+/// <param name="Position">Where to put it, 1 to one past the last. Left out, it goes at the end.</param>
+public record CapabilityCreateRequest(string Statement, string HowToTell, int? Position = null);
+
+/// <summary>Edits a capability. A field left out keeps its value; neither may be sent blank.</summary>
+public record CapabilityPatchRequest(string? Statement = null, string? HowToTell = null);
+
+/// <summary>Puts an ambition's capabilities in a new order: every id, once, in the wanted order.</summary>
+public record CapabilityOrderRequest(IReadOnlyList<long> Ids);
+
 /// <summary>Replaces the set of dreams an issue drew on, with the dream ids it should now carry.</summary>
 public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);
 

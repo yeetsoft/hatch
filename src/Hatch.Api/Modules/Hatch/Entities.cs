@@ -2513,6 +2513,48 @@ public class EfHatchVerdict
 }
 
 /// <summary>
+/// One capability of an ambition: a statement of what has to be true, and a
+/// line saying how anyone would tell - see docs/hatch.md, "Capability".
+/// </summary>
+/// <remarks>
+/// A row rather than text in the ambition's description, for the reason a
+/// question is a row rather than text in a comment: it can be counted and it
+/// can carry a verdict. <see cref="Position"/> runs 1 to n with no gaps within
+/// one ambition. That is held by the controller, not by a unique index -
+/// Postgres checks a unique index per statement, not at commit, so a renumber
+/// inside one <c>SaveChangesAsync</c> would trip it.
+/// </remarks>
+[Table("Capabilities")]
+public class EfHatchCapability
+{
+    /// <summary>One line each, so a title's bound.</summary>
+    public const int MaxStatementLength = 300;
+
+    public const int MaxHowToTellLength = 300;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    public required int Position { get; set; }
+
+    [MaxLength(MaxStatementLength)]
+    public required string Statement { get; set; }
+
+    [MaxLength(MaxHowToTellLength)]
+    public required string HowToTell { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string CreatedBy { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
 /// One thing that happened to an issue. Append-only, written by every mutating
 /// endpoint, never edited and never deleted except with its issue.
 ///
@@ -2777,6 +2819,32 @@ public class EfHatchIssueEvent
     /// id sorted ascending.
     /// </summary>
     public const string DreamsWoven = "dreams_woven";
+
+    /// <summary>
+    /// `POST /issues/{key}/capabilities` added a capability to this ambition.
+    /// The payload is `{ id, position, statement }`.
+    /// </summary>
+    public const string CapabilityAdded = "capability_added";
+
+    /// <summary>
+    /// `PATCH /issues/{key}/capabilities/{id}` changed a capability's words.
+    /// The payload is `{ id, position, from: { statement, howToTell }, to: {
+    /// statement, howToTell } }`, whole values on each side.
+    /// </summary>
+    public const string CapabilityEdited = "capability_edited";
+
+    /// <summary>
+    /// `PUT /issues/{key}/capabilities/order` put the capabilities in a new
+    /// order. One event per call: the payload is `{ from, to }`, both sides
+    /// every capability id in order, since one reorder can move every row.
+    /// </summary>
+    public const string CapabilityMoved = "capability_moved";
+
+    /// <summary>
+    /// `DELETE /issues/{key}/capabilities/{id}` removed a capability. The
+    /// payload is `{ id, position, statement }` as it stood.
+    /// </summary>
+    public const string CapabilityRemoved = "capability_removed";
 
     /// <summary>
     /// `POST /issues/{key}/remand` shelved this issue into a dream - see
