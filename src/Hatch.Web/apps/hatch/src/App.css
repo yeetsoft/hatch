@@ -10609,6 +10609,68 @@ button.hatch-option.chosen {
   font-size: var(--t-micro);
 }
 
+/* Issue types: the real tile, sized by the page. TypeTile is a bare svg with a
+   viewBox and no width or height, so the wrapper is the size. Pixels rather
+   than rem: the page speaks of pixels, and a rem would move with the root
+   font size. A row wraps on a phone rather than overflowing. */
+.design-type-tile {
+  display: inline-flex;
+  flex: none;
+}
+
+.design-type-tile svg {
+  width: 100%;
+  height: 100%;
+}
+
+.design-type-tile--14 {
+  width: 14px;
+  height: 14px;
+}
+
+.design-type-tile--16 {
+  width: 16px;
+  height: 16px;
+}
+
+.design-type-tile--24 {
+  width: 24px;
+  height: 24px;
+}
+
+.design-type-tile--72 {
+  width: 72px;
+  height: 72px;
+}
+
+.design-type-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* A board column's ground with a card's box on it, so 14px tiles are judged
+   where they are used. */
+.design-type-column {
+  padding: var(--sp-2);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  width: fit-content;
+}
+
+.design-type-card {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2-5);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+
 /* ---------------------------------------------------------------------------
    Narrow windows. The rail becomes a band above the content rather than
    disappearing, at the board's own phone line rather than the gallery's old
