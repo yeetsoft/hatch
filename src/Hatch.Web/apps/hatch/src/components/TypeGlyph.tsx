@@ -1,3 +1,5 @@
+import { useId } from 'react';
+import { HATCH_MARK_BODY, HATCH_MARK_CAP } from '@hatch/ui';
 import type { IssueType } from '../types';
 import { issueTypeRow } from '../lib/issueType';
 import type { TypePicture } from '../lib/issueType';
@@ -71,6 +73,47 @@ export function TypeTile({ type }: { type: IssueType }) {
       <g transform="translate(8 8) scale(1.1) translate(-8 -8)">
         {filled && <path className="hatch-type-tile-picture" d={filled} />}
         {stroked && <path className="hatch-type-tile-stroke" d={stroked.d} strokeWidth={stroked.width} />}
+      </g>
+    </svg>
+  );
+}
+
+/* The egg is the mark's 100 box at 0.119, so its 91-unit silhouette (the cap's
+   apex at y 5 to the body's foot at 96) is about 11 units tall in the 16 box.
+   It is centred on the silhouette, cap included, as hatchIconSvg centres it:
+   the centre is (50, 50.5), and that point lands on (8, 8). */
+const EGG_SCALE = 0.119;
+const EGG_TX = (8 - 50 * EGG_SCALE).toFixed(4);
+const EGG_TY = (8 - 50.5 * EGG_SCALE).toFixed(4);
+
+/**
+ * The ambition's tile: the Hatch egg, `--on-accent`, on a rounded square
+ * filled with the brand gradient. The egg is the mark's own two paths from
+ * `@hatch/ui`, never a copy.
+ *
+ * It takes no `type` and is not keyed by a row in `issueType.ts`: its fill is
+ * a gradient between `--gradient-ink-from` and `--gradient-ink-to`, where
+ * every other tile's is one `--type-*` token. The egg is already at its final
+ * size, so it takes no further scaling.
+ *
+ * The gradient's id comes from `useId`, as HatchMark's does, so two tiles on
+ * one page never share a def. The stops and the fill are styles because
+ * `var()` in a presentation attribute is not trusted everywhere.
+ */
+export function AmbitionTile() {
+  const gradientId = `hatch-ambition-tile-${useId().replace(/:/g, '')}`;
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1="1" y1="1" x2="15" y2="15">
+          <stop offset="0" style={{ stopColor: 'var(--gradient-ink-from)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--gradient-ink-to)' }} />
+        </linearGradient>
+      </defs>
+      <path className="hatch-type-tile-face" d={ROUNDED_FACE} style={{ fill: `url(#${gradientId})` }} />
+      <g transform={`translate(${EGG_TX} ${EGG_TY}) scale(${EGG_SCALE})`}>
+        <path className="hatch-type-tile-picture" d={HATCH_MARK_CAP} />
+        <path className="hatch-type-tile-picture" d={HATCH_MARK_BODY} />
       </g>
     </svg>
   );
