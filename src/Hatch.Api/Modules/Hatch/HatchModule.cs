@@ -117,6 +117,7 @@ public static class HatchModule
         // holds no state, only takes a connection of its own per sweep.
         services.AddScoped<IAppJob, GooseJob>();
         services.AddSingleton<IGooseLock, PostgresGooseLock>();
+        services.AddSingleton<GooseWatch>();
 
         // Scoped like Dispatch: it holds a scoped HatchContext, and its one
         // cached ReadySnapshot is meant to live no longer than the sweep that

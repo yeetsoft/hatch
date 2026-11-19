@@ -11,6 +11,8 @@ import {
   conflictEmptyWords,
   deadlockedEmptyWords,
   failingBuildEmptyWords,
+  findingWords,
+  gooseStoppedWords,
   groupCollapsed,
   heldAtProjectLineEmptyWords,
   humanSectionRowCounts,
@@ -39,7 +41,7 @@ import {
   waitingOnARunnerEmptyWords,
   waitingOnARunnerLines,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, BackupAttention, Conflict, ContributionHeld, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, ProjectLineHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, AttentionFinding, AttentionGoose, BackupAttention, Conflict, ContributionHeld, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, ProjectLineHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -150,6 +152,25 @@ const runnerCapacity = (over: Partial<RunnerCapacity> = {}): RunnerCapacity => (
   ...over,
 });
 
+const finding = (over: Partial<AttentionFinding> = {}): AttentionFinding => ({
+  id: 1,
+  check: 'train-ready',
+  projectKey: 'AER',
+  sentence: 'AER has a train ready and nobody is driving it.',
+  beganAt: ago(3 * 3_600_000),
+  openedAt: ago(2 * 3_600_000),
+  bugIssueKey: null,
+  issueKey: null,
+  ...over,
+});
+
+const goose = (over: Partial<AttentionGoose> = {}): AttentionGoose => ({
+  lastSweepAt: ago(12 * 60_000),
+  intervalSeconds: 60,
+  stopped: false,
+  ...over,
+});
+
 const approvedWaiting = (over: Partial<ApprovedWaiting> = {}): ApprovedWaiting => ({
   key: 'AER-18',
   title: 'A story the loop is still merging',
@@ -215,6 +236,45 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
   conflicts: [],
   reviewsHeldBack: 0,
   ...over,
+});
+
+describe('findings and the goose', () => {
+  it('counts every finding, and a stopped goose as one more', () => {
+    expect(attentionCount(attention({ findings: [finding(), finding({ id: 2 })] }))).toBe(2);
+    expect(attentionCount(attention({ goose: goose({ stopped: true }) }))).toBe(1);
+    expect(attentionCount(attention({ findings: [finding(), finding({ id: 2 })], goose: goose({ stopped: true }) }))).toBe(3);
+  });
+
+  it('counts nothing for a goose that is running, or for a board that predates both', () => {
+    expect(attentionCount(attention({ goose: goose() }))).toBe(0);
+    expect(attentionCount(attention({ findings: [] }))).toBe(0);
+    expect(attentionCount(attention())).toBe(0);
+  });
+
+  it('names them in the label, pluralised on the count', () => {
+    expect(attentionLabel(attention({ findings: [finding()] }))).toBe('1 finding');
+    expect(attentionLabel(attention({ findings: [finding(), finding({ id: 2 })] }))).toBe('2 findings');
+    expect(attentionLabel(attention({ goose: goose({ stopped: true }) }))).toBe('the goose has stopped');
+    expect(attentionLabel(attention({ findings: [finding()], goose: goose({ stopped: true }), questions: [question()] }))).toBe(
+      '1 finding, the goose has stopped, 1 question to answer',
+    );
+  });
+
+  it('adds no pill: pillCount does not change', () => {
+    expect(pillCount(attention({ findings: [finding(), finding({ id: 2 })], goose: goose({ stopped: true }) }))).toBe(0);
+  });
+
+  it('words a finding\u2019s age from when its condition began', () => {
+    expect(findingWords(finding({ beganAt: ago(3 * 3_600_000) }), NOW)).toBe('3 hours');
+    expect(findingWords(finding({ beganAt: ago(2 * 86_400_000) }), NOW)).toBe('2 days');
+  });
+
+  it('says when the goose last ran, or that it has not since the server started', () => {
+    expect(gooseStoppedWords(goose({ stopped: true }), NOW)).toBe('The goose has stopped. It last ran 12 minutes ago.');
+    expect(gooseStoppedWords(goose({ stopped: true, lastSweepAt: null }), NOW)).toBe(
+      'The goose has stopped. It has not run since the server started.',
+    );
+  });
 });
 
 describe('attentionCount', () => {
@@ -1060,14 +1120,15 @@ describe('groupCollapsed', () => {
 describe('humanSectionRowCounts', () => {
   it('is all zeros, one per section, when there is no attention at all', () => {
     const counts = humanSectionRowCounts(null);
-    expect(counts).toHaveLength(14);
-    expect(counts).toEqual(new Array(14).fill(0));
+    expect(counts).toHaveLength(15);
+    expect(counts).toEqual(new Array(15).fill(0));
   });
 
-  it('pins the order: trunk builds, backup, stalled trains, deadlocked, questions, stalled, reviews, approved-held, landing-held, no-code-held, contributions-held, runner capacity, waiting on a runner, held at a project line', () => {
+  it('pins the order: findings, trunk builds, backup, stalled trains, deadlocked, questions, stalled, reviews, approved-held, landing-held, no-code-held, contributions-held, runner capacity, waiting on a runner, held at a project line', () => {
     expect(
       humanSectionRowCounts(
         attention({
+          findings: Array(1).fill(finding()),
           trunkBuilds: Array(2).fill(trunkBuild()),
           backup: backupAttention,
           trainStalled: Array(3).fill(trainStalled()),
@@ -1084,18 +1145,25 @@ describe('humanSectionRowCounts', () => {
           heldAtProjectLine: Array(14).fill(heldAtProjectLine()),
         }),
       ),
-    ).toEqual([2, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    ).toEqual([1, 2, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+  });
+
+  it('counts a stopped goose as one more row in the findings section, so a group of only that stays open', () => {
+    expect(humanSectionRowCounts(attention({ goose: goose({ stopped: true }) }))[0]).toBe(1);
+    expect(humanSectionRowCounts(attention({ findings: [finding(), finding({ id: 2 })], goose: goose({ stopped: true }) }))[0]).toBe(3);
+    expect(humanSectionRowCounts(attention({ goose: goose() }))[0]).toBe(0);
+    expect(groupCollapsed(humanSectionRowCounts(attention({ goose: goose({ stopped: true }) })))).toBe(false);
   });
 
   it('counts backup as one row when present, none when null', () => {
-    expect(humanSectionRowCounts(attention({ backup: null }))[1]).toBe(0);
-    expect(humanSectionRowCounts(attention({ backup: backupAttention }))[1]).toBe(1);
+    expect(humanSectionRowCounts(attention({ backup: null }))[2]).toBe(0);
+    expect(humanSectionRowCounts(attention({ backup: backupAttention }))[2]).toBe(1);
   });
 
   it('raises the review row to 1 when reviewWordsCarryAFact is true, even with no reviews', () => {
-    expect(humanSectionRowCounts(attention({ reviews: [] }))[6]).toBe(0);
-    expect(humanSectionRowCounts(attention({ reviews: [], inReviewWithoutPullRequest: 1 }))[6]).toBe(1);
-    expect(humanSectionRowCounts(attention({ reviews: [], reviewsHeldBack: 1 }))[6]).toBe(1);
+    expect(humanSectionRowCounts(attention({ reviews: [] }))[7]).toBe(0);
+    expect(humanSectionRowCounts(attention({ reviews: [], inReviewWithoutPullRequest: 1 }))[7]).toBe(1);
+    expect(humanSectionRowCounts(attention({ reviews: [], reviewsHeldBack: 1 }))[7]).toBe(1);
   });
 });
 

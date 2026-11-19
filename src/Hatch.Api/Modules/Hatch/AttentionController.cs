@@ -6,6 +6,7 @@ using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -31,7 +32,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/attention")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class AttentionController(HatchContext db, IActorDirectory actors, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup, IAuthService keys) : ControllerBase
+public class AttentionController(HatchContext db, IActorDirectory actors, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup, IAuthService keys, GooseWatch gooseWatch, IOptions<HatchOptions> options) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AttentionDto>> GetAttention(CancellationToken ct)
@@ -106,6 +107,10 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // A stalled train is a project's, not a column's - whatever the board's shape.
         var trainStalled = await TrainStalledAsync(ct);
 
+        // What the goose found, and whether it is still looking - both whatever the board's shape.
+        var findings = await FindingsAsync(ct);
+        var goose = await GooseAsync(ct);
+
         // The projects whose clear implementation steps one live runner, or none, can take.
         var runnerCapacity = await dispatch.RunnerCapacityAsync(0, runners.Cutoff(time.GetUtcNow()), ct);
 
@@ -132,7 +137,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity, Stalled: stalled, StallResumeSeconds: dispatch.StallResumeSeconds, HeldAtProjectLine: heldAtProjectLine);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity, Stalled: stalled, StallResumeSeconds: dispatch.StallResumeSeconds, HeldAtProjectLine: heldAtProjectLine, Findings: findings, Goose: goose);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -467,7 +472,55 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
             approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity, stalled, dispatch.StallResumeSeconds,
-            ContributionsHeld: contributionsHeld, HeldAtProjectLine: heldAtProjectLine);
+            ContributionsHeld: contributionsHeld, HeldAtProjectLine: heldAtProjectLine, Findings: findings, Goose: goose);
+    }
+
+    /// <summary>
+    /// Every open finding, longest-standing first. The entity's query filter has
+    /// already left out another project's findings, and every finding that names
+    /// no project, for a caller whose scope is narrowed - so there is no second
+    /// filter here to drift from it.
+    /// </summary>
+    private async Task<IReadOnlyList<AttentionFindingDto>> FindingsAsync(CancellationToken ct)
+    {
+        var rows = await db.GooseFindings.AsNoTracking()
+            .Include(f => f.Project).Include(f => f.BugIssue).ThenInclude(i => i!.Project)
+            .Where(f => f.ClosedAt == null)
+            .OrderBy(f => f.BeganAt).ThenBy(f => f.Id)
+            .ToListAsync(ct);
+
+        return rows.Select(f =>
+        {
+            // The token is the subject's own handle. It names an issue only when it
+            // parses as a key in the finding's own project - a token is never trusted
+            // to point across projects.
+            var issueKey = f.Project is { } p && IssueKey.TryParse(f.Token, out var tokenProject, out var number)
+                && string.Equals(tokenProject, p.Key, StringComparison.OrdinalIgnoreCase)
+                ? IssueKey.Format(p.Key, number)
+                : null;
+            return new AttentionFindingDto(
+                f.Id, f.Check, f.Project?.Key, f.Sentence, f.BeganAt, f.OpenedAt,
+                f.BugIssue is { } bug ? IssueKey.Format(bug.Project!.Key, bug.Number) : null,
+                issueKey);
+        }).ToList();
+    }
+
+    /// <summary>
+    /// When the goose last swept and whether it has stopped, by this read's own
+    /// clock: stopped is the newest run's last sweep being older than three
+    /// intervals, or - with no run stored - the server having been up that long.
+    /// Read through <c>GooseRuns</c>, which has no query filter, so a narrowed
+    /// caller still learns the goose has stopped. The sweep writes nothing for it.
+    /// </summary>
+    private async Task<AttentionGooseDto> GooseAsync(CancellationToken ct)
+    {
+        var lastRan = await db.GooseRuns.AsNoTracking()
+            .OrderByDescending(r => r.LastRanAt)
+            .Select(r => (DateTimeOffset?)r.LastRanAt)
+            .FirstOrDefaultAsync(ct);
+        var interval = GooseSettings.IntervalSeconds(options.Value);
+        var stopped = time.GetUtcNow() - (lastRan ?? gooseWatch.StartedAt) > TimeSpan.FromSeconds(3L * interval);
+        return new AttentionGooseDto(lastRan, interval, stopped);
     }
 
     /// <summary>

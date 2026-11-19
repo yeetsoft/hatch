@@ -2999,6 +2999,151 @@ public class AttentionControllerTests : IDisposable
         Assert.DoesNotContain("OTH", System.Text.Json.JsonSerializer.Serialize(seen));
     }
 
+    // ---- The goose: findings and whether it has stopped ----
+
+    private static async Task<EfHatchGooseFinding> AddFindingAsync(
+        Harness h, int? projectId, string token, DateTimeOffset beganAt, string sentence = "a train is standing", DateTimeOffset? closedAt = null)
+    {
+        var finding = new EfHatchGooseFinding
+        {
+            Check = "train-ready", Subject = "AER", Token = token, ProjectId = projectId,
+            BeganAt = beganAt, OpenedAt = beganAt.AddMinutes(5), ClosedAt = closedAt, Sentence = sentence,
+        };
+        h.Db.GooseFindings.Add(finding);
+        await h.Db.SaveChangesAsync();
+        return finding;
+    }
+
+    private static async Task AddRunAsync(Harness h, DateTimeOffset lastRanAt)
+    {
+        h.Db.GooseRuns.Add(new EfHatchGooseRun { FirstRanAt = lastRanAt.AddHours(-1), LastRanAt = lastRanAt, Sweeps = 3 });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Findings_ListOpenOnesLongestStandingFirst_WithTheirIssueAndTheirBug()
+    {
+        var h = await NewAsync();
+        var bug = await h.FileAsync("bug", "bug", h.Inbox);
+        var newer = await AddFindingAsync(h, h.ProjectId, "AER-9", Now.AddHours(-1), "newer");
+        var older = await AddFindingAsync(h, h.ProjectId, "AER", Now.AddHours(-3), "older");
+        older.BugIssueId = bug.Id;
+        await AddFindingAsync(h, h.ProjectId, "AER-1", Now.AddHours(-5), "closed", closedAt: Now.AddHours(-4));
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Attention.GetAttention(default)).Findings!;
+
+        Assert.Equal(new[] { "older", "newer" }, rows.Select(r => r.Sentence));
+        Assert.Equal(new[] { older.Id, newer.Id }, rows.Select(r => r.Id));
+        Assert.Equal(Now.AddHours(-3), rows[0].BeganAt);
+        Assert.Equal($"AER-{bug.Number}", rows[0].BugIssueKey);
+        Assert.Null(rows[0].IssueKey);
+        Assert.Equal("AER-9", rows[1].IssueKey);
+        Assert.Null(rows[1].BugIssueKey);
+        Assert.All(rows, r => Assert.Equal("AER", r.ProjectKey));
+    }
+
+    [Fact]
+    public async Task Findings_NameNoIssue_WhenTheTokenBelongsToAnotherProject()
+    {
+        var h = await NewAsync();
+        await AddFindingAsync(h, h.ProjectId, "OTH-9", Now.AddHours(-1));
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Findings!);
+
+        Assert.Null(row.IssueKey);
+    }
+
+    [Fact]
+    public async Task Findings_AreEmptyNotNull_WhenThereAreNone_AndOnABoardWithNoReviewColumn()
+    {
+        Assert.Empty(Value(await (await NewAsync()).Attention.GetAttention(default)).Findings!);
+        Assert.Empty(Value(await (await OneColumnAsync()).Attention.GetAttention(default)).Findings!);
+    }
+
+    [Fact]
+    public async Task Findings_ForAScopedReader_AreTheirProjectsOnly_AndNeverOneNamingNoProject()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await AddFindingAsync(h, h.ProjectId, "AER-1", Now.AddHours(-2), "mine");
+        await AddFindingAsync(h, other, "OTH-1", Now.AddHours(-3), "theirs");
+        await AddFindingAsync(h, null, "none", Now.AddHours(-4), "no project");
+
+        var whole = Value(await h.Attention.GetAttention(default)).Findings!;
+        var seen = Value(await h.AttentionFor(h.ProjectId).GetAttention(default)).Findings!;
+
+        Assert.Equal(3, whole.Count);
+        Assert.Equal("mine", Assert.Single(seen).Sentence);
+    }
+
+    [Fact]
+    public async Task Goose_IsStoppedOnlyPastThreeIntervalsSinceTheLastSweep()
+    {
+        var h = await NewAsync();
+        var interval = GooseSettings.IntervalSeconds(new HatchOptions());
+        await AddRunAsync(h, Now);
+
+        h.Time.Advance(TimeSpan.FromSeconds(3 * interval - 1));
+        var before = Value(await h.Attention.GetAttention(default)).Goose!;
+        h.Time.Advance(TimeSpan.FromSeconds(1));
+        var exactly = Value(await h.Attention.GetAttention(default)).Goose!;
+        h.Time.Advance(TimeSpan.FromSeconds(1));
+        var after = Value(await h.Attention.GetAttention(default)).Goose!;
+
+        Assert.False(before.Stopped);
+        Assert.False(exactly.Stopped);
+        Assert.True(after.Stopped);
+        Assert.Equal(Now, after.LastSweepAt);
+        Assert.Equal(interval, after.IntervalSeconds);
+    }
+
+    [Fact]
+    public async Task Goose_JudgesTheNewestRun()
+    {
+        var h = await NewAsync();
+        var interval = GooseSettings.IntervalSeconds(new HatchOptions());
+        await AddRunAsync(h, Now.AddDays(-2));
+        await AddRunAsync(h, Now.AddSeconds(-interval));
+
+        var goose = Value(await h.Attention.GetAttention(default)).Goose!;
+
+        Assert.False(goose.Stopped);
+        Assert.Equal(Now.AddSeconds(-interval), goose.LastSweepAt);
+    }
+
+    [Fact]
+    public async Task Goose_WithNoRunStored_IsStoppedOnceTheServerHasBeenUpThreeIntervals()
+    {
+        var h = await NewAsync();
+        var interval = GooseSettings.IntervalSeconds(new HatchOptions());
+
+        h.Time.Advance(TimeSpan.FromSeconds(3 * interval));
+        var within = Value(await h.Attention.GetAttention(default)).Goose!;
+        h.Time.Advance(TimeSpan.FromSeconds(1));
+        var past = Value(await h.Attention.GetAttention(default)).Goose!;
+
+        Assert.False(within.Stopped);
+        Assert.Null(within.LastSweepAt);
+        Assert.True(past.Stopped);
+        Assert.Null(past.LastSweepAt);
+    }
+
+    [Fact]
+    public async Task Goose_IsAnsweredToAScopedReader_AndOnABoardWithNoReviewColumn()
+    {
+        var h = await NewAsync();
+        var interval = GooseSettings.IntervalSeconds(new HatchOptions());
+        await AddRunAsync(h, Now);
+        h.Time.Advance(TimeSpan.FromSeconds(3 * interval + 1));
+
+        Assert.True(Value(await h.AttentionFor(h.ProjectId).GetAttention(default)).Goose!.Stopped);
+
+        var one = await OneColumnAsync();
+        one.Time.Advance(TimeSpan.FromSeconds(3 * interval + 1));
+        Assert.True(Value(await one.Attention.GetAttention(default)).Goose!.Stopped);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
@@ -3012,6 +3157,7 @@ public class AttentionControllerTests : IDisposable
         public required BackupService Backup { get; init; }
         public required BackupStatus Status { get; init; }
         public required FakeBackupProcess Process { get; init; }
+        public required GooseWatch Watch { get; init; }
         public required DbContextOptions<HatchContext> Options { get; init; }
         public required StubActorDirectory Actors { get; init; }
         public required Runners RunnerList { get; init; }
@@ -3088,7 +3234,7 @@ public class AttentionControllerTests : IDisposable
         public AttentionController AttentionFor(params int[] projects)
         {
             var scoped = ScopeSeed.Request(Options, ScopeSeed.Only(projects));
-            return new AttentionController(scoped, Actors, RunnerList, Time, new Dispatch(scoped, Actors, TestClaims.With(), Time, Keys, Sessions), Backup, Keys);
+            return new AttentionController(scoped, Actors, RunnerList, Time, new Dispatch(scoped, Actors, TestClaims.With(), Time, Keys, Sessions), Backup, Keys, Watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions()));
         }
 
         /// <summary>A live key with no beat of its own, minted through <see cref="Keys"/> - the identity a session is held against.</summary>
@@ -3434,12 +3580,13 @@ public class AttentionControllerTests : IDisposable
         var sessions = new RunnerSessions(runners);
 
         var (backup, status, process) = NewBackup(time, backupPath);
+        var watch = new GooseWatch(time);
 
         return new Harness
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, claims ?? TestClaims.With(), time, keys, sessions), backup, keys),
+            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, claims ?? TestClaims.With(), time, keys, sessions), backup, keys, watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions())),
             Options = options,
             Actors = actors,
             RunnerList = runners,
@@ -3448,6 +3595,7 @@ public class AttentionControllerTests : IDisposable
             Backup = backup,
             Status = status,
             Process = process,
+            Watch = watch,
             ProjectId = project.Id,
             Inbox = inbox.Id,
             Todo = todo.Id,
@@ -3482,12 +3630,13 @@ public class AttentionControllerTests : IDisposable
         var sessions = new RunnerSessions(runners);
 
         var (backup, status, process) = NewBackup(time, backupPath);
+        var watch = new GooseWatch(time);
 
         return new Harness
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, TestClaims.With(), time, keys, sessions), backup, keys),
+            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, TestClaims.With(), time, keys, sessions), backup, keys, watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions())),
             Options = options,
             Actors = actors,
             RunnerList = runners,
@@ -3496,6 +3645,7 @@ public class AttentionControllerTests : IDisposable
             Backup = backup,
             Status = status,
             Process = process,
+            Watch = watch,
             ProjectId = project.Id,
             Inbox = done.Id,
             Todo = done.Id,

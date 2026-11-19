@@ -4574,7 +4574,8 @@ has answered — and the server already knows both. The control is quiet while
 neither is true and loud the moment either is, and pressing it hands over the
 links that unblock them.
 
-The panel draws two groups, in this order: **Human** — a backup that is
+The panel draws two groups, in this order: **Human** — what the goose
+found, headed by a row saying so when the goose itself has stopped, then a backup that is
 failing or stale, then deadlocked issues, then trunk builds that fail, then
 pull requests to review, then pull requests approved but not merging, then
 issues landed but not done, then questions to answer — and **Agent** —
@@ -5228,6 +5229,15 @@ newest.
 `Hatch__GooseKeepDays` (default 7). Zero keeps everything; a negative falls
 back to 7. Both options are guarded in `GooseSettings`.
 
+**The stopped goose.** `GET /api/attention` carries `goose`, `{ lastSweepAt,
+intervalSeconds, stopped }`, beside the open findings. `AttentionController`
+judges `stopped` on its own clock, `TimeProvider`'s: true when the newest
+`LastRanAt` is more than three intervals old - strictly more, so exactly three
+is still running - or, with no run stored, when `GooseWatch.StartedAt`, a
+singleton recording when this process started, is. The sweep writes nothing for
+it, so a sweep that has hung cannot report itself well. It reads `GooseRuns`,
+which has no query filter, so a narrowed caller is told too.
+
 **The routes.** `GET /api/goose/runs` and `GET /api/goose/runs/{id}`, both
 `[RequireRole(PersonRole.User, AcceptKey = true)]`. A run holds what was seen in
 every project, so for a caller whose scope is not everything the list is empty
@@ -5295,6 +5305,17 @@ first, then closed ones, newest first; `?open=true` narrows it to the open
 ones. Each carries its id, check, subject, project key, sentence, evidence,
 its three times and the bug's key. See the
 [API reference](../src/Hatch.Web/apps/hatch/docs/api-reference.md).
+
+**In the attention read.** `GET /api/attention` carries the open findings as
+`findings`, longest-standing first (`BeganAt`, then `Id`), read through the same
+query filter as the route above, so a narrowed caller gets their projects' rows
+and never a project-less one, with no second filter to drift from it. Each adds
+`IssueKey`, derived and never stored: the finding's token when it parses as an
+issue key whose project half is the finding's own project, else null, and the
+panel then links the row to the project's board. The attention panel draws them
+first under **Findings**. A stuck merge train can show twice there, as the
+board's own row under **Stalled merge trains** and as a `train-ready` finding;
+the two are different watchers and neither hides the other.
 
 #### `train-ready`
 
