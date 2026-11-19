@@ -59,6 +59,7 @@ All three are server settings, set in the environment like any other
 | `Hatch__GooseTrainReadyMinutes` | `30` | How long a merge train's head may be judged mergeable before the `train-ready` check below opens a finding. `0` turns the check off; less than that falls back to `30`. |
 | `Hatch__GooseUnclaimedMinutes` | `10` | How long a project may have ready work and a live, idle runner able to take some of it before the `ready-unclaimed` check below opens a finding. `0` turns the check off; a negative value falls back to `10`. |
 | `Hatch__GooseNoRunnerMinutes` | `15` | How long a project may have ready work that no live runner can take before the `ready-no-runner` check below opens a finding. `0` turns the check off; a negative value falls back to `15`. |
+| `Hatch__GooseQuestionHours` | `24` | How long a question may wait before the `questions-waiting` check below opens a finding. `0` turns the check off; less than that falls back to `24`. |
 
 Each sweep also deletes the runs whose last sweep is older than the keep
 window.
@@ -127,6 +128,24 @@ and no live runner can take them"*; the evidence names the steps the same way,
 then, for each live runner, why it cannot take them, in the same words the
 queue uses. With no live runner at all it says so, and lists when each known
 runner - live or not - was last heard from.
+
+### `questions-waiting`
+
+Watches the questions still owed a person - the same ones the Ballot and the
+attention panel list, so a question on a done issue is never counted - and
+opens one finding when at least one was asked `Hatch__GooseQuestionHours` ago
+or longer. It is about the board and names no project, so there is at most one
+such finding open, and only a caller who may see everything reads it. A
+question on an issue filed from a finding is left out.
+
+The sentence gives the count and the bound, for example *"3 questions have
+waited more than 24 hours"*, and no duration. The evidence lists every question
+past the bound, oldest first: the issue's key and title, who asked, when, and
+the first line of the question. As questions are answered and others pass the
+bound, it stays one finding with fresh evidence; it closes when none is past
+the bound. It judges by age alone: it suggests no answer and answers nothing.
+The condition begins at the first sweep that sees a question past the bound,
+so its start can trail the question by up to one sweep interval.
 
 ## Reading it from outside
 

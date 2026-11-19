@@ -10,12 +10,13 @@ using Xunit.Abstractions;
 namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
-/// HA-2381, HA-2508: the type badge wears the same plain face as the type pill, for the five types that take a type colour
+/// HA-2381, HA-2508, HA-2511: the type badge wears the same plain face as the type pill, for the five types that take a type colour
 /// types, and the tile inside is what tells them apart. One issue of each type is filed; the
 /// issue page's Details card is read in both modes (the badge outside edit mode, the pill
 /// inside it). Badge and pill must share background, ink and border; the background is
 /// transparent, the tile is 14 pixels, and the five tiles paint five fills. The search page
-/// is read for a badge of every type, each with its type's tile fill. Screenshots are left in the case's
+/// is read for a badge of every type: the issues sit in the first column, which a list draws as an
+/// outline (HA-2511), so each tile has no fill and strokes in its type's colour. Screenshots are left in the case's
 /// artifact directory.
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
@@ -50,7 +51,7 @@ public class TypeBadgeFaceTests(ITestOutputHelper output)
         }
         """;
 
-    /// <summary>Runs in the page: every type badge on the page, as a word, its painted face and its tile's fill.</summary>
+    /// <summary>Runs in the page: every type badge on the page, as a word, its painted face and its tile's fill and stroke.</summary>
     private const string BadgesScript = """
         () => [...document.querySelectorAll('.hatch-type-badge')].map((el) => {
           const style = getComputedStyle(el);
@@ -60,6 +61,7 @@ public class TypeBadgeFaceTests(ITestOutputHelper output)
             color: style.color,
             background: style.backgroundColor,
             tile: face ? getComputedStyle(face).fill : null,
+            tileStroke: face ? getComputedStyle(face).stroke : null,
           };
         })
         """;
@@ -145,7 +147,9 @@ public class TypeBadgeFaceTests(ITestOutputHelper output)
             foreach (var type in Types)
             {
                 var row = badges.EnumerateArray().First(b => b.GetProperty("word").GetString() == type);
-                Assert.Equal(seen[type], row.GetProperty("tile").GetString());
+                // An outline: no fill, and the stroke is the colour the solid tile fills with.
+                Assert.Equal("none", row.GetProperty("tile").GetString());
+                Assert.Equal(seen[type], row.GetProperty("tileStroke").GetString());
                 Assert.Equal(Transparent, row.GetProperty("background").GetString());
             }
 

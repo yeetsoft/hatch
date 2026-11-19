@@ -38,9 +38,10 @@ public class InheritedSentencesTests(ITestOutputHelper output)
     private const string HonouredTitle = "Child that honours its parent";
     private const string PassedOverTitle = "Child that does not";
 
-    /// <summary>The marks on one card, the two pills on the issue page and the plan's mark, in one script so they are one moment.</summary>
+    /// <summary>The marks on one card and its tile's title, the two pills on the issue page and the plan's mark, in one script so they are one moment.</summary>
     private const string CardScript = """
         (key) => ({
+          tile: document.querySelector(`[data-issue-key="${key}"] .hatch-type-glyph`)?.getAttribute('title'),
           marks: [...document.querySelectorAll(`[data-issue-key="${key}"] .hatch-card-marks > span`)].map((s) => ({
             cls: s.className, title: s.getAttribute('title'), text: s.textContent,
           })),
@@ -117,15 +118,16 @@ public class InheritedSentencesTests(ITestOutputHelper output)
                 Assert.Equal("expedited", passedOver.PriorityPassedOverLevel);
             }
 
-            // The board: a card wears its marks, and the passed-over one wears dim marks of its own.
+            // The board: a card's tile says what it honours, and the passed-over one wears dim marks of its own.
             await harness.OpenBoardAsync(deadline, baseUrl);
             await harness.WaitForVisibleAsync(deadline, $"[data-issue-key=\"{tree.PassedOver}\"] .hatch-card-marks");
             var honouredCard = await ReadAsync(harness, deadline, CardScript, tree.Honoured, "board-honoured", profileName);
             var passedCard = await ReadAsync(harness, deadline, CardScript, tree.PassedOver, "board-passedover", profileName);
 
-            var honouredTitles = Titles(honouredCard, "marks");
-            Assert.Contains($"expedited on {tree.HonouredParent}", honouredTitles);
-            Assert.Contains($"pre-approved on {tree.HonouredParent}", honouredTitles);
+            // An honoured level reads off the tile now: its title says where each came from.
+            var honouredTile = honouredCard.GetProperty("tile").GetString();
+            Assert.Contains($"expedited on {tree.HonouredParent}", honouredTile);
+            Assert.Contains($"pre-approved on {tree.HonouredParent}", honouredTile);
             Assert.DoesNotContain(honouredCard.GetProperty("marks").EnumerateArray(), m => m.GetProperty("cls").GetString()!.Contains("passedover"));
 
             var passedMarks = passedCard.GetProperty("marks").EnumerateArray().Where(m => m.GetProperty("cls").GetString()!.Contains("passedover")).ToList();
@@ -180,9 +182,6 @@ public class InheritedSentencesTests(ITestOutputHelper output)
             await harness.DisposeAsync();
         }
     }
-
-    private static string[] Titles(JsonElement read, string property) =>
-        read.GetProperty(property).EnumerateArray().Select(m => m.GetProperty("title").GetString() ?? "").ToArray();
 
     private static string[] PillsOf(JsonElement read) =>
         read.GetProperty("pills").EnumerateArray().Select(p => p.GetString() ?? "").ToArray();

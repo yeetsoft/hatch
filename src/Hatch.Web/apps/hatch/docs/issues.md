@@ -10,7 +10,7 @@ page is about the fields that travel with it along the way.
 
 ## Types, and what may hang under what
 
-Six types: ambition, epic, reflection, story, task, bug. On the issue page the type is a pill in the Details card's edit mode; pressing it opens the six types under it, each as its tile and its word. The tile is a coloured outline with a picture on it, a rounded square for ambition, epic, story and task and a disc for reflection and bug, so the type reads without the colour. The ambition wears the Hatch egg on the brand gradient, where the other five wear a picture on a colour of their own. The type badge, the pill and every step wear the page's own plain face, and only the tile carries the colour. Picking one sets it and folds the band, as the Priority and Pre-approval sections say of theirs. The New issue dialog's Type field is the same pill. The Progress card's composer, where a child is filed under an ambition, epic, reflection, story or bug, picks the child's type the same way, and its band offers only what that parent may take: under an ambition it offers `epic` alone. Any type but an ambition may have no parent at all —
+Six types: ambition, epic, reflection, story, task, bug. On the issue page the type is a pill in the Details card's edit mode; pressing it opens the six types under it, each as its tile and its word. The tile is a coloured outline with a picture on it, a rounded square for ambition, epic, story and task and a disc for reflection and bug, so the type reads without the colour. The ambition wears the Hatch egg on the brand gradient, where the other five wear a picture on a colour of their own. A list that mixes columns - an issue's children, a search, the bulk page - draws the tile as an outline before work starts, solid while it is under way, and with a small tick once it has landed; the board keeps it solid, since its column already says so. The type badge, the pill and every step wear the page's own plain face, and only the tile carries the colour. Picking one sets it and folds the band, as the Priority and Pre-approval sections say of theirs. The New issue dialog's Type field is the same pill. The Progress card's composer, where a child is filed under an ambition, epic, reflection, story or bug, picks the child's type the same way, and its band offers only what that parent may take: under an ambition it offers `epic` alone. Any type but an ambition may have no parent at all —
 the ordinary state of a freshly captured bug, or an epic with nothing broken
 out of it yet. Where one does have a parent, the model allows exactly this:
 an epic hangs under an epic, a reflection or an ambition, a story hangs under an epic, a task hangs under
@@ -163,7 +163,15 @@ AER-12)". Raising a ticket's level this way is what the house calls
 the line, reads "expedited on AER-12, not honoured in OPS" beside the pill; one
 from an issue outside your scope reads "expedited from an issue outside your
 scope", with "not honoured" added where it was stopped. Both are said on a
-board card's mark too.
+board card too, in the tile's hover text or on a dashed mark.
+
+On a board card the level reads off the type's tile and the card's left edge.
+Emergency is a flame behind the tile and an amber stripe; expedited is a
+smaller ember and a blue stripe; economy is a faded tile and a grey stripe;
+low is a `↓` in the row beneath and a grey stripe; paused is a `⏸` there and
+a faded card. Red on a card means a bug and nothing else, so emergency is
+amber, not red. Hovering the tile gives the type, then what its priority and
+pre-approval say, in words.
 
 A project has a level too: paused, normal or expedited. An expedited project's
 clear work is picked up before any other project's, whatever level its tickets
@@ -235,6 +243,11 @@ session, as long as it has no [unanswered question](questions-and-decisions).
 current, or once every child is done, the board carries it on by itself,
 with nobody reading the diff first — a move [the lifecycle of a
 ticket](the-lifecycle-of-a-ticket) calls the hop.
+
+On a board card the level reads off the type's tile: express is one line
+behind it, and pre-approved is three lines behind it and a tile that leans
+forward. A card that is both pre-approved and emergency streams its flame back
+off the leaning tile.
 
 The level is a pill in the issue page's status band, beside Status and
 Priority, and the same pill sits in the board's peek. Pressing it opens the

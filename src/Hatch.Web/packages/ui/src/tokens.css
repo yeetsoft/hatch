@@ -168,6 +168,9 @@
      --warn-bg carries small text. */
   --warn: #b26a00;
   --warn-bg: rgba(178, 106, 0, 0.08);
+  /* --warn-bg laid over --bg: the ground a card owed an answer sits on, for what a tile
+     draws its outline against. --warn-bg is translucent, so it cannot be one. */
+  --warn-ground: color-mix(in srgb, var(--warn) 8%, var(--bg));
   --warn-ink: #8a5200;
 
   /* The work-queue bands of the flow-viz: eight kinds, four of which already
@@ -362,6 +365,7 @@
     --level-up: #66bb6a;
     --warn: #ffb74d;
     --warn-bg: rgba(255, 183, 77, 0.14);
+  --warn-ground: color-mix(in srgb, var(--warn) 14%, var(--bg));
     --warn-ink: #ffd08a;
 
     --flow-turn: #fff176;
@@ -439,6 +443,7 @@
   --level-up: #66bb6a;
   --warn: #ffb74d;
   --warn-bg: rgba(255, 183, 77, 0.14);
+  --warn-ground: color-mix(in srgb, var(--warn) 14%, var(--bg));
   --warn-ink: #ffd08a;
 
   --flow-turn: #fff176;

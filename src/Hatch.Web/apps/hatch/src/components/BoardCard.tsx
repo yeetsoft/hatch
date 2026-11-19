@@ -13,6 +13,7 @@ import { dangerousTitle } from '../lib/dangerous';
 import { inheritedSentences } from '../lib/inherited';
 import { localModelLevel } from '../lib/localModel';
 import { PRE_APPROVAL_LEVELS } from '../lib/preApproval';
+import { tileMarks } from '../lib/tileMarks';
 import { PRIORITY_LEVELS } from '../lib/priority';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick, type ClickIntent } from '../lib/pointer';
@@ -77,13 +78,27 @@ const askingClass = (card: IssueCard) => (card.openQuestions > 0 ? ' asking' : '
     exactly the card where knowing which one goes first matters. */
 const priorityClass = (card: IssueCard) => (card.priority === 'normal' ? '' : ` ${card.priority}`);
 
+/** What the tile says in words about the levels it draws, word for word what
+    the marks it replaced said. Low and paused are still marks, and say their own. */
+const PRIORITY_SENTENCE: Partial<Record<IssueCard['priority'], string>> = {
+  emergency: 'Emergency - the highest priority, first above everything expedited',
+  expedited: 'Expedited - this one goes first',
+  economy: 'Economy - worked only with usage that would otherwise go spare',
+};
+const APPROVAL_SENTENCE: Partial<Record<IssueCard['preApproval'], string>> = {
+  express: 'Express - carried past a column marked Express skips, with no session',
+  preapproved:
+    'Pre-approved - the approve press given in advance: carried into the merge column, or closed, with no session',
+};
+
 /** Whether the marks row has anything to draw - the same register the
     assignee chip already used alone, now covering the whole row: a card
-    with none of these carries no empty row. */
+    with none of these carries no empty row. The tile draws priority above low
+    and pre-approval, so neither is a mark. */
 const hasMarks = (card: IssueCard) =>
-  card.priority !== 'normal' ||
+  card.priority === 'low' ||
+  card.priority === 'paused' ||
   card.projectPriority === 'paused' ||
-  card.express ||
   !!card.preApprovalPassedOverLevel ||
   !!card.priorityPassedOverLevel ||
   card.localModel !== 'none' ||
@@ -281,11 +296,36 @@ function CardFace({
     : undefined;
   const priorityTitle = card.priorityPassedOverLevel ? null : said.priority;
   const approvalTitle = card.preApprovalPassedOverLevel ? null : said.preApproval;
+  // The tile's title is the type's word, then what its flame says, then what its
+  // trail says: the sentences the marks it replaced carried.
+  const tileTitle = [
+    card.type,
+    PRIORITY_SENTENCE[card.priority] && (priorityTitle ?? PRIORITY_SENTENCE[card.priority]),
+    APPROVAL_SENTENCE[card.preApproval] && (approvalTitle ?? APPROVAL_SENTENCE[card.preApproval]),
+  ]
+    .filter(Boolean)
+    .join('; ');
+  // Low and paused are the two levels the tile does not draw, so they keep a mark: a
+  // card at normal in a paused project wears the pause too.
+  const priorityMark =
+    card.priority === 'low' ||
+    card.priority === 'paused' ||
+    (card.priority === 'normal' && card.projectPriority === 'paused');
+  // The trail reaches left of the tile, so the contribution mark and the head's key make room for it.
+  const trailed = tileMarks(card.preApproval, card.priority).trail !== '';
   return (
     <>
-      <TypeGlyph type={card.type} />
-      {card.contribution && <ContributionMark className="hatch-contribution-mark--card" />}
-      <div className="hatch-card-head">
+      <TypeGlyph type={card.type} priority={card.priority} preApproval={card.preApproval} title={tileTitle} />
+      {card.contribution && (
+        <ContributionMark
+          className={`hatch-contribution-mark--card${trailed ? ' hatch-contribution-mark--trailed' : ''}`}
+        />
+      )}
+      <div
+        className={`hatch-card-head${trailed ? ' hatch-card-head--trailed' : ''}${
+          card.contribution ? ' hatch-card-head--contribution' : ''
+        }`}
+      >
         {project && (
           <ProjectMark
             size="sm"
@@ -314,39 +354,19 @@ function CardFace({
               whose own priority is normal but whose project is paused wears
               the pause mark too, drawn as the project's own doing rather
               than this issue's. */}
-          {(card.priority !== 'normal' || card.projectPriority === 'paused') && (
+          {priorityMark && (
             <span
-              className={`hatch-card-expedited${
-                card.priority === 'normal'
-                  ? ' paused'
-                  : card.priority !== 'expedited'
-                    ? ` ${card.priority}`
-                    : ''
-              }`}
+              className={`hatch-card-expedited ${card.priority === 'normal' ? 'paused' : card.priority}`}
               title={
                 priorityTitle ??
-                (card.priority === 'emergency'
-                  ? 'Emergency - the highest priority, first above everything expedited'
-                  : card.priority === 'expedited'
-                    ? 'Expedited - this one goes first'
-                    : card.priority === 'low'
-                      ? 'Low - reached after everything normal, and only while the session window is on pace'
-                      : card.priority === 'economy'
-                        ? 'Economy - worked only with usage that would otherwise go spare'
-                        : card.priority === 'normal'
-                          ? 'Paused - its project is paused; a person set it aside and the loop leaves it where it stands'
-                          : 'Paused - a person set this aside; the loop leaves it where it stands')
+                (card.priority === 'low'
+                  ? 'Low - reached after everything normal, and only while the session window is on pace'
+                  : card.priority === 'normal'
+                    ? 'Paused - its project is paused; a person set it aside and the loop leaves it where it stands'
+                    : 'Paused - a person set this aside; the loop leaves it where it stands')
               }
             >
-              {card.priority === 'emergency'
-                ? '🚨'
-                : card.priority === 'expedited'
-                  ? '↑'
-                  : card.priority === 'low'
-                    ? '↓'
-                    : card.priority === 'economy'
-                      ? '🌙'
-                      : '⏸'}
+              {card.priority === 'low' ? '↓' : '⏸'}
             </span>
           )}
           {passedOverPriority && (
@@ -354,34 +374,9 @@ function CardFace({
               {passedOverPriority.glyph}
             </span>
           )}
-          {/* Express, beside expedite and drawn the same way - its own glyph and
-              no stripe, because the stripe on the card is expedite's alone. A
-              card that is both carries both marks. */}
-          {card.express && (
-            <span
-              className="hatch-card-express"
-              title={
-                (card.preApproval === 'express' ? approvalTitle : null) ??
-                'Express - carried past a column marked Express skips, with no session'
-              }
-            >
-              »
-            </span>
-          )}
           {card.dangerous && (
             <span className="hatch-card-dangerous" title={dangerousTitle(card.dangerous)}>
               ⚠
-            </span>
-          )}
-          {card.preApproval === 'preapproved' && (
-            <span
-              className="hatch-card-preapproved"
-              title={
-                approvalTitle ??
-                'Pre-approved - the approve press given in advance: carried into the merge column, or closed, with no session'
-              }
-            >
-              ✓
             </span>
           )}
           {passedOverApproval && (
