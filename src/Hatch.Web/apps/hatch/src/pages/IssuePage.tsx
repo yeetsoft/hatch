@@ -25,6 +25,7 @@ import {
   setAssignee,
   setPriority,
   setLocalModel,
+  setHumanWork,
   setPreApproval,
   setHold,
   setOnePr,
@@ -123,6 +124,7 @@ import type {
   IssueRollup,
   IssueType,
   LocalModel,
+  HumanWork,
   Project,
   RunnerTagSource,
   Status,
@@ -168,6 +170,8 @@ export function IssuePage() {
   const [preApprovalBusy, setPreApprovalBusy] = useState(false);
   /* A local-model save is already out - the same shape as `preApprovalBusy`. */
   const [localModelBusy, setLocalModelBusy] = useState(false);
+  /* A human-work save is already out - the same shape as `preApprovalBusy`. */
+  const [humanWorkBusy, setHumanWorkBusy] = useState(false);
   /* A runner-tags save is already out - the same shape as `preApprovalBusy`. */
   const [runnerTagsBusy, setRunnerTagsBusy] = useState(false);
   /* A dangerous-reason save is already out - the same shape as `runnerTagsBusy`. */
@@ -533,6 +537,23 @@ export function IssuePage() {
     [key, load],
   );
 
+  /* Who works the issue. Its own call for the reason `savePreApproval` is -
+     its own endpoint - and otherwise exactly it. */
+  const saveHumanWork = useCallback(
+    async (value: HumanWork) => {
+      setHumanWorkBusy(true);
+      try {
+        await setHumanWork(key, value);
+        await load();
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setHumanWorkBusy(false);
+      }
+    },
+    [key, load],
+  );
+
   /* The own-tags save, the same shape savePreApproval is. */
   const saveRunnerTags = useCallback(
     async (tags: string[]) => {
@@ -829,12 +850,14 @@ export function IssuePage() {
         priorityBusy={priorityBusy}
         preApprovalBusy={preApprovalBusy}
         localModelBusy={localModelBusy}
+        humanWorkBusy={humanWorkBusy}
         onMove={(statusId) => void moveStatus(statusId)}
         onRemand={(statusId) => remanding.ask(remandOffer(board, key, statusId))}
         blocked={(status) => moveBlocked(status, project, issue)}
         onPriority={(priority) => void savePriority(priority)}
         onPreApproval={(level) => void savePreApproval(level)}
         onLocalModel={(level) => void saveLocalModel(level)}
+        onHumanWork={(value) => void saveHumanWork(value)}
       />
 
       <Card>

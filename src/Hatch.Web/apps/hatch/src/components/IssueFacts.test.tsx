@@ -42,6 +42,9 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   localModel: 'none',
   localModelOwn: 'none',
   localModelFrom: null,
+  humanWork: 'agent',
+  humanWorkOwn: 'inherit',
+  humanWorkFrom: null,
   runnerTags: [],
   runnerTagsOwn: [],
   runnerTagsFrom: [],
@@ -203,6 +206,13 @@ describe('IssueFacts', () => {
     expect(prefer).toContain('Prefer (inherited from AER-9)');
     expect(render(issue({ localModel: 'require' }))).toContain('Require');
     expect(render(issue())).not.toContain('Local model');
+  });
+
+  it('draws a Human work field at human, naming the ancestor it came from, and not at agent', () => {
+    const human = render(issue({ humanWork: 'human', humanWorkFrom: 'AER-9' }));
+    expect(human).toContain('Human work');
+    expect(human).toContain('Human (inherited from AER-9)');
+    expect(render(issue())).not.toContain('Human work');
   });
 
   it('draws a Runner tags field with the union sentence when runnerTags is non-empty', () => {

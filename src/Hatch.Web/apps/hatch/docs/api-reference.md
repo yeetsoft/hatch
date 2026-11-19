@@ -333,6 +333,7 @@ not mint an issue number - try again".
 | pre-approval | PUT | `/issues/{key}/pre-approval` | **person** | One of three named levels. Records the caller as `PreApprovalSetBy` (cleared at `none`); a level crosses a project line only while that person could set it on the descendant - an owner or approver for `preapproved`, someone who may move work into the send-back column for `express` |
 | express | PUT | `/issues/{key}/express` | **person** | Legacy two-level alias for pre-approval (`express`/`none`) |
 | local-model | PUT | `/issues/{key}/local-model` | **person** | One of three named levels |
+| human-work | PUT | `/issues/{key}/human-work` | **person** | `human`/`agent`/`inherit` - who works this ticket, walked live to the nearest ancestor that is not `inherit` |
 | one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs; `on`/`off` 409 under an `enforced` project |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
@@ -427,6 +428,20 @@ event naming both sides, and needs no approver - any person may set it, and a ke
 403'd. `IssueDto` and `IssueCardDto` carry `localModel`, `localModelOwn` and
 `localModelFrom`, read live from the nearest ancestor that is not `none`. An unknown
 name 400s, naming the levels. Nothing in dispatch reads the level yet.
+`human-work` takes `human`, `agent` or `inherit` (`HumanWorkRequest(Value)`),
+writes a `human_work_changed` event naming both sides, and needs no approver -
+any person may set it, and a key is 403'd with "marking an issue as human work
+is a person's call, not an agent's". `IssueDto` and `IssueCardDto` carry
+`humanWork`, `humanWorkOwn` and `humanWorkFrom`, read live from the nearest
+ancestor - including the issue itself - whose own value is not `inherit`;
+`agent` with nothing set. Unlike `localModel`'s walk, an explicit `agent`
+stops it the same as an explicit `human` does, so a descendant can opt back
+out from under a human ancestor. An unknown value 400s, naming the three. A
+human issue - its own or the nearest ancestor's - is refused by
+`work/next`, `work/queue`, `work/{key}` and a hop with "human work - a
+person does this one, and no runner picks it up", or "human work from
+`HA-12` - ..." when inherited; moving it by hand (the board, `PATCH`) is
+unaffected, since dispatch is the only reader of the override.
 `IssueDto` and `IssueCardDto` also carry `preApprovalPassedOver` and `priorityPassedOver`: the key of the
 nearest ancestor whose level was passed over at a project line because its setter has no say in this
 ticket's project (or none was recorded), or null. Read live, beside `preApprovalFrom` and `priorityFrom`.
@@ -1853,7 +1868,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **44** person-only paths on this page,
+on this page with both) - there are **45** person-only paths on this page,
 across both halves together:
 
 ```
@@ -1890,6 +1905,7 @@ PUT    /issues/{key}/expedite
 PUT    /issues/{key}/pre-approval
 PUT    /issues/{key}/express
 PUT    /issues/{key}/local-model
+PUT    /issues/{key}/human-work
 PUT    /issues/{key}/hold
 PATCH  /issues/{key}/playbook
 POST   /attachments
@@ -1908,7 +1924,7 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Thirty belong to a project, a column, the WIP section, a ticket's own
+Thirty-one belong to a project, a column, the WIP section, a ticket's own
 fields, or attachment upload and delete; the other twelve are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,

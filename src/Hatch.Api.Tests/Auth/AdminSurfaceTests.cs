@@ -569,6 +569,12 @@ public class AdminSurfaceTests
         // and quality. No approver is needed - it passes no gate.
         "IssueLocalModelController.PutIssueLocalModel",
 
+        // Who works this issue: human or agent. A person's call, not an
+        // agent's - a key that could set it could keep a runner off its own
+        // ticket, or hand itself one meant for a person. No approver is
+        // needed - it passes no gate.
+        "IssueHumanWorkController.PutIssueHumanWork",
+
         // A story's own say over whether its tasks share one branch and one
         // pull request. Unlike its neighbours it is open to a key - it decides
         // how a story is branched, not what the loop reaches for or passes - so
@@ -813,6 +819,7 @@ public class AdminSurfaceTests
         "IssuePreApprovalController.PutIssueExpress",
         "IssuePreApprovalController.PutIssuePreApproval",
         "IssueLocalModelController.PutIssueLocalModel",
+        "IssueHumanWorkController.PutIssueHumanWork",
         "IssueStallController.PutHold",
         "StatusesController.PutExpressSkips",
         "StatusesController.PutParentPulls",

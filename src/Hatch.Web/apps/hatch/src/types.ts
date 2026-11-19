@@ -290,6 +290,11 @@ export interface ContributionRecord {
     `require` runs on nothing else. */
 export type LocalModel = 'none' | 'prefer' | 'require';
 
+/** Who works an issue: `human` is a person's own, `agent` is the loop's, and
+    `inherit` takes the nearest ancestor's own value, or `agent` with nothing
+    set. See HumanWorkValues. */
+export type HumanWork = 'human' | 'agent' | 'inherit';
+
 /** A card on the board. No description and no comments - see IssueCardDto. */
 export interface IssueCard {
   key: string;
@@ -377,7 +382,7 @@ export interface IssueCard {
   childBeyondScope?: boolean;
   /** The values whose from-key was blanked because the ancestor it names is
       outside the reader's scope - any of 'priority', 'preApproval',
-      'localModel', 'onePr', 'dangerous', 'preApprovalPassedOver',
+      'localModel', 'humanWork', 'onePr', 'dangerous', 'preApprovalPassedOver',
       'priorityPassedOver' and 'pullPassedOver'. The value itself still applies. Absent is none.
       See IssueCardDto.FromBeyondScope. */
   fromBeyondScope?: string[];
@@ -391,6 +396,16 @@ export interface IssueCard {
   /** The ancestor `localModel` was inherited from, or null when the effective
       level is this issue's own, or none. See IssueCardDto.LocalModelFrom. */
   localModelFrom: string | null;
+  /** Who works this issue, live - `'human'` or `'agent'` - walked to the
+      nearest ancestor whose own value is not inherit; `'agent'` with nothing
+      set. See IssueCardDto.HumanWork. */
+  humanWork: HumanWork;
+  /** This issue's own override - `'human'`, `'agent'` or `'inherit'`. See
+      IssueCardDto.HumanWorkOwn. */
+  humanWorkOwn: HumanWork;
+  /** The ancestor `humanWork` was inherited from, or null when the effective
+      value is this issue's own, or nothing is set. See IssueCardDto.HumanWorkFrom. */
+  humanWorkFrom: string | null;
   /** The runner tags effective for this issue, walked live to the nearest
       ancestor (or project) that carries any. See IssueCardDto.RunnerTags. */
   runnerTags: string[];
@@ -843,6 +858,14 @@ export interface Issue {
       level is this issue's own, or none. See IssueCard.localModelFrom and
       IssueDto.LocalModelFrom. */
   localModelFrom: string | null;
+  /** Who works this issue, live - see IssueCard.humanWork and IssueDto.HumanWork. */
+  humanWork: HumanWork;
+  /** This issue's own override - see IssueCard.humanWorkOwn and IssueDto.HumanWorkOwn. */
+  humanWorkOwn: HumanWork;
+  /** The ancestor `humanWork` was inherited from, or null when the effective
+      value is this issue's own, or nothing is set. See IssueCard.humanWorkFrom
+      and IssueDto.HumanWorkFrom. */
+  humanWorkFrom: string | null;
   /** The runner tags effective for this issue, walked live to the nearest
       ancestor (or project) that carries any. See IssueCard.runnerTags and
       IssueDto.RunnerTags. */
