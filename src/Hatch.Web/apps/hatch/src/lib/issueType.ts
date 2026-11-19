@@ -1,13 +1,18 @@
 import { ISSUE_TYPES } from '../types';
 import type { IssueType } from '../types';
 
-export type TypeShapeName = 'diamond' | 'hexagon' | 'circle' | 'square' | 'triangle';
+/** The tile's outline: a rounded square for a size of work, a disc for the two
+    types that are not one. */
+export type TypeOutline = 'rounded' | 'disc';
+
+export type TypePicture = 'layers' | 'bookmark' | 'tick' | 'beetle' | 'sun';
 
 export interface IssueTypeRow {
   name: IssueType;
   /** What `TypeBadge` prints. */
   word: string;
-  shape: TypeShapeName;
+  outline: TypeOutline;
+  picture: TypePicture;
   /** The face class the control's pill and steps wear. */
   class: string;
   title: string;
@@ -18,31 +23,36 @@ export interface IssueTypeRow {
 const ROWS: Record<IssueType, Omit<IssueTypeRow, 'name'>> = {
   epic: {
     word: 'epic',
-    shape: 'diamond',
+    outline: 'rounded',
+    picture: 'layers',
     class: 'epic',
     title: 'A large body of work, broken out into stories.',
   },
   reflection: {
     word: 'reflection',
-    shape: 'hexagon',
+    outline: 'disc',
+    picture: 'sun',
     class: 'reflection',
     title: 'A look back at what happened, to learn from it.',
   },
   story: {
     word: 'story',
-    shape: 'circle',
+    outline: 'rounded',
+    picture: 'bookmark',
     class: 'story',
     title: 'Something one person gets once it lands, broken out into tasks.',
   },
   task: {
     word: 'task',
-    shape: 'square',
+    outline: 'rounded',
+    picture: 'tick',
     class: 'task',
     title: 'One piece of work, small enough for one increment.',
   },
   bug: {
     word: 'bug',
-    shape: 'triangle',
+    outline: 'disc',
+    picture: 'beetle',
     class: 'bug',
     title: 'Something that is broken and should work.',
   },

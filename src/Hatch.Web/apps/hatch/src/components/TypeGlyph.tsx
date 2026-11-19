@@ -1,5 +1,6 @@
 import type { IssueType } from '../types';
 import { issueTypeRow } from '../lib/issueType';
+import type { TypePicture } from '../lib/issueType';
 
 const LABEL: Record<IssueType, string> = {
   epic: 'epic',
@@ -9,33 +10,74 @@ const LABEL: Record<IssueType, string> = {
   bug: 'bug',
 };
 
-/** The bare shape: what the card's corner glyph and the type pill both draw. */
-export function TypeShape({ type }: { type: IssueType }) {
-  const shape = issueTypeRow(type).shape;
+/** A rounded square, 14 units across, in the 16 by 16 box. */
+const ROUNDED_FACE =
+  'M4.5 1h7A3.5 3.5 0 0 1 15 4.5v7a3.5 3.5 0 0 1-3.5 3.5h-7A3.5 3.5 0 0 1 1 11.5v-7A3.5 3.5 0 0 1 4.5 1Z';
+
+interface Picture {
+  filled?: string;
+  stroked?: { d: string; width: number };
+}
+
+/** What each tile pictures, drawn in the 16 by 16 box before the 110% scale. */
+const PICTURES: Record<TypePicture, Picture> = {
+  layers: {
+    filled: 'M8 3.4 12.6 5.9 8 8.4 3.4 5.9Z',
+    stroked: { d: 'M3.7 8.4 8 10.7 12.3 8.4 M3.7 10.7 8 13 12.3 10.7', width: 1.3 },
+  },
+  bookmark: {
+    filled: 'M5.2 3.6h5.6a.6.6 0 0 1 .6.6v8.4L8 10.3l-3.4 2.3V4.2a.6.6 0 0 1 .6-.6Z',
+  },
+  tick: {
+    stroked: { d: 'M4.6 8.4 7 10.8 11.5 5.6', width: 1.9 },
+  },
+  beetle: {
+    filled: 'M8 5.4c1.7 0 2.9 1.4 2.9 3.5 0 2.1-1.2 3.7-2.9 3.7s-2.9-1.6-2.9-3.7c0-2.1 1.2-3.5 2.9-3.5Z M6.5 4.7a1.5 1.5 0 0 1 3 0Z',
+    stroked: {
+      d: 'M5.3 7.4 3.6 6.5 M5.1 9.2H3.3 M5.5 11 3.9 12.1 M10.7 7.4 12.4 6.5 M10.9 9.2h1.8 M10.5 11 12.1 12.1',
+      width: 1.1,
+    },
+  },
+  sun: {
+    filled:
+      'M3.64 8.6A4.4 4.4 0 1 1 12.36 8.6Z M3.86 9.5h8.28A4.4 4.4 0 0 1 11.47 10.7H4.53A4.4 4.4 0 0 1 3.86 9.5Z M5.47 11.6h5.06A4.4 4.4 0 0 1 5.47 11.6Z',
+  },
+};
+
+/**
+ * The type's tile: a coloured outline with a picture on it. What the card's
+ * corner glyph and the type pill both draw.
+ *
+ * The type reads by its picture and its outline - a rounded square for epic,
+ * story and task, a disc for bug and reflection - so it still reads once
+ * colour is gone: greyscale print, colour-blind vision, or a glance too quick
+ * to register hue. The colour is still the fast read: the outline is filled
+ * with the type's own token, and the picture is `--on-accent` on it.
+ *
+ * The fill is set as a style because `var()` in a presentation attribute is
+ * not trusted everywhere.
+ */
+export function TypeTile({ type }: { type: IssueType }) {
+  const { outline, picture } = issueTypeRow(type);
+  const { filled, stroked } = PICTURES[picture];
+  const fill = { fill: `var(--type-${type})` };
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      {shape === 'diamond' && (
-        <rect className="hatch-type-glyph-shape" x="3" y="3" width="10" height="10" transform="rotate(45 8 8)" />
+      {outline === 'disc' ? (
+        <circle className="hatch-type-tile-face" cx="8" cy="8" r="7" style={fill} />
+      ) : (
+        <path className="hatch-type-tile-face" d={ROUNDED_FACE} style={fill} />
       )}
-      {shape === 'hexagon' && (
-        <polygon className="hatch-type-glyph-shape" points="5,2 11,2 14,8 11,14 5,14 2,8" />
-      )}
-      {shape === 'circle' && <circle className="hatch-type-glyph-shape" cx="8" cy="8" r="6" />}
-      {shape === 'square' && (
-        <rect className="hatch-type-glyph-shape" x="2" y="2" width="12" height="12" rx="1.5" />
-      )}
-      {shape === 'triangle' && <polygon className="hatch-type-glyph-shape" points="8,2 14,13 2,13" />}
+      <g transform="translate(8 8) scale(1.1) translate(-8 -8)">
+        {filled && <path className="hatch-type-tile-picture" d={filled} />}
+        {stroked && <path className="hatch-type-tile-stroke" d={stroked.d} strokeWidth={stroked.width} />}
+      </g>
     </svg>
   );
 }
 
 /**
- * The card's type, as a shape in the corner rather than a word in the body.
- *
- * Five distinct shapes - diamond, hexagon, circle, square, triangle - not five
- * colours of one `<rect>`, so the type still reads once colour is gone: greyscale print,
- * colour-blind vision, or a glance too quick to register hue. The colour is
- * still the fast read; App.css sets it per type, off `currentColor` here.
+ * The card's type, as a tile in the corner rather than a word in the body.
  *
  * `title` and `aria-label` both carry the word `TypeBadge` already rendered
  * verbatim - no new vocabulary to keep in sync with it.
@@ -43,7 +85,7 @@ export function TypeShape({ type }: { type: IssueType }) {
 export function TypeGlyph({ type }: { type: IssueType }) {
   return (
     <span className={`hatch-type-glyph hatch-type-glyph--${type}`} title={LABEL[type]} aria-label={LABEL[type]}>
-      <TypeShape type={type} />
+      <TypeTile type={type} />
     </span>
   );
 }

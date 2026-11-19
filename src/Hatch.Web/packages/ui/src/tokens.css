@@ -299,6 +299,15 @@
      numeral. */
   --on-series: #ffffff;
 
+  /* The five types' colours, for the tile in a card's corner. The ramp runs
+     deepest at the largest thing - epic, then story, then task - and red is the
+     bug's alone among the types. Authored for both themes. */
+  --type-epic: #5b34d6;
+  --type-story: var(--primary);
+  --type-task: #0a97a8;
+  --type-bug: var(--danger);
+  --type-reflection: #b97a00;
+
   /* -------------------------------------------------------------------------
      6. Motion and elevation. Calm: nothing moves unless a person moved it. */
   --transition: 200ms ease;
@@ -385,6 +394,15 @@
     --series-7: #9085e9;
     --series-8: #e66767;
 
+    /* The five types' colours, for the tile in a card's corner. The ramp runs
+       deepest at the largest thing - epic, then story, then task - and red is the
+       bug's alone among the types. Authored for both themes. */
+    --type-epic: #a594ff;
+    --type-story: var(--primary);
+    --type-task: #4fd3d9;
+    --type-bug: var(--danger);
+    --type-reflection: #f0b93a;
+
     color-scheme: dark;
   }
 }
@@ -452,6 +470,15 @@
   --series-6: #d95926;
   --series-7: #9085e9;
   --series-8: #e66767;
+
+  /* The five types' colours, for the tile in a card's corner. The ramp runs
+     deepest at the largest thing - epic, then story, then task - and red is the
+     bug's alone among the types. Authored for both themes. */
+  --type-epic: #a594ff;
+  --type-story: var(--primary);
+  --type-task: #4fd3d9;
+  --type-bug: var(--danger);
+  --type-reflection: #f0b93a;
 
   color-scheme: dark;
 }

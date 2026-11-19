@@ -12,7 +12,9 @@
             designer authored survives.
    fixed    exactly as authored: the console, the letterbox, the series ramp
             (CVD-validated, "not a value to improvise on"), the usage ramp and
-            its inks, shadow and overlay. */
+            its inks, the type colours (a ramp authored once for both themes;
+            --type-story and --type-bug are var() aliases of --primary and
+            --danger and take their roles), shadow and overlay. */
 
 export type Role = 'neutral' | 'accent' | 'derived' | 'fixed';
 
@@ -83,6 +85,9 @@ const FIXED = [
   '--overlay',
   ...Array.from({ length: 8 }, (_, at) => `--series-${at + 1}`),
   '--on-series',
+  '--type-epic',
+  '--type-task',
+  '--type-reflection',
   '--ramp-low',
   '--on-ramp-low',
   '--ramp-mid',

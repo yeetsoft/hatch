@@ -1465,8 +1465,15 @@
   height: 0.875rem;
 }
 
-.hatch-type-glyph-shape {
-  fill: currentColor;
+.hatch-type-tile-picture {
+  fill: var(--on-accent);
+}
+
+.hatch-type-tile-stroke {
+  fill: none;
+  stroke: var(--on-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* The contribution mark: an open stroke, so it is never one of the type
@@ -1519,26 +1526,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-bottom: var(--sp-1);
-}
-
-.hatch-type-glyph--epic {
-  color: var(--primary);
-}
-
-.hatch-type-glyph--reflection {
-  color: var(--series-6);
-}
-
-.hatch-type-glyph--story {
-  color: var(--series-7);
-}
-
-.hatch-type-glyph--task {
-  color: var(--series-3);
-}
-
-.hatch-type-glyph--bug {
-  color: var(--danger);
 }
 
 /* Blue is being heard from - --primary, the one blue the tokens carry. It is
@@ -6240,10 +6227,8 @@ input.hatch-inline-title-input {
 
 /* The type pill on the issue page's Details card, and the band it opens onto -
    the priority pill's shapes (above) with one face per type instead of per
-   level. Each face is filled with the colour `.hatch-type-glyph--{type}`
-   already gives that type, so a card's corner and this pill agree. The glyph
-   inside takes `currentColor`, which in a filled pill or step is the text
-   colour. */
+   level. The faces keep their own fills until the tile's token colours reach
+   them, so for now the tile inside sits on a face of another colour. */
 .hatch-type-pill {
   display: inline-flex;
   align-self: flex-start;
