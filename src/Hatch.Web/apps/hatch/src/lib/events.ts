@@ -153,6 +153,13 @@ export function describe(event: IssueEvent): string {
     return `${moved} of ${after.length} capabilities moved`;
   }
 
+  /* A capability verdict carries { id, position, verdict, sha, author }. */
+  if (event.kind === 'capability_judged') {
+    const { position, verdict, sha } = event.payload ?? {};
+    if (typeof position !== 'number' || typeof verdict !== 'string' || typeof sha !== 'string') return '';
+    return `#${position} judged ${verdict} at ${sha.slice(0, 7)}`;
+  }
+
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }

@@ -2555,6 +2555,53 @@ public class EfHatchCapability
 }
 
 /// <summary>
+/// A session's verdict on a capability: whether it holds, as of a sha. See
+/// docs/hatch.md, "Capability". Not <see cref="EfHatchVerdict"/>, which is a
+/// check session's pass or fail against a live claim - that word is taken,
+/// so this one is called a capability verdict throughout.
+/// </summary>
+/// <remarks>
+/// Append-only, newest first by <see cref="Id"/>. A capability's state is
+/// the newest row's <see cref="Verdict"/>, derived on read and never stored -
+/// see <see cref="IssueCapabilitiesController"/>.
+/// </remarks>
+[Table("CapabilityVerdicts")]
+[Index(nameof(CapabilityId))]
+public class EfHatchCapabilityVerdict
+{
+    public const int MaxVerdictLength = 16;
+    public const int MaxLookedAtLength = 500;
+    public const int MaxShaLength = 64;
+
+    public const string Holds = "holds";
+    public const string DoesNotHold = "does_not_hold";
+    public const string CannotTell = "cannot_tell";
+
+    /// <summary>A capability's state with no verdict yet - never a stored value, only ever read.</summary>
+    public const string NotChecked = "not_checked";
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long CapabilityId { get; set; }
+    public EfHatchCapability? Capability { get; set; }
+
+    [MaxLength(MaxVerdictLength)]
+    public required string Verdict { get; set; }
+
+    [MaxLength(MaxLookedAtLength)]
+    public required string LookedAt { get; set; }
+
+    [MaxLength(MaxShaLength)]
+    public required string Sha { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Author { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
 /// One thing that happened to an issue. Append-only, written by every mutating
 /// endpoint, never edited and never deleted except with its issue.
 ///
@@ -2845,6 +2892,15 @@ public class EfHatchIssueEvent
     /// payload is `{ id, position, statement }` as it stood.
     /// </summary>
     public const string CapabilityRemoved = "capability_removed";
+
+    /// <summary>
+    /// `POST /issues/{key}/capabilities/{id}/verdicts` recorded a capability
+    /// verdict - see <see cref="EfHatchCapabilityVerdict"/>. Not the same
+    /// thing as <see cref="VerdictRecorded"/>, which is a check session's
+    /// pass or fail against a live claim. The payload is `{ id, position,
+    /// verdict, sha, author }`.
+    /// </summary>
+    public const string CapabilityJudged = "capability_judged";
 
     /// <summary>
     /// `POST /issues/{key}/remand` shelved this issue into a dream - see

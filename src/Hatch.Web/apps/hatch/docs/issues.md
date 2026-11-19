@@ -47,6 +47,18 @@ Each change shows on the ambition's History as its own line: added, edited,
 moved or removed. An ambition that holds capabilities cannot be retyped to
 anything else until they are removed, and deleting the ambition deletes them.
 
+A session records whether a capability holds, with what was looked at and a
+sha, as one of three words: holds, does not hold, or cannot tell. A capability
+carries every verdict it has ever been given, and its state - what anyone
+reading the ambition sees - is always the newest one, or "not checked" with
+none. A key may record a verdict in any column, including past the
+implementation line that gates the rest of a capability's row: settling what
+an ambition asks for is a person's call, but checking whether it holds is not.
+Each verdict shows on the ambition's History too. This is a different thing
+from a check session's pass or fail against a live claim, which the board
+still calls a verdict elsewhere - the word is already taken, so a capability's
+own is never called that on its own.
+
 ## How a ticket reads
 
 A ticket is read by a person first. These rules say how it should read.

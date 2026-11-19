@@ -30,12 +30,12 @@ public class HatchContextTests
     }
 
     [Fact]
-    public void TheModuleOwnsFortyTables()
+    public void TheModuleOwnsFortyOneTables()
     {
         using var db = NewContext();
 
         Assert.Equal(
-            ["Attachments", "BuildChecks", "Capabilities", "ChangelogFiles", "ChangelogTasks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "GooseFindings", "GooseRuns", "GooseSightings", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "LocalModels", "MergeChecks", "OvernightSeen", "PersonScopeProjects", "PersonScopes", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
+            ["Attachments", "BuildChecks", "Capabilities", "CapabilityVerdicts", "ChangelogFiles", "ChangelogTasks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "GooseFindings", "GooseRuns", "GooseSightings", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "LocalModels", "MergeChecks", "OvernightSeen", "PersonScopeProjects", "PersonScopes", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 
@@ -263,6 +263,22 @@ public class HatchContextTests
         Assert.Equal(
             DeleteBehavior.Cascade,
             ForeignKeyOn(db, typeof(EfHatchCapability), nameof(EfHatchCapability.IssueId)).DeleteBehavior);
+    }
+
+    /// <summary>
+    /// A verdict has no meaning without the capability it judges, so removing
+    /// the capability takes its verdicts. Pinned as model metadata, as
+    /// <see cref="ACapability_CascadesWithItsIssue"/> is, since the
+    /// in-memory provider's cascade is not Postgres's.
+    /// </summary>
+    [Fact]
+    public void ACapabilityVerdict_CascadesWithItsCapability()
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.Cascade,
+            ForeignKeyOn(db, typeof(EfHatchCapabilityVerdict), nameof(EfHatchCapabilityVerdict.CapabilityId)).DeleteBehavior);
     }
 
     /// <summary>

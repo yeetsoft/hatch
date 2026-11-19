@@ -239,6 +239,21 @@ describe('describe, capability events', () => {
       '2 of 3 capabilities moved',
     );
   });
+
+  it('says a capability was judged, and at what sha', () => {
+    expect(
+      describeEvent(
+        event({
+          kind: 'capability_judged',
+          payload: { id: 4, position: 2, verdict: 'holds', sha: 'abc1234def', author: 'Nathan' },
+        }),
+      ),
+    ).toBe('#2 judged holds at abc1234');
+  });
+
+  it('draws a capability_judged event with a malformed payload as blank', () => {
+    expect(describeEvent(event({ kind: 'capability_judged', payload: { id: 4 } }))).toBe('');
+  });
 });
 
 describe('short', () => {

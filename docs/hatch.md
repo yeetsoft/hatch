@@ -3578,7 +3578,7 @@ has to be true, and the line that says how anyone would tell.
 - **A row, not text in the description** — for the reason a question is a
   row and not text in a comment (see [Comment, question and
   answer](#comment-question-and-answer)): it can be counted, and it can
-  carry a verdict.
+  carry a verdict — see [CapabilityVerdict](#capabilityverdict), below.
 - **Only an ambition has them.** Every route answers `400` on an issue of any
   other type, with a sentence naming it. `IssueId` is a cascade-delete FK:
   deleting the ambition takes its capabilities with it. A retype that would
@@ -3601,6 +3601,37 @@ has to be true, and the line that says how anyone would tell.
   gets `403` on every write and a person is never refused. What an ambition
   asks for is settled before the work starts; changing it after is a
   person's call.
+
+### CapabilityVerdict
+
+`EfHatchCapabilityVerdict` — `Id`, `CapabilityId`, `Verdict`, `LookedAt`,
+`Sha`, `Author`, `CreatedAt`. A session's verdict on one
+[capability](#capability): whether it holds, as of a sha.
+
+Not `EfHatchVerdict`: that one is a check session's pass or fail against a
+live claim (see [Check](#check)), and the merge train reads it. The two are
+named, routed and evented differently on purpose so neither is ever read as
+the other.
+
+- **Append-only, newest first.** `POST
+  /issues/{key}/capabilities/{id}/verdicts` writes one; `Verdict` is one of
+  `holds`, `does_not_hold` and `cannot_tell` — any other word is `400`,
+  naming the three. `LookedAt` and `Sha` may not be blank, and are bounded
+  (500 and 64 characters); over either is `400`, naming the bound. `GET` on
+  the same path answers them newest first by `Id`.
+- **Never gated on the column.** Unlike the rest of a capability's writes, a
+  key may record a verdict in any column, including past the implementation
+  line, in a terminal column, or deferred: settling what an ambition asks for
+  is a person's call, but checking whether it holds is not.
+- **A capability's state is derived, never stored.** It is its newest
+  verdict's word, or `not_checked` with none — one query for the whole
+  list, the way an [open question](#comment-question-and-answer) is
+  computed rather than flagged. `CapabilityDto` carries `State` and
+  `NewestVerdict` alongside the row.
+- **A verdict writes one `capability_judged` event** on the ambition — see
+  [Issue event](#issue-event). `CapabilityId` is a cascade-delete FK:
+  removing a capability removes its verdicts, but the events already on the
+  ambition remain its history.
 
 ### Issue event
 
@@ -3639,7 +3670,11 @@ howToTell }, to: { statement, howToTell } }`, whole values each side),
 `capability_moved` (`PUT /issues/{key}/capabilities/order`, one event per call
 - payload `{ from, to }`, both sides every capability id in order),
 `capability_removed` (`DELETE /issues/{key}/capabilities/{id}` - payload `{ id,
-position, statement }` as it stood), `dreams_woven` (`PUT /issues/{key}/dreams` replaced the
+position, statement }` as it stood), `capability_judged` (`POST
+/issues/{key}/capabilities/{id}/verdicts` recorded a
+[CapabilityVerdict](#capabilityverdict) - payload `{ id, position, verdict,
+sha, author }`; not `verdict_recorded`, which is a check session's own),
+`dreams_woven` (`PUT /issues/{key}/dreams` replaced the
 set of dreams this issue drew on - payload `{ from, to }`, both sides every
 dream id sorted ascending), `remanded` (`POST /issues/{key}/remand` shelved
 this issue into a [dream](#dream) - payload `{ dreamId, to, toId, root }`, the
@@ -4248,6 +4283,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/capabilities` | GET, POST | An ambition's [capabilities](#capability). GET reads them in position order, open to a key anywhere; POST `{ statement, howToTell, position? }` adds one, at the end when no `position` is given, else at it with the rest shifted down - `201`. `400` on an issue that is not an ambition, a blank line, or a `position` outside `1..n+1` |
 | `/issues/{key}/capabilities/{id}` | PATCH, DELETE | PATCH `{ statement?, howToTell? }` - a field left out keeps its value, one sent blank is a `400`; `404` on an unknown id. DELETE closes the gap, `204` |
 | `/issues/{key}/capabilities/order` | PUT | `{ ids }` - every capability's id once, in the wanted order; `400` when the list misses, repeats or names an id that is not this ambition's. Answers the reordered list. A write (POST, PATCH, PUT or DELETE) from a key is `403` once the ambition is at or past the implementation column, or deferred; a person is never refused |
+| `/issues/{key}/capabilities/{id}/verdicts` | GET, POST | A capability's [verdicts](#capabilityverdict), not `EfHatchVerdict`'s. GET answers them newest first. POST `{ verdict, lookedAt, sha }` - `verdict` one of `holds`, `does_not_hold`, `cannot_tell` - answers `201`. `400` on an unknown word (naming the three), a blank `lookedAt` or `sha`, or either over its bound; `404` on an unknown capability, or another ambition's. Never gated on the column: a key may write here in any column |
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
 | `/issues/{key}/wip` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ limit }` — see [Stories at once](#stories-at-once). `""` clears it to no limit; a number below one, or not a number, is `400`; anything but an epic is `400` naming its type |
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |
