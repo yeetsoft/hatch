@@ -11,6 +11,7 @@ import type {
   Attention,
   BackupStatus,
   Board,
+  Capability,
   ChangelogReport,
   Comment,
   CommentCreateRequest,
@@ -67,6 +68,7 @@ import type {
   PlaybookPatchRequest,
   PlaybookProposal,
   OmitRunnerRequest,
+  ServedCapability,
   PlaybookProposalApproveResult,
   PlaybookProposalRejectResult,
   Project,
@@ -668,6 +670,12 @@ export const patchDream = (id: number, request: DreamPatchRequest) =>
 export const deleteDream = (id: number) =>
   fetchJson<void>(`/api/dreams/${id}`, { method: 'DELETE' });
 export const getIssueDreams = (key: string) => fetchJson<Dream[]>(`/api/issues/${seg(key)}/dreams`);
+/** An ambition's capabilities, each with its state, its newest verdict and the
+    epics serving it. 400 off an ambition - see IssueCapabilitiesController. */
+export const getIssueCapabilities = (key: string) => fetchJson<Capability[]>(`/api/issues/${seg(key)}/capabilities`);
+/** What an issue serves, with each capability's ambition. Empty for any type
+    that serves nothing - see IssueServesController. */
+export const getIssueServes = (key: string) => fetchJson<ServedCapability[]>(`/api/issues/${seg(key)}/serves`);
 export const putIssueDreams = (key: string, dreamIds: number[]) =>
   fetchJson<Dream[]>(`/api/issues/${seg(key)}/dreams`, { method: 'PUT', ...asJson({ dreamIds }) });
 /** Files the epic a weave press asks for - see DreamWeaveController.PostWeave. */

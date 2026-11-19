@@ -4088,6 +4088,61 @@ input.hatch-inline-title-input {
   margin: 0;
 }
 
+/* ---- Capabilities, on an ambition's issue page ----
+
+   One row per capability: its number, its statement and how to tell beneath
+   it, its state, and the epics serving it. The same wrapping Progress's rows
+   use, so a narrow screen stacks a row rather than cutting it off. */
+.hatch-capability-list {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+}
+
+.hatch-capability-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.hatch-capability-row > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-capability-served-by {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* The word is what tells the four states apart - these four colours are
+   decoration on top of it, never instead. */
+.hatch-capability-state {
+  font-weight: 700;
+}
+
+.hatch-capability-state-holds {
+  color: var(--success-ink);
+}
+
+.hatch-capability-state-does-not-hold {
+  color: var(--danger-ink);
+}
+
+.hatch-capability-state-cannot-tell {
+  color: var(--warn-ink);
+}
+
+.hatch-capability-state-not-checked {
+  color: var(--muted);
+}
+
 .hatch-key-preview {
   color: var(--muted);
   font-size: var(--t-label);

@@ -1568,6 +1568,46 @@ export interface Dream {
   remandedFrom: string[];
 }
 
+// ---- Capabilities ----
+
+/** Whether a capability holds, as of a sha. Mirrors CapabilityVerdictDto. */
+export interface CapabilityVerdict {
+  id: number;
+  capabilityId: number;
+  verdict: 'holds' | 'does_not_hold' | 'cannot_tell';
+  lookedAt: string;
+  sha: string;
+  author: string;
+  at: string;
+}
+
+/** One capability of an ambition: what must be true, and how anyone would
+    tell. Mirrors CapabilityDto. */
+export interface Capability {
+  id: number;
+  position: number;
+  statement: string;
+  howToTell: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  /** The newest verdict's word, or `not_checked` with none. Derived on read. */
+  state: 'holds' | 'does_not_hold' | 'cannot_tell' | 'not_checked';
+  newestVerdict: CapabilityVerdict | null;
+  /** The keys of every epic that serves this capability, in key order. */
+  servedBy: string[];
+}
+
+/** One capability an issue serves, with the ambition it belongs to. Mirrors
+    ServedCapabilityDto. */
+export interface ServedCapability {
+  ambitionKey: string;
+  capabilityId: number;
+  position: number;
+  statement: string;
+  state: 'holds' | 'does_not_hold' | 'cannot_tell' | 'not_checked';
+}
+
 /** What it takes to remand an issue to a dream. Mirrors DreamRemandRequest. */
 export interface DreamRemandRequest {
   /** The deferred column the issue, and whatever `keys` names, goes to. */
