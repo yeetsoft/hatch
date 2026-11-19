@@ -74,7 +74,7 @@ import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { lineage } from '../lib/lineage';
 import type { LineageCard } from '../lib/lineage';
-import { isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
+import { isNewIssueShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
 import { useConsoleHost, useConsoleMoves } from '../lib/useConsole';
 import type { MoveResult } from '../lib/useConsole';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
@@ -712,6 +712,24 @@ function BoardContent() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [dragUnderway, undoNewest]);
 
+  // `c` opens the New issue dialog, on the same terms as Undo above. It prevents the
+  // key's default so the letter does not land in the dialog's autofocused title box.
+  useEffect(() => {
+    if (dragUnderway) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isNewIssueShortcut(e) || e.defaultPrevented) return;
+      if (isTypingTarget(document.activeElement as HTMLElement | null)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+
+      e.preventDefault();
+      setFiling(true);
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [dragUnderway]);
+
   /* The console is the app's, not the board's: `/` opens it from every page (see
      components/ConsoleProvider.tsx). The board offers its issues, so it lists
      them without a read of its own, and keeps what a take does - mark the card
@@ -869,7 +887,8 @@ function BoardContent() {
                 variant="primary"
                 className="hatch-board-new"
                 aria-label="New issue"
-                title="New issue"
+                title="New issue (c)"
+                aria-keyshortcuts="c"
                 onClick={() => setFiling(true)}
               >
                 <PlusGlyph />
