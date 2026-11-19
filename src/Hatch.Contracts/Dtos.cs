@@ -4736,6 +4736,13 @@ public record TrunkBuildDto(
 /// </summary>
 public record TrunkBuildBugRequest(bool? Express, string? Priority, int? StatusId, string? PreApproval = null);
 
+/// <summary>
+/// The body of <c>POST /api/goose/findings/{id}/bug</c>, every field optional.
+/// <c>ProjectKey</c> is required for a finding that names no project, and for one
+/// that does it can only repeat the finding's own.
+/// </summary>
+public record GooseFindingBugRequest(string? Priority, int? StatusId, string? PreApproval, string? ProjectKey);
+
 /// <param name="Content">The blob's bytes, base64-encoded; null means the trunk has no file at this path.</param>
 /// <param name="Url">The forge link the runner reported for the path on this trunk, or null where it has none.</param>
 public record PlaybookFileRequest(

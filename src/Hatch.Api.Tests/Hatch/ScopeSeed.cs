@@ -73,6 +73,10 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
 
         // Three canonicals: A's, B's and one both bind.
         new("TrunkBuilds", db => db.TrunkBuilds.CountAsync(), 3, 2, 0),
+
+        // One open finding per project. A finding that names no project is
+        // nobody's, and the seed holds none.
+        new("GooseFindings", db => db.GooseFindings.CountAsync(), 2, 1, 0),
         new("PlaybookFiles", db => db.PlaybookFiles.CountAsync(), 3, 2, 0),
         new("DependencyFiles", db => db.DependencyFiles.CountAsync(), 3, 2, 0),
         new("ChangelogFiles", db => db.ChangelogFiles.CountAsync(), 3, 2, 0),
@@ -216,6 +220,15 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
             {
                 Remote = canonical, Canonical = canonical, Trunk = "main", Sha = "abc", State = "current",
                 CheckedAt = At, Runner = "r", CheckedBy = "test",
+            });
+        }
+
+        foreach (var project in new[] { a, b })
+        {
+            db.GooseFindings.Add(new EfHatchGooseFinding
+            {
+                Check = "ready-unclaimed", Subject = project.Key, Token = project.Key, ProjectId = project.Id,
+                BeganAt = At, OpenedAt = At, Sentence = "Ready work is waiting.", Evidence = "[]",
             });
         }
 

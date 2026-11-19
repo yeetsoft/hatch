@@ -160,7 +160,7 @@ public class ScopeRouteMatrixTests
 
     /// <summary>What a request is about, built three ways from the seed: B's, A's, and one nothing has.</summary>
     private sealed record Target(
-        string ProjectKey, int ProjectId, long DreamId, int PlaybookId, int[] ProposalIds, long TrunkBuildId,
+        string ProjectKey, int ProjectId, long DreamId, int PlaybookId, int[] ProposalIds, long TrunkBuildId, long FindingId,
         string Remote, int StatusId, int OtherStatusId, Guid PersonId)
     {
         public string Key => $"{ProjectKey}-1";
@@ -425,6 +425,7 @@ public class ScopeRouteMatrixTests
         ("PlaybookProposalsController.RejectAll", Lookup(t => Post("/api/playbook-proposals/reject-all", new { proposalIds = t.ProposalIds })) with { Destructive = true }),
         ("PlaybookProposalsController.ApproveAll", Lookup(t => Post("/api/playbook-proposals/approve-all", new { proposalIds = t.ProposalIds })) with { Destructive = true, NoTwin = true }),
         ("TrunkBuildBugController.PostBug", Lookup(t => Post($"/api/trunk-builds/{t.TrunkBuildId}/bug", new { }))),
+        ("GooseFindingBugController.PostBug", Lookup(t => Post($"/api/goose/findings/{t.FindingId}/bug", new { }))),
 
         // ---- A project, by id ----
         ("ProjectsController.PatchProject", Lookup(t => Patch($"/api/projects/{t.ProjectId}", new { name = "A" }))),
@@ -719,9 +720,9 @@ public class ScopeRouteMatrixTests
 
         return new Dictionary<Who, Target>
         {
-            [Who.Hidden] = new("BBB", seed.ProjectB, seed.DreamB, ids.PlaybookB, ids.ProposalsB, ids.TrunkBuildB, ScopeSeed.CanonicalB, ids.Todo, ids.Done, host.Some.Id),
-            [Who.Visible] = new("AAA", seed.ProjectA, seed.DreamA, ids.PlaybookA, ids.ProposalsA, ids.TrunkBuildA, ScopeSeed.CanonicalA, ids.Todo, ids.Done, host.Some.Id),
-            [Who.Missing] = new("ZZZ", 999_999, 999_999, 999_999, [999_999], 999_999, "host/zzz", ids.Todo, ids.Done, host.Some.Id),
+            [Who.Hidden] = new("BBB", seed.ProjectB, seed.DreamB, ids.PlaybookB, ids.ProposalsB, ids.TrunkBuildB, ids.FindingB, ScopeSeed.CanonicalB, ids.Todo, ids.Done, host.Some.Id),
+            [Who.Visible] = new("AAA", seed.ProjectA, seed.DreamA, ids.PlaybookA, ids.ProposalsA, ids.TrunkBuildA, ids.FindingA, ScopeSeed.CanonicalA, ids.Todo, ids.Done, host.Some.Id),
+            [Who.Missing] = new("ZZZ", 999_999, 999_999, 999_999, [999_999], 999_999, 999_999, "host/zzz", ids.Todo, ids.Done, host.Some.Id),
         };
     }
 }

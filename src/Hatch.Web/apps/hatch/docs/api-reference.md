@@ -1830,8 +1830,18 @@ The server's own sweep of the board, and the record it keeps of each one. See
 | GET | `/goose/runs` | Runs newest first by last sweep, as `[{ id, firstRanAt, lastRanAt, sweeps, longestMs }]`, without the per-check detail. `limit` is 1-200 (default 50); a value outside it is clamped. A caller whose scope is not every project reads `[]`. Open to a key |
 | GET | `/goose/runs/{id}` | One run with its detail: the same fields and `entries`, one per check in the order the checks ran, each `{ check, looked, concluded, failed, error }`. `404` for an id that is not there, and for every id when the caller's scope is not every project - a run holds what was seen in all of them. Open to a key |
 | GET | `/goose/findings` | Findings, open ones first (longest-standing first), then closed ones (newest first), as `[{ id, check, subject, projectKey, sentence, evidence, beganAt, openedAt, closedAt, bugIssueKey }]`, `evidence` a list of `{ label, value }`. `?open=true` narrows it to the open ones. A finding that names a project is left out for a caller who cannot see it; one that names none is only in an unbounded caller's list. Open to a key |
+| POST | `/goose/findings/{id}/bug` | Files a bug from a finding and stores it on the finding, then answers the bug as an issue. The body is optional: `priority`, `statusId` and `preApproval` as on `/trunk-builds/{id}/bug` for a person (expedited, no pre-approval and the leftmost column by default; `preapproved` takes an owner or approver of the project), and `projectKey`. The bug goes to the finding's own project; a finding that names none needs `projectKey`. A second call answers the bug already filed. Refused to a key |
 
 **Refusals.** `404` as above; nothing else beyond the ordinary ones.
+
+`POST /goose/findings/{id}/bug` is a person's press, so a key is refused it with
+`403 key_not_accepted`. Its refusals are `404` for a finding that is missing or
+that names a project the caller cannot see; `400` for a `projectKey` that names a
+project other than the finding's own, for a finding that names no project and
+comes with no `projectKey`, for one that comes with a project the caller cannot
+see, and for an unknown `priority` or `preApproval`; `403` for `preapproved`
+from someone who is not an owner or approver of the project; and the ordinary
+column refusals for `statusId`. A closed finding is filed like an open one.
 
 ## Who may call what
 
