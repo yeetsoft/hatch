@@ -720,6 +720,7 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("character varying(512)");
 
                     b.Property<int>("StatusId")
+                        .IsConcurrencyToken()
                         .HasColumnType("integer");
 
                     b.Property<string>("Title")
