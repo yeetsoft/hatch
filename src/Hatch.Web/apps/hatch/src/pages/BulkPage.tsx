@@ -6,6 +6,7 @@ import { MomentField } from '../components/MomentField';
 import { ProjectChooser } from '../components/ProjectChooser';
 import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
+import { tileFill } from '../lib/columns';
 import { EMPTY_FORM, KEEP, NO_FILTERS, buildBulkEdit, bulkSearch, isEmptyForm, movedOutOfScope, summarize } from '../lib/bulk';
 import type { BulkForm, Filters } from '../lib/bulk';
 import { message } from '../lib/errors';
@@ -431,7 +432,7 @@ export function BulkPage() {
                         <Link to={`/issues/${issue.key}`}>{issue.key}</Link>
                       </td>
                       <td>
-                        <TypeBadge type={issue.type} />
+                        <TypeBadge type={issue.type} fill={tileFill(statuses, issue.statusId)} />
                       </td>
                       <td>{truncate(issue.title, 120)}</td>
                       <td>{status && <StatusPill status={status} />}</td>

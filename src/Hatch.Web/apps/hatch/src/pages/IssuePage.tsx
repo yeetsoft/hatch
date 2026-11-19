@@ -80,7 +80,7 @@ import { originChain } from '../lib/contribution';
 import { confirmMove, moveBlocked } from '../lib/protectedColumns';
 import { closeOffer } from '../lib/closeSubtree';
 import type { CloseOffer } from '../lib/closeSubtree';
-import { isObviated, isSettled } from '../lib/columns';
+import { isObviated, isSettled, tileFill } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { filedFromCandidates } from '../lib/filedFrom';
 import { deleteQuestion } from '../lib/deletion';
@@ -1551,7 +1551,7 @@ function ChildRow({ child, statuses }: { child: ChildRollup; statuses: Status[] 
       <Link to={`/issues/${child.issue.key}`} className="hatch-plan-key">
         {child.issue.key}
       </Link>
-      <TypeBadge type={child.issue.type} />
+      <TypeBadge type={child.issue.type} fill={tileFill(statuses, child.issue.statusId)} />
       <span className="hatch-progress-title">{child.issue.title}</span>
 
       {/* Somebody owes an answer at or below this child, which is why the bar
