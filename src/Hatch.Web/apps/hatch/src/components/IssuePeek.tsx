@@ -14,6 +14,7 @@ import { TypeBadge } from './TypeBadge';
 import { appHref } from '../lib/basename';
 import { askToDelete } from '../lib/deletion';
 import { isSettled } from '../lib/columns';
+import { inheritedSentences } from '../lib/inherited';
 import { message } from '../lib/errors';
 import { moveBlocked } from '../lib/protectedColumns';
 import { fromQuestion } from '../lib/questions';
@@ -336,6 +337,7 @@ export function IssuePeek({
   if (!card) return <Modal open={false} onClose={onClose} title="" />;
 
   const moveProject = projectsByKey?.get(card.projectKey) ?? null;
+  const said = inheritedSentences(card, card.projectKey);
 
   // Shipped or shelved: either way nobody is waiting on the date any more, so
   // the due chip stops warning. The same call the issue page makes.
@@ -408,6 +410,7 @@ export function IssuePeek({
               ↳ {card.parentKey}
             </Link>
           )}
+          {said.pull && <span className="text-muted">{said.pull}</span>}
           {/* No onClose, unlike the parent link: this leaves Hatch for a new
               tab, and the card is meant to still be here when they come back. */}
           <PullRequestLink url={asked.pullRequestUrl ?? null} />
@@ -428,6 +431,7 @@ export function IssuePeek({
             priority={asked.priority ?? card.priority}
             priorityOwn={asked.priorityOwn ?? card.priorityOwn}
             priorityFrom={asked.priorityFrom !== undefined ? asked.priorityFrom : card.priorityFrom}
+            passedOver={said.priority}
             directory={directory}
             busy={asked.priorityBusy ?? false}
             onChange={(next) => void changePriority(next)}
@@ -438,6 +442,7 @@ export function IssuePeek({
             preApproval={asked.preApproval ?? card.preApproval}
             preApprovalOwn={asked.preApprovalOwn ?? card.preApprovalOwn}
             preApprovalFrom={asked.preApprovalFrom !== undefined ? asked.preApprovalFrom : card.preApprovalFrom}
+            passedOver={said.preApproval}
             canApprove={moveProject?.canApprove ?? false}
             directory={directory}
             busy={asked.preApprovalBusy ?? false}

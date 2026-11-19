@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { TypeControl, TypeSteps } from './TypeControl';
-import { TypeShape } from './TypeGlyph';
+import { TypeTile } from './TypeGlyph';
 import { ISSUE_TYPES } from '../types';
 import type { IssueType } from '../types';
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
-const shape = (type: IssueType) => renderToStaticMarkup(<TypeShape type={type} />);
+const shape = (type: IssueType) => renderToStaticMarkup(<TypeTile type={type} />);
 
 describe('TypeControl', () => {
   it('draws the closed pill with the word, the label and no band', () => {
@@ -30,7 +30,7 @@ describe('TypeControl', () => {
     expect(html).not.toContain('HA-14');
   });
 
-  it.each(ISSUE_TYPES)('wears the %s shape, hidden from the accessible name', (type) => {
+  it.each(ISSUE_TYPES)('wears the %s tile, hidden from the accessible name', (type) => {
     const html = renderToStaticMarkup(<TypeControl issueKey="HA-14" type={type} onChange={() => {}} />);
 
     expect(html).toContain(`<span class="hatch-type-pill-glyph" aria-hidden="true">${shape(type)}</span>`);
@@ -50,7 +50,7 @@ describe('TypeSteps', () => {
   const steps = (current: IssueType, types?: IssueType[]) =>
     renderToStaticMarkup(<TypeSteps current={current} types={types} onPick={() => {}} />);
 
-  it('draws one button per type under a named group, each with its shape and face', () => {
+  it('draws one button per type under a named group, each with its tile and face', () => {
     const html = steps('story');
 
     expect(html).toContain('role="group"');

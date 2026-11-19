@@ -349,6 +349,23 @@ export interface IssueCard {
       effective level is this issue's own, or none. See
       IssueCardDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** The ancestor whose pre-approval stopped at a project line, so it is not
+      honoured here, or null where there is none or it is outside the reader's
+      scope. See IssueCardDto.PreApprovalPassedOver. */
+  preApprovalPassedOver?: string | null;
+  /** The level that ancestor carries. Survives masking where the key does not,
+      so a masked one still reads as not honoured. See
+      IssueCardDto.PreApprovalPassedOverLevel. */
+  preApprovalPassedOverLevel?: 'none' | 'express' | 'preapproved' | null;
+  /** The priority counterpart of `preApprovalPassedOver`. See
+      IssueCardDto.PriorityPassedOver. */
+  priorityPassedOver?: string | null;
+  /** The priority counterpart of `preApprovalPassedOverLevel`. See
+      IssueCardDto.PriorityPassedOverLevel. */
+  priorityPassedOverLevel?: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused' | null;
+  /** The parent that is in progress but whose pull this issue does not take,
+      across a project line, or null. See IssueCardDto.PullPassedOver. */
+  pullPassedOver?: string | null;
   /** This issue has a parent in a project the reader's scope does not hold.
       `parentKey` is null and nothing else of the parent is told. Absent is
       false. See IssueCardDto.ParentBeyondScope. */
@@ -359,8 +376,8 @@ export interface IssueCard {
   childBeyondScope?: boolean;
   /** The values whose from-key was blanked because the ancestor it names is
       outside the reader's scope - any of 'priority', 'preApproval',
-      'localModel', 'onePr', 'dangerous', 'preApprovalPassedOver' and
-      'priorityPassedOver'. The value itself still applies. Absent is none.
+      'localModel', 'onePr', 'dangerous', 'preApprovalPassedOver',
+      'priorityPassedOver' and 'pullPassedOver'. The value itself still applies. Absent is none.
       See IssueCardDto.FromBeyondScope. */
   fromBeyondScope?: string[];
   /** The local-model level in effect - `'none'`, `'prefer'` or `'require'` -
@@ -799,6 +816,16 @@ export interface Issue {
       effective level is this issue's own, or none. See
       IssueCard.preApprovalFrom and IssueDto.PreApprovalFrom. */
   preApprovalFrom: string | null;
+  /** See IssueCard.preApprovalPassedOver and IssueDto.PreApprovalPassedOver. */
+  preApprovalPassedOver?: string | null;
+  /** See IssueCard.preApprovalPassedOverLevel and IssueDto.PreApprovalPassedOverLevel. */
+  preApprovalPassedOverLevel?: 'none' | 'express' | 'preapproved' | null;
+  /** See IssueCard.priorityPassedOver and IssueDto.PriorityPassedOver. */
+  priorityPassedOver?: string | null;
+  /** See IssueCard.priorityPassedOverLevel and IssueDto.PriorityPassedOverLevel. */
+  priorityPassedOverLevel?: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused' | null;
+  /** See IssueCard.pullPassedOver and IssueDto.PullPassedOver. */
+  pullPassedOver?: string | null;
   /** See IssueCard.parentBeyondScope and IssueDto.ParentBeyondScope. */
   parentBeyondScope?: boolean;
   /** See IssueCard.childBeyondScope and IssueDto.ChildBeyondScope. */

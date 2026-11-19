@@ -958,6 +958,33 @@
   touch-action: manipulation;
 }
 
+/* A held card is a press-and-hold to lift it, and on iOS the same hold opens a
+   link menu and starts a text selection, taking the touch from the drag. A
+   touch screen has no use for either on a card; a mouse keeps selecting text.
+   touch-action stays as it is: a resting card must still pan. */
+@media (pointer: coarse) {
+  .hatch-card,
+  .hatch-card-face {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+}
+
+/* While a card is lifted (lib/useLiftGuard.ts): nothing under it scrolls,
+   chains to the page, or selects. */
+.hatch-lifting,
+.hatch-lifting body {
+  overscroll-behavior: none;
+}
+
+.hatch-lifting * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .hatch-card:hover {
   border-color: var(--primary);
 }
@@ -1465,8 +1492,15 @@
   height: 0.875rem;
 }
 
-.hatch-type-glyph-shape {
-  fill: currentColor;
+.hatch-type-tile-picture {
+  fill: var(--on-accent);
+}
+
+.hatch-type-tile-stroke {
+  fill: none;
+  stroke: var(--on-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* The contribution mark: an open stroke, so it is never one of the type
@@ -1519,26 +1553,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-bottom: var(--sp-1);
-}
-
-.hatch-type-glyph--epic {
-  color: var(--primary);
-}
-
-.hatch-type-glyph--reflection {
-  color: var(--series-6);
-}
-
-.hatch-type-glyph--story {
-  color: var(--series-7);
-}
-
-.hatch-type-glyph--task {
-  color: var(--series-3);
-}
-
-.hatch-type-glyph--bug {
-  color: var(--danger);
 }
 
 /* Blue is being heard from - --primary, the one blue the tokens carry. It is
@@ -6240,10 +6254,8 @@ input.hatch-inline-title-input {
 
 /* The type pill on the issue page's Details card, and the band it opens onto -
    the priority pill's shapes (above) with one face per type instead of per
-   level. Each face is filled with the colour `.hatch-type-glyph--{type}`
-   already gives that type, so a card's corner and this pill agree. The glyph
-   inside takes `currentColor`, which in a filled pill or step is the text
-   colour. */
+   level. Every face is the page's own border and ink: the colour is said once,
+   by the tile inside. */
 .hatch-type-pill {
   display: inline-flex;
   align-self: flex-start;
@@ -6267,53 +6279,19 @@ input.hatch-inline-title-input {
   opacity: 0.6;
 }
 
-.hatch-type-pill.epic,
-.hatch-type-badge.epic {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--on-accent);
-}
-
-.hatch-type-pill.reflection,
-.hatch-type-badge.reflection {
-  border-color: var(--series-6);
-  background: var(--series-6);
-  color: var(--on-accent);
-}
-
-.hatch-type-pill.story,
-.hatch-type-badge.story {
-  border-color: var(--series-7);
-  background: var(--series-7);
-  color: var(--on-accent);
-}
-
-.hatch-type-pill.task,
-.hatch-type-badge.task {
-  border-color: var(--series-3);
-  background: var(--series-3);
-  color: var(--on-accent);
-}
-
-.hatch-type-pill.bug,
-.hatch-type-badge.bug {
-  border-color: var(--danger);
-  background: var(--danger);
-  color: var(--on-accent);
-}
-
-/* Reflection's orange and task's pink are the two light fills white cannot
-   carry (about 3.3:1 and 2.7:1 on the light theme), so those faces take the
-   page's own ink instead - 5.6:1 and 6.7:1 there, and no worse than
-   --on-accent on the dark theme's fills. The glyph keeps the type's colour on
-   a card; only the ink on this face changes. */
-.hatch-type-pill.reflection,
-.hatch-type-badge.reflection,
-.hatch-type-pill.task,
-.hatch-type-badge.task,
-.hatch-type-pill-step.reflection.here,
-.hatch-type-pill-step.task.here {
+.hatch-badge.hatch-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  background: none;
   color: var(--ink);
+  border: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+
+/* Badges run in a row on the Playbooks page; the border would have them touch. */
+.hatch-badge.hatch-type-badge + .hatch-badge.hatch-type-badge {
+  margin-left: var(--sp-1);
 }
 
 .hatch-type-pill-press {
@@ -6369,28 +6347,28 @@ input.hatch-inline-title-input {
 }
 
 .hatch-type-pill-band.epic {
-  background: color-mix(in srgb, var(--primary) 10%, var(--card));
-  border-left-color: var(--primary);
+  background: color-mix(in srgb, var(--type-epic) 10%, var(--card));
+  border-left-color: var(--type-epic);
 }
 
 .hatch-type-pill-band.reflection {
-  background: color-mix(in srgb, var(--series-6) 10%, var(--card));
-  border-left-color: var(--series-6);
+  background: color-mix(in srgb, var(--type-reflection) 10%, var(--card));
+  border-left-color: var(--type-reflection);
 }
 
 .hatch-type-pill-band.story {
-  background: color-mix(in srgb, var(--series-7) 10%, var(--card));
-  border-left-color: var(--series-7);
+  background: color-mix(in srgb, var(--type-story) 10%, var(--card));
+  border-left-color: var(--type-story);
 }
 
 .hatch-type-pill-band.task {
-  background: color-mix(in srgb, var(--series-3) 10%, var(--card));
-  border-left-color: var(--series-3);
+  background: color-mix(in srgb, var(--type-task) 10%, var(--card));
+  border-left-color: var(--type-task);
 }
 
 .hatch-type-pill-band.bug {
-  background: color-mix(in srgb, var(--danger) 10%, var(--card));
-  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--type-bug) 10%, var(--card));
+  border-left-color: var(--type-bug);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6425,52 +6403,14 @@ input.hatch-inline-title-input {
   background: color-mix(in srgb, var(--line-strong) 18%, transparent);
 }
 
-/* The type this issue already is. Disabled rather than merely marked:
-   pressing it would write an event saying the type moved from story to story. */
+/* The type this issue already is, marked the way the priority band marks its
+   level. Disabled rather than merely marked: pressing it would write an event
+   saying the type moved from story to story. */
 .hatch-type-pill-step.here {
-  color: var(--on-accent);
+  background: var(--line-strong);
+  color: var(--ink);
   cursor: default;
   opacity: 1;
-}
-
-.hatch-type-pill-step.epic {
-  border-color: var(--primary);
-}
-
-.hatch-type-pill-step.epic.here {
-  background: var(--primary);
-}
-
-.hatch-type-pill-step.reflection {
-  border-color: var(--series-6);
-}
-
-.hatch-type-pill-step.reflection.here {
-  background: var(--series-6);
-}
-
-.hatch-type-pill-step.story {
-  border-color: var(--series-7);
-}
-
-.hatch-type-pill-step.story.here {
-  background: var(--series-7);
-}
-
-.hatch-type-pill-step.task {
-  border-color: var(--series-3);
-}
-
-.hatch-type-pill-step.task.here {
-  background: var(--series-3);
-}
-
-.hatch-type-pill-step.bug {
-  border-color: var(--danger);
-}
-
-.hatch-type-pill-step.bug.here {
-  background: var(--danger);
 }
 
 /* The weave mode pill (Dreams), in place of the Mode dropdown: shaped after
@@ -6621,6 +6561,17 @@ input.hatch-inline-title-input {
   font-size: var(--t-micro);
   font-weight: 700;
   line-height: 1.6;
+}
+
+/* A level that was set on an ancestor and not honoured here: the mark it would
+   have worn, dimmed and dashed so it reads as absent and not as in effect. No
+   colour of its own - it keeps its level's, a good deal fainter. The beacon
+   animation is expedited's emergency class alone, which this never takes. */
+.hatch-card-expedited.passedover,
+.hatch-card-preapproved.passedover {
+  opacity: 0.55;
+  outline: 1px dashed currentColor;
+  outline-offset: -1px;
 }
 
 /* Local model, beside Pre-approved and drawn the same way: --primary, with
@@ -10622,6 +10573,68 @@ button.hatch-option.chosen {
 .design-icon-grid-title {
   color: var(--muted);
   font-size: var(--t-micro);
+}
+
+/* Issue types: the real tile, sized by the page. TypeTile is a bare svg with a
+   viewBox and no width or height, so the wrapper is the size. Pixels rather
+   than rem: the page speaks of pixels, and a rem would move with the root
+   font size. A row wraps on a phone rather than overflowing. */
+.design-type-tile {
+  display: inline-flex;
+  flex: none;
+}
+
+.design-type-tile svg {
+  width: 100%;
+  height: 100%;
+}
+
+.design-type-tile--14 {
+  width: 14px;
+  height: 14px;
+}
+
+.design-type-tile--16 {
+  width: 16px;
+  height: 16px;
+}
+
+.design-type-tile--24 {
+  width: 24px;
+  height: 24px;
+}
+
+.design-type-tile--72 {
+  width: 72px;
+  height: 72px;
+}
+
+.design-type-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* A board column's ground with a card's box on it, so 14px tiles are judged
+   where they are used. */
+.design-type-column {
+  padding: var(--sp-2);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  width: fit-content;
+}
+
+.design-type-card {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2-5);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
 }
 
 /* ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ page is about the fields that travel with it along the way.
 
 ## Types, and what may hang under what
 
-Five types: epic, reflection, story, task, bug. On the issue page the type is a pill in the Details card's edit mode; pressing it opens the five types under it, each with its shape and colour. Picking one sets it and folds the band, as the Priority and Pre-approval sections say of theirs. The New issue dialog's Type field is the same pill. The Progress card's composer, where a child is filed under an epic, reflection, story or bug, picks the child's type the same way, and its band offers only what that parent may take. Any of them may have no parent at all —
+Five types: epic, reflection, story, task, bug. On the issue page the type is a pill in the Details card's edit mode; pressing it opens the five types under it, each as its tile and its word. The tile is a coloured outline with a picture on it, a rounded square for epic, story and task and a disc for reflection and bug, so the type reads without the colour. The type badge, the pill and every step wear the page's own plain face, and only the tile carries the colour. Picking one sets it and folds the band, as the Priority and Pre-approval sections say of theirs. The New issue dialog's Type field is the same pill. The Progress card's composer, where a child is filed under an epic, reflection, story or bug, picks the child's type the same way, and its band offers only what that parent may take. Any of them may have no parent at all —
 the ordinary state of a freshly captured bug, or an epic with nothing broken
 out of it yet. Where one does have a parent, the model allows exactly this:
 an epic hangs under an epic, a story hangs under an epic, a task hangs under
@@ -72,6 +72,12 @@ parent. A parent's own progress is read from its children, not from its own
 column — the totals count **leaves**, issues with no children of their own,
 so a story standing in review with every task still in To Do reads as To Do,
 because the tasks are the work and not the story's own column.
+
+Where a parent is in progress but its pull is not honoured across a project
+line, the Parent field, the board card's parent row and the peek say so in one
+sentence: "AER-12 is in progress, but its pull is not honoured in OPS". When
+the parent is outside your scope the sentence reads "from an issue outside your
+scope, not honoured in OPS", and names nothing more.
 
 ## Filed from
 
@@ -151,7 +157,11 @@ inherited live from the nearest ancestor that sets one, so raising an epic's
 level is a single press that reaches every story and task under it that has
 not set its own — read back as, for instance, "expedited (inherited from
 AER-12)". Raising a ticket's level this way is what the house calls
-*expediting* it.
+*expediting* it. A level set on a parent in another project, and stopped at
+the line, reads "expedited on AER-12, not honoured in OPS" beside the pill; one
+from an issue outside your scope reads "expedited from an issue outside your
+scope", with "not honoured" added where it was stopped. Both are said on a
+board card's mark too.
 
 A project has a level too: paused, normal or expedited. An expedited project's
 clear work is picked up before any other project's, whatever level its tickets
@@ -229,7 +239,10 @@ Priority, and the same pill sits in the board's peek. Pressing it opens the
 three levels under the row. Only an owner or approver of the project may set
 or lower `preapproved`, and the band says so on the steps it locks. A
 key-holder sees the word, with where it was inherited from, and nothing to
-press.
+press. A level that was not honoured reads beside the pill, "pre-approved on
+AER-12, not honoured in OPS", and one from an issue outside your scope reads
+"express from an issue outside your scope". The remedy is the same band: an
+approver sets the level on the issue itself.
 
 Inside one project a level reaches every descendant, whoever set it. From a
 parent in another project it reaches a descendant only while the person who set
