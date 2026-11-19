@@ -239,6 +239,15 @@ project. Where a level did not reach, the ticket's `preApprovalPassedOver` and
 "pre-approved on AER-1, not honoured in OPS" where it would otherwise have
 moved the ticket on.
 
+A running parent pulls a child in another project the same way: only while the
+person who started the parent (`startedBy`) could have moved that child into the
+next column themselves - a live person with the child's project in scope, and an
+owner or approver where the column is protected. Inside one project nothing
+changes. Where the pull is not honoured, the child's `pullPassedOver` names the
+parent, and the queue says "OPS-1 is in progress, but the person who started it
+has no say in AER, so a person moves it". A parent started by nobody pulls
+nothing across a line.
+
 ## Local model
 
 Three levels: none, prefer, require — read live from the nearest ancestor

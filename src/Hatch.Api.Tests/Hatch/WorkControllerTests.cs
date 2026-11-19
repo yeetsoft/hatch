@@ -15406,6 +15406,87 @@ public class WorkControllerTests
         Assert.NotNull(row.StartedAt);
     }
 
+    // ---- A hop crosses a project line on the starter's say (HA-2482) ----
+
+    public enum AcrossHop { Parent, Under, Epic }
+
+    /// <summary>
+    /// A parent running in project OTH, started by <paramref name="starter"/>, and the child in the harness's
+    /// own project that <paramref name="hop"/> carries out of Inbox - set up as the HA-2481 cases above set up
+    /// the same hop inside one project.
+    /// </summary>
+    private static async Task<EfHatchIssue> AcrossTheLineAsync(Harness h, AcrossHop hop, Guid starter)
+    {
+        var other = await h.AddProjectAsync("OTH");
+        var parent = await h.FileAsync("epic", "running", h.InProgress, projectId: other);
+        parent.StartedBy = starter;
+        await h.Db.SaveChangesAsync();
+
+        switch (hop)
+        {
+            case AcrossHop.Parent:
+                await h.TickParentPullsAsync(h.Inbox);
+                return await h.FileAsync("story", "pulled off the backlog", h.Inbox, parentId: parent.Id);
+            case AcrossHop.Under:
+                await h.TickWipAsync(h.InProgress, h.Review);
+                await h.TickExpressSkipsAsync(h.Inbox);
+                return await h.FileAsync("story", "S", h.Inbox, parentId: parent.Id);
+            default:
+                var sub = await h.FileAsync("epic", "E", h.Inbox, parentId: parent.Id);
+                await h.FileAsync("story", "under E", h.Inbox, parentId: sub.Id);
+                await h.TickWipAsync(h.Todo, h.Review);
+                return sub;
+        }
+    }
+
+    [Theory]
+    [InlineData(AcrossHop.Parent)]
+    [InlineData(AcrossHop.Under)]
+    [InlineData(AcrossHop.Epic)]
+    public async Task Hop_AcrossTheLine_OnTheStartersSay_CarriesTheChildAndRecordsTheStarter(AcrossHop hop)
+    {
+        var h = await NewAsync();
+        var starter = h.Actors.AddPerson("Ada");
+        var child = await AcrossTheLineAsync(h, hop, starter.Id);
+
+        var moved = Value(await h.Work.HopWork(Key(child), null, null, null, default));
+        Assert.Equal(h.Todo, moved.StatusId);
+
+        var row = await h.Db.Issues.Include(i => i.Events).AsNoTracking().FirstAsync(i => i.Id == child.Id);
+        Assert.Equal(starter.Id, row.StartedBy);
+        Assert.NotNull(row.StartedAt);
+        var e = Assert.Single(row.Events, ev => ev.Kind == EfHatchIssueEvent.StatusChanged);
+        AssertColumns(e, h.Inbox, h.Todo);
+    }
+
+    [Theory]
+    [InlineData(AcrossHop.Parent)]
+    [InlineData(AcrossHop.Under)]
+    [InlineData(AcrossHop.Epic)]
+    public async Task Hop_AcrossTheLine_WhereTheStarterHasNoSay_CarriesNothingAndTheQueueGivesTheSentence(AcrossHop hop)
+    {
+        var h = await NewAsync();
+        var starter = h.Actors.AddPerson("Ada");
+        h.Db.PersonScopes.Add(new EfHatchPersonScope { PersonId = starter.Id, Mode = PersonScopeMode.None, UpdatedBy = "test", UpdatedAt = Now });
+        await h.Db.SaveChangesAsync();
+        var child = await AcrossTheLineAsync(h, hop, starter.Id);
+
+        Assert.Equal(StatusCodes.Status409Conflict,
+            ((ObjectResult)(await h.Work.HopWork(Key(child), null, null, null, default)).Result!).StatusCode);
+
+        var row = await h.Db.Issues.Include(i => i.Events).AsNoTracking().FirstAsync(i => i.Id == child.Id);
+        Assert.Equal(h.Inbox, row.StatusId);
+        Assert.Null(row.StartedBy);
+        Assert.Empty(row.Events);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(child));
+        Assert.False(entry.Hop);
+        // A sub-epic out of Inbox stops short of the implementation column, where the sentence is spoken
+        // for it; the Todo-to-InProgress case in DispatchTests covers that one.
+        if (hop != AcrossHop.Epic)
+            Assert.Equal("OTH-1 is in progress, but the person who started it has no say in AER, so a person moves it", entry.Blocked);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);

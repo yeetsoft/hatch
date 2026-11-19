@@ -774,6 +774,14 @@ public record IssueClaimDto(
 /// before this was recorded, or for one never started at all. See
 /// <see cref="StartedAt"/> and HA-2481.
 /// </param>
+/// <param name="PullPassedOver">
+/// The key of this issue's parent where the parent is in another project and
+/// in progress, yet may not pull this issue - the person who started it has
+/// no say in this issue's project, or none was recorded - or null where
+/// nothing was withheld. It is what a card needs to say "AER-1 is running, but
+/// does not pull this". Read live, never stored. See <see cref="StartedBy"/>
+/// and HA-2482.
+/// </param>
 /// <param name="StartedAt">
 /// When this issue last crossed into the column work gets started in - set
 /// alongside <see cref="StartedBy"/>, including by a key's move, which
@@ -850,7 +858,8 @@ public record IssueDto(
     string? PreApprovalPassedOver = null,
     string? PriorityPassedOver = null,
     string? StartedBy = null,
-    DateTimeOffset? StartedAt = null)
+    DateTimeOffset? StartedAt = null,
+    string? PullPassedOver = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
