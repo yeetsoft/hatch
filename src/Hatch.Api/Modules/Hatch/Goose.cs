@@ -75,6 +75,22 @@ public static class GooseSettings
     /// </summary>
     public static TimeSpan TrainReadyBound(HatchOptions options) => TimeSpan.FromMinutes(
         options.GooseTrainReadyMinutes >= 0 ? options.GooseTrainReadyMinutes : new HatchOptions().GooseTrainReadyMinutes);
+
+    /// <summary>
+    /// How long <see cref="ReadyUnclaimedCheck"/>'s bound is. Zero turns the
+    /// check off, as <see cref="TrainReadyBound"/>'s does; a negative falls
+    /// back to the default.
+    /// </summary>
+    public static TimeSpan UnclaimedBound(HatchOptions options) => TimeSpan.FromMinutes(
+        options.GooseUnclaimedMinutes >= 0 ? options.GooseUnclaimedMinutes : new HatchOptions().GooseUnclaimedMinutes);
+
+    /// <summary>
+    /// How long <see cref="ReadyNoRunnerCheck"/>'s bound is. Zero turns the
+    /// check off, as <see cref="TrainReadyBound"/>'s does; a negative falls
+    /// back to the default.
+    /// </summary>
+    public static TimeSpan NoRunnerBound(HatchOptions options) => TimeSpan.FromMinutes(
+        options.GooseNoRunnerMinutes >= 0 ? options.GooseNoRunnerMinutes : new HatchOptions().GooseNoRunnerMinutes);
 }
 
 /// <summary>One label and value a <see cref="FindingCheck"/> reported for a finding, as stored in <see cref="EfHatchGooseFinding.Evidence"/>.</summary>

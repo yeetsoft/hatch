@@ -57,6 +57,8 @@ All three are server settings, set in the environment like any other
 | `Hatch__GooseIntervalSeconds` | `60` | Seconds between sweeps. Zero or less falls back to `60`. |
 | `Hatch__GooseKeepDays` | `7` | Days a run is kept after its last sweep. `0` keeps everything. Less than that falls back to `7`. |
 | `Hatch__GooseTrainReadyMinutes` | `30` | How long a merge train's head may be judged mergeable before the `train-ready` check below opens a finding. `0` turns the check off; less than that falls back to `30`. |
+| `Hatch__GooseUnclaimedMinutes` | `10` | How long a project may have ready work and a live, idle runner able to take some of it before the `ready-unclaimed` check below opens a finding. `0` turns the check off; a negative value falls back to `10`. |
+| `Hatch__GooseNoRunnerMinutes` | `15` | How long a project may have ready work that no live runner can take before the `ready-no-runner` check below opens a finding. `0` turns the check off; a negative value falls back to `15`. |
 
 Each sweep also deletes the runs whose last sweep is older than the keep
 window.
@@ -90,6 +92,41 @@ and has not"*; the evidence beside it names the head, the driver (or that none
 is eligible), when the driver last acted in the project's merges column, how
 many pull requests wait behind the head, and how many times a driver has
 already been passed over on it.
+
+### `ready-unclaimed` and `ready-no-runner`
+
+A person is told once a project's ready work has sat unclaimed - once while a
+runner that could take it sits idle, and once while no live runner can take it
+at all. Both read the same board the dispatcher does and add no rule of their
+own about what is ready: a row the board's own scan calls clear, or parked
+only behind higher-ranking work, that is not a hop and is not the merge
+train's. Ready work filed as the bug for another finding is left out of both,
+so a finding does not watch its own fix.
+
+The two never both watch one project at once: a project with an idle taker is
+`ready-unclaimed`'s to watch, and one with none at all is `ready-no-runner`'s.
+Unlike the **Runner capacity** and **Waiting on a runner** sections of the
+attention panel, which only ever say what is true right now, these say a
+project has stood that way for a while - each has its own bound, below, and
+neither opens until a project has stood past it.
+
+`ready-unclaimed` opens once a project has ready work, a live runner able to
+take some of it is idle, and nothing in the project has been claimed since the
+condition began, for longer than `Hatch__GooseUnclaimedMinutes`. A claim taken
+anywhere in the project restarts its clock, even one taken and released again
+between two sweeps. Its sentence names the project and the count, for example
+*"AER has 3 steps ready and no runner has taken one"*; the evidence beside it
+names the steps (the first ten keys, and the count), each idle runner able to
+take one and when it was last heard from, and the project's newest claim, or
+that it has none.
+
+`ready-no-runner` opens once a project has ready work that no live runner can
+take at all - including a project with no live runner whatsoever - for longer
+than `Hatch__GooseNoRunnerMinutes`. Its sentence reads *"AER has 3 steps ready
+and no live runner can take them"*; the evidence names the steps the same way,
+then, for each live runner, why it cannot take them, in the same words the
+queue uses. With no live runner at all it says so, and lists when each known
+runner - live or not - was last heard from.
 
 ## Reading it from outside
 
