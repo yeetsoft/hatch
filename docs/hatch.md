@@ -1640,6 +1640,48 @@ that applies - its own, else the nearest flagged ancestor's, else null; and
 own or there is none. The issue, the card list, search and the board all
 carry them. Nothing acts on the flag yet.
 
+#### Human work
+
+**A person's own say over who works an issue - a card for a person to move
+around the board, with no runner ever reaching for it.** `HumanWork` is a
+nullable boolean column on the issue: null is `inherit` (the default), true
+is `human`, false is `agent`. Written only through its own route, `PUT
+/issues/{key}/human-work` (`IssueHumanWorkController.PutIssueHumanWork`),
+`{ value }` one of `human`, `agent` or `inherit` - a person's call, never a
+key's, the same reach as Local model (`IssueLocalModelController`). An unknown value is
+`400`, naming the three. Sending the value the issue already holds writes
+nothing, adds no event and leaves `UpdatedAt` where it was; a change writes
+`human_work_changed` with `{ from, to }`, each one of the three names, and
+sets `UpdatedAt`.
+
+**The value that applies is read live, the same shape `EffectiveLocalModel`
+is, and nothing else.** `PriorityTree.EffectiveHumanWork` walks from the
+issue up its parents and answers the first value that is not `inherit`,
+with the key of the ancestor it came from - `agent` with no ancestor
+flagged. Unlike priority and [Dangerous](#dangerous), where
+only an explicit flag on an ancestor propagates and a child cannot clear
+it, the human-work walk stops at an explicit `agent` the same as at an
+explicit `human`: a descendant may set itself back to `agent` under a
+human parent, and dispatch honours it. Nothing is copied onto a row, so
+reparenting an issue changes the live value at once, with no write of its
+own. A card or an issue carries three fields: `humanWorkOwn` is the
+issue's own row, exactly what `PUT .../human-work` last wrote, by name;
+`humanWork` is the value that applies - `human` or `agent`, never
+`inherit`; and `humanWorkFrom` is the ancestor's key the value came from,
+null when it is the issue's own or nothing is set anywhere. The issue, the
+card list, search, the plan and the board all carry them.
+
+**Folded in `Dispatch.Blocked`, beside the paused fold and ahead of every
+loop-only one.** An issue whose `EffectiveHumanWork` reads `human` is
+refused by `work/next`, `work/queue`, `work/{key}` and a hop alike, with
+kind `BlockedKinds.Person`: *"human work - a person does this one, and
+no runner picks it up"*, or *"human work from `HA-12` - ..."* when the
+value is inherited from an ancestor. Not conditional on a hop the way the
+economy and low-priority folds are: a hop is exactly a move with no
+session, and a human issue gets none. Moving it by hand - the board, or
+`hatch move` - is unaffected; dispatch is the only reader of the override,
+so a person moving their own card is never refused by it.
+
 #### Omitted runners
 
 **A runner an issue - and everything beneath it - is closed to.**
@@ -4359,6 +4401,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/goose/runs` | GET | The goose's runs, newest first by last sweep, without the per-check detail; `limit` 1-200, default 50. Empty for a caller whose scope is not every project — see [the goose](#the-goose) |
 | `/goose/runs/{id}` | GET | One run with its per-check entries; `404` for a missing id and for every id to a caller whose scope is not every project — see [the goose](#the-goose) |
+| `/goose/findings/{id}/bug` | POST | `[RequireRole(PersonRole.User)]` on the method with no `AcceptKey`, so a key is refused. Files a bug from a goose finding and stores it on the finding - expedited, no pre-approval and the leftmost column unless the optional body (`priority`, `statusId`, `preApproval`, `projectKey`) says otherwise. A `projectKey` naming another project than the finding's is `400`; a finding naming none needs one the caller can see. A second call, or one at the same moment, answers the bug already filed - see [the goose](#the-goose) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus every issue whose next move no live runner can take for want of a model or a development dependency (`waitingOnARunner`, see [a move no live runner can take](#a-move-no-live-runner-can-take)), plus every project whose clear implementation steps no live runner, or only one, can take (`runnerCapacity`, see [runner capacity](#runner-capacity)), plus every issue held or marked stalled, in board order, with who it waits on (`stalled`, `stallResumeSeconds`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it. It also carries the site's default token caps, `defaultMaxTokens` and `defaultMaxTokensPerHour` (`500k`, `2M`, a whole number; zero or junk is a `400` that writes nothing) — **admin-only to write** inside this person-only route: a `403` for a person who is not an admin with the wall up, and for a key, but only when either default is present in the body. Runners with no cap of their own run under them — see [Runners on the board](#runners-on-the-board) |
@@ -5267,8 +5310,8 @@ and a run reads as not found. The reader's page is
 
 A finding is a stored row a person can read and act on, with the evidence
 beside it - `train-ready` below is the first check that opens one, `ready-unclaimed`,
-`ready-no-runner`, `claim-repeating` and `questions-waiting` follow it, and a later
-check files a bug from one. `FindingCheck` (`GooseFindings.cs`) is the one
+`ready-no-runner`, `claim-repeating` and `questions-waiting` follow it, and a
+person files a bug from one (**Filing a bug**, below). `FindingCheck` (`GooseFindings.cs`) is the one
 reconciler every such check shares, so none of them can disagree about when a
 clock starts, when a row opens, or when it closes: a subclass says only what it
 is watching (`ReadAsync`: a sentence for the run, the check's own bound, and
@@ -5324,6 +5367,36 @@ first, then closed ones, newest first; `?open=true` narrows it to the open
 ones. Each carries its id, check, subject, project key, sentence, evidence,
 its three times and the bug's key. See the
 [API reference](../src/Hatch.Web/apps/hatch/docs/api-reference.md).
+
+**Filing a bug.** `POST /api/goose/findings/{id}/bug`
+(`GooseFindingBugController`, HA-2516) hands a finding to an agent: it files a
+bug carrying the finding's evidence and stores it on the finding
+(`BugIssueId`). `[RequireRole(PersonRole.User)]` on the method, no role on the
+class, and no `AcceptKey`, so a key is refused - a key filing work for itself is
+the loop the goose must never become, and nothing in a sweep calls this route.
+It is in `AdminSurfaceTests`' `PersonOnly`, not its `AcceptsKey`. The body is
+optional: `priority`, `statusId` and `preApproval` are the trunk build route's
+person branch, with its defaults (expedited, none, the leftmost column), and
+`preapproved` asks an owner or approver of the project; there is no `express`.
+The bug goes to the finding's own project, and a `projectKey` naming another is
+a `400`. A finding that names no project (`questions-waiting`) needs
+`projectKey`, a project the caller can see, else `400`; a caller whose scope is
+narrowed never reaches such a finding, since its query filter hides it. A
+closed finding is filed like an open one, and its brief says the problem cleared
+and when. Filing is `IssuesController.CreateIssueAsync`'s, so the bug's number,
+rank, column and `created` event are the ordinary ones. **Two calls, one bug:**
+on Postgres the route holds an advisory lock on the finding (two 32-bit keys,
+a constant and the id) on a connection of its own for the whole call, not a
+transaction - `CreateIssueAsync` retries a number collision, which an aborted
+transaction cannot - and reads `BugIssueId` again after taking it; a second call
+answers the bug already filed and files nothing.
+`GooseFindingBugConcurrencyTests` fires two at once against a real database.
+The title and the brief come from `FindingBugs`, one entry per check, which a
+test requires of every `FindingCheck`: the sentence, when the condition began,
+the evidence one line each, the check and its bound in words, and one line asking
+for the cause and then a fix or what a person has to do. It names a project key
+and a subject, never an address of this installation. `GooseFindings.FiledFromAFindingAsync`
+is what keeps every check from counting a bug filed this way.
 
 **In the attention read.** `GET /api/attention` carries the open findings as
 `findings`, longest-standing first (`BeganAt`, then `Id`), read through the same
@@ -8647,11 +8720,12 @@ moot while no session sets `CODEX_HOME`.
 
 ### What makes an issue actionable
 
-Twenty-four conditions, the twenty-second a way out of the twenty-first rather than
+Twenty-five conditions, the twenty-second a way out of the twenty-first rather than
 one more gate, the twenty-third a fact about the issue rather than another way
-out, and the twenty-fourth a fact about the walk rather than either. An issue is the
-loop's to pick up when it meets every one before it, and the sentence saying
-which one it failed is what `work/queue` reports:
+out, the twenty-fourth a fact about the walk rather than either, and the
+twenty-fifth a fact about the issue again, the same shape as the fifth. An
+issue is the loop's to pick up when it meets every one before it, and the
+sentence saying which one it failed is what `work/queue` reports:
 
 1. **There is somewhere for it to go, and that place is neither terminal
    nor protected — unless this is the close hop or the approve hop, each
@@ -8979,9 +9053,21 @@ which one it failed is what `work/queue` reports:
     and a tier parked behind one would be a tier that never runs for as long
     as it stands — so a fold is never live for this rule's purposes, and the
     only thing that parks a lower tier is a row with no fold at all.
+25. **It is not human work, on its own row or on an ancestor's.** [Human
+    work](#human-work) is read the same shape `EffectiveLocalModel` is:
+    the nearest ancestor — itself first — whose own value is not `inherit`,
+    `agent` with nothing set anywhere. Folded with *human work - a person
+    does this one, and no runner picks it up*, named with the ancestor when
+    the value is inherited, kind `person`; asked beside the paused fold,
+    ahead of every loop-only one, and not conditional on a hop — a hop is a
+    move with no session, and a human issue gets none. Unlike the paused
+    fold, an explicit `agent` on a nearer row stops the walk the same as an
+    explicit `human` does, so a descendant may opt back out from under a
+    human ancestor and dispatch honours it. A fact about the issue like the
+    claim and the pause before it, so `work/{key}` asks it too.
 
-Eighteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-21 and 23 — are facts about the issue, and `work/{key}` asks them too. The
+Nineteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+21, 23 and 25 — are facts about the issue, and `work/{key}` asks them too. The
 twenty-second is as well, and `work/{key}` answers it the same way `work/queue`
 does: `WorkDto.Hop`. The other four — 6, 7, 8 and 9 — are the loop's policy and
 are asked only when the pass is asking;

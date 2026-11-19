@@ -32,6 +32,9 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   localModel: 'none',
   localModelOwn: 'none',
   localModelFrom: null,
+  humanWork: 'agent',
+  humanWorkOwn: 'inherit',
+  humanWorkFrom: null,
   runnerTags: [],
   runnerTagsOwn: [],
   runnerTagsFrom: [],
@@ -363,6 +366,30 @@ describe('BoardCard CardFace', () => {
     expect(require).toContain('hatch-card-localmodel require');
     expect(require).toContain('title="Local model: require"');
     expect(draw({ priority: 'low' })).not.toContain('hatch-card-localmodel');
+  });
+
+  it('wears the human-work mark when human, naming the ancestor, and not when agent', () => {
+    const draw = (over: Partial<IssueCard>) =>
+      between(
+        renderToStaticMarkup(
+          <CardPreview card={card(over)} waiting={false} terminal={false} project={project()} />,
+        ),
+        '<div class="hatch-card-marks">',
+      );
+
+    const inherited = draw({ humanWork: 'human', humanWorkFrom: 'HA-5' });
+    expect(inherited).toContain('hatch-card-humanwork');
+    expect(inherited).toContain(
+      'title="Human work - a person does this one, and no runner picks it up, inherited from HA-5"',
+    );
+    const own = draw({ humanWork: 'human', humanWorkOwn: 'human' });
+    expect(own).toContain('hatch-card-humanwork');
+    expect(own).toContain('title="Human work - a person does this one, and no runner picks it up"');
+    expect(
+      renderToStaticMarkup(
+        <CardPreview card={card({ humanWork: 'agent' })} waiting={false} terminal={false} project={project()} />,
+      ),
+    ).not.toContain('hatch-card-humanwork');
   });
 
   it('wears the dangerous mark, with the reason in its title, when dangerous', () => {

@@ -150,6 +150,10 @@ public class AdminSurfaceTests
         // project-bearing reads are, not all-or-nothing like the two above.
         "GooseController.ListFindings",
 
+        // A person hands a finding to an agent: it files a bug expedited, and
+        // may pre-approve it. Person-only - see PersonOnly below.
+        "GooseFindingBugController.PostBug",
+
         // The same questions as GetQuestions, read as a tree of the issues that
         // enclose them. Key-accepting like GetQuestions, and it widens
         // nothing: it reads the same waiting comments, and the issues above
@@ -565,6 +569,12 @@ public class AdminSurfaceTests
         // and quality. No approver is needed - it passes no gate.
         "IssueLocalModelController.PutIssueLocalModel",
 
+        // Who works this issue: human or agent. A person's call, not an
+        // agent's - a key that could set it could keep a runner off its own
+        // ticket, or hand itself one meant for a person. No approver is
+        // needed - it passes no gate.
+        "IssueHumanWorkController.PutIssueHumanWork",
+
         // A story's own say over whether its tasks share one branch and one
         // pull request. Unlike its neighbours it is open to a key - it decides
         // how a story is branched, not what the loop reaches for or passes - so
@@ -799,10 +809,17 @@ public class AdminSurfaceTests
         "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
 
+        // A key filing work for itself is the loop the goose must never become:
+        // the goose says what it saw, and a person decides to act on it. The
+        // sibling trunk-build route accepts a key at the project's own auto-heal
+        // settings; this one has no setting a key could read, so it takes none.
+        "GooseFindingBugController.PostBug",
+
         // The night train's edge, now three levels instead of a flag - HA-470.
         "IssuePreApprovalController.PutIssueExpress",
         "IssuePreApprovalController.PutIssuePreApproval",
         "IssueLocalModelController.PutIssueLocalModel",
+        "IssueHumanWorkController.PutIssueHumanWork",
         "IssueStallController.PutHold",
         "StatusesController.PutExpressSkips",
         "StatusesController.PutParentPulls",

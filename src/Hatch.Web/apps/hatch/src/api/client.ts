@@ -25,6 +25,7 @@ import type {
   DreamWeaveRequest,
   HatchSettings,
   HatchSettingsWriteRequest,
+  HumanWork,
   ImportRequest,
   ImportResult,
   Issue,
@@ -499,6 +500,15 @@ export const setLocalModel = (key: string, level: LocalModel) =>
   fetchJson<Issue>(`/api/issues/${seg(key)}/local-model`, {
     method: 'PUT',
     ...asJson({ level }),
+  });
+
+/** Who works an issue - `human`, `agent` or `inherit`. Its own route, closed
+    to an API key the same way `setLocalModel`'s is - see
+    IssueHumanWorkController. */
+export const setHumanWork = (key: string, value: HumanWork) =>
+  fetchJson<Issue>(`/api/issues/${seg(key)}/human-work`, {
+    method: 'PUT',
+    ...asJson({ value }),
   });
 
 export const setIssueRunnerTags = (key: string, request: IssueRunnerTagsWriteRequest) =>

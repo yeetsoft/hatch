@@ -363,6 +363,29 @@ wins, and a row with no local model runs as it does today. The work answer
 says which model the session runs on, and `modelFellBack` where it is the
 ordinary one.
 
+## Human work
+
+A three-state override saying who works a ticket: `inherit` (the default),
+`human` or `agent`. The live value is read at request time from the nearest
+ticket — itself first, then each ancestor — whose own value is not `inherit`;
+with nothing set anywhere it is `agent`. Nothing is copied, so moving a ticket
+to a new parent changes the live value at once. Unlike priority and dangerous,
+the walk stops at an explicit `agent`, not only at an explicit `human`, so a
+child can opt back out from under a parent a person has claimed.
+
+A `human` ticket — its own value or the nearest ancestor's — is refused by
+`work/next`, `work/queue`, `work/{key}` and a hop with a kind sentence: "human
+work - a person does this one, and no runner picks it up", or "human work
+from `HA-12` - ..." when the value is inherited. Moving it by hand, on the
+board or with `hatch move`, is unaffected — the override is dispatch's own
+reading, not a lock on the column.
+
+Set with `PUT /issues/{key}/human-work`, `{ "value": "human"|"agent"|"inherit" }` -
+a person's call, never a key's, the same reach as Local model. Setting the
+value a ticket already holds writes nothing. The issue page shows the live
+value, its own value and the ticket it was inherited from, beside Local
+model; a board card marked human carries the same source.
+
 ## Finished with no code
 
 A one-line reason, at most 200 characters and trimmed, saying that a ticket

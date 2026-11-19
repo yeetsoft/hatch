@@ -473,6 +473,19 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
 /// </param>
+/// <param name="HumanWork">
+/// Who works this issue, live - <c>"human"</c> or <c>"agent"</c>. Walked live,
+/// at read, to the nearest ancestor - including this issue itself - whose own
+/// value is not inherit; "agent" where nothing is set. Never stored or copied.
+/// </param>
+/// <param name="HumanWorkOwn">
+/// This issue's own override, by name - <c>"human"</c>, <c>"agent"</c> or
+/// <c>"inherit"</c> - see <see cref="EfHatchIssue.HumanWork"/>.
+/// </param>
+/// <param name="HumanWorkFrom">
+/// The ancestor <paramref name="HumanWork"/> was inherited from, or null when
+/// the effective value is this issue's own, or nothing is set.
+/// </param>
 /// <param name="ClosedAt">
 /// The instant this issue last entered a terminal column, or null - see
 /// <see cref="EfHatchIssue.ClosedAt"/>. Trailing and defaulted for the reason
@@ -523,10 +536,10 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// <param name="FromBeyondScope">
 /// The values whose from-key was blanked because the ancestor it names is in a
 /// project the reader's scope does not hold: any of <c>priority</c>,
-/// <c>preApproval</c>, <c>localModel</c>, <c>onePr</c>, <c>dangerous</c>,
-/// <c>preApprovalPassedOver</c>, <c>priorityPassedOver</c> and
-/// <c>pullPassedOver</c>. The value itself still applies. Empty for a reader
-/// whose scope holds everything.
+/// <c>preApproval</c>, <c>localModel</c>, <c>humanWork</c>, <c>onePr</c>,
+/// <c>dangerous</c>, <c>preApprovalPassedOver</c>, <c>priorityPassedOver</c>
+/// and <c>pullPassedOver</c>. The value itself still applies. Empty for a
+/// reader whose scope holds everything.
 /// </param>
 public record IssueCardDto(
     string Key,
@@ -572,6 +585,9 @@ public record IssueCardDto(
     string LocalModel = LocalModelLevels.NoneName,
     string LocalModelOwn = LocalModelLevels.NoneName,
     string? LocalModelFrom = null,
+    string HumanWork = HumanWorkValues.Agent,
+    string HumanWorkOwn = HumanWorkValues.Inherit,
+    string? HumanWorkFrom = null,
     string? PreApprovalPassedOver = null,
     string? PriorityPassedOver = null,
     string? PullPassedOver = null,
@@ -725,6 +741,19 @@ public record IssueClaimDto(
 /// The ancestor <paramref name="LocalModel"/> was inherited from, or null
 /// when the effective level is this issue's own, or none.
 /// </param>
+/// <param name="HumanWork">
+/// Who works this issue, live - <c>"human"</c> or <c>"agent"</c>. Walked live,
+/// at read, to the nearest ancestor - including this issue itself - whose own
+/// value is not inherit; "agent" where nothing is set. Never stored or copied.
+/// </param>
+/// <param name="HumanWorkOwn">
+/// This issue's own override, by name - <c>"human"</c>, <c>"agent"</c> or
+/// <c>"inherit"</c> - see <see cref="EfHatchIssue.HumanWork"/>.
+/// </param>
+/// <param name="HumanWorkFrom">
+/// The ancestor <paramref name="HumanWork"/> was inherited from, or null when
+/// the effective value is this issue's own, or nothing is set.
+/// </param>
 /// <param name="WipLimit">
 /// How many of an epic's stories may be in progress at once, or null for
 /// no limit - meaningful on an epic and on nothing else. Readable by a key, like every other field a dispatch
@@ -819,10 +848,10 @@ public record IssueClaimDto(
 /// <param name="FromBeyondScope">
 /// The values whose from-key was blanked because the ancestor it names is in a
 /// project the reader's scope does not hold: any of <c>priority</c>,
-/// <c>preApproval</c>, <c>localModel</c>, <c>onePr</c>, <c>dangerous</c>,
-/// <c>preApprovalPassedOver</c>, <c>priorityPassedOver</c> and
-/// <c>pullPassedOver</c>. The value itself still applies. Empty for a reader
-/// whose scope holds everything.
+/// <c>preApproval</c>, <c>localModel</c>, <c>humanWork</c>, <c>onePr</c>,
+/// <c>dangerous</c>, <c>preApprovalPassedOver</c>, <c>priorityPassedOver</c>
+/// and <c>pullPassedOver</c>. The value itself still applies. Empty for a
+/// reader whose scope holds everything.
 /// </param>
 /// <param name="StartedBy">
 /// The name of whoever first moved this issue rightward into the column
@@ -910,6 +939,9 @@ public record IssueDto(
     string LocalModel = LocalModelLevels.NoneName,
     string LocalModelOwn = LocalModelLevels.NoneName,
     string? LocalModelFrom = null,
+    string HumanWork = HumanWorkValues.Agent,
+    string HumanWorkOwn = HumanWorkValues.Inherit,
+    string? HumanWorkFrom = null,
     string? PullRequestHeadBranch = null,
     string? PreApprovalPassedOver = null,
     string? PriorityPassedOver = null,
@@ -1216,6 +1248,39 @@ public static class LocalModelLevels
             PreferName => (Prefer, true),
             NoneName => (None, true),
             _ => (None, false),
+        };
+        return ok;
+    }
+}
+
+/// <summary>
+/// The three settings a person's human-work override can hold on an issue -
+/// see <see cref="EfHatchIssue.HumanWork"/>. Shared between the DTOs and
+/// <see cref="IssueHumanWorkController"/> so the two never drift.
+/// </summary>
+public static class HumanWorkValues
+{
+    public const string Human = "human";
+    public const string Agent = "agent";
+    public const string Inherit = "inherit";
+
+    /// <summary>The value's name, for the wire - see <see cref="TryParse"/> for the reverse.</summary>
+    public static string Name(bool? value) => value switch
+    {
+        true => Human,
+        false => Agent,
+        null => Inherit,
+    };
+
+    /// <summary>The name's value, or <see langword="false"/> for anything that is not one of the three.</summary>
+    public static bool TryParse(string? name, out bool? value)
+    {
+        (value, var ok) = name switch
+        {
+            Human => (true, true),
+            Agent => (false, true),
+            Inherit => ((bool?)null, true),
+            _ => (null, false),
         };
         return ok;
     }
@@ -2746,6 +2811,12 @@ public record PreApprovalRequest(string Level);
 /// for the same reason <see cref="PreApprovalRequest"/> is.
 /// </summary>
 public record LocalModelRequest(string Level);
+
+/// <summary>
+/// The override to set, by name - <c>"human"</c>, <c>"agent"</c> or
+/// <c>"inherit"</c> - see <see cref="EfHatchIssue.HumanWork"/>.
+/// </summary>
+public record HumanWorkRequest(string Value);
 
 /// <summary>
 /// The sentence an increment leaves behind it, saying why it left this ticket
@@ -4735,6 +4806,13 @@ public record TrunkBuildDto(
 /// absent.
 /// </summary>
 public record TrunkBuildBugRequest(bool? Express, string? Priority, int? StatusId, string? PreApproval = null);
+
+/// <summary>
+/// The body of <c>POST /api/goose/findings/{id}/bug</c>, every field optional.
+/// <c>ProjectKey</c> is required for a finding that names no project, and for one
+/// that does it can only repeat the finding's own.
+/// </summary>
+public record GooseFindingBugRequest(string? Priority, int? StatusId, string? PreApproval, string? ProjectKey);
 
 /// <param name="Content">The blob's bytes, base64-encoded; null means the trunk has no file at this path.</param>
 /// <param name="Url">The forge link the runner reported for the path on this trunk, or null where it has none.</param>

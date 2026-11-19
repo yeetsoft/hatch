@@ -857,6 +857,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool>("Held")
                         .HasColumnType("boolean");
 
+                    b.Property<bool?>("HumanWork")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("LocalModel")
                         .HasColumnType("integer");
 

@@ -226,6 +226,7 @@ public class IssuesController(
                 i.Priority,
                 i.PreApproval,
                 i.LocalModel,
+                i.HumanWork,
                 i.RunnerTags,
                 i.Dangerous,
                 i.StalledAt,
@@ -254,6 +255,7 @@ public class IssuesController(
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
             var passedOver = priorities.PassedOver(i.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
+            var (humanWork, _, humanWorkFrom) = priorities.EffectiveHumanWork(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
@@ -300,6 +302,9 @@ public class IssuesController(
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
                 LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
+                HumanWork: HumanWorkValues.Name(humanWork),
+                HumanWorkOwn: HumanWorkValues.Name(i.HumanWork),
+                HumanWorkFrom: disclosed.Key(DisclosedValues.HumanWork, humanWorkFrom),
                 StalledAt: i.StalledAt,
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,

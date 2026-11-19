@@ -1,5 +1,6 @@
 import { statusVars } from '../lib/color';
 import { inheritedSentences } from '../lib/inherited';
+import { HumanWorkControl, type HumanWork } from './HumanWorkControl';
 import { LocalModelControl, type LocalModel } from './LocalModelControl';
 import { PreApprovalControl, type PreApproval } from './PreApprovalControl';
 import { PriorityControl, type Priority } from './PriorityControl';
@@ -30,12 +31,14 @@ export function IssueStatusBar({
   priorityBusy,
   preApprovalBusy,
   localModelBusy,
+  humanWorkBusy,
   onMove,
   onRemand,
   blocked,
   onPriority,
   onPreApproval,
   onLocalModel,
+  onHumanWork,
 }: {
   issue: Issue;
   statuses: Status[];
@@ -47,6 +50,7 @@ export function IssueStatusBar({
   priorityBusy: boolean;
   preApprovalBusy: boolean;
   localModelBusy: boolean;
+  humanWorkBusy: boolean;
   onMove: (statusId: number) => void;
   /** Remand this issue to a dream in a deferred column. */
   onRemand?: (statusId: number) => void;
@@ -55,6 +59,7 @@ export function IssueStatusBar({
   onPriority: (priority: Priority) => void;
   onPreApproval: (level: PreApproval) => void;
   onLocalModel: (level: LocalModel) => void;
+  onHumanWork: (value: HumanWork) => void;
 }) {
   const current = statuses.find((s) => s.id === issue.statusId);
   const said = inheritedSentences(issue, issue.projectKey);
@@ -119,6 +124,19 @@ export function IssueStatusBar({
         directory={directory}
         busy={localModelBusy}
         onChange={onLocalModel}
+      />
+
+      <span className="hatch-status-bar-label">Human work</span>
+      <HumanWorkControl
+        key={`humanwork-${issue.key}`}
+        size="lg"
+        issueKey={issue.key}
+        humanWork={issue.humanWork}
+        humanWorkOwn={issue.humanWorkOwn}
+        humanWorkFrom={issue.humanWorkFrom}
+        directory={directory}
+        busy={humanWorkBusy}
+        onChange={onHumanWork}
       />
     </section>
   );

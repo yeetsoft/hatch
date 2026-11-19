@@ -69,6 +69,7 @@ public class PlanController(
                 i.Priority,
                 i.PreApproval,
                 i.LocalModel,
+                i.HumanWork,
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
@@ -94,6 +95,7 @@ public class PlanController(
             var passedOver = priorities.PassedOver(c.Id);
             var disclosed = priorities.Disclose(c.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(c.Id);
+            var (humanWork, _, humanWorkFrom) = priorities.EffectiveHumanWork(c.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(c.Id);
             rows.Add(new ChildRollupDto(
                 new IssueCardDto(
@@ -124,6 +126,9 @@ public class PlanController(
                     LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                     LocalModelOwn: LocalModelLevels.Name(c.LocalModel),
                     LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
+                    HumanWork: HumanWorkValues.Name(humanWork),
+                    HumanWorkOwn: HumanWorkValues.Name(c.HumanWork),
+                    HumanWorkFrom: disclosed.Key(DisclosedValues.HumanWork, humanWorkFrom),
                     StalledAt: c.StalledAt,
                     StalledWhy: c.StalledWhy,
                     Held: c.Held,
@@ -189,6 +194,7 @@ public class PlanController(
                 i.Priority,
                 i.PreApproval,
                 i.LocalModel,
+                i.HumanWork,
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
@@ -279,6 +285,7 @@ public class PlanController(
                 var passedOver = priorities.PassedOver(id);
                 var disclosed = priorities.Disclose(id);
                 var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(id);
+                var (humanWork, _, humanWorkFrom) = priorities.EffectiveHumanWork(id);
                 var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(id);
 
                 entries.Add(new PlanEntryDto(
@@ -310,6 +317,9 @@ public class PlanController(
                         LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                         LocalModelOwn: LocalModelLevels.Name(row.LocalModel),
                         LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
+                        HumanWork: HumanWorkValues.Name(humanWork),
+                        HumanWorkOwn: HumanWorkValues.Name(row.HumanWork),
+                        HumanWorkFrom: disclosed.Key(DisclosedValues.HumanWork, humanWorkFrom),
                         StalledAt: row.StalledAt,
                         StalledWhy: row.StalledWhy,
                         Held: row.Held,

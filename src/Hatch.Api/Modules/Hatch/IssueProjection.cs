@@ -221,6 +221,7 @@ public static class IssueProjection
             var passedOver = priorities.PassedOver(issue.Id);
             var pullPassedOver = priorities.PullPassedOver(issue.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(issue.Id);
+            var (humanWork, humanWorkOwn, humanWorkFrom) = priorities.EffectiveHumanWork(issue.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(issue.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(issue.Id);
@@ -308,6 +309,9 @@ public static class IssueProjection
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(issue.LocalModel),
                 LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
+                HumanWork: HumanWorkValues.Name(humanWork),
+                HumanWorkOwn: HumanWorkValues.Name(humanWorkOwn),
+                HumanWorkFrom: disclosed.Key(DisclosedValues.HumanWork, humanWorkFrom),
                 PullRequestHeadBranch: issue.PullRequestHeadBranch,
                 PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
                 PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),

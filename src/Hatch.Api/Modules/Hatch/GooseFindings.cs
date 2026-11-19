@@ -171,8 +171,9 @@ public static class GooseFindings
     /// <summary>
     /// Whether <paramref name="issueId"/> was filed as the bug for some
     /// finding - the one helper every check that files a bug reads, so each
-    /// agrees on what "filed from a finding" means. Nothing files one yet (HA-2496);
-    /// this exists so a later check that does is never the first to ask.
+    /// agrees on what "filed from a finding" means. A person files one, through
+    /// <see cref="GooseFindingBugController"/> (HA-2516), and the goose never does;
+    /// every check asks this so a finding does not watch its own fix.
     /// </summary>
     public static Task<bool> FiledFromAFindingAsync(HatchContext db, long issueId, CancellationToken ct) =>
         db.GooseFindings.IgnoreQueryFilters().AnyAsync(f => f.BugIssueId == issueId, ct);

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Field, ProjectMark } from '@hatch/ui';
 import { assigneeFact, effortFact, modelFact, wipLimitFact } from '../lib/issueFacts';
 import { dangerousFact } from '../lib/dangerous';
+import { humanWorkFact } from '../lib/humanWork';
 import { inheritedSentences } from '../lib/inherited';
 import { localModelFact } from '../lib/localModel';
 import { projectLogoUrl } from '../lib/projectLogo';
@@ -111,6 +112,12 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
       {issue.localModel !== 'none' && (
         <Field label="Local model" as="div">
           {localModelFact(issue.localModel, issue.localModelFrom)}
+        </Field>
+      )}
+
+      {issue.humanWork === 'human' && (
+        <Field label="Human work" as="div">
+          {humanWorkFact(issue.humanWork, issue.humanWorkFrom)}
         </Field>
       )}
 

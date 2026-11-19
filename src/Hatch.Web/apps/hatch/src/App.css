@@ -6654,6 +6654,21 @@ input.hatch-inline-title-input {
   color: color-mix(in srgb, var(--primary) 70%, var(--ink));
 }
 
+/* Human work, beside Local model and drawn the same way, in --flow-person -
+   the flow-viz's own hue for a person's own, so the two marks read as the
+   same fact in two places. */
+.hatch-card-humanwork {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--flow-person) 12%, transparent);
+  color: var(--flow-person);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
 /* Dangerous, beside Express and Pre-approved and drawn the same way. --danger
    rather than --warn: --warn is the open question's own, and a card that is
    both dangerous and owed an answer needs the two marks to read as different
@@ -7029,6 +7044,147 @@ input.hatch-inline-title-input {
 
 .hatch-localmodel-step.require {
   border-color: color-mix(in srgb, var(--primary) 70%, var(--ink));
+}
+
+/* The human-work pill, on the issue page: `.hatch-localmodel-pill` in the
+   same shape and the same button chrome, with one colour instead of two
+   tiers - --flow-person, the same hue the board card's own mark and the
+   flow-viz use for a person's own, so the three never read as different
+   facts. Inherit and agent share the bare, neutral rule; only human is
+   coloured. */
+.hatch-humanwork-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--ink) 40%, var(--card));
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--ink) 14%, var(--card));
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hatch-humanwork-pill:hover:not(:disabled, .human) {
+  border-color: var(--flow-person);
+  color: var(--flow-person);
+}
+
+.hatch-humanwork-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hatch-humanwork-pill.human {
+  border-color: var(--flow-person);
+  background: var(--flow-person);
+  color: var(--on-flow-person);
+}
+
+/* The pill's button chrome and caret - `.hatch-localmodel-pill-press`/`-caret`, renamed. */
+.hatch-humanwork-pill-press {
+  transition:
+    box-shadow var(--transition),
+    opacity var(--transition);
+}
+
+.hatch-humanwork-pill-press:focus-visible {
+  outline: 2px solid var(--flow-person);
+  outline-offset: 2px;
+}
+
+.hatch-humanwork-pill-press[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hatch-humanwork-pill-caret {
+  transition: transform var(--transition);
+}
+
+.hatch-humanwork-pill-press[aria-expanded='true'] .hatch-humanwork-pill-caret {
+  transform: rotate(180deg);
+}
+
+/* `.hatch-localmodel-pill-lg`, renamed. */
+.hatch-humanwork-pill-lg {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-section);
+}
+
+.hatch-humanwork-pill-lg .hatch-humanwork-pill-caret {
+  width: 16px;
+  height: 16px;
+}
+
+/* What a reader who may not press it sees instead: the state as a word. */
+.hatch-humanwork-said {
+  color: var(--muted);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.hatch-humanwork-said.human {
+  color: var(--flow-person);
+}
+
+/* The band under the pill, coloured by the effective value's own class. */
+.hatch-humanwork-band {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: var(--r);
+  animation: hatch-peek-status-in var(--transition) both;
+}
+
+.hatch-humanwork-band.human {
+  background: color-mix(in srgb, var(--flow-person) 10%, var(--card));
+  border-left-color: var(--flow-person);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-humanwork-band {
+    animation: none;
+  }
+}
+
+/* One button per value. */
+.hatch-humanwork-steps {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hatch-humanwork-step {
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hatch-humanwork-step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-strong) 18%, transparent);
+}
+
+.hatch-humanwork-step.human {
+  border-color: var(--flow-person);
 }
 
 /* The level this issue's own row already carries. Disabled rather than merely
