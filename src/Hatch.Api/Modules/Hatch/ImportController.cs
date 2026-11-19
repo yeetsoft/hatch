@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/import")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class ImportController(HatchContext db, PlanImportParser parser, RankService ranks, ICallerIdentity caller, TimeProvider time) : ControllerBase
+public class ImportController(HatchContext db, IActorDirectory actors, PlanImportParser parser, RankService ranks, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     /// <summary>A plan file is prose; a megabyte of it is a mistake, not a plan.</summary>
     public const int MaxFileBytes = 1024 * 1024;
@@ -257,7 +257,7 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
                 return Conflict("could not mint issue numbers for this import - try again");
             }
 
-            await ChangelogTasks.FileForAsync(db, ranks, time, closed, ct);
+            await ChangelogTasks.FileForAsync(db, actors, ranks, time, closed, ct);
 
             return new ImportResultDto(results, count);
         }

@@ -216,13 +216,14 @@ public class SearchController(
             .ToListAsync(ct);
 
         var now = time.GetUtcNow();
-        var priorities = await PriorityTree.ForAsync(db, ct);
+        var priorities = await PriorityTree.ForAsync(db, actors, ct);
 
         var hits = new List<SearchHitDto>(rows.Count);
         foreach (var i in rows)
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var passedOver = priorities.PassedOver(i.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
@@ -261,6 +262,8 @@ public class SearchController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                PreApprovalPassedOver: passedOver.PreApproval?.Key,
+                PriorityPassedOver: passedOver.Priority?.Key,
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
                 LocalModelFrom: effectiveLocalModelFrom,

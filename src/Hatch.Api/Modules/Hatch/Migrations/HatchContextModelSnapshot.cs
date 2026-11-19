@@ -647,8 +647,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int>("PreApproval")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("PreApprovalSetBy")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("PrioritySetBy")
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ProjectId")
                         .HasColumnType("integer");

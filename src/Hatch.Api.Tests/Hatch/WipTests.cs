@@ -590,7 +590,7 @@ public class WipTests
         public async Task<WipSection?> LoadAsync()
         {
             var statuses = await Db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
-            return await Wip.LoadAsync(Db, Claims, statuses, Time.GetUtcNow(), default);
+            return await Wip.LoadAsync(Db, new StubActorDirectory(), Claims, statuses, Time.GetUtcNow(), default);
         }
 
         public async Task<long> IssueAsync(string type, int statusId, long? parentId = null, int priority = PriorityLevels.Normal)

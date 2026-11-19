@@ -433,7 +433,7 @@ public class StatusesControllerTests
         return new Harness
         {
             Db = db,
-            Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
+            Statuses = new StatusesController(db, new StubActorDirectory(), caller, time, NullLogger<StatusesController>.Instance),
             Time = time,
         };
     }

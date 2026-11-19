@@ -165,6 +165,27 @@ public class TrunkBuildBugControllerTests
     }
 
     [Fact]
+    public async Task TheBugItFiles_RecordsNoSetterForItsLevels()
+    {
+        // The level is the project's own setting, not a person's call, so it
+        // never crosses a project line (HA-2466) - even when a person pressed
+        // the button and named a level.
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+
+        var dto = Value(await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, null, "express"), default));
+
+        var bug = await h.Db.Issues.AsNoTracking().SingleAsync();
+        Assert.Equal(PreApprovalLevels.Express, bug.PreApproval);
+        Assert.Null(bug.PreApprovalSetBy);
+        Assert.Null(bug.PrioritySetBy);
+        Assert.Equal("express", dto.PreApproval);
+    }
+
+    [Fact]
     public async Task PreApprovedFromAPersonWhoMayNotApprove_IsRefusedForbidden_AndFilesNothing()
     {
         var h = await NewAsync();

@@ -204,6 +204,23 @@ public class ChangelogTasksTests
     }
 
     [Fact]
+    public async Task AParentlessTask_CarriesTheLevelWithNoSetter()
+    {
+        var h = await NewAsync();
+        await h.ElectAsync(Remote);
+        var chore = await h.FileAsync("task", "chore", h.Doing);
+        chore.PreApproval = PreApprovalLevels.Express;
+        chore.PreApprovalSetBy = Guid.NewGuid();
+        await h.Db.SaveChangesAsync();
+
+        await h.CloseAsync(chore);
+
+        var task = Assert.Single(await h.TasksAsync());
+        Assert.Equal(PreApprovalLevels.Express, task.PreApproval);
+        Assert.Null(task.PreApprovalSetBy);
+    }
+
+    [Fact]
     public async Task ATaskUnderTheClosedIssue_LeavesItsOwnLevelUnset_ToInheritTheParents()
     {
         var h = await NewAsync();
@@ -216,7 +233,7 @@ public class ChangelogTasksTests
 
         var task = Assert.Single(await h.TasksAsync());
         Assert.Equal(PreApprovalLevels.None, task.PreApproval);
-        var tree = await PriorityTree.ForAsync(h.Db, default);
+        var tree = await PriorityTree.ForAsync(h.Db, new StubActorDirectory(), default);
         Assert.Equal(PreApprovalLevels.PreApproved, tree.EffectivePreApproval(task.Id).Level);
     }
 
@@ -316,7 +333,7 @@ public class ChangelogTasksTests
         {
             Db = db,
             Issues = new IssuesController(db, ranks, actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
-            Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
+            Statuses = new StatusesController(db, new StubActorDirectory(), caller, time, NullLogger<StatusesController>.Instance),
             ProjectId = project.Id,
             OtherProjectId = other.Id,
             Todo = todo.Id,

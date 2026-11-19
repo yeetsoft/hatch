@@ -179,13 +179,13 @@ public sealed class Dispatch(
         // reason nobody could reconstruct afterwards.
         // Read once for the pass: the claim lineage, the dependency gate and the
         // family gate all answer one-PR questions from it.
-        var tree = await PriorityTree.ForAsync(db, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct);
 
-        var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct, tree));
+        var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, actors, now, ct, tree));
 
-        var gate = await DependencyGate.ForAsync(db, statuses, ct, tree);
-        var family = await FamilyGate.ForAsync(db, statuses, ct, tree);
-        var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
+        var gate = await DependencyGate.ForAsync(db, actors, statuses, ct, tree);
+        var family = await FamilyGate.ForAsync(db, actors, statuses, ct, tree);
+        var wip = await Wip.LoadAsync(db, actors, claims, statuses, now, ct);
         var open = await Questions.WaitingCountsAsync(db, ct);
         var playbooks = await db.Playbooks.AsNoTracking()
             .Include(p => p.FromStatus)
@@ -1282,7 +1282,7 @@ public sealed class Dispatch(
             .ToListAsync(ct);
         if (inTrain.Count == 0) return [];
 
-        var tree = await PriorityTree.ForAsync(db, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct);
 
         // The same fold ScanAsync's own FamilyGate wraps as IsWaiting, read
         // directly rather than through it: a merges column is a handful of
@@ -2290,6 +2290,25 @@ public sealed class Dispatch(
         // a hop out of the column carries another column as its target.
         if (landing is { } landed && to.Id == from.Id)
             return new Blocking(landed.Sentence, BlockedKinds.Other);
+
+        // A level the walk passed over at a project line, where it would have
+        // carried this issue: said in its own words, ahead of the sentences
+        // below that would read as an ordinary protected or done column, so the
+        // person reading the queue learns the level exists and why it did not
+        // count. Only the three arms that read a level are asked again - the
+        // others did not fire, and do not depend on it. A story, bug or task
+        // left of implementation under a parent in another project is held for
+        // that, below, whatever its level, so the sentence would blame the wrong
+        // thing there.
+        if (!hop && gate.PassedOver(issue.Id).PreApproval is { } passedOver
+            && !(issue.Type is "story" or "bug" or "task" && !Columns.AtOrPastImplementation(statuses, from.Id)
+                 && family.ParentOf(issue.Id) is { OtherProject: true })
+            && HopKind(issue, from, to, family, statuses, wip, family.ParentOf(issue.Id), playbook, sendBackStreak,
+                claimed.Claims!.StallResumeLimit, passedOver.Level, verdicts, builds, claimed.Now) is HopKinds.Express or HopKinds.Approve or HopKinds.Close)
+            return new Blocking(
+                $"{(passedOver.Level == PreApprovalLevels.PreApproved ? "pre-approved" : "express")} on {passedOver.Key}, not honoured in {issue.Project!.Key} - " +
+                "its setter has no say there, so a person moves it",
+                BlockedKinds.Person);
 
         if (to.IsTerminal && hopKind != HopKinds.Close)
             return new Blocking($"the next column is \"{to.Name}\", and only the operator moves work there", BlockedKinds.Person);
@@ -3371,6 +3390,9 @@ public sealed record HasDeclaration(IReadOnlyList<string> Has, bool Judged)
 
 // ---- Priority ----
 
+/// <summary>A level the walk passed over at a project line: what it was, and the key of the ancestor that carries it.</summary>
+public readonly record struct PassedOverLevel(int Level, string Key);
+
 /// <summary>
 /// The parent/key/priority of every issue, read once, and the question
 /// "what priority is live here" answered against it by walking to the
@@ -3407,6 +3429,14 @@ public sealed class PriorityTree
     // skipped, not read. An issue with no entry reads as in the same project.
     private readonly Dictionary<long, int> _projects;
 
+    // Who set each issue's pre-approval and priority, null where nobody did.
+    // Kept beside _rows rather than widening its tuple, as _projects is.
+    private readonly Dictionary<long, (Guid? PreApprovalSetBy, Guid? PrioritySetBy)> _setters;
+
+    // What those people may do, read once. A level on an ancestor in another
+    // project is honoured only while its setter passes it; see HonoursAcross.
+    private readonly SetterAuthority _authority;
+
     // Each issue's project's level - ProjectPriorities. Kept beside _dangerous
     // rather than widening _rows; an issue with no entry reads as normal.
     private readonly Dictionary<long, string> _projectLevels;
@@ -3428,9 +3458,13 @@ public sealed class PriorityTree
         Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>>? omissions = null,
         Dictionary<long, string>? projectLevels = null,
         Dictionary<long, int>? localModels = null,
-        Dictionary<long, int>? projects = null)
+        Dictionary<long, int>? projects = null,
+        Dictionary<long, (Guid?, Guid?)>? setters = null,
+        SetterAuthority? authority = null)
     {
         _rows = rows;
+        _setters = setters ?? new();
+        _authority = authority ?? SetterAuthority.Nobody;
         _projects = projects ?? new();
         _localModels = localModels ?? new();
         _projectLevels = projectLevels ?? new();
@@ -3450,7 +3484,12 @@ public sealed class PriorityTree
     /// judge rows their own query already read across the house, and a tree
     /// missing a hidden issue would read it as unpaused and unblocked.
     /// </param>
-    public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct, bool ignoreFilters = false)
+    /// <param name="actors">
+    /// Who is live, for the setters of levels found across a project line.
+    /// Required, not optional: a tree built without it would honour nothing
+    /// across a line and say nothing about why.
+    /// </param>
+    public static async Task<PriorityTree> ForAsync(HatchContext db, IActorDirectory actors, CancellationToken ct, bool ignoreFilters = false)
     {
         var issues = ignoreFilters ? db.Issues.IgnoreQueryFilters() : db.Issues;
         var omissions = ignoreFilters ? db.RunnerOmissions.IgnoreQueryFilters() : db.RunnerOmissions;
@@ -3462,9 +3501,12 @@ public sealed class PriorityTree
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous, ProjectPriority = i.Project!.Priority,
-                i.LocalModel, i.ProjectId,
+                i.LocalModel, i.ProjectId, i.PreApprovalSetBy, i.PrioritySetBy,
             })
             .ToListAsync(ct);
+
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+        var authority = await SetterAuthority.ReadAsync(db, actors, statuses, ct);
 
         var omissionRows = await omissions.AsNoTracking()
             .Select(o => new { o.IssueId, o.RunnerName, o.Reason, o.By, o.At })
@@ -3485,7 +3527,9 @@ public sealed class PriorityTree
                         g.Select(o => (o.RunnerName, o.Reason, o.By, o.At)).ToList()),
             rows.ToDictionary(r => r.Id, r => r.ProjectPriority),
             rows.ToDictionary(r => r.Id, r => r.LocalModel),
-            rows.ToDictionary(r => r.Id, r => r.ProjectId));
+            rows.ToDictionary(r => r.Id, r => r.ProjectId),
+            rows.ToDictionary(r => r.Id, r => (r.PreApprovalSetBy, r.PrioritySetBy)),
+            authority);
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -3503,9 +3547,65 @@ public sealed class PriorityTree
         _projectLevels.TryGetValue(issueId, out var level) ? level : ProjectPriorities.Normal;
 
     /// <summary>
+    /// Whether the level on <paramref name="id"/> may be read by
+    /// <paramref name="issueId"/>. Inside one project always: no test is made.
+    /// Across a project line only on the setter's authority - a person on
+    /// record who is live, in scope of the descendant's project, and able to
+    /// set the same level there - so a level with no setter, and every level
+    /// set before setters were recorded, never crosses. Judged against the
+    /// rows read with this tree, so it is live.
+    /// </summary>
+    private bool HonoursAcross(long id, long issueId, bool preApproval)
+    {
+        if (SameProject(id, issueId)) return true;
+        if (!_projects.TryGetValue(issueId, out var project) || !TryGet(id, out var row)) return false;
+
+        var (preApprovalSetBy, prioritySetBy) = _setters.GetValueOrDefault(id);
+
+        return preApproval
+            ? _authority.HonoursPreApproval(row.PreApproval, preApprovalSetBy, project)
+            : _authority.HonoursPriority(prioritySetBy, project);
+    }
+
+    /// <summary>
+    /// The nearest ancestor whose level the walk passed over at a project
+    /// line, per level: its key and the level it carries. Null where nothing
+    /// was passed over. Only a level above none (or normal) counts, and only
+    /// one the walk reached: an ancestor beyond the level that was honoured is
+    /// never looked at.
+    /// </summary>
+    public (PassedOverLevel? PreApproval, PassedOverLevel? Priority) PassedOver(long issueId) =>
+        (PassedOverOf(issueId, true), PassedOverOf(issueId, false));
+
+    private PassedOverLevel? PassedOverOf(long issueId, bool preApproval)
+    {
+        var seen = new HashSet<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (TryGet(id, out var row))
+            {
+                var level = preApproval ? row.PreApproval : row.Priority;
+                if (level != (preApproval ? PreApprovalLevels.None : PriorityLevels.Normal))
+                {
+                    if (HonoursAcross(id, issueId, preApproval)) return null;
+                    return new PassedOverLevel(level, row.Key);
+                }
+            }
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The priority live on this issue: its own, if set, or the nearest
     /// ancestor's that is not Normal. <c>FromKey</c> is null when the level
-    /// found is the issue's own, or when the walk never leaves Normal.
+    /// found is the issue's own, or when the walk never leaves Normal. An
+    /// ancestor in another project counts only on its setter's authority;
+    /// see <see cref="HonoursAcross"/>.
     /// </summary>
     public (int Level, string? FromKey) Effective(long issueId)
     {
@@ -3514,7 +3614,7 @@ public sealed class PriorityTree
 
         while (at is { } id && seen.Add(id))
         {
-            if (SameProject(id, issueId) && TryGet(id, out var row) && row.Priority != PriorityLevels.Normal)
+            if (TryGet(id, out var row) && row.Priority != PriorityLevels.Normal && HonoursAcross(id, issueId, false))
                 return (row.Priority, id == issueId ? null : row.Key);
 
             at = TryGet(id, out var found) ? found.ParentId : null;
@@ -3526,7 +3626,9 @@ public sealed class PriorityTree
     /// <summary>
     /// The pre-approval live on this issue: its own, if set, or the nearest
     /// ancestor's that is not None. <c>FromKey</c> is null when the level
-    /// found is the issue's own, or when the walk never leaves None.
+    /// found is the issue's own, or when the walk never leaves None. An
+    /// ancestor in another project counts only on its setter's authority; see
+    /// <see cref="HonoursAcross"/>.
     /// </summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId)
     {
@@ -3535,7 +3637,7 @@ public sealed class PriorityTree
 
         while (at is { } id && seen.Add(id))
         {
-            if (SameProject(id, issueId) && TryGet(id, out var row) && row.PreApproval != PreApprovalLevels.None)
+            if (TryGet(id, out var row) && row.PreApproval != PreApprovalLevels.None && HonoursAcross(id, issueId, true))
                 return (row.PreApproval, id == issueId ? null : row.Key);
 
             at = TryGet(id, out var found) ? found.ParentId : null;
@@ -3843,7 +3945,7 @@ public sealed class DependencyGate
     }
 
     public static async Task<DependencyGate> ForAsync(
-        HatchContext db, List<EfHatchStatus> statuses, CancellationToken ct, PriorityTree? tree = null)
+        HatchContext db, IActorDirectory actors, List<EfHatchStatus> statuses, CancellationToken ct, PriorityTree? tree = null)
     {
         var terminal = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToList();
 
@@ -3858,7 +3960,7 @@ public sealed class DependencyGate
             .Select(d => new { d.IssueId, d.DependsOnId, ProjectKey = d.DependsOn!.Project!.Key, d.DependsOn!.Number })
             .ToListAsync(ct);
 
-        tree ??= await PriorityTree.ForAsync(db, ct, ignoreFilters: true);
+        tree ??= await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         // The one exception to "satisfied means done": a task under a story or
         // bug that shares one pull request, waiting on its pull request,
@@ -3920,6 +4022,9 @@ public sealed class DependencyGate
 
     /// <summary>The pre-approval live on this issue - see <see cref="PriorityTree.EffectivePreApproval"/>.</summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId) => _tree.EffectivePreApproval(issueId);
+
+    /// <summary>The levels passed over at a project line - see <see cref="PriorityTree.PassedOver"/>.</summary>
+    public (PassedOverLevel? PreApproval, PassedOverLevel? Priority) PassedOver(long issueId) => _tree.PassedOver(issueId);
 
     /// <summary>The local-model level live on this issue - see <see cref="PriorityTree.EffectiveLocalModel"/>.</summary>
     public (int Level, string? FromKey) EffectiveLocalModel(long issueId) => _tree.EffectiveLocalModel(issueId);
@@ -4004,7 +4109,7 @@ public sealed class FamilyGate
     }
 
     public static async Task<FamilyGate> ForAsync(
-        HatchContext db, List<EfHatchStatus> statuses, CancellationToken ct, PriorityTree? tree = null)
+        HatchContext db, IActorDirectory actors, List<EfHatchStatus> statuses, CancellationToken ct, PriorityTree? tree = null)
     {
         var terminal = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToHashSet();
 
@@ -4036,7 +4141,7 @@ public sealed class FamilyGate
         // Every task waiting on its story's pull request, found once for the
         // pass - see PriorityTree.WaitingOn. A board that shares no pull request
         // anywhere has an empty set and every rule below is exactly as it was.
-        tree ??= await PriorityTree.ForAsync(db, ct, ignoreFilters: true);
+        tree ??= await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
         var waiting = tree.WaitingIds(statuses).Keys.ToHashSet();
 
         // Which tasks share a parent's branch, and which parent - read off the

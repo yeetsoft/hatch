@@ -462,6 +462,38 @@ public class IssueExpediteControllerTests
         Assert.Equal((PriorityLevels.NormalName, PriorityLevels.ExpeditedName), Sides(e));
     }
 
+    // ---- Who set it (HA-2466) ----
+
+    [Fact]
+    public async Task SettingAPriority_RecordsThePersonWhoSetIt_AndBackToNormalClearsThem()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+
+        await h.PriorityAsync(issue.Key, PriorityLevels.ExpeditedName);
+        Assert.Equal(ada.Id, (await h.RowAsync(issue.Key)).PrioritySetBy);
+
+        await h.PriorityAsync(issue.Key, PriorityLevels.NormalName);
+        Assert.Null((await h.RowAsync(issue.Key)).PrioritySetBy);
+    }
+
+    [Fact]
+    public async Task SettingThePriorityItAlreadyHolds_LeavesTheFirstPersonRecorded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+        await h.PriorityAsync(issue.Key, PriorityLevels.LowName);
+        h.Actors.Me = h.Actors.AddPerson("Grace");
+
+        await h.PriorityAsync(issue.Key, PriorityLevels.LowName);
+
+        Assert.Equal(ada.Id, (await h.RowAsync(issue.Key)).PrioritySetBy);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -469,6 +501,7 @@ public class IssueExpediteControllerTests
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
+        public required StubActorDirectory Actors { get; init; }
         public required IssueExpediteController Expedite { get; init; }
         public required IssueExpediteController Priority { get; init; }
         public required IssuesController Issues { get; init; }
@@ -536,6 +569,7 @@ public class IssueExpediteControllerTests
         return new Harness
         {
             Db = db,
+            Actors = actors,
             // One controller instance, called through two names - both routes
             // share the one route class, exactly as they share it in production.
             Expedite = controller,

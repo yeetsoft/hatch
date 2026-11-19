@@ -1,3 +1,4 @@
+using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.EntityFrameworkCore;
 
@@ -59,7 +60,7 @@ public static class Wip
     /// claimed-inbound part agree.
     /// </param>
     public static async Task<WipSection?> LoadAsync(
-        HatchContext db, IssueClaims claims, List<EfHatchStatus> statuses, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, IActorDirectory actors, IssueClaims claims, List<EfHatchStatus> statuses, DateTimeOffset now, CancellationToken ct)
     {
         var section = statuses
             .Where(s => s.IsWip && !s.IsDeferred && !s.IsTerminal)
@@ -103,7 +104,7 @@ public static class Wip
             .Select(i => new { i.Id, i.ParentId })
             .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
 
-        var tree = await PriorityTree.ForAsync(db, ct, ignoreFilters: true);
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         var slices = new List<WipSlice>();
         foreach (var types in sliceTypes)

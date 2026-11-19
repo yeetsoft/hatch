@@ -1,3 +1,4 @@
+using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// have let it through, so a story an epic refuses spends no section slot at
 /// all.
 /// </remarks>
-public sealed class WipGate(HatchContext db, IssueClaims claims, DateTimeOffset now)
+public sealed class WipGate(HatchContext db, IActorDirectory actors, IssueClaims claims, DateTimeOffset now)
 {
     private WipSection? _section;
     private bool _loaded;
@@ -134,7 +135,7 @@ public sealed class WipGate(HatchContext db, IssueClaims claims, DateTimeOffset 
         if (_loaded) return _section;
 
         var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
-        _section = await Wip.LoadAsync(db, claims, statuses, now, ct);
+        _section = await Wip.LoadAsync(db, actors, claims, statuses, now, ct);
         _loaded = true;
         return _section;
     }

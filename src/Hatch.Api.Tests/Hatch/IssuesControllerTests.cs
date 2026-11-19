@@ -4745,7 +4745,7 @@ public class IssuesControllerTests
             Questions = new QuestionsController(db),
             Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             Projects = new ProjectsController(db, time, caller, actors, new ProjectAccess(db, actors), NullLogger<ProjectsController>.Instance, ranks, TestClaims.With()),
-            Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
+            Statuses = new StatusesController(db, new StubActorDirectory(), caller, time, NullLogger<StatusesController>.Instance),
             ProjectId = hatch.Id,
             OtherProjectId = ops.Id,
             Inbox = inbox.Id,
