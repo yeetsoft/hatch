@@ -110,6 +110,7 @@ public class ScopeRouteMatrixTests
         ("RunnersController.CreateRunner", RunnerAdmin),
         ("RunnersController.DeleteRunnerOrder", RunnerAdmin),
         ("RunnersController.DeleteRunnerSessionOrder", RunnerAdmin),
+        ("RunnersController.DeleteRunnerSessionPause", RunnerAdmin),
         ("RunnersController.EndSession", RunnerAdmin),
         ("RunnersController.GetRunner", RunnerAdmin),
         ("RunnersController.GetRunners", RunnerAdmin),

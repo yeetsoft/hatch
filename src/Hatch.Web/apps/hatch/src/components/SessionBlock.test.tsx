@@ -100,6 +100,7 @@ const actions = {
   stop: async () => null,
   order: async () => null,
   withdraw: async () => null,
+  lift: async () => null,
   pauseAll: async () => null,
   stopAll: async () => null,
 };
