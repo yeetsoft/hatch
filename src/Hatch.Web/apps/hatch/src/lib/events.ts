@@ -127,6 +127,32 @@ export function describe(event: IssueEvent): string {
     return typeof runner === 'string' && typeof by === 'string' ? `ordered ${runner} to work, by ${by}` : '';
   }
 
+  /* A capability event names the row it touched, by position and words. An add
+     and a removal carry { id, position, statement }; an edit carries whole
+     { statement, howToTell } values each side; a reorder carries the ids in
+     the old and the new order - no words, so it says how many moved. */
+  if (event.kind === 'capability_added' || event.kind === 'capability_removed') {
+    const { position, statement } = event.payload ?? {};
+    const verb = event.kind === 'capability_added' ? 'added as' : 'removed from';
+    return typeof position === 'number' ? `${verb} #${position}: ${short(statement)}` : '';
+  }
+  if (event.kind === 'capability_edited') {
+    const { position } = event.payload ?? {};
+    const was = from as { statement?: unknown; howToTell?: unknown } | undefined;
+    const now = to as { statement?: unknown; howToTell?: unknown } | undefined;
+    if (typeof position !== 'number' || was === undefined || now === undefined) return '';
+    const changed = [was.statement !== now.statement ? 'statement' : null, was.howToTell !== now.howToTell ? 'how to tell' : null]
+      .filter((x) => x !== null)
+      .join(' and ');
+    return `#${position}: ${changed} changed, now ${short(now.statement)}`;
+  }
+  if (event.kind === 'capability_moved') {
+    const before = Array.isArray(from) ? from : [];
+    const after = Array.isArray(to) ? to : [];
+    const moved = after.filter((id, i) => before[i] !== id).length;
+    return `${moved} of ${after.length} capabilities moved`;
+  }
+
   if (from === undefined && to === undefined) return '';
   return `${short(from)} → ${short(to)}`;
 }

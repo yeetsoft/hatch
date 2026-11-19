@@ -707,6 +707,55 @@ given under any other mode; a missing `ProjectId`; and the first id in
 `404`s an unknown `ProjectId`. `400`s with no playbook row covering `epic`
 on the project, naming the project's key and the Playbooks page.
 
+## Capabilities
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/issues/{key}/capabilities` | An ambition's capabilities, in position order |
+| POST | `/issues/{key}/capabilities` | Adds one, at the end or at a position |
+| PATCH | `/issues/{key}/capabilities/{id}` | Edits one's statement or how-to-tell line |
+| PUT | `/issues/{key}/capabilities/order` | Puts them in the order the body names |
+| DELETE | `/issues/{key}/capabilities/{id}` | Removes one and closes the gap |
+
+A capability is one thing an ambition says has to be true, and a line saying
+how anyone would tell. Every route answers `400` on an issue that is not an
+ambition, with a sentence naming its type: `only an ambition takes
+capabilities - AER-12 is a story`. A key is open on all five, but may write
+(POST, PATCH, PUT or DELETE) only while the ambition stands left of the
+implementation column: in that column, past it, in a terminal column or in a
+deferred one it gets `403`, and a person is never refused. Reading is open to
+a key anywhere.
+
+Each is a `CapabilityDto(Id, Position, Statement, HowToTell, CreatedBy,
+CreatedAt, UpdatedAt)`. `Position` runs 1 to n with no gaps, so a read is
+already in order and a write leaves it so. GET answers `CapabilityDto[]`, empty
+for a fresh ambition.
+
+POST takes `CapabilityCreateRequest(Statement, HowToTell, Position?)` and
+answers `201` with the row. `Position` left out appends; given, it must be
+within `1` to one past the last, and the rows from there on shift down by one.
+A blank `Statement` or `HowToTell`, or one over 300 characters, is a `400`.
+
+PATCH takes `CapabilityPatchRequest(Statement?, HowToTell?)`. A field left out
+keeps its value; one sent as an empty string is a `400`. An unknown `id`, or
+one that is another ambition's, is a `404`. A PATCH that changes nothing writes
+nothing and leaves `UpdatedAt` alone. It answers the row.
+
+PUT `/order` takes `CapabilityOrderRequest(Ids)` - every capability's id once,
+in the wanted order - and answers the reordered `CapabilityDto[]`. A list that
+misses an id, repeats one, or names an id that is not this ambition's is a
+`400` and changes nothing; a list naming the order already there writes
+nothing.
+
+DELETE answers `204`, and shifts every row above it down by one. An unknown
+`id` is a `404`.
+
+Each write that changes something writes one issue event on the ambition:
+`capability_added`, `capability_edited`, `capability_moved` (one per reorder,
+however many rows moved) or `capability_removed` - see docs/hatch.md. Retyping
+an ambition away from `ambition` is refused while it holds any capabilities,
+and deleting the ambition deletes them.
+
 ## The loop's own routes
 
 Everything above is a resource the board itself owns. What follows is what a
