@@ -7236,6 +7236,20 @@ button.hatch-option.chosen {
   text-decoration: underline;
 }
 
+/* The project an epic is from, where it is drawn inside one from another. A
+   chip beside the key rather than a prefix on the title, so the title keeps
+   its line. */
+.hatch-plan-project {
+  flex: none;
+  padding: 2px var(--sp-1-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  line-height: 1.4;
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 .hatch-plan-title {
   flex: 1;
   min-width: 0;
