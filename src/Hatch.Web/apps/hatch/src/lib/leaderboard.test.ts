@@ -54,6 +54,8 @@ const session = (over: Partial<WorkLogSession> = {}): WorkLogSession => ({
   dispatchModel: null,
   modelPlacement: null,
   modelDigest: null,
+  outcome: null,
+  reason: null,
   ...over,
 });
 

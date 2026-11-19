@@ -930,6 +930,183 @@ public class WorkLogControllerTests
     }
 
     [Fact]
+    public async Task Sessions_NarrowToOneOutcome_CostliestFirst_EachNamingItsReason_AndTheTotalsFollow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-4), usd: 1.00m, outcome: "dropped", reason: "quiet");
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-3), usd: 9.00m, outcome: "dropped", reason: "run-time");
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), usd: 50.00m, outcome: "worked");
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-1), usd: 70.00m);
+
+        var sessions = await h.SessionsAsync(sort: "cost", outcome: "dropped");
+
+        Assert.Equal(["run-time", "quiet"], sessions.Sessions.Select(r => r.Reason));
+        Assert.All(sessions.Sessions, r => Assert.Equal("dropped", r.Outcome));
+        Assert.Equal(2, sessions.Totals.Sessions);
+        Assert.Equal(10.00m, sessions.Totals.CostUsd);
+    }
+
+    [Fact]
+    public async Task Sessions_OutcomeNone_ReadsOnlyTheUnstampedRows()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), outcome: "worked");
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-1));
+
+        var row = Assert.Single((await h.SessionsAsync(outcome: "none")).Sessions);
+
+        Assert.Null(row.Outcome);
+        Assert.Null(row.Reason);
+        Assert.Equal(2_000, row.TotalTokens);
+    }
+
+    [Fact]
+    public async Task Sessions_WithoutAnOutcome_ReadEverySession_EachCarryingItsOutcomeAndReason()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), outcome: "dropped", reason: "quiet");
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-1));
+
+        var sessions = await h.SessionsAsync();
+
+        Assert.Equal(2, sessions.Totals.Sessions);
+        Assert.Equal("quiet", Assert.Single(sessions.Sessions, r => r.Outcome == "dropped").Reason);
+    }
+
+    [Fact]
+    public async Task Sessions_TheOutcomeIsCaseInsensitive_AndBlankIsAbsent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), outcome: "dropped");
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-1), outcome: "worked");
+
+        Assert.Equal("dropped", Assert.Single((await h.SessionsAsync(outcome: " DROPPED ")).Sessions).Outcome);
+        Assert.Equal(2, (await h.SessionsAsync(outcome: "  ")).Sessions.Count);
+        Assert.Equal(2, (await h.SessionsAsync(outcome: "")).Sessions.Count);
+    }
+
+    [Fact]
+    public async Task Sessions_OutcomeAndProject_Intersect()
+    {
+        var h = await NewAsync();
+        var other = (await h.TwoMoreProjectsAsync()).B;
+        var mine = await h.FileAsync();
+        var theirs = await h.FileAsync(projectId: other.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-3), outcome: "dropped");
+        await h.SpendAsync(mine, 2_000, Now.AddHours(-2), outcome: "worked");
+        await h.SpendAsync(theirs, 4_000, Now.AddHours(-1), outcome: "dropped");
+
+        var row = Assert.Single((await h.SessionsAsync(projectIds: [h.ProjectId], outcome: "dropped")).Sessions);
+
+        Assert.Equal(1_000, row.TotalTokens);
+    }
+
+    [Fact]
+    public async Task Sessions_AnUnknownOutcome_IsRefusedNamingTheAcceptedValues()
+    {
+        var h = await NewAsync();
+
+        var sentence = await h.SessionRefusalAsync(outcome: "finished");
+
+        Assert.Equal(
+            "an outcome is dropped, worked, preempted, recused, unservable, abandoned, unstarted or none - not \"finished\"",
+            sentence);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_WithoutAnOutcome_SplitsByOutcomeAndReason_AndTheRowsSumToTheWholeWindow()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-5), usd: 1m, playbookKey: "7", outcome: "dropped", reason: "quiet");
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-4), usd: 2m, playbookKey: "7", outcome: "dropped", reason: "run-time");
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-3), usd: 4m, playbookKey: "7", outcome: "worked");
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), usd: 8m, playbookKey: "7");
+
+        var rows = (await h.ByPlaybookAsync()).Rows;
+
+        Assert.Equal(4, rows.Count);
+        Assert.Equal(4, rows.Sum(r => r.Sessions));
+        Assert.Equal(15m, rows.Sum(r => r.CostUsd));
+        Assert.Equal("quiet", Assert.Single(rows, r => r.Reason == "quiet").Reason);
+        Assert.Single(rows, r => r.Outcome is null);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_NarrowsToOneOutcome_OneRowPerReason_AndNothingFromAnother()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-5), usd: 1m, playbookKey: "7", outcome: "dropped", reason: "quiet");
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-4), usd: 2m, playbookKey: "7", outcome: "dropped", reason: "quiet");
+        await h.SpendAsync(issue, 4_000, Now.AddHours(-3), usd: 4m, playbookKey: "7", outcome: "dropped", reason: "run-time");
+        await h.SpendAsync(issue, 8_000, Now.AddHours(-2), usd: 8m, playbookKey: "7", outcome: "worked");
+
+        var rows = (await h.ByPlaybookAsync(outcome: "dropped")).Rows;
+
+        Assert.Equal(["run-time", "quiet"], rows.Select(r => r.Reason));
+        Assert.All(rows, r => Assert.Equal("dropped", r.Outcome));
+        Assert.Equal(2, Assert.Single(rows, r => r.Reason == "quiet").Sessions);
+        Assert.Equal(3m, Assert.Single(rows, r => r.Reason == "quiet").CostUsd);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_OutcomeNone_ReadsOnlyTheUnstampedRows()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-2), outcome: "worked");
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-1));
+
+        var row = Assert.Single((await h.ByPlaybookAsync(outcome: "none")).Rows);
+
+        Assert.Null(row.Outcome);
+        Assert.Equal(2_000, row.TotalTokens);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_OutcomeAndProject_Intersect_AndTheOutcomeIsCaseInsensitive()
+    {
+        var h = await NewAsync();
+        var other = (await h.TwoMoreProjectsAsync()).B;
+        var mine = await h.FileAsync();
+        var theirs = await h.FileAsync(projectId: other.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-3), playbookKey: "mine", outcome: "dropped");
+        await h.SpendAsync(mine, 2_000, Now.AddHours(-2), playbookKey: "mine", outcome: "worked");
+        await h.SpendAsync(theirs, 4_000, Now.AddHours(-1), playbookKey: "theirs", outcome: "dropped");
+
+        var row = Assert.Single((await h.ByPlaybookAsync(projectId: [h.ProjectId], outcome: "Dropped")).Rows);
+
+        Assert.Equal("mine", row.PlaybookKey);
+        Assert.Equal(1_000, row.TotalTokens);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_AnUnknownOutcome_IsRefusedNamingTheAcceptedValues()
+    {
+        var h = await NewAsync();
+
+        var sentence = await h.ByPlaybookRefusalAsync(outcome: "finished");
+
+        Assert.Equal(
+            "an outcome is dropped, worked, preempted, recused, unservable, abandoned, unstarted or none - not \"finished\"",
+            sentence);
+    }
+
+    [Fact]
     public async Task ByPlaybook_NarrowsToOneProject_AndAnUnmatchedProjectAnswersNoRows()
     {
         var h = await NewAsync();
@@ -1132,7 +1309,9 @@ public class WorkLogControllerTests
             IReadOnlyList<WorkLogReadDto>? reads = null,
             string? dispatchModel = null,
             string? modelPlacement = null,
-            string? modelDigest = null)
+            string? modelDigest = null,
+            string? outcome = null,
+            string? reason = null)
         {
             IssueKey.TryParse(issue.Key, out var projectKey, out var number);
             var issueId = await Db.Issues.AsNoTracking().WithKey(projectKey, number).Select(i => i.Id).FirstAsync();
@@ -1165,6 +1344,8 @@ public class WorkLogControllerTests
                 DispatchModel = dispatchModel,
                 ModelPlacement = modelPlacement,
                 ModelDigest = modelDigest,
+                Outcome = outcome,
+                Reason = reason,
                 Reads = reads is null ? null : WorkLogRollup.WriteReads(reads),
                 CreatedAt = Now,
             };
@@ -1190,17 +1371,19 @@ public class WorkLogControllerTests
             string? ancestorKey = null,
             string? sort = null,
             int limit = 100,
-            IReadOnlyList<int>? projectIds = null) =>
+            IReadOnlyList<int>? projectIds = null,
+            string? outcome = null) =>
             Value(await History.GetSessions(
-                from, to, ancestorKey, sort, limit, projectIds?.ToList(), default));
+                from, to, ancestorKey, sort, limit, projectIds?.ToList(), outcome, default));
 
         public async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
-            string? from = null, string? to = null, List<int>? projectId = null) =>
-            Value(await History.GetByPlaybook(from, to, projectId, default));
+            string? from = null, string? to = null, List<int>? projectId = null, string? outcome = null) =>
+            Value(await History.GetByPlaybook(from, to, projectId, outcome, default));
 
-        public async Task<string> ByPlaybookRefusalAsync(string? from = null, string? to = null)
+        public async Task<string> ByPlaybookRefusalAsync(
+            string? from = null, string? to = null, string? outcome = null)
         {
-            var result = await History.GetByPlaybook(from, to, null, default);
+            var result = await History.GetByPlaybook(from, to, null, outcome, default);
             return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
         }
 
@@ -1210,10 +1393,11 @@ public class WorkLogControllerTests
             string? ancestorKey = null,
             string? sort = null,
             int limit = 100,
-            IReadOnlyList<int>? projectIds = null)
+            IReadOnlyList<int>? projectIds = null,
+            string? outcome = null)
         {
             var result = await History.GetSessions(
-                from, to, ancestorKey, sort, limit, projectIds?.ToList(), default);
+                from, to, ancestorKey, sort, limit, projectIds?.ToList(), outcome, default);
             return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
         }
 

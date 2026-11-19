@@ -2667,6 +2667,11 @@ export interface WorkLogSession {
   /** How long the prompt the session was handed was, in characters. Known
       regardless of `--quiet`. */
   promptChars: number | null;
+  /** How the session's claim ended - one of the claim outcomes. Null on a row
+      from a runner built before outcomes were recorded. */
+  outcome: string | null;
+  /** The one-line reason the outcome gave, or null when it gave none. */
+  reason: string | null;
 }
 
 /** The sessions in a range, ranked. Mirrors WorkLogSessionsDto. */
