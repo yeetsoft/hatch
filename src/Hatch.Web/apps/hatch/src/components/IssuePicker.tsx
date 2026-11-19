@@ -46,6 +46,10 @@ export interface IssuePickerProps {
       which is the right face for a field that holds one value and reads as
       empty, and the wrong one for a control that adds. */
   placeholder?: string;
+  /** A project whose candidates are listed before every other project's. Set
+      by the two Parent fields, where the list spans projects and the issue's
+      own is the likelier answer; unset, the list is project A to Z. */
+  homeProject?: string;
 }
 
 export function IssuePicker({
@@ -56,6 +60,7 @@ export function IssuePicker({
   onChange,
   allowNone = true,
   placeholder,
+  homeProject,
 }: IssuePickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -86,11 +91,11 @@ export function IssuePicker({
      difference when it is not. */
   const offset = allowNone ? 1 : 0;
   const rows: (IssueCard | null)[] = allowNone
-    ? [null, ...pickerRows(candidates, query)]
-    : pickerRows(candidates, query);
+    ? [null, ...pickerRows(candidates, query, homeProject)]
+    : pickerRows(candidates, query, homeProject);
 
   function openList() {
-    const all = pickerRows(candidates, '');
+    const all = pickerRows(candidates, '', homeProject);
     const at = all.findIndex((c) => c.key === value);
     setQuery(''); // The last query is not remembered: a remembered filter is a list that opens lying about how many candidates there are.
     // The row in force, or the top of the list - which is — none — where it is
@@ -111,7 +116,7 @@ export function IssuePicker({
        highlight sits on the first row that matches" is a control where typing
        `745` and pressing Enter clears the value: — none — is pinned rather
        than matched, so ↑ is what reaches it. */
-    setHighlight(pickerRows(candidates, next).length > 0 ? offset : null);
+    setHighlight(pickerRows(candidates, next, homeProject).length > 0 ? offset : null);
   }
 
   // One row at a time, stopping at the ends rather than wrapping - a wrap makes

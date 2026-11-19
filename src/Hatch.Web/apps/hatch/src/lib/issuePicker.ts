@@ -60,8 +60,13 @@ export function splitKey(key: string): KeyParts | null {
  * produce a cross-project list: the component is built for the bulk page next,
  * where the list is every issue in the house, and a comparator that only knew
  * about numbers would interleave two projects into nonsense.
+ *
+ * `home`, when given, names a project whose keys sort before every other
+ * project's - the one the reader is standing in. Inside the home project, and
+ * among the rest, the rule above is unchanged. Without it nothing moves, so
+ * every caller that does not say a home sorts exactly as it always did.
  */
-export function compareIssueKeys(a: string, b: string): number {
+export function compareIssueKeys(a: string, b: string, home?: string): number {
   const left = splitKey(a);
   const right = splitKey(b);
 
@@ -69,6 +74,12 @@ export function compareIssueKeys(a: string, b: string): number {
     if (left) return -1;
     if (right) return 1;
     return a < b ? -1 : a > b ? 1 : 0;
+  }
+
+  if (home !== undefined && left.project !== right.project) {
+    const at = home.toUpperCase();
+    if (left.project === at) return -1;
+    if (right.project === at) return 1;
   }
 
   if (left.project !== right.project) return left.project < right.project ? -1 : 1;
@@ -122,9 +133,11 @@ export function matchesText(text: string, query: string): boolean {
  * Sorts the array `filter` already copied - it must not mutate what it was
  * handed, because `board.issues` is state other things on the page are drawing
  * from. Filtering before sorting is also the cheaper order.
+ *
+ * `home` is `compareIssueKeys`' third argument: the project listed first.
  */
-export function pickerRows(cards: IssueCard[], query: string): IssueCard[] {
+export function pickerRows(cards: IssueCard[], query: string, home?: string): IssueCard[] {
   return cards
     .filter((card) => matchesPickerQuery(card, query))
-    .sort((a, b) => compareIssueKeys(a.key, b.key));
+    .sort((a, b) => compareIssueKeys(a.key, b.key, home));
 }
