@@ -61,6 +61,7 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
         new("DreamThreads", db => db.DreamThreads.CountAsync(), 2, 1, 0),
         new("DreamRemands", db => db.DreamRemands.CountAsync(), 2, 1, 0),
         new("Capabilities", db => db.Capabilities.CountAsync(), 2, 1, 0),
+        new("CapabilityLinks", db => db.CapabilityLinks.CountAsync(), 2, 1, 0),
         new("CapabilityVerdicts", db => db.CapabilityVerdicts.CountAsync(), 2, 1, 0),
         new("ChangelogTasks", db => db.ChangelogTasks.CountAsync(), 2, 1, 0),
 
@@ -186,6 +187,7 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
                 IssueId = one.Id, Position = 1, Statement = "a capability", HowToTell = "how to tell", CreatedBy = "test", CreatedAt = At, UpdatedAt = At,
             };
             db.Capabilities.Add(capability);
+            db.CapabilityLinks.Add(new EfHatchCapabilityLink { CapabilityId = 0, Capability = capability, IssueId = one.Id, Actor = "test", At = At });
             db.CapabilityVerdicts.Add(new EfHatchCapabilityVerdict
             {
                 Capability = capability, Verdict = "holds", LookedAt = "the code", Sha = "abc", Author = "test", CreatedAt = At,

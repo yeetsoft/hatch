@@ -729,11 +729,12 @@ deferred one it gets `403`, and a person is never refused. Reading is open to
 a key anywhere.
 
 Each is a `CapabilityDto(Id, Position, Statement, HowToTell, CreatedBy,
-CreatedAt, UpdatedAt, State, NewestVerdict)`. `Position` runs 1 to n with no
+CreatedAt, UpdatedAt, State, NewestVerdict, ServedBy)`. `Position` runs 1 to n with no
 gaps, so a read is already in order and a write leaves it so. GET answers
 `CapabilityDto[]`, empty for a fresh ambition. `State` and `NewestVerdict` are
 derived on read, in one query for the whole list, and never stored - see
-"A capability's verdicts" below.
+"A capability's verdicts" below. `ServedBy` is the keys of every epic that
+serves the capability, in key order, empty when none does - see "Serves".
 
 POST takes `CapabilityCreateRequest(Statement, HowToTell, Position?)` and
 answers `201` with the row. `Position` left out appends; given, it must be
@@ -788,6 +789,43 @@ none - the four states a capability can read as. `NewestVerdict` is the row
 A verdict writes one `capability_judged` event on the ambition, with payload
 `{ id, position, verdict, sha, author }` - see docs/hatch.md. Removing a
 capability removes its verdicts; the events on the ambition remain.
+
+
+## Serves
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/issues/{key}/serves` | The capabilities an issue serves |
+| PUT | `/issues/{key}/serves` | Replaces the set of capabilities an epic serves |
+
+An epic serves the capabilities of the ambition it hangs beneath. GET works on
+an issue of any type and answers `ServedCapabilityDto[]` - `AmbitionKey,
+CapabilityId, Position, Statement, State` - ordered by ambition key and then
+position, empty for an issue that serves none. `State` is read the way
+`CapabilityDto.State` is: the newest verdict's word, or `not_checked`.
+
+PUT takes `IssueServesWriteRequest(CapabilityIds)` and answers the same list.
+It replaces the whole set, so an empty list clears it, and a repeated id counts
+once. It is open to a key in any column. These are all `400`, and each changes
+nothing:
+
+- the issue is not an epic: `only an epic serves capabilities - AER-12 is a
+  story`;
+- an id names no capability: `there is no capability 9`;
+- an id belongs to an ambition the epic does not hang beneath. The sentence
+  names the capability and the ambition it belongs to. An epic hangs beneath an
+  ambition at any depth, through any number of epics and reflections; one under
+  no ambition serves nothing.
+
+A PUT that changes the set writes one `serves_changed` issue event on the epic,
+payload `{ from, to }`, both sides every capability id in ascending order. A
+PUT naming the set already there, in any order, writes no event and leaves
+`UpdatedAt` alone. Unknown `key` is `404`.
+
+Patching an epic's `parentKey` is refused when it would leave the epic - or
+an epic below it - serving a capability of an ambition it would no longer hang
+beneath, naming the capability. A move that stays under the same ambition is
+unaffected. Deleting the epic or the capability removes the link alone.
 
 ## The loop's own routes
 

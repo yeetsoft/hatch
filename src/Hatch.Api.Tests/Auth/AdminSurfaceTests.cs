@@ -327,6 +327,11 @@ public class AdminSurfaceTests
         // for the same reason BoardController's is: it is the operator's own
         // list, not a fact about the house.
         "DreamsController.GetDreams",
+        // What an epic serves, read and replaced whole. Key-accepting like the
+        // module around it, and open in every column - see IssueServesController.
+        "IssueServesController.GetServes",
+        "IssueServesController.PutServes",
+
         "DreamsController.AddDream",
         "DreamsController.EditDream",
         "DreamsController.DeleteDream",
@@ -901,6 +906,8 @@ public class AdminSurfaceTests
         "IssueDependenciesController.RemoveDependency",
         "IssueDreamsController.GetIssueDreams",
         "IssueDreamsController.PutIssueDreams",
+        "IssueServesController.GetServes",
+        "IssueServesController.PutServes",
         "IssueMessagesController.Deliver",
         "IssueNoCodeController.PutIssueNoCode",
         "IssueOnePrController.PutIssueOnePr",

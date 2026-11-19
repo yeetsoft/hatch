@@ -1032,6 +1032,7 @@ export type IssueEventKind =
   | 'capability_moved'
   | 'capability_removed'
   | 'capability_judged'
+  | 'serves_changed'
   | 'claim_taken'
   | 'claim_lapsed'
   | 'claim_released'

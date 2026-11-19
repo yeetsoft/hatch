@@ -2751,10 +2751,11 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// <param name="Position">1 to n within the ambition, with no gaps.</param>
 /// <param name="State">The newest verdict's word, or <c>not_checked</c> with none. Derived on read, never stored.</param>
 /// <param name="NewestVerdict">The verdict <paramref name="State"/> was read from, or null.</param>
+/// <param name="ServedBy">The keys of every epic that serves this capability, in key order.</param>
 public record CapabilityDto(
     long Id, int Position, string Statement, string HowToTell,
     string CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    string State, CapabilityVerdictDto? NewestVerdict);
+    string State, CapabilityVerdictDto? NewestVerdict, IReadOnlyList<string> ServedBy);
 
 /// <summary>Adds a capability. Neither line may be blank.</summary>
 /// <param name="Position">Where to put it, 1 to one past the last. Left out, it goes at the end.</param>
@@ -2775,6 +2776,15 @@ public record CapabilityVerdictDto(
 
 /// <summary>Records a verdict on a capability. <paramref name="Verdict"/> is one of <c>holds</c>, <c>does_not_hold</c>, <c>cannot_tell</c>.</summary>
 public record CapabilityVerdictRequest(string Verdict, string LookedAt, string Sha);
+
+/// <summary>Replaces the set of capabilities an epic serves, with the capability ids it should now carry.</summary>
+public record IssueServesWriteRequest(IReadOnlyList<long> CapabilityIds);
+
+/// <summary>
+/// One capability an issue serves, with the ambition it belongs to.
+/// </summary>
+/// <param name="State">As on <see cref="CapabilityDto"/>: the newest verdict's word, or <c>not_checked</c>.</param>
+public record ServedCapabilityDto(string AmbitionKey, long CapabilityId, int Position, string Statement, string State);
 
 /// <summary>Replaces the set of dreams an issue drew on, with the dream ids it should now carry.</summary>
 public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);
