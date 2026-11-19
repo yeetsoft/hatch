@@ -2,7 +2,7 @@
 
 ## Section index
 
-This file is larger than a context window (about 500 KB, 18 top-level
+This file is larger than a context window (about 500 KB, 19 top-level
 sections), so do not read it whole. Find the section below, or list the
 headings with `grep -n '^## ' docs/hatch.md`, then read from that heading to
 the next heading of the same level and stop.
@@ -83,6 +83,8 @@ the next heading of the same level and stop.
     runner, or none, can take right now, and why?
 - [The leaderboard](#the-leaderboard) - What did the nights cost, and on
   which epics?
+- [The goose](#the-goose) - What checks the board every minute with nobody
+  connected, and what record does it keep?
 - [Reports](#reports) - When did things happen on the board, which the board
   as it stands cannot say?
 - [The overnight](#the-overnight) - What did the loop actually land while
@@ -4244,6 +4246,8 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/playbook-proposals/reject-all` | POST | The same person-only gate as the row above. Marks every [pending proposal](#playbook-proposal) rejected, touching no playbook row. `{ proposalIds }` — the exact set the caller last read as pending. `409` naming the reload where that set has changed underneath it. A decided proposal naming an issue gets a `playbook_proposal_rejected` event |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
+| `/goose/runs` | GET | The goose's runs, newest first by last sweep, without the per-check detail; `limit` 1-200, default 50. Empty for a caller whose scope is not every project — see [the goose](#the-goose) |
+| `/goose/runs/{id}` | GET | One run with its per-check entries; `404` for a missing id and for every id to a caller whose scope is not every project — see [the goose](#the-goose) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus every issue whose next move no live runner can take for want of a model or a development dependency (`waitingOnARunner`, see [a move no live runner can take](#a-move-no-live-runner-can-take)), plus every project whose clear implementation steps no live runner, or only one, can take (`runnerCapacity`, see [runner capacity](#runner-capacity)), plus every issue held or marked stalled, in board order, with who it waits on (`stalled`, `stallResumeSeconds`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it. It also carries the site's default token caps, `defaultMaxTokens` and `defaultMaxTokensPerHour` (`500k`, `2M`, a whole number; zero or junk is a `400` that writes nothing) — **admin-only to write** inside this person-only route: a `403` for a person who is not an admin with the wall up, and for a key, but only when either default is present in the body. Runners with no cap of their own run under them — see [Runners on the board](#runners-on-the-board) |
@@ -5081,6 +5085,62 @@ its sessions, errors, turns, the four token counts and `TotalTokens`.
   limit. Rows are ordered by `TotalTokens` descending, ties broken on the eight
   grouping fields in the order above, `Outcome` and `Reason` last, so two reads of one window agree on their
   order.
+
+## The goose
+
+The goose is the server watching the board by itself. Every
+`Hatch__GooseIntervalSeconds` (default 60; zero or less falls back to 60) a
+sweep runs with no runner and no browser connected, and the fact that it ran
+is kept, so a person can see the watcher is alive. A sweep asks each registered
+check what it looked at and what it concluded and records the answers. No check
+is registered yet, and a sweep with none still records a run.
+
+**The job.** `GooseJob` is an `IAppJob`, scheduled like the backup and the
+reflection cadence by `JobsInit` on the clustered Quartz store and registered in
+`HatchModule`. Its context has no request, so it reads every project
+([how scope is enforced](#how-scope-is-enforced)). Checks implement
+`IGooseCheck { Name; RunAsync(ct) }`, returning a `GooseObservation(Looked,
+Concluded)`; they run in container registration order. A check that throws does
+not stop the sweep: its entry is marked `failed` and carries the message, and
+the others still run. The job never throws, because Quartz fires a job again
+when it does; a failure is a log line. Time comes from `TimeProvider`, so a
+test drives it with `FakeTimeProvider`.
+
+**One sweep at a time.** `[DisallowConcurrentExecution]` stops Quartz firing
+the job while it runs, and a trigger that falls due meanwhile is skipped or
+fires once late, never queued in a pile. That is not enough across instances,
+which share one scheduler instance id, so a sweep also takes a Postgres
+advisory lock (`pg_try_advisory_lock`) on a connection of its own, held for the
+whole sweep behind the `IGooseLock` seam. A sweep that does not get it writes
+nothing and runs no check. A process that dies mid-sweep drops the lock with its
+connection.
+
+**The record.** Each sweep is stored as a run in `hatch."GooseRuns"`
+(`EfHatchGooseRun`): `FirstRanAt`, `LastRanAt` (indexed), `Sweeps`, `LongestMs`
+and `Entries`, a JSON list of `{ check, looked, concluded, failed, error }`,
+free-form on purpose so a check needs no new column. The table belongs to no
+project and has no foreign key into one, so it has no query filter and
+`QueryFilterModelAuditTests` does not list it; the two routes are what keep a
+bounded caller out.
+
+**The fold.** A sweep is compared with the run of newest `LastRanAt`. Equal
+means the same checks, in the same order, with the same `failed`, `concluded`
+and `error` for each. What a check *looked* at, and every timing, never
+counts. Equal: that run's `LastRanAt` moves to this sweep, `Sweeps` counts up,
+`LongestMs` takes the larger, and `Entries` is replaced with this sweep's. Not
+equal: a new row with `Sweeps` 1. Sixty identical sweeps are one row, and a
+return to an earlier conclusion is a new row, since the fold looks only at the
+newest.
+
+**Retention.** Each sweep deletes the runs whose `LastRanAt` is older than
+`Hatch__GooseKeepDays` (default 7). Zero keeps everything; a negative falls
+back to 7. Both options are guarded in `GooseSettings`.
+
+**The routes.** `GET /api/goose/runs` and `GET /api/goose/runs/{id}`, both
+`[RequireRole(PersonRole.User, AcceptKey = true)]`. A run holds what was seen in
+every project, so for a caller whose scope is not everything the list is empty
+and a run reads as not found. The reader's page is
+[The goose](../src/Hatch.Web/apps/hatch/docs/the-goose.md).
 
 ## Reports
 
