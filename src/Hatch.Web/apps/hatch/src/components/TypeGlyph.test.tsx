@@ -7,6 +7,9 @@ import type { IssueType } from '../types';
 
 const tile = (type: IssueType) => renderToStaticMarkup(<TypeTile type={type} />);
 
+/** The ambition's fill is a per-tile gradient, not a `--type-*` token, and its egg is not scaled by 110%. */
+const TOKENED = ISSUE_TYPES.filter((type) => type !== 'ambition');
+
 /** The markup inside the scaled group: the picture, with no outline and no type colour in it. */
 const picture = (type: IssueType) => /<g [^>]*>(.*)<\/g>/.exec(tile(type))![1];
 
@@ -24,7 +27,7 @@ describe('TypeGlyph', () => {
 });
 
 describe('TypeTile', () => {
-  it.each<IssueType>(ISSUE_TYPES)('fills the %s tile with its own token', (type) => {
+  it.each<IssueType>(TOKENED)('fills the %s tile with its own token', (type) => {
     const html = tile(type);
 
     expect(html).toContain('class="hatch-type-tile-face"');
@@ -41,7 +44,7 @@ describe('TypeTile', () => {
   });
 
   it('scales the picture to 110% about the middle of the box', () => {
-    for (const type of ISSUE_TYPES) {
+    for (const type of TOKENED) {
       expect(tile(type)).toContain('<g transform="translate(8 8) scale(1.1) translate(-8 -8)">');
     }
   });
@@ -51,6 +54,16 @@ describe('TypeTile', () => {
 
     expect(pictures.every((markup) => markup.length > 0)).toBe(true);
     expect(new Set(pictures).size).toBe(ISSUE_TYPES.length);
+  });
+
+  it('draws the ambition as the egg on a gradient, and the six tiles all differ', () => {
+    const ambition = tile('ambition');
+
+    expect(ambition).toBe(renderToStaticMarkup(<AmbitionTile />));
+    expect(ambition).toContain('fill:url(#');
+    expect(ambition).not.toContain('--type-ambition');
+    expect(ambition).toContain(HATCH_MARK_BODY);
+    expect(new Set(ISSUE_TYPES.map(tile)).size).toBe(ISSUE_TYPES.length);
   });
 
   it('strokes the task tick 1.9 wide and fills the story bookmark', () => {

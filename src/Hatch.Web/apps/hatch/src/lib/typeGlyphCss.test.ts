@@ -29,7 +29,10 @@ function declarationsOf(selector: string): Record<string, string> {
 }
 
 describe('the board card type tile', () => {
-  it('declares the five type tokens on :root and in both dark blocks', () => {
+  it('declares the five type tokens on :root and in both dark blocks, and none for the ambition', () => {
+    expect(tokens.light).not.toHaveProperty('--type-ambition');
+    expect(tokens.dark).not.toHaveProperty('--type-ambition');
+    expect(tokens.darkMedia).not.toHaveProperty('--type-ambition');
     for (const type of ['epic', 'story', 'task', 'bug', 'reflection']) {
       const token = `--type-${type}`;
       expect(tokens.light, token).toHaveProperty(token);

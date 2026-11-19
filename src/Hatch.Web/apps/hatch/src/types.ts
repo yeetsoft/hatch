@@ -11,20 +11,21 @@ export type OnePullRequestPolicy = 'optional' | 'enforced';
 /** How much a project matters to the loop. See ProjectPriorities (Hatch.Contracts). */
 export type ProjectPriority = 'paused' | 'normal' | 'expedited';
 
-export type IssueType = 'epic' | 'reflection' | 'story' | 'task' | 'bug';
+export type IssueType = 'ambition' | 'epic' | 'reflection' | 'story' | 'task' | 'bug';
 
-/** The five types, in the order a picker offers them. Mirrors EfHatchIssue.Types. */
-export const ISSUE_TYPES: IssueType[] = ['epic', 'reflection', 'story', 'task', 'bug'];
+/** The six types, in the order a picker offers them. Mirrors EfHatchIssue.Types. */
+export const ISSUE_TYPES: IssueType[] = ['ambition', 'epic', 'reflection', 'story', 'task', 'bug'];
 
 /** The types that run their children at once, and so carry a stories-at-once
     limit - mirrors IssueTypeKinds.RunsChildren. */
-export const RUNS_CHILDREN: IssueType[] = ['epic', 'reflection'];
+export const RUNS_CHILDREN: IssueType[] = ['ambition', 'epic', 'reflection'];
 
 /** Which parents each type may take - mirrors EfHatchIssue.LegalParentTypes.
     Duplicated here to filter the parent picker; the server is still the one
     that decides, and a disagreement shows up as a refusal with a reason. */
 export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
-  epic: ['epic', 'reflection'],
+  ambition: [],
+  epic: ['epic', 'reflection', 'ambition'],
   reflection: ['epic'],
   story: ['epic', 'reflection'],
   task: ['story', 'bug', 'epic', 'reflection'],

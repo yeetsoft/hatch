@@ -4,7 +4,7 @@ import type { ContributionRecord } from '../types';
 /**
  * The mark an issue wears when it came from outside: an arrow pointing in at a
  * bracket, stroke only. A shape and not a colour, so it reads in a monochrome
- * render - and none of the five type tiles is an open stroke, so it is never
+ * render - and none of the six type tiles is an open stroke, so it is never
  * mistaken for one. It sits beside
  * the type glyph and does not replace it: a mirrored epic is an epic and a
  * contribution at once.

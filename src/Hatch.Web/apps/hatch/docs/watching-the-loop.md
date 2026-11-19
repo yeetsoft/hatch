@@ -420,7 +420,7 @@ dollars and runner time, the epic's own and everything beneath it - one row to
 an epic. It opens on the last three months, with the same window controls -
 **Earlier**, **Today**, **Later** and a **Length**. **Projects** (drawn only
 where there is more than one) is the same checkbox per project, with **All** and
-**None**. **Type** picks what a row is, epic to begin with, or reflection, story,
+**None**. **Type** picks what a row is, epic to begin with, or ambition, reflection, story,
 task, bug, or **All**; **Status** keeps the issues now standing in one column,
 **Any** to begin with. The table is sorted by clicking a column head - **Tokens**,
 **Notional USD**, **Runner time** or **Last session**, the most recent first to

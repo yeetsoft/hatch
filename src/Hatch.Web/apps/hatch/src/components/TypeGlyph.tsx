@@ -5,6 +5,7 @@ import { issueTypeRow } from '../lib/issueType';
 import type { TypePicture } from '../lib/issueType';
 
 const LABEL: Record<IssueType, string> = {
+  ambition: 'ambition',
   epic: 'epic',
   reflection: 'reflection',
   story: 'story',
@@ -22,7 +23,7 @@ interface Picture {
 }
 
 /** What each tile pictures, drawn in the 16 by 16 box before the 110% scale. */
-const PICTURES: Record<TypePicture, Picture> = {
+const PICTURES: Record<Exclude<TypePicture, 'egg'>, Picture> = {
   layers: {
     filled: 'M8 3.4 12.6 5.9 8 8.4 3.4 5.9Z',
     stroked: { d: 'M3.7 8.4 8 10.7 12.3 8.4 M3.7 10.7 8 13 12.3 10.7', width: 1.3 },
@@ -61,6 +62,7 @@ const PICTURES: Record<TypePicture, Picture> = {
  */
 export function TypeTile({ type }: { type: IssueType }) {
   const { outline, picture } = issueTypeRow(type);
+  if (picture === 'egg') return <AmbitionTile />;
   const { filled, stroked } = PICTURES[picture];
   const fill = { fill: `var(--type-${type})` };
   return (

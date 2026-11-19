@@ -11,7 +11,7 @@ namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
 /// HA-2378: the issue page's Type pill, rendered and driven against the real host and
-/// the built bundle. Pressing Edit on Details and then the pill opens a band of five
+/// the built bundle. Pressing Edit on Details and then the pill opens a band of six
 /// steps; the current type's step is marked and cannot be pressed; Escape folds the
 /// band and leaves the card in edit mode; pressing another step saves that type and
 /// folds the band. A screenshot with the band open is left in the case's artifact
@@ -111,7 +111,7 @@ public class TypePillTests(ITestOutputHelper output)
             // Outside edit mode there is no pill.
             Assert.False(await harness.IsVisibleAsync(deadline, Pill), "the pill is drawn before Edit is pressed");
 
-            // 1. Edit, then the pill, opens the band of five.
+            // 1. Edit, then the pill, opens the band of six.
             await deadline.BoundAsync("pressing Edit", () => page.GetByRole(AriaRole.Button, new() { Name = "Edit", Exact = true }).First.ClickAsync());
             await harness.WaitForVisibleAsync(deadline, Pill);
             Assert.False(await harness.IsVisibleAsync(deadline, Band), "the band is open before the pill is pressed");
@@ -169,10 +169,10 @@ public class TypePillTests(ITestOutputHelper output)
     private static void AssertBand(JsonElement read, string current)
     {
         var steps = read.GetProperty("steps").EnumerateArray().ToArray();
-        Assert.Equal(["epic", "reflection", "story", "task", "bug"], steps.Select(s => s.GetProperty("word").GetString()).ToArray());
+        Assert.Equal(["ambition", "epic", "reflection", "story", "task", "bug"], steps.Select(s => s.GetProperty("word").GetString()).ToArray());
         Assert.All(steps, s => Assert.True(s.GetProperty("hasTile").GetBoolean(), $"a step has no tile: {read}"));
 
-        // The tile carries the type: five steps, five fills. No step is filled with a type's colour.
+        // The tile carries the type: six steps, six fills. No step is filled with a type's colour.
         Assert.Equal(steps.Length, steps.Select(s => s.GetProperty("tile").GetString()).Distinct().Count());
 
         var marked = steps.Where(s => s.GetProperty("pressed").GetString() == "true").ToArray();

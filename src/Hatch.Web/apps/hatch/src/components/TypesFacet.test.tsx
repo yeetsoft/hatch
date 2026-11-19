@@ -7,17 +7,18 @@ import { ISSUE_TYPES } from '../types';
 const noop = () => {};
 
 function render(types = ISSUE_TYPES) {
-  const counts = { epic: 0, reflection: 3, story: 5, task: 0, bug: 2 };
+  const counts = { ambition: 1, epic: 0, reflection: 3, story: 5, task: 0, bug: 2 };
   return renderToStaticMarkup(
     <TypesFacet filter={{ ...DEFAULT_FILTER, types }} counts={counts as never} onChange={noop} />,
   );
 }
 
 describe('TypesFacet', () => {
-  it('draws the five issue types in ISSUE_TYPES order', () => {
+  it('draws the six issue types, ambition first, in ISSUE_TYPES order', () => {
     const html = render();
     const names = [...html.matchAll(/<span class="hatch-types-name">([^<]*)</g)].map((m) => m[1]);
     expect(names).toEqual(ISSUE_TYPES);
+    expect(names[0]).toBe('ambition');
   });
 
   it('draws a 0 count', () => {
@@ -28,7 +29,7 @@ describe('TypesFacet', () => {
     expect(render()).toContain('aria-label="Issue types"');
   });
 
-  it('summarises four of five types as All but tasks', () => {
+  it('summarises five of six types as All but tasks', () => {
     const types = ISSUE_TYPES.filter((t) => t !== 'task');
     expect(render(types)).toContain('<span class="hatch-facet__label">Types</span>All but tasks');
   });

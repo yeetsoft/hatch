@@ -1,7 +1,6 @@
 import { Fragment } from 'react';
 import { AmbitionTile, TypeTile } from '../../components/TypeGlyph';
 import { ISSUE_TYPE_ROWS } from '../../lib/issueType';
-import { ISSUE_TYPES } from '../../types';
 import { GalleryPage, GallerySection, TokenName, TokenValue } from '../components/Gallery';
 import { useTokenValues } from '../lib/useTokenValues';
 
@@ -11,11 +10,12 @@ const SIZES = [14, 16, 24, 72] as const;
 
 const AMBITION_TOKENS = ['--gradient-ink-from', '--gradient-ink-to'] as const;
 
-/* Read from the list itself, so the note turns true on its own when the type lands. */
-const AMBITION_IS_A_TYPE = (ISSUE_TYPES as readonly string[]).includes('ambition');
+/** The rows with a `--type-*` token. The ambition has none: its fill is the
+    brand gradient, and it has its own section below. */
+const TOKEN_ROWS = ISSUE_TYPE_ROWS.filter((row) => row.name !== 'ambition');
 
 export function IssueTypesPage() {
-  const values = useTokenValues([...ISSUE_TYPE_ROWS.map((row) => `--type-${row.name}`), ...AMBITION_TOKENS]);
+  const values = useTokenValues([...TOKEN_ROWS.map((row) => `--type-${row.name}`), ...AMBITION_TOKENS]);
 
   return (
     <GalleryPage
@@ -27,7 +27,7 @@ export function IssueTypesPage() {
         note="Each tile is the real component, sized here and nowhere else. The colour ramp runs deepest at the largest thing: epic, then story, then task. Red is the bug's alone. A rounded square is a size of work; a disc marks the two types that are not one, bug and reflection. The picture is always --on-accent, whatever the type's colour."
       >
         <div>
-          {ISSUE_TYPE_ROWS.map((row) => {
+          {TOKEN_ROWS.map((row) => {
             const token = `--type-${row.name}`;
             return (
               <div className="design-type-row" key={row.name}>
@@ -47,11 +47,7 @@ export function IssueTypesPage() {
 
       <GallerySection
         title="The ambition"
-        note={`The tile for the ambition: the Hatch egg in --on-accent on the brand gradient, drawn from the mark's one source. Its fill is a gradient between the two tokens named here, not a --type-* token, so it is not a row above. ${
-          AMBITION_IS_A_TYPE
-            ? 'The ambition is an issue type on the trunk, and wears this tile.'
-            : 'The ambition is not an issue type on the trunk yet, so only this page draws the tile.'
-        }`}
+        note="The tile for the ambition: the Hatch egg in --on-accent on the brand gradient, drawn from the mark's one source. Its fill is a gradient between the two tokens named here, not a --type-* token, so it is not a row above. The ambition is an issue type, and wears this tile wherever a type is drawn."
       >
         <div className="design-type-row design-type-row--ambition">
           {SIZES.map((size) => (
@@ -71,7 +67,7 @@ export function IssueTypesPage() {
 
       <GallerySection
         title="At the size a card uses"
-        note="The five tiles at 14 pixels on a card, on the ground a board column gives it. Read this one in both themes: if two of them cannot be told apart here, the other sizes do not matter."
+        note="The six tiles at 14 pixels on a card, on the ground a board column gives it. Read this one in both themes: if two of them cannot be told apart here, the other sizes do not matter."
       >
         <div className="design-type-column">
           <div className="design-type-card">
