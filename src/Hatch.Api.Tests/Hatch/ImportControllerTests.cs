@@ -569,7 +569,7 @@ public class ImportControllerTests
         return new Harness
         {
             Db = db,
-            Import = new ImportController(db, new PlanImportParser(), ranks, caller, time),
+            Import = new ImportController(db, new StubActorDirectory(), new PlanImportParser(), ranks, caller, time),
             Issues = new IssuesController(db, ranks, new StubActorDirectory(), TestClaims.With(), caller, time, new ProjectAccess(db, new StubActorDirectory())),
             ProjectId = hatch.Id,
             Todo = todo.Id,

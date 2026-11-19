@@ -116,7 +116,10 @@ public class IssueExpediteController(
                 At = now,
             });
 
+            // Who set it, for the walk that carries a level across a project
+            // line (SetterAuthority). Back to normal, nobody set it.
             issue.Priority = level;
+            issue.PrioritySetBy = level == PriorityLevels.Normal ? null : await SetterAuthority.CallerAsync(actors, ct);
             issue.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
         }

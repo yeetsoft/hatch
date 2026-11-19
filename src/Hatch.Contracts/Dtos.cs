@@ -488,6 +488,17 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// <param name="Contribution">The record that this issue came from outside, or null where it did not - see <see cref="EfHatchContribution"/>. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.</param>
 /// <param name="CreatedBy">The name that filed this issue - a person's or an API key's, never a person id - see <see cref="EfHatchIssue.CreatedBy"/>. Empty on the synthetic "Other" card, which has no issue.</param>
 /// <param name="ProjectPriority">The level of the project this issue sits in - one of <see cref="ProjectPriorities.All"/>. See <see cref="QueueEntryDto.ProjectPriority"/> for what it does to the walk; the board floats a card by it the same way.</param>
+/// <param name="PreApprovalPassedOver">
+/// The key of the nearest ancestor whose pre-approval was passed over at a
+/// project line - its setter has no say in this issue's project, or none was
+/// recorded - or null where nothing was. It is what a card needs to say
+/// "pre-approved on AER-1, not honoured in OPS". Walked live, never stored.
+/// </param>
+/// <param name="PriorityPassedOver">
+/// The same for the priority: the nearest ancestor in another project whose
+/// priority was passed over because its setter is not a live person in scope
+/// of this issue's project, or none was recorded. Null where nothing was.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -531,7 +542,9 @@ public record IssueCardDto(
     string ProjectPriority = ProjectPriorities.Normal,
     string LocalModel = LocalModelLevels.NoneName,
     string LocalModelOwn = LocalModelLevels.NoneName,
-    string? LocalModelFrom = null)
+    string? LocalModelFrom = null,
+    string? PreApprovalPassedOver = null,
+    string? PriorityPassedOver = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -744,6 +757,17 @@ public record IssueClaimDto(
 /// <param name="FiledFromKey">The key of the issue whose session filed this one, or null - see <see cref="EfHatchIssue.FiledFromId"/>. Provenance only; nothing that gates work reads it.</param>
 /// <param name="FiledKeys">The issues filed from this one, in key order. Empty where there are none.</param>
 /// <param name="Contribution">The record that this issue came from outside, or null where it did not - see <see cref="EfHatchContribution"/>.</param>
+/// <param name="PreApprovalPassedOver">
+/// The key of the nearest ancestor whose pre-approval was passed over at a
+/// project line - its setter has no say in this issue's project, or none was
+/// recorded - or null where nothing was. It is what a card needs to say
+/// "pre-approved on AER-1, not honoured in OPS". Walked live, never stored.
+/// </param>
+/// <param name="PriorityPassedOver">
+/// The same for the priority: the nearest ancestor in another project whose
+/// priority was passed over because its setter is not a live person in scope
+/// of this issue's project, or none was recorded. Null where nothing was.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -810,7 +834,9 @@ public record IssueDto(
     string LocalModel = LocalModelLevels.NoneName,
     string LocalModelOwn = LocalModelLevels.NoneName,
     string? LocalModelFrom = null,
-    string? PullRequestHeadBranch = null)
+    string? PullRequestHeadBranch = null,
+    string? PreApprovalPassedOver = null,
+    string? PriorityPassedOver = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -

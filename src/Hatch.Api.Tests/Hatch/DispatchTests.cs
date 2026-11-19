@@ -1050,7 +1050,7 @@ public class DispatchTests
         await h.Db.SaveChangesAsync();
         var task = await h.FileAsync("task", "t", h.Todo, parentId: story.Id);
 
-        var tree = await PriorityTree.ForAsync(h.Db, default);
+        var tree = await PriorityTree.ForAsync(h.Db, new StubActorDirectory(), default);
 
         Assert.Equal(("load-tests the API", IssueKey.Format(h.ProjectKey, story.Number)), tree.EffectiveDangerous(task.Id));
         Assert.Equal(("load-tests the API", (string?)null), tree.EffectiveDangerous(story.Id));
@@ -1069,7 +1069,7 @@ public class DispatchTests
         h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = epic.Id, RunnerName = "gpu-1", By = "operator", At = Now });
         await h.Db.SaveChangesAsync();
 
-        var tree = await PriorityTree.ForAsync(h.Db, default);
+        var tree = await PriorityTree.ForAsync(h.Db, new StubActorDirectory(), default);
 
         var effective = Assert.Single(tree.EffectiveOmittedRunners(task.Id));
         Assert.Equal("gpu-1", effective.Runner);
@@ -1079,7 +1079,7 @@ public class DispatchTests
         h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = task.Id, RunnerName = "gpu-1", By = "operator", At = Now });
         await h.Db.SaveChangesAsync();
 
-        tree = await PriorityTree.ForAsync(h.Db, default);
+        tree = await PriorityTree.ForAsync(h.Db, new StubActorDirectory(), default);
 
         var still = Assert.Single(tree.EffectiveOmittedRunners(task.Id));
         Assert.Equal("gpu-1", still.Runner);
@@ -1715,7 +1715,7 @@ public class DispatchTests
         var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
         var sibling = await h.FileAsync("story", "same project", h.Todo, projectId: other, parentId: epic.Id);
 
-        var tree = await PriorityTree.ForAsync(h.Db, default);
+        var tree = await PriorityTree.ForAsync(h.Db, new StubActorDirectory(), default);
 
         Assert.Equal((PreApprovalLevels.None, (string?)null), tree.EffectivePreApproval(story.Id));
         Assert.Equal((PriorityLevels.Normal, (string?)null), tree.Effective(story.Id));
@@ -1734,11 +1734,376 @@ public class DispatchTests
         await h.ExpressAsync(middle);
         var story = await h.FileAsync("story", "S", h.Todo, parentId: middle.Id);
 
-        var tree = await PriorityTree.ForAsync(h.Db, default);
+        var tree = await PriorityTree.ForAsync(h.Db, new StubActorDirectory(), default);
 
         Assert.Equal(
             (PreApprovalLevels.PreApproved, (string?)IssueKey.Format(h.ProjectKey, top.Number)),
             tree.EffectivePreApproval(story.Id));
+    }
+
+    // ---- A level crosses a project line on its setter's authority (HA-2466) ----
+
+    /// <summary>
+    /// An epic in project OTH carrying <paramref name="level"/> set by <paramref name="setter"/>, and a
+    /// story under it in the harness's own project, AER.
+    /// </summary>
+    private static async Task<(EfHatchIssue Epic, EfHatchIssue Story, string EpicKey)> CrossAsync(
+        Harness h, int level, Guid? setter, int otherProject)
+    {
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: otherProject);
+        await h.SetLevelAsync(epic, level, setter);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+        return (epic, story, IssueKey.Format("OTH", epic.Number));
+    }
+
+    [Theory]
+    [InlineData(ProjectMemberRole.Approver)]
+    [InlineData(ProjectMemberRole.Owner)]
+    public async Task PriorityTree_APreApprovalSetByAnApproverOfTheChildsProject_CrossesTheLine(string role)
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, role);
+        var (_, story, epicKey) = await CrossAsync(h, PreApprovalLevels.PreApproved, ada.Id, other);
+
+        var tree = await h.TreeAsync();
+
+        Assert.Equal((PreApprovalLevels.PreApproved, (string?)epicKey), tree.EffectivePreApproval(story.Id));
+        Assert.Null(tree.PassedOver(story.Id).PreApproval);
+    }
+
+    public enum Stranger { NoRole, RoleOnlyInTheOtherProject, Deleted, ScopeNone, ScopeSomeWithoutTheProject, Unrecorded }
+
+    [Theory]
+    [InlineData(Stranger.NoRole)]
+    [InlineData(Stranger.RoleOnlyInTheOtherProject)]
+    [InlineData(Stranger.Deleted)]
+    [InlineData(Stranger.ScopeNone)]
+    [InlineData(Stranger.ScopeSomeWithoutTheProject)]
+    [InlineData(Stranger.Unrecorded)]
+    public async Task PriorityTree_APreApprovalWhoseSetterHasNoSayInTheChildsProject_IsPassedOver(Stranger kind)
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var third = await h.AddProjectAsync("THR");
+        var setter = kind == Stranger.Deleted ? Guid.NewGuid() : h.Actors.AddPerson("Ada").Id;
+        switch (kind)
+        {
+            case Stranger.RoleOnlyInTheOtherProject:
+                await h.MemberAsync(other, setter, ProjectMemberRole.Owner);
+                break;
+            case Stranger.Deleted:
+                // The membership row lingers; the person is gone from the directory.
+                await h.MemberAsync(h.ProjectId, setter, ProjectMemberRole.Owner);
+                break;
+            case Stranger.ScopeNone:
+                await h.MemberAsync(h.ProjectId, setter, ProjectMemberRole.Owner);
+                await h.SetScopeAsync(setter, PersonScopeMode.None);
+                break;
+            case Stranger.ScopeSomeWithoutTheProject:
+                await h.MemberAsync(h.ProjectId, setter, ProjectMemberRole.Owner);
+                await h.SetScopeAsync(setter, PersonScopeMode.Some, third);
+                break;
+        }
+
+        var (_, story, epicKey) = await CrossAsync(h, PreApprovalLevels.PreApproved, kind == Stranger.Unrecorded ? null : setter, other);
+
+        var tree = await h.TreeAsync();
+
+        Assert.Equal((PreApprovalLevels.None, (string?)null), tree.EffectivePreApproval(story.Id));
+        Assert.Equal(new PassedOverLevel(PreApprovalLevels.PreApproved, epicKey), tree.PassedOver(story.Id).PreApproval);
+    }
+
+    [Fact]
+    public async Task PriorityTree_AnApproverWhoseScopeNamesTheProject_CrossesTheLine()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+        await h.SetScopeAsync(ada.Id, PersonScopeMode.Some, h.ProjectId);
+        var (_, story, _) = await CrossAsync(h, PreApprovalLevels.PreApproved, ada.Id, other);
+
+        Assert.Equal(PreApprovalLevels.PreApproved, (await h.TreeAsync()).EffectivePreApproval(story.Id).Level);
+    }
+
+    [Fact]
+    public async Task PriorityTree_TheJudgementIsLive_TakingTheRoleAwayOrNarrowingTheScopeChangesTheNextRead()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+        var (epic, story, epicKey) = await CrossAsync(h, PreApprovalLevels.PreApproved, ada.Id, other);
+        Assert.Equal(PreApprovalLevels.PreApproved, (await h.TreeAsync()).EffectivePreApproval(story.Id).Level);
+
+        h.Db.ProjectMembers.RemoveRange(await h.Db.ProjectMembers.ToListAsync());
+        await h.Db.SaveChangesAsync();
+
+        var after = await h.TreeAsync();
+        Assert.Equal(PreApprovalLevels.None, after.EffectivePreApproval(story.Id).Level);
+        Assert.Equal(epicKey, after.PassedOver(story.Id).PreApproval!.Value.Key);
+        // Nothing was copied onto the descendant, and the epic's own row is untouched.
+        Assert.Equal(PreApprovalLevels.None, (await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Id == story.Id)).PreApproval);
+        Assert.Equal(PreApprovalLevels.PreApproved, (await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Id == epic.Id)).PreApproval);
+
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+        Assert.Equal(PreApprovalLevels.PreApproved, (await h.TreeAsync()).EffectivePreApproval(story.Id).Level);
+
+        await h.SetScopeAsync(ada.Id, PersonScopeMode.None);
+        Assert.Equal(PreApprovalLevels.None, (await h.TreeAsync()).EffectivePreApproval(story.Id).Level);
+    }
+
+    [Fact]
+    public async Task PriorityTree_ExpressNeedsASetterWhoMayMoveIntoTheColumnThatFeedsImplementation()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        // The column feeding implementation ("in progress") is "todo": make it protected,
+        // so moving into it takes an approver, as CanMoveIntoAsync reads it.
+        (await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo)).IsProtected = true;
+        await h.Db.SaveChangesAsync();
+        var plain = h.Actors.AddPerson("Plain");
+        var approver = h.Actors.AddPerson("Approver");
+        await h.MemberAsync(h.ProjectId, approver.Id, ProjectMemberRole.Approver);
+
+        var (_, byPlain, _) = await CrossAsync(h, PreApprovalLevels.Express, plain.Id, other);
+        var (_, byApprover, _) = await CrossAsync(h, PreApprovalLevels.Express, approver.Id, other);
+
+        var tree = await h.TreeAsync();
+        Assert.Equal(PreApprovalLevels.None, tree.EffectivePreApproval(byPlain.Id).Level);
+        Assert.NotNull(tree.PassedOver(byPlain.Id).PreApproval);
+        Assert.Equal(PreApprovalLevels.Express, tree.EffectivePreApproval(byApprover.Id).Level);
+    }
+
+    [Fact]
+    public async Task PriorityTree_ExpressFromAnyLivePerson_CrossesWhereNoColumnIsProtected()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var plain = h.Actors.AddPerson("Plain");
+        var (_, story, _) = await CrossAsync(h, PreApprovalLevels.Express, plain.Id, other);
+
+        Assert.Equal(PreApprovalLevels.Express, (await h.TreeAsync()).EffectivePreApproval(story.Id).Level);
+    }
+
+    [Fact]
+    public async Task PriorityTree_APriorityCrossesFromALivePerson_AndNotFromADeletedOneOrNoOne()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var live = h.Actors.AddPerson("Ada");
+
+        async Task<(EfHatchIssue Story, string Key)> At(Guid? setter)
+        {
+            var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+            await h.SetLevelAsync(epic, PreApprovalLevels.None, setter, priority: PriorityLevels.Expedited);
+            return (await h.FileAsync("story", "S", h.Todo, parentId: epic.Id), IssueKey.Format("OTH", epic.Number));
+        }
+
+        var (byLive, liveKey) = await At(live.Id);
+        var (byDeleted, deletedKey) = await At(Guid.NewGuid());
+        var (byNobody, nobodyKey) = await At(null);
+
+        var tree = await h.TreeAsync();
+        Assert.Equal((PriorityLevels.Expedited, (string?)liveKey), tree.Effective(byLive.Id));
+        Assert.Null(tree.PassedOver(byLive.Id).Priority);
+        Assert.Equal((PriorityLevels.Normal, (string?)null), tree.Effective(byDeleted.Id));
+        Assert.Equal(new PassedOverLevel(PriorityLevels.Expedited, deletedKey), tree.PassedOver(byDeleted.Id).Priority);
+        Assert.Equal((PriorityLevels.Normal, (string?)null), tree.Effective(byNobody.Id));
+        Assert.Equal(nobodyKey, tree.PassedOver(byNobody.Id).Priority!.Value.Key);
+    }
+
+    [Fact]
+    public async Task PriorityTree_InsideOneProject_NoTestIsMade_ASetterWithNoRoleAtAllIsHonoured()
+    {
+        var h = await NewAsync();
+        var nobody = Guid.NewGuid();
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+        await h.SetLevelAsync(epic, PreApprovalLevels.PreApproved, nobody, priority: PriorityLevels.Expedited);
+        var recorded = await h.FileAsync("story", "recorded", h.Todo, parentId: epic.Id);
+        var unrecordedEpic = await h.FileAsync("epic", "E2", h.Todo);
+        await h.SetLevelAsync(unrecordedEpic, PreApprovalLevels.PreApproved, null);
+        var unrecorded = await h.FileAsync("story", "unrecorded", h.Todo, parentId: unrecordedEpic.Id);
+
+        var tree = await h.TreeAsync();
+
+        Assert.Equal(PreApprovalLevels.PreApproved, tree.EffectivePreApproval(recorded.Id).Level);
+        Assert.Equal(PriorityLevels.Expedited, tree.Effective(recorded.Id).Level);
+        Assert.Equal(PreApprovalLevels.PreApproved, tree.EffectivePreApproval(unrecorded.Id).Level);
+        Assert.Null(tree.PassedOver(recorded.Id).PreApproval);
+    }
+
+    [Fact]
+    public async Task PriorityTree_APassedOverLevel_LetsTheWalkCarryOnUp()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Owner);
+        var top = await h.FileAsync("epic", "top", h.Todo);
+        await h.SetLevelAsync(top, PreApprovalLevels.PreApproved, null);
+        var middle = await h.FileAsync("epic", "middle", h.Todo, projectId: other, parentId: top.Id);
+        await h.SetLevelAsync(middle, PreApprovalLevels.Express, null);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: middle.Id);
+
+        var tree = await h.TreeAsync();
+
+        Assert.Equal((PreApprovalLevels.PreApproved, (string?)IssueKey.Format(h.ProjectKey, top.Number)), tree.EffectivePreApproval(story.Id));
+        Assert.Equal(IssueKey.Format("OTH", middle.Number), tree.PassedOver(story.Id).PreApproval!.Value.Key);
+    }
+
+    [Fact]
+    public async Task PriorityTree_AndProjectAccess_AgreeOnWhoMayApproveAndWhoMayMoveIntoAProtectedColumn()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        (await h.Db.Statuses.SingleAsync(s => s.Id == h.Todo)).IsProtected = true;
+        await h.Db.SaveChangesAsync();
+        var protectedColumn = await h.Db.Statuses.AsNoTracking().SingleAsync(s => s.Id == h.Todo);
+
+        foreach (var role in new string?[] { ProjectMemberRole.Owner, ProjectMemberRole.Approver, null })
+        {
+            var person = h.Actors.AddPerson($"p-{role ?? "none"}");
+            if (role is not null) await h.MemberAsync(h.ProjectId, person.Id, role);
+            h.Actors.Me = person;
+            var access = new ProjectAccess(h.Db, h.Actors);
+
+            var (_, preApproved, _) = await CrossAsync(h, PreApprovalLevels.PreApproved, person.Id, other);
+            var (_, express, _) = await CrossAsync(h, PreApprovalLevels.Express, person.Id, other);
+            var tree = await h.TreeAsync();
+
+            Assert.Equal(
+                await access.CanApproveAsync(h.ProjectId, default),
+                tree.EffectivePreApproval(preApproved.Id).Level == PreApprovalLevels.PreApproved);
+            Assert.Equal(
+                await access.CanMoveIntoAsync(h.ProjectId, protectedColumn, default),
+                tree.EffectivePreApproval(express.Id).Level == PreApprovalLevels.Express);
+        }
+    }
+
+    // The three arms that read a level get no check of their own: a level the walk
+    // does not honour is not a level, and carries nothing.
+
+    [Fact]
+    public async Task ScanAsync_TheExpressHop_FiresOnAnHonouredLevelAcrossTheLine_AndNotOnAPassedOverOne()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.TickExpressSkipsAsync(h.Todo);
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+
+        // task -> story (AER) -> epic (OTH): the task's own parent is in its project, so the
+        // other-project hold does not apply and the level is what decides.
+        async Task<EfHatchIssue> TaskUnder(Guid? setter)
+        {
+            var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+            await h.SetLevelAsync(epic, PreApprovalLevels.Express, setter);
+            var story = await h.FileAsync("story", "S", h.InProgress, parentId: epic.Id);
+            return await h.FileAsync("task", "T", h.Todo, parentId: story.Id);
+        }
+
+        var honoured = await TaskUnder(ada.Id);
+        var passed = await TaskUnder(Guid.NewGuid());
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Equal(HopKinds.Express, RowFor(scan, honoured).HopKind);
+        Assert.Null(RowFor(scan, passed).HopKind);
+        Assert.StartsWith("express on OTH-", RowFor(scan, passed).Blocked);
+        Assert.Contains("not honoured in AER", RowFor(scan, passed).Blocked);
+        Assert.Equal(BlockedKinds.Person, RowFor(scan, passed).BlockedKind);
+    }
+
+    private static async Task<(EfHatchIssue Epic, EfHatchIssue Story)> ReviewStoryUnderOtherEpicAsync(Harness h, int other, Guid? setter)
+    {
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        await h.SetLevelAsync(epic, PreApprovalLevels.PreApproved, setter);
+        var story = await h.FileAsync("story", "in review", h.Review, parentId: epic.Id);
+        story.PullRequestUrl = "https://example.com/o/r/pull/1";
+        await h.Db.SaveChangesAsync();
+        await h.AddMergeCheckAsync(story, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(story, BuildVerdicts.Passed);
+        return (epic, story);
+    }
+
+    [Fact]
+    public async Task ScanAsync_TheApproveHop_CarriesAnHonouredLevelAcrossTheLine_AndNothingElse()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+        await h.Db.SaveChangesAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+        var (_, honoured) = await ReviewStoryUnderOtherEpicAsync(h, other, ada.Id);
+        var (_, passed) = await ReviewStoryUnderOtherEpicAsync(h, other, Guid.NewGuid());
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Equal(HopKinds.Approve, RowFor(scan, honoured).HopKind);
+        Assert.Null(RowFor(scan, passed).HopKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_TheCloseHop_CarriesAnHonouredLevelAcrossTheLine_AndNothingElse()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        await h.MemberAsync(h.ProjectId, ada.Id, ProjectMemberRole.Approver);
+
+        async Task<EfHatchIssue> Closable(Guid? setter)
+        {
+            var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+            await h.SetLevelAsync(epic, PreApprovalLevels.PreApproved, setter);
+            var story = await h.FileAsync("story", "ready to close", h.Review, parentId: epic.Id);
+            await h.FileAsync("task", "the only child", h.Done, parentId: story.Id);
+            return story;
+        }
+
+        var honoured = await Closable(ada.Id);
+        var passed = await Closable(null);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Equal(HopKinds.Close, RowFor(scan, honoured).HopKind);
+        Assert.Null(RowFor(scan, passed).HopKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AReviewChildUnderAnEpicPreApprovedByAStranger_IsNotApprovedMergedOrClosed_UntilAnApproverSetsTheLevelOnTheChild()
+    {
+        // The epic's own first check: a child in one project stands in review with a clean
+        // branch under a pre-approved epic in another, whose level a person with no rights
+        // in the child's project set. The loop does not carry it. An approver of the child's
+        // project sets the level on the child, and the next pass does.
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+        await h.Db.SaveChangesAsync();
+        var stranger = h.Actors.AddPerson("Stranger");
+        await h.MemberAsync(other, stranger.Id, ProjectMemberRole.Owner);
+        var (epic, child) = await ReviewStoryUnderOtherEpicAsync(h, other, stranger.Id);
+        var epicKey = IssueKey.Format("OTH", epic.Number);
+
+        var first = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+
+        Assert.False(first.Hop);
+        Assert.Null(first.HopKind);
+        Assert.Equal($"pre-approved on {epicKey}, not honoured in AER - its setter has no say there, so a person moves it", first.Blocked);
+        Assert.Equal(BlockedKinds.Person, first.BlockedKind);
+
+        var approver = h.Actors.AddPerson("Approver");
+        await h.MemberAsync(h.ProjectId, approver.Id, ProjectMemberRole.Approver);
+        await h.SetLevelAsync(child, PreApprovalLevels.PreApproved, approver.Id);
+
+        var second = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+
+        Assert.Equal(HopKinds.Approve, second.HopKind);
+        Assert.Null(second.Blocked);
     }
 
     [Fact]
@@ -1753,7 +2118,7 @@ public class DispatchTests
         var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
         await h.Db.SaveChangesAsync();
 
-        var tree = await PriorityTree.ForAsync(h.Db, default);
+        var tree = await PriorityTree.ForAsync(h.Db, new StubActorDirectory(), default);
 
         Assert.Contains("macos", tree.EffectiveRunnerTags(story.Id).All);
         Assert.Equal("load test", tree.EffectiveDangerous(story.Id).Reason);
@@ -1823,8 +2188,8 @@ public class DispatchTests
         await h.FileAsync("story", "open, elsewhere", h.InProgress, projectId: other, parentId: epic.Id);
         var statuses = await h.Db.Statuses.OrderBy(s => s.SortOrder).ToListAsync();
 
-        var everyone = await FamilyGate.ForAsync(h.Db, statuses, default);
-        var scoped = await FamilyGate.ForAsync(ScopeSeed.Request(h.Options, ScopeSeed.Only(h.ProjectId)), statuses, default);
+        var everyone = await FamilyGate.ForAsync(h.Db, new StubActorDirectory(), statuses, default);
+        var scoped = await FamilyGate.ForAsync(ScopeSeed.Request(h.Options, ScopeSeed.Only(h.ProjectId)), new StubActorDirectory(), statuses, default);
 
         Assert.NotNull(everyone.EpicFold(epic.Id, statuses));
         Assert.Equal(everyone.EpicFold(epic.Id, statuses), scoped.EpicFold(epic.Id, statuses));
@@ -1866,6 +2231,7 @@ public class DispatchTests
         public required HatchContext Db { get; init; }
         public required DbContextOptions<HatchContext> Options { get; init; }
         public required Dispatch Dispatch { get; init; }
+        public required StubActorDirectory Actors { get; init; }
         public required int ProjectId { get; init; }
         public required string ProjectKey { get; init; }
         public required int Inbox { get; init; }
@@ -2117,6 +2483,36 @@ public class DispatchTests
             await Db.SaveChangesAsync();
         }
 
+        /// <summary>A role on a project, written straight to the table.</summary>
+        public async Task MemberAsync(int projectId, Guid personId, string role)
+        {
+            Db.ProjectMembers.Add(new EfHatchProjectMember { ProjectId = projectId, PersonId = personId, Role = role, CreatedAt = Now });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A level and the person who set it, written straight to the row. A null person is a level no one recorded.</summary>
+        public async Task SetLevelAsync(EfHatchIssue issue, int preApproval, Guid? setter, int? priority = null)
+        {
+            issue.PreApproval = preApproval;
+            issue.PreApprovalSetBy = preApproval == PreApprovalLevels.None ? null : setter;
+            if (priority is { } p)
+            {
+                issue.Priority = p;
+                issue.PrioritySetBy = setter;
+            }
+
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task SetScopeAsync(Guid personId, string mode, params int[] projects)
+        {
+            Db.PersonScopes.Add(new EfHatchPersonScope { PersonId = personId, Mode = mode, UpdatedBy = "test", UpdatedAt = Now });
+            Db.PersonScopeProjects.AddRange(projects.Select(id => new EfHatchPersonScopeProject { PersonId = personId, ProjectId = id }));
+            await Db.SaveChangesAsync();
+        }
+
+        public Task<PriorityTree> TreeAsync() => PriorityTree.ForAsync(Db, Actors, default);
+
         public async Task PreApprovedAsync(EfHatchIssue issue)
         {
             issue.PreApproval = PreApprovalLevels.PreApproved;
@@ -2319,12 +2715,14 @@ public class DispatchTests
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
+        var actors = new StubActorDirectory();
 
         return new Harness
         {
             Db = db,
             Options = options,
-            Dispatch = new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time),
+            Actors = actors,
+            Dispatch = new Dispatch(db, actors, TestClaims.With(), time),
             ProjectId = project.Id,
             ProjectKey = project.Key,
             Inbox = inbox.Id,

@@ -31,7 +31,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/attention")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup, IAuthService keys) : ControllerBase
+public class AttentionController(HatchContext db, IActorDirectory actors, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup, IAuthService keys) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AttentionDto>> GetAttention(CancellationToken ct)
@@ -50,7 +50,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // Only the ancestor walk MergeWork.Judge needs below, for a
         // pre-approved review row - not the full DependencyGate, which this
         // endpoint has no dependency-gating need for.
-        var tree = await PriorityTree.ForAsync(db, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct);
 
         // A repository's trunk is nobody's issue, so this does not wait on
         // there being a review column at all - a person's row here even on a
@@ -357,7 +357,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         }
 
         var closesTo = Columns.Closes(statuses, review);
-        var family = closesTo is not null ? await FamilyGate.ForAsync(db, statuses, ct) : null;
+        var family = closesTo is not null ? await FamilyGate.ForAsync(db, actors, statuses, ct) : null;
 
         // A trunk-landing issue stops being "without a pull request" once its
         // landing is recorded: it was never going to have one, and where it

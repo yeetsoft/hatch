@@ -243,7 +243,7 @@ public class IssuesController(
             .ToListAsync(ct);
 
         var now = time.GetUtcNow();
-        var priorities = await PriorityTree.ForAsync(db, ct);
+        var priorities = await PriorityTree.ForAsync(db, actors, ct);
 
         var contributions = await IssueContributions.ForIssuesAsync(db, rows.Select(r => r.Id).ToList(), ct);
 
@@ -252,6 +252,7 @@ public class IssuesController(
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var passedOver = priorities.PassedOver(i.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
@@ -290,6 +291,8 @@ public class IssuesController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                PreApprovalPassedOver: passedOver.PreApproval?.Key,
+                PriorityPassedOver: passedOver.Priority?.Key,
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
                 LocalModelFrom: effectiveLocalModelFrom,
@@ -349,7 +352,10 @@ public class IssuesController(
         if (request.LocalModel is { } localModelName && !LocalModelLevels.TryParse(localModelName, out localModel))
             return BadRequest(IssueLocalModelController.UnknownLevel(localModelName));
 
-        return await CreateIssueAsync(request, priority, ct, preApproval, localModel: localModel);
+        // The caller's person id, written beside whichever level the filing
+        // names - the filing is the setting - so the level can cross a project
+        // line on this person's authority (SetterAuthority).
+        return await CreateIssueAsync(request, priority, ct, preApproval, localModel: localModel, setBy: await SetterAuthority.CallerAsync(actors, ct));
     }
 
     /// <summary>
@@ -361,10 +367,13 @@ public class IssuesController(
     /// trunk's button files is born expedited the way an issue can be born at
     /// whatever level the caller names (<see cref="EfHatchIssue.PreApproval"/>),
     /// in the same save and with no second event, because expediting at birth is
-    /// not a change from anything.
+    /// not a change from anything. <paramref name="setBy"/> is the person who
+    /// chose the levels, written only beside a level above none or normal: the
+    /// trunk-failure bug and the weave file with none, so theirs never cross a
+    /// project line.
     /// </summary>
     internal async Task<ActionResult<IssueDto>> CreateIssueAsync(
-        IssueCreateRequest request, int priority, CancellationToken ct, int preApproval = PreApprovalLevels.None, int? statusId = null, int localModel = LocalModelLevels.None)
+        IssueCreateRequest request, int priority, CancellationToken ct, int preApproval = PreApprovalLevels.None, int? statusId = null, int localModel = LocalModelLevels.None, Guid? setBy = null)
     {
         var title = request.Title?.Trim();
         if (Invalid(title, request.Description, request.Type) is { } invalid) return BadRequest(invalid);
@@ -405,7 +414,7 @@ public class IssuesController(
             var chosenParent = await ResolveParentAsync(request.ParentKey, statusProject.Id, request.Type, null, ct);
             if (chosenParent.Error is { } parentError) return BadRequest(parentError);
 
-            var gate = new WipGate(db, claims, time.GetUtcNow());
+            var gate = new WipGate(db, actors, claims, time.GetUtcNow());
             var probe = new EfHatchIssue
             {
                 ProjectId = statusProject.Id, Number = 0, Type = request.Type, Title = "", StatusId = 0, Rank = 0,
@@ -468,9 +477,11 @@ public class IssuesController(
                 DueAt = dueAt?.At,
                 DueAtHasTime = dueAt?.HasTime ?? false,
                 PreApproval = preApproval,
+                PreApprovalSetBy = preApproval == PreApprovalLevels.None ? null : setBy,
                 LocalModel = localModel,
                 OnePullRequest = onePr,
                 Priority = priority,
+                PrioritySetBy = priority == PriorityLevels.Normal ? null : setBy,
                 CreatedBy = actor,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -544,7 +555,7 @@ public class IssuesController(
 
         if (!movingRequested)
         {
-            var gate = new WipGate(db, claims, now);
+            var gate = new WipGate(db, actors, claims, now);
             var (changed, error, conflict, full, _, forbidden) = await StageEditAsync(
                 issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
             if (forbidden is not null) return new ObjectResult(forbidden) { StatusCode = StatusCodes.Status403Forbidden };
@@ -553,7 +564,7 @@ public class IssuesController(
             if (error is not null) return BadRequest(error);
 
             if (changed) await db.SaveChangesAsync(ct);
-            await ChangelogTasks.FileForAsync(db, ranks, time, justClosed, ct);
+            await ChangelogTasks.FileForAsync(db, actors, ranks, time, justClosed, ct);
 
             return await ToDtoAsync(issue, ct);
         }
@@ -570,7 +581,7 @@ public class IssuesController(
             issue = await LoadAsync(key, ct);
             if (issue is null) return NotFound();
 
-            var gate = new WipGate(db, claims, now);
+            var gate = new WipGate(db, actors, claims, now);
             var (changed, error, conflict, full, _, forbidden) = await StageEditAsync(
                 issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
             if (forbidden is not null) return new ObjectResult(forbidden) { StatusCode = StatusCodes.Status403Forbidden };
@@ -592,7 +603,7 @@ public class IssuesController(
                 return Conflict("could not mint an issue number - try again");
             }
 
-            await ChangelogTasks.FileForAsync(db, ranks, time, justClosed, ct);
+            await ChangelogTasks.FileForAsync(db, actors, ranks, time, justClosed, ct);
             return await ToDtoAsync(issue, ct);
         }
     }
@@ -648,7 +659,7 @@ public class IssuesController(
 
         // And the same for the WIP load: two stories in one bulk request aimed
         // at one free slot must not both be admitted. Bulk takes no override.
-        var gate = new WipGate(db, claims, now);
+        var gate = new WipGate(db, actors, claims, now);
 
         // Resolves every named key, orders a move's named ancestors ahead of
         // their own named descendants, then stages each through
@@ -757,7 +768,7 @@ public class IssuesController(
             }
         }
 
-        await ChangelogTasks.FileForAsync(db, ranks, time, justClosed, ct);
+        await ChangelogTasks.FileForAsync(db, actors, ranks, time, justClosed, ct);
 
         return new IssueBulkResultDto(
             changed, unchanged, failures, rekeyedPairs.Select(p => new IssueBulkRekeyedDto(p.From, p.To)).ToList());
@@ -1156,7 +1167,7 @@ public class IssuesController(
             if (MergeColumnRefusal(issue, status) is { } mergeRefusal) return BadRequest(mergeRefusal);
 
             var now = time.GetUtcNow();
-            var gate = new WipGate(db, claims, now);
+            var gate = new WipGate(db, actors, claims, now);
             var wip = await gate.AdmitAsync(issue, status.Id, issue.Type, issue.ParentId, request.WipOverride, ct);
             if (wip.Kind == WipVerdictKind.Refused) return Conflict(wip.Refusal);
 
@@ -1186,7 +1197,7 @@ public class IssuesController(
         // never land separately.
         issue.Rank = await ranks.PlaceAsync(status.Id, issue.Id, after, before, ct);
         await db.SaveChangesAsync(ct);
-        await ChangelogTasks.FileForAsync(db, ranks, time, justClosed, ct);
+        await ChangelogTasks.FileForAsync(db, actors, ranks, time, justClosed, ct);
 
         return await ToDtoAsync(issue, ct);
     }

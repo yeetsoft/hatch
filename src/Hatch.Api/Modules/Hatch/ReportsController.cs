@@ -80,7 +80,7 @@ public class ReportsController(
 
         if (ids.Count > 0)
         {
-            var priorities = await PriorityTree.ForAsync(db, ct);
+            var priorities = await PriorityTree.ForAsync(db, actors, ct);
 
             var issues = await db.Issues.AsNoTracking()
                 .Where(i => ids.Contains(i.Id))
@@ -127,6 +127,7 @@ public class ReportsController(
             foreach (var i in issues)
             {
                 var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+                var passedOver = priorities.PassedOver(i.Id);
                 var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
                 var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
 
@@ -148,6 +149,8 @@ public class ReportsController(
                     PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                     PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                     PreApprovalFrom: effectivePreApprovalFrom,
+                    PreApprovalPassedOver: passedOver.PreApproval?.Key,
+                    PriorityPassedOver: passedOver.Priority?.Key,
                     LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                     LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
                     LocalModelFrom: effectiveLocalModelFrom,
@@ -1019,7 +1022,7 @@ public class ReportsController(
         var cards = new Dictionary<long, IssueCardDto>();
         if (ids.Count == 0) return (cards, null);
 
-        var priorities = await PriorityTree.ForAsync(db, ct);
+        var priorities = await PriorityTree.ForAsync(db, actors, ct);
         var tree = withTree ? await Rollup.LoadAsync(db, ct) : null;
 
         var issues = await db.Issues.AsNoTracking()
@@ -1065,6 +1068,7 @@ public class ReportsController(
         foreach (var i in issues)
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+            var passedOver = priorities.PassedOver(i.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
 
@@ -1086,6 +1090,8 @@ public class ReportsController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                PreApprovalPassedOver: passedOver.PreApproval?.Key,
+                PriorityPassedOver: passedOver.Priority?.Key,
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(i.LocalModel),
                 LocalModelFrom: effectiveLocalModelFrom,

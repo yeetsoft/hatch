@@ -503,7 +503,7 @@ public class WorkController(
         // to check - its work is on the story's, which is checked as the story
         // - so a poll that went looking for one named for the task would find
         // none and report that, for every task, until the story merged.
-        var tree = await PriorityTree.ForAsync(db, ct);
+        var tree = await PriorityTree.ForAsync(db, actors, ct);
         var held = rows
             .Where(i => Dispatch.HoldsCheckout(i.Project!.Repositories, repos) && tree.WaitingOn(i.Id, statuses) is null)
             .ToList();
@@ -552,7 +552,7 @@ public class WorkController(
         IReadOnlyDictionary<long, Dispatch.TrainSlot> trainSlots = new Dictionary<long, Dispatch.TrainSlot>();
         if (merging.Count > 0)
         {
-            var gate = await DependencyGate.ForAsync(db, statuses, ct, tree);
+            var gate = await DependencyGate.ForAsync(db, actors, statuses, ct, tree);
             var effective = merging.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
             var judged = merging.ToDictionary(i => i.Id, i => MergeWork.Judge(
                 i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
@@ -690,11 +690,11 @@ public class WorkController(
             statuses,
             null,
             null,
-            await DependencyGate.ForAsync(db, statuses, ct),
-            await FamilyGate.ForAsync(db, statuses, ct),
-            new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, now, ct)),
+            await DependencyGate.ForAsync(db, actors, statuses, ct),
+            await FamilyGate.ForAsync(db, actors, statuses, ct),
+            new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, actors, now, ct)),
             RepositoryDeclaration.From(remote, standing, clones),
-            await Wip.LoadAsync(db, claims, statuses, now, ct),
+            await Wip.LoadAsync(db, actors, claims, statuses, now, ct),
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
             tags,
             models,
@@ -752,7 +752,7 @@ public class WorkController(
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var now = time.GetUtcNow();
 
-        var family = await FamilyGate.ForAsync(db, statuses, ct);
+        var family = await FamilyGate.ForAsync(db, actors, statuses, ct);
 
         var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
         var merged = inReview ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
@@ -766,12 +766,12 @@ public class WorkController(
 
         var landing = inReview && (await _dispatch.LandedAsync([issue], now, ct)).TryGetValue(issue.Id, out var landed) ? landed : (MergeWork.Judgement?)null;
 
-        var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
+        var wip = await Wip.LoadAsync(db, actors, claims, statuses, now, ct);
         var parent = family.ParentOf(issue.Id);
         var sendBackStreak = Columns.Implementation(statuses) is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
-        var gate = await DependencyGate.ForAsync(db, statuses, ct);
+        var gate = await DependencyGate.ForAsync(db, actors, statuses, ct);
         var (preApprovalLevel, preApprovalFromKey) = gate.EffectivePreApproval(issue.Id);
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, preApprovalLevel, merged, built, now,
             await _dispatch.ImplementationPlaybookAsync(statuses, from, issue, family, ct));
@@ -790,7 +790,7 @@ public class WorkController(
             null,
             gate,
             family,
-            new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct)),
+            new ClaimGate(claims, now, null, await claims.LineageAsync(db, actors, now, ct)),
             Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses,
@@ -881,7 +881,7 @@ public class WorkController(
             issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
-        if (closedNow) await ChangelogTasks.FileForAsync(db, ranks, time, [issue], ct);
+        if (closedNow) await ChangelogTasks.FileForAsync(db, actors, ranks, time, [issue], ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
     }
@@ -1062,7 +1062,7 @@ public class WorkController(
         var from = statuses.First(s => s.Id == issue.StatusId);
 
         var now = time.GetUtcNow();
-        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct));
+        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, actors, now, ct));
 
         // The same guards the queue's train note runs on a read: one function,
         // so the sentence the route answers is the sentence a person was shown.
@@ -1096,7 +1096,7 @@ public class WorkController(
         // change a merge writes, naming the story.
         if (issue.Type is "story" or "bug")
         {
-            var tree = await PriorityTree.ForAsync(db, ct);
+            var tree = await PriorityTree.ForAsync(db, actors, ct);
             var storyKey = IssueKey.Format(projectKey, number);
             var waitingIds = tree.WaitingUnder(issue.Id, statuses);
 
@@ -1134,7 +1134,7 @@ public class WorkController(
         }
 
         await db.SaveChangesAsync(ct);
-        if (closedNow) await ChangelogTasks.FileForAsync(db, ranks, time, [issue], ct);
+        if (closedNow) await ChangelogTasks.FileForAsync(db, actors, ranks, time, [issue], ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
     }
@@ -1201,7 +1201,7 @@ public class WorkController(
 
         if (judgement.Kind != WorkKinds.Pushback) return Conflict(judgement.Sentence);
 
-        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct));
+        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, actors, now, ct));
         if (claimed.Held(issue) is { } holder) return Conflict(holder);
 
         var actor = await caller.ActorNameAsync(ct);
@@ -1283,7 +1283,7 @@ public class WorkController(
 
         if (judgement.Kind != WorkKinds.Land) return Conflict(judgement.Sentence);
 
-        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct));
+        var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, actors, now, ct));
         if (claimed.Held(issue) is { } holder) return Conflict(holder);
 
         var actor = await caller.ActorNameAsync(ct);
@@ -1311,7 +1311,7 @@ public class WorkController(
             issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
-        if (closedNow) await ChangelogTasks.FileForAsync(db, ranks, time, [issue], ct);
+        if (closedNow) await ChangelogTasks.FileForAsync(db, actors, ranks, time, [issue], ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
     }
@@ -1471,6 +1471,7 @@ public class WorkController(
         foreach (var c in children)
         {
             var (effectivePreApproval, effectivePreApprovalFrom) = gate.EffectivePreApproval(c.Id);
+            var passedOver = gate.PassedOver(c.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = gate.EffectiveLocalModel(c.Id);
             var (onePr, onePrOwn, onePrFrom) = gate.EffectiveOnePr(c.Id);
             childCards.Add(new IssueCardDto(
@@ -1491,6 +1492,8 @@ public class WorkController(
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
                 PreApprovalFrom: effectivePreApprovalFrom,
+                PreApprovalPassedOver: passedOver.PreApproval?.Key,
+                PriorityPassedOver: passedOver.Priority?.Key,
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(c.LocalModel),
                 LocalModelFrom: effectiveLocalModelFrom,

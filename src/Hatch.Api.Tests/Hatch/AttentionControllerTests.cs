@@ -3176,7 +3176,7 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), claims ?? TestClaims.With(), time, keys, sessions), backup, keys),
+            Attention = new AttentionController(db, new StubActorDirectory(), runners, time, new Dispatch(db, new StubActorDirectory(), claims ?? TestClaims.With(), time, keys, sessions), backup, keys),
             Time = time,
             Backup = backup,
             Status = status,
@@ -3218,7 +3218,7 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time, keys, sessions), backup, keys),
+            Attention = new AttentionController(db, new StubActorDirectory(), runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time, keys, sessions), backup, keys),
             Time = time,
             Backup = backup,
             Status = status,

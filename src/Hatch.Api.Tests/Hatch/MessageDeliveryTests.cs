@@ -205,7 +205,7 @@ public class MessageDeliveryTests
                 var db = Connect();
                 var claims = TestClaims.With();
                 return new(
-                    db, claims, Caller, Time, TestClaims.Preemption(db, Time), TestClaims.Runners(),
+                    db, new StubActorDirectory(), claims, Caller, Time, TestClaims.Preemption(db, Time), TestClaims.Runners(),
                     new Dispatch(db, new StubActorDirectory(), claims, Time));
             }
         }

@@ -460,6 +460,104 @@ public class IssuePreApprovalControllerTests
             obj.Value);
     }
 
+    // ---- Who set it (HA-2466) ----
+
+    [Fact]
+    public async Task SettingALevel_RecordsThePersonWhoSetIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+
+        await h.Express.PutIssuePreApproval(issue.Key, new PreApprovalRequest(PreApprovalLevels.ExpressName), default);
+
+        Assert.Equal(ada.Id, (await h.RowAsync(issue.Key)).PreApprovalSetBy);
+    }
+
+    [Fact]
+    public async Task ALocalPerson_WithTheWallOff_IsRecordedToo()
+    {
+        // MeAsync answers the local person as a person, which is the source
+        // ProjectAccess reads - ICallerIdentity.PersonIdAsync would be null here.
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var local = h.Actors.AddPerson("Local");
+        h.Actors.Me = local;
+        h.Caller.Person = null;
+
+        await h.Express.PutIssueExpress(issue.Key, new ExpressRequest(true), default);
+
+        Assert.Equal(local.Id, (await h.RowAsync(issue.Key)).PreApprovalSetBy);
+    }
+
+    [Fact]
+    public async Task LoweringTheLevelToNone_ClearsThePerson()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+        await h.ExpressAsync(issue.Key, true);
+
+        await h.ExpressAsync(issue.Key, false);
+
+        Assert.Null((await h.RowAsync(issue.Key)).PreApprovalSetBy);
+    }
+
+    [Fact]
+    public async Task SettingTheLevelItAlreadyHolds_LeavesTheFirstPersonRecorded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+        await h.ExpressAsync(issue.Key, true);
+        h.Actors.Me = h.Actors.AddPerson("Grace");
+
+        await h.ExpressAsync(issue.Key, true);
+
+        Assert.Equal(ada.Id, (await h.RowAsync(issue.Key)).PreApprovalSetBy);
+    }
+
+    [Fact]
+    public async Task ChangingTheLevel_RecordsTheNewPerson_AndTheEventKeepsItsShape()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        h.Actors.Me = h.Actors.AddPerson("Ada");
+        await h.ExpressAsync(issue.Key, true);
+        var grace = h.Actors.AddPerson("Grace");
+        h.Actors.Me = grace;
+        await h.MemberAsync(grace.Id, ProjectMemberRole.Approver);
+
+        await h.Express.PutIssuePreApproval(issue.Key, new PreApprovalRequest(PreApprovalLevels.PreApprovedName), default);
+
+        Assert.Equal(grace.Id, (await h.RowAsync(issue.Key)).PreApprovalSetBy);
+        var last = (await h.EventsAsync(issue.Key)).Last();
+        Assert.Equal(("express", "preapproved"), Sides(last));
+        Assert.Equal(["from", "to"], last.Payload!.Value.EnumerateObject().Select(x => x.Name));
+    }
+
+    [Fact]
+    public async Task FilingAtALevel_RecordsThePerson_AndFilingAtNoneRecordsNobody()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+
+        var at = Created(await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "story", "at a level", null, null, null, null, Priority: "expedited", PreApproval: "express"), default));
+        var plain = Created(await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "story", "at none", null, null, null, null), default));
+
+        var row = await h.RowAsync(at.Key);
+        Assert.Equal(ada.Id, row.PreApprovalSetBy);
+        Assert.Equal(ada.Id, row.PrioritySetBy);
+        var none = await h.RowAsync(plain.Key);
+        Assert.Null(none.PreApprovalSetBy);
+        Assert.Null(none.PrioritySetBy);
+    }
+
     // ---- The legacy alias ----
 
     // ---- Harness ----
@@ -585,7 +683,7 @@ public class IssuePreApprovalControllerTests
             Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
             Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             Thread = new IssueThreadController(db, caller, time),
-            Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
+            Statuses = new StatusesController(db, new StubActorDirectory(), caller, time, NullLogger<StatusesController>.Instance),
             Time = time,
             ProjectId = hatch.Id,
             InboxId = inbox.Id,

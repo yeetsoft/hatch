@@ -18,7 +18,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/changelog-files")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class ChangelogFileController(
-    HatchContext db, ICallerIdentity caller, TimeProvider time, IOptions<HatchOptions> hatchOptions,
+    HatchContext db, IActorDirectory actors, ICallerIdentity caller, TimeProvider time, IOptions<HatchOptions> hatchOptions,
     RankService ranks, ILogger<ChangelogFileController> log) : ControllerBase
 {
     /// <summary>
@@ -136,7 +136,7 @@ public class ChangelogFileController(
         await db.SaveChangesAsync(ct);
 
         if (verdict.State is ChangelogFile.BehindState or ChangelogFile.AbsentState)
-            await ChangelogTasks.FileForGapAsync(db, ranks, time, canonical, projection, verdict.Lacking, ct, log);
+            await ChangelogTasks.FileForGapAsync(db, actors, ranks, time, canonical, projection, verdict.Lacking, ct, log);
 
         return ToDto(row);
     }

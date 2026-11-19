@@ -14,7 +14,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/issues/{key}/remand")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class IssueRemandController(HatchContext db, RankService ranks, ICallerIdentity caller, TimeProvider time) : ControllerBase
+public class IssueRemandController(HatchContext db, IActorDirectory actors, RankService ranks, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     /// <summary>The same cap a bulk edit keeps, for the same reason.</summary>
     private const int MaxKeys = 500;
@@ -137,7 +137,7 @@ public class IssueRemandController(HatchContext db, RankService ranks, ICallerId
 
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
-        await ChangelogTasks.FileForAsync(db, ranks, time, closed, ct);
+        await ChangelogTasks.FileForAsync(db, actors, ranks, time, closed, ct);
 
         var remandedFrom = remanded
             .OrderByDescending(r => r.Root)

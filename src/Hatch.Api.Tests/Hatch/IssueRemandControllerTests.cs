@@ -344,7 +344,7 @@ public class IssueRemandControllerTests
         var h = new Harness
         {
             Db = db,
-            Controller = new IssueRemandController(db, new RankService(db), caller, time),
+            Controller = new IssueRemandController(db, new StubActorDirectory(), new RankService(db), caller, time),
             Dreams = new DreamsController(db, caller, time),
             ProjectId = project.Id,
             Open = open,

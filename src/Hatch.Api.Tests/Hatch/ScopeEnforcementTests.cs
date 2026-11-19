@@ -191,7 +191,7 @@ public class ScopeEnforcementTests
         }
 
         await using var db = ScopeSeed.Request(h.Options, ScopeSeed.Only(h.Seed.ProjectA));
-        var gate = await DependencyGate.ForAsync(db, await db.Statuses.ToListAsync(), default);
+        var gate = await DependencyGate.ForAsync(db, new StubActorDirectory(), await db.Statuses.ToListAsync(), default);
 
         // A's own edge, and the one to B's issue, which still blocks.
         Assert.Equal(2, gate.Unmet(h.Seed.IssueA).Count);

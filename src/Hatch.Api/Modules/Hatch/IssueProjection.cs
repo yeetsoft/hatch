@@ -94,7 +94,7 @@ public static class IssueProjection
             .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number })
             .ToDictionaryAsync(r => r.Id, r => IssueKey.Format(r.ProjectKey, r.Number), ct);
 
-        var priorities = await PriorityTree.ForAsync(db, ct);
+        var priorities = await PriorityTree.ForAsync(db, actors, ct);
 
         var childRows = await db.Issues.AsNoTracking()
             .Where(i => i.ParentId != null && ids.Contains(i.ParentId!.Value))
@@ -199,6 +199,7 @@ public static class IssueProjection
             var projectKey = issue.Project?.Key ?? projects[issue.ProjectId].Key;
             var (effective, effectiveFrom) = priorities.Effective(issue.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(issue.Id);
+            var passedOver = priorities.PassedOver(issue.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(issue.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(issue.Id);
@@ -286,7 +287,9 @@ public static class IssueProjection
                 LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                 LocalModelOwn: LocalModelLevels.Name(issue.LocalModel),
                 LocalModelFrom: effectiveLocalModelFrom,
-                PullRequestHeadBranch: issue.PullRequestHeadBranch);
+                PullRequestHeadBranch: issue.PullRequestHeadBranch,
+                PreApprovalPassedOver: passedOver.PreApproval?.Key,
+                PriorityPassedOver: passedOver.Priority?.Key);
         });
     }
 

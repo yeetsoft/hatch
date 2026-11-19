@@ -226,6 +226,19 @@ or lower `preapproved`, and the band says so on the steps it locks. A
 key-holder sees the word, with where it was inherited from, and nothing to
 press.
 
+Inside one project a level reaches every descendant, whoever set it. From a
+parent in another project it reaches a descendant only while the person who set
+it could set the same level on that descendant themselves: an owner or approver
+of its project for `preapproved`, someone who may move work into the column
+that feeds implementation for `express`, and a live person for a priority, with
+the project in that person's scope. Take their role away and the level stops
+reaching the descendant on the next read. A level with nobody recorded as its
+setter, as every level set before setters were recorded, stays inside its own
+project. Where a level did not reach, the ticket's `preApprovalPassedOver` and
+`priorityPassedOver` name the ancestor that carries it, and the queue says
+"pre-approved on AER-1, not honoured in OPS" where it would otherwise have
+moved the ticket on.
+
 ## Local model
 
 Three levels: none, prefer, require — read live from the nearest ancestor

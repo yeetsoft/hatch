@@ -25,7 +25,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/statuses")]
-public class StatusesController(HatchContext db, ICallerIdentity caller, TimeProvider time, ILogger<StatusesController> logger) : ControllerBase
+public class StatusesController(HatchContext db, IActorDirectory actors, ICallerIdentity caller, TimeProvider time, ILogger<StatusesController> logger) : ControllerBase
 {
     /// <summary>
     /// The one mapping from a column to its <see cref="StatusDto"/>. Every route
@@ -135,7 +135,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         }
 
         await db.SaveChangesAsync(ct);
-        await ChangelogTasks.FileForAsync(db, new RankService(db), time, closedByTick, ct, logger);
+        await ChangelogTasks.FileForAsync(db, actors, new RankService(db), time, closedByTick, ct, logger);
         return ToDto(status);
     }
 

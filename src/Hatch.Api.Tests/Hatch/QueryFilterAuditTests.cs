@@ -65,6 +65,11 @@ public class QueryFilterAuditTests
             "Inside the playbook proposal filter, reading the proposal's changes. A change's filter reads its "
             + "proposal and the proposal's filter reads its changes, and EF overflows the stack on the loop. The "
             + "playbook rule is written out in the filter beside it, so the opt-out lets nothing hidden through."),
+        ["ProjectAccess.ReadAsync"] = (3,
+            "The member, scope and scope-project rows of every person, read once per priority tree. Whether a level "
+            + "set in another project may be honoured is a fact about the person who set it and not about whoever "
+            + "is reading, so a filter on the caller's own scope would make one level read two ways. Nothing leaves "
+            + "but yes or no, asked of an issue the caller already has."),
         ["ProjectsController.KeyTakenAsync"] = (1,
             "Whether a project key is taken. A key is unique across the house, so a hidden project's key is "
             + "just as taken as a visible one, and a filtered read would let a scoped caller through to the "

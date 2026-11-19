@@ -113,7 +113,7 @@ public class IssueRunnerOmissionsController(
 
         if (row is null)
         {
-            var tree = await PriorityTree.ForAsync(db, ct);
+            var tree = await PriorityTree.ForAsync(db, actors, ct);
             var inherited = tree.EffectiveOmittedRunners(issue.Id).FirstOrDefault(o => o.Runner == runnerName);
 
             return inherited?.FromKey is { } ancestor
