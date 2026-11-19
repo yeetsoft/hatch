@@ -10,7 +10,10 @@ import { ContributionBadge, ContributionMark } from './ContributionMark';
 import { TypeGlyph } from './TypeGlyph';
 import { statusVars } from '../lib/color';
 import { dangerousTitle } from '../lib/dangerous';
+import { inheritedSentences } from '../lib/inherited';
 import { localModelLevel } from '../lib/localModel';
+import { PRE_APPROVAL_LEVELS } from '../lib/preApproval';
+import { PRIORITY_LEVELS } from '../lib/priority';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick, type ClickIntent } from '../lib/pointer';
 import type { FlowBandKind } from '../lib/queue';
@@ -81,6 +84,8 @@ const hasMarks = (card: IssueCard) =>
   card.priority !== 'normal' ||
   card.projectPriority === 'paused' ||
   card.express ||
+  !!card.preApprovalPassedOverLevel ||
+  !!card.priorityPassedOverLevel ||
   card.localModel !== 'none' ||
   !!card.dangerous ||
   !!card.claim ||
@@ -263,6 +268,19 @@ function CardFace({
   linkRunner = false,
 }: Required<Omit<CardProps, 'card'>> & { card: IssueCard; showStrip?: boolean; linkRunner?: boolean }) {
   const { total, done } = storyCount(stories, statuses);
+  const said = inheritedSentences(card, card.projectKey);
+  // A passed-over level reads as none or normal on the card, so it draws no
+  // mark of its own: these two are the only place it shows. Where one is
+  // drawn, the honoured marks keep their fixed text, since the sentence then
+  // carries the passed-over level and would read as theirs.
+  const passedOverPriority = card.priorityPassedOverLevel
+    ? PRIORITY_LEVELS.find((l) => l.name === card.priorityPassedOverLevel)
+    : undefined;
+  const passedOverApproval = card.preApprovalPassedOverLevel
+    ? PRE_APPROVAL_LEVELS.find((l) => l.name === card.preApprovalPassedOverLevel)
+    : undefined;
+  const priorityTitle = card.priorityPassedOverLevel ? null : said.priority;
+  const approvalTitle = card.preApprovalPassedOverLevel ? null : said.preApproval;
   return (
     <>
       <TypeGlyph type={card.type} />
@@ -306,7 +324,8 @@ function CardFace({
                     : ''
               }`}
               title={
-                card.priority === 'emergency'
+                priorityTitle ??
+                (card.priority === 'emergency'
                   ? 'Emergency - the highest priority, first above everything expedited'
                   : card.priority === 'expedited'
                     ? 'Expedited - this one goes first'
@@ -316,7 +335,7 @@ function CardFace({
                         ? 'Economy - worked only with usage that would otherwise go spare'
                         : card.priority === 'normal'
                           ? 'Paused - its project is paused; a person set it aside and the loop leaves it where it stands'
-                          : 'Paused - a person set this aside; the loop leaves it where it stands'
+                          : 'Paused - a person set this aside; the loop leaves it where it stands')
               }
             >
               {card.priority === 'emergency'
@@ -330,13 +349,21 @@ function CardFace({
                       : '⏸'}
             </span>
           )}
+          {passedOverPriority && (
+            <span className="hatch-card-expedited passedover" title={said.priority ?? undefined}>
+              {passedOverPriority.glyph}
+            </span>
+          )}
           {/* Express, beside expedite and drawn the same way - its own glyph and
               no stripe, because the stripe on the card is expedite's alone. A
               card that is both carries both marks. */}
           {card.express && (
             <span
               className="hatch-card-express"
-              title="Express - carried past a column marked Express skips, with no session"
+              title={
+                (card.preApproval === 'express' ? approvalTitle : null) ??
+                'Express - carried past a column marked Express skips, with no session'
+              }
             >
               »
             </span>
@@ -349,9 +376,17 @@ function CardFace({
           {card.preApproval === 'preapproved' && (
             <span
               className="hatch-card-preapproved"
-              title="Pre-approved - the approve press given in advance: carried into the merge column, or closed, with no session"
+              title={
+                approvalTitle ??
+                'Pre-approved - the approve press given in advance: carried into the merge column, or closed, with no session'
+              }
             >
               ✓
+            </span>
+          )}
+          {passedOverApproval && (
+            <span className="hatch-card-preapproved passedover" title={said.preApproval ?? undefined}>
+              {passedOverApproval.glyph}
             </span>
           )}
           {card.localModel !== 'none' && (
@@ -419,7 +454,11 @@ function CardFace({
       <div className="hatch-card-title" title={card.title}>
         {truncate(card.title)}
       </div>
-      {card.parentKey && <div className="hatch-card-parent">↳ {card.parentKey}</div>}
+      {card.parentKey && (
+        <div className="hatch-card-parent" title={said.pull ?? undefined}>
+          ↳ {card.parentKey}
+        </div>
+      )}
       {stories.length > 0 && showStrip && (
         <div className="hatch-card-stories" aria-label={stripLabel(total, done, stories.filter(needsMe).length)}>
           <StoryStrip stories={stories} statuses={statuses} />

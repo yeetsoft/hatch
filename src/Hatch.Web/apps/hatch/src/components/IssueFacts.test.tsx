@@ -126,6 +126,18 @@ describe('IssueFacts', () => {
     expect(render(issue())).not.toContain('Finished with no code');
   });
 
+  it('says a pull that is not honoured beside the parent, and nothing else where there is none', () => {
+    const html = render(issue({ parentKey: 'OPS-1', pullPassedOver: 'OPS-1' }));
+    expect(html).toContain('OPS-1 is in progress, but its pull is not honoured in AER');
+    expect(render(issue({ parentKey: 'OPS-1' }))).not.toContain('pull is not honoured');
+  });
+
+  it('says a masked pull as outside your scope', () => {
+    expect(render(issue({ fromBeyondScope: ['pullPassedOver'] }))).toContain(
+      'from an issue outside your scope, not honoured in AER',
+    );
+  });
+
   it('draws every field it has, and holds nothing that can write', () => {
     const html = render(
       issue({

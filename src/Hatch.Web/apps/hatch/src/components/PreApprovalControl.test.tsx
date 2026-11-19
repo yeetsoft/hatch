@@ -82,6 +82,42 @@ describe('PreApprovalControl', () => {
     );
   });
 
+  it('says a passed-over level in the label, where nothing is inherited', () => {
+    const html = renderToStaticMarkup(
+      <PreApprovalControl
+        issueKey="HA-14"
+        preApproval="none"
+        preApprovalOwn="none"
+        preApprovalFrom={null}
+        passedOver="pre-approved on OPS-1, not honoured in HA"
+        directory={directory()}
+        canApprove={false}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(html).toContain(
+      'aria-label="Pre-approval: None, pre-approved on OPS-1, not honoured in HA. Set HA-14&#x27;s pre-approval"',
+    );
+  });
+
+  it('says it beside the level for a key, which draws no button', () => {
+    const html = renderToStaticMarkup(
+      <PreApprovalControl
+        issueKey="HA-14"
+        preApproval="none"
+        preApprovalOwn="none"
+        preApprovalFrom={null}
+        passedOver="pre-approved on OPS-1, not honoured in HA"
+        directory={directory('key')}
+        canApprove={false}
+        onChange={() => {}}
+      />,
+    );
+
+    expect(html).toContain('None · pre-approved on OPS-1, not honoured in HA');
+  });
+
   it('is busy and disabled while a press is out', () => {
     const html = renderToStaticMarkup(
       <PreApprovalControl
