@@ -1700,6 +1700,157 @@ public class DispatchTests
         Assert.Null(Dispatch.StalledFold(held: false, stalledAt: null, stalledWhy: null, letGo: 0, resumeSeconds: 900, resumeLimit: 3, now: Now));
     }
 
+    // ---- A project line: nothing inherited crosses it, and no hop is carried over it ----
+
+    private const string OtherProjectSentence = "its parent is in another project, so nothing pulls it - a person moves it";
+
+    [Fact]
+    public async Task PriorityTree_AParentInAnotherProject_HandsDownNoPreApprovalAndNoPriority()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        epic.Priority = global::Hatch.Contracts.PriorityLevels.Expedited;
+        await h.PreApprovedAsync(epic);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+        var sibling = await h.FileAsync("story", "same project", h.Todo, projectId: other, parentId: epic.Id);
+
+        var tree = await PriorityTree.ForAsync(h.Db, default);
+
+        Assert.Equal((PreApprovalLevels.None, (string?)null), tree.EffectivePreApproval(story.Id));
+        Assert.Equal((PriorityLevels.Normal, (string?)null), tree.Effective(story.Id));
+        Assert.Equal(PreApprovalLevels.PreApproved, tree.EffectivePreApproval(sibling.Id).Level);
+        Assert.Equal(global::Hatch.Contracts.PriorityLevels.Expedited, tree.Effective(sibling.Id).Level);
+    }
+
+    [Fact]
+    public async Task PriorityTree_AChainThatLeavesAndComesBack_PassesOverTheMiddleRow()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var top = await h.FileAsync("epic", "top", h.Todo);
+        await h.PreApprovedAsync(top);
+        var middle = await h.FileAsync("epic", "middle", h.Todo, projectId: other, parentId: top.Id);
+        await h.ExpressAsync(middle);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: middle.Id);
+
+        var tree = await PriorityTree.ForAsync(h.Db, default);
+
+        Assert.Equal(
+            (PreApprovalLevels.PreApproved, (string?)IssueKey.Format(h.ProjectKey, top.Number)),
+            tree.EffectivePreApproval(story.Id));
+    }
+
+    [Fact]
+    public async Task PriorityTree_AParentInAnotherProject_StillHandsDownTagsADangerousReasonAndOmissions()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        await h.TagAsync(epic, "macos");
+        epic.Dangerous = "load test";
+        h.Db.RunnerOmissions.Add(new EfHatchIssueRunnerOmission { IssueId = epic.Id, RunnerName = "runner-a", By = "operator", At = Now });
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+        await h.Db.SaveChangesAsync();
+
+        var tree = await PriorityTree.ForAsync(h.Db, default);
+
+        Assert.Contains("macos", tree.EffectiveRunnerTags(story.Id).All);
+        Assert.Equal("load test", tree.EffectiveDangerous(story.Id).Reason);
+        Assert.Contains(tree.EffectiveOmittedRunners(story.Id), o => o.Runner == "runner-a");
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnExpressEpicInAnotherProject_CarriesNothingUnderIt()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.TickExpressSkipsAsync(h.Todo);
+        var epic = await h.FileAsync("epic", "E", h.Todo, projectId: other);
+        await h.ExpressAsync(epic);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(RowFor(scan, story).HopKind);
+        Assert.Equal(OtherProjectSentence, RowFor(scan, story).Blocked);
+        Assert.Equal(BlockedKinds.Person, RowFor(scan, story).BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ARunningEpicInAnotherProject_DoesNotCarryItsStoryUnder()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Todo);
+        var epic = await h.FileAsync("epic", "E", h.InProgress, projectId: other);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(RowFor(scan, story).HopKind);
+        Assert.Equal(OtherProjectSentence, RowFor(scan, story).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ARunningEpicInAnotherProject_DoesNotCarryASubEpicOrPullAChild()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickParentPullsAsync(h.Todo);
+        var running = await h.FileAsync("epic", "running", h.InProgress, projectId: other);
+        var sub = await h.FileAsync("epic", "sub", h.Todo, parentId: running.Id);
+        await h.FileAsync("story", "under sub", h.Todo, parentId: sub.Id);
+        var task = await h.FileAsync("task", "T", h.Todo, parentId: running.Id);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(RowFor(scan, sub).HopKind);
+        Assert.Equal(OtherProjectSentence, RowFor(scan, sub).Blocked);
+        Assert.Null(RowFor(scan, task).HopKind);
+        Assert.Equal(OtherProjectSentence, RowFor(scan, task).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AChildInAnotherProjectThatIsNotDone_HoldsTheEpicOutOfCloseWhoeverAsks()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var epic = await h.FileAsync("epic", "E", h.Review);
+        await h.PreApprovedAsync(epic);
+        await h.FileAsync("story", "open, elsewhere", h.InProgress, projectId: other, parentId: epic.Id);
+        var statuses = await h.Db.Statuses.OrderBy(s => s.SortOrder).ToListAsync();
+
+        var everyone = await FamilyGate.ForAsync(h.Db, statuses, default);
+        var scoped = await FamilyGate.ForAsync(ScopeSeed.Request(h.Options, ScopeSeed.Only(h.ProjectId)), statuses, default);
+
+        Assert.NotNull(everyone.EpicFold(epic.Id, statuses));
+        Assert.Equal(everyone.EpicFold(epic.Id, statuses), scoped.EpicFold(epic.Id, statuses));
+        Assert.Single(scoped.EpicOpenChildren(epic.Id, statuses));
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        Assert.NotEqual(HopKinds.Close, RowFor(scan, epic).HopKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AStoryFiledUnderAnEpicInAnotherProject_IsMatchedAndPausedByItsOwnProject()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, projectId: h.ProjectId, model: "sonnet");
+        var epic = await h.FileAsync("epic", "E", h.InProgress, projectId: other);
+        var story = await h.FileAsync("story", "S", h.InProgress, parentId: epic.Id);
+        await h.AddPlaybookAsync(h.InProgress, h.Review, projectId: h.ProjectId);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var row = RowFor(scan, story);
+        Assert.Null(row.Blocked);
+        Assert.Equal(h.Review, row.To!.Id);
+    }
+
     // ---- Helpers ----
 
     private static PlaybookFileRow FileRow(
@@ -1713,6 +1864,7 @@ public class DispatchTests
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
+        public required DbContextOptions<HatchContext> Options { get; init; }
         public required Dispatch Dispatch { get; init; }
         public required int ProjectId { get; init; }
         public required string ProjectKey { get; init; }
@@ -1805,6 +1957,13 @@ public class DispatchTests
         public async Task ExpressAsync(EfHatchIssue issue)
         {
             issue.PreApproval = PreApprovalLevels.Express;
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task TickParentPullsAsync(int statusId)
+        {
+            var status = await Db.Statuses.FirstAsync(s => s.Id == statusId);
+            status.ParentPulls = true;
             await Db.SaveChangesAsync();
         }
 
@@ -2147,8 +2306,8 @@ public class DispatchTests
 
     private static async Task<Harness> NewAsync()
     {
-        var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var db = new HatchContext(options);
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var inbox = new EfHatchStatus { Name = "inbox", SortOrder = 10 };
@@ -2164,6 +2323,7 @@ public class DispatchTests
         return new Harness
         {
             Db = db,
+            Options = options,
             Dispatch = new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time),
             ProjectId = project.Id,
             ProjectKey = project.Key,

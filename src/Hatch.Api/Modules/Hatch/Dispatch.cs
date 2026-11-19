@@ -2180,6 +2180,9 @@ public sealed class Dispatch(
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
             repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor).Sentence;
 
+    /// <summary>The hold for an issue whose parent is in another project: no hop crosses that line, so a person moves it.</summary>
+    private const string OtherProjectParent = "its parent is in another project, so nothing pulls it - a person moves it";
+
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
     /// it is - null exactly where the sentence is. Every return point tags a
@@ -2427,7 +2430,7 @@ public sealed class Dispatch(
             return new Blocking(hasBlock, BlockedKinds.Other);
 
         if (to.Id == implementation?.Id
-            || (from.ParentPulls && issue.ParentId is { } pullParentId && family.ParentStarted(pullParentId, statuses)))
+            || (from.ParentPulls && family.ParentStartedHere(issue, statuses)))
         {
             if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn)
                 return Blocking.Waiting(WaitingOn(waitingOn), BlockedKinds.Dependency, waitingOn.Select(e => e.BlockerId).ToList());
@@ -2506,9 +2509,15 @@ public sealed class Dispatch(
         // self-move can't reach this: the review column is always at or past
         // implementation, so the guard below excludes it already.
         if (issue.Type is "story" or "bug" or "task"
+            && issue.ParentId is not null
+            && !Columns.AtOrPastImplementation(statuses, from.Id)
+            && family.ParentOf(issue.Id) is { OtherProject: true })
+            return new Blocking(OtherProjectParent, BlockedKinds.Person);
+
+        if (issue.Type is "story" or "bug" or "task"
             && issue.ParentId is { } holdParentId
             && !Columns.AtOrPastImplementation(statuses, from.Id)
-            && !family.ParentStarted(holdParentId, statuses))
+            && !family.ParentStartedHere(issue, statuses))
             return new Blocking("its parent has not reached the implementation column, so nothing pulls it forward yet", BlockedKinds.Family, [holdParentId]);
 
         // The hop answers condition 8 and nothing else: an express issue in a
@@ -2529,6 +2538,9 @@ public sealed class Dispatch(
         {
             var epicParent = family.ParentOf(issue.Id);
 
+            if (epicParent is { OtherProject: true })
+                return new Blocking(OtherProjectParent, BlockedKinds.Person);
+
             if (epicParent is not null
                 && (!IssueTypeKinds.RunsChildren(epicParent.Type) || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId)))
                 return new Blocking("its parent epic is not running, so nothing pulls it in", BlockedKinds.Family, [issue.ParentId!.Value]);
@@ -2544,7 +2556,7 @@ public sealed class Dispatch(
         // speak for a sibling on the story's shared branch, still in flight.
         // A childless issue in such a column (e.g. plain Backlog) has nothing
         // to pull, so it falls through unchanged.
-        if (from.ParentPulls && issue.ParentId is { } parentId && family.ParentStarted(parentId, statuses)
+        if (from.ParentPulls && family.ParentStartedHere(issue, statuses)
             && family.SharedBranchSiblingId(issue, statuses) is { } sharedId)
             return new Blocking(FamilyGate.SharedBranchHold(family.KeyOf(sharedId)), BlockedKinds.Family, [sharedId]);
 
@@ -2636,11 +2648,11 @@ public sealed class Dispatch(
                 && family.Children(issue.Id).Count > 0
                 && (parent is null
                     ? Columns.AtOrPastImplementation(statuses, to.Id)
-                    : parent is { } parentEpic && IssueTypeKinds.RunsChildren(parentEpic.Type) && Columns.AtOrPastImplementation(statuses, parentEpic.StatusId)))
+                    : parent is { OtherProject: false } parentEpic && IssueTypeKinds.RunsChildren(parentEpic.Type) && Columns.AtOrPastImplementation(statuses, parentEpic.StatusId)))
                 return HopKinds.Epic;
 
             if (issue.Type is "story" or "bug" && from.ExpressSkips
-                && parent is { } p && IssueTypeKinds.RunsChildren(p.Type) && Columns.AtOrPastImplementation(statuses, p.StatusId))
+                && parent is { OtherProject: false } p && IssueTypeKinds.RunsChildren(p.Type) && Columns.AtOrPastImplementation(statuses, p.StatusId))
                 return HopKinds.Under;
         }
 
@@ -3377,8 +3389,9 @@ public sealed class PriorityTree
     private readonly Dictionary<long, (string Type, bool? OnePr, bool ProjectOnePr, int StatusId, bool HasPr, bool Terminal)> _onePr;
 
     // Each issue's own runner tags and its project's - the project's read once
-    // per issue here rather than re-derived per ancestor, since an issue and
-    // its parent always share one project.
+    // per issue here rather than re-derived per ancestor. Tags cross a project
+    // line, so an ancestor in another project still contributes its own, but
+    // the project's tags are the issue's own project's alone.
     private readonly Dictionary<long, (IReadOnlyList<string> Own, IReadOnlyList<string> Project)> _runnerTags;
 
     // Each issue's own dangerous reason, null where it is not flagged. Kept
@@ -3388,6 +3401,11 @@ public sealed class PriorityTree
     // Each issue's own local-model level - LocalModelLevels. Kept beside
     // _dangerous rather than widening _rows; an issue with no entry reads as none.
     private readonly Dictionary<long, int> _localModels;
+
+    // Each issue's project id. The walks that carry a level down the parent
+    // chain stop at a project line with it: an ancestor in another project is
+    // skipped, not read. An issue with no entry reads as in the same project.
+    private readonly Dictionary<long, int> _projects;
 
     // Each issue's project's level - ProjectPriorities. Kept beside _dangerous
     // rather than widening _rows; an issue with no entry reads as normal.
@@ -3409,9 +3427,11 @@ public sealed class PriorityTree
         Dictionary<long, string?>? dangerous = null,
         Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>>? omissions = null,
         Dictionary<long, string>? projectLevels = null,
-        Dictionary<long, int>? localModels = null)
+        Dictionary<long, int>? localModels = null,
+        Dictionary<long, int>? projects = null)
     {
         _rows = rows;
+        _projects = projects ?? new();
         _localModels = localModels ?? new();
         _projectLevels = projectLevels ?? new();
         _onePr = onePr ?? new();
@@ -3442,7 +3462,7 @@ public sealed class PriorityTree
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous, ProjectPriority = i.Project!.Priority,
-                i.LocalModel,
+                i.LocalModel, i.ProjectId,
             })
             .ToListAsync(ct);
 
@@ -3464,15 +3484,20 @@ public sealed class PriorityTree
                     g => (IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>)
                         g.Select(o => (o.RunnerName, o.Reason, o.By, o.At)).ToList()),
             rows.ToDictionary(r => r.Id, r => r.ProjectPriority),
-            rows.ToDictionary(r => r.Id, r => r.LocalModel));
+            rows.ToDictionary(r => r.Id, r => r.LocalModel),
+            rows.ToDictionary(r => r.Id, r => r.ProjectId));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
 
+    /// <summary>Whether two issues sit in one project. An issue the tree has no project for reads as the same, so a tree built by hand never crosses a line.</summary>
+    private bool SameProject(long a, long b) =>
+        !_projects.TryGetValue(a, out var pa) || !_projects.TryGetValue(b, out var pb) || pa == pb;
+
     /// <summary>
     /// The level of the project this issue sits in - one of
     /// <see cref="ProjectPriorities.All"/>. Not inherited: a project's level is
-    /// its own, and an issue and its parent always share one project.
+    /// its own, read from the issue's own project and never from an ancestor's.
     /// </summary>
     public string ProjectLevel(long issueId) =>
         _projectLevels.TryGetValue(issueId, out var level) ? level : ProjectPriorities.Normal;
@@ -3489,7 +3514,7 @@ public sealed class PriorityTree
 
         while (at is { } id && seen.Add(id))
         {
-            if (TryGet(id, out var row) && row.Priority != PriorityLevels.Normal)
+            if (SameProject(id, issueId) && TryGet(id, out var row) && row.Priority != PriorityLevels.Normal)
                 return (row.Priority, id == issueId ? null : row.Key);
 
             at = TryGet(id, out var found) ? found.ParentId : null;
@@ -3510,7 +3535,7 @@ public sealed class PriorityTree
 
         while (at is { } id && seen.Add(id))
         {
-            if (TryGet(id, out var row) && row.PreApproval != PreApprovalLevels.None)
+            if (SameProject(id, issueId) && TryGet(id, out var row) && row.PreApproval != PreApprovalLevels.None)
                 return (row.PreApproval, id == issueId ? null : row.Key);
 
             at = TryGet(id, out var found) ? found.ParentId : null;
@@ -3939,7 +3964,7 @@ public sealed record UnmetEdge(string BlockerKey, string? HolderKey, long Blocke
 public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
-    public static readonly FamilyGate None = new([], [], [], [], [], [], []);
+    public static readonly FamilyGate None = new([], [], [], [], [], [], [], []);
 
     /// <summary>
     /// The sentence for an issue with nothing filed under it at all - shared
@@ -3947,8 +3972,12 @@ public sealed class FamilyGate
     /// </summary>
     public const string NothingUnder = "nothing is filed under it - an epic runs its stories, and it has none";
 
-    /// <summary>One issue's own parent, as <see cref="ParentOf"/> answers it - see HA-113.</summary>
-    public sealed record Parent(string Key, string Type, int StatusId);
+    /// <summary>
+    /// One issue's own parent, as <see cref="ParentOf"/> answers it - see HA-113.
+    /// <c>OtherProject</c> is true where the parent sits in a different project
+    /// from the child, which is a line no hop crosses.
+    /// </summary>
+    public sealed record Parent(string Key, string Type, int StatusId, bool OtherProject = false);
 
     private readonly Dictionary<long, List<long>> _children;
     private readonly HashSet<long> _open;
@@ -3957,12 +3986,14 @@ public sealed class FamilyGate
     private readonly HashSet<long> _waiting;
     private readonly Dictionary<long, long> _sharedStory;
     private readonly HashSet<long> _changelogTasks;
+    private readonly Dictionary<long, int> _projectById;
 
     private FamilyGate(
         Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById,
         Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> byId, HashSet<long> waiting,
-        Dictionary<long, long> sharedStory, HashSet<long> changelogTasks)
+        Dictionary<long, long> sharedStory, HashSet<long> changelogTasks, Dictionary<long, int> projectById)
     {
+        _projectById = projectById;
         _children = children;
         _open = open;
         _statusById = statusById;
@@ -3977,11 +4008,15 @@ public sealed class FamilyGate
     {
         var terminal = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToHashSet();
 
-        var rows = await db.Issues.AsNoTracking()
+        // Every project, not the caller's: a child in a project the caller
+        // cannot see still counts toward its parent's fold, so an epic is not
+        // closed over work the caller merely cannot read.
+        var rows = await db.Issues.IgnoreQueryFilters().AsNoTracking()
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Select(i => new { i.Id, i.ParentId, i.StatusId, i.Type, ProjectKey = i.Project!.Key, i.Number })
+            .Select(i => new { i.Id, i.ParentId, i.StatusId, i.Type, ProjectKey = i.Project!.Key, i.Number, i.ProjectId })
             .ToListAsync(ct);
 
+        var projectById = new Dictionary<long, int>();
         var children = new Dictionary<long, List<long>>();
         var open = new HashSet<long>();
         var statusById = new Dictionary<long, int>();
@@ -3990,6 +4025,7 @@ public sealed class FamilyGate
         {
             if (!terminal.Contains(row.StatusId)) open.Add(row.Id);
             statusById[row.Id] = row.StatusId;
+            projectById[row.Id] = row.ProjectId;
             byId[row.Id] = (row.ParentId, row.Type, IssueKey.Format(row.ProjectKey, row.Number), row.StatusId);
 
             if (row.ParentId is not { } parent) continue;
@@ -4000,7 +4036,7 @@ public sealed class FamilyGate
         // Every task waiting on its story's pull request, found once for the
         // pass - see PriorityTree.WaitingOn. A board that shares no pull request
         // anywhere has an empty set and every rule below is exactly as it was.
-        tree ??= await PriorityTree.ForAsync(db, ct);
+        tree ??= await PriorityTree.ForAsync(db, ct, ignoreFilters: true);
         var waiting = tree.WaitingIds(statuses).Keys.ToHashSet();
 
         // Which tasks share a parent's branch, and which parent - read off the
@@ -4013,7 +4049,7 @@ public sealed class FamilyGate
         // its brief is the board's own, so a parent pull carries it unanalysed.
         var changelogTasks = (await db.ChangelogTasks.AsNoTracking().Select(t => t.IssueId).ToListAsync(ct)).ToHashSet();
 
-        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks);
+        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks, projectById);
     }
 
     /// <summary>
@@ -4052,7 +4088,7 @@ public sealed class FamilyGate
     public Parent? ParentOf(long issueId)
     {
         if (!_byId.TryGetValue(issueId, out var row) || row.ParentId is not { } parentId) return null;
-        return _byId.TryGetValue(parentId, out var p) ? new Parent(p.Key, p.Type, p.StatusId) : null;
+        return _byId.TryGetValue(parentId, out var p) ? new Parent(p.Key, p.Type, p.StatusId, !SameProject(issueId, parentId)) : null;
     }
 
     /// <summary>
@@ -4119,6 +4155,20 @@ public sealed class FamilyGate
         _statusById.TryGetValue(parentId, out var statusId)
         && Columns.AtOrPastImplementation(statuses, statusId);
 
+    /// <summary>Whether two issues the pass loaded sit in one project; an id it never loaded reads as the same.</summary>
+    private bool SameProject(long a, long b) =>
+        !_projectById.TryGetValue(a, out var pa) || !_projectById.TryGetValue(b, out var pb) || pa == pb;
+
+    /// <summary>
+    /// <see cref="ParentStarted"/> for this issue's own parent, and only when
+    /// that parent is in the issue's own project: a parent across a project
+    /// line never pulls it.
+    /// </summary>
+    public bool ParentStartedHere(EfHatchIssue issue, List<EfHatchStatus> statuses) =>
+        issue.ParentId is { } parentId
+        && SameProject(issue.Id, parentId)
+        && ParentStarted(parentId, statuses);
+
     /// <summary>The key of an issue the pass loaded - an id <see cref="SharedBranchSiblingId"/> returned.</summary>
     public string KeyOf(long issueId) => _byId[issueId].Key;
 
@@ -4167,8 +4217,7 @@ public sealed class FamilyGate
     /// flight on the story's shared branch.
     /// </summary>
     public bool Pulls(EfHatchIssue issue, List<EfHatchStatus> statuses) =>
-        issue.ParentId is { } parentId
-        && ParentStarted(parentId, statuses)
+        ParentStartedHere(issue, statuses)
         && SharedBranchSibling(issue, statuses) is null;
 }
 

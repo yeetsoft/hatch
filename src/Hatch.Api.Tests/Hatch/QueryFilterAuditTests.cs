@@ -32,11 +32,12 @@ public class QueryFilterAuditTests
             "Rank placement. A column is shared by every project, so a rank placed against only the visible "
             + "cards could land on a hidden card's rank, and a renumber would reorder the two sets against each "
             + "other. What leaves is a rank."),
-        ["Dispatch.ForAsync"] = (3,
+        ["Dispatch.ForAsync"] = (4,
             "The dependency gate and the priority tree it and the work-in-progress count lean on. A blocker in a "
             + "project the caller cannot see still blocks, and a hidden issue missing from the tree would read "
             + "as unpaused and unblocked. What leaves is an id and a key; the tree is only asked questions about "
-            + "rows the caller already has."),
+            + "rows the caller already has. The family gate is the fourth: a child in a project the caller "
+            + "cannot see still counts as open, so an epic is not closed over it. What leaves is a count and an id."),
         ["ProjectRepositoryBinding.WinnersAsync"] = (1,
             "Which project a repository belongs to. The winner is the same project whoever asks, or two callers "
             + "would file the same outage's bug under different projects. What leaves is an id and a key."),
