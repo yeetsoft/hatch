@@ -67,13 +67,19 @@ public sealed class ClaimTests
     [Fact]
     public async Task The_interval_is_a_fifth_of_the_lease_and_never_a_busy_loop()
     {
-        Assert.Equal(TimeSpan.FromSeconds(60), Claim.Interval(300));
+        // With no gone figure, thirty seconds stands in for it.
+        Assert.Equal(TimeSpan.FromSeconds(30), Claim.Interval(300));
         Assert.Equal(TimeSpan.FromSeconds(24), Claim.Interval(120));
+
+        // A third of the gone limit, so one missed beat stays inside it.
+        Assert.Equal(TimeSpan.FromSeconds(30), Claim.Interval(300, 90));
+        Assert.Equal(TimeSpan.FromSeconds(20), Claim.Interval(300, 60));
+        Assert.Equal(TimeSpan.FromSeconds(24), Claim.Interval(120, 900));
 
         // A TTL short enough to make a fifth of it a busy loop is a
         // misconfiguration, and not one to amplify.
         Assert.Equal(TimeSpan.FromSeconds(5), Claim.Interval(4));
-        Assert.Equal(TimeSpan.FromSeconds(60), Claim.Interval(0));
+        Assert.Equal(TimeSpan.FromSeconds(30), Claim.Interval(0));
 
         await Task.CompletedTask;
     }
