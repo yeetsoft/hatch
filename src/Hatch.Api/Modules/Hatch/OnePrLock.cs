@@ -62,15 +62,25 @@ public static class OnePrLock
     /// A project whose tasks do not count - the one a story is about to move into,
     /// where its tasks stop being across a line.
     /// </param>
+    /// <param name="movingIds">
+    /// Given when the stories are about to move into <paramref name="exceptProjectId"/>:
+    /// the issues moving with them. Then the question is where each task will stand
+    /// against where the story will, not where they stand now, so a task counts
+    /// when it is not moving and not already in that project - which takes in one
+    /// left behind in the story's old project.
+    /// </param>
     public static async Task<int> CrossProjectTaskCountAsync(
-        HatchContext db, IReadOnlyCollection<long> storyIds, CancellationToken ct, int? exceptProjectId = null)
+        HatchContext db, IReadOnlyCollection<long> storyIds, CancellationToken ct,
+        int? exceptProjectId = null, IReadOnlyCollection<long>? movingIds = null)
     {
         if (storyIds.Count == 0) return 0;
 
-        return await db.Issues.IgnoreQueryFilters().AsNoTracking()
-            .Where(i => i.Type == "task" && i.ParentId != null && storyIds.Contains(i.ParentId.Value)
-                && i.ProjectId != i.Parent!.ProjectId && i.ProjectId != exceptProjectId)
-            .CountAsync(ct);
+        var tasks = db.Issues.IgnoreQueryFilters().AsNoTracking()
+            .Where(i => i.Type == "task" && i.ParentId != null && storyIds.Contains(i.ParentId.Value));
+
+        return movingIds is null
+            ? await tasks.Where(i => i.ProjectId != i.Parent!.ProjectId && i.ProjectId != exceptProjectId).CountAsync(ct)
+            : await tasks.Where(i => !movingIds.Contains(i.Id) && i.ProjectId != exceptProjectId).CountAsync(ct);
     }
 
     /// <summary>
@@ -158,8 +168,8 @@ public static class OnePrLock
     /// <see cref="OnePullRequestPolicies.Enforced"/> project returns to inherit.
     /// Worked out in memory, off the statuses the same edit has already staged, and
     /// over the moving set alone: a descendant left behind
-    /// (<c>moveDescendants: false</c>) is no longer under the story, so it does not
-    /// hold the override. Started is the lock's own test
+    /// (<c>moveDescendants: false</c>) stays in another project, where the move's own
+    /// refusal decides whether the story may go, so it does not hold the override. Started is the lock's own test
     /// (<see cref="Columns.AtOrPastImplementation"/>), as in
     /// <see cref="OverriddenAndUnstartedAsync"/>.
     /// </summary>

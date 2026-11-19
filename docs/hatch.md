@@ -1695,18 +1695,19 @@ retry on a lost race; its old key goes dead, the same cost a project's own
 key rename pays (see [Project](#project)), just paid by one issue instead of
 every issue under it.
 
-A parent may stand in another project, so a move has to settle the tree. An
-ancestor never moves *with* its descendant, only a descendant moves down, so
-the moved issue's own parent is always left behind unless the same request
-also re-parents it: `parentKey`, resolved against the *target* project rather
-than the old one. `moveDescendants: true` — the default when the field is
-absent — carries the descendants reached through links inside the moved
-issue's own project, so that subtree's parentage survives inside it. A child
-in another project is not carried and not re-keyed: it keeps its link to the
-moved parent, and nothing under it moves either, even a grandchild in the
-moving project. `moveDescendants: false` detaches only the direct children in
-the old project instead, and they stay there with their own subtrees under
-them intact.
+A parent may stand in another project, so a move keeps the tree it finds. An
+ancestor never moves *with* its descendant, only a descendant moves down, and
+the moved issue keeps its own parent: a request with no `parentKey` is no
+opinion on it, as everywhere else, so no `parent_changed` event is written. It
+is re-parented only when the same request names another parent, resolved by the
+type rules alone, or sends `""` to clear it. `moveDescendants: true` — the
+default when the field is absent — carries the descendants reached through
+links inside the moved issue's own project, so that subtree's parentage
+survives inside it. A child in another project is not carried and not
+re-keyed: it keeps its link to the moved parent, and nothing under it moves
+either, even a grandchild in the moving project. `moveDescendants: false`
+leaves the direct children in the old project instead, still under the moved
+issue, with their own subtrees under them intact.
 
 What refuses, before anything is written: an unknown target project (`400`);
 the issue's own project, read as no opinion at all rather than a move
@@ -1715,8 +1716,13 @@ issue's project decides which repository it is dispatched to, the same
 routing-power argument that keeps [binding a remote](#repository) closed to
 a key); any issue in the moving set holding a live [claim](#claim) (`409`,
 naming it); a story or bug in the moving set whose one-PR setting would read
-on in the target while a task of it stands in a third project (`409`, with a
-count - see "One pull request").
+on in the target while a task of it would stand in another project - one left
+behind by `moveDescendants: false`, or already in a third project (`409`, with
+a count - see "One pull request"); and a task moving away from a story or bug
+that shares one pull request across its tasks, the task's own side of the same
+rule (`400`, naming the story, as when filing it under one from another project).
+Through the bulk route a refusal is that key's failure and the rest of the
+batch still moves.
 
 Every issue that moves, the one named and each descendant carried with it,
 gets a `project_changed` event, `{ from, to }` as display keys; the named
@@ -2155,7 +2161,8 @@ work keeps its override. The started test is the same
 to the statuses the edit has just staged and to the moving set alone: with
 `moveDescendants: false` the started tasks stay behind, so the story that moved
 counts as unstarted and is reconciled - which keeps every override under an
-enforced project locked. A move out of an enforced project, or into an
+enforced project locked. What the story then reads decides whether the tasks
+left behind refuse the move, as above. A move out of an enforced project, or into an
 `optional` one, writes no `one_pr_changed` event.
 
 A bug was refused an override until it could carry one, so its tasks were always
@@ -4132,8 +4139,8 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — except the one card the server itself withholds: a terminal card whose `ClosedAt` is older than `doneHorizonHours` (48 by default, off at `0`) is not handed over at all, and `doneHorizonHours` on the DTO says what that horizon is; stories the horizon withheld whose epic is still on the board are handed over in `pastHorizon` instead, as ordinary cards, so a client can count them; `issues` is unchanged — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, `filedFromKey` (`""` finds the issues filed from nothing), ANDed, all optional; POST takes `filedFromKey` |
-| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `filedFromKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
-| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it; `400` on an unknown project, `403` from a key, `409` naming any issue in the moving set holding a live claim |
+| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `filedFromKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way, each issue keeping its parent unless `parentKey` says otherwise — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
+| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it, and keeping its parent unless `parentKey` names another or `""`; `400` on an unknown project, `403` from a key, `409` naming any issue in the moving set holding a live claim, or a one-PR story's tasks that the move would leave in another project |
 | `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key). **A key is refused with `409` while the issue's live claim is a [check](#check)'s** — *"<KEY>'s live claim is a check's - a session judges here, it does not move the ticket"* — before anything else is read, a reorder inside one column included; a person's move is not |
 | `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer`, `message` or — though only the apply has a reason to — `verdict`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
 | `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |

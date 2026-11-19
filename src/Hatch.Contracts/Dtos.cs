@@ -1212,7 +1212,10 @@ public record IssueCreateRequest(
 /// </param>
 /// <param name="MoveDescendants">
 /// <c>null</c> reads as <c>true</c> - moving the whole subtree is the
-/// default, and <c>false</c> is the one a caller has to ask for.
+/// default, and <c>false</c> is the one a caller has to ask for. <c>false</c>
+/// leaves the direct children where they are, still under the moved issue, with
+/// their own subtrees. Either way the moved issue keeps its own parent unless
+/// <paramref name="ParentKey"/> names another or is <c>""</c>.
 /// </param>
 /// <param name="WipOverride">
 /// <c>true</c> to move into a full WIP section anyway - a person's call, and a
@@ -1323,7 +1326,10 @@ public record RunnerSessionRefusalDto(string Error, DateTimeOffset LastSeenAt, i
 /// </param>
 /// <param name="MoveDescendants">
 /// <c>null</c> reads as <c>true</c> - moving the whole subtree is the
-/// default, and <c>false</c> is the one a caller has to ask for.
+/// default, and <c>false</c> is the one a caller has to ask for. <c>false</c>
+/// leaves the direct children where they are, still under the moved issue, with
+/// their own subtrees. Either way the moved issue keeps its own parent unless
+/// <paramref name="ParentKey"/> names another or is <c>""</c>.
 /// </param>
 public record IssueBulkEditRequest(
     IReadOnlyList<string> Keys,

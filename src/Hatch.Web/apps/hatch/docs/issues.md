@@ -52,7 +52,8 @@ disagreeing after a rename. The number is minted from the project's own
 counter, never from counting what is already there: a deleted issue's
 number is never handed to the next one, so an old link becomes a dead link,
 never a different ticket. Moving an issue to another project mints it a new
-number there, and its old key goes dead the same way.
+number there, and its old key goes dead the same way. Its parent and, by
+default, its children keep their links to it across the move.
 
 ## Parent and children
 
@@ -62,8 +63,10 @@ another project. The one exception is a task under a story or bug that shares
 [one pull request](#one-pull-request): the task has to stay in that story's
 project, since one pull request is one branch in one repository, and the
 refusal names the story. Moving an issue to another project carries only the
-children that are in its own project; a child in another project stays where
-it is and keeps its link to the moved parent. A parent's own progress is read from its children, not from its own
+children that are in its own project, and the parent stays: the moved issue
+keeps its own parent, and a child in another project, or one left behind with
+`moveDescendants: false`, stays where it is and keeps its link to the moved
+parent. A parent's own progress is read from its children, not from its own
 column — the totals count **leaves**, issues with no children of their own,
 so a story standing in review with every task still in To Do reads as To Do,
 because the tasks are the work and not the story's own column.
