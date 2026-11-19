@@ -1508,7 +1508,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // drives are cheap enough, and worth running often enough, to deserve
         // one of their own. Stopped by every exit this method has, since
         // every one of them sits inside this `await using` scope.
-        await using var train = MergeTrain.Start(runtime, TimeSpan.FromSeconds(mergeInterval));
+        await using var train = MergeTrain.Start(runtime, TimeSpan.FromSeconds(mergeInterval), TimeSpan.FromSeconds(interval));
 
         // When the loop's own checkout was last made current while waiting out
         // a usage limit - never, at first, so the first pass through the wait

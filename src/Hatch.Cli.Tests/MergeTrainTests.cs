@@ -1816,6 +1816,137 @@ public sealed partial class MergeTrainTests
         Assert.StartsWith("hatch: AER-1 - the board would not take the build on its branch - ", line);
     }
 
+    // ---- A review row's build ----
+    //
+    // No Poll runs in any of these, so each is a row read while every runner is in a session.
+
+    /// <summary>An ordinary review row - no merges-column work - whose pull request head the board holds.</summary>
+    private static ReviewCheckDto InReview(
+        string key = "AER-1", string? head = null, IReadOnlyList<BuildCheckDto>? builds = null) =>
+        MergeRow(key, "aer-1-thing", PrUrl, kind: null, builds: builds) with { PullRequestHeadSha = head ?? Tip };
+
+    [Fact]
+    public async Task A_review_row_has_its_build_on_the_pull_request_head_read_and_written_by_a_tick()
+    {
+        using var rig = Taking(new Rig().Board(InReview()));
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip}"], rig.H.Forge.Reads);
+        var put = Assert.Single(rig.H.Wire.To("PUT", BuildPut("AER-1"))).Read<BuildCheckRequest>();
+        Assert.Equal(
+            (rig.Runtime.Checkouts.Single().Remote, "aer-1-thing", Tip, BuildVerdicts.Passed, rig.Runtime.RunnerName),
+            (put.Remote, put.Branch, put.Sha, put.Verdict, put.Runner));
+    }
+
+    [Fact]
+    public async Task A_review_row_reads_the_head_the_board_holds_and_not_the_stale_clean_checks_sha()
+    {
+        using var rig = Taking(new Rig().Board(InReview(head: Tip2)));
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip2}"], rig.H.Forge.Reads);
+        Assert.Equal(Tip2, Assert.Single(rig.H.Wire.To("PUT", BuildPut("AER-1"))).Read<BuildCheckRequest>().Sha);
+    }
+
+    [Fact]
+    public async Task A_review_row_of_a_project_this_runner_does_not_drive_is_not_read()
+    {
+        using var rig = Taking(new Rig().Board(InReview()));
+        rig.H.Runtime.Readout.SetDrives([]);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+        Assert.Empty(rig.H.Wire.To("PUT", BuildPut("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_pending_review_row_is_asked_again_only_once_the_interval_has_passed()
+    {
+        using var rig = Taking(new Rig().Board(InReview()), verdict: BuildVerdicts.Pending);
+
+        await rig.RunAsync();
+        await rig.Later(5).RunAsync();
+        await rig.Later(5).RunAsync();
+
+        Assert.Single(rig.H.Forge.Reads);
+
+        await rig.Later(Interval).RunAsync();
+
+        Assert.Equal(2, rig.H.Forge.Reads.Count);
+    }
+
+    [Fact]
+    public async Task A_review_row_whose_head_moved_is_read_at_once()
+    {
+        using var rig = Taking(new Rig().Board(InReview()), verdict: BuildVerdicts.Pending);
+
+        await rig.RunAsync();
+        rig.H.Wire.Replace(
+            "GET", Review, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { InReview(head: Tip2) }, Fixtures.Json));
+        await rig.Later(5).RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip}", $"{rig.H.Root} {Tip2}"], rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_review_row_whose_read_failed_waits_the_interval_too()
+    {
+        using var rig = new Rig().Board(InReview());
+        rig.H.Forge.Answer = new(null, "gh is not installed");
+
+        await rig.RunAsync();
+        await rig.Later(5).RunAsync();
+
+        Assert.Single(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_review_row_the_board_already_holds_a_concluded_build_for_is_not_read()
+    {
+        var stored = Fixtures.Build(BuildVerdicts.Passed, MergeCanonical, Tip);
+        using var rig = Taking(new Rig().Board(InReview(builds: [stored])));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+        Assert.Empty(rig.H.Wire.To("PUT", BuildPut("AER-1")));
+    }
+
+    [Fact]
+    public async Task A_review_row_with_a_stored_build_about_another_sha_is_read()
+    {
+        var stored = Fixtures.Build(BuildVerdicts.Passed, MergeCanonical, Moved);
+        using var rig = Taking(new Rig().Board(InReview(builds: [stored])));
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip}"], rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_review_row_with_no_pull_request_head_on_the_board_is_not_read()
+    {
+        using var rig = Taking(new Rig().Board(InReview() with { PullRequestHeadSha = null }));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_trunk_landing_row_is_not_read()
+    {
+        var landing = InReview() with { LandingWork = new LandingWorkDto(WorkKinds.Land, "its build passes") };
+        using var rig = Taking(new Rig().Board(landing));
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Forge.Reads);
+    }
+
     // ---- The clock: Start and DisposeAsync ----
 
     [Fact]
@@ -1823,7 +1954,7 @@ public sealed partial class MergeTrainTests
     {
         using var rig = new Rig().Board(Fixtures.Review("AER-1", pullRequestUrl: PrUrl));
 
-        var train = MergeTrain.Start(rig.Runtime, Harness.Beat);
+        var train = MergeTrain.Start(rig.Runtime, Harness.Beat, TimeSpan.FromSeconds(Interval));
         await Harness.Eventually(() => rig.H.Forge.PullRequestReads.Count >= 2, "the clock to tick at least twice");
 
         await train.DisposeAsync();
