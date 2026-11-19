@@ -5,7 +5,7 @@ import type { IssueType } from '../types';
     types that are not one. */
 export type TypeOutline = 'rounded' | 'disc';
 
-export type TypePicture = 'layers' | 'bookmark' | 'tick' | 'beetle' | 'sun';
+export type TypePicture = 'layers' | 'bookmark' | 'tick' | 'beetle' | 'sun' | 'egg';
 
 export interface IssueTypeRow {
   name: IssueType;
@@ -21,6 +21,13 @@ export interface IssueTypeRow {
 /** One row per type, in `ISSUE_TYPES` order - the one place that says what a
     type looks like and what it means. */
 const ROWS: Record<IssueType, Omit<IssueTypeRow, 'name'>> = {
+  ambition: {
+    word: 'ambition',
+    outline: 'rounded',
+    picture: 'egg',
+    class: 'ambition',
+    title: 'A large aim, broken out into epics.',
+  },
   epic: {
     word: 'epic',
     outline: 'rounded',

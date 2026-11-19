@@ -722,6 +722,20 @@ public sealed class IssueCommandsTests
     }
 
     [Fact]
+    public async Task Show_names_an_ambition_and_says_how_many_stories_it_may_run_at_once()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { Type = "ambition", WipLimit = 3 });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("[ambition]", h.Said);
+        Assert.Contains("stories at once: 3", h.Said);
+    }
+
+    [Fact]
     public async Task Show_says_no_limit_on_an_epic_with_no_limit_set()
     {
         using var h = new CliHarness();

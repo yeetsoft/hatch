@@ -111,7 +111,7 @@ type, each with the number of cards it holds; hovering a row shows **Only**,
 which keeps that row alone (on a touch screen it is always shown). **All** and
 **None** sit at its foot: **None** leaves the board blank on purpose, with the
 count reading *0 of N*, and **×** brings every type back. The choice, None
-included, is remembered in this browser. **Needs me** shows the
+included, is remembered in this browser; a choice saved as exactly the five types that came before `ambition` reads as all six. **Needs me** shows the
 cards holding a question nobody has answered. **Blocked** shows only the cards
 the work queue says no pass and no live runner will move: a
 deadlock, a step with no playbook, a stall, or a ready step no live runner can

@@ -44,6 +44,7 @@ const article = (type: IssueType): string => (/^[aeiou]/i.test(type) ? 'an' : 'a
  * a bug or an epic" once there are three.
  */
 export const parentHint = (type: IssueType): string => {
+  if (LEGAL_PARENT_TYPES[type].length === 0) return `${article(type) === 'an' ? 'An' : 'A'} ${type} takes no parent.`;
   const names = LEGAL_PARENT_TYPES[type].map((t) => `${article(t)} ${t}`);
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
   return `${article(type) === 'an' ? 'An' : 'A'} ${type} hangs under ${list}, in any project.`;

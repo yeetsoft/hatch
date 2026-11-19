@@ -4,6 +4,7 @@ import { Button, Card, EmptyState, Field, PageHeader, Text } from '@hatch/ui';
 import { getPlan, getProjects, getStatuses } from '../api/client';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
+import { TypeTile } from '../components/TypeGlyph';
 import { scrubbedProject } from '../lib/filter';
 import { inheritedMark } from '../lib/inherited';
 import { orderPlan, planProjectId } from '../lib/plan';
@@ -115,7 +116,7 @@ function PlanContent() {
     <div className="hatch-page">
       <PageHeader
         title="Plan"
-        description="Every epic, and how far along it is. The nearest the line is at the top."
+        description="Every epic and ambition, and how far along it is. The nearest the line is at the top."
         /* Only when there is a choice to make. One project makes this a
            control with a single option, and Hatch ships to operators who will
            have several - so it is written for both and shown for one. */
@@ -229,6 +230,12 @@ function EpicRow({
   return (
     <div className={`hatch-plan-row${top ? ' top' : ''}`}>
       <div className="hatch-plan-head">
+        {/* An ambition wears its tile; an epic keeps its plain row. */}
+        {issue.type === 'ambition' && (
+          <span className="hatch-type-pill-glyph">
+            <TypeTile type="ambition" />
+          </span>
+        )}
         <Link to={`/issues/${entry.issue.key}`} className="hatch-plan-key">
           {entry.issue.key}
         </Link>

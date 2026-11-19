@@ -6,7 +6,9 @@ import { ISSUE_TYPES } from '../types';
 import type { IssueType } from '../types';
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
-const shape = (type: IssueType) => renderToStaticMarkup(<TypeTile type={type} />);
+/** The ambition's gradient id is per tile and per tree, so ids are taken out of the markup before it is compared. */
+const bare = (markup: string) => markup.replace(/hatch-ambition-tile-[^")]+/g, 'id');
+const shape = (type: IssueType) => bare(renderToStaticMarkup(<TypeTile type={type} />));
 
 describe('TypeControl', () => {
   it('draws the closed pill with the word, the label and no band', () => {
@@ -31,7 +33,7 @@ describe('TypeControl', () => {
   });
 
   it.each(ISSUE_TYPES)('wears the %s tile, hidden from the accessible name', (type) => {
-    const html = renderToStaticMarkup(<TypeControl issueKey="HA-14" type={type} onChange={() => {}} />);
+    const html = bare(renderToStaticMarkup(<TypeControl issueKey="HA-14" type={type} onChange={() => {}} />));
 
     expect(html).toContain(`<span class="hatch-type-pill-glyph" aria-hidden="true">${shape(type)}</span>`);
   });
@@ -48,14 +50,14 @@ describe('TypeControl', () => {
 
 describe('TypeSteps', () => {
   const steps = (current: IssueType, types?: IssueType[]) =>
-    renderToStaticMarkup(<TypeSteps current={current} types={types} onPick={() => {}} />);
+    bare(renderToStaticMarkup(<TypeSteps current={current} types={types} onPick={() => {}} />));
 
   it('draws one button per type under a named group, each with its tile and face', () => {
     const html = steps('story');
 
     expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="Set type"');
-    expect(count(html, '<button')).toBe(5);
+    expect(count(html, '<button')).toBe(6);
     for (const type of ISSUE_TYPES) {
       expect(html).toContain(`hatch-type-pill-step ${type}`);
       expect(html).toContain(shape(type));
@@ -66,7 +68,7 @@ describe('TypeSteps', () => {
     const html = steps('task');
 
     expect(count(html, 'aria-pressed="true"')).toBe(1);
-    expect(count(html, 'aria-pressed="false"')).toBe(4);
+    expect(count(html, 'aria-pressed="false"')).toBe(5);
     expect(count(html, 'disabled=""')).toBe(1);
     expect(html).toMatch(/class="hatch-type-pill-step task here"[^>]*aria-pressed="true"[^>]*disabled=""/);
   });

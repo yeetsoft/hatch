@@ -8,6 +8,7 @@ import { DIM_OPACITY, LEAN, TILE_BOX, WIDE_BOX, tileMarks } from '../lib/tileMar
 import type { Priority } from '../lib/tileMarks';
 
 const LABEL: Record<IssueType, string> = {
+  ambition: 'ambition',
   epic: 'epic',
   reflection: 'reflection',
   story: 'story',
@@ -25,7 +26,7 @@ interface Picture {
 }
 
 /** What each tile pictures, drawn in the 16 by 16 box before the 110% scale. */
-const PICTURES: Record<TypePicture, Picture> = {
+const PICTURES: Record<Exclude<TypePicture, 'egg'>, Picture> = {
   layers: {
     filled: 'M8 3.4 12.6 5.9 8 8.4 3.4 5.9Z',
     stroked: { d: 'M3.7 8.4 8 10.7 12.3 8.4 M3.7 10.7 8 13 12.3 10.7', width: 1.3 },
@@ -112,6 +113,7 @@ export function TypeTile({
   fill?: TileFill;
 }) {
   const { outline, picture } = issueTypeRow(type);
+  if (picture === 'egg') return <AmbitionTile />;
   const { filled, stroked } = PICTURES[picture];
   const marks = tileMarks(preApproval, priority);
   const colour = `var(--type-${type})`;

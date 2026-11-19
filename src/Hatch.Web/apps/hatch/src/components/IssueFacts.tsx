@@ -10,7 +10,7 @@ import { runnerTagsSentence } from '../lib/runnerTags';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { TypeBadge } from './TypeBadge';
-import { RUNS_CHILDREN } from '../types';
+import { LEGAL_PARENT_TYPES, RUNS_CHILDREN } from '../types';
 import type { Issue, Project } from '../types';
 
 /**
@@ -47,10 +47,12 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
         </span>
       </Field>
 
-      <Field label="Parent" as="div">
-        {issue.parentKey ? <Link to={`/issues/${issue.parentKey}`}>{issue.parentKey}</Link> : <span className="text-muted">—</span>}
-        {pull && <span className="text-muted"> · {pull}</span>}
-      </Field>
+      {LEGAL_PARENT_TYPES[issue.type].length > 0 && (
+        <Field label="Parent" as="div">
+          {issue.parentKey ? <Link to={`/issues/${issue.parentKey}`}>{issue.parentKey}</Link> : <span className="text-muted">—</span>}
+          {pull && <span className="text-muted"> · {pull}</span>}
+        </Field>
+      )}
 
       <Field label="Assignee" as="div">
         {assigneeFact(issue.assignee)}

@@ -39,8 +39,8 @@ public class TypesNoneOnlyAllTests(ITestOutputHelper output)
 
     private const string FooterNone = Panel + " .hatch-types-footer button:text-is(\"None\")";
 
-    /// <summary>Epic, reflection, story, task and bug.</summary>
-    private const int TypeCount = 5;
+    /// <summary>Ambition, epic, reflection, story, task and bug.</summary>
+    private const int TypeCount = 6;
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 

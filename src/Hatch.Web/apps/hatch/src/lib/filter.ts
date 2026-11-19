@@ -84,6 +84,13 @@ export const DEFAULT_FILTER: CardFilter = {
     `hatch.board.view` (lib/phoneBoard.ts). */
 export const BOARD_TYPES_STORAGE_KEY = 'hatch.board.types';
 
+/** The five types the board knew before `ambition`, in any order. A browser
+    that saved all of them was saying "every type", and it still is. */
+const isTheFiveOlderTypes = (stored: unknown[]): boolean => {
+  const older = ISSUE_TYPES.filter((type) => type !== 'ambition');
+  return stored.length === older.length && older.every((type) => stored.includes(type));
+};
+
 /** The stored types, or the default - try/catch for the same reason
     `readBoardView` does one: localStorage throws in a partitioned or
     locked-down context, and the board still has to render. Restores the
@@ -91,12 +98,14 @@ export const BOARD_TYPES_STORAGE_KEY = 'hatch.board.types';
     does not have dropped. A stored empty list is a choice - none - and reads
     back as `[]`; a non-empty list with no type this build knows is not, and
     falls back to the default. Always a fresh array, so nothing holding the
-    result can mutate `DEFAULT_TYPES`. */
+    result can mutate `DEFAULT_TYPES`. A list of exactly the five older types
+    reads as all six: it was "every type" when it was saved. */
 export function readBoardTypes(): IssueType[] {
   try {
     const stored: unknown = JSON.parse(window.localStorage.getItem(BOARD_TYPES_STORAGE_KEY) ?? 'null');
     if (Array.isArray(stored)) {
       if (stored.length === 0) return [];
+      if (isTheFiveOlderTypes(stored)) return [...DEFAULT_TYPES];
       const known = ISSUE_TYPES.filter((type) => stored.includes(type));
       if (known.length > 0) return known;
     }
@@ -370,12 +379,13 @@ export const revealType = (filter: CardFilter, type: IssueType): CardFilter =>
     the reason `assigneeFacets` is: choosing a thing must not shrink the list
     you chose it from. */
 export function typeCounts(cards: IssueCard[]): Record<IssueType, number> {
-  const counts: Record<IssueType, number> = { epic: 0, reflection: 0, story: 0, task: 0, bug: 0 };
+  const counts: Record<IssueType, number> = { ambition: 0, epic: 0, reflection: 0, story: 0, task: 0, bug: 0 };
   for (const card of cards) counts[card.type] += 1;
   return counts;
 }
 
 const PLURALS: Record<IssueType, string> = {
+  ambition: 'ambitions',
   epic: 'epics',
   reflection: 'reflections',
   story: 'stories',
