@@ -8,8 +8,8 @@ namespace Hatch.Cli;
 /// is merged, one judged <see cref="WorkKinds.Update"/> is brought current with
 /// the trunk, and one judged <see cref="WorkKinds.Pushback"/> is carried back to
 /// review, and a trunk-landing row the board judged <see cref="WorkKinds.Land"/>
-/// is landed - all five told to the board - and the build on the head's
-/// branch is read on the same clock.
+/// is landed - all five told to the board - and the builds on the head's
+/// branch and on the pull requests in review are read on the same clock.
 /// </summary>
 /// <remarks>
 /// The clock is optional and lives apart from <see cref="TickAsync"/> itself:
@@ -34,6 +34,11 @@ public sealed class MergeTrain : IAsyncDisposable
     // half sees it.
     private readonly Dictionary<(string Cause, string Key), string> _seenSilentSkip = [];
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
+
+    // When a review row's build was last asked of the forge, and for which sha:
+    // a row whose build is still pending is asked again once ReviewInterval has
+    // passed, and a new sha is asked at once.
+    private readonly Dictionary<(string Path, string Key), (string Sha, DateTimeOffset At)> _reviewAskedAt = [];
     private readonly HashSet<string> _seenClosed = [];
     private HashSet<string> _saidBefore = [];
     private readonly OutsideFiler _filer = new();
@@ -47,10 +52,17 @@ public sealed class MergeTrain : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private Task? _clock;
 
+    /// <summary>
+    /// How often a review row whose build is still <c>pending</c> or <c>none</c> is asked about again:
+    /// the poll's <c>--interval</c>, so a column of pending builds does not spend the forge's budget on
+    /// every tick. The head of the merges column is asked every tick regardless.
+    /// </summary>
+    public TimeSpan ReviewInterval { get; init; } = TimeSpan.FromSeconds(60);
+
     /// <summary>Starts the clock: <see cref="TickAsync"/>, then its own interval, until stopped.</summary>
-    public static MergeTrain Start(Runtime runtime, TimeSpan interval)
+    public static MergeTrain Start(Runtime runtime, TimeSpan interval, TimeSpan reviewInterval)
     {
-        var train = new MergeTrain();
+        var train = new MergeTrain { ReviewInterval = reviewInterval };
         train._clock = Task.Run(() => train.ClockAsync(runtime, interval, train._stop.Token), CancellationToken.None);
         return train;
     }
@@ -88,7 +100,7 @@ public sealed class MergeTrain : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes the pull request, outside pull request, head build, merge, update, pushback and landing
+    /// Takes the pull request, outside pull request, build, merge, update, pushback and landing
     /// halves in that order, against what is in review right now. Nothing it does throws
     /// out: a cause that persists across calls is said once and not every
     /// call.
@@ -170,7 +182,7 @@ public sealed class MergeTrain : IAsyncDisposable
         // poll waits on a runner between sessions, and a head whose build
         // passed a moment ago should not wait for one. It reads the forge and
         // writes the board and touches no git, so it never overlaps a session.
-        await ReadHeadBuildsAsync(runtime, complain, review, ct);
+        await ReadBuildsAsync(runtime, complain, review, ct);
 
         await MergeApprovedAsync(runtime, complain, review, ct);
 
@@ -439,26 +451,29 @@ public sealed class MergeTrain : IAsyncDisposable
     }
 
     /// <summary>
-    /// The head build half: for the head of the merge train, read the build on
-    /// the tip its clean merge check names and put it on the board, unless
-    /// something already vouches for that sha. Only the head is read - it is the
-    /// one row whose build the train is waiting on - and of any
-    /// <see cref="WorkKinds"/>, since a head judged <see cref="WorkKinds.Hold"/>
-    /// while its build is pending is the whole point.
+    /// The build half: for the head of the merge train, read the build on the tip its clean merge
+    /// check names, and for a row in the review column the build on its pull request's head, and put
+    /// each on the board unless something already vouches for that sha. The head is read of any
+    /// <see cref="WorkKinds"/>, since a head judged <see cref="WorkKinds.Hold"/> while its build is
+    /// pending is the whole point; a review row is one in neither the merges column nor a trunk
+    /// landing, so a ticket in review gets its build onto the board while every runner is in a session.
     /// </summary>
     /// <remarks>
     /// The poll reads the same builds, but only between sessions, and it is the
-    /// half that reads git; this one needs none, since the train already holds
-    /// the branch and sha from the head's own clean merge check. A verdict that
-    /// concluded (see <see cref="Poll.Concluded"/>) is remembered per sha in
-    /// <c>_seenBuild</c> and not asked again; a <c>pending</c> one, a
-    /// <c>none</c> inside <see cref="Poll.NoneWindow"/> and one the board
-    /// refused are asked again every interval. <c>failed</c> is the same
-    /// per-checkout dedupe <see cref="ReadPullRequestsAsync"/> keeps, and the
-    /// outer try/catch keeps anything unanticipated here from propagating into
-    /// <see cref="TickAsync"/> and aborting the halves that run after it.
+    /// half that reads git; this one needs none. The head's sha is the one its own clean merge check
+    /// names. A review row's is <see cref="ReviewCheckDto.PullRequestHeadSha"/>, which the pull
+    /// request half keeps current every tick - the clean check's sha is written by the poll, which
+    /// does not run in a session, so it is missing or stale in the very case this exists for. A row
+    /// without that sha is skipped, and the pull request half supplies it within a tick. A verdict
+    /// that concluded (see <see cref="Poll.Concluded"/>) is remembered per sha in <c>_seenBuild</c>
+    /// and not asked again. A <c>pending</c> one, a <c>none</c> inside <see cref="Poll.NoneWindow"/>
+    /// and one the board refused are asked again every tick for the head, and no more often than
+    /// <see cref="ReviewInterval"/> for a review row. <c>failed</c> is the same per-checkout dedupe
+    /// <see cref="ReadPullRequestsAsync"/> keeps, and the outer try/catch keeps anything
+    /// unanticipated here from propagating into <see cref="TickAsync"/> and aborting the halves
+    /// that run after it.
     /// </remarks>
-    private async Task ReadHeadBuildsAsync(
+    private async Task ReadBuildsAsync(
         Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
     {
         var failed = new HashSet<string>();
@@ -466,7 +481,10 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             foreach (var issue in review)
             {
-                if (issue.MergeWork?.IsHead != true || !runtime.Readout.Drives(issue.ProjectKey)) continue;
+                var head = issue.MergeWork?.IsHead == true;
+                var inReview = issue.MergeWork is null && issue.LandingWork is null;
+                if (!head && !inReview) continue;
+                if (!runtime.Readout.Drives(issue.ProjectKey)) continue;
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
                 ct.ThrowIfCancellationRequested();
 
@@ -474,9 +492,22 @@ public sealed class MergeTrain : IAsyncDisposable
                     Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch));
                 if (where is null || where.Remote is null || failed.Contains(where.Path)) continue;
 
-                var clean = issue.MergeChecks
-                    .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean);
-                if (clean is not { Branch: { } branch, BranchSha: { } sha }) continue;
+                string branch, sha;
+                if (head)
+                {
+                    var clean = issue.MergeChecks
+                        .FirstOrDefault(c => c.Canonical == where.Canonical && c.Verdict == MergeVerdicts.Clean);
+                    if (clean is not { Branch: { } cleanBranch, BranchSha: { } cleanSha }) continue;
+                    (branch, sha) = (cleanBranch, cleanSha);
+                }
+                else
+                {
+                    var named = issue.Branch is { Length: > 0 } b
+                        ? b
+                        : issue.MergeChecks.FirstOrDefault(c => c.Canonical == where.Canonical && c.Branch is { Length: > 0 })?.Branch;
+                    if (issue.PullRequestHeadSha is not { Length: > 0 } headSha || named is null) continue;
+                    (branch, sha) = (named, headSha);
+                }
 
                 var key = (where.Path, issue.Key);
                 if (_seenBuild.TryGetValue(key, out var seen) && seen == sha) continue;
@@ -486,6 +517,15 @@ public sealed class MergeTrain : IAsyncDisposable
                 {
                     _seenBuild[key] = sha;
                     continue;
+                }
+
+                if (!head)
+                {
+                    var now = runtime.Clock.GetUtcNow();
+                    if (_reviewAskedAt.TryGetValue(key, out var asked) && asked.Sha == sha && now - asked.At < ReviewInterval) continue;
+
+                    // Before the read, so a read that fails or a put the board refuses waits the interval too.
+                    _reviewAskedAt[key] = (sha, now);
                 }
 
                 var answer = await runtime.Forge(where.Path, where.Canonical).ReadAsync(sha, ct);
@@ -530,7 +570,7 @@ public sealed class MergeTrain : IAsyncDisposable
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            complain($"hatch: could not read head builds - {e.Message}");
+            complain($"hatch: could not read builds - {e.Message}");
         }
     }
 

@@ -1112,7 +1112,8 @@ is simply never on the board this key reads.
   ignores it, and it is refused with `--once`.
 - `--quiet` prints no per-increment stream, only what each one ended as.
 - `--interval <seconds>` is how long to wait when there was nothing to do.
-  The default is 60.
+  The default is 60. It also paces the merge train's read of a pending build
+  on a ticket in review, which happens during a session.
 - `--merge-interval <seconds>` is the merge train's own clock, separate from
   `--interval`: approved pull requests merge on it without waiting for an idle
   pass. The default is 5.

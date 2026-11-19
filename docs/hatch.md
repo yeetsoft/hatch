@@ -7112,12 +7112,15 @@ reads build and merge-conflict verdicts. Cross-reference
 already says the pull-request, merge and update halves "run on their own
 clock... rather than this poll's" (`:4358-4361`) without naming the clock —
 this new section is that explanation. The head's own build is read on this
-clock too (`ReadHeadBuildsAsync`): the sha and branch come from the head's
+clock too (`ReadBuildsAsync`): the sha and branch come from the head's
 clean merge check, so it needs no git, and a pass is noticed within one
 `--merge-interval` of the forge reporting it rather than whenever a runner next
 finishes an increment. A verdict that concluded is read once per sha; a
 `pending` one, and a `none` inside the poll's ten-minute window, are asked
-again every tick.
+again every tick. The same half also reads the build on every review-column
+row's pull request head, for the project's driver only; that pace is the
+[review rows' own](#checking-the-branches-in-review), at `--interval` rather
+than every tick.
 
 **A merge with no checks rides the same train.** A merge judged under the
 last item of the judge's list — a project that requires no checks, or a forge
@@ -9169,6 +9172,24 @@ API budget:
   issue exactly as it does today. A board that predates build checks answers the
   write with a `404`, which is the same kind of line and is asked again next
   interval.
+
+**The train reads review builds too, during a session.** The poll runs between
+sessions on the loop's one thread, so a runner holding a project's only
+checkout in a long session would leave every ticket in review waiting for the
+session to end before its build counted, and the longer it waited the likelier
+the trunk moved under it. So the [merge train's clock](#the-merge-train) also
+reads the build on each review-column row's pull request head — the head sha
+the pull request half keeps current on the board every tick, not the clean
+merge check's sha, which only the poll writes. It needs no git, so it never
+overlaps a session. Only the project's elected driver reads, and a row with no
+head sha, branch or pull request on the board yet is skipped until the pull
+request half supplies them (a push is read one `--merge-interval` late). The
+rules for asking again are the poll's: a concluded verdict is read once per
+sha, and a board that already vouches for the sha is not asked. A row whose
+verdict is `pending` or `none` is asked again no more often than `--interval`,
+not every `--merge-interval`, so a column of pending builds does not spend the
+`gh` budget every few seconds; a new sha is asked at once. Poll and train read
+the same sha by the same rule, so they never write different verdicts for it.
 
 The terminal hears about a build only when it changes — `hatch: HA-12 build on
 1a2b3c4 failed (api, CI)`.
