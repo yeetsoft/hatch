@@ -74,6 +74,10 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(DreamDto))]
 [JsonSerializable(typeof(AttentionDto))]
 [JsonSerializable(typeof(RunnerMintedDto))]
+[JsonSerializable(typeof(CapabilityDto))]
+[JsonSerializable(typeof(List<CapabilityDto>))]
+[JsonSerializable(typeof(CapabilityVerdictDto))]
+[JsonSerializable(typeof(List<ServedCapabilityDto>))]
 
 // What is written.
 [JsonSerializable(typeof(IssueCreateRequest))]
@@ -114,6 +118,11 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(PlaybookFileRequest))]
 [JsonSerializable(typeof(DependencyFileRequest))]
 [JsonSerializable(typeof(ChangelogFileRequest))]
+[JsonSerializable(typeof(CapabilityCreateRequest))]
+[JsonSerializable(typeof(CapabilityPatchRequest))]
+[JsonSerializable(typeof(CapabilityOrderRequest))]
+[JsonSerializable(typeof(CapabilityVerdictRequest))]
+[JsonSerializable(typeof(IssueServesWriteRequest))]
 
 // What a hook prints for the session that ran it.
 [JsonSerializable(typeof(PostToolUseOutput))]
