@@ -1396,6 +1396,17 @@ public class EfHatchIssue
     public bool? OnePullRequest { get; set; }
 
     /// <summary>
+    /// A person's override of who works this issue: null inherits the
+    /// nearest ancestor's own value, else agent. True is human - a person
+    /// does this one, and no runner picks it up - false is agent, which
+    /// stops the walk even under a human ancestor so a child can opt back
+    /// out. See <see cref="IssueHumanWorkController"/> and
+    /// <c>PriorityTree.EffectiveHumanWork</c>, which derives the live value
+    /// at read and never copies it: reparenting changes it at once.
+    /// </summary>
+    public bool? HumanWork { get; set; }
+
+    /// <summary>
     /// The sentence or two the changelog shows for this issue when it is
     /// finished, or null where nobody has written one. Markdown, stored as
     /// typed and trimmed. Written by a person at any time, or by a key under
@@ -2753,6 +2764,13 @@ public class EfHatchIssueEvent
     /// by name, the same as <see cref="PreApprovalChanged"/>.
     /// </summary>
     public const string LocalModelChanged = "local_model_changed";
+
+    /// <summary>
+    /// An issue's human-work override changed - see
+    /// <see cref="EfHatchIssue.HumanWork"/>. The payload carries both sides
+    /// as <c>human</c>, <c>agent</c> or <c>inherit</c>.
+    /// </summary>
+    public const string HumanWorkChanged = "human_work_changed";
 
     /// <summary>
     /// A story's one-PR override changed - see

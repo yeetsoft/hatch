@@ -2548,6 +2548,11 @@ public sealed class Dispatch(
                 ? "paused - a person set it aside, and nothing picks it up until they set it back"
                 : $"paused from {pausedFrom} - a person set it aside, and nothing picks it up until they set it back", BlockedKinds.Person);
 
+        if (gate.EffectiveHumanWork(issue.Id) is { Human: true } human)
+            return new Blocking(human.FromKey is null
+                ? "human work - a person does this one, and no runner picks it up"
+                : $"human work from {human.FromKey} - a person does this one, and no runner picks it up", BlockedKinds.Person);
+
         if (loop is not null)
         {
             if (IsWaiting(issue, loop.Today, loop.OffsetMinutes))
@@ -3620,6 +3625,7 @@ public static class DisclosedValues
     public const string Priority = "priority";
     public const string PreApproval = "preApproval";
     public const string LocalModel = "localModel";
+    public const string HumanWork = "humanWork";
     public const string OnePr = "onePr";
     public const string Dangerous = "dangerous";
     public const string PreApprovalPassedOver = "preApprovalPassedOver";
@@ -3709,6 +3715,10 @@ public sealed class PriorityTree
     // _dangerous rather than widening _rows; an issue with no entry reads as none.
     private readonly Dictionary<long, int> _localModels;
 
+    // Each issue's own human-work override - EfHatchIssue.HumanWork. Null,
+    // including an issue with no entry, reads as inherit.
+    private readonly Dictionary<long, bool?> _humanWork;
+
     // Each issue's project id. The walks that carry a level down the parent
     // chain stop at a project line with it: an ancestor in another project is
     // skipped, not read. An issue with no entry reads as in the same project.
@@ -3766,6 +3776,7 @@ public sealed class PriorityTree
         Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>>? omissions = null,
         Dictionary<long, string>? projectLevels = null,
         Dictionary<long, int>? localModels = null,
+        Dictionary<long, bool?>? humanWork = null,
         Dictionary<long, int>? projects = null,
         Dictionary<long, (Guid?, Guid?)>? setters = null,
         SetterAuthority? authority = null,
@@ -3781,6 +3792,7 @@ public sealed class PriorityTree
         _startedBy = startedBy ?? new();
         _statuses = statuses ?? [];
         _localModels = localModels ?? new();
+        _humanWork = humanWork ?? new();
         _projectLevels = projectLevels ?? new();
         _onePr = onePr ?? new();
         _runnerTags = runnerTags ?? new();
@@ -3807,6 +3819,7 @@ public sealed class PriorityTree
         _runnerTags = whole._runnerTags;
         _dangerous = whole._dangerous;
         _localModels = whole._localModels;
+        _humanWork = whole._humanWork;
         _projects = whole._projects;
         _setters = whole._setters;
         _authority = whole._authority;
@@ -3872,7 +3885,7 @@ public sealed class PriorityTree
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous, ProjectPriority = i.Project!.Priority,
-                i.LocalModel, i.ProjectId, i.PreApprovalSetBy, i.PrioritySetBy, i.StartedBy,
+                i.LocalModel, i.HumanWork, i.ProjectId, i.PreApprovalSetBy, i.PrioritySetBy, i.StartedBy,
             })
             .ToListAsync(ct);
 
@@ -3898,6 +3911,7 @@ public sealed class PriorityTree
                         g.Select(o => (o.RunnerName, o.Reason, o.By, o.At)).ToList()),
             rows.ToDictionary(r => r.Id, r => r.ProjectPriority),
             rows.ToDictionary(r => r.Id, r => r.LocalModel),
+            rows.ToDictionary(r => r.Id, r => r.HumanWork),
             rows.ToDictionary(r => r.Id, r => r.ProjectId),
             rows.ToDictionary(r => r.Id, r => (r.PreApprovalSetBy, r.PrioritySetBy)),
             authority,
@@ -4094,6 +4108,33 @@ public sealed class PriorityTree
         }
 
         return (LocalModelLevels.None, null);
+    }
+
+    /// <summary>
+    /// Who works this issue, live: its own override, if set, or the nearest
+    /// ancestor's that is not inherit. <c>Own</c> is this issue's own
+    /// override. <c>FromKey</c> is null when the value found is the issue's
+    /// own, or when the walk never leaves inherit - with nothing set at all,
+    /// <c>Human</c> is false (agent). Unlike a level, the walk stops at an
+    /// explicit <c>false</c> (agent) the same as at <c>true</c> (human), so a
+    /// child can opt back out from under a human ancestor.
+    /// </summary>
+    public (bool Human, bool? Own, string? FromKey) EffectiveHumanWork(long issueId)
+    {
+        _humanWork.TryGetValue(issueId, out var own);
+
+        var seen = new HashSet<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (_humanWork.TryGetValue(id, out var value) && value is { } human)
+                return (human, own, id == issueId || !TryGet(id, out var row) ? null : row.Key);
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return (false, own, null);
     }
 
     /// <summary>
@@ -4466,6 +4507,9 @@ public sealed class DependencyGate
 
     /// <summary>The local-model level live on this issue - see <see cref="PriorityTree.EffectiveLocalModel"/>.</summary>
     public (int Level, string? FromKey) EffectiveLocalModel(long issueId) => _tree.EffectiveLocalModel(issueId);
+
+    /// <summary>Who works this issue, live - see <see cref="PriorityTree.EffectiveHumanWork"/>.</summary>
+    public (bool Human, bool? Own, string? FromKey) EffectiveHumanWork(long issueId) => _tree.EffectiveHumanWork(issueId);
 
     /// <summary>Whether one pull request is shared across the story or bug this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
     public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId) => _tree.EffectiveOnePr(issueId);
