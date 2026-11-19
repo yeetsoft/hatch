@@ -768,6 +768,18 @@ public record IssueClaimDto(
 /// priority was passed over because its setter is not a live person in scope
 /// of this issue's project, or none was recorded. Null where nothing was.
 /// </param>
+/// <param name="StartedBy">
+/// The name of whoever first moved this issue rightward into the column
+/// work gets started in, or null for a key's move, for an issue started
+/// before this was recorded, or for one never started at all. See
+/// <see cref="StartedAt"/> and HA-2481.
+/// </param>
+/// <param name="StartedAt">
+/// When this issue last crossed into the column work gets started in - set
+/// alongside <see cref="StartedBy"/>, including by a key's move, which
+/// leaves <see cref="StartedBy"/> null but still starts the clock. Null only
+/// where it never crossed.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -836,7 +848,9 @@ public record IssueDto(
     string? LocalModelFrom = null,
     string? PullRequestHeadBranch = null,
     string? PreApprovalPassedOver = null,
-    string? PriorityPassedOver = null)
+    string? PriorityPassedOver = null,
+    string? StartedBy = null,
+    DateTimeOffset? StartedAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -

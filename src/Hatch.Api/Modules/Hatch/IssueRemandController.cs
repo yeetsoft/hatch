@@ -51,6 +51,7 @@ public class IssueRemandController(HatchContext db, IActorDirectory actors, Rank
         if (named.NotUnder is { } stray) return BadRequest($"{stray} is not under {rootKey}");
 
         var actor = await caller.ActorNameAsync(ct);
+        var who = await SetterAuthority.CallerAsync(actors, ct);
         var now = time.GetUtcNow();
         var byId = statuses.ToDictionary(s => s.Id);
 
@@ -119,6 +120,8 @@ public class IssueRemandController(HatchContext db, IActorDirectory actors, Rank
         {
             var from = byId.GetValueOrDefault(issue.StatusId);
             issue.Events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, IssueEventPayload.StatusChanged(from, target), now));
+
+            Starts.Record(issue, from is not null && Columns.CrossesStart(statuses, from.Id, target.Id), who, now);
 
             issue.StatusId = target.Id;
             issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);

@@ -3632,18 +3632,42 @@ public sealed class PriorityTree
     /// </summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId)
     {
+        var (level, fromKey, _) = EffectivePreApprovalRow(issueId);
+        return (level, fromKey);
+    }
+
+    /// <summary>
+    /// Who set the pre-approval <see cref="EffectivePreApproval"/> honours -
+    /// <see cref="PreApprovalSetBy"/> of the same row the walk settled on, so
+    /// the two can never name a different row. Null where the honoured level
+    /// has no setter, including None.
+    /// </summary>
+    public Guid? PreApprovalSetter(long issueId)
+    {
+        var (_, _, rowId) = EffectivePreApprovalRow(issueId);
+        return rowId is { } id ? _setters.GetValueOrDefault(id).PreApprovalSetBy : null;
+    }
+
+    /// <summary>
+    /// The walk <see cref="EffectivePreApproval"/> and <see cref="PreApprovalSetter"/>
+    /// both read: the level, the key it is from, and the id of the row that
+    /// carries it - null for every one of the three where the walk never
+    /// leaves None.
+    /// </summary>
+    private (int Level, string? FromKey, long? RowId) EffectivePreApprovalRow(long issueId)
+    {
         var seen = new HashSet<long>();
         long? at = issueId;
 
         while (at is { } id && seen.Add(id))
         {
             if (TryGet(id, out var row) && row.PreApproval != PreApprovalLevels.None && HonoursAcross(id, issueId, true))
-                return (row.PreApproval, id == issueId ? null : row.Key);
+                return (row.PreApproval, id == issueId ? null : row.Key, id);
 
             at = TryGet(id, out var found) ? found.ParentId : null;
         }
 
-        return (PreApprovalLevels.None, null);
+        return (PreApprovalLevels.None, null, null);
     }
 
     /// <summary>
@@ -4023,6 +4047,9 @@ public sealed class DependencyGate
     /// <summary>The pre-approval live on this issue - see <see cref="PriorityTree.EffectivePreApproval"/>.</summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId) => _tree.EffectivePreApproval(issueId);
 
+    /// <summary>Who set the pre-approval live on this issue - see <see cref="PriorityTree.PreApprovalSetter"/>.</summary>
+    public Guid? PreApprovalSetter(long issueId) => _tree.PreApprovalSetter(issueId);
+
     /// <summary>The levels passed over at a project line - see <see cref="PriorityTree.PassedOver"/>.</summary>
     public (PassedOverLevel? PreApproval, PassedOverLevel? Priority) PassedOver(long issueId) => _tree.PassedOver(issueId);
 
@@ -4080,14 +4107,16 @@ public sealed class FamilyGate
     /// <summary>
     /// One issue's own parent, as <see cref="ParentOf"/> answers it - see HA-113.
     /// <c>OtherProject</c> is true where the parent sits in a different project
-    /// from the child, which is a line no hop crosses.
+    /// from the child, which is a line no hop crosses. <c>ProjectId</c> and
+    /// <c>StartedBy</c> are trailing and optional so an existing construction
+    /// still compiles; nothing reads either for a decision yet - see HA-2481.
     /// </summary>
-    public sealed record Parent(string Key, string Type, int StatusId, bool OtherProject = false);
+    public sealed record Parent(string Key, string Type, int StatusId, bool OtherProject = false, int ProjectId = 0, Guid? StartedBy = null);
 
     private readonly Dictionary<long, List<long>> _children;
     private readonly HashSet<long> _open;
     private readonly Dictionary<long, int> _statusById;
-    private readonly Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> _byId;
+    private readonly Dictionary<long, (long? ParentId, string Type, string Key, int StatusId, int ProjectId, Guid? StartedBy)> _byId;
     private readonly HashSet<long> _waiting;
     private readonly Dictionary<long, long> _sharedStory;
     private readonly HashSet<long> _changelogTasks;
@@ -4095,7 +4124,7 @@ public sealed class FamilyGate
 
     private FamilyGate(
         Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById,
-        Dictionary<long, (long? ParentId, string Type, string Key, int StatusId)> byId, HashSet<long> waiting,
+        Dictionary<long, (long? ParentId, string Type, string Key, int StatusId, int ProjectId, Guid? StartedBy)> byId, HashSet<long> waiting,
         Dictionary<long, long> sharedStory, HashSet<long> changelogTasks, Dictionary<long, int> projectById)
     {
         _projectById = projectById;
@@ -4118,20 +4147,20 @@ public sealed class FamilyGate
         // closed over work the caller merely cannot read.
         var rows = await db.Issues.IgnoreQueryFilters().AsNoTracking()
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Select(i => new { i.Id, i.ParentId, i.StatusId, i.Type, ProjectKey = i.Project!.Key, i.Number, i.ProjectId })
+            .Select(i => new { i.Id, i.ParentId, i.StatusId, i.Type, ProjectKey = i.Project!.Key, i.Number, i.ProjectId, i.StartedBy })
             .ToListAsync(ct);
 
         var projectById = new Dictionary<long, int>();
         var children = new Dictionary<long, List<long>>();
         var open = new HashSet<long>();
         var statusById = new Dictionary<long, int>();
-        var byId = new Dictionary<long, (long?, string, string, int)>();
+        var byId = new Dictionary<long, (long?, string, string, int, int, Guid?)>();
         foreach (var row in rows)
         {
             if (!terminal.Contains(row.StatusId)) open.Add(row.Id);
             statusById[row.Id] = row.StatusId;
             projectById[row.Id] = row.ProjectId;
-            byId[row.Id] = (row.ParentId, row.Type, IssueKey.Format(row.ProjectKey, row.Number), row.StatusId);
+            byId[row.Id] = (row.ParentId, row.Type, IssueKey.Format(row.ProjectKey, row.Number), row.StatusId, row.ProjectId, row.StartedBy);
 
             if (row.ParentId is not { } parent) continue;
             if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
@@ -4193,7 +4222,7 @@ public sealed class FamilyGate
     public Parent? ParentOf(long issueId)
     {
         if (!_byId.TryGetValue(issueId, out var row) || row.ParentId is not { } parentId) return null;
-        return _byId.TryGetValue(parentId, out var p) ? new Parent(p.Key, p.Type, p.StatusId, !SameProject(issueId, parentId)) : null;
+        return _byId.TryGetValue(parentId, out var p) ? new Parent(p.Key, p.Type, p.StatusId, !SameProject(issueId, parentId), p.ProjectId, p.StartedBy) : null;
     }
 
     /// <summary>
