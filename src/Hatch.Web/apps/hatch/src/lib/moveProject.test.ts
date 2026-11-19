@@ -50,14 +50,14 @@ describe('moveSummary', () => {
     expect(moveSummary(issue, [], false).descendantChoice).toBeNull();
   });
 
-  it('names the parent it detaches from', () => {
-    expect(moveSummary(issue, descendants, true).detachedFromParentKey).toBe('AER-0');
+  it('names the parent it keeps', () => {
+    expect(moveSummary(issue, descendants, true).keptParentKey).toBe('AER-0');
   });
 
   it('is null when the issue has no parent', () => {
     const orphan = { ...issue, parentKey: null };
 
-    expect(moveSummary(orphan, descendants, true).detachedFromParentKey).toBeNull();
+    expect(moveSummary(orphan, descendants, true).keptParentKey).toBeNull();
   });
 
   it('names the root and the PR-carrying descendant when descendants are carried along', () => {

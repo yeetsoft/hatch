@@ -289,7 +289,7 @@ export function BulkPage() {
                 </select>
               </Field>
 
-              <Field label="Parent" hint="An issue and its parent share a project.">
+              <Field label="Parent">
                 <select value={form.parent} onChange={(e) => setForm({ ...form, parent: e.target.value })}>
                   <option value={KEEP}>— leave alone —</option>
                   <option value="">— no parent —</option>
@@ -328,7 +328,7 @@ export function BulkPage() {
                       checked={!form.moveDescendants}
                       onChange={() => setForm({ ...form, moveDescendants: false })}
                     />
-                    Leave them with no parent
+                    Leave them where they are, still under their parent
                   </label>
                 </fieldset>
               )}

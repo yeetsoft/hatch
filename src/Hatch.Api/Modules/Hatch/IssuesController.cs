@@ -859,11 +859,11 @@ public class IssuesController(
         }
 
         // Present-but-empty is the clear; absent is no opinion. See
-        // IssuePatchRequest. A real move defaults that "no opinion" to the
-        // clear - an ancestor can never be in the moving set, so the issue's
-        // own parent is always left behind unless this same request also
-        // names one.
-        var parentKey = edit.ParentKey ?? (targetProject is not null ? "" : null);
+        // IssuePatchRequest. A move is no exception: an issue that changes
+        // project keeps the parent it has unless this same request names
+        // another or sends the empty string, since a parent may stand in
+        // another project.
+        var parentKey = edit.ParentKey;
         (EfHatchIssue? Issue, string? Error) parent = (null, null);
         if (parentKey is not null)
         {
@@ -871,14 +871,17 @@ public class IssuesController(
             parent = await ResolveParentAsync(parentKey, parentProjectId, edit.Type ?? issue.Type, issue.Id, ct);
             if (parent.Error is { } parentError) return (false, parentError, null, null, [], null);
         }
-        else if (edit.Type == "task" && issue.Type != "task" && issue.ParentId is { } keptParentId)
+        else if (((edit.Type == "task" && issue.Type != "task") || targetProject is not null) && issue.ParentId is { } keptParentId)
         {
-            // A retype to task keeps the parent the issue has, which the parent
-            // walk above never reads - so the shared-pull-request rule is asked
-            // here, of the parent it keeps.
+            // A retype to task, or a move to another project, keeps the parent
+            // the issue has, which the parent walk above never reads - so the
+            // shared-pull-request rule is asked here, of the parent it keeps:
+            // a task cannot move away from a story whose tasks share one pull
+            // request.
             var kept = await db.Issues.Include(i => i.Project).FirstOrDefaultAsync(i => i.Id == keptParentId, ct);
             if (kept is not null
-                && SharedPullRequestRefusal(kept, (await KeyOfAsync(kept, ct))!, issue.ProjectId, "task") is { } sharedKept)
+                && SharedPullRequestRefusal(
+                    kept, (await KeyOfAsync(kept, ct))!, targetProject?.Id ?? issue.ProjectId, edit.Type ?? issue.Type) is { } sharedKept)
                 return (false, sharedKept, null, null, [], null);
         }
 
@@ -1047,7 +1050,6 @@ public class IssuesController(
             // after its own fields change below would read the new project
             // instead.
             var oldProjectKey = issue.Project!.Key;
-            var oldProjectId = issue.ProjectId;
             var oldKeys = moving.ToDictionary(m => m.Id, m => IssueKey.Format(oldProjectKey, m.Number));
 
             foreach (var m in moving)
@@ -1080,23 +1082,6 @@ public class IssuesController(
                     OnePrLock.OverriddenAndUnstartedAmong(
                         moving, await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct)),
                     actor, now, "the story moved into a project that enforces its one-PR default with nothing under it started");
-
-            // Left behind rather than carried with the root, only when the
-            // request asked for that split - DeleteIssue's own outdent
-            // writes no event for the same shape of change, but there the
-            // parent disappears; here it survives elsewhere, so the child's
-            // own trail is the only place that says why it lost it.
-            if (!(edit.MoveDescendants ?? true))
-            {
-                var children = await db.Issues.Where(i => i.ParentId == issue.Id && i.ProjectId == oldProjectId).ToListAsync(ct);
-                foreach (var child in children)
-                {
-                    child.ParentId = null;
-                    child.UpdatedAt = now;
-                    child.Events.Add(Event(
-                        actor, EfHatchIssueEvent.ParentChanged, new { from = oldKeys[issue.Id], to = (string?)null }, now));
-                }
-            }
         }
 
         if (events.Count == 0 && targetProject is null) return (false, null, null, null, rekeyed, null);
@@ -1312,11 +1297,12 @@ public class IssuesController(
 
     /// <summary>
     /// The refusal for moving a story or bug into a project where its one-PR setting
-    /// reads true while a task of its stands in a third project. The tasks in the
-    /// project it leaves go with it or lose it as parent, and those already in the
-    /// target stop being across a line; the rest stay where they are. Read off the
-    /// setting the story will have after the move, as the write below works it out:
-    /// an enforced target returns an unstarted override to inherit. Null when
+    /// reads true while a task of its would stand in another project. A task
+    /// carried with it moves into the target, and one already in the target stops
+    /// being across a line; one left behind (<c>moveDescendants: false</c>) or in a
+    /// third project stays under the story, and is counted. Read off the setting
+    /// the story will have after the move, as the write below works it out: an
+    /// enforced target returns an unstarted override to inherit. Null when
     /// nothing crosses.
     /// </summary>
     private async Task<string?> MovedStoryRefusalAsync(
@@ -1338,7 +1324,7 @@ public class IssuesController(
             var reads = returned.Contains(story.Id) ? target.OnePullRequest : story.OnePullRequest ?? target.OnePullRequest;
             if (!reads) continue;
 
-            var count = await OnePrLock.CrossProjectTaskCountAsync(db, [story.Id], ct, exceptProjectId: target.Id);
+            var count = await OnePrLock.CrossProjectTaskCountAsync(db, [story.Id], ct, exceptProjectId: target.Id, movingIds: movingIds);
             if (count > 0)
                 return OnePrLock.CrossProjectRefusal(IssueKey.Format(root.Project!.Key, story.Number), count);
         }

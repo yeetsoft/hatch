@@ -53,7 +53,7 @@ export function MoveProjectDialog({ move, projects }: { move: MoveProject; proje
         <>
           <p>{`${offer.issue.key}'s key will change, and the old one will stop resolving.`}</p>
 
-          {summary.detachedFromParentKey && <p>{`It will no longer sit under ${summary.detachedFromParentKey}.`}</p>}
+          {summary.keptParentKey && <p>{`It stays under ${summary.keptParentKey}.`}</p>}
 
           {summary.descendantChoice && (
             <fieldset className="hatch-move-descendants">
@@ -64,7 +64,7 @@ export function MoveProjectDialog({ move, projects }: { move: MoveProject; proje
                   checked={offer.moveDescendants}
                   onChange={() => move.setMoveDescendants(true)}
                 />
-                Move the {summary.descendantChoice.count} issues under it too
+                Move the {summary.descendantChoice.count} issues under it too, with new keys
               </label>
               <label>
                 <input
@@ -73,7 +73,7 @@ export function MoveProjectDialog({ move, projects }: { move: MoveProject; proje
                   checked={!offer.moveDescendants}
                   onChange={() => move.setMoveDescendants(false)}
                 />
-                Leave them in {currentProjectName} with no parent
+                Leave them in {currentProjectName}, still under this issue
               </label>
             </fieldset>
           )}

@@ -1,10 +1,12 @@
 /* What a move is about to carry along, and what it would take along uninvited.
 
    The dialog that moves an issue between projects offers to carry its
-   descendants with it; this module is the whole of deciding what that choice
-   means - which issues are actually moving, and which of those are worth
-   stopping to look at: an open pull request that would point at the wrong
-   project, or a live claim that Confirm should refuse to disturb.
+   descendants with it, or to leave them where they are, still under the moved
+   issue; this module is the whole of deciding what that choice means - which
+   issues are actually moving, and which of those are worth stopping to look
+   at: an open pull request that would point at the wrong project, or a live
+   claim that Confirm should refuse to disturb. A move never changes the
+   issue's own parent, so the summary only names the one it keeps.
 
    The descendant list arrives already walked - the server's own
    Rollup.DescendantIdsAsync, fetched through `GET /issues?ancestorKey=` - so
@@ -20,9 +22,9 @@ export interface MoveCandidate {
 }
 
 export interface MoveSummary {
-  /** The key the issue currently sits under, or null - a move this dialog
-      never offers to undo always leaves it behind. */
-  detachedFromParentKey: string | null;
+  /** The key the issue sits under and keeps, or null when it has no parent -
+      a parent may stand in another project, so a move leaves it alone. */
+  keptParentKey: string | null;
   /** null when the issue has no descendants at all - the dialog draws no
       radio choice in that case. */
   descendantChoice: { count: number } | null;
@@ -51,8 +53,8 @@ export function movingSet(
 }
 
 /**
- * What the dialog has to say about a move before it is confirmed: where it
- * detaches from, whether there is a descendant choice to draw at all, and
+ * What the dialog has to say about a move before it is confirmed: the parent it
+ * keeps, whether there is a descendant choice to draw at all, and
  * which issues in the moving set are worth stopping for.
  */
 export function moveSummary(
@@ -62,7 +64,7 @@ export function moveSummary(
 ): MoveSummary {
   const set = movingSet(issue, descendants, moveDescendants);
   return {
-    detachedFromParentKey: issue.parentKey,
+    keptParentKey: issue.parentKey,
     descendantChoice: descendants.length > 0 ? { count: descendants.length } : null,
     pullRequests: set.filter((c) => c.pullRequestUrl !== null),
     liveClaims: set.filter((c) => c.claim !== null),

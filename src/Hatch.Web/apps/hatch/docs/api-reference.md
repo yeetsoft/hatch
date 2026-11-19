@@ -245,7 +245,7 @@ an `IssueCardDto` carries it, not just this one.
 | GET | `/issues/{key}` | One issue, the full `IssueDto` |
 | GET | `/issues` | Cards matching a filter - no parameters at all is the whole board |
 | POST | `/issues` | Files one; lands leftmost/bottom unless a program's agent-files column exists |
-| PATCH | `/issues/{key}` | Edits whichever fields the body names; null leaves a field alone |
+| PATCH | `/issues/{key}` | Edits whichever fields the body names; null leaves a field alone. A `projectId` move keeps the issue's parent unless `parentKey` names another or is `""` |
 | POST | `/issues/bulk` | One edit applied to many issues by key |
 | DELETE | `/issues/{key}` | Deletes it; children are outdented, not deleted |
 | POST | `/issues/{key}/move` | The drag: a column and the neighbours it landed between |
@@ -279,7 +279,7 @@ is `Title?`, `Description?`, `Type?`, `StatusId?`, `ParentKey?`, `ReadyAt?`,
 `FiledFromKey?` - `""` clears `ParentKey`, `FiledFromKey`, `ReadyAt`, `DueAt` or `PullRequestUrl` (no issue key,
 date or URL is ever legitimately empty, so the sentinel is unambiguous);
 `ProjectId` has no clear sentinel, since an issue always belongs to some
-project; a null `MoveDescendants` reads as `true`. `IssueBulkEditRequest`
+project; a null `MoveDescendants` reads as `true`, and `false` leaves the direct children where they are, still under the moved issue. A move never reads an absent `ParentKey` as the clear. `IssueBulkEditRequest`
 shares those fields, minus `Title`, `Description` and `PullRequestUrl`, which
 only make sense one issue at a time, under `Keys`. Its answer,
 `IssueBulkResultDto`, is `Changed`, `Unchanged`, `Failures` (each
@@ -307,7 +307,9 @@ before the project is looked up or a number is minted. A person who names
 `express` must be allowed to move work into the board's send-back column - the
 two questions `PUT /issues/{key}/pre-approval` asks - and a refusal files
 nothing; `localModel` needs no approver. An unknown level name 400s, naming the levels. A project move 409s if any issue in the moving set - the root,
-or the whole subtree unless `moveDescendants: false` - holds a live claim.
+or the whole subtree unless `moveDescendants: false` - holds a live claim. It also 409s when
+it would leave a one-PR story's tasks in another project, and 400s a task moving away from
+such a story; a bulk batch reports that key as a failure and moves the rest.
 The move route additionally 409s if `FromStatusId` does not match where the
 card actually is, and 409s, as a plain string rather than the WIP body, if
 the card's live claim belongs to a check playbook - a check session judges,

@@ -682,12 +682,42 @@ public class IssueOnePrControllerTests
         await h.SetAsync(story.Key, "on");
         await h.MoveAsync(task.Key, h.Doing);
         var id = (await h.RowAsync(story.Key)).Id;
-        var ops = await h.ProjectAsync(OnePullRequestPolicies.Enforced);
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Enforced); // its default reads off
 
         Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops, moveDescendants: false), default));
 
         Assert.Null((await h.RowByIdAsync(id)).OnePullRequest);
         Assert.Equal(2, (await h.OnePrEventsByIdAsync(id)).Count);
+    }
+
+    [Fact]
+    public async Task MovingWithoutDescendants_IsRefused_WhenTheStoryWillReadOnOverATaskLeftBehind()
+    {
+        var h = await NewAsync(board: true);
+        var (story, _) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "on");
+        var id = (await h.RowAsync(story.Key)).Id;
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional); // the override stays, and reads on
+
+        var refused = await h.Issues.PatchIssue(story.Key, MoveTo(ops, moveDescendants: false), default);
+
+        Assert.Contains("1 task in another project", Sentence(refused.Result));
+        Assert.Single(await h.OnePrEventsByIdAsync(id)); // the "on", and nothing from the move
+
+        Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops), default)); // carried along, it is fine
+    }
+
+    [Fact]
+    public async Task MovingWithoutDescendants_IsRefused_IntoAnEnforcedProjectWhoseDefaultReadsOn()
+    {
+        var h = await NewAsync(board: true);
+        var (story, _) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "off");
+        var ops = await h.ProjectAsync("OPS", OnePullRequestPolicies.Enforced, onePr: true);
+
+        var refused = await h.Issues.PatchIssue(story.Key, MoveTo(ops, moveDescendants: false), default);
+
+        Assert.Contains("1 task in another project", Sentence(refused.Result));
     }
 
     // ---- The trail ----
