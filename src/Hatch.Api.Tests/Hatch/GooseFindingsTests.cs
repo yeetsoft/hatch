@@ -56,6 +56,27 @@ public class GooseFindingsTests
     }
 
     [Fact]
+    public async Task ACandidateThatSaysWhenItBegan_StartsItsSightingThere_AndOpensAtOnce()
+    {
+        var h = NewHarness();
+        h.Check.Bound = TimeSpan.Zero;
+        var began = Now.AddMinutes(-90);
+        h.Check.Candidates = [new FindingCandidate("AER", "AER-1", null, began)];
+
+        await h.SweepAsync();
+
+        Assert.Equal(began, (await h.Db.GooseSightings.SingleAsync()).BeganAt);
+        Assert.Equal(began, (await h.Db.GooseFindings.SingleAsync()).BeganAt);
+
+        // A new token is a new condition, and begins where its own candidate says.
+        var next = Now.AddMinutes(-10);
+        h.Check.Candidates = [new FindingCandidate("AER", "AER-2", null, next)];
+        await h.SweepAsync();
+
+        Assert.Equal(next, (await h.Db.GooseSightings.SingleAsync()).BeganAt);
+    }
+
+    [Fact]
     public async Task LaterSweeps_RefreshSentenceAndEvidence_ButNeverTheTwoStartTimes()
     {
         var h = NewHarness();

@@ -5,9 +5,11 @@ namespace Hatch.Api.Modules.Hatch;
 /// <summary>
 /// One condition a <see cref="FindingCheck"/> is watching, as it stands on this
 /// sweep: what it is about (<see cref="Subject"/>), what it is of right now
-/// (<see cref="Token"/>), and the project it names, or none.
+/// (<see cref="Token"/>), and the project it names, or none. <see cref="Began"/>
+/// is when the condition began where the check can read that from its own
+/// evidence; none means it began on the sweep that first saw it.
 /// </summary>
-public sealed record FindingCandidate(string Subject, string Token, int? ProjectId);
+public sealed record FindingCandidate(string Subject, string Token, int? ProjectId, DateTimeOffset? Began = null);
 
 /// <summary>
 /// A <see cref="IGooseCheck"/> that watches a set of conditions and opens a
@@ -71,7 +73,7 @@ public abstract class FindingCheck(HatchContext db, TimeProvider time) : IGooseC
         var began = candidates.ToDictionary(c => c.Subject, c =>
         {
             var sighting = sightings.FirstOrDefault(s => s.Subject == c.Subject);
-            return sighting is null || sighting.Token != c.Token ? now : sighting.BeganAt;
+            return sighting is null || sighting.Token != c.Token ? c.Began ?? now : sighting.BeganAt;
         });
 
         // Described only once a condition has stood its bound - what makes
@@ -97,14 +99,14 @@ public abstract class FindingCheck(HatchContext db, TimeProvider time) : IGooseC
                 db.GooseSightings.Add(new EfHatchGooseSighting
                 {
                     Check = Name, Subject = candidate.Subject, Token = candidate.Token,
-                    ProjectId = candidate.ProjectId, BeganAt = now,
+                    ProjectId = candidate.ProjectId, BeganAt = candidate.Began ?? now,
                 });
             }
             else if (sighting.Token != candidate.Token)
             {
                 sighting.Token = candidate.Token;
                 sighting.ProjectId = candidate.ProjectId;
-                sighting.BeganAt = now;
+                sighting.BeganAt = candidate.Began ?? now;
             }
             else
             {

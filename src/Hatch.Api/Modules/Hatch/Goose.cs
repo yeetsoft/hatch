@@ -77,6 +77,13 @@ public static class GooseSettings
         options.GooseTrainReadyMinutes >= 0 ? options.GooseTrainReadyMinutes : new HatchOptions().GooseTrainReadyMinutes);
 
     /// <summary>
+    /// How many repeated claims <see cref="RepeatClaimsCheck"/> waits for. Zero
+    /// turns the check off, and only a negative falls back to the default.
+    /// </summary>
+    public static int RepeatClaims(HatchOptions options) =>
+        options.GooseRepeatClaims >= 0 ? options.GooseRepeatClaims : new HatchOptions().GooseRepeatClaims;
+
+    /// <summary>
     /// How long a question may wait before <see cref="QuestionsWaitingCheck"/>
     /// opens a finding. Zero turns the check off, as <see cref="TrainReadyBound"/>'s
     /// zero does, and only a negative falls back to the default.
