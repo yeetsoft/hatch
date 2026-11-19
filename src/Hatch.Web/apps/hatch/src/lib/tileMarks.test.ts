@@ -48,6 +48,7 @@ describe('tileMarks', () => {
       flameTransform: '',
       dim: false,
       wide: false,
+      emergency: false,
     });
   });
 
@@ -68,6 +69,7 @@ describe('tileMarks', () => {
       flameTransform: HEATS.expedited.transform,
       dim: false,
       wide: true,
+      emergency: false,
     });
   });
 
@@ -95,6 +97,13 @@ describe('tileMarks', () => {
           expect(marks.lean).toBe(true);
         }
       }
+    }
+  });
+
+  it('is an emergency for the emergency priority and no other', () => {
+    for (const priority of PRIORITIES) {
+      expect(tileMarks('none', priority).emergency, priority).toBe(priority === 'emergency');
+      expect(tileMarks('preapproved', priority).emergency, priority).toBe(priority === 'emergency');
     }
   });
 

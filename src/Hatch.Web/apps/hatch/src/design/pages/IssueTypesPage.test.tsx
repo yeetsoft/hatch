@@ -106,6 +106,7 @@ describe('the marks sections', () => {
 
   it('leaves red to the bug', () => {
     expect(section('Heat')).toContain('red is left to the bug');
+    expect(section('Heat')).toContain('Only an emergency moves');
   });
 
   it('draws each flame state, and the trail and tick, in the right cells', () => {
