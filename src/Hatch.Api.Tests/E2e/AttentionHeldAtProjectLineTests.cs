@@ -67,6 +67,15 @@ public class AttentionHeldAtProjectLineTests(ITestOutputHelper output)
         return RunAsync("AttentionProjectLineClearPhone", "phone", DeviceProfile.IPhone14Pro, held: false);
     }
 
+    /// <summary>The same phone, emulated in Chromium: the cases that still run where WebKit does not open a page.</summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task ARow_LightsTheControlAndIsListed_AtThePhoneProfileInChromium() =>
+        RunAsync("AttentionProjectLinePhoneChromium", "phone-chromium", DeviceProfile.IPhone14ProChromium, held: true);
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task NothingHeld_ReadsClearAndSaysSo_AtThePhoneProfileInChromium() =>
+        RunAsync("AttentionProjectLineClearPhoneChromium", "phone-chromium", DeviceProfile.IPhone14ProChromium, held: false);
+
     private async Task RunAsync(string name, string profileName, DeviceProfile? profile, bool held)
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
@@ -116,6 +125,14 @@ public class AttentionHeldAtProjectLineTests(ITestOutputHelper output)
                 await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} .hatch-attention-empty:text-is(\"{EmptySentence}\")");
                 Assert.False(await harness.IsVisibleAsync(deadline, $"{PanelSelector} a.hatch-attention-row[href^=\"/issues/\"]"));
             }
+
+            // The panel scrolls at phone width and the section sits low in it:
+            // bring it into the frame so the picture shows the rows.
+            await harness.EvaluateAsync<bool>(
+                deadline,
+                "scrolling the section into view",
+                "(title) => { const h = [...document.querySelectorAll('.hatch-attention-panel h3')].find((e) => e.textContent.includes(title)); if (h) h.scrollIntoView({ block: 'center' }); return true; }",
+                SectionTitle);
 
             output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, $"{(held ? "held" : "clear")}-{profileName}")}");
 

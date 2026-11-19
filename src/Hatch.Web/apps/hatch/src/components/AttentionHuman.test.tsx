@@ -741,6 +741,7 @@ describe('AttentionHuman held at a project line', () => {
     expect(html).toContain(row.key);
     expect(html).toContain(htmlEscaped(row.title));
     expect(html).toContain(row.sentence);
+    expect(html).toContain(`title="${row.sentence}"`);
     expect(html).toContain(other.sentence);
     expect(html).toContain(`href="/issues/${row.key}"`);
     expect(html).toContain(`href="/issues/${other.key}"`);

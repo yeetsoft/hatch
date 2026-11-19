@@ -532,7 +532,7 @@ export function AttentionHuman({
                     <span className="hatch-attention-key">{h.key}</span>
                     <span className="hatch-attention-title">{h.title}</span>
                   </span>
-                  <span className="hatch-attention-files">{h.sentence}</span>
+                  <span className="hatch-attention-files" title={h.sentence}>{h.sentence}</span>
                 </Link>
               </li>
             ))}
