@@ -255,12 +255,26 @@ export function AmbitionTile() {
  * The card's type, as a tile in the corner rather than a word in the body.
  *
  * `title` and `aria-label` both carry the word `TypeBadge` already rendered
- * verbatim - no new vocabulary to keep in sync with it.
+ * verbatim - no new vocabulary to keep in sync with it - unless the caller
+ * gives a `title` of its own, as a card does to add what its marks say. With a
+ * `priority` or a `preApproval` the tile wears the flame and the trail; with
+ * neither it is the bare tile every other caller draws.
  */
-export function TypeGlyph({ type }: { type: IssueType }) {
+export function TypeGlyph({
+  type,
+  priority,
+  preApproval,
+  title,
+}: {
+  type: IssueType;
+  priority?: Priority;
+  preApproval?: PreApproval;
+  title?: string;
+}) {
+  const name = title ?? LABEL[type];
   return (
-    <span className={`hatch-type-glyph hatch-type-glyph--${type}`} title={LABEL[type]} aria-label={LABEL[type]}>
-      <TypeTile type={type} />
+    <span className={`hatch-type-glyph hatch-type-glyph--${type}`} title={name} aria-label={name}>
+      <TypeTile type={type} priority={priority} preApproval={preApproval} />
     </span>
   );
 }
