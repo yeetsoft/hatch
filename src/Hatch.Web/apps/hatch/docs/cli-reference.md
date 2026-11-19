@@ -46,6 +46,8 @@ without the flag.
 | `landed` | No: reads git where it stands, or where `--repo` says | Yes: records a sha |
 | `verdict` | No | Yes: records a verdict |
 | `depends` | No | Only with a second key |
+| `capability` | Only `judge` with no `--sha`: it reads the head of the checkout it stands in | Only with `add`, `edit`, `move`, `remove` or `judge` |
+| `serves` | No | Only with ids or `--none` |
 | `one-pr` | No | Only with `on`, `off` or `inherit` |
 | `dangerous` | No | Only with a reason or `--clear` |
 | `omit` | No | Only with a runner and reason, or `--lift` |
@@ -696,6 +698,12 @@ prints the header alone - everything above the blank line that precedes the
 description - and leaves out the description and every comment, with no
 request made for the comments at all.
 
+An ambition also prints a `capabilities:` block after its `children:` line, one
+line each in the shape `  <position>  #<id>  <state>  <statement>`, and an epic
+prints a `serves:` line such as `serves:   AER-1 #7 (holds), AER-1 #9
+(not_checked)`. Neither prints when there is nothing to say, and a Hatch that
+does not have the routes shows the ticket without them.
+
 ### comments
 
 ```
@@ -840,6 +848,66 @@ edges are refused, each by name: an issue on itself, on one of its ancestors,
 on one of its descendants (both of those "could never be satisfied", since a
 parent is not done until its work is), and one that would close a cycle, which
 the refusal puts as the other issue "is already waiting on this issue".
+
+### capability
+
+```
+hatch capability list <ambition>
+hatch capability add <ambition> "<statement>" --how "<how to tell>" [--at <position>]
+hatch capability edit <ambition> <id> [--statement "..."] [--how "..."]
+hatch capability move <ambition> <id> <position>
+hatch capability remove <ambition> <id>
+hatch capability judge <ambition> <id> holds|does_not_hold|cannot_tell --looked-at "..." [--sha <sha>]
+```
+
+What has to be true of an ambition, and whether it is. A capability is named
+by its own id, which `list` prints after the `#`, and never by its position:
+a position moves whenever a neighbour comes or goes. A word that is not a
+number, a position under 1, or a missing required flag is refused before
+anything is sent.
+
+- `list` prints each capability on one line, `<position>  #<id>  <state>
+  <statement>`, and under it, indented, `how to tell:`, the newest verdict
+  (`verdict: holds at <sha> by <who>, <date> - <what was looked at>`, or
+  `verdict: none yet`) and `served by:` with the epics that serve it, or `no
+  epic`. An ambition with none says `<key> has no capabilities`. A state is the
+  newest verdict's word, or `not_checked`.
+- `add` takes the statement and, in `--how`, the line saying how anyone would
+  tell; both are required. `--at <position>` puts it at a position, 1 to one
+  past the last, and left out it goes at the end. It prints the new line.
+- `edit` changes `--statement`, `--how` or both, and sends only what it is
+  given. At least one is required. It prints the line.
+- `move` puts a capability at a position and the others close up around it. The
+  server has no move of its own, so this reads the list, takes the id out,
+  puts it back and sends the whole order. An id the ambition does not have, or
+  a position past the count, is refused before that is sent.
+- `remove` takes a capability off the ambition.
+- `judge` records whether it holds, as of a commit: one of `holds`,
+  `does_not_hold` or `cannot_tell`. `--looked-at` says what was read or run and
+  is required. `--sha` names the commit and is sent as typed, and needs no git.
+  Without it, `judge` reads the head of the checkout it stands in and sends
+  the full sha, and outside a checkout it says so and sends nothing.
+
+A key is refused by `add`, `edit`, `move` and `remove` once the ambition has
+reached the column where code is written, and the refusal is printed as it
+came, with exit code 1. `judge` is never refused that way. `hatch verdict` is
+a different thing: a check session's pass or fail on the ticket it is looking
+at.
+
+### serves
+
+```
+hatch serves <epic>
+hatch serves <epic> <id> [<id>...]
+hatch serves <epic> --none
+```
+
+The capabilities an epic serves. With one key it reads. With ids it replaces
+the whole set, so name every capability the epic should serve; `--none` clears
+it, and ids with `--none` are refused. The ids are the ones `hatch capability
+list` prints after the `#`. It prints `<epic> serves nothing`, or `<epic> serves
+2 capabilities:` and then `  <ambition> #<id>  <state>  <statement>` for each.
+A key is never refused this.
 
 ### one-pr
 

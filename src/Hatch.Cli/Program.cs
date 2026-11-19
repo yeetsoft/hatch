@@ -449,6 +449,8 @@ try
         "landed" => await new IssueCommands(cli).LandedAsync(rest, cancelling.Token),
         "verdict" => await new IssueCommands(cli).VerdictAsync(rest, cancelling.Token),
         "depends" => await new DependsCommand(cli).RunAsync(rest, cancelling.Token),
+        "capability" => await new CapabilityCommands(cli).CapabilityAsync(rest, cancelling.Token),
+        "serves" => await new CapabilityCommands(cli).ServesAsync(rest, cancelling.Token),
         "one-pr" => await new OnePrCommand(cli).RunAsync(rest, cancelling.Token),
         "dangerous" => await new DangerousCommand(cli).RunAsync(rest, cancelling.Token),
         "omit" => await new OmitCommand(cli).RunAsync(rest, cancelling.Token),
@@ -553,7 +555,7 @@ internal partial class Program
     public static readonly string[] Commands =
     [
         "config", "use", "image", "standby", "board", "next", "queue", "changelog", "activity", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
-        "verdict", "depends", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
+        "verdict", "depends", "capability", "serves", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
 
@@ -634,6 +636,11 @@ internal partial class Program
         "  hatch depends AER-12         what it waits on, and what waits on it",
         "  hatch depends AER-12 AER-11  AER-12 waits on AER-11",
         "  hatch depends AER-12 --remove AER-11        ...no longer",
+        "  hatch capability list AER-1  what an ambition needs to be true, and whether it is",
+        "  hatch capability add AER-1 \"<statement>\" --how \"<how to tell>\"  ...add one; edit, move and remove change it",
+        "  hatch capability judge AER-1 <id> holds|does_not_hold|cannot_tell --looked-at \"...\"  record a verdict",
+        "  hatch serves AER-5           the capabilities an epic serves",
+        "  hatch serves AER-5 7 9       ...replace the set; --none clears it",
         "  hatch one-pr AER-5           whether the story's tasks share its branch and one PR",
         "  hatch one-pr AER-5 on        ...turn it on for this story (or off, or inherit)",
         "  hatch dangerous AER-12 \"why\"  flag it: running its work could destabilise a machine",

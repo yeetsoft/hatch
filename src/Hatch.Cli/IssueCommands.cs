@@ -214,6 +214,7 @@ public sealed class IssueCommands(Cli cli)
         else if (issue.ParentBeyondScope) cli.Say.Line("parent:   in a project outside your scope");
         if (issue.ChildKeys.Count > 0) cli.Say.Line($"children: {string.Join(", ", issue.ChildKeys)}");
         if (issue.ChildBeyondScope) cli.Say.Line("children: some are in a project outside your scope");
+        await PrintCapabilitiesAsync(issue, ct);
         if (issue.FiledFromKey is { Length: > 0 } filedFrom) cli.Say.Line($"filed from: {filedFrom}");
         if (issue.FiledKeys.Count > 0) cli.Say.Line($"filed:    {string.Join(", ", issue.FiledKeys)}");
         if (issue.DependsOnKeys.Count > 0) cli.Say.Line($"depends:  {string.Join(", ", issue.DependsOnKeys)}");
@@ -237,6 +238,34 @@ public sealed class IssueCommands(Cli cli)
 
         PrintComments(cli.Say, comments);
         return 0;
+    }
+
+    /// <summary>
+    /// What an ambition needs to be true, or what an epic serves. A read that
+    /// is refused says nothing, as the project's level does: a Hatch too old
+    /// to have the route, or a key it will not answer, still shows the ticket.
+    /// </summary>
+    private async Task PrintCapabilitiesAsync(IssueDto issue, CancellationToken ct)
+    {
+        try
+        {
+            if (issue.Type == "ambition")
+            {
+                var capabilities = await cli.Board.CapabilitiesAsync(issue.Key, ct);
+                if (capabilities.Count == 0) return;
+
+                cli.Say.Line("capabilities:");
+                foreach (var capability in capabilities) cli.Say.Line($"  {CapabilityCommands.DrawLine(capability)}");
+            }
+            else if (issue.Type == "epic")
+            {
+                var serves = await cli.Board.ServesAsync(issue.Key, ct);
+                if (serves.Count > 0) cli.Say.Line(CapabilityCommands.ServesLine(serves));
+            }
+        }
+        catch (HatchException)
+        {
+        }
     }
 
     public static readonly string[] CommentsUsage =

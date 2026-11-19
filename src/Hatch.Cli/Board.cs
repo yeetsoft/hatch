@@ -728,6 +728,41 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         Client.WriteAsync<IssueDto>(
             HttpMethod.Delete, $"/api/issues/{key}/dependencies/{dependsOnKey}", null, ct);
 
+    /// <summary>An ambition's capabilities in position order, each with its state, newest verdict and the epics serving it.</summary>
+    public async Task<IReadOnlyList<CapabilityDto>> CapabilitiesAsync(string key, CancellationToken ct) =>
+        await Client.GetAsync<List<CapabilityDto>>($"/api/issues/{key}/capabilities", ct) ?? [];
+
+    /// <summary>A new capability on an ambition, at the end unless <paramref name="position"/> says where.</summary>
+    public Task<CapabilityDto?> AddCapabilityAsync(string key, CapabilityCreateRequest request, CancellationToken ct) =>
+        Client.PostAsync<CapabilityDto>($"/api/issues/{key}/capabilities", request, ct);
+
+    /// <summary>One or both lines of a capability; a field left null keeps its value.</summary>
+    public Task<CapabilityDto?> EditCapabilityAsync(string key, long id, CapabilityPatchRequest request, CancellationToken ct) =>
+        Client.WriteAsync<CapabilityDto>(HttpMethod.Patch, $"/api/issues/{key}/capabilities/{id}", request, ct);
+
+    /// <summary>Every id of the ambition, once, in the wanted order.</summary>
+    public async Task<IReadOnlyList<CapabilityDto>> OrderCapabilitiesAsync(string key, IReadOnlyList<long> ids, CancellationToken ct) =>
+        await Client.WriteAsync<List<CapabilityDto>>(
+            HttpMethod.Put, $"/api/issues/{key}/capabilities/order", new CapabilityOrderRequest(ids), ct) ?? [];
+
+    /// <summary>Takes a capability off its ambition. The route answers 204, so there is nothing to read back.</summary>
+    public Task RemoveCapabilityAsync(string key, long id, CancellationToken ct) =>
+        Client.WriteAsync<object>(HttpMethod.Delete, $"/api/issues/{key}/capabilities/{id}", null, ct);
+
+    /// <summary>A verdict on a capability: whether it holds, as of a sha.</summary>
+    public Task<CapabilityVerdictDto?> JudgeCapabilityAsync(
+        string key, long id, CapabilityVerdictRequest request, CancellationToken ct) =>
+        Client.PostAsync<CapabilityVerdictDto>($"/api/issues/{key}/capabilities/{id}/verdicts", request, ct);
+
+    /// <summary>The capabilities an epic serves, each with the ambition it belongs to.</summary>
+    public async Task<IReadOnlyList<ServedCapabilityDto>> ServesAsync(string key, CancellationToken ct) =>
+        await Client.GetAsync<List<ServedCapabilityDto>>($"/api/issues/{key}/serves", ct) ?? [];
+
+    /// <summary>Replaces the set an epic serves; an empty list clears it.</summary>
+    public async Task<IReadOnlyList<ServedCapabilityDto>> SetServesAsync(string key, IReadOnlyList<long> ids, CancellationToken ct) =>
+        await Client.WriteAsync<List<ServedCapabilityDto>>(
+            HttpMethod.Put, $"/api/issues/{key}/serves", new IssueServesWriteRequest(ids), ct) ?? [];
+
     /// <summary>A story's own say over whether its tasks share one branch and one pull request: <c>on</c>, <c>off</c> or <c>inherit</c>.</summary>
     public Task<IssueDto?> SetOnePrAsync(string key, string value, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/one-pr", new OnePrRequest(value), ct);

@@ -87,6 +87,16 @@ public sealed partial class Workspace
         return (full, Git("merge-base", "--is-ancestor", full, $"refs/remotes/origin/{trunk}").Ok);
     }
 
+    /// <summary>
+    /// The commit HEAD names, in full, or null where it names none - a fresh
+    /// <c>init</c> with nothing committed, or not a checkout at all.
+    /// </summary>
+    public string? Head()
+    {
+        var head = Git("rev-parse", "--verify", "--quiet", "HEAD");
+        return head.Ok && head.Out.Trim() is { Length: > 0 } sha ? sha : null;
+    }
+
     private string Short(string reference) => Git("rev-parse", "--short=9", reference).Out.Trim();
 
     private int Count(string range)
