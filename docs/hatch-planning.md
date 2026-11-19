@@ -87,12 +87,22 @@ column), `waiting` (open questions on the issue and everything below it), and
 `slices`, one `{ statusId, count }` per column in board order with the empty
 ones left out.
 
-`/api/plan` answers with `epics` — the ones with no parent, each carrying
-the epics beneath it, so the tree is drawn once — and `loose`, the total of
-everything hanging under no epic at all; `?projectId=` narrows both halves.
+`/api/plan` answers with `epics` — the roots, which are the epics with no
+epic above them in the answer, each carrying the epics beneath it, so the tree
+is drawn once — and `loose`, the total of everything hanging under no epic at
+all, which stays the non-epic roots with no parent. `?projectId=` narrows both
+halves. A tree may cross projects. With no narrowing, an epic under an epic of
+another project is drawn nested under it, and its card says its own
+`projectKey`. Narrowed to one project, an epic whose parent is outside the
+answer is a root of its own: its card has `parentKey` where the reader may see
+the parent, and `parentBeyondScope` where their scope hides it. A total counts
+leaves wherever they live, narrowed or not; a reader whose scope hides some
+of them gets a total over what they can see, and the card says
+`childBeyondScope`.
 `/api/plan/{key}` answers with the issue's own total and its direct
-children in rank order, each with its own; a child's `isLeaf` says whether it
-has work beneath it or is the work.
+children in rank order, each with its own and each card with its own
+`projectKey`, a child in another project included; a child's `isLeaf` says
+whether it has work beneath it or is the work.
 
 Read the plan when the question is *which* project to further; then
 `work --under AER-12` takes the next thing inside the one you picked.

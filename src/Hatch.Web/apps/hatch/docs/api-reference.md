@@ -538,15 +538,18 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/search` | Full-text search across title, description, comments and work log, paged |
-| GET | `/plan` | Every epic's rollup, the Plan page's one request |
-| GET | `/plan/{key}` | One issue's rollup and its children's |
+| GET | `/plan` | Every epic's rollup, the Plan page's one request; a tree may cross projects |
+| GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
 All four a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
 `createdFrom`/`createdTo`, `closedFrom`/`closedTo`, `limit` (1-200, default
 50) and `offset`; with `q`, best match first and closed-ahead-of-open among
 equals, without it newest first (closed, else created). `/plan` takes an
-optional, repeatable `projectId`. `/assignees` takes nothing, and answers an
+optional, repeatable `projectId`; with none, an epic under an epic of another
+project is nested under it, and with one, an epic whose parent is outside the
+answer is a root, its card carrying `parentKey` or `parentBeyondScope`, and
+`childBeyondScope` where its tree goes on past the reader's scope. `/assignees` takes nothing, and answers an
 `AssigneeDirectoryDto(Me?, Assignees)`. `docs/hatch-planning.md` has the
 plan's arithmetic in full.
 
