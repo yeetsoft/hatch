@@ -1241,6 +1241,10 @@ each, pause it the same as one ticket three times.
 - **Where you see it.** The Runners page reads `Paused by the board until
   3:40pm`, with the board's line after a dash, on the session's line and on the
   runner's row. `hatch runners` prints `paused by the board` and `board said:`.
+- **What it stops.** While the pause lasts, the session's heartbeat is
+  answered `paused`, so the loop takes nothing, and a claim from that
+  checkout is refused `409` with a sentence naming the pause. A claim the
+  session already holds is left alone. The stored state is not changed.
 - **Lifting it.** A person, never a key or a keyless runner, can end the pause
   without waiting out the hour: the Runners page draws a *Lift pause* button
   on a session the board paused, and nowhere else. It clears
