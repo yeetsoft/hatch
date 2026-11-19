@@ -270,6 +270,14 @@ typed to the Search page. It is not a shortcut while you are typing:
 `/` in a text box, a description editor, or the board's own search box is a
 slash.
 
+Press `c` on the board and the New issue dialog opens, with its title box
+empty and ready to type in. It is the same dialog the **+** button opens, and
+the button's tooltip says `c`. Like `/`, it is a letter while you are typing:
+in a text box, a description editor or the board's search box, `c` types `c`.
+It opens nothing with Ctrl, Cmd or Alt held, so Ctrl+C and Cmd+C still copy,
+and nothing while a dialog, the peek or the console is open, or while a card
+is being dragged. It works on the board only.
+
 The first character of the prompt says what it lists:
 
 | Prefix | Lists |
