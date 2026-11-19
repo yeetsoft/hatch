@@ -5,6 +5,7 @@ import { getPlan, getProjects, getStatuses } from '../api/client';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { scrubbedProject } from '../lib/filter';
+import { inheritedMark } from '../lib/inherited';
 import { orderPlan, planProjectId } from '../lib/plan';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
@@ -223,6 +224,7 @@ function EpicRow({
   const { issue } = entry;
   const status = statuses.find((s) => s.id === issue.statusId);
   const elsewhere = parentProject !== undefined && parentProject !== issue.projectKey;
+  const inherited = inheritedMark(issue, issue.projectKey);
 
   return (
     <div className={`hatch-plan-row${top ? ' top' : ''}`}>
@@ -230,6 +232,11 @@ function EpicRow({
         <Link to={`/issues/${entry.issue.key}`} className="hatch-plan-key">
           {entry.issue.key}
         </Link>
+        {inherited && (
+          <span className="hatch-plan-inherited text-muted" title={inherited.title}>
+            {inherited.glyph}
+          </span>
+        )}
         {/* Only where the tree crosses a line: inside one project the key's own
             prefix already says it, and a chip on every row would be noise. */}
         {elsewhere && <span className="hatch-plan-project">{issue.projectKey}</span>}

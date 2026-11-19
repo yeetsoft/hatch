@@ -1,4 +1,5 @@
 import { statusVars } from '../lib/color';
+import { inheritedSentences } from '../lib/inherited';
 import { LocalModelControl, type LocalModel } from './LocalModelControl';
 import { PreApprovalControl, type PreApproval } from './PreApprovalControl';
 import { PriorityControl, type Priority } from './PriorityControl';
@@ -56,6 +57,7 @@ export function IssueStatusBar({
   onLocalModel: (level: LocalModel) => void;
 }) {
   const current = statuses.find((s) => s.id === issue.statusId);
+  const said = inheritedSentences(issue, issue.projectKey);
 
   return (
     <section className="hatch-status-bar" style={statusVars(current?.color)} aria-label="Status">
@@ -85,6 +87,7 @@ export function IssueStatusBar({
         priority={issue.priority}
         priorityOwn={issue.priorityOwn}
         priorityFrom={issue.priorityFrom}
+        passedOver={said.priority}
         directory={directory}
         busy={priorityBusy}
         onChange={onPriority}
@@ -98,6 +101,7 @@ export function IssueStatusBar({
         preApproval={issue.preApproval}
         preApprovalOwn={issue.preApprovalOwn}
         preApprovalFrom={issue.preApprovalFrom}
+        passedOver={said.preApproval}
         canApprove={canApprove}
         directory={directory}
         busy={preApprovalBusy}

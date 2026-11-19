@@ -110,6 +110,7 @@ export function PreApprovalControl({
   preApproval,
   preApprovalOwn,
   preApprovalFrom,
+  passedOver = null,
   directory,
   canApprove,
   busy = false,
@@ -124,6 +125,10 @@ export function PreApprovalControl({
   /** The ancestor the effective level came from, or null when it is this
       issue's own, or none. */
   preApprovalFrom: string | null;
+  /** The sentence for a level that came from an ancestor and is not drawn as
+      `preApprovalFrom` - not honoured here, or from outside the reader's scope - from
+      `inheritedSentences`. Said only where `preApprovalFrom` is not. */
+  passedOver?: string | null;
   /** Everybody who could own an issue, and who the caller is. Null while it is
       still loading. */
   directory: AssigneeDirectory | null;
@@ -185,11 +190,12 @@ export function PreApprovalControl({
       <span className={`hatch-preapproval-said${effective.class ? ` ${effective.class}` : ''}`}>
         {effective.word}
         {preApprovalFrom ? ` · inherited from ${preApprovalFrom}` : ''}
+        {!preApprovalFrom && passedOver ? ` · ${passedOver}` : ''}
       </span>
     );
   }
 
-  const label = `Pre-approval: ${effective.word}${preApprovalFrom ? `, inherited from ${preApprovalFrom}` : ''}. Set ${issueKey}'s pre-approval`;
+  const label = `Pre-approval: ${effective.word}${preApprovalFrom ? `, inherited from ${preApprovalFrom}` : ''}${!preApprovalFrom && passedOver ? `, ${passedOver}` : ''}. Set ${issueKey}'s pre-approval`;
 
   return (
     <>
