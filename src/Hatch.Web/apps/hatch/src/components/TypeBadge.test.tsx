@@ -27,4 +27,24 @@ describe('TypeBadge', () => {
     const html = renderToStaticMarkup(<TypeBadge type={type} />);
     expect(html.replace(/<[^>]*>/g, '')).toBe(type);
   });
+
+  it('hands a fill to the tile, with its words on the glyph', () => {
+    const words = { outline: 'Not started', solid: 'Under way', landed: 'Landed' } as const;
+    for (const fill of ['outline', 'solid', 'landed'] as const) {
+      const html = renderToStaticMarkup(<TypeBadge type="story" fill={fill} />);
+      const tile = renderToStaticMarkup(<TypeTile type="story" fill={fill} />);
+      expect(html).toContain(`title="${words[fill]}"`);
+      expect(html).toContain(`>${tile}</span>story</span>`);
+    }
+  });
+
+  it('keeps the word as the only text with a fill', () => {
+    const html = renderToStaticMarkup(<TypeBadge type="task" fill="landed" />);
+    expect(html.replace(/<[^>]*>/g, '')).toBe('task');
+  });
+
+  it('carries no title without one', () => {
+    const html = renderToStaticMarkup(<TypeBadge type="task" />);
+    expect(html).not.toContain('title=');
+  });
 });
