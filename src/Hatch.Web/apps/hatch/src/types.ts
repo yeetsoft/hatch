@@ -858,6 +858,14 @@ export interface Issue {
       level is this issue's own, or none. See IssueCard.localModelFrom and
       IssueDto.LocalModelFrom. */
   localModelFrom: string | null;
+  /** Who works this issue, live - see IssueCard.humanWork and IssueDto.HumanWork. */
+  humanWork: HumanWork;
+  /** This issue's own override - see IssueCard.humanWorkOwn and IssueDto.HumanWorkOwn. */
+  humanWorkOwn: HumanWork;
+  /** The ancestor `humanWork` was inherited from, or null when the effective
+      value is this issue's own, or nothing is set. See IssueCard.humanWorkFrom
+      and IssueDto.HumanWorkFrom. */
+  humanWorkFrom: string | null;
   /** The runner tags effective for this issue, walked live to the nearest
       ancestor (or project) that carries any. See IssueCard.runnerTags and
       IssueDto.RunnerTags. */
