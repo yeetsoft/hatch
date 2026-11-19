@@ -91,11 +91,9 @@ public static class IssueProjection
             .OfType<long>().Distinct().ToList();
         var parentRows = await db.Issues.AsNoTracking()
             .Where(i => parentIds.Contains(i.Id))
-            .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number, i.Type, i.StatusId, i.ProjectId, i.StartedBy })
+            .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number })
             .ToListAsync(ct);
         var parentKeys = parentRows.ToDictionary(r => r.Id, r => IssueKey.Format(r.ProjectKey, r.Number));
-        var parentsOf = parentRows.ToDictionary(
-            r => r.Id, r => (Key: IssueKey.Format(r.ProjectKey, r.Number), r.Type, r.StatusId, r.ProjectId, r.StartedBy));
 
         var priorities = await PriorityTree.ForReaderAsync(db, actors, ct);
 
@@ -221,7 +219,7 @@ public static class IssueProjection
             var (effective, effectiveFrom) = priorities.Effective(issue.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(issue.Id);
             var passedOver = priorities.PassedOver(issue.Id);
-            var pullPassedOver = PullPassedOverOf(issue, parentsOf, statuses, priorities.Authority);
+            var pullPassedOver = priorities.PullPassedOver(issue.Id);
             var (effectiveLocalModel, effectiveLocalModelFrom) = priorities.EffectiveLocalModel(issue.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(issue.Id);
@@ -318,28 +316,10 @@ public static class IssueProjection
                 ParentBeyondScope: disclosed.ParentBeyondScope,
                 ChildBeyondScope: disclosed.ChildBeyondScope,
                 FromBeyondScope: disclosed.FromBeyondScope,
-                PullPassedOver: pullPassedOver);
+                PullPassedOver: disclosed.Key(DisclosedValues.PullPassedOver, pullPassedOver),
+                PreApprovalPassedOverLevel: passedOver.PreApproval is { } pa ? PreApprovalLevels.Name(pa.Level) : null,
+                PriorityPassedOverLevel: passedOver.Priority is { } pr ? PriorityLevels.Name(pr.Level) : null);
         });
-    }
-
-    /// <summary>
-    /// The key of this issue's parent where the parent is across a project line,
-    /// in progress, and may not pull it - <see cref="FamilyGate.PullHeld"/>, the
-    /// very test the queue's hold is made of - or null. Built off the parent
-    /// rows the batch already read, not <see cref="FamilyGate.ForAsync"/>, which
-    /// reads the whole board.
-    /// </summary>
-    private static string? PullPassedOverOf(
-        EfHatchIssue issue,
-        Dictionary<long, (string Key, string Type, int StatusId, int ProjectId, Guid? StartedBy)> parents,
-        List<EfHatchStatus> statuses, SetterAuthority authority)
-    {
-        if (issue.ParentId is not { } parentId || !parents.TryGetValue(parentId, out var p)) return null;
-        if (p.ProjectId == issue.ProjectId) return null;
-        if (statuses.FirstOrDefault(s => s.Id == issue.StatusId) is not { } from) return null;
-
-        var parent = new FamilyGate.Parent(p.Key, p.Type, p.StatusId, true, p.ProjectId, p.StartedBy);
-        return FamilyGate.PullHeld(parent, issue.ProjectId, from, statuses, authority) ? p.Key : null;
     }
 
     /// <summary>

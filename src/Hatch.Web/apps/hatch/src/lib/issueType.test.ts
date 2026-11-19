@@ -7,8 +7,10 @@ describe('ISSUE_TYPE_ROWS', () => {
     expect(ISSUE_TYPE_ROWS.map((row) => row.name)).toEqual(ISSUE_TYPES);
   });
 
-  it('gives each type its own shape', () => {
-    expect(new Set(ISSUE_TYPE_ROWS.map((row) => row.shape)).size).toBe(5);
+  it('gives each type its own picture, and a disc only to bug and reflection', () => {
+    expect(new Set(ISSUE_TYPE_ROWS.map((row) => row.picture)).size).toBe(ISSUE_TYPES.length);
+    const discs = ISSUE_TYPE_ROWS.filter((row) => row.outline === 'disc').map((row) => row.name);
+    expect(discs.sort()).toEqual(['bug', 'reflection']);
   });
 
   it('says what each type is, and prints its own name', () => {
@@ -20,6 +22,7 @@ describe('ISSUE_TYPE_ROWS', () => {
   });
 
   it('finds a row by type', () => {
-    expect(issueTypeRow('bug').shape).toBe('triangle');
+    expect(issueTypeRow('bug').picture).toBe('beetle');
+    expect(issueTypeRow('bug').outline).toBe('disc');
   });
 });

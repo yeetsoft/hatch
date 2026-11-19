@@ -101,6 +101,7 @@ export function PriorityControl({
   priority,
   priorityOwn,
   priorityFrom,
+  passedOver = null,
   directory,
   busy = false,
   size = 'md',
@@ -114,6 +115,10 @@ export function PriorityControl({
   /** The ancestor the effective level came from, or null when it is this
       issue's own, or normal. */
   priorityFrom: string | null;
+  /** The sentence for a level that came from an ancestor and is not drawn as
+      `priorityFrom` - not honoured here, or from outside the reader's scope - from
+      `inheritedSentences`. Said only where `priorityFrom` is not. */
+  passedOver?: string | null;
   /** Everybody who could own an issue, and who the caller is. Null while it is
       still loading. */
   directory: AssigneeDirectory | null;
@@ -172,11 +177,12 @@ export function PriorityControl({
       <span className={`hatch-priority-said${effective.class ? ` ${effective.class}` : ''}`}>
         {effective.word}
         {priorityFrom ? ` · inherited from ${priorityFrom}` : ''}
+        {!priorityFrom && passedOver ? ` · ${passedOver}` : ''}
       </span>
     );
   }
 
-  const label = `Priority: ${effective.word}${priorityFrom ? `, inherited from ${priorityFrom}` : ''}. Set ${issueKey}'s priority`;
+  const label = `Priority: ${effective.word}${priorityFrom ? `, inherited from ${priorityFrom}` : ''}${!priorityFrom && passedOver ? `, ${passedOver}` : ''}. Set ${issueKey}'s priority`;
 
   return (
     <>

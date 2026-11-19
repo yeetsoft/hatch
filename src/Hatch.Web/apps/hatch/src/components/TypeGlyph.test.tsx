@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { TypeGlyph } from './TypeGlyph';
+import { HATCH_MARK_BODY, HATCH_MARK_CAP } from '@hatch/ui';
+import { AmbitionTile, TypeGlyph, TypeTile } from './TypeGlyph';
+import { ISSUE_TYPES } from '../types';
 import type { IssueType } from '../types';
 
+const tile = (type: IssueType) => renderToStaticMarkup(<TypeTile type={type} />);
+
+/** The markup inside the scaled group: the picture, with no outline and no type colour in it. */
+const picture = (type: IssueType) => /<g [^>]*>(.*)<\/g>/.exec(tile(type))![1];
+
 describe('TypeGlyph', () => {
-  it.each<IssueType>(['epic', 'reflection', 'story', 'task', 'bug'])(
+  it.each<IssueType>(ISSUE_TYPES)(
     'names %s on the title and the accessible name, and wears its own class',
     (type) => {
       const html = renderToStaticMarkup(<TypeGlyph type={type} />);
@@ -14,42 +21,90 @@ describe('TypeGlyph', () => {
       expect(html).toContain(`hatch-type-glyph--${type}`);
     },
   );
+});
 
-  it('draws five different shapes, not five colours of the same one', () => {
-    const shapes = {
-      epic: renderToStaticMarkup(<TypeGlyph type="epic" />),
-      reflection: renderToStaticMarkup(<TypeGlyph type="reflection" />),
-      story: renderToStaticMarkup(<TypeGlyph type="story" />),
-      task: renderToStaticMarkup(<TypeGlyph type="task" />),
-      bug: renderToStaticMarkup(<TypeGlyph type="bug" />),
-    };
+describe('TypeTile', () => {
+  it.each<IssueType>(ISSUE_TYPES)('fills the %s tile with its own token', (type) => {
+    const html = tile(type);
 
-    expect(shapes.story).toContain('<circle');
-    expect(shapes.bug).toContain('<polygon');
-    expect(shapes.epic).toContain('transform="rotate(45 8 8)"');
-    expect(shapes.task).not.toContain('transform=');
-    expect(shapes.epic).toContain('<rect');
-    expect(shapes.task).toContain('<rect');
+    expect(html).toContain('class="hatch-type-tile-face"');
+    expect(html).toContain(`style="fill:var(--type-${type})"`);
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain('focusable="false"');
+  });
 
-    expect(shapes.epic).not.toContain('<circle');
-    expect(shapes.epic).not.toContain('<polygon');
-    expect(shapes.story).not.toContain('<rect');
-    expect(shapes.story).not.toContain('<polygon');
-    expect(shapes.task).not.toContain('<circle');
-    expect(shapes.task).not.toContain('<polygon');
-    expect(shapes.bug).not.toContain('<rect');
-    expect(shapes.bug).not.toContain('<circle');
+  it('draws a disc for bug and reflection only', () => {
+    for (const type of ISSUE_TYPES) {
+      const disc = type === 'bug' || type === 'reflection';
+      expect(tile(type).includes('<circle'), type).toBe(disc);
+    }
+  });
 
-    // The hexagon and the triangle are both a <polygon>, so the tag cannot
-    // tell them apart - the number of points does.
-    const pointCount = (svg: string) => /points="([^"]+)"/.exec(svg)![1].trim().split(/\s+/).length;
-    expect(shapes.reflection).toContain('<polygon');
-    expect(pointCount(shapes.reflection)).toBe(6);
-    expect(pointCount(shapes.bug)).toBe(3);
-    expect(shapes.reflection).not.toContain('<circle');
-    expect(shapes.reflection).not.toContain('<rect');
-    expect(shapes.epic).not.toContain('points=');
-    expect(shapes.story).not.toContain('points=');
-    expect(shapes.task).not.toContain('points=');
+  it('scales the picture to 110% about the middle of the box', () => {
+    for (const type of ISSUE_TYPES) {
+      expect(tile(type)).toContain('<g transform="translate(8 8) scale(1.1) translate(-8 -8)">');
+    }
+  });
+
+  it('draws a different picture for every type', () => {
+    const pictures = ISSUE_TYPES.map(picture);
+
+    expect(pictures.every((markup) => markup.length > 0)).toBe(true);
+    expect(new Set(pictures).size).toBe(ISSUE_TYPES.length);
+  });
+
+  it('strokes the task tick 1.9 wide and fills the story bookmark', () => {
+    expect(picture('task')).toContain('stroke-width="1.9"');
+    expect(picture('task')).not.toContain('hatch-type-tile-picture');
+    expect(picture('story')).toContain('hatch-type-tile-picture');
+    expect(picture('story')).not.toContain('hatch-type-tile-stroke');
+  });
+});
+
+describe('AmbitionTile', () => {
+  const html = renderToStaticMarkup(<AmbitionTile />);
+  const paths = [...html.matchAll(/<path [^>]*>/g)].map((match) => match[0]);
+  const dOf = (path: string) => /\sd="([^"]*)"/.exec(path)![1];
+
+  it("draws the egg from the mark's two paths, not a copy", () => {
+    const egg = paths.filter((path) => path.includes('hatch-type-tile-picture')).map(dOf);
+
+    expect(egg).toEqual([HATCH_MARK_CAP, HATCH_MARK_BODY]);
+  });
+
+  it('wears the same rounded square as the other sizes of work', () => {
+    const face = paths.find((path) => path.includes('hatch-type-tile-face'))!;
+
+    expect(dOf(face)).toBe(dOf(/<path [^>]*hatch-type-tile-face[^>]*>/.exec(tile('epic'))![0]));
+  });
+
+  it('keeps the egg at its final size, centred on the silhouette', () => {
+    expect(html).toContain('<g transform="translate(2.0500 1.9905) scale(0.119)">');
+    expect(html).not.toContain('1.1');
+  });
+
+  it('gives each tile its own gradient, and points its face at it', () => {
+    const two = renderToStaticMarkup(
+      <>
+        <AmbitionTile />
+        <AmbitionTile />
+      </>,
+    );
+    const ids = [...two.matchAll(/<linearGradient id="([^"]+)"/g)].map((match) => match[1]);
+    const fills = [...two.matchAll(/fill:url\(#([^)]+)\)/g)].map((match) => match[1]);
+
+    expect(new Set(ids).size).toBe(2);
+    expect(fills).toEqual(ids);
+  });
+
+  it('reads both gradient tokens in its stops and holds no colour literal', () => {
+    expect(html).toContain('style="stop-color:var(--gradient-ink-from)"');
+    expect(html).toContain('style="stop-color:var(--gradient-ink-to)"');
+    expect(html).not.toMatch(/#[0-9a-f]{3,8}/i);
+    expect(html).not.toMatch(/rgb|hsl/i);
+  });
+
+  it('runs the gradient from top left to bottom right over the tile', () => {
+    expect(html).toContain('gradientUnits="userSpaceOnUse" x1="1" y1="1" x2="15" y2="15"');
   });
 });

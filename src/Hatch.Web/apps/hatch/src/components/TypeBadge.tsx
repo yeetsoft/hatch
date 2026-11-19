@@ -1,11 +1,19 @@
 import { Badge } from '@hatch/ui';
 import type { IssueType } from '../types';
 import { issueTypeRow } from '../lib/issueType';
+import { TypeTile } from './TypeGlyph';
 
-/* The type's own face, the same one the control's pill and the board card's
-   glyph wear: `.hatch-type-badge.<class>` in App.css gives it the colour, and
-   overrides the Badge's tone outright. */
+/* The type as its tile beside its word, on the page's own plain face. The
+   colour is said once, by the tile; `.hatch-badge.hatch-type-badge` in App.css
+   gives the face its border and ink, and overrides the Badge's tone. */
 export function TypeBadge({ type }: { type: IssueType }) {
   const row = issueTypeRow(type);
-  return <Badge className={`hatch-type-badge ${row.class}`}>{row.word}</Badge>;
+  return (
+    <Badge className={`hatch-type-badge ${row.class}`}>
+      <span className="hatch-type-pill-glyph" aria-hidden="true">
+        <TypeTile type={type} />
+      </span>
+      {row.word}
+    </Badge>
+  );
 }

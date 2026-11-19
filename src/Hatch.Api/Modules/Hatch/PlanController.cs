@@ -87,6 +87,7 @@ public class PlanController(
         var rows = new List<ChildRollupDto>(children.Count);
         foreach (var c in children)
         {
+            var (effective, effectiveFrom) = priorities.Effective(c.Id);
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(c.Id);
             var passedOver = priorities.PassedOver(c.Id);
             var disclosed = priorities.Disclose(c.Id);
@@ -107,12 +108,17 @@ public class PlanController(
                     Claim: claims.Project(c.Claim, now),
                     Expedited: c.Priority >= PriorityLevels.Expedited,
                     Express: effectivePreApproval >= PreApprovalLevels.Express,
-                    Priority: PriorityLevels.Name(c.Priority),
+                    Priority: PriorityLevels.Name(effective),
+                    PriorityOwn: PriorityLevels.Name(c.Priority),
+                    PriorityFrom: disclosed.Key(DisclosedValues.Priority, effectiveFrom),
                     PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                     PreApprovalOwn: PreApprovalLevels.Name(c.PreApproval),
                     PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
                     PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
                     PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
+                    PullPassedOver: disclosed.Key(DisclosedValues.PullPassedOver, priorities.PullPassedOver(c.Id)),
+                    PreApprovalPassedOverLevel: passedOver.PreApproval is { } pa ? PreApprovalLevels.Name(pa.Level) : null,
+                    PriorityPassedOverLevel: passedOver.Priority is { } pr ? PriorityLevels.Name(pr.Level) : null,
                     LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                     LocalModelOwn: LocalModelLevels.Name(c.LocalModel),
                     LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),
@@ -266,6 +272,7 @@ public class PlanController(
                 if (!drawn.Add(id)) continue;
 
                 var row = byId[id];
+                var (effective, effectiveFrom) = priorities.Effective(id);
                 var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(id);
                 var passedOver = priorities.PassedOver(id);
                 var disclosed = priorities.Disclose(id);
@@ -287,12 +294,17 @@ public class PlanController(
                         Claim: claims.Project(row.Claim, now),
                         Expedited: row.Priority >= PriorityLevels.Expedited,
                         Express: effectivePreApproval >= PreApprovalLevels.Express,
-                        Priority: PriorityLevels.Name(row.Priority),
+                        Priority: PriorityLevels.Name(effective),
+                        PriorityOwn: PriorityLevels.Name(row.Priority),
+                        PriorityFrom: disclosed.Key(DisclosedValues.Priority, effectiveFrom),
                         PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                         PreApprovalOwn: PreApprovalLevels.Name(row.PreApproval),
                         PreApprovalFrom: disclosed.Key(DisclosedValues.PreApproval, effectivePreApprovalFrom),
                         PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
                         PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
+                        PullPassedOver: disclosed.Key(DisclosedValues.PullPassedOver, priorities.PullPassedOver(id)),
+                        PreApprovalPassedOverLevel: passedOver.PreApproval is { } pa ? PreApprovalLevels.Name(pa.Level) : null,
+                        PriorityPassedOverLevel: passedOver.Priority is { } pr ? PriorityLevels.Name(pr.Level) : null,
                         LocalModel: LocalModelLevels.Name(effectiveLocalModel),
                         LocalModelOwn: LocalModelLevels.Name(row.LocalModel),
                         LocalModelFrom: disclosed.Key(DisclosedValues.LocalModel, effectiveLocalModelFrom),

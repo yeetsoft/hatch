@@ -130,6 +130,26 @@ public class PlanTests
         Assert.Equal(before, after);
     }
 
+    [Fact]
+    public async Task AnEpicEntry_CarriesThePriorityInEffectAndWhereItCameFrom()
+    {
+        var h = await NewAsync();
+        var outer = await h.FileAsync("epic", "the programme", h.Todo);
+        var inner = await h.FileAsync("epic", "one phase of it", h.Todo, parentId: outer.Id);
+        outer.Priority = PriorityLevels.Expedited;
+        await h.Db.SaveChangesAsync();
+
+        var top = Assert.Single(Value(await h.Plan.GetPlan(null, default)).Epics);
+        var nested = Assert.Single(top.Children);
+
+        Assert.Equal("expedited", top.Issue.Priority);
+        Assert.Null(top.Issue.PriorityFrom);
+        Assert.Equal(h.Key(inner), nested.Issue.Key);
+        Assert.Equal("expedited", nested.Issue.Priority);
+        Assert.Equal("normal", nested.Issue.PriorityOwn);
+        Assert.Equal(h.Key(outer), nested.Issue.PriorityFrom);
+    }
+
     // ---- What hangs under no epic ----
 
     [Fact]

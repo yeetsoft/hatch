@@ -15,6 +15,7 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { Button, Callout, EmptyState } from '@hatch/ui';
 import { deleteIssue, getAssignees, moveIssue } from '../api/client';
 import { BoardCard, CardPreview } from '../components/BoardCard';
+import { useLiftGuard } from '../lib/useLiftGuard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { RemandDialog } from '../components/RemandDialog';
@@ -696,6 +697,7 @@ function BoardContent() {
   // rearrange it. Each condition below leaves the key to whoever else wants it -
   // a text field's own undo above all.
   const dragUnderway = dragging !== null;
+  useLiftGuard(dragUnderway);
   useEffect(() => {
     if (dragUnderway) return;
 
@@ -933,6 +935,8 @@ function BoardContent() {
                 hidden={cards.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
                 filtering={isFiltering(shown)}
                 found={found}
+                dropping={dragging !== null && over === status.id}
+                blocked={columnBlocked(status, dragging, projectsByKey)}
                 wip={zoneIds.has(status.id) && tint !== null ? { text: wipText!, tint } : null}
                 projectsByKey={projectsByKey}
                 showProjectMark={showProjectMark}
@@ -1302,6 +1306,8 @@ function PhoneColumn({
   hidden,
   filtering,
   found,
+  dropping,
+  blocked,
   wip,
   projectsByKey,
   showProjectMark,
@@ -1318,6 +1324,11 @@ function PhoneColumn({
   filtering: boolean;
   /** The key of the card the console found, on any column. */
   found: string | null;
+  /** A card in hand is over this column. */
+  dropping: boolean;
+  /** Why the card in hand could not land here, or null where it could. A
+      blocked column's droppable is disabled, so it takes no drop. */
+  blocked: string | null;
   /** This column's share of the WIP section's own sentence, or null where it
       is not in one - AC5: no band here, the header says it instead. */
   wip: { text: string; tint: Tightness } | null;
@@ -1337,6 +1348,12 @@ function PhoneColumn({
   const [showWaiting, setShowWaiting] = useState(false);
   const [open, setOpen] = useState(() => !startsCollapsed(status));
 
+  // Its own droppable, on the whole <details> - the heading too, so a folded
+  // column still takes a drop. aim.ts names the column the pointer is inside
+  // before it looks at a card, and with none registered here a card dragged on
+  // a phone followed the finger and could never land.
+  const { setNodeRef } = useDroppable({ id: columnDroppableId(status.id), disabled: blocked !== null });
+
   const now = new Date();
 
   const waiting = status.isTerminal ? [] : cards.filter((c) => isWaiting(c.readyAt, now));
@@ -1349,8 +1366,9 @@ function PhoneColumn({
 
   return (
     <details
-      className="hatch-column"
+      className={`hatch-column${dropping && !blocked ? ' dropping' : ''}`}
       style={statusVars(status.color)}
+      ref={setNodeRef}
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >

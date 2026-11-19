@@ -424,22 +424,25 @@ name 400s, naming the levels. Nothing in dispatch reads the level yet.
 `IssueDto` and `IssueCardDto` also carry `preApprovalPassedOver` and `priorityPassedOver`: the key of the
 nearest ancestor whose level was passed over at a project line because its setter has no say in this
 ticket's project (or none was recorded), or null. Read live, beside `preApprovalFrom` and `priorityFrom`.
+Beside each sits its own level name - `preApprovalPassedOverLevel` and `priorityPassedOverLevel` - the
+level the passed-over ancestor carried, or null where nothing was passed over; never disclosed, since the
+value already applies with no ancestor named.
 `IssueDto` and `IssueCardDto` also say what a reader is told of a link with a hidden side,
 where the project at the other end is outside the reader's scope. `parentBeyondScope` is true when the
 parent is there and `parentKey` is null; `childBeyondScope` is true when some child is there and
 `childKeys` holds none of it, with no count. `fromBeyondScope` lists the values whose from-key was blanked
 because the ancestor it names is outside the scope - any of `priority`, `preApproval`, `localModel`,
-`onePr`, `dangerous`, `preApprovalPassedOver` and `priorityPassedOver` - and the value itself still
-applies. A `runnerTagsFrom` source or an `omittedRunners` entry from such an ancestor has a blank key and
-`beyondScope: true`; a null omission `fromKey` still means the issue's own. All default to false or
-empty, and a reader whose scope holds everything never sees one set.
+`onePr`, `dangerous`, `preApprovalPassedOver`, `priorityPassedOver` and `pullPassedOver` - and the value
+itself still applies. A `runnerTagsFrom` source or an `omittedRunners` entry from such an ancestor has a
+blank key and `beyondScope: true`; a null omission `fromKey` still means the issue's own. All default to
+false or empty, and a reader whose scope holds everything never sees one set.
 `IssueDto` also carries `startedBy` (a name, or null for a key's move, an issue started before this was
 recorded, or one never started) and `startedAt` (null only where it never crossed): written the first time
 a move, a PATCH, a bulk edit or a hop carries the issue rightward across the board's send-back column, and
 overwritten by the next crossing, including back to nobody for a key's.
-`IssueDto` also carries `pullPassedOver`: the key of the issue's parent where that parent is in another
-project and in progress, yet may not pull it - the person who started it (`startedBy`) has no say in this
-ticket's project, or nobody started it - or null. Read live, beside `preApprovalPassedOver`.
+`IssueDto` and `IssueCardDto` also carry `pullPassedOver`: the key of the issue's parent where that parent
+is in another project and in progress, yet may not pull it - the person who started it (`startedBy`) has
+no say in this ticket's project, or nobody started it - or null. Read live, beside `preApprovalPassedOver`.
 `playbook` 400s an unknown model or effort - the same validation a playbook
 file is held to. `landing` 400s a malformed remote, sha or trunk, and the
 first write for a repository 400s if it omits `trunk`. Every field here
