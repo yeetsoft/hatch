@@ -165,6 +165,25 @@ public class HatchContextTests
     }
 
     /// <summary>
+    /// Two requests that both read an issue in one column and both write it
+    /// to the next must not both succeed: the second one's <c>UPDATE</c>
+    /// carries the column it read, matches no row, and is refused whole.
+    /// Only this column, so a heartbeat or a rank write never refuses a move.
+    /// </summary>
+    [Fact]
+    public void IssueStatusId_IsAConcurrencyToken()
+    {
+        using var db = NewContext();
+
+        var issue = db.Model.FindEntityType(typeof(EfHatchIssue))!;
+
+        Assert.True(issue.FindProperty(nameof(EfHatchIssue.StatusId))!.IsConcurrencyToken);
+        Assert.Equal(
+            [nameof(EfHatchIssue.StatusId)],
+            issue.GetProperties().Where(p => p.IsConcurrencyToken).Select(p => p.Name));
+    }
+
+    /// <summary>
     /// A project or a status is deleted through an endpoint that refuses while
     /// issues still hold it. Cascade here would make that guard the only thing
     /// standing between a mis-click and an emptied board.

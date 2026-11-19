@@ -4220,7 +4220,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=`, `?dangerous=`, `?model=`, `?agent=` and `?has=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. `?runner=<name>` folds an issue that runner is [omitted](#omitted-runners) from, and nothing else: this route runs no let-go fold. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=`, `?dangerous=`, `?model=`, `?agent=` and `?has=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; the row's `Models`, `Agent` and `Has` fold a move whose model it cannot spawn or whose dependency it lacks, and a row that never reported them folds nothing; a name no live row answers to is a `400` naming it. Where that key holds live loop sessions, both `asRunner` and the let-go peer check below judge it off its beat row, its config and those sessions together — a key with no sessions answers exactly as it always has. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it, and one it is [omitted](#omitted-runners) from. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now — see [runner capacity](#runner-capacity) — adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, filled in only when `takers` holds fewer than two names). `hatch queue` and the web queue ask for this; `/work/next`'s own poll does not |
 | `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent, or a parent in a project whose *A passing check approves the merge* setting is on, in review with no pull request and every child done, or an issue that declared itself finished with no code and is pre-approved or in a project whose *A no-code declaration closes the ticket* setting is on, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads `?runner=<name>` for the omission fold alone, folding an issue that runner is [omitted](#omitted-runners) from, and not the let-go one. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
-| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the five paths past the terminal guard](#the-five-paths-past-the-terminal-guard) |
+| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. When two requests report one merge at once, the first moves the issue and the second gets the same `409` an issue already past review gets (see [two reports of one merge](#the-merge-train)). See [the five paths past the terminal guard](#the-five-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
 | `/work/{key}/landed` | POST | Carries a trunk-landing issue in the review column to the first terminal column after it, with no claim and no session — judged by `LandingWork` itself, off the issue's own stored [landings](#landing) and [trunk builds](#trunk-build), not by the caller. No body. `409` for a column other than review, for a project that lands by pull request (*"this project lands by pull request, so there is no landing to confirm"*), for an issue with a pull request recorded (*"a pull request is recorded on this issue, so it lands by merge and not by landing"*), for no terminal column after review, for a judged kind other than `land` (carrying the judge's own sentence), and for a claimed issue; `404` on an unknown key. See [landing on the trunk](#landing-on-the-trunk) and [the five paths past the terminal guard](#the-five-paths-past-the-terminal-guard) |
@@ -7178,6 +7178,21 @@ one exception is the pull request half's `merged` read: reporting a merge
 somebody already made needs read access alone, so any runner holding a
 checkout reports it for a merge-column row, driver or not.
 
+**Two reports of one merge.** The driver reports the merge it made, and a
+runner that sees the same merge on the forge reports it too, so two requests
+for one issue can arrive in the same instant. `EfHatchIssue.StatusId` is a
+concurrency token: every `UPDATE` of an issue carries the column it read, so
+the request that read second and wrote second finds no row to change, and its
+whole save is refused with nothing written - no event, no task moved, no
+changelog task filed. `MergedWork` then reads the issue again, and the gate
+answers the loser with the same `409` an issue already past review gets, which
+a runner already walks on from. The first report moves the issue once. The
+same holds for every other move that takes no claim - the hops, `verdict`,
+`pushback`, `landed`, the issue edit and move routes, and a remand: their
+loser gets a `409` ("changed column while this request ran, so nothing was
+written") from `ConcurrentMoveFilter`, not a `500`. `brought-current` never
+moves the issue, so a repeat of it is still deliberate.
+
 **Its own interval, beside the poll's.** `MergeTrain.Start(runtime,
 TimeSpan.FromSeconds(mergeInterval))` (`GoToWork.cs:812`) runs `TickAsync`
 once, then waits `--merge-interval` seconds (default 5, `:466`) —
@@ -7395,6 +7410,8 @@ ordinal), there must be a column after review to advance into, and the
 issue must not be claimed. No ready date, no assignee, no WIP section and
 no dependency gate it — those all gate an agent picking up work, and
 nothing here is an agent picking up work.
+Two reports of one merge cannot both move the issue: the second is turned
+away with the gate's own `409` (see [the merge train](#the-merge-train)).
 
 The **approve** hop is the second, and it crosses the *protected* fold
 rather than the terminal one: `Dispatch.Blocked`'s own protected check
@@ -10260,11 +10277,26 @@ holding it. The row's own line is therefore only ever what a runner said
 
 **A claim's heartbeat counts as the runner being heard from, too.** A loop
 beats its own row only between tickets, but a session well into a long
-increment can beat its *claim* every minute the whole time — see
-[Claim](#claim). `RunnerDto.LastSeenAt` is the later of the two, so a runner
+increment beats its *claim* the whole time — see [Claim](#claim). The beat is
+sent every `min(lease / 5, gone limit / 3)`: 30 seconds by default, so one
+missed beat leaves the row inside the 90-second limit. The take answers the
+gone limit as `RunnerGoneAfterSeconds` so the loop never has to know the
+setting; an older server answers `0` and the loop beats every 30 seconds.
+`RunnerDto.LastSeenAt` is the later of the two, so a runner
 reads *Working AER-12* for as long as either is fresh, and does not read
 *Gone* out from under a session that is still there and still renewing its
 lease, only quiet on its own row.
+
+**A claim's heartbeat also revives a session the sweep ended.** A read of the
+runner list stamps a session ended once it is past the limit
+(`RunnerSessions.MarkAllGoneAsync`). If the claim is still being renewed, the
+next claim heartbeat puts that session back (`RunnerSessions.ReviveAsync`):
+`EndedAt` is cleared and `LastSeenAt` is set to now. It revives only the key's
+newest ended session at that checkout, only when the key has no live session
+there, and only when the sweep ended it — a session ended more than the gone
+limit after its last sighting. A session the runner ended itself
+(`POST /api/runners/sessions/{id}/end`) is written within a beat of its last
+sighting and is never revived.
 
 **Two horizons, and only one of them is a setting.** A row is *idle* while it is
 being heard from, *gone* once its last heartbeat is older than

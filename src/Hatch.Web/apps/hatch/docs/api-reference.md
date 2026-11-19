@@ -433,6 +433,10 @@ because the ancestor it names is outside the scope - any of `priority`, `preAppr
 applies. A `runnerTagsFrom` source or an `omittedRunners` entry from such an ancestor has a blank key and
 `beyondScope: true`; a null omission `fromKey` still means the issue's own. All default to false or
 empty, and a reader whose scope holds everything never sees one set.
+`IssueDto` also carries `startedBy` (a name, or null for a key's move, an issue started before this was
+recorded, or one never started) and `startedAt` (null only where it never crossed): written the first time
+a move, a PATCH, a bulk edit or a hop carries the issue rightward across the board's send-back column, and
+overwritten by the next crossing, including back to nobody for a key's.
 `playbook` 400s an unknown model or effort - the same validation a playbook
 file is held to. `landing` 400s a malformed remote, sha or trunk, and the
 first write for a repository 400s if it omits `trunk`. Every field here
@@ -701,7 +705,7 @@ the second half of this page, after the board's own.
 | GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner - the calling key's own name where none is sent - so an issue omitted for it, or on a model its key refuses, comes back blocked |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
-| POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
+| POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged; of two reports of one merge, the first moves the issue and the second gets a `409` |
 | POST | `/work/{key}/pushback` | Carries a merge-column issue back to review once its branch conflicts or its build fails |
 | POST | `/work/{key}/landed` | Advances a trunk-landing issue once its commit is confirmed landed and the trunk is green |
 | POST | `/work/{key}/closed` | Records that the pull request recorded on an issue closed without merging |
@@ -781,7 +785,10 @@ carries it back as `TtlSeconds` alongside `StallLapseSeconds` - the claim's own
 quiet window where its playbook set one, the board's otherwise, `0` when lapsing
 is off for it - so a caller never has to know the setting's name to honor it.
 The take also answers `MaxRunSeconds`, the run cap its playbook set in seconds
-(`0` for none).
+(`0` for none), and `RunnerGoneAfterSeconds`, how long the board waits before a
+runner's row reads gone (`0` from an older server). The holder beats its claim
+every `min(lease / 5, gone limit / 3)`, so one missed beat does not take a
+working runner past the limit.
 The claim object on every read (the board card, the issue, the search) carries
 the same `StallLapseSeconds` beside `TtlSeconds`. A heartbeat renews the
 lease and may replace the playbook it is running under. A take's or heartbeat's
@@ -1102,6 +1109,13 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/backup` | key | The backup folder's truth and the last attempt's: configured, path, keep-days, copies, and the last outcome |
 | POST | `/backup/run` | **person** | Runs one backup attempt, capped at two minutes, and answers the same shape `GET /backup` does |
 | GET | `/me` | key | Who, or what, is calling - a browser or a key or a runner - for the nav strip |
+
+A claim heartbeat under a key touches the key's live session at the claim's
+checkout. If the sweep has already ended that session while the claim was still
+being renewed, the heartbeat revives it: `EndedAt` cleared, `LastSeenAt` now. A
+session the runner ended itself through `POST /runners/sessions/{id}/end` is
+never revived, nor is one while a newer live session stands at the same
+checkout.
 
 A runner is a key. `GET /runners` joins each key to its config - the
 `RunnerConfigs` row, by the key's id - and to its heartbeat row, by name

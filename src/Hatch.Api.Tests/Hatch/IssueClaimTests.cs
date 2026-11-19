@@ -1884,6 +1884,7 @@ public class IssueClaimTests
 
         var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
         Assert.Equal(600, taken.StallLapseSeconds);
+        Assert.Equal(Harness.RunnerGoneAfterSeconds, taken.RunnerGoneAfterSeconds);
     }
 
     [SkippableFact]
@@ -3599,6 +3600,130 @@ public class IssueClaimTests
         await AssertWithdrawnAsync(h, issue, "doing");
     }
 
+    // ---- A session the sweep ended, while its claim is still renewed ----
+
+    /// <summary>A key that is on the runners list, with a live session at <see cref="SharedWhere"/>, holding a claim there.</summary>
+    private static async Task<(int Session, string Issue, Guid Token)> WorkingAsync(Harness h, string name = "loop-key")
+    {
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf(name);
+        h.Keys.Keys.Add(h.Caller.Key);
+        var session = await h.AddSessionAsync(h.Caller.Key.Id, SharedWhere, Now);
+        var issue = await h.FileAsync();
+        return (session, issue, await h.TakeAsync(issue, SharedWhere));
+    }
+
+    private static async Task SweepAsync(Harness h) =>
+        Assert.IsNotType<ObjectResult>((await h.Runners.GetRunners(default)).Result);
+
+    [SkippableFact]
+    public async Task ASessionTheSweepEnded_ReadsLiveAgainOnTheNextClaimHeartbeat()
+    {
+        await using var h = await NewAsync();
+        var (session, issue, token) = await WorkingAsync(h);
+
+        // A beat missed past the limit, then somebody reads the runner list.
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        await SweepAsync(h);
+        Assert.NotNull((await h.SessionAsync(session)).EndedAt);
+
+        var beatAt = h.Time.GetUtcNow();
+        Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, null, null)).Result);
+
+        var revived = await h.SessionAsync(session);
+        Assert.Null(revived.EndedAt);
+        Assert.Equal(beatAt, revived.LastSeenAt);
+        Assert.True(new RunnerSessions(h.RunnersRule).IsLive(revived, beatAt));
+
+        // And the next read of the list leaves it live.
+        await SweepAsync(h);
+        Assert.Null((await h.SessionAsync(session)).EndedAt);
+    }
+
+    [SkippableFact]
+    public async Task ASessionTheRunnerEndedItself_IsNotRevivedByALaterHeartbeat()
+    {
+        await using var h = await NewAsync();
+        var (session, issue, token) = await WorkingAsync(h);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        Assert.IsType<NoContentResult>(await h.Runners.EndSession(session, default));
+        var endedAt = (await h.SessionAsync(session)).EndedAt;
+        Assert.NotNull(endedAt);
+
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds * 2));
+        await BeatAsync(h, issue, token, null, null);
+
+        var after = await h.SessionAsync(session);
+        Assert.Equal(endedAt, after.EndedAt);
+        Assert.Equal(Now, after.LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task ANewerLiveSessionAtTheSameWhere_BlocksRevival()
+    {
+        await using var h = await NewAsync();
+        var (old, issue, token) = await WorkingAsync(h);
+
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        await SweepAsync(h);
+        var fresh = await h.AddSessionAsync(h.Caller.Key!.Id, SharedWhere, h.Time.GetUtcNow());
+
+        h.Time.Advance(TimeSpan.FromSeconds(5));
+        await BeatAsync(h, issue, token, null, null);
+
+        Assert.NotNull((await h.SessionAsync(old)).EndedAt);
+        Assert.Equal(h.Time.GetUtcNow(), (await h.SessionAsync(fresh)).LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task OnlyTheNewestEndedSession_IsRevived()
+    {
+        await using var h = await NewAsync();
+        var (newest, issue, token) = await WorkingAsync(h);
+        var earlier = await h.AddSessionAsync(
+            h.Caller.Key!.Id, SharedWhere, Now.AddHours(-3), endedAt: Now.AddHours(-1));
+
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        await SweepAsync(h);
+        await BeatAsync(h, issue, token, null, null);
+
+        Assert.Null((await h.SessionAsync(newest)).EndedAt);
+        Assert.NotNull((await h.SessionAsync(earlier)).EndedAt);
+    }
+
+    [SkippableFact]
+    public async Task AnotherKeysSession_IsNeverTouched()
+    {
+        await using var h = await NewAsync();
+        var (_, issue, token) = await WorkingAsync(h);
+        var other = KeyOf("other-loop");
+        h.Keys.Keys.Add(other);
+        var theirs = await h.AddSessionAsync(other.Id, SharedWhere, Now);
+
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        await SweepAsync(h);
+        await BeatAsync(h, issue, token, null, null);
+
+        var untouched = await h.SessionAsync(theirs);
+        Assert.NotNull(untouched.EndedAt);
+        Assert.Equal(Now, untouched.LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatWithARefusedToken_RevivesNothing()
+    {
+        await using var h = await NewAsync();
+        var (session, issue, _) = await WorkingAsync(h);
+
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        await SweepAsync(h);
+
+        Conflict((await BeatAsync(h, issue, Guid.NewGuid(), null, null)).Result!);
+
+        Assert.NotNull((await h.SessionAsync(session)).EndedAt);
+    }
+
     // ---- The harness ----
 
     private sealed class Harness : IAsyncDisposable
@@ -3653,7 +3778,7 @@ public class IssueClaimTests
                 var db = Connect();
                 var dispatch = new Dispatch(db, Actors, Rule, Time);
                 var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time, Keys);
-                return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch);
+                return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch, new RunnerSessions(RunnersRule));
             }
         }
 

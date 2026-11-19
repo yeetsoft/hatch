@@ -973,6 +973,19 @@ public class EfHatchIssue
     /// </summary>
     public string Description { get; set; } = "";
 
+    /// <remarks>
+    /// A concurrency token: every <c>UPDATE</c> of an issue row carries
+    /// <c>AND "StatusId" = &lt;the value read&gt;</c>, so a request that read the
+    /// column, and then wrote after another request had moved the issue, matches
+    /// no row and throws <c>DbUpdateConcurrencyException</c>. The whole
+    /// <c>SaveChanges</c> rolls back, so the loser writes no event and moves no
+    /// task. Only this column, not the whole row (<c>xmin</c>): claim
+    /// heartbeats, rank writes and <c>UpdatedAt</c> touches are not moves and
+    /// must not refuse one. The merged route catches the loser and answers the
+    /// gate's own 409 (<c>WorkController.MergedWork</c>); every other route's
+    /// loser reaches <c>ConcurrentMoveFilter</c>, which answers a 409 too.
+    /// </remarks>
+    [ConcurrencyCheck]
     public required int StatusId { get; set; }
     public EfHatchStatus? Status { get; set; }
 
@@ -1300,6 +1313,30 @@ public class EfHatchIssue
     /// inside its own project it is honoured with or without one.
     /// </summary>
     public Guid? PreApprovalSetBy { get; set; }
+
+    /// <summary>
+    /// The person who first moved this issue rightward across
+    /// <see cref="Hatch.Api.Modules.Hatch.Columns.SendBack"/> - the column
+    /// work gets started in. Null for a key's move, and null on an issue
+    /// started before this was recorded: an event carries an actor's name,
+    /// not an id, so there is nothing to backfill from.
+    /// </summary>
+    /// <remarks>
+    /// The latest crossing overwrites it, both ways: sent back to To Do and
+    /// started again, by the same person or another, this becomes whoever
+    /// started it the second time. Set by <see cref="Starts"/>, the one
+    /// helper every writer of <see cref="StatusId"/> that can move an issue
+    /// right calls.
+    /// </remarks>
+    public Guid? StartedBy { get; set; }
+
+    /// <summary>
+    /// When this issue last crossed <see cref="Hatch.Api.Modules.Hatch.Columns.SendBack"/>
+    /// rightward - set alongside <see cref="StartedBy"/> by every crossing,
+    /// including a key's, which clears <see cref="StartedBy"/> but still
+    /// starts the clock. Null only where no crossing has ever been recorded.
+    /// </summary>
+    public DateTimeOffset? StartedAt { get; set; }
 
     /// <summary>
     /// Whether this issue's work prefers or requires a local model - a

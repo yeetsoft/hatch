@@ -792,6 +792,18 @@ public record IssueClaimDto(
 /// <c>preApprovalPassedOver</c> and <c>priorityPassedOver</c>. The value
 /// itself still applies. Empty for a reader whose scope holds everything.
 /// </param>
+/// <param name="StartedBy">
+/// The name of whoever first moved this issue rightward into the column
+/// work gets started in, or null for a key's move, for an issue started
+/// before this was recorded, or for one never started at all. See
+/// <see cref="StartedAt"/> and HA-2481.
+/// </param>
+/// <param name="StartedAt">
+/// When this issue last crossed into the column work gets started in - set
+/// alongside <see cref="StartedBy"/>, including by a key's move, which
+/// leaves <see cref="StartedBy"/> null but still starts the clock. Null only
+/// where it never crossed.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -861,6 +873,8 @@ public record IssueDto(
     string? PullRequestHeadBranch = null,
     string? PreApprovalPassedOver = null,
     string? PriorityPassedOver = null,
+    string? StartedBy = null,
+    DateTimeOffset? StartedAt = null,
     bool ParentBeyondScope = false,
     bool ChildBeyondScope = false,
     IReadOnlyList<string> FromBeyondScope = null!)
@@ -926,9 +940,15 @@ public record ClaimRequest(string Runner, int? PlaybookId = null)
 /// it is refused with <see cref="ClaimLostReasons.RunTime"/>, however
 /// recently it spoke.
 /// </param>
+/// <param name="RunnerGoneAfterSeconds">
+/// How long the board waits without hearing from a runner before its row reads
+/// gone, in seconds, or <c>0</c> from a server that does not say. The holder
+/// beats its claim often enough that one missed beat does not reach it - see
+/// <c>Claim.Interval</c>.
+/// </param>
 public record ClaimTakenDto(
     Guid Token, string ClaimedBy, DateTimeOffset ClaimedAt, int TtlSeconds, int StallLapseSeconds = 0,
-    int MaxRunSeconds = 0);
+    int MaxRunSeconds = 0, int RunnerGoneAfterSeconds = 0);
 
 /// <summary>
 /// What a heartbeat answers where the caller is the runner the board has

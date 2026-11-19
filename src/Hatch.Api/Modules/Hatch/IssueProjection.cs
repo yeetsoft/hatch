@@ -194,6 +194,24 @@ public static class IssueProjection
         foreach (var issue in issues)
             assignees[issue.Id] = await ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct);
 
+        // Who started each issue, by name - resolved here for the same reason
+        // the assignee is: the ToDictionary lambda below cannot await. Cached
+        // by person id rather than by issue, since the same person starts
+        // many issues in one batch and a deleted person resolves to null.
+        var startedByNames = new Dictionary<long, string?>();
+        var startedByCache = new Dictionary<Guid, string?>();
+        foreach (var issue in issues)
+        {
+            if (issue.StartedBy is not { } startedBy) { startedByNames[issue.Id] = null; continue; }
+            if (!startedByCache.TryGetValue(startedBy, out var name))
+            {
+                name = (await actors.ResolveAsync(ActorKind.Person, startedBy, ct))?.Name;
+                startedByCache[startedBy] = name;
+            }
+
+            startedByNames[issue.Id] = name;
+        }
+
         return issues.ToDictionary(issue => issue.Id, issue =>
         {
             var projectKey = issue.Project?.Key ?? projects[issue.ProjectId].Key;
@@ -291,6 +309,8 @@ public static class IssueProjection
                 PullRequestHeadBranch: issue.PullRequestHeadBranch,
                 PreApprovalPassedOver: disclosed.Key(DisclosedValues.PreApprovalPassedOver, passedOver.PreApproval?.Key),
                 PriorityPassedOver: disclosed.Key(DisclosedValues.PriorityPassedOver, passedOver.Priority?.Key),
+                StartedBy: startedByNames[issue.Id],
+                StartedAt: issue.StartedAt,
                 ParentBeyondScope: disclosed.ParentBeyondScope,
                 ChildBeyondScope: disclosed.ChildBeyondScope,
                 FromBeyondScope: disclosed.FromBeyondScope);
