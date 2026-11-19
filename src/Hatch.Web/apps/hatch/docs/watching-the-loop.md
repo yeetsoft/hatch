@@ -522,7 +522,10 @@ a project's train has passed over every live runner that could drive it; each
 row links to the issue at the head of the train, names the runner passed over
 and the one it went to, and under that shows the newest comment on the head, which
 is where a driver that skipped it says why. A runner checking in again does not
-clear it. It clears when the head moves on, and it does not light the control.
+clear it, and a runner passed over is not given the head back until the other one has
+had a full window and been passed over in turn. With two runners and neither acting,
+the row appears within two windows. It clears when the head moves on, and it does not
+light the control.
 
 Each row under **Stalled issues** is the issue's key, a link, its title, the
 reason the stall gave when it gave one, and then one line for who has it: `resumes
