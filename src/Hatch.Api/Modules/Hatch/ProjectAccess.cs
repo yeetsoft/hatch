@@ -139,6 +139,18 @@ public sealed class SetterAuthority
         };
     }
 
+    /// <summary>
+    /// Whether a parent started by <paramref name="starter"/> may carry a child of
+    /// <paramref name="projectId"/> into <paramref name="into"/> across a project
+    /// line: the starter is a live person with that project in scope, and could
+    /// have moved the child into that column themselves - a protected one only
+    /// as an owner or approver. <see cref="IProjectAccess.CanMoveIntoAsync"/>'s
+    /// rule for a named person. A null starter may pull nothing.
+    /// </summary>
+    public bool MayPull(Guid? starter, int projectId, EfHatchStatus into) =>
+        Honours(starter, projectId)
+        && MayMoveInto(into, Approves(Holds(starter!.Value, projectId, ProjectMemberRole.Owner), Holds(starter.Value, projectId, ProjectMemberRole.Approver)));
+
     /// <summary>Whether a priority set by <paramref name="setter"/> may be honoured on an issue of <paramref name="projectId"/>: a live person with that project in scope.</summary>
     public bool HonoursPriority(Guid? setter, int projectId) => Honours(setter, projectId);
 

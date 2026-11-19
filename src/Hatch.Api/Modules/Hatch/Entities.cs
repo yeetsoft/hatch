@@ -248,8 +248,10 @@ public class EfHatchProject
     /// head - see <see cref="TrainWatch.Observe"/> - or null while nobody has
     /// been. A name rather than a foreign key, the same shape as
     /// <see cref="RepoSourcedBy"/>: the trail has to keep reading after the
-    /// runner it named is gone. Written only by <see cref="RunnersController"/>,
-    /// and cleared the moment that same runner heartbeats again.
+    /// runner it named is gone. Written only by <see cref="RunnersController"/>.
+    /// It stands until another eligible runner has been passed over in turn,
+    /// or no other is live when this one heartbeats, or the head changes -
+    /// a beat alone does not clear it while somebody else could take the head.
     /// </summary>
     [MaxLength(Common.PersonName.MaxChars)]
     public string? TrainStalledDriver { get; set; }
@@ -259,8 +261,9 @@ public class EfHatchProject
     /// <see cref="TrainWatchedIssueId"/> stayed on one issue, as a jsonb array
     /// in the order they were passed over - what the attention page judges an
     /// exhausted train by. <see cref="TrainStalledDriver"/> is only the latest
-    /// of them and clears when that runner heartbeats; this does not, so a
-    /// driver that keeps checking in cannot hide that it never acted. Emptied
+    /// of them and can clear when that runner heartbeats with nobody else live;
+    /// this does not, so a driver that keeps checking in cannot hide that it
+    /// never acted. Emptied
     /// whenever the watch is cleared or the head moves on. Empty, not null, the
     /// way <see cref="RunnerTags"/> is.
     /// </summary>

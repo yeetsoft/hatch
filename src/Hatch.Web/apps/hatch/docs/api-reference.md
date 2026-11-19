@@ -437,6 +437,9 @@ empty, and a reader whose scope holds everything never sees one set.
 recorded, or one never started) and `startedAt` (null only where it never crossed): written the first time
 a move, a PATCH, a bulk edit or a hop carries the issue rightward across the board's send-back column, and
 overwritten by the next crossing, including back to nobody for a key's.
+`IssueDto` also carries `pullPassedOver`: the key of the issue's parent where that parent is in another
+project and in progress, yet may not pull it - the person who started it (`startedBy`) has no say in this
+ticket's project, or nobody started it - or null. Read live, beside `preApprovalPassedOver`.
 `playbook` 400s an unknown model or effort - the same validation a playbook
 file is held to. `landing` 400s a malformed remote, sha or trunk, and the
 first write for a repository 400s if it omits `trunk`. Every field here
@@ -1620,7 +1623,8 @@ has), ordered by tier and then rank, and the list is empty when no runner is
 live. `trainStalled` lists the projects whose merge train has passed over every
 live runner eligible to drive it while the head stayed on one issue, ordered by
 project key. A runner that keeps checking in is still counted as passed over,
-and a project with a live eligible runner the train has not yet tried is not
+and is not elected to that head again until another eligible runner has been passed
+over in turn, or no other is live. A project with a live eligible runner the train has not yet tried is not
 listed. Each entry carries `projectKey`, `projectName`, `passedOverRunner`,
 `electedRunner` (null when no other runner was eligible), `headKey` (the issue
 at the head of the train), `at` and `reason` (the head issue's newest comment,

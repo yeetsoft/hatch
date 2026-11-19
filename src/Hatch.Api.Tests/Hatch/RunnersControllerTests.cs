@@ -2242,7 +2242,7 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public async Task ThePassOver_AddsTheRunnerToTheRoster_AndAReinstatementLeavesItThere()
+    public async Task ThePassOver_AddsTheRunnerToTheRoster_AndAHeartbeatWithAnotherRunnerLiveLeavesItThere()
     {
         var h = await NewAsync(runnerGoneAfterSeconds: 3600);
         await h.BindRepositoryAsync("https://example.com/o/r");
@@ -2254,10 +2254,13 @@ public class RunnersControllerTests
         await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
         Assert.Equal(["here:/one"], RunnerTagColumn.Read((await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDrivers));
 
-        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        var beat = await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
 
+        // here:/two is live and could take the head, so the beat is not
+        // reinstatement: the mark and the roster both stand.
         var project = await h.Db.Projects.AsNoTracking().SingleAsync();
-        Assert.Null(project.TrainStalledDriver);
+        Assert.Equal("here:/one", project.TrainStalledDriver);
+        Assert.Empty(beat.Drives!);
         Assert.Equal(["here:/one"], RunnerTagColumn.Read(project.TrainStalledDrivers));
     }
 
@@ -2309,7 +2312,7 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public async Task ABeatUnderThePassedOverRunnersOwnName_ClearsItAndReElectsIt()
+    public async Task ABeatUnderThePassedOverRunnersOwnName_WithAnotherRunnerLive_DoesNotReElectIt()
     {
         var h = await NewAsync(runnerGoneAfterSeconds: 3600);
         await h.BindRepositoryAsync("https://example.com/o/r");
@@ -2321,10 +2324,97 @@ public class RunnersControllerTests
         await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
         Assert.Equal("here:/one", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
 
+        var beat = await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Empty(beat.Drives!);
+        Assert.Equal("here:/one", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+    }
+
+    [Fact]
+    public async Task APassedOverRunnerWithNobodyElseLive_IsReinstatedByItsOwnBeat()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.SeedMergingHeadAsync();
+
+        // here:/two beats once, so the driver's pass-over has someone to go to.
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Equal("here:/one", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+
+        // here:/two goes quiet past the gone horizon; here:/one is the only one left.
+        h.Time.Advance(TimeSpan.FromSeconds(3601));
         var reinstated = await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
 
         Assert.Equal(["AER"], reinstated.Drives);
         Assert.Null((await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+    }
+
+    [Fact]
+    public async Task APassedOverRunner_IsNotElectedAgainUntilTheOtherHasBeenPassedOverInTurn()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.SeedMergingHeadAsync();
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        var passedOver = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Equal(["AER"], passedOver.Drives);
+
+        // Both keep beating, every thirty seconds, for just under a full window.
+        RunnerInstructionDto one = null!, two = null!;
+        for (var elapsed = 30; elapsed < 600; elapsed += 30)
+        {
+            h.Time.Advance(TimeSpan.FromSeconds(30));
+            one = await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+            two = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        }
+
+        Assert.Empty(one.Drives!);
+        Assert.Equal(["AER"], two.Drives);
+
+        // The window runs out: here:/two is passed over in turn and here:/one drives again.
+        h.Time.Advance(TimeSpan.FromSeconds(30));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        one = await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        two = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal(["AER"], one.Drives);
+        Assert.Empty(two.Drives!);
+        Assert.Equal("here:/two", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+    }
+
+    [Fact]
+    public async Task TwoRunnersBeatingAndNeitherActing_ListTheTrainAsStalledWithinTwoWindows()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.SeedMergingHeadAsync();
+        var attention = h.BuildAttention();
+
+        async Task BeatBothAsync()
+        {
+            await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+            await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        }
+
+        await BeatBothAsync();
+
+        // One window: the first driver is passed over, the second holds the head,
+        // and the roster does not yet name every live runner.
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await BeatBothAsync();
+        Assert.Empty(Value(await attention.GetAttention(default)).TrainStalled!);
+
+        // Two windows: the second is passed over in turn, and the roster covers both.
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await BeatBothAsync();
+        var row = Assert.Single(Value(await attention.GetAttention(default)).TrainStalled!);
+        Assert.Equal("AER", row.ProjectKey);
     }
 
     [Fact]
@@ -6353,6 +6443,7 @@ public class RunnersControllerTests
         public required DbContextOptions<HatchContext> Options { get; init; }
         public required Func<HatchContext, RunnersController> BuildRunners { get; init; }
         public required Func<HatchContext, ProjectsController> BuildProjects { get; init; }
+        public required Func<AttentionController> BuildAttention { get; init; }
 
         private int nextRepoOrder;
 
@@ -6699,6 +6790,8 @@ public class RunnersControllerTests
             Options = options,
             BuildRunners = BuildRunners,
             BuildProjects = BuildProjects,
+            BuildAttention = () => new AttentionController(
+                db, actors, runners, time, new Dispatch(db, actors, claims, time, keys, sessions), NewBackup(time), keys),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
@@ -6709,6 +6802,18 @@ public class RunnersControllerTests
             Caller = caller,
             CoreDb = coreDb,
         };
+    }
+
+    /// <summary>A <see cref="BackupService"/> over a fake process, there only because the attention page asks it for its row.</summary>
+    private static BackupService NewBackup(FakeTimeProvider time) =>
+        new(Options.Create(new HatchOptions { BackupPath = "" }),
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+            new NoBackupProcess(), new BackupStatus(time), time, NullLogger<BackupService>.Instance);
+
+    private sealed class NoBackupProcess : IBackupProcess
+    {
+        public Task<BackupProcessResult> RunAsync(BackupProcessStart start, Stream stdout, CancellationToken ct) =>
+            Task.FromResult(new BackupProcessResult(0, ""));
     }
 
     /// <summary>Site defaults a test can take away between two answers - what the settings page does.</summary>

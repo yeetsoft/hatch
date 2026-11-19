@@ -32,6 +32,16 @@ export function isGoToShortcut(e: KeyChord): boolean {
   return e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey;
 }
 
+/**
+ * Whether this keystroke opens the New issue dialog: `c`, with none of Meta,
+ * Ctrl or Alt held, so Ctrl+C and Cmd+C still copy.
+ *
+ * `C` is accepted because Caps Lock sends it, and so does Shift.
+ */
+export function isNewIssueShortcut(e: KeyChord): boolean {
+  return (e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey;
+}
+
 /** The input types that are a control rather than somewhere to type. */
 const NOT_TEXT = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
 

@@ -6216,10 +6216,23 @@ self-dispatches review ahead of any other protected column — so `crosses`
 reads false there, and the express, epic and under arms stay withheld from it
 exactly as they are from a review self-move.
 
-A hop never crosses a project line. The epic, under and parent kinds do not
-fire for a child whose parent is in another project, and the queue says "its
-parent is in another project, so nothing pulls it - a person moves it". A
-level crosses only on its setter's authority ([Pre-approval](#pre-approval)):
+The epic, under and parent kinds cross a project line only on the starter's
+say. Inside one project a running parent carries its children, whoever started
+it. Across a line it carries a child only while the person who started the
+parent - `startedBy`, written when the parent was first moved into the
+implementation column - could have moved that child into the column it would
+land in themselves: a live person with the child's project in scope, and, for a
+protected column, an owner or approver of it (`SetterAuthority.MayPull`, the
+rule `CanMoveIntoAsync` applies to a named person). The answer is read live, so
+taking the role or the scope away stops the next pull and giving it back
+resumes it. A parent started by nobody, by a key, or by a person since deleted
+pulls nothing across a line. Where a parent in progress is not honoured, the
+queue says "OPS-1 is in progress, but the person who started it has no say in
+AER, so a person moves it" - one sentence for every reason - and the child's
+`pullPassedOver` names OPS-1. A parent across the line that is not yet in
+progress is the ordinary "its parent has not reached the implementation column"
+hold. `FamilyGate.PullHeld` is the one test the queue, the passed-over guard
+and the card all call. A level crosses only on its setter's authority ([Pre-approval](#pre-approval)):
 the express, approve and close hops make no check of their own, they take the
 effective level, so a level the walk passed over at the line carries nothing
 and the queue says "pre-approved on AER-1, not honoured in OPS - its setter has
@@ -6240,12 +6253,14 @@ runners, the epic's story limit and the local-model level still cross.
    running epic is never carried (HA-202). An epic that clears those tests
    but has nothing filed under it is never a hop either: it is folded
    instead, with *"nothing is filed under it — an epic runs its stories, and
-   it has none"*.
+   it has none"*. A sub-epic whose parent epic is in another project follows it
+   only on the starter's say, above.
 3. **under** — a story or bug standing in a column marked `ExpressSkips`,
    whose parent is an epic at or past the implementation column — in [In
    Progress](#status), in review, wherever it stands once it has reached
    that column. Measured off the implementation landmark, never off a
-   column's name, so an epic sitting in the review column still counts.
+   column's name, so an epic sitting in the review column still counts. A
+   parent in another project counts only on the starter's say, above.
 4. **parent** — a child standing in a column marked [`ParentPulls`](#status),
    whose parent has reached the implementation column — stands in it, or in
    any column to its right, a terminal column included; a deferred column
@@ -6262,7 +6277,8 @@ runners, the epic's story limit and the local-model level still cross.
    [changelog task](#the-changelog-task) the board filed (`FamilyGate.IsChangelogTask`)
    is neither analysed nor narrowed: it is carried whatever its parent's type
    and whatever its brief's length (`PullWithheld`). One with no parent is not
-   carried, since a pull needs a parent already started. Out of any
+   carried, since a pull needs a parent already started. A parent in another
+   project pulls only on the starter's say, above. Out of any
    other `ParentPulls` column nothing narrows it.
 5. **sendback** — a childless issue standing in a column, to the right
    (strictly, in board order) of `Columns.SendBack` — the column whose own
@@ -7256,9 +7272,17 @@ and gives the project a fresh window (`Entities.cs:211`, written at
 `RunnersController.cs:612-613`). `Runners.EligibleCandidates` then filters
 out `c.Name != project.TrainStalledDriver` (`Runners.cs:525`), so the next
 election skips that runner on this project only; it stays eligible on every
-other (comment at `:521-524`). The runner's own next heartbeat clears the
-mark, with a fresh window (`ReinstateAsync`, `RunnersController.cs:558-571`,
-called from the beat at `:342`). The mark is only the latest pass-over, so the
+other (comment at `:521-524`). A heartbeat is proof a
+runner is live, not that it is acting, so the runner's own next heartbeat does
+not clear the mark while another eligible runner is live: `ReinstateAsync`
+(`RunnersController.cs`, called from the beat) asks `Runners.EligibleNamesAsync`
+and reinstates, with a fresh window, only when no other name is on the project's
+list. A pass-over therefore lasts until the runner elected in its place has been
+passed over in turn - a full window later - or until no other runner is live, or
+until the head changes or clears (`TrainWatch.Observe` resets the mark with the
+roster). With two eligible runners and neither acting, the head alternates
+between them one full window at a time, and each pass-over writes one event. The
+mark is only the latest pass-over, so the
 beat also adds the runner to `EfHatchProject.TrainStalledDrivers`, a roster of
 every runner passed over on the current head; a reinstatement leaves it, and a
 changed or cleared head empties it. `GET /api/attention` lists the project's
