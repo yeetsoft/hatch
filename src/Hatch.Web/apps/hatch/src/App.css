@@ -1503,6 +1503,16 @@
   stroke-linejoin: round;
 }
 
+/* An outlined tile (not yet begun) has no fill to sit on, so its picture takes
+   the type's own colour, set as `color` on the picture's group. */
+.hatch-type-tile-outlined .hatch-type-tile-picture {
+  fill: currentColor;
+}
+
+.hatch-type-tile-outlined .hatch-type-tile-stroke {
+  stroke: currentColor;
+}
+
 /* The contribution mark: an open stroke, so it is never one of the type
    glyphs' filled shapes, in greyscale or out of it. Colour is the page's own
    ink - the shape is what tells it apart. On a card it sits in the corner
@@ -10607,6 +10617,52 @@ button.hatch-option.chosen {
 .design-type-tile--72 {
   width: 72px;
   height: 72px;
+}
+
+/* Trail, heat and fill: a row a type, a cell a state. A mark is drawn outside the
+   tile's box - the trail to its left, the flame above it - so each pair is padded
+   by what overflows its larger tile (12 and 8 of 16 units at 72px is 54 and 36),
+   and the 72 comes first so the 14 beside it is not in its way. */
+.design-mark-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-2) var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.design-mark-type {
+  flex: none;
+  width: 5rem;
+}
+
+@media (max-width: 40rem) {
+  .design-mark-type {
+    width: 100%;
+  }
+
+  .design-mark-row {
+    gap: 0 var(--sp-2);
+  }
+}
+
+.design-mark-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.design-mark-pair {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-6);
+  padding: 2.5rem var(--sp-2) var(--sp-1) 3.5rem;
+}
+
+.design-mark-state {
+  color: var(--muted);
+  font-size: var(--t-micro);
 }
 
 .design-type-row {
