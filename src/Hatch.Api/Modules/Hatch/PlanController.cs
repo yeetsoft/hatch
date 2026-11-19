@@ -210,11 +210,14 @@ public class PlanController(
         var byId = epics.ToDictionary(e => e.Id);
         var keys = epics.ToDictionary(e => e.Id, e => IssueKey.Format(e.ProjectKey, e.Number));
 
-        // An epic parented to something that is not an epic: the type rules
-        // refuse it, so this is imported or hand-edited data. One query for all
-        // of them, and none at all in the ordinary case - a card whose
-        // parentKey came back null would send the page to no issue rather than
-        // to the wrong one, which is the worse of the two.
+        // An epic whose parent is not among the epics listed: a parent in
+        // another project when the page is narrowed, a story the type rules
+        // would refuse (imported or hand-edited data), or one the reader's
+        // scope hides. One query for all of them, and none at all in the
+        // ordinary case - a card whose parentKey came back null for a parent
+        // the reader may see would send the page to no issue rather than to
+        // the wrong one, which is the worse of the two. A parent the scope
+        // hides is not found here, and Disclose says so instead.
         var strangers = epics.Select(e => e.ParentId).OfType<long>().Where(id => !keys.ContainsKey(id)).Distinct().ToList();
         if (strangers.Count > 0)
         {
@@ -241,8 +244,18 @@ public class PlanController(
         foreach (var e in epics)
             assignees[e.Id] = await IssueProjection.ToAssigneeAsync(actors, e.AssigneePersonId, e.AssigneeApiKeyId, ct);
 
+        // The roots are the epics that no other listed epic draws, and that
+        // are not counted under a loose root. An epic with no parent is the
+        // ordinary one; the rest are an epic whose parent lies outside the
+        // answer - in another project, when the page is narrowed, or beyond
+        // the reader's scope - which would otherwise be drawn nowhere. An epic
+        // under a loose root is counted there already, and is not drawn on a
+        // meter of its own as well.
+        var nestedUnder = byId.Keys.SelectMany(Nested).ToHashSet();
+        var underLoose = looseRoots.SelectMany(tree.DescendantIds).ToHashSet();
+
         return new PlanDto(
-            Entries(epics.Where(e => e.ParentId is null).Select(e => e.Id).ToList()),
+            Entries(epics.Where(e => !nestedUnder.Contains(e.Id) && !underLoose.Contains(e.Id)).Select(e => e.Id).ToList()),
             tree.Of(looseRoots));
 
         List<PlanEntryDto> Entries(List<long> ids)
