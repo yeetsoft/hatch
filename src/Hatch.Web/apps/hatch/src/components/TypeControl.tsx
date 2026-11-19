@@ -4,7 +4,7 @@ import { issueTypeRow } from '../lib/issueType';
 import { priorityLandingFocus } from '../lib/priority';
 import { ISSUE_TYPES } from '../types';
 import type { IssueType } from '../types';
-import { TypeShape } from './TypeGlyph';
+import { TypeTile } from './TypeGlyph';
 
 /**
  * The band's one button per type, the own type marked and disabled - the way
@@ -54,7 +54,7 @@ export function TypeSteps({
             onClick={() => onPick(name)}
           >
             <span className="hatch-type-pill-glyph" aria-hidden="true">
-              <TypeShape type={name} />
+              <TypeTile type={name} />
             </span>
             {row.word}
           </button>
@@ -147,7 +147,7 @@ export function TypeControl({
         onKeyDown={onEscape}
       >
         <span className="hatch-type-pill-glyph" aria-hidden="true">
-          <TypeShape type={type} />
+          <TypeTile type={type} />
         </span>
         {row.word}
         <svg className="hatch-type-pill-caret" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">

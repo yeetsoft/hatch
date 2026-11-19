@@ -35,7 +35,7 @@ public class TypePillTests(ITestOutputHelper output)
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Runs in the page: each step's word, state, glyph shape and painted colours, then the pill's word.</summary>
+    /// <summary>Runs in the page: each step's word, state, glyph tile and painted colours, then the pill's word.</summary>
     private const string ReadScript = """
         () => {
           const steps = [...document.querySelectorAll('.hatch-issue-controls .hatch-type-pill-step')].map((el) => {
@@ -44,7 +44,7 @@ public class TypePillTests(ITestOutputHelper output)
               word: el.textContent.trim(),
               pressed: el.getAttribute('aria-pressed'),
               disabled: el.disabled,
-              hasShape: el.querySelector('svg .hatch-type-glyph-shape') !== null,
+              hasTile: el.querySelector('svg .hatch-type-tile-face') !== null,
               color: style.color,
               background: style.backgroundColor,
               border: style.borderTopColor,
@@ -169,7 +169,7 @@ public class TypePillTests(ITestOutputHelper output)
     {
         var steps = read.GetProperty("steps").EnumerateArray().ToArray();
         Assert.Equal(["epic", "reflection", "story", "task", "bug"], steps.Select(s => s.GetProperty("word").GetString()).ToArray());
-        Assert.All(steps, s => Assert.True(s.GetProperty("hasShape").GetBoolean(), $"a step has no shape: {read}"));
+        Assert.All(steps, s => Assert.True(s.GetProperty("hasTile").GetBoolean(), $"a step has no tile: {read}"));
 
         var marked = steps.Where(s => s.GetProperty("pressed").GetString() == "true").ToArray();
         var one = Assert.Single(marked);
