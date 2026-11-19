@@ -238,6 +238,38 @@ public class WorkLogControllerTests
         Assert.Equal(1, matched.Totals.Sessions);
     }
 
+    // ---- Narrowing to an outcome ----
+
+    [Fact]
+    public async Task AnOutcome_NarrowsTheBucketsAndTheTotals_ButNotTheOtherOutcomesSpend()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 1_000, Now.AddHours(-3), outcome: "dropped");
+        await h.SpendAsync(issue, 2_000, Now.AddHours(-2), outcome: "worked");
+
+        var dropped = await h.HistoryAsync(bucket: "hour", outcome: "dropped");
+        var whole = await h.HistoryAsync(bucket: "hour");
+
+        Assert.Equal(1, dropped.Totals.Sessions);
+        Assert.Equal(1_000, dropped.Totals.TotalTokens);
+        Assert.Equal(1_000, dropped.Buckets.Sum(b => b.Totals.TotalTokens));
+        Assert.Equal(2, whole.Totals.Sessions);
+    }
+
+    [Fact]
+    public async Task AnUnknownOutcome_IsRefusedNamingTheAcceptedValues()
+    {
+        var h = await NewAsync();
+
+        var sentence = await h.RefusalAsync(outcome: "finished");
+
+        Assert.Equal(
+            "an outcome is dropped, worked, preempted, recused, unservable, abandoned, unstarted or none - not \"finished\"",
+            sentence);
+    }
+
     // ---- When there is nothing yet ----
 
     [Fact]
@@ -1240,6 +1272,34 @@ public class WorkLogControllerTests
             await h.ByPlaybookRefusalAsync(from: "2026-09-07T03:00:00Z", to: "2026-09-06T03:00:00Z"));
     }
 
+    [Fact]
+    public async Task ByPlaybook_AnAncestorKey_ReadsThatIssueAndEverythingBeneathIt()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the effort");
+        var story = await h.FileAsync("story", "under it", parentKey: epic.Key);
+        var elsewhere = await h.FileAsync("epic", "another effort");
+
+        await h.SpendAsync(epic, 1_000, Now.AddHours(-3), playbookKey: "epic-key");
+        await h.SpendAsync(story, 2_000, Now.AddHours(-2), playbookKey: "story-key");
+        await h.SpendAsync(elsewhere, 4_000, Now.AddHours(-1), playbookKey: "elsewhere-key");
+
+        var scoped = await h.ByPlaybookAsync(ancestorKey: epic.Key);
+        var whole = await h.ByPlaybookAsync();
+
+        Assert.Equal(["epic-key", "story-key"], scoped.Rows.Select(r => r.PlaybookKey).OrderBy(k => k));
+        Assert.Equal(3, whole.Rows.Count);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_AnAncestorKeyNamingNothing_IsRefusedRatherThanAnsweredAsEmpty()
+    {
+        var h = await NewAsync();
+
+        Assert.Equal("there is no AER-999", await h.ByPlaybookRefusalAsync(ancestorKey: "AER-999"));
+        Assert.Equal("there is no nonsense", await h.ByPlaybookRefusalAsync(ancestorKey: "nonsense"));
+    }
+
     // ---- Who may read it ----
 
     [Fact]
@@ -1361,9 +1421,10 @@ public class WorkLogControllerTests
             string? bucket = null,
             int offsetMinutes = 0,
             string? ancestorKey = null,
-            IReadOnlyList<int>? projectIds = null) =>
+            IReadOnlyList<int>? projectIds = null,
+            string? outcome = null) =>
             Value(await History.GetHistory(
-                from, to, bucket, offsetMinutes, ancestorKey, projectIds?.ToList(), default));
+                from, to, bucket, offsetMinutes, ancestorKey, projectIds?.ToList(), outcome, default));
 
         public async Task<WorkLogSessionsDto> SessionsAsync(
             string? from = null,
@@ -1377,13 +1438,17 @@ public class WorkLogControllerTests
                 from, to, ancestorKey, sort, limit, projectIds?.ToList(), outcome, default));
 
         public async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
-            string? from = null, string? to = null, List<int>? projectId = null, string? outcome = null) =>
-            Value(await History.GetByPlaybook(from, to, projectId, outcome, default));
+            string? from = null,
+            string? to = null,
+            string? ancestorKey = null,
+            List<int>? projectId = null,
+            string? outcome = null) =>
+            Value(await History.GetByPlaybook(from, to, ancestorKey, projectId, outcome, default));
 
         public async Task<string> ByPlaybookRefusalAsync(
-            string? from = null, string? to = null, string? outcome = null)
+            string? from = null, string? to = null, string? ancestorKey = null, string? outcome = null)
         {
-            var result = await History.GetByPlaybook(from, to, null, outcome, default);
+            var result = await History.GetByPlaybook(from, to, ancestorKey, null, outcome, default);
             return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
         }
 
@@ -1407,10 +1472,11 @@ public class WorkLogControllerTests
             string? bucket = null,
             int offsetMinutes = 0,
             string? ancestorKey = null,
-            IReadOnlyList<int>? projectIds = null)
+            IReadOnlyList<int>? projectIds = null,
+            string? outcome = null)
         {
             var result = await History.GetHistory(
-                from, to, bucket, offsetMinutes, ancestorKey, projectIds?.ToList(), default);
+                from, to, bucket, offsetMinutes, ancestorKey, projectIds?.ToList(), outcome, default);
             return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
         }
     }

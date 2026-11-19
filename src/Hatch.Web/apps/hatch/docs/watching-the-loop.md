@@ -315,13 +315,27 @@ scoped. Pick a range - **Last 24 hours**, **Today**, **Last 7 days**, **Last
 to one issue and everything beneath it. Below the controls sit a
 spend-over-time graph, a **Top billing** list of the costliest sessions in the
 window, and a table of every session in it, sortable by tokens, requests,
-peak context, notional USD or when it ran. Nothing on this page writes - there
-is no control that could, and the server refuses a browser outright. Under a
-scoped tab the graph, the list and the table all cover only sessions run
-against issues of the projects in scope, and the issue filter offers only
-those issues.
+peak context, notional USD or when it ran. The table's last column is
+**Outcome**: the word a release gave, or a dash for a row from before the
+field existed - hovering a dropped row's cell names the reason, in words
+(a quiet limit, a run-time limit, an error, or plainly that the increment
+moved nothing). Nothing on this page writes - there is no control that could,
+and the server refuses a browser outright. Under a scoped tab the graph, the
+list and the table all cover only sessions run against issues of the projects
+in scope, and the issue filter offers only those issues.
 [What a session is told](what-a-session-is-told#the-work-log-block) says what
 goes into one of these rows in the first place.
+
+An **Outcome** control sits beside the range: **Any** (the default),
+**Worked**, **Moved nothing** and **Not known**. It narrows the graph, Top
+billing and the table alike, so the three never describe a different
+population, and writes itself to the address bar as `outcome`, left out at
+Any. At **Moved nothing**, a fourth section, **What moved nothing cost**,
+draws between the graph and Top billing: one row per playbook and reason -
+sessions, tokens and notional cost, heaviest first, reasons read the same way
+the table's hover does. The scoped tab and the issue filter narrow this
+section exactly as they narrow the rest, and its cost column sums to the same
+total the graph and the table show for the window.
 
 ## Reports
 
