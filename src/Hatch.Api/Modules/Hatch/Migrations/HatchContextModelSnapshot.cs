@@ -534,6 +534,37 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("DreamThreads", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchGooseRun", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Entries")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("FirstRanAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastRanAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("LongestMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Sweeps")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastRanAt");
+
+                    b.ToTable("GooseRuns", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssue", b =>
                 {
                     b.Property<long>("Id")
