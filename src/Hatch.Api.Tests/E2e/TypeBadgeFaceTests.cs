@@ -10,10 +10,12 @@ using Xunit.Abstractions;
 namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
-/// HA-2381: the type badge wears the same face as the type pill, for all five types. One
-/// issue of each type is filed; the issue page's Details card is read in both modes (the
-/// badge outside edit mode, the pill inside it) and the two painted colours must match.
-/// The search page is read for a badge of every type. Screenshots are left in the case's
+/// HA-2381, HA-2508: the type badge wears the same plain face as the type pill, for all five
+/// types, and the tile inside is what tells them apart. One issue of each type is filed; the
+/// issue page's Details card is read in both modes (the badge outside edit mode, the pill
+/// inside it). Badge and pill must share background, ink and border; the background is
+/// transparent, the tile is 14 pixels, and the five tiles paint five fills. The search page
+/// is read for a badge of every type, each with its type's tile fill. Screenshots are left in the case's
 /// artifact directory.
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
@@ -28,26 +30,44 @@ public class TypeBadgeFaceTests(ITestOutputHelper output)
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Runs in the page: the painted colours of the first element a selector finds.</summary>
+    /// <summary>Runs in the page: the painted face of the first element a selector finds, and its tile.</summary>
     private const string PaintScript = """
         (selector) => {
           const el = document.querySelector(selector);
           if (!el) return null;
           const style = getComputedStyle(el);
-          return { word: el.textContent.trim(), color: style.color, background: style.backgroundColor };
+          const glyph = el.querySelector('.hatch-type-pill-glyph');
+          const face = el.querySelector('.hatch-type-tile-face');
+          return {
+            word: el.textContent.trim(),
+            color: style.color,
+            background: style.backgroundColor,
+            border: style.borderTopColor + ' ' + style.borderTopWidth + ' ' + style.borderTopStyle,
+            tile: face ? getComputedStyle(face).fill : null,
+            tileSize: glyph ? glyph.getBoundingClientRect().width : null,
+            tileHidden: glyph ? glyph.getAttribute('aria-hidden') : null,
+          };
         }
         """;
 
-    /// <summary>Runs in the page: every type badge on the page, as a word and its painted colours.</summary>
+    /// <summary>Runs in the page: every type badge on the page, as a word, its painted face and its tile's fill.</summary>
     private const string BadgesScript = """
         () => [...document.querySelectorAll('.hatch-type-badge')].map((el) => {
           const style = getComputedStyle(el);
-          return { word: el.textContent.trim(), color: style.color, background: style.backgroundColor };
+          const face = el.querySelector('.hatch-type-tile-face');
+          return {
+            word: el.textContent.trim(),
+            color: style.color,
+            background: style.backgroundColor,
+            tile: face ? getComputedStyle(face).fill : null,
+          };
         })
         """;
 
+    private const string Transparent = "rgba(0, 0, 0, 0)";
+
     [SkippableFact(Timeout = CaseTimeoutMs)]
-    public async Task TheBadge_MatchesThePill_AtDesktop()
+    public async Task TheBadge_WearsThePillsPlainFace_AtDesktop()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
@@ -55,7 +75,7 @@ public class TypeBadgeFaceTests(ITestOutputHelper output)
     }
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
-    public async Task TheBadge_MatchesThePill_AtThePhoneProfile()
+    public async Task TheBadge_WearsThePillsPlainFace_AtThePhoneProfile()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
         Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
@@ -98,12 +118,20 @@ public class TypeBadgeFaceTests(ITestOutputHelper output)
 
                 Assert.Equal(type, badge.GetProperty("word").GetString());
                 Assert.Equal(type, pill.GetProperty("word").GetString());
-                Assert.Equal(pill.GetProperty("background").GetString(), badge.GetProperty("background").GetString());
-                Assert.Equal(pill.GetProperty("color").GetString(), badge.GetProperty("color").GetString());
-                seen[type] = badge.GetProperty("background").GetString()!;
+                foreach (var face in new[] { "background", "color", "border" })
+                    Assert.Equal(pill.GetProperty(face).GetString(), badge.GetProperty(face).GetString());
+
+                // Plain: no fill, whatever the type. The tile alone carries its colour.
+                Assert.Equal(Transparent, badge.GetProperty("background").GetString());
+                Assert.Equal(Transparent, pill.GetProperty("background").GetString());
+                Assert.Equal(14, badge.GetProperty("tileSize").GetDouble());
+                Assert.Equal("true", badge.GetProperty("tileHidden").GetString());
+                Assert.Equal("true", pill.GetProperty("tileHidden").GetString());
+                Assert.Equal(badge.GetProperty("tile").GetString(), pill.GetProperty("tile").GetString());
+                seen[type] = badge.GetProperty("tile").GetString()!;
             }
 
-            // Five types, five faces.
+            // Five types, five tile fills.
             Assert.Equal(Types.Length, seen.Values.Distinct().Count());
 
             await harness.OpenAsync(deadline, baseUrl, "/search");
@@ -117,7 +145,8 @@ public class TypeBadgeFaceTests(ITestOutputHelper output)
             foreach (var type in Types)
             {
                 var row = badges.EnumerateArray().First(b => b.GetProperty("word").GetString() == type);
-                Assert.Equal(seen[type], row.GetProperty("background").GetString());
+                Assert.Equal(seen[type], row.GetProperty("tile").GetString());
+                Assert.Equal(Transparent, row.GetProperty("background").GetString());
             }
 
             harness.AssertNoPageErrors();

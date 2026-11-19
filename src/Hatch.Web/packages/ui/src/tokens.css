@@ -242,8 +242,9 @@
   --chrome-glow: #f0edff;
 
   /* The gradient ink: page text set in a blue-to-violet gradient (App.css,
-     .hatch-gradient-ink). Text only, never a fill - a fill would need an
-     ink of its own on top.
+     .hatch-gradient-ink), and one fill: the ambition's tile (TypeGlyph.tsx,
+     AmbitionTile), whose ink is --on-accent. Nothing else paints with it; a
+     new fill would need an ink of its own on top.
 
      Hex, not var(--chrome) aliases, so the stops stay pinned to the figures
      below and nothing that moves --chrome can change them unmeasured. Light
@@ -257,7 +258,11 @@
 
      Measured against --bg:
        light  --gradient-ink-from 7.04:1   --gradient-ink-to 7.70:1  (on #f5f5f5)
-       dark   --gradient-ink-from 7.84:1   --gradient-ink-to 9.45:1  (on #1a1a1a) */
+       dark   --gradient-ink-from 7.84:1   --gradient-ink-to 9.45:1  (on #1a1a1a)
+
+     And, for the tile, --on-accent against each stop:
+       light  --gradient-ink-from 7.68:1   --gradient-ink-to 8.39:1  (#ffffff)
+       dark   --gradient-ink-from 7.84:1   --gradient-ink-to 9.45:1  (#1a1a1a) */
   --gradient-ink-from: #0052a3;
   --gradient-ink-to: #4b2fc4;
 
@@ -298,6 +303,15 @@
      4.5:1 on some fills in both themes exactly as today: a gallery index
      numeral. */
   --on-series: #ffffff;
+
+  /* The five types' colours, for the tile in a card's corner. The ramp runs
+     deepest at the largest thing - epic, then story, then task - and red is the
+     bug's alone among the types. Authored for both themes. */
+  --type-epic: #5b34d6;
+  --type-story: var(--primary);
+  --type-task: #0a97a8;
+  --type-bug: var(--danger);
+  --type-reflection: #b97a00;
 
   /* -------------------------------------------------------------------------
      6. Motion and elevation. Calm: nothing moves unless a person moved it. */
@@ -385,6 +399,15 @@
     --series-7: #9085e9;
     --series-8: #e66767;
 
+    /* The five types' colours, for the tile in a card's corner. The ramp runs
+       deepest at the largest thing - epic, then story, then task - and red is the
+       bug's alone among the types. Authored for both themes. */
+    --type-epic: #a594ff;
+    --type-story: var(--primary);
+    --type-task: #4fd3d9;
+    --type-bug: var(--danger);
+    --type-reflection: #f0b93a;
+
     color-scheme: dark;
   }
 }
@@ -452,6 +475,15 @@
   --series-6: #d95926;
   --series-7: #9085e9;
   --series-8: #e66767;
+
+  /* The five types' colours, for the tile in a card's corner. The ramp runs
+     deepest at the largest thing - epic, then story, then task - and red is the
+     bug's alone among the types. Authored for both themes. */
+  --type-epic: #a594ff;
+  --type-story: var(--primary);
+  --type-task: #4fd3d9;
+  --type-bug: var(--danger);
+  --type-reflection: #f0b93a;
 
   color-scheme: dark;
 }
