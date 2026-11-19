@@ -88,6 +88,8 @@ const FIXED = [
   '--type-epic',
   '--type-task',
   '--type-reflection',
+  '--heat',
+  '--heat-core',
   '--ramp-low',
   '--on-ramp-low',
   '--ramp-mid',

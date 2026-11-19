@@ -2222,6 +2222,18 @@ export interface WaitingOnARunner {
   missing: string;
 }
 
+/** An issue the loop would carry if every level and pull it inherits were
+    honoured, and does not, because the level or pull comes from another
+    project. The sentence says whose approval it needs, and names no key where
+    the reader cannot see the ancestor. Mirrors ProjectLineHeldDto. */
+export interface ProjectLineHeld {
+  key: string;
+  title: string;
+  type: string;
+  projectKey: string;
+  sentence: string;
+}
+
 /** One project whose clear implementation steps no live runner, or only one, can take, with the reasons the rest cannot. Mirrors RunnerCapacityDto. */
 export interface RunnerCapacity { projectKey: string; steps: number; keys: string[]; takers: string[]; reasons: RunnerReason[] }
 
@@ -2340,6 +2352,11 @@ export interface Attention {
       a person's to fix, every time. Lights the control and draws no pill.
       Absent from a board that predates it. */
   waitingOnARunner?: WaitingOnARunner[];
+  /** The issues held at a project line: a level or pull from another project
+      that the loop does not honour, so a person there sets the level on the
+      issue or moves it. Lights the control and draws no pill. Absent from a
+      board that predates it. */
+  heldAtProjectLine?: ProjectLineHeld[];
   /** The projects whose clear implementation steps no live runner, or only
       one, can take, and why the rest cannot: a person's to fix, every time.
       Absent from a board that predates it. */

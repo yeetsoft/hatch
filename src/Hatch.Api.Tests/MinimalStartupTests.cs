@@ -31,13 +31,13 @@ namespace Hatch.Api.Tests;
 public class MinimalStartupTests
 {
     /// <summary>
-    /// Everything ReflectionCadence and Backup are registered under - the two
-    /// jobs, and so the two triggers, this group is left holding.
+    /// Everything ReflectionCadence, Backup and Goose are registered under - the three
+    /// jobs, and so the three triggers, this group is left holding.
     /// </summary>
     private const string JobGroup = "Hatch.Api";
 
     /// <summary>The only triggers an install carries - see <see cref="JobGroup"/>.</summary>
-    private static readonly string[] ExpectedTriggers = ["ReflectionCadence_Trigger", "Backup_Trigger"];
+    private static readonly string[] ExpectedTriggers = ["ReflectionCadence_Trigger", "Backup_Trigger", "Goose_Trigger"];
 
     /// <summary>
     /// The whole assembly runs in about twenty seconds today and each of these
@@ -79,11 +79,11 @@ public class MinimalStartupTests
 
     /// <summary>
     /// The install a friend is left with once the migrate step has run:
-    /// nothing at Error or above, and exactly the two triggers
+    /// nothing at Error or above, and exactly the three triggers
     /// <see cref="ExpectedTriggers"/> names.
     /// </summary>
     [SkippableFact(Timeout = CaseTimeoutMs)]
-    public async Task AgainstAMigratedDatabase_ItStartsCleanlyAndSchedulesOnlyTheTwoJobs()
+    public async Task AgainstAMigratedDatabase_ItStartsCleanlyAndSchedulesOnlyTheThreeJobs()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
@@ -93,13 +93,13 @@ public class MinimalStartupTests
     }
 
     /// <summary>
-    /// ReflectionCadence's and Backup's triggers start now, so their first
+    /// ReflectionCadence's, Backup's and the goose's triggers start now, so their first
     /// firings land inside the few hundred milliseconds between /health/ready
     /// answering and this host being disposed. Disposed mid-firing, Quartz
     /// fails to build the job from a service provider that is already gone and
     /// says so at Error - the test's own teardown, not a fault in startup. So
-    /// the host is not stopped until both firings have run their course; the
-    /// next is fifteen minutes away for one and a day for the other. Backup
+    /// the host is not stopped until all three firings have run their course; the
+    /// next is a minute, fifteen minutes and a day away. Backup
     /// with no path set is a no-op, but it is still a firing to be caught
     /// mid-construction. Bounded at ten seconds and then let go, so a firing that
     /// never comes is not this case's failure to report.
@@ -120,6 +120,7 @@ public class MinimalStartupTests
         {
             new TriggerKey("ReflectionCadence_Trigger", JobGroup),
             new TriggerKey("Backup_Trigger", JobGroup),
+            new TriggerKey("Goose_Trigger", JobGroup),
         };
         var until = DateTimeOffset.UtcNow.AddSeconds(10);
         var idle = 0;
