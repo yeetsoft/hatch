@@ -206,7 +206,7 @@ a verdict was recorded against it, or it is the board's last column.
 |---|---|---|---|
 | GET | `/wip` | key | The section: flagged columns, and the two slices (`story,bug` then `epic`) with their limits |
 | PUT | `/wip` | **person** | Sets the limit, the epic limit, and/or the whole section's columns |
-| PATCH | `/issues/{key}/wip` | **person** | Sets an epic's own limit on how many of its stories run at once |
+| PATCH | `/issues/{key}/wip` | **person** | Sets an epic's, reflection's or ambition's own limit on how many of its stories run at once |
 
 [The board and its columns](the-board-and-its-columns) covers what the
 section and its limits mean.
@@ -293,7 +293,13 @@ since is refused rather than relocated.
 date or pull-request-URL shape, and on an illegal parent - a
 cycle, or a type pairing the issue hierarchy refuses - or a task filed or retyped
 under a story or bug in another project whose tasks share one pull request (the
-sentence names the story). A parent may otherwise stand in another project. A move into a protected
+sentence names the story). An ambition takes no parent (*an ambition takes no
+parent*), and only an epic hangs under one. A patch that retypes an issue to
+`ambition` 400s while the issue has a parent (unless the same patch clears
+`ParentKey`) or a child that is not an epic, naming the first such child by key;
+one that retypes an ambition 400s while a child could not hang under the new
+type, and one that retypes an epic under an ambition to anything but `epic`
+400s. No other retype looks at the children. A parent may otherwise stand in another project. A move into a protected
 column 403s unless the caller is a live owner or approver, never a program,
 and into a merges-pull-request column 400s if the issue carries no pull
 request URL. A column change that would overflow the WIP section 409s with a
@@ -541,7 +547,7 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/search` | Full-text search across title, description, comments and work log, paged |
-| GET | `/plan` | Every epic's rollup, the Plan page's one request; a tree may cross projects |
+| GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
@@ -552,7 +558,10 @@ equals, without it newest first (closed, else created). `/plan` takes an
 optional, repeatable `projectId`; with none, an epic under an epic of another
 project is nested under it, and with one, an epic whose parent is outside the
 answer is a root, its card carrying `parentKey` or `parentBeyondScope`, and
-`childBeyondScope` where its tree goes on past the reader's scope. `/assignees` takes nothing, and answers an
+`childBeyondScope` where its tree goes on past the reader's scope. `/plan`
+roots on parentless epics and ambitions; an ambition comes back among the
+roots with its epics as entries beneath it, and never under `loose`.
+`/assignees` takes nothing, and answers an
 `AssigneeDirectoryDto(Me?, Assignees)`. `docs/hatch-planning.md` has the
 plan's arithmetic in full.
 
@@ -1572,7 +1581,7 @@ unparseable range bound, in the order `to`, then `from`, then the inversion.
 | GET | `/reports/flow` | How work moved through the board in a range: per column what entered, left and stands, and how long it dwelled, plus the window's drops, hops, send-backs, questions and sessions - counts and durations only |
 | GET | `/reports/changelog` | Closed work, bucketed over a range rather than split by day - `level` is `epic` (closed top-level epics, the default) or `story` (closed stories grouped under their nearest epic). `bucket` is `hour`, `day`, `week` or `month` (day by default), aligned to the reader's own clock with `offsetMinutes`. `from`/`to` default to the changelog feed's own fourteen days; `projectId` is repeatable. `stories` answers empty until a later story; `loose`, at `level=epic`, carries closed bugs and parentless stories with `priority` |
 | GET | `/reports/activity` | One actor's events in a range: `{ actor, from, to, total, kinds, issues, events, truncated, bucket, offsetMinutes, series, sessions, estimate }`. `actor` is required and matched exactly; `from`/`to` default to the fourteen days ending now, `from` clamped forward to the first event; `projectId` is repeatable. `offsetMinutes` (default 0, -1440 to 1440), `gap` (default 30, 1-1440 minutes) and `lead` (default 15, 0-240 minutes) shape `sessions`; `window` (default 3, 1-90 days) shapes `series`'s rolling mean. `includeKeys` (default `false`) adds, for an `actor` that is a person, the events under that person's own keys that a hand typed rather than the loop - a heuristic read off the trail (outside any work-log session of the issue, and outside a `claim_taken` not yet released) - each row marked `viaKey`. `total`, `kinds` (per kind, most first), `issues` (one card per issue touched, with `first`, `last`, `count`, `kinds`), `series` (one point per bucket, oldest first, with rolling means) and `sessions` (newest `from` first, with `estimatedMinutes`) cover every event in range; `events` is the newest 500 with their payloads, and `truncated` says more existed. `bucket` is the size the server chose (`hour` or `day`, the work log's own rule), and `estimate` carries the session totals beside the parameters they were computed with. An actor no row answers to answers empty. `400` for a blank `actor`, an unparseable or inverted bound, an out-of-range `offsetMinutes`/`gap`/`lead`/`window`, an unknown `projectId`, or too many buckets for the range. Open to a key |
-| GET | `/reports/consumption` | What each issue matching the filter - and everything beneath it - consumed in a window: tokens, notional USD and runner time, as `{ from, to, type, sort, limit, matched, totals, firstSessionAt, lastSessionAt, rows, history }`. `type` is one of the five issue types or `all` (default `epic`); `sort` is `activity` (default, `lastSessionAt` descending), `tokens`, `cost` (rows with nothing priced last) or `time`; `limit` is 1-500 (default 100) and caps `rows` only - `matched`, `totals`, `firstSessionAt` and `lastSessionAt` cover the whole filter. `statusId` and `projectId` are repeatable. A row's own `totals` is its subtree's in-window sum; a sub-epic is its own row and inside its parent's, and `totals`/`history` count each session once. `400`s, in order: a bad range bound, an offset outside +-1440 minutes, an unrecognised `type`, `sort` or an id in `statusId` or `projectId` that does not exist, or a `limit` outside 1-500. Open to a key |
+| GET | `/reports/consumption` | What each issue matching the filter - and everything beneath it - consumed in a window: tokens, notional USD and runner time, as `{ from, to, type, sort, limit, matched, totals, firstSessionAt, lastSessionAt, rows, history }`. `type` is one of the issue types or `all` (default `epic`); `sort` is `activity` (default, `lastSessionAt` descending), `tokens`, `cost` (rows with nothing priced last) or `time`; `limit` is 1-500 (default 100) and caps `rows` only - `matched`, `totals`, `firstSessionAt` and `lastSessionAt` cover the whole filter. `statusId` and `projectId` are repeatable. A row's own `totals` is its subtree's in-window sum; a sub-epic is its own row and inside its parent's, and `totals`/`history` count each session once. `400`s, in order: a bad range bound, an offset outside +-1440 minutes, an unrecognised `type`, `sort` or an id in `statusId` or `projectId` that does not exist, or a `limit` outside 1-500. Open to a key |
 | GET | `/reports/consumption.csv` | The same filter as `/reports/consumption`, with no `limit` at all - every matching row, uncapped, as `consumption-<from date>-<to date>.csv`: UTF-8 with a byte-order mark, a header row, CRLF line ends, RFC 4180 quoting. Columns: `key, title, type, project, statusId, parentKey, sessions, errors, inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, totalTokens, costUsd, unpricedSessions, runnerMs, firstSessionAt, lastSessionAt`; `costUsd` is empty rather than `0` on a row with nothing priced. The same `400`s as the JSON route, in the same order, minus the limit step. Open to a key |
 | GET | `/utilization` | The caller's own Claude headroom - the battery in the nav strip |
 | GET | `/attention` | What the loop is waiting on a person for, in one request |
@@ -1685,6 +1694,7 @@ The server's own sweep of the board, and the record it keeps of each one. See
 |---|---|---|
 | GET | `/goose/runs` | Runs newest first by last sweep, as `[{ id, firstRanAt, lastRanAt, sweeps, longestMs }]`, without the per-check detail. `limit` is 1-200 (default 50); a value outside it is clamped. A caller whose scope is not every project reads `[]`. Open to a key |
 | GET | `/goose/runs/{id}` | One run with its detail: the same fields and `entries`, one per check in the order the checks ran, each `{ check, looked, concluded, failed, error }`. `404` for an id that is not there, and for every id when the caller's scope is not every project - a run holds what was seen in all of them. Open to a key |
+| GET | `/goose/findings` | Findings, open ones first (longest-standing first), then closed ones (newest first), as `[{ id, check, subject, projectKey, sentence, evidence, beganAt, openedAt, closedAt, bugIssueKey }]`, `evidence` a list of `{ label, value }`. `?open=true` narrows it to the open ones. A finding that names a project is left out for a caller who cannot see it; one that names none is only in an unbounded caller's list. Open to a key |
 
 **Refusals.** `404` as above; nothing else beyond the ordinary ones.
 

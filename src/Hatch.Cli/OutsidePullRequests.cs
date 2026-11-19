@@ -122,12 +122,13 @@ public static class OutsidePullRequests
     /// <summary>
     /// Which parents each mirrored type may hang under. A copy of <c>EfHatchIssue.LegalParentTypes</c> in
     /// <c>Hatch.Api</c>, which this is a port of - the CLI cannot reference that assembly, so keep the two in
-    /// step by hand. Nothing here ever mirrors as <c>reflection</c> (see <see cref="FoldType"/>), but the row
+    /// step by hand. Nothing here ever mirrors as <c>reflection</c> or <c>ambition</c> (see <see cref="FoldType"/>), but the row
     /// is kept anyway since this is meant as a faithful copy.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string[]> LegalParents = new Dictionary<string, string[]>
     {
-        ["epic"] = ["epic", "reflection"],
+        ["ambition"] = [],
+        ["epic"] = ["epic", "reflection", "ambition"],
         ["reflection"] = ["epic"],
         ["story"] = ["epic", "reflection"],
         ["task"] = ["story", "bug", "epic", "reflection"],
@@ -137,12 +138,13 @@ public static class OutsidePullRequests
     private static readonly HashSet<string> MirrorableTypes = ["epic", "story", "task", "bug"];
 
     /// <summary>
-    /// The type a mirrored issue is created as: <c>reflection</c> folds to <c>epic</c>, since a reflection is
-    /// its own board's cadence artefact and has no standing as an ancestor elsewhere; anything this board does
+    /// The type a mirrored issue is created as: <c>reflection</c> and <c>ambition</c> fold to <c>epic</c>, since
+    /// a reflection is its own board's cadence artefact and an ambition sits above this board's epics, and
+    /// neither has standing as an ancestor elsewhere; anything this board does
     /// not know folds to <c>task</c>, the type that hangs under the most other types.
     /// </summary>
     public static string FoldType(string? type) =>
-        type == "reflection" ? "epic" : type is not null && MirrorableTypes.Contains(type) ? type : "task";
+        type is "reflection" or "ambition" ? "epic" : type is not null && MirrorableTypes.Contains(type) ? type : "task";
 
     /// <summary>"an epic", "a story" - read on screen by the person who approves the mirrored issue.</summary>
     private static string Article(string noun) =>

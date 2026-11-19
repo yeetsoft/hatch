@@ -265,6 +265,7 @@ public class ScopeRouteMatrixTests
         ("BallotController.GetBallot", Rows(false, t => Get("/api/ballot"), t => Get($"/api/ballot?projectId={t.ProjectId}"))),
         ("BoardController.GetBoard", Rows(true, t => Get("/api/board"))),
         ("ChangelogController.GetChangelog", Rows(false, t => Get("/api/changelog"), t => Get($"/api/changelog?projectId={t.ProjectId}"))),
+        ("GooseController.ListFindings", Rows(false, t => Get("/api/goose/findings"))),
         ("OvernightController.GetOvernight", Rows(false, t => Get("/api/overnight"))),
         ("PlanController.GetPlan", Rows(false, t => Get("/api/plan"), t => Get($"/api/plan?projectId={t.ProjectId}"))),
         ("QuestionsController.GetQuestions", Rows(false, t => Get("/api/questions?open=false"))),

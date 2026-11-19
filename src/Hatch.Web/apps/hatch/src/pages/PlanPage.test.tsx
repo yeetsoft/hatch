@@ -61,6 +61,15 @@ describe('EpicCard across projects', () => {
     expect(partly).toContain('hatch-meter');
   });
 
+  it('draws the ambition tile on an ambition row and none on an epic row', () => {
+    const html = render(entry('AER-1', { type: 'ambition' }, { children: [entry('AER-2', { parentKey: 'AER-1' })] }));
+
+    expect(html.match(/hatch-type-pill-glyph/g)).toHaveLength(1);
+    expect(html.indexOf('hatch-type-pill-glyph')).toBeLessThan(html.indexOf('AER-1'));
+    expect(html.indexOf('hatch-type-pill-glyph')).toBeLessThan(html.indexOf('AER-2'));
+    expect(render(entry('AER-3'))).not.toContain('hatch-type-pill-glyph');
+  });
+
   it('draws a plain root with none of it', () => {
     const html = render(entry('AER-1'));
 

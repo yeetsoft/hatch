@@ -10,7 +10,7 @@ using Xunit.Abstractions;
 namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
-/// HA-2381, HA-2508, HA-2511: the type badge wears the same plain face as the type pill, for all five
+/// HA-2381, HA-2508, HA-2511: the type badge wears the same plain face as the type pill, for the five types that take a type colour
 /// types, and the tile inside is what tells them apart. One issue of each type is filed; the
 /// issue page's Details card is read in both modes (the badge outside edit mode, the pill
 /// inside it). Badge and pill must share background, ink and border; the background is

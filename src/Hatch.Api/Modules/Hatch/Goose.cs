@@ -67,6 +67,34 @@ public static class GooseSettings
     /// </summary>
     public static int KeepDays(HatchOptions options) =>
         options.GooseKeepDays >= 0 ? options.GooseKeepDays : new HatchOptions().GooseKeepDays;
+
+    /// <summary>
+    /// How long <see cref="TrainReadyCheck"/>'s bound is. Zero turns the check
+    /// off - the operator's own choice, as <see cref="KeepDays"/>'s zero is -
+    /// and only a negative falls back to the default.
+    /// </summary>
+    public static TimeSpan TrainReadyBound(HatchOptions options) => TimeSpan.FromMinutes(
+        options.GooseTrainReadyMinutes >= 0 ? options.GooseTrainReadyMinutes : new HatchOptions().GooseTrainReadyMinutes);
+}
+
+/// <summary>One label and value a <see cref="FindingCheck"/> reported for a finding, as stored in <see cref="EfHatchGooseFinding.Evidence"/>.</summary>
+public record GooseFindingEvidence(string Label, string Value)
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public static string Write(IReadOnlyList<GooseFindingEvidence> evidence) => JsonSerializer.Serialize(evidence, Json);
+
+    public static List<GooseFindingEvidence> Read(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<GooseFindingEvidence>>(json, Json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
 }
 
 /// <summary>

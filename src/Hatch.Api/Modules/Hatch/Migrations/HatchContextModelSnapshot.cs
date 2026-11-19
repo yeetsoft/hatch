@@ -534,6 +534,65 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("DreamThreads", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchGooseFinding", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("BeganAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("BugIssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Check")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Evidence")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("OpenedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sentence")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BugIssueId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("Check", "Subject")
+                        .IsUnique()
+                        .HasFilter("\"ClosedAt\" IS NULL");
+
+                    b.ToTable("GooseFindings", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchGooseRun", b =>
                 {
                     b.Property<long>("Id")
@@ -563,6 +622,45 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasIndex("LastRanAt");
 
                     b.ToTable("GooseRuns", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchGooseSighting", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("BeganAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Check")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("Check", "Subject")
+                        .IsUnique();
+
+                    b.ToTable("GooseSightings", "hatch");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssue", b =>
@@ -2625,6 +2723,33 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Dream");
 
                     b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchGooseFinding", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "BugIssue")
+                        .WithMany()
+                        .HasForeignKey("BugIssueId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchProject", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("BugIssue");
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchGooseSighting", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchProject", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssue", b =>

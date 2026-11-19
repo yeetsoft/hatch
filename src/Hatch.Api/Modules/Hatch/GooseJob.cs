@@ -121,6 +121,15 @@ public class GooseJob(
         {
             var cutoff = startedAt.AddDays(-keepDays);
             db.GooseRuns.RemoveRange(await db.GooseRuns.Where(r => r.LastRanAt < cutoff).ToListAsync(ct));
+
+            // An open finding is never deleted, however old - only a closed
+            // one, and only once its bug, if it has one, is no longer open
+            // work: a finding is the record that something happened, and a
+            // bug still being worked is a reason to keep it a moment longer.
+            db.GooseFindings.RemoveRange(await db.GooseFindings.IgnoreQueryFilters()
+                .Where(f => f.ClosedAt != null && f.ClosedAt < cutoff
+                    && (f.BugIssueId == null || f.BugIssue!.Status!.IsTerminal))
+                .ToListAsync(ct));
         }
 
         await db.SaveChangesAsync(ct);

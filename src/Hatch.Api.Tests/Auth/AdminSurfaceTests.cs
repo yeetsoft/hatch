@@ -146,6 +146,10 @@ public class AdminSurfaceTests
         "GooseController.ListRuns",
         "GooseController.GetRun",
 
+        // The goose's stored findings - scoped the same way the board's own
+        // project-bearing reads are, not all-or-nothing like the two above.
+        "GooseController.ListFindings",
+
         // The same questions as GetQuestions, read as a tree of the issues that
         // enclose them. Key-accepting like GetQuestions, and it widens
         // nothing: it reads the same waiting comments, and the issues above
@@ -849,6 +853,7 @@ public class AdminSurfaceTests
         "AttachmentsController.GetAttachments",
         "AttentionController.GetAttention",
         "GooseController.GetRun",
+        "GooseController.ListFindings",
         "GooseController.ListRuns",
         "BackupController.GetBackup",
         "BallotController.GetBallot",

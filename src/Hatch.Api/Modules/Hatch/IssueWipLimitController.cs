@@ -50,7 +50,7 @@ public class IssueWipLimitController(
         if (issue is null) return NotFound();
 
         if (!IssueTypeKinds.RunsChildren(issue.Type))
-            return BadRequest($"only an epic or a reflection takes a limit on its children at once - {key} is a {issue.Type}");
+            return BadRequest($"only an epic, a reflection or an ambition takes a limit on its children at once - {key} is a {issue.Type}");
 
         if (request.Limit is null)
             return await IssueProjection.ToDtoAsync(db, actors, issue, claims, time.GetUtcNow(), ct);

@@ -39,19 +39,21 @@ describe('ChildComposer', () => {
     seen.length = 0;
   });
 
-  it.each(['epic', 'reflection', 'story', 'bug'] as const)('offers under %s exactly what childTypes returns', (parent) => {
+  it.each(['ambition', 'epic', 'reflection', 'story', 'bug'] as const)('offers under %s exactly what childTypes returns', (parent) => {
     render(parent);
 
     expect(seen).toHaveLength(1);
     expect(seen[0].types).toEqual(childTypes(parent));
   });
 
-  it('offers all five under an epic, task and bug under a story, and task under a bug', () => {
+  it('offers five under an epic, epic alone under an ambition, task and bug under a story, and task under a bug', () => {
+    render('ambition');
     render('epic');
     render('story');
     render('bug');
 
     expect(seen.map((s) => s.types)).toEqual([
+      ['epic'],
       ['epic', 'reflection', 'story', 'task', 'bug'],
       ['task', 'bug'],
       ['task'],

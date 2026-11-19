@@ -6356,6 +6356,11 @@ input.hatch-inline-title-input {
   animation: hatch-peek-status-in var(--transition) both;
 }
 
+.hatch-type-pill-band.ambition {
+  background: color-mix(in srgb, var(--gradient-ink-from) 10%, var(--card));
+  border-left-color: var(--gradient-ink-from);
+}
+
 .hatch-type-pill-band.epic {
   background: color-mix(in srgb, var(--type-epic) 10%, var(--card));
   border-left-color: var(--type-epic);

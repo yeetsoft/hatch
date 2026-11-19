@@ -11,20 +11,21 @@ export type OnePullRequestPolicy = 'optional' | 'enforced';
 /** How much a project matters to the loop. See ProjectPriorities (Hatch.Contracts). */
 export type ProjectPriority = 'paused' | 'normal' | 'expedited';
 
-export type IssueType = 'epic' | 'reflection' | 'story' | 'task' | 'bug';
+export type IssueType = 'ambition' | 'epic' | 'reflection' | 'story' | 'task' | 'bug';
 
-/** The five types, in the order a picker offers them. Mirrors EfHatchIssue.Types. */
-export const ISSUE_TYPES: IssueType[] = ['epic', 'reflection', 'story', 'task', 'bug'];
+/** The six types, in the order a picker offers them. Mirrors EfHatchIssue.Types. */
+export const ISSUE_TYPES: IssueType[] = ['ambition', 'epic', 'reflection', 'story', 'task', 'bug'];
 
 /** The types that run their children at once, and so carry a stories-at-once
     limit - mirrors IssueTypeKinds.RunsChildren. */
-export const RUNS_CHILDREN: IssueType[] = ['epic', 'reflection'];
+export const RUNS_CHILDREN: IssueType[] = ['ambition', 'epic', 'reflection'];
 
 /** Which parents each type may take - mirrors EfHatchIssue.LegalParentTypes.
     Duplicated here to filter the parent picker; the server is still the one
     that decides, and a disagreement shows up as a refusal with a reason. */
 export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
-  epic: ['epic', 'reflection'],
+  ambition: [],
+  epic: ['epic', 'reflection', 'ambition'],
   reflection: ['epic'],
   story: ['epic', 'reflection'],
   task: ['story', 'bug', 'epic', 'reflection'],
@@ -2221,6 +2222,18 @@ export interface WaitingOnARunner {
   missing: string;
 }
 
+/** An issue the loop would carry if every level and pull it inherits were
+    honoured, and does not, because the level or pull comes from another
+    project. The sentence says whose approval it needs, and names no key where
+    the reader cannot see the ancestor. Mirrors ProjectLineHeldDto. */
+export interface ProjectLineHeld {
+  key: string;
+  title: string;
+  type: string;
+  projectKey: string;
+  sentence: string;
+}
+
 /** One project whose clear implementation steps no live runner, or only one, can take, with the reasons the rest cannot. Mirrors RunnerCapacityDto. */
 export interface RunnerCapacity { projectKey: string; steps: number; keys: string[]; takers: string[]; reasons: RunnerReason[] }
 
@@ -2339,6 +2352,11 @@ export interface Attention {
       a person's to fix, every time. Lights the control and draws no pill.
       Absent from a board that predates it. */
   waitingOnARunner?: WaitingOnARunner[];
+  /** The issues held at a project line: a level or pull from another project
+      that the loop does not honour, so a person there sets the level on the
+      issue or moves it. Lights the control and draws no pill. Absent from a
+      board that predates it. */
+  heldAtProjectLine?: ProjectLineHeld[];
   /** The projects whose clear implementation steps no live runner, or only
       one, can take, and why the rest cannot: a person's to fix, every time.
       Absent from a board that predates it. */

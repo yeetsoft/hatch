@@ -104,6 +104,7 @@ public class ConsumptionReportTests
     }
 
     [Theory]
+    [InlineData("ambition")]
     [InlineData("epic")]
     [InlineData("reflection")]
     [InlineData("story")]

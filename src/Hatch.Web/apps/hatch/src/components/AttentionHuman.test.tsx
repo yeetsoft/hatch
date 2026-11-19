@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, ballotRowWords, contributionsHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledReasonWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, ContributionHeld, Deadlocked, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import { approvedHeldEmptyWords, ballotRowWords, contributionsHeldEmptyWords, deadlockedEmptyWords, heldAtProjectLineEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledReasonWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, ContributionHeld, Deadlocked, LandingHeld, NoCodeHeld, ProjectLineHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -134,6 +134,15 @@ const waitingOnARunner = (over: Partial<WaitingOnARunner> = {}): WaitingOnARunne
   ...over,
 });
 
+const heldAtProjectLine = (over: Partial<ProjectLineHeld> = {}): ProjectLineHeld => ({
+  key: 'AER-40',
+  title: 'A story under another project’s epic',
+  type: 'story',
+  projectKey: 'AER',
+  sentence: 'pre-approved on an ancestor in another project, not honoured in AER - its setter has no say there, so a person moves it',
+  ...over,
+});
+
 const runnerCapacity = (over: Partial<RunnerCapacity> = {}): RunnerCapacity => ({
   projectKey: 'AER',
   steps: 2,
@@ -174,7 +183,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AttentionHuman', () => {
-  it('draws trunk builds first, then deadlocked, questions, stalled issues, pull requests, approved, landed, finished with no code, contributions runners will not work, runner capacity, then waiting on a runner, each with the panel’s own empty wording', () => {
+  it('draws trunk builds first, then deadlocked, questions, stalled issues, pull requests, approved, landed, finished with no code, contributions runners will not work, runner capacity, then waiting on a runner, then waiting on another project’s approver, each with the panel’s own empty wording', () => {
     const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} startOpen />);
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">(?:<button[^>]*>)?([^<]*)(?:<\/button>)?<\/h3>/g)].map((m) => m[1]);
@@ -190,6 +199,7 @@ describe('AttentionHuman', () => {
       'Contributions runners will not work',
       'Runner capacity',
       'Waiting on a runner',
+      'Waiting on another project&#x27;s approver',
     ]);
 
     const trunkAt = html.indexOf(trunkBuildEmptyWords());
@@ -203,6 +213,7 @@ describe('AttentionHuman', () => {
     const contributionsHeldAt = html.indexOf(contributionsHeldEmptyWords());
     const runnerCapacityAt = html.indexOf(htmlEscaped(runnerCapacityEmptyWords()));
     const waitingAt = html.indexOf(waitingOnARunnerEmptyWords());
+    const projectLineAt = html.indexOf(htmlEscaped(heldAtProjectLineEmptyWords()));
 
     expect(trunkAt).toBeGreaterThan(-1);
     expect(trunkAt).toBeLessThan(deadlockedAt);
@@ -219,6 +230,8 @@ describe('AttentionHuman', () => {
     expect(runnerCapacityAt).toBeGreaterThan(-1);
     expect(runnerCapacityAt).toBeLessThan(waitingAt);
     expect(waitingAt).toBeGreaterThan(-1);
+    expect(waitingAt).toBeLessThan(projectLineAt);
+    expect(projectLineAt).toBeGreaterThan(-1);
   });
 
   it('draws a stalled row of each shape with its own lines, linking to the issue', () => {
@@ -702,10 +715,43 @@ describe('AttentionHuman questions', () => {
   });
 });
 
+describe('AttentionHuman held at a project line', () => {
+  it('shows the empty words, with no link, when nothing is held at a project line', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ heldAtProjectLine: [] })} now={new Date()} reload={noop} startOpen />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('>Waiting on another project&#x27;s approver</');
+    expect(html).toContain(htmlEscaped(heldAtProjectLineEmptyWords()));
+  });
+
+  it('lists each row’s key, title and sentence, linked to the issue', () => {
+    const row = heldAtProjectLine();
+    const other = heldAtProjectLine({ key: 'AER-41', sentence: 'its parent in another project is in progress, but the person who started it has no say in AER, so a person moves it' });
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ heldAtProjectLine: [row, other] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain(htmlEscaped(heldAtProjectLineEmptyWords()));
+    expect(html).toContain(row.key);
+    expect(html).toContain(htmlEscaped(row.title));
+    expect(html).toContain(row.sentence);
+    expect(html).toContain(`title="${row.sentence}"`);
+    expect(html).toContain(other.sentence);
+    expect(html).toContain(`href="/issues/${row.key}"`);
+    expect(html).toContain(`href="/issues/${other.key}"`);
+  });
+});
+
 describe('AttentionHuman folding', () => {
   // Trunk builds, Deadlocked, Questions, Stalled issues, Pull requests,
   // Approved, Landed, Finished with no code, Contributions runners will not
-  // work, Runner capacity, Waiting on a runner - the eleven sections AttentionSection wraps. Backups and Stalled
+  // work, Runner capacity, Waiting on a runner, Waiting on another project's approver - the twelve sections AttentionSection wraps. Backups and Stalled
   // merge trains are not among them: both stay their own plain <section>.
   const emptyWords = (a: Attention | null) => [
     trunkBuildEmptyWords(),
@@ -719,6 +765,7 @@ describe('AttentionHuman folding', () => {
     contributionsHeldEmptyWords(),
     htmlEscaped(runnerCapacityEmptyWords()),
     waitingOnARunnerEmptyWords(),
+    htmlEscaped(heldAtProjectLineEmptyWords()),
   ];
 
   it('starts every section folded, showing no empty words, when attention is empty or null', () => {
@@ -729,7 +776,7 @@ describe('AttentionHuman folding', () => {
         </MemoryRouter>,
       );
 
-      expect(html.match(/aria-expanded="false"/g)).toHaveLength(11);
+      expect(html.match(/aria-expanded="false"/g)).toHaveLength(12);
       for (const words of emptyWords(a)) {
         expect(html).not.toContain(words);
       }
@@ -750,7 +797,7 @@ describe('AttentionHuman folding', () => {
     expect(section).not.toContain('<button');
   });
 
-  it('opens Pull requests to review alone when its empty words carry a fact, leaving the other ten folded', () => {
+  it('opens Pull requests to review alone when its empty words carry a fact, leaving the other eleven folded', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <AttentionHuman attention={attention({ inReviewWithoutPullRequest: 3 })} now={new Date()} reload={noop} />
@@ -759,7 +806,7 @@ describe('AttentionHuman folding', () => {
 
     expect(html).toContain('3 issues are in review with no pull request recorded.');
     expect(html).toContain('<h3 class="hatch-attention-heading">Pull requests to review</h3>');
-    expect(html.match(/aria-expanded="false"/g)).toHaveLength(10);
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(11);
   });
 
   it('starts every section open, showing every empty words string, with startOpen', () => {
@@ -769,7 +816,7 @@ describe('AttentionHuman folding', () => {
       </MemoryRouter>,
     );
 
-    expect(html.match(/aria-expanded="true"/g)).toHaveLength(11);
+    expect(html.match(/aria-expanded="true"/g)).toHaveLength(12);
     for (const words of emptyWords(attention())) {
       expect(html).toContain(words);
     }

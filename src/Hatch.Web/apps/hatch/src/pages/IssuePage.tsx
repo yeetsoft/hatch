@@ -109,7 +109,7 @@ import { useMoveConfirmation } from '../lib/useMoveConfirmation';
 import { useWipOverride } from '../lib/useWipOverride';
 import { wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
-import { PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
+import { LEGAL_PARENT_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
 import type {
   AssigneeDirectory,
   AssigneeRequest,
@@ -889,16 +889,18 @@ export function IssuePage() {
               `void`: the picker awaits it to know when the press is over, and
               `save` catches its own rejection and puts the server's sentence
               in `error` above. */}
-          <Field label="Parent" as="div" hint={parentHint(issue.type)}>
-            <IssuePicker
-              label="Parent"
-              value={issue.parentKey}
-              candidates={parents}
-              emptyMessage={parentEmptyMessage(issue.projectKey, issue.type)}
-              homeProject={issue.projectKey}
-              onChange={(parentKey) => save({ parentKey })}
-            />
-          </Field>
+          {LEGAL_PARENT_TYPES[issue.type].length > 0 && (
+            <Field label="Parent" as="div" hint={parentHint(issue.type)}>
+              <IssuePicker
+                label="Parent"
+                value={issue.parentKey}
+                candidates={parents}
+                emptyMessage={parentEmptyMessage(issue.projectKey, issue.type)}
+                homeProject={issue.projectKey}
+                onChange={(parentKey) => save({ parentKey })}
+              />
+            </Field>
+          )}
 
           {/* `as="div"` for the reason the Parent field is - see there. Set
               here, read in its own section below (FiledSection) - this is
