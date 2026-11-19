@@ -958,6 +958,33 @@
   touch-action: manipulation;
 }
 
+/* A held card is a press-and-hold to lift it, and on iOS the same hold opens a
+   link menu and starts a text selection, taking the touch from the drag. A
+   touch screen has no use for either on a card; a mouse keeps selecting text.
+   touch-action stays as it is: a resting card must still pan. */
+@media (pointer: coarse) {
+  .hatch-card,
+  .hatch-card-face {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+}
+
+/* While a card is lifted (lib/useLiftGuard.ts): nothing under it scrolls,
+   chains to the page, or selects. */
+.hatch-lifting,
+.hatch-lifting body {
+  overscroll-behavior: none;
+}
+
+.hatch-lifting * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .hatch-card:hover {
   border-color: var(--primary);
 }
