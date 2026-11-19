@@ -402,6 +402,15 @@ public class AdminSurfaceTests
         "IssueDreamsController.PutIssueDreams",
         "IssueDreamsController.GetIssueDreams",
 
+        // An ambition's capabilities. Key-accepting like the module around it,
+        // with the write refused in the action once the ambition has reached
+        // the implementation column - see IssueCapabilitiesController.
+        "IssueCapabilitiesController.DeleteCapability",
+        "IssueCapabilitiesController.GetCapabilities",
+        "IssueCapabilitiesController.PatchCapability",
+        "IssueCapabilitiesController.PostCapability",
+        "IssueCapabilitiesController.PutOrder",
+
         // Shelving a tree into a dream. Key-accepting like the module around
         // it - see IssueRemandController.
         "IssueRemandController.Remand",
@@ -874,6 +883,11 @@ public class AdminSurfaceTests
         "ImportController.Import",
         "ImportController.Preview",
         "ImportController.PreviewText",
+        "IssueCapabilitiesController.DeleteCapability",
+        "IssueCapabilitiesController.GetCapabilities",
+        "IssueCapabilitiesController.PatchCapability",
+        "IssueCapabilitiesController.PostCapability",
+        "IssueCapabilitiesController.PutOrder",
         "IssueClaimController.Heartbeat",
         "IssueClaimController.ReleaseClaim",
         "IssueClaimController.TakeClaim",

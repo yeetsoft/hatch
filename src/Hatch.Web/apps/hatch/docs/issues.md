@@ -23,6 +23,30 @@ taking tasks. The habit is a way of breaking work down, not a rule the model
 enforces — a task may hang directly under an epic, and a bug under either an
 epic or a story.
 
+## Capabilities
+
+A capability is one thing an ambition says has to be true, written as a
+statement and a line saying how anyone would tell. An ambition holds an
+ordered list of them. Each is a row of its own, not text in the description, so
+it can be counted and, later, judged.
+
+Only an ambition takes capabilities. Any other type refuses with a sentence
+naming it. Both lines are one line each, up to 300 characters, and neither may
+be blank. Adding one appends it, or puts it at the position given and moves the
+rest down. Editing changes either line, reordering names every capability in
+the wanted order, and removing one closes the gap. The positions always run 1 to
+n.
+
+A person can change an ambition's capabilities anywhere on the board. A session
+can read them anywhere, but can write them only while the ambition is left of
+the implementation column. Once the ambition is in that column, past it, done
+or deferred, a session is refused: what an ambition asks for is settled before
+the work starts, and changing it after is a person's call.
+
+Each change shows on the ambition's History as its own line: added, edited,
+moved or removed. An ambition that holds capabilities cannot be retyped to
+anything else until they are removed, and deleting the ambition deletes them.
+
 ## How a ticket reads
 
 A ticket is read by a person first. These rules say how it should read.
