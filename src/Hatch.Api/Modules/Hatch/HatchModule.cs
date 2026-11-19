@@ -121,6 +121,7 @@ public static class HatchModule
         // The sweep's own checks, in registration order - a sweep with none
         // still records a run, so this list is additive and never required.
         services.AddScoped<IGooseCheck, TrainReadyCheck>();
+        services.AddScoped<IGooseCheck, RepeatClaimsCheck>();
         services.AddScoped<IGooseCheck, QuestionsWaitingCheck>();
 
         return services;

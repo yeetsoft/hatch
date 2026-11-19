@@ -188,6 +188,18 @@ public class HatchOptions
     public int GooseTrainReadyMinutes { get; set; } = 30;
 
     /// <summary>
+    /// How many claims by one runner on one ticket, with nothing about the
+    /// ticket moving between them, make the <c>claim-repeating</c> check open a
+    /// finding - see <see cref="RepeatClaimsCheck"/>.
+    /// </summary>
+    /// <remarks>
+    /// Zero turns the check off, as <see cref="GooseTrainReadyMinutes"/>'s zero
+    /// does. A negative falls back to the default. The guard is
+    /// <see cref="GooseSettings.RepeatClaims"/>.
+    /// </remarks>
+    public int GooseRepeatClaims { get; set; } = 5;
+
+    /// <summary>
     /// How many hours a question may wait on a person before the
     /// <c>questions-waiting</c> check opens a finding - see
     /// <see cref="QuestionsWaitingCheck"/>. A question counts once it is this old.

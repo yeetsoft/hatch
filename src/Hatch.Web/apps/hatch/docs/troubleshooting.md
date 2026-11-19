@@ -336,6 +336,28 @@ run](the-runner#when-it-will-not-run).
 - **Want it sooner, once the cause is fixed.** Press **Lift pause** on the
   session's row. Its next heartbeat and its next claim run as normal.
 
+## A runner keeps claiming one ticket
+
+- **The goose opened a `claim-repeating` finding.** Its sentence names the
+  runner, the ticket and how many times it was claimed, for example *"here:/one
+  has claimed AER-12 7 times and it has not moved"*. At least five claims
+  (`Hatch__GooseRepeatClaims`) in a row, none of them followed by a column
+  change, a new commit on the pull request or its build, or a claim by another
+  runner: [the check](the-goose#claim-repeating).
+- **Read the releases first.** The evidence counts how many releases carried
+  each outcome. `unstarted` or `abandoned` over and over points at the runner,
+  not the ticket - an agent that does not start, or a loop that keeps dying;
+  see [a session keeps getting paused by the
+  board](#a-session-keeps-getting-paused-by-the-board). `dropped` or no outcome
+  points at the ticket, which the session reads and cannot finish.
+- **The evidence also says whether the ticket is held or stall-marked.** A
+  held ticket is one the loop is meant to keep off; a stall mark says why the
+  last increment stopped. Neither is set by this check, which changes nothing.
+- **Then hold the ticket or answer it.** Hold it to stop the loop returning
+  to it, or answer the question it is waiting on if it has one. A column
+  change, or a new commit on its pull request or build, ends the streak and
+  closes the finding by itself.
+
 ## A ticket stalls on a missing toolchain
 
 - **The repository builds with tools the runner's machine lacks, and nothing
