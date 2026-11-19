@@ -112,6 +112,15 @@ describe('tokens.css', () => {
     }
   });
 
+  /* The ground a tile is drawn against on a card owed an answer: --warn-bg is
+     translucent, so the wash is composited over --bg, and the dark blocks carry
+     the alpha --warn-bg carries there. */
+  it('declares --warn-ground on :root and in both dark blocks, as the wash over --bg', () => {
+    expect(light['--warn-ground']).toBe('color-mix(in srgb, var(--warn) 8%, var(--bg))');
+    expect(darkAttr['--warn-ground']).toBe('color-mix(in srgb, var(--warn) 14%, var(--bg))');
+    expect(darkMedia['--warn-ground']).toBe('color-mix(in srgb, var(--warn) 14%, var(--bg))');
+  });
+
   /* The scope control's expedite arrow (HA-2358): the glyph sits directly on
      the panel's card ground, so this is the pairing that has to read, not
      --level-up against --bg. */
