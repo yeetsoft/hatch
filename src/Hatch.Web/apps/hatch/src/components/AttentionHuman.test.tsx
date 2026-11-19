@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, ballotRowWords, contributionsHeldEmptyWords, deadlockedEmptyWords, heldAtProjectLineEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledReasonWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, ContributionHeld, Deadlocked, LandingHeld, NoCodeHeld, ProjectLineHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import { findingWords, gooseStoppedWords, approvedHeldEmptyWords, ballotRowWords, contributionsHeldEmptyWords, deadlockedEmptyWords, heldAtProjectLineEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledReasonWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
+import type { Attention, AttentionFinding, AttentionGoose, ApprovedHeld, ContributionHeld, Deadlocked, LandingHeld, NoCodeHeld, ProjectLineHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -53,6 +53,25 @@ const attention = (over: Partial<Attention> = {}): Attention => ({
   questions: [],
   conflicts: [],
   reviewsHeldBack: 0,
+  ...over,
+});
+
+const finding = (over: Partial<AttentionFinding> = {}): AttentionFinding => ({
+  id: 1,
+  check: 'train-ready',
+  projectKey: 'AER',
+  sentence: 'AER has a train ready and nobody is driving it.',
+  beganAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+  openedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+  bugIssueKey: null,
+  issueKey: null,
+  ...over,
+});
+
+const goose = (over: Partial<AttentionGoose> = {}): AttentionGoose => ({
+  lastSweepAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+  intervalSeconds: 60,
+  stopped: false,
   ...over,
 });
 
@@ -819,6 +838,62 @@ describe('AttentionHuman folding', () => {
     expect(html.match(/aria-expanded="true"/g)).toHaveLength(12);
     for (const words of emptyWords(attention())) {
       expect(html).toContain(words);
+    }
+  });
+});
+
+describe('AttentionHuman findings', () => {
+  const draw = (a: Attention | null) =>
+    renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={a} now={new Date()} reload={noop} startOpen />
+      </MemoryRouter>,
+    );
+
+  it('draws a finding\u2019s sentence and age, linked to its issue, above Trunk builds that fail', () => {
+    const row = finding({ issueKey: 'AER-9', sentence: 'AER-9 has been at the head of the train for a while.' });
+    const html = draw(attention({ findings: [row] }));
+
+    expect(html).toContain('>Findings</h3>');
+    expect(html).toContain('href="/issues/AER-9"');
+    expect(html).toContain(row.sentence);
+    expect(html).toContain(findingWords(row, new Date()));
+    expect(html.indexOf('>Findings</h3>')).toBeLessThan(html.indexOf('>Trunk builds that fail</'));
+  });
+
+  it('links a finding about no issue to its project\u2019s board', () => {
+    const html = draw(attention({ findings: [finding()] }));
+
+    expect(html).toContain('href="/?scope=AER"');
+    expect(html).not.toContain('href="/issues/');
+  });
+
+  it('shows a finding\u2019s bug as a link of its own, beside the row link and not inside it', () => {
+    const html = draw(attention({ findings: [finding({ issueKey: 'AER-9', bugIssueKey: 'AER-77' })] }));
+
+    expect(html).toContain('href="/issues/AER-77" data-discover="true">AER-77</a>');
+    expect(html.match(/<a /g)?.length).toBe(2);
+    expect(html).not.toMatch(/<a [^>]*>(?:(?!<\/a>).)*<a /s);
+  });
+
+  it('says first that the goose has stopped and when it last ran, linked to its docs page', () => {
+    const g = goose({ stopped: true });
+    const html = draw(attention({ findings: [finding()], goose: g }));
+
+    expect(html).toContain('href="/docs/the-goose"');
+    expect(html).toContain(gooseStoppedWords(g, new Date()));
+    expect(html.indexOf(gooseStoppedWords(g, new Date()))).toBeLessThan(html.indexOf(finding().sentence));
+  });
+
+  it('draws the stopped row alone when nothing was found', () => {
+    const html = draw(attention({ goose: goose({ stopped: true, lastSweepAt: null }) }));
+
+    expect(html).toContain('It has not run since the server started.');
+  });
+
+  it('draws nothing when nothing was found and the goose is running, or the board predates both', () => {
+    for (const a of [null, attention(), attention({ findings: [], goose: goose() })]) {
+      expect(draw(a)).not.toContain('>Findings</h3>');
     }
   });
 });

@@ -498,12 +498,26 @@ reads **Clear**; the moment anything needs a person or the loop is stuck, it
 lights and opens a panel in two groups.
 
 **Human** - things only a person can clear, in the order to work through
-them: **Trunk builds that fail**, **Backups**, **Stalled merge trains**,
+them: **Findings**, **Trunk builds that fail**, **Backups**, **Stalled merge trains**,
 **Deadlocked**, **Questions to answer**, **Stalled issues**,
 **Pull requests to review**,
 **Approved, not merging**, **Landed, not done**, **Finished with no code**,
 **Contributions runners will not work**, **Runner capacity**,
 **Waiting on a runner**, **Waiting on another project's approver**.
+**Findings** leads, because it is what [the goose](the-goose#findings) itself
+judged wrong. Each row is the finding's sentence and how long it has been true,
+counted from when the condition began, the way a question's wait is; it links to
+the issue the finding is about, or to the project's board when it is about the
+project. When a bug has already been filed from the finding, its key is a link
+of its own beside the row. If the goose has stopped, the first row says so and
+says when it last ran, and links to [The goose](the-goose#when-the-goose-stops).
+The section is simply absent when nothing was found and the goose is running,
+like **Stalled merge trains**. Every finding lights the control and is counted,
+and so is a stopped goose, once; neither adds a pill. A stuck merge train can
+show twice: once as a row under **Stalled merge trains**, which is the board's
+own watch and clears when the head moves, and once as a finding, which is the
+goose's second clock and stays until a sweep stops seeing the condition. They
+are two watchers reporting one fact, and neither hides the other.
 **Questions to answer** opens with one row,
 **Answer on the Ballot**, with the count of questions waiting, and it goes to
 the [Ballot](questions-and-decisions#how-the-operator-answers); each question
@@ -584,8 +598,8 @@ pressing it opens the section to its empty sentence, and pressing it again folds
 it. A group with nothing in any of its sections folds the same way, to its group
 heading alone, and opens to its section headings. A section or group with
 anything in it is open and has no button, since there is nothing to hide.
-**Backups**, **Stalled merge trains** and **Out of usage** are not folded but
-simply absent when empty. **Pull requests to review** stays open while it has a
+**Findings**, **Backups**, **Stalled merge trains** and **Out of usage** are not
+folded but simply absent when empty. **Pull requests to review** stays open while it has a
 count to say - issues in review with no pull request recorded, or held back by
 the loop - because that is the only place it is said. The panel opens folded
 every time, and nothing is remembered between openings. Pressing a heading never

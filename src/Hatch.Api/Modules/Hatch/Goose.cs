@@ -51,6 +51,19 @@ public record GooseEntry(string Check, string Looked, string Concluded, bool Fai
 }
 
 /// <summary>
+/// When this process started, kept for the attention read's judgement that the
+/// goose has stopped: with no run stored there is no last sweep to measure from,
+/// and "the server has been up three intervals and no sweep has ever been
+/// recorded" needs a clock that outlives a request. A singleton, as
+/// <see cref="BackupStatus"/> is, and never written after construction.
+/// </summary>
+public class GooseWatch(TimeProvider? clock = null)
+{
+    /// <summary>When this process started.</summary>
+    public DateTimeOffset StartedAt { get; } = (clock ?? TimeProvider.System).GetUtcNow();
+}
+
+/// <summary>
 /// The goose's two options, guarded in one place as <see cref="BackupService"/>
 /// guards <see cref="HatchOptions.BackupKeepDays"/>: a value that cannot mean
 /// anything falls back to <see cref="HatchOptions"/>'s own default.

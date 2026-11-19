@@ -180,6 +180,29 @@ the bound. It judges by age alone: it suggests no answer and answers nothing.
 The condition begins at the first sweep that sees a question past the bound,
 so its start can trail the question by up to one sweep interval.
 
+### How a finding reaches the panel
+
+An open finding is listed first under **Findings** in the Human group of the
+[attention panel](watching-the-loop#what-is-waiting-on-you), longest-standing
+first. Each row is the sentence and how long the condition has been true. It
+links to the issue the finding is about when its subject is an issue in the
+finding's own project - for `train-ready`, the head - and to the project's board
+otherwise. The bug filed from it, if any, is a link of its own. Every open
+finding is counted by the bar's control, which lights for it.
+
+### When the goose stops
+
+The panel also tells you when the goose itself has stopped, since a goose that
+is not sweeping opens and closes nothing, and the list under it can go stale.
+The goose has stopped when the newest run's last sweep is older than three
+intervals, or, if no run is stored, when the server has been up for three
+intervals. The page reading it judges this by its own clock; a sweep never
+writes it, so a sweep that is wedged cannot say it is fine. The first row under
+**Findings** then reads *The goose has stopped. It last ran 12 minutes ago.*, or
+*It has not run since the server started.*, and counts as one thing waiting. It
+is shown to everyone, whatever their scope, because a person who cannot see a
+run can still be hurt by there being none.
+
 ## Reading it from outside
 
 `GET /api/goose/runs` lists runs, newest first, without the per-check detail,
@@ -191,4 +214,6 @@ was seen in every project, so a caller who may see only some projects gets an
 empty list and reads every run as not found; a finding instead follows the
 same scoping as the rest of the board - one naming a project is left out for a
 caller who cannot see it, and one naming none is only in an unbounded caller's
-list. See the [API reference](api-reference).
+list. See the [API reference](api-reference). `GET /api/attention` carries the open
+findings and the goose's own state as well, so the panel needs no second
+request.

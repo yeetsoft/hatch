@@ -2256,6 +2256,32 @@ export interface TrainStalled {
   reason: string | null;
 }
 
+/** One open goose finding: a condition a check watched stand longer than its
+    own bound. Mirrors AttentionFindingDto. */
+export interface AttentionFinding {
+  id: number;
+  check: string;
+  /** The project the finding names, or null where the check names none. */
+  projectKey: string | null;
+  sentence: string;
+  /** When the condition began - the age a row shows counts from here. */
+  beganAt: string;
+  openedAt: string;
+  /** The bug filed from this finding, or null until one is. */
+  bugIssueKey: string | null;
+  /** The issue the finding is about, or null when it is about the project. */
+  issueKey: string | null;
+}
+
+/** The goose's own state. Mirrors AttentionGooseDto. */
+export interface AttentionGoose {
+  /** When the newest run's last sweep ran, or null when no run is stored. */
+  lastSweepAt: string | null;
+  intervalSeconds: number;
+  /** True when the last sweep is older than three intervals, judged by the server's own clock. */
+  stopped: boolean;
+}
+
 /** The merge column's issues the loop is still progressing on its own - about
     to merge, about to update, or waiting on its own next poll. Mirrors
     ApprovedWaitingDto. */
@@ -2382,6 +2408,12 @@ export interface Attention {
   /** The board's resume window in seconds, 0 when the board does not resume a
       stalled issue on its own. Absent from a board that predates it. */
   stallResumeSeconds?: number;
+  /** Every open goose finding the reader may see, longest-standing first. Absent
+      from a board that predates it. */
+  findings?: AttentionFinding[];
+  /** The goose's own state: when it last swept, and whether it has stopped.
+      Absent from a board that predates it. */
+  goose?: AttentionGoose;
 }
 
 /** One runner out of usage, for the top of the attention panel. */
