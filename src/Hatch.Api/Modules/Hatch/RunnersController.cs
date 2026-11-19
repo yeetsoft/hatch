@@ -742,23 +742,32 @@ public class RunnersController(
 
     /// <summary>
     /// This runner's own beat, reinstating any project it had been passed over
-    /// on: the runner answering is proof enough that it is live again, so the
-    /// project it drives is given a fresh window rather than being passed over
-    /// again on the very same call that just reinstated it - HA-2092's
-    /// correction 2.
+    /// on - but only where nobody else is live to take the head. A beat is proof
+    /// the runner is alive, not that it is acting, so while another eligible
+    /// runner could drive the project the pass-over stands until that runner is
+    /// passed over in turn, or the head changes (<see cref="TrainWatch.Observe"/>
+    /// clears it). Where this runner is the only one left, it is given a fresh
+    /// window rather than being passed over again on the very call that just
+    /// reinstated it - HA-2092's correction 2.
     /// </summary>
     private async Task ReinstateAsync(string runner, DateTimeOffset now, CancellationToken ct)
     {
-        var reinstated = await db.Projects.Where(p => p.TrainStalledDriver == runner).ToListAsync(ct);
-        if (reinstated.Count == 0) return;
+        var passedOverOn = await db.Projects.Where(p => p.TrainStalledDriver == runner).ToListAsync(ct);
+        if (passedOverOn.Count == 0) return;
 
-        foreach (var project in reinstated)
+        var eligible = await runners.EligibleNamesAsync(db, keys, now, ct);
+        var changed = false;
+
+        foreach (var project in passedOverOn)
         {
+            if (eligible.TryGetValue(project.Id, out var names) && names.Any(n => n != runner)) continue;
+
             project.TrainStalledDriver = null;
             if (project.TrainWatchedIssueId is not null) project.TrainWatchedSince = now;
+            changed = true;
         }
 
-        await db.SaveChangesAsync(ct);
+        if (changed) await db.SaveChangesAsync(ct);
     }
 
     /// <summary>

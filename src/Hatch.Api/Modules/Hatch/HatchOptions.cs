@@ -91,8 +91,11 @@ public class HatchOptions
     /// How long a merge train's head may be judged continuously
     /// <see cref="WorkKinds.Merge"/> or <see cref="WorkKinds.Update"/> before its
     /// driver is passed over for another live, eligible one - see
-    /// <see cref="TrainWatch.Observe"/>. Named in minutes for the same reason
-    /// <see cref="StallLapseMinutes"/> is.
+    /// <see cref="TrainWatch.Observe"/>. Also how long a pass-over lasts at least:
+    /// the runner passed over is not elected to that head again until the
+    /// runner elected in its place has been passed over in turn, a full window
+    /// later, or until no other runner is live. Named in minutes for the same
+    /// reason <see cref="StallLapseMinutes"/> is.
     /// </summary>
     /// <remarks>
     /// Read through <see cref="Runners.TrainStallSeconds"/> and nowhere else,

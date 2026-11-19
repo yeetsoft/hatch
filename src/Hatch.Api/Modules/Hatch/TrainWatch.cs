@@ -62,6 +62,7 @@ public static class TrainWatch
             // say nothing about this one.
             project.TrainWatchedIssueId = head.IssueId;
             project.TrainWatchedSince = now;
+            project.TrainStalledDriver = null;
             project.TrainStalledDrivers = "[]";
             return false;
         }
@@ -76,6 +77,7 @@ public static class TrainWatch
     {
         project.TrainWatchedIssueId = null;
         project.TrainWatchedSince = null;
+        project.TrainStalledDriver = null;
         project.TrainStalledDrivers = "[]";
     }
 }

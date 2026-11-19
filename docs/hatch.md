@@ -7238,9 +7238,17 @@ and gives the project a fresh window (`Entities.cs:211`, written at
 `RunnersController.cs:612-613`). `Runners.EligibleCandidates` then filters
 out `c.Name != project.TrainStalledDriver` (`Runners.cs:525`), so the next
 election skips that runner on this project only; it stays eligible on every
-other (comment at `:521-524`). The runner's own next heartbeat clears the
-mark, with a fresh window (`ReinstateAsync`, `RunnersController.cs:558-571`,
-called from the beat at `:342`). The mark is only the latest pass-over, so the
+other (comment at `:521-524`). A heartbeat is proof a
+runner is live, not that it is acting, so the runner's own next heartbeat does
+not clear the mark while another eligible runner is live: `ReinstateAsync`
+(`RunnersController.cs`, called from the beat) asks `Runners.EligibleNamesAsync`
+and reinstates, with a fresh window, only when no other name is on the project's
+list. A pass-over therefore lasts until the runner elected in its place has been
+passed over in turn - a full window later - or until no other runner is live, or
+until the head changes or clears (`TrainWatch.Observe` resets the mark with the
+roster). With two eligible runners and neither acting, the head alternates
+between them one full window at a time, and each pass-over writes one event. The
+mark is only the latest pass-over, so the
 beat also adds the runner to `EfHatchProject.TrainStalledDrivers`, a roster of
 every runner passed over on the current head; a reinstatement leaves it, and a
 changed or cleared head empties it. `GET /api/attention` lists the project's
