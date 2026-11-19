@@ -5510,3 +5510,31 @@ public record MeDto(
 /// <c>all</c> does not list every project - <c>GET /api/projects</c> does.
 /// </param>
 public record MeScopeDto(string Mode, IReadOnlyList<int> ProjectIds);
+
+/// <summary>
+/// One row of the goose's record: a run of sweeps that all reached the same
+/// conclusions. <c>GET /api/goose/runs</c> lists these without the per-check
+/// detail; <see cref="GooseRunDetailDto"/> carries it.
+/// </summary>
+/// <param name="Id">The run's id.</param>
+/// <param name="FirstRanAt">When the first sweep of the run started.</param>
+/// <param name="LastRanAt">When the latest sweep folded into the run started.</param>
+/// <param name="Sweeps">How many sweeps the run holds.</param>
+/// <param name="LongestMs">The longest any of them took, in milliseconds.</param>
+public record GooseRunDto(long Id, DateTimeOffset FirstRanAt, DateTimeOffset LastRanAt, int Sweeps, long LongestMs);
+
+/// <summary>
+/// One run with what each check looked at and concluded, in the order the
+/// checks ran. The entries are the latest sweep's: sweeps folded into a run
+/// differ only in what was looked at, never in what was concluded.
+/// </summary>
+public record GooseRunDetailDto(
+    long Id, DateTimeOffset FirstRanAt, DateTimeOffset LastRanAt, int Sweeps, long LongestMs,
+    IReadOnlyList<GooseEntryDto> Entries);
+
+/// <summary>
+/// What one check did in a sweep. <paramref name="Looked"/> and
+/// <paramref name="Concluded"/> are free-form text; <paramref name="Failed"/>
+/// means the check threw, and <paramref name="Error"/> is what it said.
+/// </summary>
+public record GooseEntryDto(string Check, string Looked, string Concluded, bool Failed, string? Error);

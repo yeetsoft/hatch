@@ -1655,6 +1655,18 @@ it never resumes one. `stalled` is empty, not null, when there is none.
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.
 
+### The goose
+
+The server's own sweep of the board, and the record it keeps of each one. See
+[The goose](the-goose) for what a sweep is and how to read a run.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/goose/runs` | Runs newest first by last sweep, as `[{ id, firstRanAt, lastRanAt, sweeps, longestMs }]`, without the per-check detail. `limit` is 1-200 (default 50); a value outside it is clamped. A caller whose scope is not every project reads `[]`. Open to a key |
+| GET | `/goose/runs/{id}` | One run with its detail: the same fields and `entries`, one per check in the order the checks ran, each `{ check, looked, concluded, failed, error }`. `404` for an id that is not there, and for every id when the caller's scope is not every project - a run holds what was seen in all of them. Open to a key |
+
+**Refusals.** `404` as above; nothing else beyond the ordinary ones.
+
 ## Who may call what
 
 A key reaches every route of the board's own API (everything under `/api` except sign-in, `people`, `ui-logs` and the routes that take a **person only**). A key that calls one of those gets a

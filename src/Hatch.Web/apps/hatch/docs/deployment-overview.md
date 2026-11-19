@@ -175,6 +175,8 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Hatch__DoneHorizonHours` | `48` | How long a card sits in a terminal column before the board stops handing it over. |
 | `Hatch__BackupPath` | empty | The folder inside the container the daily `pg_dump` copy is written to; empty means backups are off. |
 | `Hatch__BackupKeepDays` | `14` | How many days of copies are kept; a copy goes only past this age and only while that many newer copies remain; `0` keeps everything. |
+| `Hatch__GooseIntervalSeconds` | `60` | Seconds between the goose's sweeps of the board. Zero or less falls back to `60`. |
+| `Hatch__GooseKeepDays` | `7` | How many days a goose run is kept after its last sweep; `0` keeps everything, and less than that falls back to `7`. |
 | **The database** | | |
 | `ConnectionStrings__Hatch` | `Host=localhost` | Where `hatch`'s own schema lives. Under `DOTNET_ENVIRONMENT=Docker`, which `compose.yaml` sets, the default is `Host=db` instead. |
 | `ConnectionStrings__Quartz` | `Host=localhost` | Where Quartz's tables live - created only by `containers/hatch-db/pginit.sql`. Also `Host=db` under `DOTNET_ENVIRONMENT=Docker`. |

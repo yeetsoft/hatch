@@ -90,6 +90,11 @@ public class ScopeRouteMatrixTests
     /// </summary>
     private static readonly (string Name, string Reason)[] ProjectFree =
     [
+        // A run holds what was seen in every project and carries none of one's
+        // rows: the routes answer empty and not found unless the caller's scope
+        // is everything - pinned in GooseControllerTests.
+        ("GooseController.ListRuns", "a run names no project; a bounded caller is answered empty"),
+        ("GooseController.GetRun", "a run names no project; a bounded caller is answered not found"),
         ("AttachmentsController.DeleteAttachment", Ha2388),
         ("AttachmentsController.GetAttachment", Ha2388),
         ("AttachmentsController.GetAttachments", Ha2388),
