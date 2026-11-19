@@ -10259,11 +10259,26 @@ holding it. The row's own line is therefore only ever what a runner said
 
 **A claim's heartbeat counts as the runner being heard from, too.** A loop
 beats its own row only between tickets, but a session well into a long
-increment can beat its *claim* every minute the whole time — see
-[Claim](#claim). `RunnerDto.LastSeenAt` is the later of the two, so a runner
+increment beats its *claim* the whole time — see [Claim](#claim). The beat is
+sent every `min(lease / 5, gone limit / 3)`: 30 seconds by default, so one
+missed beat leaves the row inside the 90-second limit. The take answers the
+gone limit as `RunnerGoneAfterSeconds` so the loop never has to know the
+setting; an older server answers `0` and the loop beats every 30 seconds.
+`RunnerDto.LastSeenAt` is the later of the two, so a runner
 reads *Working AER-12* for as long as either is fresh, and does not read
 *Gone* out from under a session that is still there and still renewing its
 lease, only quiet on its own row.
+
+**A claim's heartbeat also revives a session the sweep ended.** A read of the
+runner list stamps a session ended once it is past the limit
+(`RunnerSessions.MarkAllGoneAsync`). If the claim is still being renewed, the
+next claim heartbeat puts that session back (`RunnerSessions.ReviveAsync`):
+`EndedAt` is cleared and `LastSeenAt` is set to now. It revives only the key's
+newest ended session at that checkout, only when the key has no live session
+there, and only when the sweep ended it — a session ended more than the gone
+limit after its last sighting. A session the runner ended itself
+(`POST /api/runners/sessions/{id}/end`) is written within a beat of its last
+sighting and is never revived.
 
 **Two horizons, and only one of them is a setting.** A row is *idle* while it is
 being heard from, *gone* once its last heartbeat is older than

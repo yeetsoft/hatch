@@ -277,11 +277,19 @@ public sealed class Claim : IAsyncDisposable
     /// <summary>
     /// How often to say "still here". A fifth of the lease, so four heartbeats
     /// may go missing before the board gives the ticket to somebody else, and
-    /// never less often than every five seconds - a TTL short enough to make
-    /// that a busy loop is a misconfiguration this should not amplify.
+    /// a third of the time the board waits before it reads the runner's row as
+    /// gone, so one beat may fail without the row reaching it. A server that
+    /// does not say that time is taken to mean 30 seconds a beat, the figure
+    /// the default 90 gives. Never less often than every five seconds - a TTL
+    /// short enough to make that a busy loop is a misconfiguration this should
+    /// not amplify.
     /// </summary>
-    public static TimeSpan Interval(int ttlSeconds) =>
-        TimeSpan.FromSeconds(Math.Max(5, ttlSeconds > 0 ? ttlSeconds / 5 : 60));
+    public static TimeSpan Interval(int ttlSeconds, int goneAfterSeconds = 0)
+    {
+        var rowBeat = goneAfterSeconds > 0 ? goneAfterSeconds / 3 : 30;
+        var leaseBeat = ttlSeconds > 0 ? ttlSeconds / 5 : rowBeat;
+        return TimeSpan.FromSeconds(Math.Max(5, Math.Min(leaseBeat, rowBeat)));
+    }
 
     /// <summary>
     /// Take the lease, and start saying so. Answers the claim, or the reason it
@@ -320,7 +328,7 @@ public sealed class Claim : IAsyncDisposable
             return (null, new NotClaimed("the claim came back without a token", Held: false));
 
         var claim = new Claim(
-            client, key, taken.Token, taken.TtlSeconds, interval ?? Interval(taken.TtlSeconds),
+            client, key, taken.Token, taken.TtlSeconds, interval ?? Interval(taken.TtlSeconds, taken.RunnerGoneAfterSeconds),
             stallLapse ?? (taken.StallLapseSeconds > 0 ? TimeSpan.FromSeconds(taken.StallLapseSeconds) : null),
             taken.MaxRunSeconds > 0 ? TimeSpan.FromSeconds(taken.MaxRunSeconds) : null,
             takenAt);

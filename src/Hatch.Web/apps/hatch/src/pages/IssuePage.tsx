@@ -89,7 +89,7 @@ import { describe } from '../lib/events';
 import { message } from '../lib/errors';
 import { agoPhrase } from '../lib/claim';
 import { heldBy } from '../lib/stall';
-import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
+import { claimMessages, messageState, watchEvery, watching } from '../lib/messages';
 import { mayRefresh } from '../lib/refresh';
 import { waitingChild } from '../lib/next';
 import { projectLogoUrl } from '../lib/projectLogo';
@@ -287,27 +287,35 @@ export function IssuePage() {
       .catch(() => {});
   }, []);
 
-  /* While a message to the agent is waiting under a live claim, and only then:
-     the comments and the claim - not the whole eight-read `load` - every five
-     seconds, so a message reads as read without a reload. It is the one thing
-     on this page that polls, for the reason `useRunners` gives for polling at
-     all: the state changes on its own and the person is watching for the
-     change. It stops when nothing is waiting, when the claim ends (`watching`
-     turns false on either), and while the tab is hidden - and a tab that comes
-     back re-reads at once, since its timers were throttled to a stop.
+  /* While a claim is held: the issue, every fifteen seconds, so the heartbeat
+     `claimHealth` judges is the one the board last saw rather than the one the
+     page loaded with - left open, a page would otherwise say "not heard from
+     lately" a half lease after it opened, whatever the runner was doing. While
+     a message to the agent is also waiting, the comments too, every five
+     seconds, so a message reads as read without a reload. This is the one
+     thing on this page that polls, for the reason `useRunners` gives for
+     polling at all: the state changes on its own and the person is watching
+     for the change. It stops when the claim ends (`watchEvery` turns null),
+     and while the tab is hidden - and a tab that comes back re-reads at once,
+     since its timers were throttled to a stop.
 
      A failed read is dropped and the next tick tries again: the page already
-     says what it knows, and an error line every five seconds would say it
+     says what it knows, and an error line every few seconds would say it
      louder than a message that has not been read yet. */
+  const every = watchEvery(comments, issue?.claim ?? null);
   const waiting = watching(comments, issue?.claim ?? null);
   useEffect(() => {
-    if (!waiting) return;
+    if (every === null) return;
 
     const reread = async () => {
       try {
-        const [loadedComments, loadedIssue] = await Promise.all([getComments(key), getIssue(key)]);
-        setComments(loadedComments);
-        setIssue(loadedIssue);
+        if (waiting) {
+          const [loadedComments, loadedIssue] = await Promise.all([getComments(key), getIssue(key)]);
+          setComments(loadedComments);
+          setIssue(loadedIssue);
+        } else {
+          setIssue(await getIssue(key));
+        }
       } catch {
         /* The next tick asks again. */
       }
@@ -316,14 +324,14 @@ export function IssuePage() {
       if (mayRefresh({ visible: document.visibilityState === 'visible', paused: false })) void reread();
     };
 
-    const timer = setInterval(refreshIf, WATCH_MS);
+    const timer = setInterval(refreshIf, every);
     document.addEventListener('visibilitychange', refreshIf);
 
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', refreshIf);
     };
-  }, [key, waiting]);
+  }, [key, every, waiting]);
 
   /* Sends what was typed into the Claim panel to the session holding the claim.
      Answers whether it went, so the box is emptied only when it did. */
