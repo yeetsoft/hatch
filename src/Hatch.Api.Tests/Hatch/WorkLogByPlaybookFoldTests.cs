@@ -15,6 +15,8 @@ public class WorkLogByPlaybookFoldTests
         string? type = "task",
         string? model = "opus",
         string? effort = "high",
+        string? outcome = null,
+        string? reason = null,
         bool isError = false,
         bool described = true,
         int turns = 1,
@@ -26,18 +28,19 @@ public class WorkLogByPlaybookFoldTests
         long? peak = null,
         int? promptChars = null,
         string? reads = null) => new(
-            key, from, to, type, model, effort, isError, described, turns,
+            key, from, to, type, model, effort, outcome, reason, isError, described, turns,
             input, output, cacheCreation, cacheRead, usd, peak, promptChars, reads);
 
     private static WorkLogRollup.ByPlaybookRow Unknown(long input = 0, decimal? usd = 0m) =>
-        Row(key: null, from: null, to: null, type: null, model: null, effort: null, input: input, usd: usd);
+        Row(key: null, from: null, to: null, type: null, model: null, effort: null, outcome: null, reason: null,
+            input: input, usd: usd);
 
     [Fact]
     public void NoRows_FoldToNoGroups() =>
         Assert.Empty(WorkLogRollup.FoldByPlaybook([]));
 
     [Fact]
-    public void SessionsSharingTheSixFields_FoldIntoOneGroup()
+    public void SessionsSharingTheEightFields_FoldIntoOneGroup()
     {
         var rows = WorkLogRollup.FoldByPlaybook([Row(), Row(), Row()]);
 
@@ -45,7 +48,7 @@ public class WorkLogByPlaybookFoldTests
     }
 
     [Fact]
-    public void EachOfTheSixFields_SplitsAGroupOnItsOwn()
+    public void EachOfTheFirstSixFields_SplitsAGroupOnItsOwn()
     {
         var rows = WorkLogRollup.FoldByPlaybook([
             Row(),
@@ -75,6 +78,58 @@ public class WorkLogByPlaybookFoldTests
         Assert.Null(unknown.IssueType);
         Assert.Null(unknown.Model);
         Assert.Null(unknown.Effort);
+        Assert.Null(unknown.Outcome);
+        Assert.Null(unknown.Reason);
+    }
+
+    [Fact]
+    public void TheOutcome_SplitsAGroupOnItsOwn()
+    {
+        var rows = WorkLogRollup.FoldByPlaybook([Row(outcome: "dropped"), Row(outcome: "worked"), Row(outcome: "dropped")]);
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(2, Assert.Single(rows, r => r.Outcome == "dropped").Sessions);
+        Assert.Equal(1, Assert.Single(rows, r => r.Outcome == "worked").Sessions);
+    }
+
+    [Fact]
+    public void TheReason_SplitsAGroupOnItsOwn()
+    {
+        var rows = WorkLogRollup.FoldByPlaybook([
+            Row(outcome: "dropped", reason: "quiet"),
+            Row(outcome: "dropped", reason: "run-time"),
+            Row(outcome: "dropped", reason: "quiet"),
+            Row(outcome: "dropped"),
+        ]);
+
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(2, Assert.Single(rows, r => r.Reason == "quiet").Sessions);
+        Assert.All(rows, r => Assert.Equal("dropped", r.Outcome));
+    }
+
+    [Fact]
+    public void SessionsWithNeitherOutcomeNorReason_FoldTogether()
+    {
+        var row = Assert.Single(WorkLogRollup.FoldByPlaybook([Row(), Row()]));
+
+        Assert.Equal(2, row.Sessions);
+        Assert.Null(row.Outcome);
+        Assert.Null(row.Reason);
+    }
+
+    [Fact]
+    public void TiesBreakOnOutcomeThenReason_LastOfAll()
+    {
+        var rows = WorkLogRollup.FoldByPlaybook([
+            Row(outcome: "worked", reason: "a", input: 100),
+            Row(outcome: "dropped", reason: "b", input: 100),
+            Row(outcome: "dropped", reason: "a", input: 100),
+            Row(outcome: null, reason: null, input: 100),
+        ]);
+
+        Assert.Equal(
+            [(null, null), ("dropped", "a"), ("dropped", "b"), ("worked", "a")],
+            rows.Select(r => (r.Outcome, r.Reason)));
     }
 
     [Fact]

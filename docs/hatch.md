@@ -4187,7 +4187,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`), and the playbook, transition, issue type, model and effort it ran under (`PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`, `IssueType`, `PlaybookModel`, `PlaybookEffort`), and the model dispatch chose, where it ran and a local model's digest (`DispatchModel`, `ModelPlacement` of `local`, `fallback`, `cloud` or null, `ModelDigest`; `/work-log/sessions` rows carry the same three), and whether the increment moved its ticket and why (`Outcome`, `Reason`), stamped by the claim release that named this row's session id and null on a row never stamped; an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
-| `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
+| `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort/outcome/reason combination in a range, heaviest first; `sessions` and `by-playbook` take an optional `outcome` (one of the claim outcomes, or `none`), and both carry `outcome` and `reason` on their rows — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
@@ -4901,9 +4901,9 @@ unpriced count beside its total.
 ### The two reads behind it
 
 ```
-GET /api/work-log/sessions?from=&to=&ancestorKey=&sort=&limit=
+GET /api/work-log/sessions?from=&to=&ancestorKey=&sort=&limit=&outcome=
 GET /api/work-log/history?from=&to=&ancestorKey=&bucket=&offsetMinutes=
-GET /api/work-log/by-playbook?from=&to=&projectId=
+GET /api/work-log/by-playbook?from=&to=&projectId=&outcome=
 ```
 
 The first two are what the page draws; the third is [what each playbook
@@ -4975,15 +4975,22 @@ key, and `POST /api/issues/{key}/work-log` refuses a person outright — see
 ### What each playbook costs
 
 `by-playbook` folds the same rows a third way: not along the hierarchy or a time
-axis, but by what the session ran under. A row is one combination of the six
-fields above - `PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`,
-`IssueType`, `Model`, `Effort` - with its sessions, errors, turns, the four token
-counts and `TotalTokens`.
+axis, but by what the session ran under and how it ended. A row is one
+combination of eight fields - `PlaybookKey`, `PlaybookFromStatusId`,
+`PlaybookToStatusId`, `IssueType`, `Model`, `Effort`, `Outcome`, `Reason` - with
+its sessions, errors, turns, the four token counts and `TotalTokens`.
 
 - **Every older-runner session is one row.** A session written before the six
-  fields existed has all six null, and null is a value to group on like any
-  other: those sessions fold together as a single "unknown" row, with no branch
-  in the fold that treats them specially.
+  playbook fields existed has all six null, and null is a value to group on like
+  any other: those sessions fold together as a single "unknown" row, with no
+  branch in the fold that treats them specially. A session with no outcome or
+  reason groups under null for those two the same way.
+- **`outcome` narrows the read.** `sessions` and `by-playbook` both take an
+  optional `outcome`: one of the claim outcomes, or `none` for sessions with no
+  outcome. Given, it narrows the sessions listed or folded and the totals with
+  them, as `projectId` does; absent, every session is read. A value the route
+  does not know is a `400` naming the accepted ones. It leaves `sessions`'
+  `first`/`last` bounds alone, which describe the log and not the range.
 - **The same window and the same `projectId` as the other reads.** The range is
   the half-open `EndedAt` rule `sessions` and `history` use, and `projectId`
   reads as it does on `GET /api/issues` - an id that matches no project
@@ -5002,8 +5009,8 @@ counts and `TotalTokens`.
   reported one. A median of two values averages them; of three, it takes the
   middle.
 - **Every group comes back, heaviest first.** There is no sort parameter and no
-  limit. Rows are ordered by `TotalTokens` descending, ties broken on the six
-  grouping fields in the order above, so two reads of one window agree on their
+  limit. Rows are ordered by `TotalTokens` descending, ties broken on the eight
+  grouping fields in the order above, `Outcome` and `Reason` last, so two reads of one window agree on their
   order.
 
 ## Reports

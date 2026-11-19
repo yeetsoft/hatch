@@ -180,6 +180,11 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// contributes nothing and is not a refusal. ANDed with
     /// <paramref name="ancestorKey"/> when both are given.
     /// </param>
+    /// <param name="outcome">
+    /// One of <see cref="ClaimOutcomes"/>, or <c>none</c> for sessions with no
+    /// outcome; case-insensitive, and blank is absent. Narrows the rows and the
+    /// totals, ANDed with the other filters. Absent reads every session.
+    /// </param>
     [HttpGet("sessions")]
     public async Task<ActionResult<WorkLogSessionsDto>> GetSessions(
         [FromQuery] string? from,
@@ -188,9 +193,13 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         [FromQuery] string? sort = null,
         [FromQuery] int limit = DefaultSessions,
         [FromQuery] List<int>? projectId = null,
+        [FromQuery] string? outcome = null,
         CancellationToken ct = default)
     {
         if (Range(from, to, out var start, out var end) is { } badRange) return badRange;
+
+        var (outcomeFilter, outcomeRefusal) = Outcome(outcome);
+        if (outcomeRefusal is not null) return outcomeRefusal;
 
         var trimmed = sort?.Trim();
         WorkLogSort ranking;
@@ -230,12 +239,14 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
 
         var projectIds = (projectId ?? []).Distinct().ToList();
 
-        return await WorkLogRollup.SessionsAsync(db, start, end, ancestorId, projectIds, ranking, limit, ct);
+        return await WorkLogRollup.SessionsAsync(
+            db, start, end, ancestorId, projectIds, ranking, limit, outcomeFilter, ct);
     }
 
     /// <summary>
     /// The sessions in a range, folded by the playbook they ran under: one row
-    /// per distinct playbook, transition, issue type, model and effort.
+    /// per distinct playbook, transition, issue type, model, effort, outcome and
+    /// reason.
     /// </summary>
     /// <remarks>
     /// The range is used as given, half-open, as <see cref="GetSessions"/> reads
@@ -252,18 +263,50 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// or empty. An id naming no project contributes nothing and is not a
     /// refusal.
     /// </param>
+    /// <param name="outcome">
+    /// One of <see cref="ClaimOutcomes"/>, or <c>none</c> for sessions with no
+    /// outcome; case-insensitive, and blank is absent. Narrows the sessions
+    /// folded and the totals with them. Absent folds every session.
+    /// </param>
     [HttpGet("by-playbook")]
     public async Task<ActionResult<WorkLogByPlaybookDto>> GetByPlaybook(
         [FromQuery] string? from,
         [FromQuery] string? to,
         [FromQuery] List<int>? projectId = null,
+        [FromQuery] string? outcome = null,
         CancellationToken ct = default)
     {
         if (Range(from, to, out var start, out var end) is { } badRange) return badRange;
 
+        var (outcomeFilter, outcomeRefusal) = Outcome(outcome);
+        if (outcomeRefusal is not null) return outcomeRefusal;
+
         var projectIds = (projectId ?? []).Distinct().ToList();
 
-        return await WorkLogRollup.ByPlaybookAsync(db, start, end, projectIds, ct);
+        return await WorkLogRollup.ByPlaybookAsync(db, start, end, projectIds, outcomeFilter, ct);
+    }
+
+    /// <summary>
+    /// The outcome filter a read asked for: <c>(null, null)</c> is none given,
+    /// <c>(value, null)</c> is the lowercase word to filter on, and
+    /// <c>(null, refusal)</c> is a word the log does not use.
+    /// </summary>
+    /// <remarks>
+    /// A typo is refused rather than answered as if it matched nothing, as an
+    /// unknown <c>ancestorKey</c> is. <c>none</c> is a filter word for sessions
+    /// with no outcome, not an outcome, so it sits beside the filter in the rollup and not in
+    /// <see cref="ClaimOutcomes"/>.
+    /// </remarks>
+    private (string? Value, BadRequestObjectResult? Refusal) Outcome(string? outcome)
+    {
+        var trimmed = outcome?.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return (null, null);
+
+        var lowered = trimmed.ToLowerInvariant();
+        if (lowered == WorkLogRollup.NoOutcome || ClaimOutcomes.IsValid(lowered)) return (lowered, null);
+
+        return (null, BadRequest(
+            $"an outcome is dropped, worked, preempted, recused, unservable, abandoned, unstarted or none - not \"{outcome}\""));
     }
 
     /// <summary>

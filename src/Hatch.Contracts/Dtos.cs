@@ -3656,6 +3656,8 @@ public record WorkLogHistoryDto(
 /// <param name="DispatchModel">The model dispatch chose for the move. Null from a CLI built before this shipped; never guessed by the server.</param>
 /// <param name="ModelPlacement">Where that model ran: <c>local</c>, <c>fallback</c> or <c>cloud</c>. Null from a CLI built before this shipped.</param>
 /// <param name="ModelDigest">The digest of a local model, read before the session started. Null unless the model ran locally.</param>
+/// <param name="Outcome">How the session's claim ended - one of <c>ClaimOutcomes</c>. Null from a runner built before outcomes were recorded.</param>
+/// <param name="Reason">The one-line reason the outcome gave, or null when it gave none.</param>
 public record WorkLogSessionDto(
     long Id,
     string SessionId,
@@ -3680,7 +3682,9 @@ public record WorkLogSessionDto(
     string? Agent,
     string? DispatchModel,
     string? ModelPlacement,
-    string? ModelDigest);
+    string? ModelDigest,
+    string? Outcome,
+    string? Reason);
 
 /// <summary>
 /// The sessions in a range, ranked - and what that whole range cost, whether or
@@ -3722,7 +3726,7 @@ public record WorkLogSessionsDto(
 
 /// <summary>
 /// The sessions in a range, folded by the playbook they ran under: one row per
-/// distinct playbook, transition, issue type, model and effort.
+/// distinct playbook, transition, issue type, model, effort, outcome and reason.
 /// </summary>
 /// <remarks>
 /// <paramref name="From"/> and <paramref name="To"/> are the range as given,
@@ -3741,13 +3745,15 @@ public record WorkLogByPlaybookDto(
     IReadOnlyList<WorkLogReadDto> TopReads);
 
 /// <summary>
-/// One playbook/transition/type/model/effort combination, and what its sessions
-/// cost. A row whose six grouping fields are all null is every session an older
+/// One playbook/transition/type/model/effort/outcome/reason combination, and what
+/// its sessions cost. A row whose eight grouping fields are all null is every session an older
 /// runner wrote, folded together as the unknown group.
 /// </summary>
 /// <param name="PlaybookKey">The stored playbook key: a row's id as text, or <c>"{types}:{shape}"</c> for a file row. Never re-read against the playbook's current prompt.</param>
 /// <param name="FromStatusName">The board's <em>current</em> name for <paramref name="FromStatusId"/>, or null where the id is null or no longer names a column.</param>
 /// <param name="ToStatusName">The board's current name for <paramref name="ToStatusId"/>, read the same way.</param>
+/// <param name="Outcome">How the sessions' claims ended - one of <c>ClaimOutcomes</c>, or null for sessions that recorded none.</param>
+/// <param name="Reason">The reason those sessions gave for the outcome, or null.</param>
 /// <param name="Undescribed">Sessions that never wrote a work-log block.</param>
 /// <param name="CostUsd">Notional USD summed over the priced sessions only; <paramref name="UnpricedSessions"/> counts the rest, so it reads as a floor.</param>
 /// <param name="MedianPeakContextTokens">Over the sessions that reported a peak context only; null when none did.</param>
@@ -3762,6 +3768,8 @@ public record WorkLogByPlaybookRowDto(
     string? IssueType,
     string? Model,
     string? Effort,
+    string? Outcome,
+    string? Reason,
     int Sessions,
     int Errors,
     int Undescribed,
