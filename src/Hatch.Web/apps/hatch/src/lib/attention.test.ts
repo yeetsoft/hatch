@@ -12,6 +12,7 @@ import {
   deadlockedEmptyWords,
   failingBuildEmptyWords,
   groupCollapsed,
+  heldAtProjectLineEmptyWords,
   humanSectionRowCounts,
   landingHeldEmptyWords,
   noCodeHeldEmptyWords,
@@ -38,7 +39,7 @@ import {
   waitingOnARunnerEmptyWords,
   waitingOnARunnerLines,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, BackupAttention, Conflict, ContributionHeld, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, BackupAttention, Conflict, ContributionHeld, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, ProjectLineHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -128,6 +129,15 @@ const waitingOnARunner = (over: Partial<WaitingOnARunner> = {}): WaitingOnARunne
   type: 'story',
   move: 'todo',
   missing: 'no live runner offers fable',
+  ...over,
+});
+
+const heldAtProjectLine = (over: Partial<ProjectLineHeld> = {}): ProjectLineHeld => ({
+  key: 'AER-40',
+  title: 'A story under another project’s epic',
+  type: 'story',
+  projectKey: 'AER',
+  sentence: 'pre-approved on an ancestor in another project, not honoured in AER - its setter has no say there, so a person moves it',
   ...over,
 });
 
@@ -396,6 +406,13 @@ describe('pillCount', () => {
     expect(attentionCount(attention({ backup }))).toBe(1);
   });
 
+  it('counts every held-at-a-project-line row, which lights the control but draws no pill', () => {
+    const rows = [heldAtProjectLine(), heldAtProjectLine({ key: 'AER-41' })];
+    expect(pillCount(attention({ heldAtProjectLine: rows }))).toBe(0);
+    expect(attentionCount(attention({ heldAtProjectLine: rows }))).toBe(2);
+    expect(attentionCount(attention({ reviews: [review()], heldAtProjectLine: [heldAtProjectLine()] }))).toBe(2);
+  });
+
   it('does not count a waiting-on-a-runner row, which lights the control but draws no pill', () => {
     expect(pillCount(attention({ waitingOnARunner: [waitingOnARunner()] }))).toBe(0);
     expect(attentionCount(attention({ waitingOnARunner: [waitingOnARunner()] }))).toBe(1);
@@ -641,6 +658,12 @@ describe('approvedHeldEmptyWords', () => {
 describe('deadlockedEmptyWords', () => {
   it('says nothing is deadlocked', () => {
     expect(deadlockedEmptyWords()).toBe('Nothing is deadlocked.');
+  });
+});
+
+describe('heldAtProjectLineEmptyWords', () => {
+  it('says nothing is waiting on another project’s approver', () => {
+    expect(heldAtProjectLineEmptyWords()).toBe("Nothing is waiting on another project's approver.");
   });
 });
 
@@ -1037,11 +1060,11 @@ describe('groupCollapsed', () => {
 describe('humanSectionRowCounts', () => {
   it('is all zeros, one per section, when there is no attention at all', () => {
     const counts = humanSectionRowCounts(null);
-    expect(counts).toHaveLength(13);
-    expect(counts).toEqual(new Array(13).fill(0));
+    expect(counts).toHaveLength(14);
+    expect(counts).toEqual(new Array(14).fill(0));
   });
 
-  it('pins the order: trunk builds, backup, stalled trains, deadlocked, questions, stalled, reviews, approved-held, landing-held, no-code-held, contributions-held, runner capacity, waiting on a runner', () => {
+  it('pins the order: trunk builds, backup, stalled trains, deadlocked, questions, stalled, reviews, approved-held, landing-held, no-code-held, contributions-held, runner capacity, waiting on a runner, held at a project line', () => {
     expect(
       humanSectionRowCounts(
         attention({
@@ -1058,9 +1081,10 @@ describe('humanSectionRowCounts', () => {
           contributionsHeld: Array(11).fill(contributionHeld()),
           runnerCapacity: Array(12).fill(runnerCapacity()),
           waitingOnARunner: Array(13).fill(waitingOnARunner()),
+          heldAtProjectLine: Array(14).fill(heldAtProjectLine()),
         }),
       ),
-    ).toEqual([2, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    ).toEqual([2, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   });
 
   it('counts backup as one row when present, none when null', () => {

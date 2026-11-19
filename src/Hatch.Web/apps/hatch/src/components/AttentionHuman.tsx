@@ -8,6 +8,7 @@ import {
   buildIconWords,
   contributionsHeldEmptyWords,
   deadlockedEmptyWords,
+  heldAtProjectLineEmptyWords,
   landingHeldEmptyWords,
   noCodeHeldEmptyWords,
   questionEmptyWords,
@@ -162,6 +163,7 @@ export function AttentionHuman({
   const contributionsHeld = attention?.contributionsHeld ?? [];
   const deadlocked = attention?.deadlocked ?? [];
   const waitingOnARunner = attention?.waitingOnARunner ?? [];
+  const heldAtProjectLine = attention?.heldAtProjectLine ?? [];
   const runnerCapacity = attention?.runnerCapacity ?? [];
   const trainStalled = attention?.trainStalled ?? [];
   const stalled = attention?.stalled ?? [];
@@ -513,6 +515,28 @@ export function AttentionHuman({
               <span className="hatch-attention-files">See the Runners page</span>
             </Link>
           </>
+        )}
+      </AttentionSection>
+
+      {/* The press is on the issue, not here: set the level there, or move it.
+          Each row is the whole link, so there is no bottom link. */}
+      <AttentionSection title="Waiting on another project's approver" rows={heldAtProjectLine.length} startOpen={startOpen}>
+        {heldAtProjectLine.length === 0 ? (
+          <p className="hatch-attention-empty">{heldAtProjectLineEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {heldAtProjectLine.map((h) => (
+              <li key={h.key}>
+                <Link className="hatch-attention-row" to={`/issues/${h.key}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{h.key}</span>
+                    <span className="hatch-attention-title">{h.title}</span>
+                  </span>
+                  <span className="hatch-attention-files" title={h.sentence}>{h.sentence}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
       </AttentionSection>
     </>
