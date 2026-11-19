@@ -913,6 +913,149 @@ public class IssueOnePrControllerTests
         }
     }
 
+    // ---- Across a project line ----
+
+    private static string Said(IActionResult? result) =>
+        Assert.IsAssignableFrom<ObjectResult>(result).Value!.ToString()!;
+
+    [Fact]
+    public async Task ATaskCannotBeFiledUnderAOnePrStoryInAnotherProject_UntilOnePrIsOff()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story", onePr: "on");
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+
+        var refused = await h.FileInAsync(ops, "task", "the task", story.Key);
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        var said = Said(refused.Result);
+        Assert.Contains(story.Key, said);
+        Assert.Contains("shares one pull request", said);
+        Assert.Contains("stay in AER", said);
+        Assert.Equal(0, await h.Db.Issues.CountAsync(i => i.ProjectId == ops));
+
+        await h.SetAsync(story.Key, "off");
+
+        var filed = Created(await h.FileInAsync(ops, "task", "the task", story.Key));
+        Assert.Equal(story.Key, filed.ParentKey);
+    }
+
+    [Fact]
+    public async Task ATaskCannotBeFiledUnderAStoryWhoseProjectDefaultIsOn_FromAnotherProject()
+    {
+        var h = await NewAsync(board: true);
+        await h.ProjectDefaultAsync(true);
+        var story = await h.FileAsync("story", "the story");
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+
+        Assert.IsType<BadRequestObjectResult>((await h.FileInAsync(ops, "task", "the task", story.Key)).Result);
+    }
+
+    [Fact]
+    public async Task ABugUnderAOnePrStory_IsItsOwnSharer_SoAnotherProjectMayHoldIt()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story", onePr: "on");
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+
+        var bug = Created(await h.FileInAsync(ops, "bug", "the bug", story.Key));
+
+        Assert.Equal(story.Key, bug.ParentKey);
+    }
+
+    [Fact]
+    public async Task AnIssueRetypedToATask_KeepsToTheOnePrRuleOfTheParentItKeeps()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story", onePr: "on");
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+        var bug = Created(await h.FileInAsync(ops, "bug", "the bug", story.Key));
+
+        var refused = await h.Issues.PatchIssue(
+            bug.Key, new IssuePatchRequest(null, null, "task", null, null, null, null, null, null, null), default);
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Contains("shares one pull request", Said(refused.Result));
+        Assert.Equal("bug", (await h.RowAsync(bug.Key)).Type);
+    }
+
+    [Fact]
+    public async Task OnePrCannotBeTurnedOn_ForAStoryWithATaskInAnotherProject()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story");
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+        var task = Created(await h.FileInAsync(ops, "task", "the task", story.Key));
+
+        var refused = await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("on"), default);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        var said = Said(refused.Result);
+        Assert.Contains("1 task in another project", said);
+        Assert.DoesNotContain(task.Key, said);
+        Assert.Null((await h.RowAsync(story.Key)).OnePullRequest);
+        Assert.Empty(await h.EventsAsync(story.Key));
+
+        Assert.False((await h.SetAsync(story.Key, "off")).OnePr);
+        Assert.False((await h.SetAsync(story.Key, "inherit")).OnePr);
+    }
+
+    [Fact]
+    public async Task OnePrInheritedFromAProjectThatIsOn_IsRefusedToo_ButOffIsNot()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story", onePr: "off");
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+        Created(await h.FileInAsync(ops, "task", "the task", story.Key));
+        await h.ProjectDefaultAsync(true);
+
+        Assert.IsType<ConflictObjectResult>((await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("inherit"), default)).Result);
+        Assert.False((await h.SetAsync(story.Key, "off")).OnePr);
+    }
+
+    [Fact]
+    public async Task AStoryWithATaskInAnotherProject_CannotMoveIntoAProjectWhereOnePrIsOn()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story");
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+        Created(await h.FileInAsync(ops, "task", "the task", story.Key));
+        var lab = await h.ProjectAsync("LAB", OnePullRequestPolicies.Optional, onePr: true);
+
+        var refused = await h.Issues.PatchIssue(story.Key, MoveTo(lab), default);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Contains("1 task in another project", Said(refused.Result));
+        Assert.Equal(h.ProjectId, (await h.RowAsync(story.Key)).ProjectId);
+    }
+
+    [Fact]
+    public async Task AStoryWithATaskInAnotherProject_MovesWhereOnePrIsOff()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story");
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+        Created(await h.FileInAsync(ops, "task", "the task", story.Key));
+        var lab = await h.ProjectAsync("LAB", OnePullRequestPolicies.Optional, onePr: false);
+
+        var moved = Value(await h.Issues.PatchIssue(story.Key, MoveTo(lab), default));
+
+        Assert.Equal("LAB", moved.ProjectKey);
+    }
+
+    [Fact]
+    public async Task AStoryMovedIntoTheProjectOfItsTask_IsNotHeldBackByThatTask()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story");
+        var ops = await h.ProjectAsync("OPS", OnePullRequestPolicies.Optional, onePr: true);
+        Created(await h.FileInAsync(ops, "task", "the task", story.Key));
+
+        var moved = Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops), default));
+
+        Assert.Equal("OPS", moved.ProjectKey);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 10, 16, 12, 0, 0, TimeSpan.Zero);
@@ -976,6 +1119,18 @@ public class IssueOnePrControllerTests
             await Db.SaveChangesAsync();
             return project.Id;
         }
+
+        /// <summary>A second project under the key asked for, with a policy and a default, written straight to the row. Returns its id.</summary>
+        public async Task<int> ProjectAsync(string key, string policy, bool onePr)
+        {
+            var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now, OnePullRequestPolicy = policy, OnePullRequest = onePr };
+            Db.Add(project);
+            await Db.SaveChangesAsync();
+            return project.Id;
+        }
+
+        public async Task<ActionResult<IssueDto>> FileInAsync(int projectId, string type, string title, string? parentKey = null) =>
+            await Issues.CreateIssue(new IssueCreateRequest(projectId, type, title, null, parentKey, null, null), default);
 
         /// <summary>By id, since a move changes the key a test would otherwise look the issue up by.</summary>
         public async Task<EfHatchIssue> RowByIdAsync(long id) =>

@@ -290,8 +290,10 @@ neighbours, never a rank, and `FromStatusId` is a precondition: a card moved
 since is refused rather than relocated.
 
 **Refusals worth naming.** Create and patch 400 on an invalid title, type,
-date or pull-request-URL shape, and on an illegal parent - wrong project, a
-cycle, or a type pairing the issue hierarchy refuses. A move into a protected
+date or pull-request-URL shape, and on an illegal parent - a
+cycle, or a type pairing the issue hierarchy refuses - or a task filed or retyped
+under a story or bug in another project whose tasks share one pull request (the
+sentence names the story). A parent may otherwise stand in another project. A move into a protected
 column 403s unless the caller is a live owner or approver, never a program,
 and into a merges-pull-request column 400s if the issue carries no pull
 request URL. A column change that would overflow the WIP section 409s with a
@@ -385,7 +387,14 @@ value the story already holds is not refused and writes nothing), ahead of the
 next refusal, and 409s once any descendant has
 started - standing in the implementation column or to its right, since a
 task begun on one branch cannot be moved onto the other. A move into an `enforced`
-project (`PATCH` or `POST /issues/bulk` with `projectId`) returns an un-started override to inherit. `runner-tags` 400s
+project (`PATCH` or `POST /issues/bulk` with `projectId`) returns an un-started override to inherit.
+`one-pr` also 409s turning it on, or inherit from a default that is on, for a story or
+bug with a task in another project, and a move 409s the same way when the setting would
+read on in the target over a task in a third project; the sentence carries a count and
+never the other project's task key. `PUT /projects/{id}/landing` 409s turning the one-PR
+default on, and `PUT /projects/{id}/one-pr-policy` 409s enforcing an on default, while
+a story that would read it has such a task, writing nothing. A move carries only the
+descendants reached through links inside the moved issue's own project. `runner-tags` 400s
 a blank tag, one with a space or comma inside, one over 32 characters, or a
 list over 8; `404` for no such key; re-sending the list it already holds
 writes nothing. `dangerous` 400s an absent reason (send `""` to clear) and one

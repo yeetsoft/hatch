@@ -299,7 +299,7 @@ public class IssuesControllerTests
     }
 
     [Fact]
-    public async Task AParentInAnotherProject_IsRefused()
+    public async Task AParentInAnotherProject_IsAccepted()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "ops plan", projectId: h.OtherProjectId);
@@ -307,7 +307,84 @@ public class IssuesControllerTests
         var result = await h.Issues.CreateIssue(
             new IssueCreateRequest(h.ProjectId, "story", "phase 0", null, "OPS-1", null, null), default);
 
-        Assert.Contains("another project", Reason(result.Result));
+        var story = Created(result);
+        Assert.Equal("AER-1", story.Key);
+        Assert.Equal("OPS-1", story.ParentKey);
+        Assert.Equal(["AER-1"], Value(await h.Issues.GetIssue("OPS-1", default)).ChildKeys);
+    }
+
+    [Fact]
+    public async Task AnIssueCanBeParentedAcrossTheLine_ByPatchAndByBulkEdit()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "one");
+        await h.CreateAsync("story", "two");
+        await h.CreateAsync("epic", "ops plan", projectId: h.OtherProjectId);
+
+        var patched = Value(await h.Issues.PatchIssue("AER-1", Patch(parentKey: "OPS-1"), default));
+        var bulk = Value(await h.Issues.BulkEdit(Bulk(["AER-2"], parentKey: "OPS-1"), default));
+
+        Assert.Equal("OPS-1", patched.ParentKey);
+        Assert.Equal(["AER-2"], bulk.Changed);
+        Assert.Equal(["AER-1", "AER-2"], Value(await h.Issues.GetIssue("OPS-1", default)).ChildKeys);
+    }
+
+    [Fact]
+    public async Task AcrossTheLine_TheTypePairing_TheSelfCheckAndTheCycleWalkStillRefuse()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "a chore", projectId: h.OtherProjectId);
+        await h.CreateAsync("epic", "ops plan", parentKey: "AER-1", projectId: h.OtherProjectId);
+
+        var pairing = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "story", "phase 0", null, "OPS-1", null, null), default);
+        Assert.Contains("hangs under", Reason(pairing.Result));
+
+        var self = await h.Issues.PatchIssue("AER-1", Patch(parentKey: "AER-1"), default);
+        Assert.Contains("its own parent", Reason(self.Result));
+
+        var cycle = await h.Issues.PatchIssue("AER-1", Patch(parentKey: "OPS-2"), default);
+        Assert.Contains("already below", Reason(cycle.Result));
+    }
+
+    [Fact]
+    public async Task AnEpicMoved_LeavesAChildInAnotherProjectLinkedWithItsOldKey_AndCarriesTheRest()
+    {
+        var h = await NewAsync();
+        var lab = await h.ThirdProjectAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("story", "same project", parentKey: "AER-1");
+        await h.CreateAsync("story", "other project", parentKey: "AER-1", projectId: lab);
+        await h.CreateAsync("task", "under the other one", parentKey: "LAB-1");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default));
+
+        Assert.Equal("OPS-1", moved.Key);
+        Assert.Equal("OPS-1", Value(await h.Issues.GetIssue("OPS-2", default)).ParentKey);
+
+        var away = Value(await h.Issues.GetIssue("LAB-1", default));
+        Assert.Equal(lab, away.ProjectId);
+        Assert.Equal("OPS-1", away.ParentKey);
+        Assert.Equal("LAB-1", Value(await h.Issues.GetIssue("AER-3", default)).ParentKey);
+        Assert.Empty((await h.EventsAsync("LAB-1")).Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+        Assert.Equal(1, Assert.Single((await h.EventsAsync("OPS-1")).Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged))
+            .Payload!.Value.GetProperty("descendants").GetInt32());
+    }
+
+    [Fact]
+    public async Task AnEpicMovedWithoutDescendants_StillLeavesAChildInAnotherProjectLinked()
+    {
+        var h = await NewAsync();
+        var lab = await h.ThirdProjectAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("story", "same project", parentKey: "AER-1");
+        await h.CreateAsync("story", "other project", parentKey: "AER-1", projectId: lab);
+
+        await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId, moveDescendants: false), default);
+
+        Assert.Null(Value(await h.Issues.GetIssue("AER-2", default)).ParentKey);
+        Assert.Equal("OPS-1", Value(await h.Issues.GetIssue("LAB-1", default)).ParentKey);
     }
 
     [Fact]
@@ -4516,6 +4593,15 @@ public class IssuesControllerTests
             Db.Playbooks.Add(playbook);
             await Db.SaveChangesAsync();
             return playbook.Id;
+        }
+
+        /// <summary>A third project, keyed <c>LAB</c>, for a test that needs a line to cross that neither end of a move is on.</summary>
+        public async Task<int> ThirdProjectAsync()
+        {
+            var lab = new EfHatchProject { Key = "LAB", Name = "Laboratory", CreatedAt = Now };
+            Db.Projects.Add(lab);
+            await Db.SaveChangesAsync();
+            return lab.Id;
         }
 
         public async Task<IssueDto> CreateAsync(

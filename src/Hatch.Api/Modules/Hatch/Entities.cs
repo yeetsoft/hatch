@@ -994,8 +994,9 @@ public class EfHatchIssue
 
     /// <summary>
     /// The epic above this story, or the story above this task. Nullable and
-    /// usually null; validated server-side for existence, same project, legal
-    /// type pairing, and no cycles.
+    /// usually null; validated server-side for existence, legal type
+    /// pairing, and no cycles. It may stand in another project, except that a task
+    /// cannot leave the project of a story or bug that shares one pull request.
     /// </summary>
     public long? ParentId { get; set; }
     public EfHatchIssue? Parent { get; set; }

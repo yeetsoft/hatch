@@ -64,6 +64,29 @@ public static class Rollup
         Descend(ChildIndex(await NodesAsync(db, ct)), rootId);
 
     /// <summary>
+    /// Every issue below this one reached through links that stay inside
+    /// <paramref name="projectId"/>, and not the issue itself. A child in another
+    /// project is not walked into, and nothing under it is either, so a
+    /// same-project grandchild below a cross-project child stays out of the set.
+    /// What a project move carries.
+    /// </summary>
+    public static async Task<List<long>> DescendantIdsInProjectAsync(
+        HatchContext db, long rootId, int projectId, CancellationToken ct)
+    {
+        var rows = await db.Issues.AsNoTracking()
+            .Where(i => i.ProjectId == projectId)
+            .OrderBy(i => i.Rank)
+            .ThenBy(i => i.Id)
+            .Select(i => new { i.Id, i.ParentId })
+            .ToListAsync(ct);
+
+        var children = rows.Where(r => r.ParentId != null).GroupBy(r => r.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.Id).ToList());
+
+        return Descend(children, rootId);
+    }
+
+    /// <summary>
     /// A tree of just the shape, from nodes the caller read itself - enough for
     /// <see cref="Tree.DescendantCount"/> and <see cref="Tree.ChildrenOf"/>, with no
     /// statuses and nothing waiting. For the one reader that must fold every

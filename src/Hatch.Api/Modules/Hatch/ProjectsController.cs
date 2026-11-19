@@ -548,9 +548,23 @@ public class ProjectsController(
             // value it was reading. A story with nothing started still follows.
             if (request.OnePullRequest is { } next && next != project.OnePullRequest)
             {
+                var startedInheriting = await OnePrLock.StartedInheritingAsync(db, id, ct);
+
+                // Turning it on makes every story or bug that reads it share one
+                // pull request, which a task in another project cannot do. A
+                // started one is frozen to the old value below and keeps it, so
+                // it is not asked. Refused before anything is written.
+                if (next)
+                {
+                    var frozen = startedInheriting.Select(s => s.Id).ToHashSet();
+                    var reading = (await InheritingStoryIdsAsync(id, ct)).Where(storyId => !frozen.Contains(storyId)).ToList();
+                    if (await OnePrLock.CrossProjectTaskCountAsync(db, reading, ct) is > 0 and var crossing)
+                        return Conflict(OnePrLock.CrossProjectRefusal($"{project.Key}'s stories and bugs", crossing));
+                }
+
                 var actor = await caller.ActorNameAsync(ct);
                 var now = time.GetUtcNow();
-                foreach (var story in await OnePrLock.StartedInheritingAsync(db, id, ct))
+                foreach (var story in startedInheriting)
                 {
                     story.Events.Add(new EfHatchIssueEvent
                     {
@@ -587,6 +601,16 @@ public class ProjectsController(
         var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
+
+    /// <summary>
+    /// The ids of the project's stories and bugs that carry no setting of their
+    /// own, and so read the project's default.
+    /// </summary>
+    private async Task<List<long>> InheritingStoryIdsAsync(int projectId, CancellationToken ct) =>
+        await db.Issues.AsNoTracking()
+            .Where(i => i.ProjectId == projectId && (i.Type == "story" || i.Type == "bug") && i.OnePullRequest == null)
+            .Select(i => i.Id)
+            .ToListAsync(ct);
 
     /// <summary>
     /// Whether <see cref="EfHatchProject.RepoSourced"/> is on - playbooks read
@@ -1050,8 +1074,21 @@ public class ProjectsController(
             // one cannot move - its work is already on one branch.
             if (request.Policy == OnePullRequestPolicies.Enforced)
             {
+                var returning = await OnePrLock.OverriddenAndUnstartedAsync(db, id, ct);
+
+                // An override handed back to the default reads it from now on, so
+                // when the default is on a task in another project would be left
+                // sharing a pull request it cannot reach. Refused before the
+                // first write.
+                if (project.OnePullRequest)
+                {
+                    var reading = (await InheritingStoryIdsAsync(id, ct)).Concat(returning.Select(s => s.Id)).ToList();
+                    if (await OnePrLock.CrossProjectTaskCountAsync(db, reading, ct) is > 0 and var crossing)
+                        return Conflict(OnePrLock.CrossProjectRefusal($"{project.Key}'s stories and bugs", crossing));
+                }
+
                 OnePrLock.ReturnToInherit(
-                    await OnePrLock.OverriddenAndUnstartedAsync(db, id, ct), actor, now,
+                    returning, actor, now,
                     "the project began enforcing its default with nothing under this story started");
             }
 
