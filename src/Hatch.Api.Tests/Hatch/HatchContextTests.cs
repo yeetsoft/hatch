@@ -251,6 +251,21 @@ public class HatchContextTests
     }
 
     /// <summary>
+    /// A capability has no meaning without its ambition, so deleting the issue
+    /// takes its rows. Pinned as model metadata, as <see cref="DreamThreadEdges_CascadeWithEitherSide"/> is,
+    /// since the in-memory provider's cascade is not Postgres's.
+    /// </summary>
+    [Fact]
+    public void ACapability_CascadesWithItsIssue()
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.Cascade,
+            ForeignKeyOn(db, typeof(EfHatchCapability), nameof(EfHatchCapability.IssueId)).DeleteBehavior);
+    }
+
+    /// <summary>
     /// A remand has no meaning without either issue or dream, so deleting
     /// either takes its row - and neither delete moves or removes the other
     /// side. Pinned as model metadata, as <see cref="DreamThreadEdges_CascadeWithEitherSide"/> is.
