@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Field, ProjectMark } from '@hatch/ui';
 import { assigneeFact, effortFact, modelFact, wipLimitFact } from '../lib/issueFacts';
 import { dangerousFact } from '../lib/dangerous';
+import { inheritedSentences } from '../lib/inherited';
 import { localModelFact } from '../lib/localModel';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { omissionsFact } from '../lib/runnerOmissions';
@@ -24,6 +25,8 @@ import type { Issue, Project } from '../types';
  * above it.
  */
 export function IssueFacts({ issue, project, stopped }: { issue: Issue; project: Project | null; stopped: boolean }) {
+  const { pull } = inheritedSentences(issue, issue.projectKey);
+
   return (
     <div className="hatch-issue-controls">
       <Field label="Type" as="div">
@@ -46,6 +49,7 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
 
       <Field label="Parent" as="div">
         {issue.parentKey ? <Link to={`/issues/${issue.parentKey}`}>{issue.parentKey}</Link> : <span className="text-muted">—</span>}
+        {pull && <span className="text-muted"> · {pull}</span>}
       </Field>
 
       <Field label="Assignee" as="div">

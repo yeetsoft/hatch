@@ -73,6 +73,12 @@ column — the totals count **leaves**, issues with no children of their own,
 so a story standing in review with every task still in To Do reads as To Do,
 because the tasks are the work and not the story's own column.
 
+Where a parent is in progress but its pull is not honoured across a project
+line, the Parent field, the board card's parent row and the peek say so in one
+sentence: "AER-12 is in progress, but its pull is not honoured in OPS". When
+the parent is outside your scope the sentence reads "from an issue outside your
+scope, not honoured in OPS", and names nothing more.
+
 ## Filed from
 
 An issue also records which issue's session filed it, and the issue it was
@@ -151,7 +157,11 @@ inherited live from the nearest ancestor that sets one, so raising an epic's
 level is a single press that reaches every story and task under it that has
 not set its own — read back as, for instance, "expedited (inherited from
 AER-12)". Raising a ticket's level this way is what the house calls
-*expediting* it.
+*expediting* it. A level set on a parent in another project, and stopped at
+the line, reads "expedited on AER-12, not honoured in OPS" beside the pill; one
+from an issue outside your scope reads "expedited from an issue outside your
+scope", with "not honoured" added where it was stopped. Both are said on a
+board card's mark too.
 
 A project has a level too: paused, normal or expedited. An expedited project's
 clear work is picked up before any other project's, whatever level its tickets
@@ -229,7 +239,10 @@ Priority, and the same pill sits in the board's peek. Pressing it opens the
 three levels under the row. Only an owner or approver of the project may set
 or lower `preapproved`, and the band says so on the steps it locks. A
 key-holder sees the word, with where it was inherited from, and nothing to
-press.
+press. A level that was not honoured reads beside the pill, "pre-approved on
+AER-12, not honoured in OPS", and one from an issue outside your scope reads
+"express from an issue outside your scope". The remedy is the same band: an
+approver sets the level on the issue itself.
 
 Inside one project a level reaches every descendant, whoever set it. From a
 parent in another project it reaches a descendant only while the person who set

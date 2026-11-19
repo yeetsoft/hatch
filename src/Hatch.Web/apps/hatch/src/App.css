@@ -6536,6 +6536,17 @@ input.hatch-inline-title-input {
   line-height: 1.6;
 }
 
+/* A level that was set on an ancestor and not honoured here: the mark it would
+   have worn, dimmed and dashed so it reads as absent and not as in effect. No
+   colour of its own - it keeps its level's, a good deal fainter. The beacon
+   animation is expedited's emergency class alone, which this never takes. */
+.hatch-card-expedited.passedover,
+.hatch-card-preapproved.passedover {
+  opacity: 0.55;
+  outline: 1px dashed currentColor;
+  outline-offset: -1px;
+}
+
 /* Local model, beside Pre-approved and drawn the same way: --primary, with
    require one shade stronger than prefer. Absent at none. */
 .hatch-card-localmodel {

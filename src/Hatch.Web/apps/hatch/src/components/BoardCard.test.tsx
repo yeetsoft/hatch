@@ -187,6 +187,69 @@ describe('BoardCard CardFace', () => {
     expect(marks).toContain('hatch-card-preapproved');
   });
 
+  it('draws a muted passed-over mark for a level that was not honoured, titled with the sentence', () => {
+    const html = renderToStaticMarkup(
+      <CardPreview
+        card={card({
+          preApprovalPassedOver: 'OPS-1',
+          preApprovalPassedOverLevel: 'preapproved',
+          priorityPassedOver: 'OPS-1',
+          priorityPassedOverLevel: 'expedited',
+        })}
+        waiting={false}
+        terminal={false}
+        project={project()}
+      />,
+    );
+
+    const marks = between(html, '<div class="hatch-card-marks">');
+    expect(marks).toContain('class="hatch-card-preapproved passedover" title="pre-approved on OPS-1, not honoured in AER"');
+    expect(marks).toContain('class="hatch-card-expedited passedover" title="expedited on OPS-1, not honoured in AER"');
+  });
+
+  it('says outside your scope on a passed-over mark whose ancestor is masked', () => {
+    const html = renderToStaticMarkup(
+      <CardPreview
+        card={card({ priorityPassedOverLevel: 'expedited', fromBeyondScope: ['priorityPassedOver'] })}
+        waiting={false}
+        terminal={false}
+        project={project()}
+      />,
+    );
+
+    expect(html).toContain('title="expedited from an issue outside your scope, not honoured in AER"');
+  });
+
+  it('titles an honoured mark with where it came from, else its fixed text', () => {
+    const inherited = renderToStaticMarkup(
+      <CardPreview
+        card={card({ priority: 'expedited', priorityFrom: 'AER-0' })}
+        waiting={false}
+        terminal={false}
+        project={project()}
+      />,
+    );
+    expect(inherited).toContain('title="expedited on AER-0"');
+
+    const own = renderToStaticMarkup(
+      <CardPreview card={card({ priority: 'expedited' })} waiting={false} terminal={false} project={project()} />,
+    );
+    expect(own).toContain('title="Expedited - this one goes first"');
+  });
+
+  it('titles the parent row with the pull sentence', () => {
+    const html = renderToStaticMarkup(
+      <CardPreview
+        card={card({ parentKey: 'OPS-1', pullPassedOver: 'OPS-1' })}
+        waiting={false}
+        terminal={false}
+        project={null}
+      />,
+    );
+
+    expect(html).toContain('title="OPS-1 is in progress, but its pull is not honoured in AER"');
+  });
+
   it('wears the local-model mark at prefer and require, naming the ancestor, and none at none', () => {
     const draw = (over: Partial<IssueCard>) =>
       between(
