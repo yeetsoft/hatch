@@ -171,6 +171,29 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("Capabilities", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchCapabilityLink", b =>
+                {
+                    b.Property<long>("CapabilityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("CapabilityId", "IssueId");
+
+                    b.HasIndex("IssueId");
+
+                    b.ToTable("CapabilityLinks", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchCapabilityVerdict", b =>
                 {
                     b.Property<long>("Id")
@@ -2723,6 +2746,25 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchCapabilityLink", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchCapability", "Capability")
+                        .WithMany()
+                        .HasForeignKey("CapabilityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Capability");
 
                     b.Navigation("Issue");
                 });

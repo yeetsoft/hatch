@@ -8780,6 +8780,20 @@ button.hatch-option.chosen {
   justify-content: flex-end;
 }
 
+/* The bug filed from a finding, tucked under its row at the far end: a link of
+   its own beside the row's, never inside it. */
+.hatch-attention-bug {
+  margin-top: calc(var(--sp-1-5) * -1);
+  padding: 0 var(--sp-2) var(--sp-1-5);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hatch-attention-bug a {
+  color: var(--primary);
+}
+
 .hatch-attention-row-head {
   display: flex;
   align-items: baseline;

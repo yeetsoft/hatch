@@ -903,6 +903,9 @@ public class IssuesController(
             && await RetypeRefusalAsync(issue, retype, parentKey, parent.Issue, ct) is { } retypeRefusal)
             return (false, retypeRefusal, null, null, [], null);
 
+        if (parentKey is not null && await ReparentServesRefusalAsync(issue, parent.Issue, ct) is { } servesRefusal)
+            return (false, servesRefusal, null, null, [], null);
+
         if (targetProject is not null && await MovedStoryRefusalAsync(movingIds!, issue, targetProject, ct) is { } crossing)
             return (false, null, crossing, null, [], null);
 
@@ -1372,6 +1375,42 @@ public class IssuesController(
                 + $"and {await KeyOfAsync(issue, ct)} hangs under {await KeyOfAsync(parentAfter, ct)}";
 
         return null;
+    }
+
+    /// <summary>
+    /// The refusal for a reparent that would leave an epic serving a capability
+    /// of an ambition it no longer hangs beneath. Judged for the issue and every
+    /// issue below it, since an epic keeps its ambition by way of whatever it
+    /// hangs from: the ambition the new parent leads to (none, when the parent
+    /// is cleared) is the only one a link below may name. Null when nothing
+    /// served is left behind. See <see cref="IssueServesController"/>.
+    /// </summary>
+    /// <param name="parent">The parent the patch names, null when it clears the parent.</param>
+    private async Task<string?> ReparentServesRefusalAsync(EfHatchIssue issue, EfHatchIssue? parent, CancellationToken ct)
+    {
+        var subtree = new List<long> { issue.Id };
+        var frontier = new List<long> { issue.Id };
+        while (frontier.Count > 0)
+        {
+            frontier = await db.Issues.Where(i => i.ParentId != null && frontier.Contains(i.ParentId.Value))
+                .Select(i => i.Id).ToListAsync(ct);
+            frontier = frontier.Except(subtree).ToList();
+            subtree.AddRange(frontier);
+        }
+
+        var links = await db.CapabilityLinks.AsNoTracking()
+            .Where(l => subtree.Contains(l.IssueId))
+            .OrderBy(l => l.Issue!.Project!.Key).ThenBy(l => l.Issue!.Number).ThenBy(l => l.CapabilityId)
+            .Select(l => new { l.IssueId, l.CapabilityId, AmbitionId = l.Capability!.IssueId, l.Capability!.Statement })
+            .ToListAsync(ct);
+        if (links.Count == 0) return null;
+
+        var ambitionId = await IssueServesController.AmbitionAboveAsync(db, parent?.Id, ct);
+        var held = links.FirstOrDefault(l => l.AmbitionId != ambitionId);
+        if (held is null) return null;
+
+        return $"{await KeyOfAsync(held.IssueId, ct)} serves capability {held.CapabilityId} ({held.Statement}) "
+            + $"of {await KeyOfAsync(held.AmbitionId, ct)}, and would no longer hang beneath it";
     }
 
     /// <summary>

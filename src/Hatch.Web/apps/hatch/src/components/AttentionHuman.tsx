@@ -8,6 +8,8 @@ import {
   buildIconWords,
   contributionsHeldEmptyWords,
   deadlockedEmptyWords,
+  findingWords,
+  gooseStoppedWords,
   heldAtProjectLineEmptyWords,
   landingHeldEmptyWords,
   noCodeHeldEmptyWords,
@@ -27,6 +29,7 @@ import {
   waitingOnARunnerEmptyWords,
 } from '../lib/attention';
 import { lastSuccessWords } from '../lib/backup';
+import { scopedPath } from '../lib/scope';
 import { playbookFileWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import { AttentionSection } from './AttentionFold';
@@ -125,13 +128,16 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
 }
 
 /**
- * The Human half of what the loop is waiting on a person for: trunk builds
- * that fail, a backup that needs attention, stalled merge trains, deadlocked
+ * The Human half of what the loop is waiting on a person for: what the goose
+ * found, trunk builds that fail, a backup that needs attention, stalled merge
+ * trains, deadlocked
  * issues, questions to answer, pull requests to review, pull requests
  * approved but not merging, issues landed but not done, issues finished with
  * no code, projects short on runner capacity, issues waiting on a runner -
- * in that order. A failing trunk leads because it blocks every merge; the
- * rest follow in the order somebody would work through them.
+ * in that order. What the goose found leads because it is what the loop has
+ * itself judged wrong, and a goose that has stopped is the first of it; a
+ * failing trunk follows because it blocks every merge, and the rest follow in
+ * the order somebody would work through them.
  *
  * Exported alone, no outer heading and no `.hatch-attention-group` wrapper, so
  * its caller - the bar's `AttentionPanel`, beside the Agent group it draws
@@ -169,9 +175,61 @@ export function AttentionHuman({
   const stalled = attention?.stalled ?? [];
   const stallResumeSeconds = attention?.stallResumeSeconds ?? 0;
   const backup = attention?.backup ?? null;
+  const findings = attention?.findings ?? [];
+  const goose = attention?.goose ?? null;
+  const gooseStopped = goose?.stopped === true;
 
   return (
     <>
+      {/* Drawn like Stalled merge trains: no empty state, so a quiet goose with
+          nothing found leaves nothing here. A stopped goose is the first row,
+          since nothing below it can be trusted to be current. */}
+      {(findings.length > 0 || (goose !== null && gooseStopped)) && (
+        <section className="hatch-attention-section">
+          <h3 className="hatch-attention-heading">Findings</h3>
+
+          <ul className="hatch-attention-rows">
+            {goose !== null && gooseStopped && (
+              <li>
+                <Link className="hatch-attention-row" to="/docs/the-goose">
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">The goose</span>
+                  </span>
+                  <span className="hatch-attention-files" title={gooseStoppedWords(goose, now)}>
+                    {gooseStoppedWords(goose, now)}
+                  </span>
+                </Link>
+              </li>
+            )}
+            {findings.map((f) => (
+              <li key={f.id}>
+                {/* The row is the link to the issue, or the project's board
+                    when the finding is about the project. The bug's own link
+                    sits beside it, never inside it: an anchor never holds an
+                    anchor. */}
+                <Link
+                  className="hatch-attention-row"
+                  to={f.issueKey ? `/issues/${f.issueKey}` : scopedPath('/', f.projectKey ? [f.projectKey] : [])}
+                >
+                  <span className="hatch-attention-row-head">
+                    {(f.issueKey ?? f.projectKey) && <span className="hatch-attention-key">{f.issueKey ?? f.projectKey}</span>}
+                    <span className="hatch-attention-waited">{findingWords(f, now)}</span>
+                  </span>
+                  <span className="hatch-attention-files" title={f.sentence}>
+                    {f.sentence}
+                  </span>
+                </Link>
+                {f.bugIssueKey && (
+                  <span className="hatch-attention-row-actions hatch-attention-bug">
+                    <Link to={`/issues/${f.bugIssueKey}`}>{f.bugIssueKey}</Link>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <AttentionSection title="Trunk builds that fail" rows={trunkBuilds.length} startOpen={startOpen}>
         {trunkBuilds.length === 0 ? (
           <p className="hatch-attention-empty">{trunkBuildEmptyWords()}</p>

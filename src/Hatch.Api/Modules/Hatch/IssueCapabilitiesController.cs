@@ -81,7 +81,7 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
 
-        return CreatedAtAction(nameof(GetCapabilities), new { key }, Map(added, null));
+        return CreatedAtAction(nameof(GetCapabilities), new { key }, Map(added, null, []));
     }
 
     [HttpPatch("{id:long}")]
@@ -101,7 +101,7 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         if (TooLong(statement, howToTell) is { } tooLong) return tooLong;
 
         if (statement == row.Statement && howToTell == row.HowToTell)
-            return Map(row, (await NewestVerdictsAsync([row.Id], ct)).GetValueOrDefault(row.Id));
+            return await MapOneAsync(row, ct);
 
         var now = time.GetUtcNow();
         var actor = await caller.ActorNameAsync(ct);
@@ -124,7 +124,7 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
-        return Map(row, (await NewestVerdictsAsync([row.Id], ct)).GetValueOrDefault(row.Id));
+        return await MapOneAsync(row, ct);
     }
 
     /// <summary>
@@ -312,8 +312,37 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
     private async Task<CapabilityDto[]> ReadAsync(long issueId, CancellationToken ct)
     {
         var rows = await db.Capabilities.AsNoTracking().Where(c => c.IssueId == issueId).OrderBy(c => c.Position).ThenBy(c => c.Id).ToListAsync(ct);
-        var newest = await NewestVerdictsAsync(rows.Select(r => r.Id), ct);
-        return rows.Select(r => Map(r, newest.GetValueOrDefault(r.Id))).ToArray();
+        var ids = rows.Select(r => r.Id).ToList();
+        var newest = await NewestVerdictsAsync(db, ids, ct);
+        var servedBy = await ServedByAsync(ids, ct);
+        return rows.Select(r => Map(r, newest.GetValueOrDefault(r.Id), servedBy.GetValueOrDefault(r.Id, []))).ToArray();
+    }
+
+    private async Task<CapabilityDto> MapOneAsync(EfHatchCapability row, CancellationToken ct)
+    {
+        var newest = await NewestVerdictsAsync(db, [row.Id], ct);
+        var servedBy = await ServedByAsync([row.Id], ct);
+        return Map(row, newest.GetValueOrDefault(row.Id), servedBy.GetValueOrDefault(row.Id, []));
+    }
+
+    /// <summary>
+    /// The keys of the epics linked to each capability id given, in key order -
+    /// one grouped query, as <see cref="IssueProjection"/> reads filed keys.
+    /// </summary>
+    private async Task<Dictionary<long, IReadOnlyList<string>>> ServedByAsync(IEnumerable<long> capabilityIds, CancellationToken ct)
+    {
+        var ids = capabilityIds.ToList();
+        if (ids.Count == 0) return [];
+
+        var rows = await db.CapabilityLinks.AsNoTracking()
+            .Where(l => ids.Contains(l.CapabilityId))
+            .OrderBy(l => l.Issue!.Project!.Key).ThenBy(l => l.Issue!.Number)
+            .Select(l => new { l.CapabilityId, ProjectKey = l.Issue!.Project!.Key, l.Issue!.Number })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => r.CapabilityId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(r => IssueKey.Format(r.ProjectKey, r.Number)).ToList());
     }
 
     /// <summary>
@@ -321,7 +350,7 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
     /// a capability with none is absent. One query for the whole list: a row has
     /// no later row for the same capability.
     /// </summary>
-    private async Task<Dictionary<long, EfHatchCapabilityVerdict>> NewestVerdictsAsync(IEnumerable<long> capabilityIds, CancellationToken ct)
+    internal static async Task<Dictionary<long, EfHatchCapabilityVerdict>> NewestVerdictsAsync(HatchContext db, IEnumerable<long> capabilityIds, CancellationToken ct)
     {
         var ids = capabilityIds.ToList();
         if (ids.Count == 0) return [];
@@ -334,9 +363,9 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         return newest.ToDictionary(v => v.CapabilityId);
     }
 
-    private static CapabilityDto Map(EfHatchCapability c, EfHatchCapabilityVerdict? newest) =>
+    private static CapabilityDto Map(EfHatchCapability c, EfHatchCapabilityVerdict? newest, IReadOnlyList<string> servedBy) =>
         new(c.Id, c.Position, c.Statement, c.HowToTell, c.CreatedBy, c.CreatedAt, c.UpdatedAt,
-            newest?.Verdict ?? EfHatchCapabilityVerdict.NotChecked, newest is null ? null : MapVerdict(newest));
+            newest?.Verdict ?? EfHatchCapabilityVerdict.NotChecked, newest is null ? null : MapVerdict(newest), servedBy);
 
     private static CapabilityVerdictDto MapVerdict(EfHatchCapabilityVerdict v) =>
         new(v.Id, v.CapabilityId, v.Verdict, v.LookedAt, v.Sha, v.Author, v.CreatedAt);

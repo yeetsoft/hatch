@@ -2566,6 +2566,31 @@ public class EfHatchCapability
 }
 
 /// <summary>
+/// One capability served by one epic - see docs/hatch.md, "Capability". The
+/// epic must hang beneath the ambition that owns the capability; the
+/// controller holds that, as it holds the position rule, not a constraint.
+/// </summary>
+/// <remarks>
+/// The same shape as <see cref="EfHatchDreamThread"/>, and for the same
+/// reasons: a composite key in <see cref="HatchContext.OnModelCreating"/>, and
+/// no inverse navigation on either end.
+/// </remarks>
+[Table("CapabilityLinks")]
+public class EfHatchCapabilityLink
+{
+    public required long CapabilityId { get; set; }
+    public EfHatchCapability? Capability { get; set; }
+
+    public required long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Actor { get; set; }
+
+    public required DateTimeOffset At { get; set; }
+}
+
+/// <summary>
 /// A session's verdict on a capability: whether it holds, as of a sha. See
 /// docs/hatch.md, "Capability". Not <see cref="EfHatchVerdict"/>, which is a
 /// check session's pass or fail against a live claim - that word is taken,
@@ -2884,6 +2909,13 @@ public class EfHatchIssueEvent
     /// id sorted ascending.
     /// </summary>
     public const string DreamsWoven = "dreams_woven";
+
+    /// <summary>
+    /// `PUT /issues/{key}/serves` replaced the set of capabilities this epic
+    /// serves. The payload is `{ from, to }`, both sides every capability id
+    /// sorted ascending.
+    /// </summary>
+    public const string ServesChanged = "serves_changed";
 
     /// <summary>
     /// `POST /issues/{key}/capabilities` added a capability to this ambition.

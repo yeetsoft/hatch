@@ -59,6 +59,16 @@ from a check session's pass or fail against a live claim, which the board
 still calls a verdict elsewhere - the word is already taken, so a capability's
 own is never called that on its own.
 
+An epic may serve some of an ambition's capabilities. A person or a session
+links an epic to the capabilities it serves, and only to those of the ambition
+the epic hangs beneath, however many epics and reflections lie between. The
+link reads from both ends: the epic lists what it serves, and each capability
+lists the epics that serve it. A session may change the links in any column.
+An epic cannot be moved out from under an ambition while it still serves one of
+its capabilities; unlink it first. Each change shows on the epic's History as
+"serves changed". Deleting the epic or the capability removes the link and
+nothing else.
+
 ## How a ticket reads
 
 A ticket is read by a person first. These rules say how it should read.

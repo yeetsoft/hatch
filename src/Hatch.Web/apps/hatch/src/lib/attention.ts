@@ -6,7 +6,7 @@
    been waiting are all pure functions of one answer from the server, and every
    one of them is pinned in attention.test.ts. */
 
-import type { Attention, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import type { Attention, AttentionFinding, AttentionGoose, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /** Resting or loud. Named for what it is doing rather than for how it looks, so
     a later change to the loud state's colour is not a rename. `isWaiting` is
@@ -69,6 +69,10 @@ export type AttentionTone = 'rest' | 'asking';
  * project and is not honoured, so nothing dispatches until a person sets the
  * level on the issue or moves it.
  *
+ * `findings` counts every open finding, and a stopped `goose` counts one more:
+ * nothing dispatches at what the goose found, and a goose that has stopped
+ * is a person's to restart, so each is a person's every time.
+ *
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
@@ -83,6 +87,8 @@ export function attentionCount(attention: Attention | null): number {
   return (
     attention.reviews.length +
     attention.questions.length +
+    (attention.findings?.length ?? 0) +
+    (attention.goose?.stopped ? 1 : 0) +
     (attention.trunkBuilds?.length ?? 0) +
     (attention.approvedHeld?.length ?? 0) +
     (attention.landingHeld?.length ?? 0) +
@@ -137,7 +143,11 @@ export function attentionLabel(attention: Attention | null): string {
   const deadlocked = attention.deadlocked?.length ?? 0;
   const stalledCount = attention.stalled?.filter((s) => s.kind === 'person' && !s.held).length ?? 0;
 
+  const findings = attention.findings?.length ?? 0;
+
   const parts: string[] = [];
+  if (findings > 0) parts.push(count(findings, 'finding'));
+  if (attention.goose?.stopped) parts.push('the goose has stopped');
   if (trunkBuilds > 0) parts.push(`${count(trunkBuilds, 'trunk build')} failing`);
   if (attention.backup) parts.push('backup needs attention');
   if (deadlocked > 0) parts.push(`${count(deadlocked, 'issue')} deadlocked`);
@@ -360,6 +370,20 @@ export function trainStalledReasonWords(t: TrainStalled): string | null {
   return line.length > TRAIN_STALLED_REASON_CHARS ? `${line.slice(0, TRAIN_STALLED_REASON_CHARS - 1).trimEnd()}…` : line;
 }
 
+/** How long a finding has been true: `waitedWords` from when its condition began. */
+export const findingWords = (f: AttentionFinding, now: Date): string => waitedWords(f.beganAt, now);
+
+/**
+ * The findings section's first row when the goose has stopped:
+ * `The goose has stopped. It last ran 12 minutes ago.`, or `It has not run
+ * since the server started.` when no sweep is stored.
+ */
+export function gooseStoppedWords(goose: AttentionGoose, now: Date): string {
+  if (goose.lastSweepAt === null) return 'The goose has stopped. It has not run since the server started.';
+  const ago = waitedWords(goose.lastSweepAt, now);
+  return `The goose has stopped. It last ran ${ago === 'just asked' || ago === 'waiting' ? 'a moment ago' : `${ago} ago`}.`;
+}
+
 /** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
 export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';
 
@@ -490,7 +514,7 @@ export function groupCollapsed(sectionRowCounts: number[]): boolean {
 
 /**
  * One row count per Human section, in the panel's own order, for
- * `groupCollapsed` to fold over: trunk builds, backup, stalled merge trains,
+ * `groupCollapsed` to fold over: findings, trunk builds, backup, stalled merge trains,
  * deadlocked, questions, stalled, reviews, approved-held, landing-held,
  * no-code-held, contributions-held, runner capacity, waiting on a runner, waiting on another project's
  * approver.
@@ -500,10 +524,14 @@ export function groupCollapsed(sectionRowCounts: number[]): boolean {
  * `reviewWordsCarryAFact` is true, even with an empty `reviews` list, so a
  * nonempty empty-state sentence keeps that section open the same way a row
  * would.
+ *
+ * `findings` counts a stopped goose as one row, since the section draws it as
+ * the first - a group holding only that must not fold away.
  */
 export function humanSectionRowCounts(attention: Attention | null): number[] {
-  if (attention === null) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  if (attention === null) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   return [
+    (attention.findings ?? []).length + (attention.goose?.stopped ? 1 : 0),
     (attention.trunkBuilds ?? []).length,
     attention.backup ? 1 : 0,
     (attention.trainStalled ?? []).length,
