@@ -5595,3 +5595,25 @@ public record GooseRunDetailDto(
 /// means the check threw, and <paramref name="Error"/> is what it said.
 /// </summary>
 public record GooseEntryDto(string Check, string Looked, string Concluded, bool Failed, string? Error);
+
+/// <summary>One label and value a check reported about a <see cref="GooseFindingDto"/>, in the order the check gave them.</summary>
+public record GooseFindingEvidenceDto(string Label, string Value);
+
+/// <summary>
+/// One row of <c>GET /api/goose/findings</c>: a condition a check watched
+/// stand longer than its own bound - see HA-2496.
+/// </summary>
+/// <param name="Id">The finding's id.</param>
+/// <param name="Check">The check's own name, e.g. <c>train-ready</c>.</param>
+/// <param name="Subject">What the condition is about - a project's key, for <c>train-ready</c>.</param>
+/// <param name="ProjectKey">The project the finding names, or null where the check names none.</param>
+/// <param name="Sentence">A sentence a person can act on.</param>
+/// <param name="Evidence">What the check saw, in the order it gave it.</param>
+/// <param name="BeganAt">When the condition began - never changes once the finding opens.</param>
+/// <param name="OpenedAt">When the condition had stood long enough that this row was written.</param>
+/// <param name="ClosedAt">When a sweep stopped seeing the condition, or null while it is still open.</param>
+/// <param name="BugIssueKey">The bug filed from this finding, or null until one is.</param>
+public record GooseFindingDto(
+    long Id, string Check, string Subject, string? ProjectKey, string Sentence,
+    IReadOnlyList<GooseFindingEvidenceDto> Evidence,
+    DateTimeOffset BeganAt, DateTimeOffset OpenedAt, DateTimeOffset? ClosedAt, string? BugIssueKey);

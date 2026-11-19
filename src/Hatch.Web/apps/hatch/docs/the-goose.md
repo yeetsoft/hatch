@@ -19,8 +19,8 @@ fixed order, one after another.
 A check that fails does not stop the sweep. Its entry says it failed and
 carries the error text, and the checks after it still run.
 
-A fresh install has no checks yet, so a sweep records that it ran and nothing
-more. That is still the proof the watcher is alive.
+A sweep with no checks at all - were every one ever removed - still records
+that it ran and nothing more. That is still the proof the watcher is alive.
 
 Only one sweep runs at a time, even with several servers on one database. A
 sweep that starts while another is running writes nothing. A sweep still
@@ -49,21 +49,57 @@ how fresh the watcher is.
 
 ## Settings
 
-Both are server settings, set in the environment like any other
+All three are server settings, set in the environment like any other
 ([Deployment overview](deployment-overview)):
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `Hatch__GooseIntervalSeconds` | `60` | Seconds between sweeps. Zero or less falls back to `60`. |
 | `Hatch__GooseKeepDays` | `7` | Days a run is kept after its last sweep. `0` keeps everything. Less than that falls back to `7`. |
+| `Hatch__GooseTrainReadyMinutes` | `30` | How long a merge train's head may be judged mergeable before the `train-ready` check below opens a finding. `0` turns the check off; less than that falls back to `30`. |
 
 Each sweep also deletes the runs whose last sweep is older than the keep
 window.
+
+## Findings
+
+Some checks do more than conclude a sentence: they watch for a condition that
+has stood too long, and open a **finding** - a stored row with its own
+sentence and evidence, kept until a sweep stops seeing the condition.
+
+A finding carries which check opened it, what it is about (a project, usually),
+when the condition it reports began, when the finding itself opened (once the
+condition had stood the check's own bound), when it closed, and the bug filed
+from it, if any has been. At most one finding is open at a time for a given
+check and subject. A check that opens one may still refresh its sentence and
+evidence on every later sweep the condition is still true; the two times it
+began and opened never change once set. A closed finding is kept for the same
+`Hatch__GooseKeepDays` window a run is, and only once its bug, if it has one,
+has landed in a terminal column - an open finding is never deleted.
+
+### `train-ready`
+
+Watches every project's merge train for a head - the row the train is acting
+on next - that has been ready to merge, or needed its branch brought current,
+for longer than `Hatch__GooseTrainReadyMinutes`. This is a second clock beside
+the board's own stall watch, which only ever passes the driver over to another
+runner: this one opens a finding a person can read even when there is no other
+runner to hand the head to. The finding's sentence names the project and the
+head, for example *"AER's merge train is standing: AER-12 is ready to merge
+and has not"*; the evidence beside it names the head, the driver (or that none
+is eligible), when the driver last acted in the project's merges column, how
+many pull requests wait behind the head, and how many times a driver has
+already been passed over on it.
 
 ## Reading it from outside
 
 `GET /api/goose/runs` lists runs, newest first, without the per-check detail,
 and takes a `limit`. `GET /api/goose/runs/{id}` answers one run with its
-entries. An API key may call both. A run holds what was seen in every project,
-so a caller who may see only some projects gets an empty list and reads every
-run as not found. See the [API reference](api-reference).
+entries. `GET /api/goose/findings` lists findings, open ones first
+(longest-standing first), then closed ones (newest first); `?open=true`
+narrows it to the open ones. An API key may call all three. A run holds what
+was seen in every project, so a caller who may see only some projects gets an
+empty list and reads every run as not found; a finding instead follows the
+same scoping as the rest of the board - one naming a project is left out for a
+caller who cannot see it, and one naming none is only in an unbounded caller's
+list. See the [API reference](api-reference).
