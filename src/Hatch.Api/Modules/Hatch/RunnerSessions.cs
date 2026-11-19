@@ -65,6 +65,43 @@ public sealed class RunnerSessions(Runners runners)
     }
 
     /// <summary>
+    /// Puts a session the sweep ended back to live, because the claim it was
+    /// working is still being renewed. A sweep stamps <c>EndedAt = now</c> on a
+    /// session last seen before the cutoff, so a session ended more than
+    /// <see cref="Runners.GoneAfterSeconds"/> after its last sighting was ended
+    /// by the sweep; one the runner ended itself is written within a beat of
+    /// its last sighting and stays ended.
+    /// </summary>
+    /// <remarks>
+    /// Only the newest ended session of the key at <paramref name="where"/> is
+    /// a candidate, and only while the key has no live one there - a fresh loop
+    /// that took over owns the checkout. One conditional <c>UPDATE</c>, so two
+    /// beats cannot both revive.
+    /// </remarks>
+    /// <returns>How many sessions this call revived: one, or none.</returns>
+    public async Task<int> ReviveAsync(HatchContext db, Guid apiKeyId, string where, DateTimeOffset now, CancellationToken ct)
+    {
+        var newest = await db.RunnerSessions.AsNoTracking()
+            .Where(s => s.ApiKeyId == apiKeyId && s.Where == where && s.EndedAt != null)
+            .OrderByDescending(s => s.EndedAt).ThenByDescending(s => s.Id)
+            .Select(s => new { s.Id, s.EndedAt, s.LastSeenAt })
+            .FirstOrDefaultAsync(ct);
+
+        if (newest is null || newest.EndedAt!.Value - newest.LastSeenAt <= TimeSpan.FromSeconds(runners.GoneAfterSeconds))
+            return 0;
+
+        var id = newest.Id;
+        var endedAt = newest.EndedAt;
+
+        return await db.RunnerSessions
+            .Where(s => s.Id == id && s.EndedAt == endedAt
+                && !db.RunnerSessions.Any(o => o.ApiKeyId == apiKeyId && o.Where == where && o.EndedAt == null))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.EndedAt, (DateTimeOffset?)null)
+                .SetProperty(x => x.LastSeenAt, now), ct);
+    }
+
+    /// <summary>
     /// Deletes every one of this key's ended sessions past the newest
     /// <see cref="HistoryDepth"/>, oldest first. Called only after a new
     /// session row has been inserted for the key, so the row just written is

@@ -772,7 +772,10 @@ carries it back as `TtlSeconds` alongside `StallLapseSeconds` - the claim's own
 quiet window where its playbook set one, the board's otherwise, `0` when lapsing
 is off for it - so a caller never has to know the setting's name to honor it.
 The take also answers `MaxRunSeconds`, the run cap its playbook set in seconds
-(`0` for none).
+(`0` for none), and `RunnerGoneAfterSeconds`, how long the board waits before a
+runner's row reads gone (`0` from an older server). The holder beats its claim
+every `min(lease / 5, gone limit / 3)`, so one missed beat does not take a
+working runner past the limit.
 The claim object on every read (the board card, the issue, the search) carries
 the same `StallLapseSeconds` beside `TtlSeconds`. A heartbeat renews the
 lease and may replace the playbook it is running under. A take's or heartbeat's
@@ -1093,6 +1096,13 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/backup` | key | The backup folder's truth and the last attempt's: configured, path, keep-days, copies, and the last outcome |
 | POST | `/backup/run` | **person** | Runs one backup attempt, capped at two minutes, and answers the same shape `GET /backup` does |
 | GET | `/me` | key | Who, or what, is calling - a browser or a key or a runner - for the nav strip |
+
+A claim heartbeat under a key touches the key's live session at the claim's
+checkout. If the sweep has already ended that session while the claim was still
+being renewed, the heartbeat revives it: `EndedAt` cleared, `LastSeenAt` now. A
+session the runner ended itself through `POST /runners/sessions/{id}/end` is
+never revived, nor is one while a newer live session stands at the same
+checkout.
 
 A runner is a key. `GET /runners` joins each key to its config - the
 `RunnerConfigs` row, by the key's id - and to its heartbeat row, by name

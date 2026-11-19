@@ -7,6 +7,13 @@ import type { Comment, IssueClaim } from '../types';
     into a black hole, which is the one thing this exists to rule out. */
 export const WATCH_MS = 5 * 1000;
 
+/** How often the page re-reads the issue while a claim is held and no message
+    is waiting. The claim's heartbeat lands every half minute or so; reading at
+    half of that keeps the page's judgement of it - `claimHealth` - on a beat
+    the board has really seen, so a page left open never reads a working runner
+    as quiet. */
+export const CLAIM_WATCH_MS = 15 * 1000;
+
 /** Where a message to the agent stands. `read` means it was put into a
     session's context - nothing can prove the model acted on it. */
 export type MessageState = 'read' | 'waiting' | 'held';
@@ -83,4 +90,15 @@ export function claimMessages(comments: Comment[], claim: IssueClaim | null): Co
  */
 export function watching(comments: Comment[], claim: IssueClaim | null): boolean {
   return claim !== null && comments.some(unread);
+}
+
+/**
+ * How often the page should re-read, or null when it should not. Fast while a
+ * message waits; slower while a claim is merely held, since its heartbeat is
+ * what `claimHealth` judges and a page that read it once would call it quiet
+ * once half the lease had passed.
+ */
+export function watchEvery(comments: Comment[], claim: IssueClaim | null): number | null {
+  if (watching(comments, claim)) return WATCH_MS;
+  return claim !== null ? CLAIM_WATCH_MS : null;
 }

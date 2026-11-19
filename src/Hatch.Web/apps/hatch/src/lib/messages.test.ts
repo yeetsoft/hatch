@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WATCH_MS, claimMessages, messageState, watching } from './messages';
+import { CLAIM_WATCH_MS, WATCH_MS, claimMessages, messageState, watchEvery, watching } from './messages';
 import type { Comment, IssueClaim } from '../types';
 
 const NOW = new Date('2026-09-28T08:00:00Z');
@@ -134,5 +134,25 @@ describe('watching', () => {
 
   it('polls every five seconds', () => {
     expect(WATCH_MS).toBe(5000);
+  });
+});
+
+describe('watchEvery', () => {
+  it('is the fast beat while a message is unread under a claim', () => {
+    expect(watchEvery([comment()], claim())).toBe(WATCH_MS);
+  });
+
+  it('is the claim beat while a claim is held and nothing waits', () => {
+    expect(watchEvery([], claim())).toBe(CLAIM_WATCH_MS);
+    expect(watchEvery([read()], claim())).toBe(CLAIM_WATCH_MS);
+  });
+
+  it('is null with no claim, whatever the messages say', () => {
+    expect(watchEvery([comment()], null)).toBeNull();
+    expect(watchEvery([], null)).toBeNull();
+  });
+
+  it('reads at half a lease at most, so a held claim is never judged on an old beat', () => {
+    expect(CLAIM_WATCH_MS).toBe(15000);
   });
 });
