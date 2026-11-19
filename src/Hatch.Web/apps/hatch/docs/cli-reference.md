@@ -464,6 +464,10 @@ A row's marker says where the pass puts it:
   sentence such as `AER-12 is in project AER - this runner is bound to FIL and
   HA`. Hops are folded too: a runner does not carry a ticket on in a project it
   does not drive.
+- A child whose parent is in another project and in progress, but was started by
+  someone with no say in the child's project (or by nobody), is folded in a sentence
+  such as `OPS-1 is in progress, but the person who started it has no say in AER, so a
+  person moves it`. Inside one project nothing is held this way.
 - A note such as `(express, no session)`, `(parent pulled, no session)`,
   `(epic, no session)`, `(under <epic>, no session)` or `(pre-approved, no
   session)` marks a hop: the loop carries the ticket on itself, with no session,

@@ -1702,7 +1702,11 @@ public class DispatchTests
 
     // ---- A project line: nothing inherited crosses it, and no hop is carried over it ----
 
-    private const string OtherProjectSentence = "its parent is in another project, so nothing pulls it - a person moves it";
+    // The one hold for a parent in progress across a line that may not pull the child (HA-2482).
+    private static string PullSentence(string parentKey, string projectKey = "AER") =>
+        $"{parentKey} is in progress, but the person who started it has no say in {projectKey}, so a person moves it";
+
+    private const string ParentNotStartedSentence = "its parent has not reached the implementation column, so nothing pulls it forward yet";
 
     [Fact]
     public async Task PriorityTree_AParentInAnotherProject_HandsDownNoPreApprovalAndNoPriority()
@@ -2187,12 +2191,14 @@ public class DispatchTests
         var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, story).HopKind);
-        Assert.Equal(OtherProjectSentence, RowFor(scan, story).Blocked);
+        Assert.Equal(
+            $"express on {IssueKey.Format("OTH", epic.Number)}, not honoured in AER - its setter has no say there, so a person moves it",
+            RowFor(scan, story).Blocked);
         Assert.Equal(BlockedKinds.Person, RowFor(scan, story).BlockedKind);
     }
 
     [Fact]
-    public async Task ScanAsync_ARunningEpicInAnotherProject_DoesNotCarryItsStoryUnder()
+    public async Task ScanAsync_ARunningEpicInAnotherProjectWithNoStarter_DoesNotCarryItsStoryUnder()
     {
         var h = await NewAsync();
         var other = await h.AddProjectAsync("OTH");
@@ -2204,11 +2210,12 @@ public class DispatchTests
         var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, story).HopKind);
-        Assert.Equal(OtherProjectSentence, RowFor(scan, story).Blocked);
+        Assert.Equal(PullSentence(IssueKey.Format("OTH", epic.Number)), RowFor(scan, story).Blocked);
+        Assert.Equal(BlockedKinds.Person, RowFor(scan, story).BlockedKind);
     }
 
     [Fact]
-    public async Task ScanAsync_ARunningEpicInAnotherProject_DoesNotCarryASubEpicOrPullAChild()
+    public async Task ScanAsync_ARunningEpicInAnotherProjectWithNoStarter_DoesNotCarryASubEpicOrPullAChild()
     {
         var h = await NewAsync();
         var other = await h.AddProjectAsync("OTH");
@@ -2222,9 +2229,223 @@ public class DispatchTests
         var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, sub).HopKind);
-        Assert.Equal(OtherProjectSentence, RowFor(scan, sub).Blocked);
+        Assert.Equal(PullSentence(IssueKey.Format("OTH", running.Number)), RowFor(scan, sub).Blocked);
         Assert.Null(RowFor(scan, task).HopKind);
-        Assert.Equal(OtherProjectSentence, RowFor(scan, task).Blocked);
+        Assert.Equal(PullSentence(IssueKey.Format("OTH", running.Number)), RowFor(scan, task).Blocked);
+    }
+
+    // ---- A pull crosses a project line on the starter's say (HA-2482) ----
+
+    public enum Hop { Epic, Under, Parent }
+
+    /// <summary>
+    /// A parent running in project OTH, started by <paramref name="starter"/>, and a child in the
+    /// harness's own project AER standing in To Do for <paramref name="hop"/> to carry: a sub-epic with a
+    /// story under it, a story under an express-skipping column, or a task under a pulling one.
+    /// </summary>
+    private static async Task<(EfHatchIssue Parent, EfHatchIssue Child)> RunningAcrossTheLineAsync(
+        Harness h, Hop hop, int other, Guid? starter)
+    {
+        // A task is pulled by a running story: a story under a running epic is analysed, not carried.
+        var parent = await h.FileAsync(hop == Hop.Parent ? "story" : "epic", "running", h.InProgress, projectId: other);
+        parent.StartedBy = starter;
+        await h.Db.SaveChangesAsync();
+
+        switch (hop)
+        {
+            case Hop.Epic:
+                await h.TickWipAsync(h.InProgress, h.Review);
+                var sub = await h.FileAsync("epic", "sub", h.Todo, parentId: parent.Id);
+                await h.FileAsync("story", "under sub", h.Todo, parentId: sub.Id);
+                return (parent, sub);
+            case Hop.Under:
+                await h.TickWipAsync(h.InProgress, h.Review);
+                await h.TickExpressSkipsAsync(h.Todo);
+                return (parent, await h.FileAsync("story", "S", h.Todo, parentId: parent.Id));
+            default:
+                await h.TickParentPullsAsync(h.Todo);
+                return (parent, await h.FileAsync("task", "T", h.Todo, parentId: parent.Id));
+        }
+    }
+
+    private static string KindOf(Hop hop) => hop switch { Hop.Epic => HopKinds.Epic, Hop.Under => HopKinds.Under, _ => HopKinds.Parent };
+
+    /// <summary>One of the ways of having no say in AER, as a starter id - or null where nobody was recorded.</summary>
+    private static async Task<Guid?> StarterAsync(Harness h, Stranger kind, int other, int third)
+    {
+        if (kind == Stranger.Unrecorded) return null;
+
+        var person = kind == Stranger.Deleted ? Guid.NewGuid() : h.Actors.AddPerson("Ada").Id;
+        switch (kind)
+        {
+            case Stranger.RoleOnlyInTheOtherProject:
+                await h.MemberAsync(other, person, ProjectMemberRole.Owner);
+                break;
+            case Stranger.Deleted:
+                await h.MemberAsync(h.ProjectId, person, ProjectMemberRole.Owner);
+                break;
+            case Stranger.ScopeNone:
+                await h.SetScopeAsync(person, PersonScopeMode.None);
+                break;
+            case Stranger.ScopeSomeWithoutTheProject:
+                await h.SetScopeAsync(person, PersonScopeMode.Some, third);
+                break;
+        }
+
+        return person;
+    }
+
+    [Theory]
+    [InlineData(Hop.Epic, Stranger.Deleted)]
+    [InlineData(Hop.Epic, Stranger.ScopeNone)]
+    [InlineData(Hop.Epic, Stranger.Unrecorded)]
+    [InlineData(Hop.Under, Stranger.Deleted)]
+    [InlineData(Hop.Under, Stranger.ScopeSomeWithoutTheProject)]
+    [InlineData(Hop.Under, Stranger.Unrecorded)]
+    [InlineData(Hop.Parent, Stranger.ScopeNone)]
+    [InlineData(Hop.Parent, Stranger.ScopeSomeWithoutTheProject)]
+    [InlineData(Hop.Parent, Stranger.Unrecorded)]
+    [InlineData(Hop.Parent, Stranger.Deleted)]
+    public async Task ScanAsync_AParentAcrossTheLineWhoseStarterHasNoSay_CarriesNothingAndGivesTheSentence(Hop hop, Stranger kind)
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var third = await h.AddProjectAsync("THR");
+        var starter = await StarterAsync(h, kind, other, third);
+        var (parent, child) = await RunningAcrossTheLineAsync(h, hop, other, starter);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+
+        Assert.False(row.Hop);
+        Assert.Null(row.HopKind);
+        Assert.Equal(PullSentence(IssueKey.Format("OTH", parent.Number)), row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+    }
+
+    [Theory]
+    [InlineData(Hop.Epic)]
+    [InlineData(Hop.Under)]
+    [InlineData(Hop.Parent)]
+    public async Task ScanAsync_AParentAcrossTheLineWhoseStarterHasTheProjectInScope_CarriesTheChildAsInsideOneProject(Hop hop)
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        var (_, child) = await RunningAcrossTheLineAsync(h, hop, other, ada.Id);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+
+        Assert.True(row.Hop);
+        Assert.Equal(KindOf(hop), row.HopKind);
+        Assert.Null(row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_APullAcrossTheLine_StopsWhenTheStartersScopeIsTakenAwayAndResumesWhenItIsGivenBack()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        var (parent, child) = await RunningAcrossTheLineAsync(h, Hop.Parent, other, ada.Id);
+
+        async Task<ScanRow> ScanAsync() =>
+            RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+
+        Assert.Equal(HopKinds.Parent, (await ScanAsync()).HopKind);
+
+        await h.SetScopeAsync(ada.Id, PersonScopeMode.None);
+        var withheld = await ScanAsync();
+        Assert.Null(withheld.HopKind);
+        Assert.Equal(PullSentence(IssueKey.Format("OTH", parent.Number)), withheld.Blocked);
+
+        h.Db.PersonScopes.RemoveRange(await h.Db.PersonScopes.ToListAsync());
+        await h.Db.SaveChangesAsync();
+        Assert.Equal(HopKinds.Parent, (await ScanAsync()).HopKind);
+    }
+
+    [Fact]
+    public async Task MayPull_IntoAProtectedColumn_NeedsTheStarterToOwnOrApproveTheChildsProject()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        var bea = h.Actors.AddPerson("Bea");
+        var cal = h.Actors.AddPerson("Cal");
+        await h.MemberAsync(h.ProjectId, bea.Id, ProjectMemberRole.Approver);
+        await h.MemberAsync(h.ProjectId, cal.Id, ProjectMemberRole.Owner);
+        await h.MemberAsync(other, ada.Id, ProjectMemberRole.Owner);
+        var statuses = await h.Db.Statuses.AsNoTracking().ToListAsync();
+        var plain = statuses.First(s => s.Id == h.InProgress);
+        var protectedColumn = new EfHatchStatus { Id = 99, Name = "gated", SortOrder = 35, IsProtected = true };
+
+        var authority = (await h.TreeAsync()).Authority;
+
+        Assert.True(authority.MayPull(ada.Id, h.ProjectId, plain));
+        Assert.False(authority.MayPull(ada.Id, h.ProjectId, protectedColumn));
+        Assert.True(authority.MayPull(bea.Id, h.ProjectId, protectedColumn));
+        Assert.True(authority.MayPull(cal.Id, h.ProjectId, protectedColumn));
+        Assert.False(authority.MayPull(null, h.ProjectId, plain));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AParentAcrossTheLineThatHasNotStarted_FallsThroughToTheOrdinaryHold()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.TickParentPullsAsync(h.Todo);
+        var epic = await h.FileAsync("epic", "waiting", h.Todo, projectId: other);
+        var task = await h.FileAsync("task", "T", h.Todo, parentId: epic.Id);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
+
+        Assert.Null(row.HopKind);
+        Assert.Equal(ParentNotStartedSentence, row.Blocked);
+        Assert.Equal(BlockedKinds.Family, row.BlockedKind);
+    }
+
+    [Theory]
+    [InlineData(Hop.Epic, false)]
+    [InlineData(Hop.Epic, true)]
+    [InlineData(Hop.Under, false)]
+    [InlineData(Hop.Under, true)]
+    [InlineData(Hop.Parent, false)]
+    [InlineData(Hop.Parent, true)]
+    public async Task ScanAsync_InsideOneProject_AParentStartedByNobodyOrByAPersonWithNoRole_PullsAsBefore(Hop hop, bool roleless)
+    {
+        var h = await NewAsync();
+        var starter = roleless ? h.Actors.AddPerson("Ada").Id : (Guid?)null;
+        var (_, child) = await RunningAcrossTheLineAsync(h, hop, h.ProjectId, starter);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+
+        Assert.Equal(KindOf(hop), row.HopKind);
+        Assert.Null(row.Blocked);
+    }
+
+    [Fact]
+    public async Task ToDtosAsync_PullPassedOver_NamesTheParentOfAWithheldChildAndIsNullOtherwise()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var ada = h.Actors.AddPerson("Ada");
+        var (parent, held) = await RunningAcrossTheLineAsync(h, Hop.Parent, other, null);
+        var inside = await h.FileAsync("task", "same project", h.Todo);
+        var honouredParent = await h.FileAsync("epic", "also running", h.InProgress, projectId: other);
+        honouredParent.StartedBy = ada.Id;
+        var honoured = await h.FileAsync("task", "honoured", h.Todo, parentId: honouredParent.Id);
+        var notStarted = await h.FileAsync("epic", "waiting", h.Todo, projectId: other);
+        var early = await h.FileAsync("task", "early", h.Todo, parentId: notStarted.Id);
+        await h.Db.SaveChangesAsync();
+        h.Db.ChangeTracker.Clear();
+
+        var rows = await h.Db.Issues.ToListAsync();
+        var dtos = await IssueProjection.ToDtosAsync(h.Db, h.Actors, rows, TestClaims.With(), Now, default);
+
+        Assert.Equal(IssueKey.Format("OTH", parent.Number), dtos[held.Id].PullPassedOver);
+        Assert.Null(dtos[inside.Id].PullPassedOver);
+        Assert.Null(dtos[honoured.Id].PullPassedOver);
+        Assert.Null(dtos[early.Id].PullPassedOver);
+        Assert.Null(dtos[parent.Id].PullPassedOver);
     }
 
     [Fact]

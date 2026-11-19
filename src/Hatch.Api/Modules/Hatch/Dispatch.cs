@@ -2180,8 +2180,13 @@ public sealed class Dispatch(
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
             repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor).Sentence;
 
-    /// <summary>The hold for an issue whose parent is in another project: no hop crosses that line, so a person moves it.</summary>
-    private const string OtherProjectParent = "its parent is in another project, so nothing pulls it - a person moves it";
+    /// <summary>
+    /// The hold for a child whose parent is in progress in another project but may not pull
+    /// across a project line: the one sentence for every reason, since the
+    /// person reading the queue moves it either way.
+    /// </summary>
+    private static string PullNotHonoured(string parentKey, string projectKey) =>
+        $"{parentKey} is in progress, but the person who started it has no say in {projectKey}, so a person moves it";
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -2301,8 +2306,8 @@ public sealed class Dispatch(
         // that, below, whatever its level, so the sentence would blame the wrong
         // thing there.
         if (!hop && gate.PassedOver(issue.Id).PreApproval is { } passedOver
-            && !(issue.Type is "story" or "bug" or "task" && !Columns.AtOrPastImplementation(statuses, from.Id)
-                 && family.ParentOf(issue.Id) is { OtherProject: true })
+            && !(issue.Type is "story" or "bug" or "task"
+                 && family.ParentOf(issue.Id) is { } pullParent && FamilyGate.PullHeld(pullParent, issue.ProjectId, from, statuses, family.Authority))
             && HopKind(issue, from, to, family, statuses, wip, family.ParentOf(issue.Id), playbook, sendBackStreak,
                 claimed.Claims!.StallResumeLimit, passedOver.Level, verdicts, builds, claimed.Now) is HopKinds.Express or HopKinds.Approve or HopKinds.Close)
             return new Blocking(
@@ -2449,7 +2454,7 @@ public sealed class Dispatch(
             return new Blocking(hasBlock, BlockedKinds.Other);
 
         if (to.Id == implementation?.Id
-            || (from.ParentPulls && family.ParentStartedHere(issue, statuses)))
+            || (from.ParentPulls && family.ParentPulling(issue, to, statuses)))
         {
             if (gate.Unmet(issue.Id) is { Count: > 0 } waitingOn)
                 return Blocking.Waiting(WaitingOn(waitingOn), BlockedKinds.Dependency, waitingOn.Select(e => e.BlockerId).ToList());
@@ -2530,13 +2535,14 @@ public sealed class Dispatch(
         if (issue.Type is "story" or "bug" or "task"
             && issue.ParentId is not null
             && !Columns.AtOrPastImplementation(statuses, from.Id)
-            && family.ParentOf(issue.Id) is { OtherProject: true })
-            return new Blocking(OtherProjectParent, BlockedKinds.Person);
+            && family.ParentOf(issue.Id) is { } heldParent
+            && FamilyGate.PullHeld(heldParent, issue.ProjectId, from, statuses, family.Authority))
+            return new Blocking(PullNotHonoured(heldParent.Key, issue.Project!.Key), BlockedKinds.Person);
 
         if (issue.Type is "story" or "bug" or "task"
             && issue.ParentId is { } holdParentId
             && !Columns.AtOrPastImplementation(statuses, from.Id)
-            && !family.ParentStartedHere(issue, statuses))
+            && !family.ParentPulling(issue, to, statuses))
             return new Blocking("its parent has not reached the implementation column, so nothing pulls it forward yet", BlockedKinds.Family, [holdParentId]);
 
         // The hop answers condition 8 and nothing else: an express issue in a
@@ -2557,8 +2563,9 @@ public sealed class Dispatch(
         {
             var epicParent = family.ParentOf(issue.Id);
 
-            if (epicParent is { OtherProject: true })
-                return new Blocking(OtherProjectParent, BlockedKinds.Person);
+            if (epicParent is { } heldEpicParent
+                && FamilyGate.PullHeld(heldEpicParent, issue.ProjectId, from, statuses, family.Authority))
+                return new Blocking(PullNotHonoured(heldEpicParent.Key, issue.Project!.Key), BlockedKinds.Person);
 
             if (epicParent is not null
                 && (!IssueTypeKinds.RunsChildren(epicParent.Type) || !Columns.AtOrPastImplementation(statuses, epicParent.StatusId)))
@@ -2575,7 +2582,7 @@ public sealed class Dispatch(
         // speak for a sibling on the story's shared branch, still in flight.
         // A childless issue in such a column (e.g. plain Backlog) has nothing
         // to pull, so it falls through unchanged.
-        if (from.ParentPulls && family.ParentStartedHere(issue, statuses)
+        if (from.ParentPulls && family.ParentPulling(issue, to, statuses)
             && family.SharedBranchSiblingId(issue, statuses) is { } sharedId)
             return new Blocking(FamilyGate.SharedBranchHold(family.KeyOf(sharedId)), BlockedKinds.Family, [sharedId]);
 
@@ -2667,15 +2674,15 @@ public sealed class Dispatch(
                 && family.Children(issue.Id).Count > 0
                 && (parent is null
                     ? Columns.AtOrPastImplementation(statuses, to.Id)
-                    : parent is { OtherProject: false } parentEpic && IssueTypeKinds.RunsChildren(parentEpic.Type) && Columns.AtOrPastImplementation(statuses, parentEpic.StatusId)))
+                    : parent is { } parentEpic && family.Honours(issue, parentEpic, to) && IssueTypeKinds.RunsChildren(parentEpic.Type) && Columns.AtOrPastImplementation(statuses, parentEpic.StatusId)))
                 return HopKinds.Epic;
 
             if (issue.Type is "story" or "bug" && from.ExpressSkips
-                && parent is { OtherProject: false } p && IssueTypeKinds.RunsChildren(p.Type) && Columns.AtOrPastImplementation(statuses, p.StatusId))
+                && parent is { } p && family.Honours(issue, p, to) && IssueTypeKinds.RunsChildren(p.Type) && Columns.AtOrPastImplementation(statuses, p.StatusId))
                 return HopKinds.Under;
         }
 
-        if (from.ParentPulls && family.Pulls(issue, statuses) && !PullWithheld(issue, from, parent, family, statuses, implementationPlaybook) && !intoCheck)
+        if (from.ParentPulls && family.Pulls(issue, to, statuses) && !PullWithheld(issue, from, parent, family, statuses, implementationPlaybook) && !intoCheck)
             return HopKinds.Parent;
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak < sendBackStreakLimit)
@@ -3437,6 +3444,9 @@ public sealed class PriorityTree
     // project is honoured only while its setter passes it; see HonoursAcross.
     private readonly SetterAuthority _authority;
 
+    /// <summary>What those people may do - handed to <see cref="FamilyGate"/> for a pull across a project line.</summary>
+    internal SetterAuthority Authority => _authority;
+
     // Each issue's project's level - ProjectPriorities. Kept beside _dangerous
     // rather than widening _rows; an issue with no entry reads as normal.
     private readonly Dictionary<long, string> _projectLevels;
@@ -4096,7 +4106,7 @@ public sealed record UnmetEdge(string BlockerKey, string? HolderKey, long Blocke
 public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
-    public static readonly FamilyGate None = new([], [], [], [], [], [], [], []);
+    public static readonly FamilyGate None = new([], [], [], [], [], [], [], [], SetterAuthority.Nobody);
 
     /// <summary>
     /// The sentence for an issue with nothing filed under it at all - shared
@@ -4107,9 +4117,10 @@ public sealed class FamilyGate
     /// <summary>
     /// One issue's own parent, as <see cref="ParentOf"/> answers it - see HA-113.
     /// <c>OtherProject</c> is true where the parent sits in a different project
-    /// from the child, which is a line no hop crosses. <c>ProjectId</c> and
-    /// <c>StartedBy</c> are trailing and optional so an existing construction
-    /// still compiles; nothing reads either for a decision yet - see HA-2481.
+    /// from the child, which a pull crosses only on the starter's say - see
+    /// <see cref="PullHeld"/>. <c>ProjectId</c> and <c>StartedBy</c> are
+    /// trailing and optional so an existing construction still compiles; the
+    /// pull across a line reads both - see HA-2481 and HA-2482.
     /// </summary>
     public sealed record Parent(string Key, string Type, int StatusId, bool OtherProject = false, int ProjectId = 0, Guid? StartedBy = null);
 
@@ -4121,13 +4132,19 @@ public sealed class FamilyGate
     private readonly Dictionary<long, long> _sharedStory;
     private readonly HashSet<long> _changelogTasks;
     private readonly Dictionary<long, int> _projectById;
+    private readonly SetterAuthority _authority;
+
+    /// <summary>What a parent's starter may do across a project line - see <see cref="PullHeld"/>.</summary>
+    public SetterAuthority Authority => _authority;
 
     private FamilyGate(
         Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById,
         Dictionary<long, (long? ParentId, string Type, string Key, int StatusId, int ProjectId, Guid? StartedBy)> byId, HashSet<long> waiting,
-        Dictionary<long, long> sharedStory, HashSet<long> changelogTasks, Dictionary<long, int> projectById)
+        Dictionary<long, long> sharedStory, HashSet<long> changelogTasks, Dictionary<long, int> projectById,
+        SetterAuthority authority)
     {
         _projectById = projectById;
+        _authority = authority;
         _children = children;
         _open = open;
         _statusById = statusById;
@@ -4183,7 +4200,7 @@ public sealed class FamilyGate
         // its brief is the board's own, so a parent pull carries it unanalysed.
         var changelogTasks = (await db.ChangelogTasks.AsNoTracking().Select(t => t.IssueId).ToListAsync(ct)).ToHashSet();
 
-        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks, projectById);
+        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks, projectById, tree.Authority);
     }
 
     /// <summary>
@@ -4294,14 +4311,44 @@ public sealed class FamilyGate
         !_projectById.TryGetValue(a, out var pa) || !_projectById.TryGetValue(b, out var pb) || pa == pb;
 
     /// <summary>
-    /// <see cref="ParentStarted"/> for this issue's own parent, and only when
-    /// that parent is in the issue's own project: a parent across a project
-    /// line never pulls it.
+    /// Whether a parent across a project line is in progress but may not carry
+    /// its child: the child stands left of the implementation column and the
+    /// parent has started, yet the parent's starter could not have moved the
+    /// child into the column a pull would carry it to - no say in the child's
+    /// project, or nothing to carry it into, or a protected column they do not
+    /// approve for, or nobody recorded as the starter. The one place the answer
+    /// is written, for the queue's hold, its passed-over guard and the card
+    /// alike, so none of them can disagree.
     /// </summary>
-    public bool ParentStartedHere(EfHatchIssue issue, List<EfHatchStatus> statuses) =>
+    public static bool PullHeld(
+        Parent parent, int childProjectId, EfHatchStatus from, List<EfHatchStatus> statuses, SetterAuthority authority) =>
+        parent.OtherProject
+        && !from.IsTerminal && !from.IsDeferred
+        && Columns.AtOrPastImplementation(statuses, parent.StatusId)
+        && !Columns.AtOrPastImplementation(statuses, from.Id)
+        && (Columns.Target(statuses, from) is not { } into || !authority.MayPull(parent.StartedBy, childProjectId, into));
+
+    /// <summary>
+    /// Whether this issue's own parent may carry it into <paramref name="into"/>.
+    /// Inside one project always, with no test of who started the parent; across
+    /// a line only where <paramref name="into"/> is a column and the parent's
+    /// starter may pull into it - see <see cref="SetterAuthority.MayPull"/>.
+    /// </summary>
+    public bool Honours(EfHatchIssue issue, Parent parent, EfHatchStatus? into) =>
+        !parent.OtherProject
+        || (into is not null && _authority.MayPull(parent.StartedBy, issue.ProjectId, into));
+
+    /// <summary>
+    /// <see cref="ParentStarted"/> for this issue's own parent, where that
+    /// parent may carry it into <paramref name="into"/>: a parent in the same
+    /// project always, one across a line on its starter's say - see
+    /// <see cref="Honours"/>.
+    /// </summary>
+    public bool ParentPulling(EfHatchIssue issue, EfHatchStatus? into, List<EfHatchStatus> statuses) =>
         issue.ParentId is { } parentId
-        && SameProject(issue.Id, parentId)
-        && ParentStarted(parentId, statuses);
+        && ParentOf(issue.Id) is { } parent
+        && ParentStarted(parentId, statuses)
+        && Honours(issue, parent, into);
 
     /// <summary>The key of an issue the pass loaded - an id <see cref="SharedBranchSiblingId"/> returned.</summary>
     public string KeyOf(long issueId) => _byId[issueId].Key;
@@ -4350,8 +4397,8 @@ public sealed class FamilyGate
     /// session - see HA-149: its parent has started, and no sibling is in
     /// flight on the story's shared branch.
     /// </summary>
-    public bool Pulls(EfHatchIssue issue, List<EfHatchStatus> statuses) =>
-        ParentStartedHere(issue, statuses)
+    public bool Pulls(EfHatchIssue issue, EfHatchStatus? into, List<EfHatchStatus> statuses) =>
+        ParentPulling(issue, into, statuses)
         && SharedBranchSibling(issue, statuses) is null;
 }
 

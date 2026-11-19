@@ -428,6 +428,9 @@ ticket's project (or none was recorded), or null. Read live, beside `preApproval
 recorded, or one never started) and `startedAt` (null only where it never crossed): written the first time
 a move, a PATCH, a bulk edit or a hop carries the issue rightward across the board's send-back column, and
 overwritten by the next crossing, including back to nobody for a key's.
+`IssueDto` also carries `pullPassedOver`: the key of the issue's parent where that parent is in another
+project and in progress, yet may not pull it - the person who started it (`startedBy`) has no say in this
+ticket's project, or nobody started it - or null. Read live, beside `preApprovalPassedOver`.
 `playbook` 400s an unknown model or effort - the same validation a playbook
 file is held to. `landing` 400s a malformed remote, sha or trunk, and the
 first write for a repository 400s if it omits `trunk`. Every field here
