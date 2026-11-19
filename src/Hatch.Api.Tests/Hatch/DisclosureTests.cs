@@ -87,9 +87,10 @@ public class DisclosureTests
         Assert.Null(d.Key(DisclosedValues.Dangerous, dangerousFrom));
         Assert.Null(d.Key(DisclosedValues.PreApprovalPassedOver, "BBB-1"));
         Assert.Null(d.Key(DisclosedValues.PriorityPassedOver, "BBB-1"));
+        Assert.Null(d.Key(DisclosedValues.PullPassedOver, "BBB-1"));
 
         Assert.Equal(
-            ["priority", "preApproval", "localModel", "onePr", "dangerous", "preApprovalPassedOver", "priorityPassedOver"],
+            ["priority", "preApproval", "localModel", "onePr", "dangerous", "preApprovalPassedOver", "priorityPassedOver", "pullPassedOver"],
             d.FromBeyondScope);
     }
 

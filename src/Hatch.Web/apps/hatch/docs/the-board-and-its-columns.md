@@ -40,6 +40,15 @@ priority tier (see [Rank and ordering](issues#rank-and-ordering) and
 it sits in: an expedited project's cards float above every other project's in
 each column, and a paused project's sink below them.
 
+A card's priority and pre-approval marks say where the level came from and
+whether it is honoured, on hover: "expedited on AER-12", or "pre-approved on
+AER-12, not honoured in OPS" for a level set on a parent in another project
+that stopped at the line. A level that was not honoured reads as none or normal
+on the card itself, so it wears a dim, dashed mark of its own. The parent row
+says the same of a pull: "AER-12 is in progress, but its pull is not honoured
+in OPS". Where the parent is outside your scope the sentence reads "from an
+issue outside your scope" and names nothing more.
+
 ## Who moves work
 
 There are three answers to who moves a ticket out of a column:
@@ -149,6 +158,8 @@ A column whose only cards are folded behind **+ N waiting** keeps its full
 width, since the fold is work one click away. A drag does not widen the narrow
 columns; each is still a full-height drop target. The phone's stacked layout
 is unchanged.
+
+On a touch screen, press and hold a card until it lifts, then drag it to a column. A quick tap opens the issue and a swipe scrolls the board. Hold a lifted card near the top or bottom edge to scroll.
 
 ## Scoping a tab to projects
 
