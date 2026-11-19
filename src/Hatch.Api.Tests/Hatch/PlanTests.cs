@@ -37,6 +37,27 @@ public class PlanTests
     }
 
     [Fact]
+    public async Task AnAmbition_IsARootWithItsEpicsBeneathIt_AndNotInLoose()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "the long view", h.Todo);
+        var epic = await h.FileAsync("epic", "one part of it", h.Todo, parentId: ambition.Id);
+        var story = await h.FileAsync("story", "in the part", h.Todo, parentId: epic.Id);
+        await h.FileAsync("task", "a", h.Todo, parentId: story.Id);
+
+        var plan = Value(await h.Plan.GetPlan(null, default));
+
+        var top = Assert.Single(plan.Epics);
+        Assert.Equal(h.Key(ambition), top.Issue.Key);
+        Assert.Equal("ambition", top.Issue.Type);
+        var nested = Assert.Single(top.Children);
+        Assert.Equal(h.Key(epic), nested.Issue.Key);
+        Assert.Equal(h.Key(ambition), nested.Issue.ParentKey);
+        Assert.Equal(1, top.Rollup.Leaves);
+        Assert.Equal(0, plan.Loose.Leaves);
+    }
+
+    [Fact]
     public async Task AnEpicEntry_CarriesTheIssuesOwnCreatedBy()
     {
         var h = await NewAsync();

@@ -752,7 +752,7 @@ public class ReportsController(
     /// </summary>
     /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
     /// <param name="to">The end of the range; now when absent.</param>
-    /// <param name="type">One of the five issue types, or <c>all</c>; <c>epic</c> when absent.</param>
+    /// <param name="type">One of the issue types, or <c>all</c>; <c>epic</c> when absent.</param>
     /// <param name="sort"><c>activity</c> (default, <c>lastSessionAt</c> descending), <c>tokens</c>, <c>cost</c> (unpriced rows last) or <c>time</c>.</param>
     /// <param name="limit">How many rows to list, 1 to <see cref="MaxConsumptionRows"/>.</param>
     /// <param name="offsetMinutes">Minutes east of UTC, aligning the history's daily buckets to the reader's own midnight.</param>
@@ -844,7 +844,7 @@ public class ReportsController(
     /// </summary>
     /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
     /// <param name="to">The end of the range; now when absent.</param>
-    /// <param name="type">One of the five issue types, or <c>all</c>; <c>epic</c> when absent.</param>
+    /// <param name="type">One of the issue types, or <c>all</c>; <c>epic</c> when absent.</param>
     /// <param name="sort"><c>activity</c> (default, <c>lastSessionAt</c> descending), <c>tokens</c>, <c>cost</c> (unpriced rows last) or <c>time</c>.</param>
     /// <param name="offsetMinutes">Minutes east of UTC, the same bound as the JSON route's - this route folds no history, so it affects nothing here but is still refused out of range.</param>
     /// <param name="statusId">Narrows to issues sitting in any of these columns, repeatable; every column when absent or empty. An id naming no column is a <c>400</c>.</param>

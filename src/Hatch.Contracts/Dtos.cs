@@ -3978,7 +3978,7 @@ public record ChangelogReportEntryDto(
 /// in a window: tokens, notional USD and runner time, folded by
 /// <see cref="ConsumptionReport.Fold"/>.
 /// </summary>
-/// <param name="Type">The type filter as resolved - one of the five issue types, or <c>"all"</c>.</param>
+/// <param name="Type">The type filter as resolved - one of the issue types, or <c>"all"</c>.</param>
 /// <param name="Sort">The sort as resolved - <c>activity</c>, <c>tokens</c>, <c>cost</c> or <c>time</c>.</param>
 /// <param name="Matched">How many issues the filter matched before <paramref name="Limit"/> capped <paramref name="Rows"/> - so a page can say "the first 100 of 240".</param>
 /// <param name="Totals">Every session the filter holds, beneath any matching issue, counted once.</param>

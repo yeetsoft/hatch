@@ -1146,12 +1146,21 @@ The display key `AER-12` is **computed** (`Project.Key + "-" + Number`) and
 never stored, so there is exactly one fact about a key anywhere and no chance of
 two copies disagreeing after a rename.
 
-Types are `epic | reflection | story | task | bug`. Parentage is optional and
+Types are `ambition | epic | reflection | story | task | bug`. Parentage is optional and
 validated server-side: the parent must exist, form no
-cycle, and be a legal type — epic→epic or reflection, reflection→epic,
-story→epic or reflection, task→story, bug, epic or reflection, bug→epic, story
-or reflection. A reflection with children answers [the hop](#the-hop) and [an
-epic's own limit](#an-epics-own-limit) exactly the way an epic does.
+cycle, and be a legal type — ambition→none, epic→epic, reflection or ambition,
+reflection→epic, story→epic or reflection, task→story, bug, epic or reflection,
+bug→epic, story or reflection. An ambition takes no parent, and a request that
+gives one is refused with *an ambition takes no parent*. Retyping is judged on
+three counts and no others: an issue becomes an ambition only while it has no
+parent and every child is an epic, an ambition becomes another type only while
+every child could hang under it, and an epic under an ambition stays an epic;
+each `400` names the first child, lowest number first, that stops it. A
+reflection or an ambition with children answers [the hop](#the-hop) and [an
+epic's own limit](#an-epics-own-limit) exactly the way an epic does: an epic
+under an ambition standing in the implementation column is carried as a
+sub-epic is, and one under an ambition left of it is folded with *its parent
+epic is not running*.
 
 A parent may stand in another project. The one refusal that keeps a line is
 [one pull request](#one-pull-request): a task cannot be filed, moved or
@@ -1678,9 +1687,9 @@ other's load twice.
 
 Written only through `PATCH /api/issues/{key}/wip` with `{ limit }` as a
 string — `""` clears it to no limit, a whole number of one or more
-sets it, anything else is refused with a sentence, and anything but an epic
-or a reflection is refused with a sentence saying only an epic or a
-reflection takes a limit on its children at once — by a person and
+sets it, anything else is refused with a sentence, and anything but an epic,
+a reflection or an ambition is refused with a sentence saying only an epic, a
+reflection or an ambition takes a limit on its children at once — by a person and
 never a key, the same cut as [expedite](#expedite) and
 [express](#pre-approval): see [The one edge that is deliberately
 cut](#the-one-edge-that-is-deliberately-cut). Each change writes
@@ -4240,7 +4249,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
 | `/reports/activity` | GET | One actor's events in a range, as counts by kind, a per-issue rundown and the newest 500 rows. `actor` (required, matched exactly), `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `offsetMinutes`, `gap`, `lead`, `window`, `includeKeys` — also the rate of work as a `series`, the bracketed `sessions` and their `estimate`. Open to a key. `400` for a blank `actor`, an unparseable or inverted bound, an out-of-range `offsetMinutes`, `gap`, `lead` or `window`, or an unknown `projectId` — see [the activity report](#the-activity-report) |
-| `/reports/consumption` | GET | What each issue matching the filter — and everything beneath it — consumed in a window: tokens, notional USD and runner time, plus a time series for a graph. `from`, `to` (default: the 90 days ending now), `type` (one of the five types, or `all`; default `epic`), `sort` (`activity`, `tokens`, `cost` or `time`; default `activity`), `limit` (1-500, default 100, caps the rows only), `offsetMinutes`, `statusId` (repeatable), `projectId` (repeatable). Open to a key. `400`s in order: bound, offset, type, sort, limit, an unknown `statusId` or `projectId` — see [the consumption report](#the-consumption-report) |
+| `/reports/consumption` | GET | What each issue matching the filter — and everything beneath it — consumed in a window: tokens, notional USD and runner time, plus a time series for a graph. `from`, `to` (default: the 90 days ending now), `type` (one of the issue types, or `all`; default `epic`), `sort` (`activity`, `tokens`, `cost` or `time`; default `activity`), `limit` (1-500, default 100, caps the rows only), `offsetMinutes`, `statusId` (repeatable), `projectId` (repeatable). Open to a key. `400`s in order: bound, offset, type, sort, limit, an unknown `statusId` or `projectId` — see [the consumption report](#the-consumption-report) |
 | `/reports/consumption.csv` | GET | The same filter, with no `limit` at all — every matching row as a CSV a spreadsheet opens. Same `from`, `to`, `type`, `sort`, `offsetMinutes`, `statusId`, `projectId`; the same `400`s, in the same order, minus the limit step. Open to a key — see [the consumption report](#the-consumption-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The legacy heartbeat - the CLI no longer calls it, and beats `POST /runners/sessions` instead, named by its key alone; this route stays for old CLIs. Says what this process is, answers with what it has been asked to do. The name is a character off the cast list, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
@@ -5571,8 +5580,8 @@ this route's own, not the page's.
 
 `from` and `to` are the other reports' own bounds — instants, the 90 days
 ending now by default, the same `400`s for an unparseable or inverted range.
-`type` is one of the five issue types, or `all`; absent or blank is `epic`,
-and anything else is a `400` naming the five and `all`. `sort` is `activity`
+`type` is one of the issue types, or `all`; absent or blank is `epic`,
+and anything else is a `400` naming them and `all`. `sort` is `activity`
 (default, `lastSessionAt` descending), `tokens`, `cost` or `time`, each
 descending; anything else is a `400` naming the four. `limit` is 1 to 500,
 default 100, caps the rows alone, and outside that range is a `400`.

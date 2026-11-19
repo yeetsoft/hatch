@@ -82,6 +82,18 @@ public class OvernightTests
     }
 
     [Fact]
+    public void AnAmbition_SortsBeforeEveryOtherType()
+    {
+        var epic = Landing(1, Base + TimeSpan.FromMinutes(20), "epic");
+        var task = Landing(2, Base + TimeSpan.FromMinutes(10), "task");
+        var ambition = Landing(3, Base, "ambition");
+
+        var result = Overnight.NewestNight([epic, task, ambition]);
+
+        Assert.Equal(["ambition", "epic", "task"], result.Rows.Select(r => r.Type));
+    }
+
+    [Fact]
     public void OneOfEachTypeIncludingAReflection_ComesBackEpicReflectionBugStoryTask()
     {
         var task = Landing(1, Base + TimeSpan.FromMinutes(40), "task");

@@ -887,6 +887,10 @@ public class IssuesController(
                 return (false, sharedKept, null, null, [], null);
         }
 
+        if (edit.Type is { } retype && retype != issue.Type
+            && await RetypeRefusalAsync(issue, retype, parentKey, parent.Issue, ct) is { } retypeRefusal)
+            return (false, retypeRefusal, null, null, [], null);
+
         if (targetProject is not null && await MovedStoryRefusalAsync(movingIds!, issue, targetProject, ct) is { } crossing)
             return (false, null, crossing, null, [], null);
 
@@ -1282,6 +1286,9 @@ public class IssuesController(
 
         if (parent.Id == selfId) return (null, "an issue cannot be its own parent");
 
+        if (EfHatchIssue.LegalParentTypes.TryGetValue(type, out var parents) && parents.Length == 0)
+            return (null, $"{Article(type)} {type} takes no parent");
+
         if (EfHatchIssue.LegalParentTypes.TryGetValue(type, out var legal) && !legal.Contains(parent.Type))
             return (null,
                 $"{Article(type)} {type} hangs under {string.Join(" or ", legal.Select(t => $"{Article(t)} {t}"))}, "
@@ -1305,6 +1312,45 @@ public class IssuesController(
         }
 
         return (parent, null);
+    }
+
+    /// <summary>
+    /// The refusal for a retype that would leave the hierarchy with a link the
+    /// type table does not allow, and that no parent check has looked at: an
+    /// issue becoming an ambition while it has a parent or a child that is not
+    /// an epic, an ambition becoming a type its epics cannot hang under, and an
+    /// issue under an ambition becoming a type that cannot. Other retypes are
+    /// left to the person making them. Null when none of these applies.
+    /// </summary>
+    /// <param name="parentKey">The patch's own <c>parentKey</c>: null keeps the parent, empty clears it, else <paramref name="named"/> is the one it is given.</param>
+    private async Task<string?> RetypeRefusalAsync(
+        EfHatchIssue issue, string newType, string? parentKey, EfHatchIssue? named, CancellationToken ct)
+    {
+        EfHatchIssue? parentAfter = parentKey is null
+            ? issue.ParentId is { } keptId ? await db.Issues.Include(i => i.Project).FirstOrDefaultAsync(i => i.Id == keptId, ct) : null
+            : named;
+
+        if (newType == "ambition" && parentAfter is not null)
+            return $"an ambition takes no parent, and {await KeyOfAsync(parentAfter, ct)} is above {await KeyOfAsync(issue, ct)}";
+
+        if (newType == "ambition" || issue.Type == "ambition")
+        {
+            var children = await db.Issues.Include(i => i.Project)
+                .Where(i => i.ParentId == issue.Id).OrderBy(i => i.Number).ToListAsync(ct);
+            foreach (var child in children)
+            {
+                if (EfHatchIssue.LegalParentTypes.TryGetValue(child.Type, out var legal) && legal.Contains(newType)) continue;
+                return $"{await KeyOfAsync(child, ct)} is {Article(child.Type)} {child.Type}, "
+                    + $"which cannot hang under {Article(newType)} {newType}";
+            }
+        }
+
+        if (parentAfter?.Type == "ambition"
+            && EfHatchIssue.LegalParentTypes.TryGetValue(newType, out var parentLegal) && !parentLegal.Contains("ambition"))
+            return $"{Article(newType)} {newType} cannot hang under {Article(parentAfter.Type)} {parentAfter.Type}, "
+                + $"and {await KeyOfAsync(issue, ct)} hangs under {await KeyOfAsync(parentAfter, ct)}";
+
+        return null;
     }
 
     /// <summary>

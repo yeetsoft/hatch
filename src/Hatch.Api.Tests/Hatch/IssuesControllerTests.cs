@@ -1023,6 +1023,152 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task AnAmbition_IsFiledWithNoParent_AndTakesOnlyEpics()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "the long view");
+        await h.CreateAsync("epic", "a plan");
+
+        var withParent = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "ambition", "under a plan", null, "AER-2", null, null), default);
+        Assert.Contains("an ambition takes no parent", Reason(withParent.Result));
+
+        var epicUnder = await h.CreateAsync("epic", "a plan under it", parentKey: "AER-1");
+        Assert.Equal("AER-1", epicUnder.ParentKey);
+
+        foreach (var type in new[] { "story", "task", "bug" })
+        {
+            var under = await h.Issues.CreateIssue(
+                new IssueCreateRequest(h.ProjectId, type, "under the ambition", null, "AER-1", null, null), default);
+            Assert.Contains($"a {type} hangs under", Reason(under.Result));
+        }
+    }
+
+    [Fact]
+    public async Task AnAmbition_PatchedUnderAParent_IsRefused()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "the long view");
+        await h.CreateAsync("epic", "a plan");
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(parentKey: "AER-2"), default);
+
+        Assert.Contains("an ambition takes no parent", Reason(result.Result));
+    }
+
+    [Fact]
+    public async Task AnEpicOfEpics_RetypesToAnAmbition_WithOneEventAndItsDescriptionUntouched()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("epic", "a part", parentKey: "AER-1");
+        await h.CreateAsync("epic", "another part", parentKey: "AER-1");
+        await h.Issues.PatchIssue("AER-1", Patch(description: "the brief"), default);
+        var before = (await h.EventsAsync("AER-1")).Count;
+
+        var retyped = Value(await h.Issues.PatchIssue("AER-1", Patch(type: "ambition"), default));
+
+        Assert.Equal("ambition", retyped.Type);
+        Assert.Equal("the brief", retyped.Description);
+        var events = await h.EventsAsync("AER-1");
+        Assert.Single(events, e => e.Kind == EfHatchIssueEvent.Retyped);
+        Assert.Equal(before + 1, events.Count);
+    }
+
+    [Fact]
+    public async Task AnEpicWithNoChildren_RetypesToAnAmbition()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+
+        Assert.Equal("ambition", Value(await h.Issues.PatchIssue("AER-1", Patch(type: "ambition"), default)).Type);
+    }
+
+    [Fact]
+    public async Task AnEpic_WithAStoryChild_IsRefusedAsAnAmbition_NamingTheFirstOffender()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("epic", "a part", parentKey: "AER-1");
+        await h.CreateAsync("story", "a story", parentKey: "AER-1");
+        await h.CreateAsync("task", "a task", parentKey: "AER-1");
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(type: "ambition"), default);
+
+        var reason = Reason(result.Result);
+        Assert.Contains("AER-3 is a story", reason);
+        Assert.DoesNotContain("AER-4", reason);
+        Assert.Equal("epic", Value(await h.Issues.GetIssue("AER-1", default)).Type);
+    }
+
+    [Fact]
+    public async Task AnEpic_WithAParent_IsRefusedAsAnAmbition()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("epic", "a part", parentKey: "AER-1");
+
+        var result = await h.Issues.PatchIssue("AER-2", Patch(type: "ambition"), default);
+
+        Assert.Contains("an ambition takes no parent", Reason(result.Result));
+    }
+
+    [Fact]
+    public async Task AnEpic_CanBeRetypedToAnAmbition_WhileItsParentIsCleared()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("epic", "a part", parentKey: "AER-1");
+
+        var result = Value(await h.Issues.PatchIssue("AER-2", Patch(type: "ambition", parentKey: ""), default));
+
+        Assert.Equal("ambition", result.Type);
+        Assert.Null(result.ParentKey);
+    }
+
+    [Theory]
+    [InlineData("story")]
+    [InlineData("task")]
+    [InlineData("bug")]
+    public async Task AnAmbition_WithEpicChildren_IsRefusedAsATypeTheyCannotHangUnder(string type)
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "the long view");
+        await h.CreateAsync("epic", "a plan", parentKey: "AER-1");
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(type: type), default);
+
+        Assert.Contains("AER-2 is an epic", Reason(result.Result));
+    }
+
+    [Fact]
+    public async Task AnAmbition_WithEpicChildren_RetypesToAnEpic()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "the long view");
+        await h.CreateAsync("epic", "a plan", parentKey: "AER-1");
+
+        Assert.Equal("epic", Value(await h.Issues.PatchIssue("AER-1", Patch(type: "epic"), default)).Type);
+    }
+
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    [InlineData("task")]
+    [InlineData("reflection")]
+    public async Task AnEpic_UnderAnAmbition_IsRefusedAsAnyOtherType(string type)
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "the long view");
+        await h.CreateAsync("epic", "a plan", parentKey: "AER-1");
+
+        var result = await h.Issues.PatchIssue("AER-2", Patch(type: type), default);
+
+        Assert.Contains("cannot hang under an ambition", Reason(result.Result));
+        Assert.Equal("epic", Value(await h.Issues.GetIssue("AER-2", default)).Type);
+    }
+
+    [Fact]
     public async Task AnEventsPayload_SaysWhatItChangedFromAndTo()
     {
         var h = await NewAsync();
@@ -3095,8 +3241,8 @@ public class IssuesControllerTests
     [Theory]
     [InlineData("", "story", "needs a title")]
     [InlineData("   ", "story", "needs a title")]
-    [InlineData("fine", "chore", "one of epic")]
-    [InlineData("fine", "", "one of epic")]
+    [InlineData("fine", "chore", "one of ambition, epic")]
+    [InlineData("fine", "", "one of ambition, epic")]
     public async Task AMalformedIssue_IsRefusedWithAReason(string title, string type, string expected)
     {
         var h = await NewAsync();
