@@ -270,9 +270,11 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// navigation, then the given path under the SPA's own address.
     /// <paramref name="beforeNavigate"/> runs once the context exists and before
     /// the first request, so a case's routes are in place for it.
+    /// <paramref name="deviceScaleFactor"/> draws at that many device pixels to a
+    /// CSS one, for a screenshot of something a few pixels across.
     /// </summary>
     public async Task OpenAsync(
-        Deadline deadline, string baseUrl, string path, Func<IBrowserContext, Task>? beforeNavigate = null, bool reducedMotion = false)
+        Deadline deadline, string baseUrl, string path, Func<IBrowserContext, Task>? beforeNavigate = null, bool reducedMotion = false, float? deviceScaleFactor = null)
     {
         await deadline.BoundAsync("opening the page", async () =>
         {
@@ -281,6 +283,7 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
                 : new BrowserNewContextOptions(playwright!.Devices[profile.Device]) { BaseURL = baseUrl };
 
             if (reducedMotion) options.ReducedMotion = ReducedMotion.Reduce;
+            if (deviceScaleFactor is { } scale) options.DeviceScaleFactor = scale;
 
             context = await browser!.NewContextAsync(options);
             await context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true });

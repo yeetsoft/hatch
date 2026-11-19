@@ -161,7 +161,15 @@ AER-12)". Raising a ticket's level this way is what the house calls
 the line, reads "expedited on AER-12, not honoured in OPS" beside the pill; one
 from an issue outside your scope reads "expedited from an issue outside your
 scope", with "not honoured" added where it was stopped. Both are said on a
-board card's mark too.
+board card too, in the tile's hover text or on a dashed mark.
+
+On a board card the level reads off the type's tile and the card's left edge.
+Emergency is a flame behind the tile and an amber stripe; expedited is a
+smaller ember and a blue stripe; economy is a faded tile and a grey stripe;
+low is a `↓` in the row beneath and a grey stripe; paused is a `⏸` there and
+a faded card. Red on a card means a bug and nothing else, so emergency is
+amber, not red. Hovering the tile gives the type, then what its priority and
+pre-approval say, in words.
 
 A project has a level too: paused, normal or expedited. An expedited project's
 clear work is picked up before any other project's, whatever level its tickets
@@ -233,6 +241,11 @@ session, as long as it has no [unanswered question](questions-and-decisions).
 current, or once every child is done, the board carries it on by itself,
 with nobody reading the diff first — a move [the lifecycle of a
 ticket](the-lifecycle-of-a-ticket) calls the hop.
+
+On a board card the level reads off the type's tile: express is one line
+behind it, and pre-approved is three lines behind it and a tile that leans
+forward. A card that is both pre-approved and emergency streams its flame back
+off the leaning tile.
 
 The level is a pill in the issue page's status band, beside Status and
 Priority, and the same pill sits in the board's peek. Pressing it opens the

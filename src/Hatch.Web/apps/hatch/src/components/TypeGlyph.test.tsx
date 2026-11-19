@@ -276,3 +276,23 @@ describe('TypeTile marks', () => {
     expect(everything).not.toMatch(/rgb|hsl/i);
   });
 });
+
+describe('TypeGlyph, given a card\'s levels', () => {
+  it('hands priority and pre-approval to the tile, and names itself from the title it is given', () => {
+    const html = renderToStaticMarkup(
+      <TypeGlyph type="bug" priority="emergency" preApproval="preapproved" title="bug; a sentence" />,
+    );
+
+    expect(html).toContain('title="bug; a sentence" aria-label="bug; a sentence"');
+    expect(html).toContain('fill:var(--heat)');
+    expect(html).toContain('hatch-type-tile-trail');
+  });
+
+  it('draws the bare tile when given neither', () => {
+    const html = renderToStaticMarkup(<TypeGlyph type="bug" />);
+
+    expect(html).toContain('title="bug" aria-label="bug"');
+    expect(html).not.toContain('var(--heat)');
+    expect(html).not.toContain('hatch-type-tile-trail');
+  });
+});

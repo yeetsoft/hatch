@@ -5,6 +5,7 @@ import { DndContext } from '@dnd-kit/core';
 import { SortableContext } from '@dnd-kit/sortable';
 import { MemoryRouter } from 'react-router-dom';
 import { BoardCard, CardPreview, lineClick } from './BoardCard';
+import { TRAILS, STREAMING } from '../lib/tileMarks';
 import { countWords, needsMe, stripLabel } from '../lib/storiesOnEpics';
 import type { ContributionRecord, IssueCard, Project, Status } from '../types';
 
@@ -159,7 +160,6 @@ describe('BoardCard CardFace', () => {
     expect(head).toContain('hatch-project-mark');
     expect(head).toContain('hatch-card-key');
     expect(head).not.toContain('hatch-card-expedited');
-    expect(head).not.toContain('hatch-card-express');
     expect(head).not.toContain('hatch-card-dangerous');
     expect(head).not.toContain('hatch-card-preapproved');
     expect(head).not.toContain('hatch-card-claim');
@@ -177,14 +177,111 @@ describe('BoardCard CardFace', () => {
     expect(html).not.toContain('>bug<');
   });
 
-  it('wears the pre-approved mark when pre-approved', () => {
-    const preapproved = card({ preApproval: 'preapproved', express: true });
-    const html = renderToStaticMarkup(
-      <CardPreview card={preapproved} waiting={false} terminal={false} project={project()} />,
-    );
+  const face = (over: Partial<IssueCard>) =>
+    renderToStaticMarkup(<CardPreview card={card(over)} waiting={false} terminal={false} project={project()} />);
+  const glyphOf = (html: string) => {
+    const start = html.indexOf('<span class="hatch-type-glyph');
+    expect(start).toBeGreaterThanOrEqual(0);
+    return html.slice(start, html.indexOf('</span>', start));
+  };
+  const trailLines = (html: string) => (glyphOf(html).match(/hatch-type-tile-trail/g) ?? []).length;
 
+  it.each([
+    ['emergency', 'task; Emergency - the highest priority, first above everything expedited'],
+    ['expedited', 'task; Expedited - this one goes first'],
+    ['economy', 'task; Economy - worked only with usage that would otherwise go spare'],
+  ] as const)('titles the tile with its type, then the %s sentence', (priority, title) => {
+    expect(face({ priority })).toContain(`title="${title}" aria-label="${title}"`);
+  });
+
+  it('titles the tile with the express and the pre-approved sentences, one at a time', () => {
+    const express = 'Express - carried past a column marked Express skips, with no session';
+    const preapproved =
+      'Pre-approved - the approve press given in advance: carried into the merge column, or closed, with no session';
+    expect(face({ preApproval: 'express', express: true })).toContain(`title="task; ${express}"`);
+    // Pre-approved carries the express flag too, and says its own sentence alone.
+    const both = face({ preApproval: 'preapproved', express: true });
+    expect(both).toContain(`title="task; ${preapproved}"`);
+    expect(both).not.toContain('Express - carried');
+    expect(face({ priority: 'emergency', preApproval: 'preapproved', express: true })).toContain(
+      `title="task; Emergency - the highest priority, first above everything expedited; ${preapproved}"`,
+    );
+  });
+
+  it('titles a bare tile with the type word alone, whatever low and paused say on the row', () => {
+    for (const over of [{}, { priority: 'low' as const }, { priority: 'paused' as const }]) {
+      expect(face(over)).toContain('title="task" aria-label="task"');
+    }
+  });
+
+  it('draws the tile as the flame and the trail say, by level', () => {
+    expect(glyphOf(face({ priority: 'emergency' }))).toContain('fill:var(--heat)');
+    expect(glyphOf(face({ priority: 'expedited' }))).toContain('fill:var(--heat)');
+    expect(glyphOf(face({ priority: 'economy' }))).not.toContain('fill:var(--heat)');
+    expect(glyphOf(face({ priority: 'economy' }))).toContain('opacity="0.4"');
+    expect(glyphOf(face({}))).not.toContain('fill:var(--heat)');
+    // The trail reads the level, never the express flag.
+    expect(trailLines(face({ preApproval: 'none', express: true }))).toBe(0);
+    expect(glyphOf(face({ preApproval: 'express' }))).toContain(`d="${TRAILS.express.lines}"`);
+    expect(glyphOf(face({ preApproval: 'preapproved' }))).toContain(`d="${TRAILS.preapproved.lines}"`);
+    expect(glyphOf(face({ preApproval: 'preapproved' }))).toContain('hatch-type-tile-lean');
+    expect(glyphOf(face({ priority: 'emergency', preApproval: 'preapproved' }))).toContain(
+      `d="${STREAMING.lines}"`,
+    );
+  });
+
+  it('draws the same tile on the board card as on the drag preview', () => {
+    const dragged = card({ priority: 'emergency', preApproval: 'preapproved' });
+    const sortable = renderSortable(<BoardCard card={dragged} />, [dragged.key]);
+    expect(glyphOf(sortable)).toBe(glyphOf(face({ priority: 'emergency', preApproval: 'preapproved' })));
+  });
+
+  it('no longer draws the emergency, expedited, economy, express or pre-approved marks', () => {
+    for (const over of [
+      { priority: 'emergency' as const },
+      { priority: 'expedited' as const },
+      { priority: 'economy' as const },
+      { preApproval: 'express' as const, express: true },
+      { preApproval: 'preapproved' as const, express: true },
+    ]) {
+      const html = face(over);
+      for (const glyph of ['🚨', '↑', '🌙', '»', '✓']) expect(html, glyph).not.toContain(glyph);
+      expect(html).not.toContain('hatch-card-marks');
+      expect(html).not.toContain('hatch-card-preapproved');
+      expect(html).not.toContain('hatch-card-expedited');
+    }
+  });
+
+  it('keeps ↓ for low and ⏸ for paused, and on a normal card in a paused project', () => {
+    expect(between(face({ priority: 'low' }), '<div class="hatch-card-marks">')).toContain('↓');
+    expect(between(face({ priority: 'paused' }), '<div class="hatch-card-marks">')).toContain('⏸');
+    expect(between(face({ projectPriority: 'paused' }), '<div class="hatch-card-marks">')).toContain('⏸');
+  });
+
+  it('keeps the other marks beside a tile that draws its level', () => {
+    const html = face({ priority: 'emergency', preApproval: 'preapproved', express: true, dangerous: 'x' });
     const marks = between(html, '<div class="hatch-card-marks">');
-    expect(marks).toContain('hatch-card-preapproved');
+    expect(marks).toContain('hatch-card-dangerous');
+    expect(marks).not.toContain('hatch-card-expedited');
+  });
+
+  it('makes room for the trail: the contribution mark steps left and the head takes its padding', () => {
+    const contribution: ContributionRecord = {
+      pullRequestUrl: null,
+      headBranch: null,
+      authorLogin: 'someone',
+      authorAssociation: 'NONE',
+      filedAt: '2026-11-11T00:00:00Z',
+      filedBy: 'runner',
+    };
+    const trailed = face({ preApproval: 'preapproved', contribution });
+    expect(trailed).toContain('hatch-contribution-mark--card hatch-contribution-mark--trailed');
+    expect(trailed).toContain('hatch-card-head hatch-card-head--trailed hatch-card-head--contribution');
+    const plain = face({ contribution });
+    expect(plain).not.toContain('hatch-contribution-mark--trailed');
+    expect(plain).toContain('hatch-card-head hatch-card-head--contribution');
+    expect(face({ preApproval: 'preapproved' })).toContain('hatch-card-head hatch-card-head--trailed"');
+    expect(face({ priority: 'expedited' })).toContain('<div class="hatch-card-head">');
   });
 
   it('draws a muted passed-over mark for a level that was not honoured, titled with the sentence', () => {
@@ -229,12 +326,12 @@ describe('BoardCard CardFace', () => {
         project={project()}
       />,
     );
-    expect(inherited).toContain('title="expedited on AER-0"');
+    expect(inherited).toContain('title="task; expedited on AER-0"');
 
     const own = renderToStaticMarkup(
       <CardPreview card={card({ priority: 'expedited' })} waiting={false} terminal={false} project={project()} />,
     );
-    expect(own).toContain('title="Expedited - this one goes first"');
+    expect(own).toContain('title="task; Expedited - this one goes first"');
   });
 
   it('titles the parent row with the pull sentence', () => {
@@ -265,7 +362,7 @@ describe('BoardCard CardFace', () => {
     const require = draw({ localModel: 'require', localModelOwn: 'require' });
     expect(require).toContain('hatch-card-localmodel require');
     expect(require).toContain('title="Local model: require"');
-    expect(draw({ preApproval: 'preapproved', express: true })).not.toContain('hatch-card-localmodel');
+    expect(draw({ priority: 'low' })).not.toContain('hatch-card-localmodel');
   });
 
   it('wears the dangerous mark, with the reason in its title, when dangerous', () => {
@@ -299,14 +396,14 @@ describe('BoardCard CardFace', () => {
     expect(html).not.toContain('hatch-card-nocode');
   });
 
-  it('wears both the pre-approved and no-code marks when the card is both', () => {
+  it('wears the no-code mark alone on the row when the card is also pre-approved', () => {
     const both = card({ preApproval: 'preapproved', express: true, noCode: 'the setting was already right' });
     const html = renderToStaticMarkup(
       <CardPreview card={both} waiting={false} terminal={false} project={project()} />,
     );
 
     const marks = between(html, '<div class="hatch-card-marks">');
-    expect(marks).toContain('hatch-card-preapproved');
+    expect(marks).not.toContain('hatch-card-preapproved');
     expect(marks).toContain('hatch-card-nocode');
   });
 
@@ -334,7 +431,7 @@ describe('BoardCard CardFace', () => {
 
   it('draws every enhancer together on the marks row, in order, ending in the assignee', () => {
     const full = card({
-      priority: 'expedited',
+      priority: 'low',
       express: true,
       dangerous: 'load-tests the API',
       preApproval: 'preapproved',
@@ -350,9 +447,7 @@ describe('BoardCard CardFace', () => {
     const marks = between(html, '<div class="hatch-card-marks">');
     const classes = [
       'hatch-card-expedited',
-      'hatch-card-express',
       'hatch-card-dangerous',
-      'hatch-card-preapproved',
       'hatch-card-claim',
       'hatch-card-asking',
       'hatch-card-held',
