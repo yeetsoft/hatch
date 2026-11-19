@@ -383,8 +383,9 @@ public class IssuesControllerTests
 
         await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId, moveDescendants: false), default);
 
-        Assert.Null(Value(await h.Issues.GetIssue("AER-2", default)).ParentKey);
+        Assert.Equal("OPS-1", Value(await h.Issues.GetIssue("AER-2", default)).ParentKey);
         Assert.Equal("OPS-1", Value(await h.Issues.GetIssue("LAB-1", default)).ParentKey);
+        Assert.Empty((await h.EventsAsync("AER-2")).Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
     }
 
     [Fact]
@@ -1402,7 +1403,7 @@ public class IssuesControllerTests
     }
 
     [Fact]
-    public async Task AStoryMovedWithDescendants_ReKeysEveryTaskAndDetachesFromItsOldEpic()
+    public async Task AStoryMovedWithDescendants_ReKeysEveryTaskAndKeepsItsOldEpic()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the old epic");
@@ -1413,7 +1414,8 @@ public class IssuesControllerTests
         var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(projectId: h.OtherProjectId), default));
 
         Assert.Equal("OPS-1", moved.Key);
-        Assert.Null(moved.ParentKey);
+        Assert.Equal("AER-1", moved.ParentKey);
+        Assert.Empty((await h.EventsAsync("OPS-1")).Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
 
         var taskOne = Value(await h.Issues.GetIssue("OPS-2", default));
         var taskTwo = Value(await h.Issues.GetIssue("OPS-3", default));
@@ -1426,27 +1428,174 @@ public class IssuesControllerTests
     }
 
     [Fact]
-    public async Task AStoryMovedWithoutDescendants_OnlyReKeysTheStoryAndDetachesItsTasks()
+    public async Task AStoryMovedWithoutDescendants_OnlyReKeysTheStory_AndItsTasksStayUnderIt()
     {
         var h = await NewAsync();
         await h.CreateAsync("epic", "the old epic");
         await h.CreateAsync("story", "the story", parentKey: "AER-1");
         await h.CreateAsync("task", "the task", parentKey: "AER-2");
+        await h.CreateAsync("task", "the subtask's sibling", parentKey: "AER-2");
 
         var moved = Value(await h.Issues.PatchIssue(
             "AER-2", Patch(projectId: h.OtherProjectId, moveDescendants: false), default));
 
         Assert.Equal("OPS-1", moved.Key);
+        Assert.Equal("AER-1", moved.ParentKey);
 
         var task = Value(await h.Issues.GetIssue("AER-3", default));
         Assert.Equal(h.ProjectId, task.ProjectId);
-        Assert.Null(task.ParentKey);
+        Assert.Equal("OPS-1", task.ParentKey);
+        Assert.Equal("OPS-1", Value(await h.Issues.GetIssue("AER-4", default)).ParentKey);
+        Assert.Empty((await h.EventsAsync("AER-3")).Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
+        Assert.Empty((await h.EventsAsync("OPS-1")).Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
+    }
 
-        var taskEvents = await h.EventsAsync("AER-3");
-        var parentChanged = Assert.Single(taskEvents.Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
-        var payload = parentChanged.Payload!.Value;
-        Assert.Equal("AER-2", payload.GetProperty("from").GetString());
-        Assert.Equal(JsonValueKind.Null, payload.GetProperty("to").ValueKind);
+    [Fact]
+    public async Task AChildLeftBehind_KeepsItsOwnSubtreeIntact()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("story", "the child", parentKey: "AER-1");
+        await h.CreateAsync("task", "the grandchild", parentKey: "AER-2");
+
+        await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId, moveDescendants: false), default);
+
+        Assert.Equal("OPS-1", Value(await h.Issues.GetIssue("AER-2", default)).ParentKey);
+        Assert.Equal("AER-2", Value(await h.Issues.GetIssue("AER-3", default)).ParentKey);
+    }
+
+    [Fact]
+    public async Task AMoveNamingNoParent_KeepsTheParent_AndWritesNoParentChange()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(projectId: h.OtherProjectId), default));
+
+        Assert.Equal("AER-1", moved.ParentKey);
+        Assert.Equal(["OPS-1"], Value(await h.Issues.GetIssue("AER-1", default)).ChildKeys);
+        var events = await h.EventsAsync("OPS-1");
+        Assert.Single(events.Where(e => e.Kind == EfHatchIssueEvent.ProjectChanged));
+        Assert.Empty(events.Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
+    }
+
+    [Fact]
+    public async Task AMoveNamingAnEmptyParent_StillClearsIt()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(projectId: h.OtherProjectId, parentKey: ""), default));
+
+        Assert.Null(moved.ParentKey);
+        var change = Assert.Single((await h.EventsAsync("OPS-1")).Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
+        Assert.Equal("AER-1", change.Payload!.Value.GetProperty("from").GetString());
+    }
+
+    [Fact]
+    public async Task AMoveNamingAnotherParent_ReParentsAndWritesOneParentChange()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("story", "the story", parentKey: "AER-1");
+        await h.CreateAsync("epic", "the ops plan", projectId: h.OtherProjectId);
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(projectId: h.OtherProjectId, parentKey: "OPS-1"), default));
+
+        Assert.Equal("OPS-2", moved.Key);
+        Assert.Equal("OPS-1", moved.ParentKey);
+        var change = Assert.Single((await h.EventsAsync("OPS-2")).Where(e => e.Kind == EfHatchIssueEvent.ParentChanged));
+        Assert.Equal("AER-1", change.Payload!.Value.GetProperty("from").GetString());
+        Assert.Equal("OPS-1", change.Payload!.Value.GetProperty("to").GetString());
+    }
+
+    // ---- A move and a story whose tasks share one pull request ----
+
+    private static async Task ShareOnePullRequestAsync(Harness h, string key)
+    {
+        var row = await h.Db.Issues.Include(i => i.Project).FirstAsync(i => i.Project!.Key + "-" + i.Number == key);
+        row.OnePullRequest = true;
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ATaskMovedAwayFromAOnePrStory_IsRefusedAndWritesNothing_ButMovesWhenTheStoryIsOff()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the story");
+        await h.CreateAsync("task", "the task", parentKey: "AER-1");
+        await ShareOnePullRequestAsync(h, "AER-1");
+
+        var refused = await h.Issues.PatchIssue("AER-2", Patch(projectId: h.OtherProjectId), default);
+
+        Assert.Contains("AER-1 shares one pull request across its tasks", Reason(refused.Result));
+        Assert.Equal(h.ProjectId, Value(await h.Issues.GetIssue("AER-2", default)).ProjectId);
+        Assert.Single(await h.EventsAsync("AER-2"));
+
+        (await h.Db.Issues.FirstAsync(i => i.Number == 1)).OnePullRequest = false;
+        await h.Db.SaveChangesAsync();
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(projectId: h.OtherProjectId), default));
+        Assert.Equal("OPS-1", moved.Key);
+        Assert.Equal("AER-1", moved.ParentKey);
+    }
+
+    [Fact]
+    public async Task AOnePrStoryMovedWithoutDescendants_IsRefusedWithTheCrossProjectSentence_AndWithThemGoesThrough()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the story");
+        await h.CreateAsync("task", "one", parentKey: "AER-1");
+        await h.CreateAsync("task", "two", parentKey: "AER-1");
+        await ShareOnePullRequestAsync(h, "AER-1");
+
+        var refused = await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId, moveDescendants: false), default);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Contains(OnePrLock.CrossProjectRefusal("AER-1", 2), Reason(refused.Result));
+        Assert.Equal(h.ProjectId, Value(await h.Issues.GetIssue("AER-1", default)).ProjectId);
+        Assert.Single(await h.EventsAsync("AER-1"));
+        Assert.Single(await h.EventsAsync("AER-2"));
+
+        var moved = Value(await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId, moveDescendants: true), default));
+
+        Assert.Equal("OPS-1", moved.Key);
+        Assert.Equal(["OPS-2", "OPS-3"], moved.ChildKeys);
+    }
+
+    [Fact]
+    public async Task AOnePrStoryWithATaskInAThirdProject_IsRefusedEvenWhenItsOthersMoveAlong()
+    {
+        var h = await NewAsync();
+        var lab = await h.ThirdProjectAsync();
+        await h.CreateAsync("story", "the story");
+        await h.CreateAsync("task", "here", parentKey: "AER-1");
+        await h.CreateAsync("task", "there", parentKey: "AER-1", projectId: lab);
+        await ShareOnePullRequestAsync(h, "AER-1");
+
+        var refused = await h.Issues.PatchIssue("AER-1", Patch(projectId: h.OtherProjectId), default);
+
+        Assert.Contains(OnePrLock.CrossProjectRefusal("AER-1", 1), Reason(refused.Result));
+    }
+
+    [Fact]
+    public async Task ABulkMove_ReportsTheKeyThatRefusesAndMovesTheRest()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "shares one pull request");
+        await h.CreateAsync("task", "its task", parentKey: "AER-1");
+        await h.CreateAsync("story", "a plain story");
+        await ShareOnePullRequestAsync(h, "AER-1");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-1", "AER-3"], projectId: h.OtherProjectId, moveDescendants: false), default));
+
+        Assert.Equal(["OPS-1"], result.Changed);
+        var failure = Assert.Single(result.Failures);
+        Assert.Equal("AER-1", failure.Key);
+        Assert.Equal(OnePrLock.CrossProjectRefusal("AER-1", 1), failure.Reason);
+        Assert.Equal(h.ProjectId, Value(await h.Issues.GetIssue("AER-1", default)).ProjectId);
     }
 
     /// <summary>
