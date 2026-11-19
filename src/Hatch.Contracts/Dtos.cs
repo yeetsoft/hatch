@@ -1836,6 +1836,18 @@ public record ReviewDto(
 /// stalled issue on its own. Answered on every board shape. Defaults to 0 so an
 /// older client still reads.
 /// </param>
+/// <param name="HeldAtProjectLine">
+/// Every issue the reader can see that the loop would carry now if every level
+/// and pull it inherits were honoured, and does not, because the level or the
+/// pull comes from another project whose setter has no say here: in review under
+/// a pre-approved ancestor, in an express column under an express one, or left of
+/// implementation under a parent in progress. Only an issue held for nothing but
+/// that is listed. Each row names the issue's own project - the one whose approver
+/// is needed - and never the key of an ancestor the reader cannot see. A row
+/// leaves when an approver sets the level on the issue itself, or the issue
+/// moves. In the queue's order: priority, then rank. Empty, not null, whatever the
+/// board's shape. Defaults to null so an older client still reads.
+/// </param>
 /// <param name="ContributionsHeld">
 /// The review column's issues whose branch is a contribution's - its issue
 /// carries a pull request - that conflicts with the trunk or whose build failed,
@@ -1865,7 +1877,8 @@ public record AttentionDto(
     IReadOnlyList<RunnerCapacityDto>? RunnerCapacity = null,
     IReadOnlyList<StalledIssueDto>? Stalled = null,
     int StallResumeSeconds = 0,
-    IReadOnlyList<ContributionHeldDto>? ContributionsHeld = null);
+    IReadOnlyList<ContributionHeldDto>? ContributionsHeld = null,
+    IReadOnlyList<ProjectLineHeldDto>? HeldAtProjectLine = null);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -
@@ -2003,6 +2016,16 @@ public record StalledIssueDto(string Key, string Title, string Type, DateTimeOff
 /// or <c>no live runner has pwsh 7 or newer and playwright-browsers</c>.
 /// </param>
 public record WaitingOnARunnerDto(string Key, string Title, string Type, string Move, string Missing);
+
+/// <summary>
+/// An issue held only at a project line - see <see cref="AttentionDto.HeldAtProjectLine"/>.
+/// </summary>
+/// <param name="ProjectKey">The issue's own project: the one whose approver is needed.</param>
+/// <param name="Sentence">
+/// The queue's own words for the hold; where the ancestor is outside the reader's
+/// scope it names no key, only that it is in another project.
+/// </param>
+public record ProjectLineHeldDto(string Key, string Title, string Type, string ProjectKey, string Sentence);
 
 /// <summary>
 /// A project whose merge train passed its driver over - see
