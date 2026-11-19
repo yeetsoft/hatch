@@ -58,6 +58,7 @@ All four are server settings, set in the environment like any other
 | `Hatch__GooseKeepDays` | `7` | Days a run is kept after its last sweep. `0` keeps everything. Less than that falls back to `7`. |
 | `Hatch__GooseTrainReadyMinutes` | `30` | How long a merge train's head may be judged mergeable before the `train-ready` check below opens a finding. `0` turns the check off; less than that falls back to `30`. |
 | `Hatch__GooseRepeatClaims` | `5` | How many claims by one runner on one ticket, with the ticket not moving, make the `claim-repeating` check below open a finding. `0` turns the check off; less than that falls back to `5`. |
+| `Hatch__GooseQuestionHours` | `24` | How long a question may wait before the `questions-waiting` check below opens a finding. `0` turns the check off; less than that falls back to `24`. |
 
 Each sweep also deletes the runs whose last sweep is older than the keep
 window.
@@ -123,6 +124,24 @@ still read as a streak.
 The check only says what it saw. It does not pause the runner, stall-mark the
 ticket or change what is counted against it. If you see one, see [a runner
 keeps claiming one ticket](troubleshooting#a-runner-keeps-claiming-one-ticket).
+
+### `questions-waiting`
+
+Watches the questions still owed a person - the same ones the Ballot and the
+attention panel list, so a question on a done issue is never counted - and
+opens one finding when at least one was asked `Hatch__GooseQuestionHours` ago
+or longer. It is about the board and names no project, so there is at most one
+such finding open, and only a caller who may see everything reads it. A
+question on an issue filed from a finding is left out.
+
+The sentence gives the count and the bound, for example *"3 questions have
+waited more than 24 hours"*, and no duration. The evidence lists every question
+past the bound, oldest first: the issue's key and title, who asked, when, and
+the first line of the question. As questions are answered and others pass the
+bound, it stays one finding with fresh evidence; it closes when none is past
+the bound. It judges by age alone: it suggests no answer and answers nothing.
+The condition begins at the first sweep that sees a question past the bound,
+so its start can trail the question by up to one sweep interval.
 
 ## Reading it from outside
 

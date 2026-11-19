@@ -5156,8 +5156,8 @@ and a run reads as not found. The reader's page is
 ### Findings
 
 A finding is a stored row a person can read and act on, with the evidence
-beside it - `train-ready` below is the first check that opens one, `claim-repeating` the second, and a later
-check files a bug from one. `FindingCheck` (`GooseFindings.cs`) is the one
+beside it - `train-ready` below is the first check that opens one, `questions-waiting`
+and `claim-repeating` follow it, and a later check files a bug from one. `FindingCheck` (`GooseFindings.cs`) is the one
 reconciler every such check shares, so none of them can disagree about when a
 clock starts, when a row opens, or when it closes: a subclass says only what it
 is watching (`ReadAsync`: a sentence for the run, the check's own bound, and
@@ -5274,6 +5274,29 @@ carries the runner, the claims, the first and the newest, the release outcomes
 within the streak's span, the issue's column, its stall mark and whether it is
 held. The check pauses nothing, marks nothing stalled and changes nothing
 `LetGo` counts.
+
+#### `questions-waiting`
+
+The goose's finding for questions left unanswered too long
+(`QuestionsWaitingCheck`). It reads `Questions.Waiting` - open, on an issue
+outside a terminal column - and adds no second rule for what waiting means.
+Its subject is `board` and it names no project, so at most one such finding is
+open and only an unbounded caller reads it (see **Scope** above). The token is
+constant (`past-bound`), so a second question crossing the bound refreshes the
+one row rather than opening another; it closes when none is past the bound.
+
+A question counts once `now - asked >= Hatch__GooseQuestionHours` (default 24;
+zero turns the check off, a negative falls back to 24), so one at exactly 24
+hours opens the finding. The check applies the bound itself by choosing
+whether there is a candidate, and returns a zero bound to `FindingCheck`.
+A question on an issue filed from a finding is left out. The sentence gives the
+count and the bound and no duration, for example `3 questions have waited more
+than 24 hours`; the evidence lists every question past the bound, oldest first:
+the issue's key as the label, then its title, who asked, when, and the
+question's first line. The run's entry says how many waiting questions it
+looked at and how many were past the bound. `BeganAt` is the first sweep that
+sees a question past the bound - at most one sweep interval after it, the same
+clock `train-ready` has. It judges by age alone and suggests or gives no answer.
 
 ## Reports
 
