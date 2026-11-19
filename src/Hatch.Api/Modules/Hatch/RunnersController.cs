@@ -419,7 +419,7 @@ public class RunnersController(
         var localModels = await LocalModelsAsync(ct);
 
         return RunnerSessions.Instruct(
-            session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour, localModels);
+            session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour, localModels, now);
     }
 
     /// <summary>
