@@ -5970,6 +5970,176 @@ public class RunnersControllerTests
         Assert.Equal(seenAt, (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).LastSeenAt);
     }
 
+    // ---- Lifting a board pause (HA-2458) ----
+
+    private static async Task PauseAsync(Harness h, EfHatchRunnerSession session, DateTimeOffset until, string kind = RunnerAgentDownKinds.BoardPaused, int streak = 0)
+    {
+        session.AgentDownUntil = until;
+        session.AgentDownKind = kind;
+        session.AgentDownLine = "3 sessions in a row ended in error without spending a token, the last on AER-1";
+        session.PauseStreak = streak;
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task LiftPause_ClearsTheFieldsAndTheStreak_AndLeavesASiblingAtAnotherCheckoutAlone()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var one = await h.SeedSessionAsync(key.Id, "loop", "here:/one");
+        var two = await h.SeedSessionAsync(key.Id, "loop", "here:/two");
+        await PauseAsync(h, one, Now.AddMinutes(30));
+        await PauseAsync(h, two, Now.AddMinutes(30));
+
+        var result = await h.LiftPauseAsync(Runner, one.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        var lifted = await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == one.Id);
+        Assert.Null(lifted.AgentDownUntil);
+        Assert.Null(lifted.AgentDownKind);
+        Assert.Null(lifted.AgentDownLine);
+        Assert.Equal(0, lifted.PauseStreak);
+
+        var untouched = await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == two.Id);
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, untouched.AgentDownKind);
+        Assert.NotNull(untouched.AgentDownUntil);
+    }
+
+    [Fact]
+    public async Task LiftPause_AtTheSameCheckout_ClearsAnEndedRowToo()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var ended = await h.SeedSessionAsync(key.Id, "loop", "here:/one", endedAt: Now);
+        var live = await h.SeedSessionAsync(key.Id, "loop", "here:/one");
+        await PauseAsync(h, ended, Now.AddMinutes(30));
+        await PauseAsync(h, live, Now.AddMinutes(30));
+
+        var result = await h.LiftPauseAsync(Runner, live.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == ended.Id)).AgentDownUntil);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == live.Id)).AgentDownUntil);
+    }
+
+    [Fact]
+    public async Task LiftPause_AllowsTheNextHeartbeatToReadTheStoredState()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop", Runner);
+        await PauseAsync(h, session, Now.AddMinutes(30));
+
+        // While the board's own pause is still live, the runner's own report is ignored.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, AgentDown: false));
+        Assert.Equal(
+            RunnerAgentDownKinds.BoardPaused, (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).AgentDownKind);
+
+        await h.LiftPauseAsync(Runner, session.Id);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, AgentDown: false));
+
+        var after = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Null(after.AgentDownKind);
+        Assert.Null(after.AgentDownUntil);
+    }
+
+    [Theory]
+    [InlineData(RunnerAgentDownKinds.NotStarting)]
+    [InlineData(RunnerAgentDownKinds.SignedOut)]
+    public async Task LiftPause_OnTheRunnersOwnPause_Is409AndWritesNothing(string kind)
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        await PauseAsync(h, session, Now.AddMinutes(30), kind: kind);
+
+        var refusal = Assert.IsType<ConflictObjectResult>(await h.LiftPauseAsync(Runner, session.Id));
+
+        Assert.Equal(409, refusal.StatusCode);
+        Assert.Contains("the runner's own", refusal.Value!.ToString(), StringComparison.Ordinal);
+        var untouched = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(kind, untouched.AgentDownKind);
+        Assert.NotNull(untouched.AgentDownUntil);
+    }
+
+    [Fact]
+    public async Task LiftPause_OnASessionNotPaused_Is204AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        var seenAt = session.LastSeenAt;
+
+        var result = await h.LiftPauseAsync(Runner, session.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Equal(seenAt, (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).LastSeenAt);
+    }
+
+    [Fact]
+    public async Task LiftPause_OnAPauseThatHasPassed_Is204AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        await PauseAsync(h, session, Now.AddMinutes(-1));
+
+        var result = await h.LiftPauseAsync(Runner, session.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        var untouched = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, untouched.AgentDownKind);
+        Assert.Equal(Now.AddMinutes(-1), untouched.AgentDownUntil);
+    }
+
+    [Fact]
+    public async Task LiftPause_ByAKey_Is403AndWritesNothing()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        await PauseAsync(h, session, Now.AddMinutes(30));
+
+        var refusal = Assert.IsType<ObjectResult>(await h.LiftPauseAsync(Runner, session.Id));
+
+        Assert.Equal(403, refusal.StatusCode);
+        var untouched = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, untouched.AgentDownKind);
+    }
+
+    [Fact]
+    public async Task LiftPause_ByAKeylessRunnerWithTheWallOff_Is403()
+    {
+        var h = await NewAsync(wall: false, nobody: true);
+        h.Caller.Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner");
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        await PauseAsync(h, session, Now.AddMinutes(30));
+
+        var refusal = Assert.IsType<ObjectResult>(await h.LiftPauseAsync(Runner, session.Id));
+
+        Assert.Equal(403, refusal.StatusCode);
+    }
+
+    [Fact]
+    public async Task LiftPause_UnknownName_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        Assert.IsType<NotFoundResult>(await h.LiftPauseAsync("nowhere:/tree", 1));
+    }
+
+    [Fact]
+    public async Task LiftPause_IdUnderAnotherKey_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+        var other = await h.AddKeyAsync("here:/other");
+        var session = await h.SeedSessionAsync(other.Id, "loop");
+
+        Assert.IsType<NotFoundResult>(await h.LiftPauseAsync(Runner, session.Id));
+    }
+
     [Fact]
     public async Task PauseAll_OnlyPausesLiveLoopSessionsUnderThisKey()
     {
@@ -6058,6 +6228,7 @@ public class RunnersControllerTests
         Assert.False(Guard(nameof(RunnersController.PatchRunnerSession))!.AcceptKey);
         Assert.False(Guard(nameof(RunnersController.PostRunnerSessionOrder))!.AcceptKey);
         Assert.False(Guard(nameof(RunnersController.DeleteRunnerSessionOrder))!.AcceptKey);
+        Assert.False(Guard(nameof(RunnersController.DeleteRunnerSessionPause))!.AcceptKey);
         Assert.False(Guard(nameof(RunnersController.PauseAll))!.AcceptKey);
         Assert.False(Guard(nameof(RunnersController.StopAll))!.AcceptKey);
     }
@@ -6291,6 +6462,9 @@ public class RunnersControllerTests
 
         public async Task<ActionResult> WithdrawSessionAsync(string name, int id) =>
             await Runners.DeleteRunnerSessionOrder(name, id, default);
+
+        public async Task<ActionResult> LiftPauseAsync(string name, int id) =>
+            await Runners.DeleteRunnerSessionPause(name, id, default);
 
         public async Task<ActionResult> PauseAllAsync(string name) => await Runners.PauseAll(name, default);
 
@@ -6567,9 +6741,12 @@ public class RunnersControllerTests
 
         public Task<EfApiKey?> ApiKeyAsync(CancellationToken ct) => Task.FromResult(Key);
 
-        public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult<Actor?>(null);
+        public Actor? Local { get; set; }
 
-        public Task<bool> IsProgramAsync(CancellationToken ct) => Task.FromResult(Key is not null);
+        public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult(Local);
+
+        public Task<bool> IsProgramAsync(CancellationToken ct) =>
+            Task.FromResult(Key is not null || Local is { Kind: ActorKind.Key });
 
         public Task<string> ActorNameAsync(CancellationToken ct) =>
             Task.FromResult(Person?.Name ?? Key?.Name ?? CallerIdentity.Unattributed);

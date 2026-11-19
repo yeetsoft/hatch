@@ -266,6 +266,37 @@ describe('RunnerDetail: Live sessions', () => {
     expect(html).toContain('three sessions ended in error');
     expect(html).not.toContain('Agent not starting');
   });
+
+  it('draws Lift pause on a board-paused session, and nowhere else', () => {
+    const boardPaused = live({
+      id: 1,
+      agentDownUntil: new Date(Date.now() + 3_600_000).toISOString(),
+      agentDownKind: 'board-paused',
+    });
+    state.read = { runners: [runner({ name: 'Quill', sessions: [boardPaused] })], error: null };
+    expect(renderAt('/runners/Quill')).toContain('Lift pause');
+
+    const signedOut = live({
+      id: 1,
+      agentDownUntil: new Date(Date.now() + 3_600_000).toISOString(),
+      agentDownKind: 'signed-out',
+    });
+    state.read = { runners: [runner({ name: 'Quill', sessions: [signedOut] })], error: null };
+    expect(renderAt('/runners/Quill')).not.toContain('Lift pause');
+
+    state.read = { runners: [runner({ name: 'Quill', sessions: [live({ id: 1 })] })], error: null };
+    expect(renderAt('/runners/Quill')).not.toContain('Lift pause');
+  });
+
+  it('omits Lift pause once a board pause has passed', () => {
+    const expired = live({
+      id: 1,
+      agentDownUntil: new Date(Date.now() - 1000).toISOString(),
+      agentDownKind: 'board-paused',
+    });
+    state.read = { runners: [runner({ name: 'Quill', sessions: [expired] })], error: null };
+    expect(renderAt('/runners/Quill')).not.toContain('Lift pause');
+  });
 });
 
 describe('RunnerDetail: Pause all and Stop all', () => {

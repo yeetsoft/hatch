@@ -13,6 +13,11 @@ namespace Hatch.Api.Tests.E2e;
 /// runner whose one live session carries kind <c>board-paused</c>, at the
 /// desktop viewport in Chromium and at the <c>iPhone 14 Pro</c> profile in
 /// WebKit. Each look is saved as a PNG beside the case's other artifacts.
+///
+/// <para>HA-2458 presses <b>Lift pause</b> on the detail's session row: one
+/// DELETE to <c>sessions/{id}/pause</c>, and the row redraws with the pause
+/// gone, since the stub answers the next read with the three fields
+/// cleared.</para>
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class RunnersBoardPauseTests(ITestOutputHelper output)
@@ -48,6 +53,7 @@ public class RunnersBoardPauseTests(ITestOutputHelper output)
     {
         var harness = new E2eHarness(name);
         var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        var paused = true;
         try
         {
             await harness.LaunchBrowserAsync(deadline, profile);
@@ -59,7 +65,7 @@ public class RunnersBoardPauseTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/runners", Stub);
+            await harness.OpenAsync(deadline, baseUrl, "/runners", context => Stub(context, () => paused, () => paused = false));
             await harness.WaitForVisibleAsync(deadline, ".hatch-runner-row");
 
             var row = await harness.EvaluateOnAsync<string>(deadline, "reading the row", ".hatch-runner-row", "e => e.textContent ?? ''");
@@ -80,6 +86,14 @@ public class RunnersBoardPauseTests(ITestOutputHelper output)
                 await harness.EvaluateAsync<bool>(deadline, "measuring overflow", "() => document.documentElement.scrollWidth !== document.documentElement.clientWidth"),
                 "the document scrolls sideways");
 
+            // HA-2458: pressing Lift pause clears it, and the row redraws without the pause.
+            await harness.ClickAsync(deadline, ".hatch-runner-sessions button:text-is(\"Lift pause\")");
+            await harness.WaitForHiddenAsync(deadline, "text=Paused by the board until");
+            var lifted = await harness.EvaluateOnAsync<string>(deadline, "reading the sessions after the lift", ".hatch-runner-sessions", "e => e.textContent ?? ''");
+            output.WriteLine($"--- lifted, {profile?.Device ?? "desktop"}{Environment.NewLine}screenshot: {await harness.ScreenshotAsync(deadline, screenshot + "-lifted")}{Environment.NewLine}{lifted}");
+            Assert.DoesNotContain("Paused by the board", lifted);
+            Assert.DoesNotContain("Lift pause", lifted);
+
             harness.AssertNoPageErrors();
         }
         catch (Exception e) when (e is not Xunit.SkipException)
@@ -93,60 +107,79 @@ public class RunnersBoardPauseTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>One runner with an invented name and one live session the board paused an hour ahead.</summary>
-    private static async Task Stub(IBrowserContext context)
+    /// <summary>
+    /// One runner with an invented name and one live session the board paused
+    /// an hour ahead - until <paramref name="paused"/> reads false, once the
+    /// test has pressed <b>Lift pause</b> and the DELETE stub below has
+    /// cleared it.
+    /// </summary>
+    private static async Task Stub(IBrowserContext context, Func<bool> paused, Action clear)
     {
         var now = DateTimeOffset.UtcNow;
         var until = now.AddHours(1);
 
-        var session = new RunnerSessionDto(
-            Id: 1,
-            Where: "example-host.invalid:/e2e/1",
-            Kind: "loop",
-            Host: null,
-            State: RunnerStates.Running,
-            StartedAt: now.AddMinutes(-30),
-            LastSeenAt: now,
-            EndedAt: null,
-            AgentDownUntil: until,
-            AgentDownKind: RunnerAgentDownKinds.BoardPaused,
-            AgentDownLine: Said);
+        RunnerDto Runner()
+        {
+            var down = paused();
+            var session = new RunnerSessionDto(
+                Id: 1,
+                Where: "example-host.invalid:/e2e/1",
+                Kind: "loop",
+                Host: null,
+                State: RunnerStates.Running,
+                StartedAt: now.AddMinutes(-30),
+                LastSeenAt: now,
+                EndedAt: null,
+                AgentDownUntil: down ? until : null,
+                AgentDownKind: down ? RunnerAgentDownKinds.BoardPaused : null,
+                AgentDownLine: down ? Said : null);
 
-        var runner = new RunnerDto(
-            Name: Name,
-            Kind: "loop",
-            FirstSeenAt: now.AddHours(-2),
-            LastSeenAt: now,
-            ClaimKey: null,
-            Line: null,
-            LineAt: null,
-            State: RunnerStates.Running,
-            Under: null,
-            MaxRuns: null,
-            MaxSpend: null,
-            UntilAt: null,
-            GoneAfterSeconds: 300,
-            Repositories: [],
-            Clones: null,
-            Mine: null,
-            Standing: null,
-            Where: null,
-            Agent: null,
-            Drives: [],
-            Tags: [],
-            Projects: [],
-            For: null,
-            CanControl: true,
-            ApiKeyId: Guid.NewGuid(),
-            Sessions: [session],
-            AgentDownUntil: until,
-            AgentDownKind: RunnerAgentDownKinds.BoardPaused,
-            AgentDownLine: Said);
+            return new RunnerDto(
+                Name: Name,
+                Kind: "loop",
+                FirstSeenAt: now.AddHours(-2),
+                LastSeenAt: now,
+                ClaimKey: null,
+                Line: null,
+                LineAt: null,
+                State: RunnerStates.Running,
+                Under: null,
+                MaxRuns: null,
+                MaxSpend: null,
+                UntilAt: null,
+                GoneAfterSeconds: 300,
+                Repositories: [],
+                Clones: null,
+                Mine: null,
+                Standing: null,
+                Where: null,
+                Agent: null,
+                Drives: [],
+                Tags: [],
+                Projects: [],
+                For: null,
+                CanControl: true,
+                ApiKeyId: Guid.NewGuid(),
+                Sessions: [session],
+                AgentDownUntil: down ? until : null,
+                AgentDownKind: down ? RunnerAgentDownKinds.BoardPaused : null,
+                AgentDownLine: down ? Said : null);
+        }
 
         await context.RouteAsync(new System.Text.RegularExpressions.Regex(@"/api/runners(\?.*)?$"), route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
-            Body = JsonSerializer.Serialize(new[] { runner }, Web),
+            Body = JsonSerializer.Serialize(new[] { Runner() }, Web),
         }));
+
+        await context.RouteAsync(new System.Text.RegularExpressions.Regex(@"/api/runners/[^/]+/sessions/1/pause$"), async route =>
+        {
+            if (route.Request.Method == "DELETE")
+            {
+                clear();
+                await route.FulfillAsync(new() { Status = 204 });
+            }
+            else await route.FulfillAsync(new() { Status = 404 });
+        });
     }
 }

@@ -1,12 +1,13 @@
 import { message } from './errors';
 import type { RunnerOrderRequest, RunnerSession, RunnerSessionPatchRequest } from '../types';
 
-/** The five `api/client.ts` calls a session's controls make. Passed in, as
+/** The six `api/client.ts` calls a session's controls make. Passed in, as
     `saveRunner` takes `patch`, so what a press does is testable without a click. */
 export interface SessionClient {
   patchRunnerSession: (name: string, id: number, request: RunnerSessionPatchRequest) => Promise<unknown>;
   orderRunnerSession: (name: string, id: number, request: RunnerOrderRequest) => Promise<unknown>;
   withdrawSessionOrder: (name: string, id: number) => Promise<unknown>;
+  liftBoardPause: (name: string, id: number) => Promise<unknown>;
   pauseAllSessions: (name: string) => Promise<unknown>;
   stopAllSessions: (name: string) => Promise<unknown>;
 }
@@ -41,6 +42,7 @@ export function sessionActions(name: string, client: SessionClient, reload: () =
     order: (session: RunnerSession, request: RunnerOrderRequest) =>
       run(() => client.orderRunnerSession(name, session.id, request)),
     withdraw: (session: RunnerSession) => run(() => client.withdrawSessionOrder(name, session.id)),
+    lift: (session: RunnerSession) => run(() => client.liftBoardPause(name, session.id)),
     pauseAll: () => run(() => client.pauseAllSessions(name)),
     stopAll: () => run(() => client.stopAllSessions(name)),
   };

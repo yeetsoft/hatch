@@ -390,6 +390,9 @@ export const orderRunnerSession = (name: string, id: number, request: RunnerOrde
   fetchJson<Runner>(`/api/runners/${seg(name)}/sessions/${id}/order`, { method: 'POST', ...asJson(request) });
 export const withdrawSessionOrder = (name: string, id: number) =>
   fetchJson<void>(`/api/runners/${seg(name)}/sessions/${id}/order`, { method: 'DELETE' });
+/** Lifts a board pause, so the session's next heartbeat and next claim run as normal. */
+export const liftBoardPause = (name: string, id: number) =>
+  fetchJson<void>(`/api/runners/${seg(name)}/sessions/${id}/pause`, { method: 'DELETE' });
 export const pauseAllSessions = (name: string) =>
   fetchJson<void>(`/api/runners/${seg(name)}/pause-all`, { method: 'POST' });
 export const stopAllSessions = (name: string) =>
