@@ -2749,9 +2749,12 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// One capability of an ambition: what has to be true, and how anyone would tell.
 /// </summary>
 /// <param name="Position">1 to n within the ambition, with no gaps.</param>
+/// <param name="State">The newest verdict's word, or <c>not_checked</c> with none. Derived on read, never stored.</param>
+/// <param name="NewestVerdict">The verdict <paramref name="State"/> was read from, or null.</param>
 public record CapabilityDto(
     long Id, int Position, string Statement, string HowToTell,
-    string CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    string CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    string State, CapabilityVerdictDto? NewestVerdict);
 
 /// <summary>Adds a capability. Neither line may be blank.</summary>
 /// <param name="Position">Where to put it, 1 to one past the last. Left out, it goes at the end.</param>
@@ -2762,6 +2765,16 @@ public record CapabilityPatchRequest(string? Statement = null, string? HowToTell
 
 /// <summary>Puts an ambition's capabilities in a new order: every id, once, in the wanted order.</summary>
 public record CapabilityOrderRequest(IReadOnlyList<long> Ids);
+
+/// <summary>
+/// One session's verdict on a capability: whether it holds, as of a sha. Not
+/// the check session's verdict against a live claim - that is <c>VerdictDto</c>.
+/// </summary>
+public record CapabilityVerdictDto(
+    long Id, long CapabilityId, string Verdict, string LookedAt, string Sha, string Author, DateTimeOffset At);
+
+/// <summary>Records a verdict on a capability. <paramref name="Verdict"/> is one of <c>holds</c>, <c>does_not_hold</c>, <c>cannot_tell</c>.</summary>
+public record CapabilityVerdictRequest(string Verdict, string LookedAt, string Sha);
 
 /// <summary>Replaces the set of dreams an issue drew on, with the dream ids it should now carry.</summary>
 public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);

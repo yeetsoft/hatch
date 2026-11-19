@@ -418,6 +418,238 @@ public class IssueCapabilitiesControllerTests
         Assert.Equal(new[] { "c", "b", "d" }, stored.Select(x => x.Statement));
     }
 
+    // ---- Verdicts ----
+
+    [Theory]
+    [InlineData(EfHatchCapabilityVerdict.Holds)]
+    [InlineData(EfHatchCapabilityVerdict.DoesNotHold)]
+    [InlineData(EfHatchCapabilityVerdict.CannotTell)]
+    public async Task AVerdict_WritesARow_AndOneCapabilityJudgedEvent(string verdict)
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        var written = await h.JudgeAsync(ambition, row.Id, verdict, "the code", "abc1234");
+
+        Assert.Equal(verdict, written.Verdict);
+        Assert.Equal("the code", written.LookedAt);
+        Assert.Equal("abc1234", written.Sha);
+        Assert.Equal("a person", written.Author);
+        Assert.Equal(verdict, Assert.Single(await h.VerdictsAsync(ambition, row.Id)).Verdict);
+
+        var evt = Assert.Single(await h.EventsAsync(ambition), e => e.Kind == EfHatchIssueEvent.CapabilityJudged);
+        var payload = evt.Payload!.Value;
+        Assert.Equal(row.Id, payload.GetProperty("id").GetInt64());
+        Assert.Equal(1, payload.GetProperty("position").GetInt32());
+        Assert.Equal(verdict, payload.GetProperty("verdict").GetString());
+        Assert.Equal("abc1234", payload.GetProperty("sha").GetString());
+        Assert.Equal("a person", payload.GetProperty("author").GetString());
+    }
+
+    [Fact]
+    public async Task AVerdictWithAnUnknownWord_IsRefused_NamingTheThree_AndWritesNothing()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        var result = await h.Controller.PostVerdict(ambition, row.Id, new CapabilityVerdictRequest("maybe", "x", "abc"), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("a verdict is one of holds, does_not_hold and cannot_tell", bad.Value);
+        Assert.Empty(await h.VerdictsAsync(ambition, row.Id));
+    }
+
+    [Theory]
+    [InlineData("", "abc")]
+    [InlineData("  ", "abc")]
+    public async Task AVerdictWithABlankLookedAt_IsRefused_AndWritesNothing(string lookedAt, string sha)
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        var result = await h.Controller.PostVerdict(ambition, row.Id, new CapabilityVerdictRequest("holds", lookedAt, sha), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("lookedAt may not be blank", bad.Value);
+        Assert.Empty(await h.VerdictsAsync(ambition, row.Id));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task AVerdictWithABlankSha_IsRefused_AndWritesNothing(string sha)
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        var result = await h.Controller.PostVerdict(ambition, row.Id, new CapabilityVerdictRequest("holds", "x", sha), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("sha may not be blank", bad.Value);
+        Assert.Empty(await h.VerdictsAsync(ambition, row.Id));
+    }
+
+    [Fact]
+    public async Task AVerdictWithAnOverLongLookedAt_IsRefused_NamingTheBound()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        var result = await h.Controller.PostVerdict(
+            ambition, row.Id, new CapabilityVerdictRequest("holds", new string('x', EfHatchCapabilityVerdict.MaxLookedAtLength + 1), "abc"), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal($"lookedAt is at most {EfHatchCapabilityVerdict.MaxLookedAtLength} characters", bad.Value);
+        Assert.Empty(await h.VerdictsAsync(ambition, row.Id));
+    }
+
+    [Fact]
+    public async Task AVerdictWithAnOverLongSha_IsRefused_NamingTheBound()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        var result = await h.Controller.PostVerdict(
+            ambition, row.Id, new CapabilityVerdictRequest("holds", "x", new string('a', EfHatchCapabilityVerdict.MaxShaLength + 1)), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal($"sha is at most {EfHatchCapabilityVerdict.MaxShaLength} characters", bad.Value);
+        Assert.Empty(await h.VerdictsAsync(ambition, row.Id));
+    }
+
+    [Fact]
+    public async Task AVerdictOnAnUnknownCapability_IsNotFound()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+
+        var result = await h.Controller.PostVerdict(ambition, 9999, new CapabilityVerdictRequest("holds", "x", "abc"), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AVerdictOnAnotherAmbitionsCapability_IsNotFound()
+    {
+        var h = await NewAsync();
+        var one = await h.FileAsync("ambition");
+        var other = await h.FileAsync("ambition");
+        var theirs = await h.AddAsync(other, "theirs", "theirs?");
+
+        var result = await h.Controller.PostVerdict(one, theirs.Id, new CapabilityVerdictRequest("holds", "x", "abc"), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AKey_MayWriteAVerdict_PastTheImplementationColumn()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+        h.ActAsKey();
+
+        foreach (var column in new[] { h.Review, h.Done, h.Parked })
+        {
+            await h.PutInAsync(ambition, column);
+            await h.JudgeAsync(ambition, row.Id, EfHatchCapabilityVerdict.Holds);
+        }
+
+        Assert.Equal(3, (await h.VerdictsAsync(ambition, row.Id)).Length);
+    }
+
+    [Fact]
+    public async Task GetVerdicts_ListsNewestFirst()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        var first = await h.JudgeAsync(ambition, row.Id, EfHatchCapabilityVerdict.CannotTell);
+        var second = await h.JudgeAsync(ambition, row.Id, EfHatchCapabilityVerdict.Holds);
+
+        Assert.Equal([second.Id, first.Id], (await h.VerdictsAsync(ambition, row.Id)).Select(v => v.Id));
+    }
+
+    [Fact]
+    public async Task ANewCapability_ReadsNotChecked_WithNoNewestVerdict()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+
+        var added = await h.AddAsync(ambition, "a", "a?");
+
+        Assert.Equal("not_checked", added.State);
+        Assert.Null(added.NewestVerdict);
+    }
+
+    [Fact]
+    public async Task ACapabilityWithOneVerdict_ReadsItsState()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        var written = await h.JudgeAsync(ambition, row.Id, EfHatchCapabilityVerdict.Holds);
+
+        var read = (await h.GetAsync(ambition)).Single();
+        Assert.Equal(EfHatchCapabilityVerdict.Holds, read.State);
+        Assert.Equal(written.Id, read.NewestVerdict!.Id);
+    }
+
+    [Fact]
+    public async Task ACapabilityWithTwoVerdicts_ReadsTheSecondsState()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var row = await h.AddAsync(ambition, "a", "a?");
+
+        await h.JudgeAsync(ambition, row.Id, EfHatchCapabilityVerdict.CannotTell);
+        var second = await h.JudgeAsync(ambition, row.Id, EfHatchCapabilityVerdict.Holds);
+
+        var read = (await h.GetAsync(ambition)).Single();
+        Assert.Equal(EfHatchCapabilityVerdict.Holds, read.State);
+        Assert.Equal(second.Id, read.NewestVerdict!.Id);
+    }
+
+    [Fact]
+    public async Task TwoCapabilities_KeepSeparateStates()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var a = await h.AddAsync(ambition, "a", "a?");
+        var b = await h.AddAsync(ambition, "b", "b?");
+
+        await h.JudgeAsync(ambition, a.Id, EfHatchCapabilityVerdict.Holds);
+
+        var read = await h.GetAsync(ambition);
+        Assert.Equal(EfHatchCapabilityVerdict.Holds, read.Single(c => c.Id == a.Id).State);
+        Assert.Equal("not_checked", read.Single(c => c.Id == b.Id).State);
+    }
+
+    [Fact]
+    public async Task PatchAndPutOrder_AnswersCarryState()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+        var a = await h.AddAsync(ambition, "a", "a?");
+        var b = await h.AddAsync(ambition, "b", "b?");
+        await h.JudgeAsync(ambition, a.Id, EfHatchCapabilityVerdict.Holds);
+
+        var patched = await h.EditAsync(ambition, a.Id, statement: "a, edited");
+        Assert.Equal(EfHatchCapabilityVerdict.Holds, patched.State);
+
+        var ordered = await h.OrderAsync(ambition, b.Id, a.Id);
+        Assert.Equal(EfHatchCapabilityVerdict.Holds, ordered.Single(c => c.Id == a.Id).State);
+        Assert.Equal("not_checked", ordered.Single(c => c.Id == b.Id).State);
+    }
+
     // ---- Not an ambition ----
 
     [Theory]
@@ -437,6 +669,8 @@ public class IssueCapabilitiesControllerTests
             (await h.Controller.PatchCapability(issue, 1, new CapabilityPatchRequest("s"), default)).Result,
             (await h.Controller.PutOrder(issue, new CapabilityOrderRequest([]), default)).Result,
             await h.Controller.DeleteCapability(issue, 1, default),
+            (await h.Controller.GetVerdicts(issue, 1, default)).Result,
+            (await h.Controller.PostVerdict(issue, 1, new CapabilityVerdictRequest("holds", "x", "abc"), default)).Result,
         };
 
         foreach (var result in results)
@@ -641,6 +875,16 @@ public class IssueCapabilitiesControllerTests
 
         public async Task<CapabilityDto[]> OrderAsync(string key, params long[] ids) =>
             Value(await Controller.PutOrder(key, new CapabilityOrderRequest(ids), default));
+
+        public async Task<CapabilityVerdictDto> JudgeAsync(string key, long id, string verdict, string lookedAt = "the code", string sha = "abc1234")
+        {
+            var result = await Controller.PostVerdict(key, id, new CapabilityVerdictRequest(verdict, lookedAt, sha), default);
+            return result.Result is CreatedAtActionResult created
+                ? (CapabilityVerdictDto)created.Value!
+                : throw new InvalidOperationException($"expected a created verdict, got {result.Result}");
+        }
+
+        public async Task<CapabilityVerdictDto[]> VerdictsAsync(string key, long id) => Value(await Controller.GetVerdicts(key, id, default));
 
         public async Task<IssueDto> ReadAsync(string key) => Value(await Issues.GetIssue(key, default));
 

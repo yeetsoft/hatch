@@ -407,8 +407,10 @@ public class AdminSurfaceTests
         // the implementation column - see IssueCapabilitiesController.
         "IssueCapabilitiesController.DeleteCapability",
         "IssueCapabilitiesController.GetCapabilities",
+        "IssueCapabilitiesController.GetVerdicts",
         "IssueCapabilitiesController.PatchCapability",
         "IssueCapabilitiesController.PostCapability",
+        "IssueCapabilitiesController.PostVerdict",
         "IssueCapabilitiesController.PutOrder",
 
         // Shelving a tree into a dream. Key-accepting like the module around
@@ -885,8 +887,10 @@ public class AdminSurfaceTests
         "ImportController.PreviewText",
         "IssueCapabilitiesController.DeleteCapability",
         "IssueCapabilitiesController.GetCapabilities",
+        "IssueCapabilitiesController.GetVerdicts",
         "IssueCapabilitiesController.PatchCapability",
         "IssueCapabilitiesController.PostCapability",
+        "IssueCapabilitiesController.PostVerdict",
         "IssueCapabilitiesController.PutOrder",
         "IssueClaimController.Heartbeat",
         "IssueClaimController.ReleaseClaim",

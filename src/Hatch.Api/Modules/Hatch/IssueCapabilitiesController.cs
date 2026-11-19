@@ -18,7 +18,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// tests do. A write that changes nothing writes no event and moves no
 /// <c>UpdatedAt</c>, as <see cref="IssueDreamsController"/> does. A key may
 /// read anywhere but write only left of the implementation column: see
-/// <see cref="GateAsync"/>.
+/// <see cref="GateAsync"/>. A verdict is the exception: <c>POST .../verdicts</c>
+/// never gates, so a key may record one in any column.
 /// </remarks>
 [ApiController]
 [Route("api/issues/{key}/capabilities")]
@@ -80,7 +81,7 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
 
-        return CreatedAtAction(nameof(GetCapabilities), new { key }, Map(added));
+        return CreatedAtAction(nameof(GetCapabilities), new { key }, Map(added, null));
     }
 
     [HttpPatch("{id:long}")]
@@ -90,8 +91,7 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         if (NotAnAmbition(issue, key) is { } refusal) return refusal;
         if (await GateAsync(issue, ct) is { } gated) return gated;
 
-        var row = await db.Capabilities.FirstOrDefaultAsync(c => c.Id == id && c.IssueId == issue.Id, ct);
-        if (row is null) return NotFound();
+        if (await CapabilityAsync(issue.Id, id, ct) is not { } row) return NotFound();
 
         if (request.Statement is not null && Blank(request.Statement) is { } blankStatement) return blankStatement;
         if (request.HowToTell is not null && Blank(request.HowToTell) is { } blankHowToTell) return blankHowToTell;
@@ -100,7 +100,8 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         var howToTell = request.HowToTell?.Trim() ?? row.HowToTell;
         if (TooLong(statement, howToTell) is { } tooLong) return tooLong;
 
-        if (statement == row.Statement && howToTell == row.HowToTell) return Map(row);
+        if (statement == row.Statement && howToTell == row.HowToTell)
+            return Map(row, (await NewestVerdictsAsync([row.Id], ct)).GetValueOrDefault(row.Id));
 
         var now = time.GetUtcNow();
         var actor = await caller.ActorNameAsync(ct);
@@ -123,7 +124,7 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
-        return Map(row);
+        return Map(row, (await NewestVerdictsAsync([row.Id], ct)).GetValueOrDefault(row.Id));
     }
 
     /// <summary>
@@ -200,6 +201,68 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         return NoContent();
     }
 
+    [HttpGet("{id:long}/verdicts")]
+    public async Task<ActionResult<CapabilityVerdictDto[]>> GetVerdicts(string key, long id, CancellationToken ct)
+    {
+        if (await LoadAsync(key, ct) is not { } issue) return NotFound();
+        if (NotAnAmbition(issue, key) is { } refusal) return refusal;
+        if (await CapabilityAsync(issue.Id, id, ct) is null) return NotFound();
+
+        var rows = await db.CapabilityVerdicts.AsNoTracking()
+            .Where(v => v.CapabilityId == id)
+            .OrderByDescending(v => v.Id)
+            .ToListAsync(ct);
+
+        return rows.Select(MapVerdict).ToArray();
+    }
+
+    /// <summary>Never gated: see the class remarks.</summary>
+    [HttpPost("{id:long}/verdicts")]
+    public async Task<ActionResult<CapabilityVerdictDto>> PostVerdict(string key, long id, CapabilityVerdictRequest request, CancellationToken ct)
+    {
+        if (await LoadAsync(key, ct) is not { } issue) return NotFound();
+        if (NotAnAmbition(issue, key) is { } refusal) return refusal;
+        if (await CapabilityAsync(issue.Id, id, ct) is not { } capability) return NotFound();
+
+        var verdict = (request.Verdict ?? string.Empty).Trim();
+        var lookedAt = (request.LookedAt ?? string.Empty).Trim();
+        var sha = (request.Sha ?? string.Empty).Trim();
+
+        if (verdict is not (EfHatchCapabilityVerdict.Holds or EfHatchCapabilityVerdict.DoesNotHold or EfHatchCapabilityVerdict.CannotTell))
+            return BadRequest(
+                $"a verdict is one of {EfHatchCapabilityVerdict.Holds}, {EfHatchCapabilityVerdict.DoesNotHold} and {EfHatchCapabilityVerdict.CannotTell}");
+        if (string.IsNullOrEmpty(lookedAt)) return BadRequest("lookedAt may not be blank");
+        if (string.IsNullOrEmpty(sha)) return BadRequest("sha may not be blank");
+        if (lookedAt.Length > EfHatchCapabilityVerdict.MaxLookedAtLength)
+            return BadRequest($"lookedAt is at most {EfHatchCapabilityVerdict.MaxLookedAtLength} characters");
+        if (sha.Length > EfHatchCapabilityVerdict.MaxShaLength)
+            return BadRequest($"sha is at most {EfHatchCapabilityVerdict.MaxShaLength} characters");
+
+        var now = time.GetUtcNow();
+        var actor = await caller.ActorNameAsync(ct);
+
+        var added = new EfHatchCapabilityVerdict
+        {
+            CapabilityId = capability.Id,
+            Verdict = verdict,
+            LookedAt = lookedAt,
+            Sha = sha,
+            Author = actor,
+            CreatedAt = now,
+        };
+        db.CapabilityVerdicts.Add(added);
+
+        issue.Events.Add(Event(
+            actor,
+            EfHatchIssueEvent.CapabilityJudged,
+            new { id = capability.Id, position = capability.Position, verdict, sha, author = actor },
+            now));
+        issue.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        return CreatedAtAction(nameof(GetVerdicts), new { key, id }, MapVerdict(added));
+    }
+
     /// <summary>
     /// A key, not a person, and only once the ambition has reached the
     /// implementation column, passed it, or been deferred. What an ambition
@@ -243,13 +306,40 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
     private async Task<List<EfHatchCapability>> RowsAsync(long issueId, CancellationToken ct) =>
         await db.Capabilities.Where(c => c.IssueId == issueId).OrderBy(c => c.Position).ThenBy(c => c.Id).ToListAsync(ct);
 
-    private async Task<CapabilityDto[]> ReadAsync(long issueId, CancellationToken ct) =>
-        (await db.Capabilities.AsNoTracking().Where(c => c.IssueId == issueId).OrderBy(c => c.Position).ThenBy(c => c.Id).ToListAsync(ct))
-            .Select(Map)
-            .ToArray();
+    private async Task<EfHatchCapability?> CapabilityAsync(long issueId, long id, CancellationToken ct) =>
+        await db.Capabilities.FirstOrDefaultAsync(c => c.Id == id && c.IssueId == issueId, ct);
 
-    private static CapabilityDto Map(EfHatchCapability c) =>
-        new(c.Id, c.Position, c.Statement, c.HowToTell, c.CreatedBy, c.CreatedAt, c.UpdatedAt);
+    private async Task<CapabilityDto[]> ReadAsync(long issueId, CancellationToken ct)
+    {
+        var rows = await db.Capabilities.AsNoTracking().Where(c => c.IssueId == issueId).OrderBy(c => c.Position).ThenBy(c => c.Id).ToListAsync(ct);
+        var newest = await NewestVerdictsAsync(rows.Select(r => r.Id), ct);
+        return rows.Select(r => Map(r, newest.GetValueOrDefault(r.Id))).ToArray();
+    }
+
+    /// <summary>
+    /// The newest verdict for each capability id given, keyed by capability id -
+    /// a capability with none is absent. One query for the whole list: a row has
+    /// no later row for the same capability.
+    /// </summary>
+    private async Task<Dictionary<long, EfHatchCapabilityVerdict>> NewestVerdictsAsync(IEnumerable<long> capabilityIds, CancellationToken ct)
+    {
+        var ids = capabilityIds.ToList();
+        if (ids.Count == 0) return [];
+
+        var newest = await db.CapabilityVerdicts.AsNoTracking()
+            .Where(v => ids.Contains(v.CapabilityId))
+            .Where(v => !db.CapabilityVerdicts.Any(w => w.CapabilityId == v.CapabilityId && w.Id > v.Id))
+            .ToListAsync(ct);
+
+        return newest.ToDictionary(v => v.CapabilityId);
+    }
+
+    private static CapabilityDto Map(EfHatchCapability c, EfHatchCapabilityVerdict? newest) =>
+        new(c.Id, c.Position, c.Statement, c.HowToTell, c.CreatedBy, c.CreatedAt, c.UpdatedAt,
+            newest?.Verdict ?? EfHatchCapabilityVerdict.NotChecked, newest is null ? null : MapVerdict(newest));
+
+    private static CapabilityVerdictDto MapVerdict(EfHatchCapabilityVerdict v) =>
+        new(v.Id, v.CapabilityId, v.Verdict, v.LookedAt, v.Sha, v.Author, v.CreatedAt);
 
     private async Task<EfHatchIssue?> LoadAsync(string key, CancellationToken ct)
     {

@@ -716,6 +716,8 @@ on the project, naming the project's key and the Playbooks page.
 | PATCH | `/issues/{key}/capabilities/{id}` | Edits one's statement or how-to-tell line |
 | PUT | `/issues/{key}/capabilities/order` | Puts them in the order the body names |
 | DELETE | `/issues/{key}/capabilities/{id}` | Removes one and closes the gap |
+| GET | `/issues/{key}/capabilities/{id}/verdicts` | A capability's verdicts, newest first |
+| POST | `/issues/{key}/capabilities/{id}/verdicts` | Records a verdict on a capability |
 
 A capability is one thing an ambition says has to be true, and a line saying
 how anyone would tell. Every route answers `400` on an issue that is not an
@@ -727,9 +729,11 @@ deferred one it gets `403`, and a person is never refused. Reading is open to
 a key anywhere.
 
 Each is a `CapabilityDto(Id, Position, Statement, HowToTell, CreatedBy,
-CreatedAt, UpdatedAt)`. `Position` runs 1 to n with no gaps, so a read is
-already in order and a write leaves it so. GET answers `CapabilityDto[]`, empty
-for a fresh ambition.
+CreatedAt, UpdatedAt, State, NewestVerdict)`. `Position` runs 1 to n with no
+gaps, so a read is already in order and a write leaves it so. GET answers
+`CapabilityDto[]`, empty for a fresh ambition. `State` and `NewestVerdict` are
+derived on read, in one query for the whole list, and never stored - see
+"A capability's verdicts" below.
 
 POST takes `CapabilityCreateRequest(Statement, HowToTell, Position?)` and
 answers `201` with the row. `Position` left out appends; given, it must be
@@ -755,6 +759,35 @@ Each write that changes something writes one issue event on the ambition:
 however many rows moved) or `capability_removed` - see docs/hatch.md. Retyping
 an ambition away from `ambition` is refused while it holds any capabilities,
 and deleting the ambition deletes them.
+
+### A capability's verdicts
+
+A verdict records whether one capability holds, as of a sha. This is not the
+check session's verdict against a live claim - see `EfHatchVerdict` and `POST
+/work/{key}/verdict` above - the entity, the route and the event are all named
+differently so the two are never confused.
+
+POST `/issues/{key}/capabilities/{id}/verdicts` takes
+`CapabilityVerdictRequest(Verdict, LookedAt, Sha)` and answers `201` with the
+row. `Verdict` is one of `holds`, `does_not_hold` and `cannot_tell`; any other
+word is `400`, naming the three. A blank `LookedAt` or `Sha` is `400`.
+`LookedAt` is at most 500 characters and `Sha` at most 64; over either is
+`400`, naming the bound. An unknown `key` is `404`; an issue that is not an
+ambition is `400`; an unknown capability id, or one that is another
+ambition's, is `404`. Unlike the other capability routes, this one is never
+gated on the column - a key may write a verdict while the ambition sits in
+any column, including past implementation, in a terminal column, or deferred.
+
+GET answers the capability's `CapabilityVerdictDto[]` newest first. Each is a
+`CapabilityVerdictDto(Id, CapabilityId, Verdict, LookedAt, Sha, Author, At)`.
+
+A capability's `State` is its newest verdict's word, or `not_checked` with
+none - the four states a capability can read as. `NewestVerdict` is the row
+`State` was read from, or null. Both are derived on read and never stored.
+
+A verdict writes one `capability_judged` event on the ambition, with payload
+`{ id, position, verdict, sha, author }` - see docs/hatch.md. Removing a
+capability removes its verdicts; the events on the ambition remain.
 
 ## The loop's own routes
 

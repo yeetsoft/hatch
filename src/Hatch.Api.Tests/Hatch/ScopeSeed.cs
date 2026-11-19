@@ -61,6 +61,7 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
         new("DreamThreads", db => db.DreamThreads.CountAsync(), 2, 1, 0),
         new("DreamRemands", db => db.DreamRemands.CountAsync(), 2, 1, 0),
         new("Capabilities", db => db.Capabilities.CountAsync(), 2, 1, 0),
+        new("CapabilityVerdicts", db => db.CapabilityVerdicts.CountAsync(), 2, 1, 0),
         new("ChangelogTasks", db => db.ChangelogTasks.CountAsync(), 2, 1, 0),
 
         // Five proposals: one on each project's issue, two with no issue that
@@ -180,9 +181,14 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
             db.Dependencies.Add(new EfHatchIssueDependency { IssueId = one.Id, DependsOnId = two.Id, CreatedBy = "test", CreatedAt = At });
             db.DreamThreads.Add(new EfHatchDreamThread { DreamId = dream.Id, IssueId = one.Id, Actor = "test", At = At });
             db.DreamRemands.Add(new EfHatchDreamRemand { DreamId = dream.Id, IssueId = one.Id, Actor = "test", At = At });
-            db.Capabilities.Add(new EfHatchCapability
+            var capability = new EfHatchCapability
             {
                 IssueId = one.Id, Position = 1, Statement = "a capability", HowToTell = "how to tell", CreatedBy = "test", CreatedAt = At, UpdatedAt = At,
+            };
+            db.Capabilities.Add(capability);
+            db.CapabilityVerdicts.Add(new EfHatchCapabilityVerdict
+            {
+                Capability = capability, Verdict = "holds", LookedAt = "the code", Sha = "abc", Author = "test", CreatedAt = At,
             });
             db.ChangelogTasks.Add(new EfHatchChangelogTask { IssueId = one.Id, Canonical = canonical, CreatedAt = At });
         }

@@ -74,6 +74,7 @@ public class HatchContext : DbContext, IModuleContext
     public DbSet<EfHatchDreamThread> DreamThreads => Set<EfHatchDreamThread>();
     public DbSet<EfHatchDreamRemand> DreamRemands => Set<EfHatchDreamRemand>();
     public DbSet<EfHatchCapability> Capabilities => Set<EfHatchCapability>();
+    public DbSet<EfHatchCapabilityVerdict> CapabilityVerdicts => Set<EfHatchCapabilityVerdict>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
@@ -653,6 +654,14 @@ public class HatchContext : DbContext, IModuleContext
             e.HasIndex(c => new { c.IssueId, c.Position });
         });
 
+        modelBuilder.Entity<EfHatchCapabilityVerdict>(e =>
+        {
+            e.HasOne(v => v.Capability)
+                .WithMany()
+                .HasForeignKey(v => v.CapabilityId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<EfHatchPlaybookFile>(e =>
         {
             e.Property(f => f.Rows).HasColumnType("jsonb");
@@ -706,6 +715,7 @@ public class HatchContext : DbContext, IModuleContext
         modelBuilder.Entity<EfHatchIssueDependency>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchDreamThread>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchCapability>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchCapabilityVerdict>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Capability!.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchDreamRemand>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchChangelogTask>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
 
