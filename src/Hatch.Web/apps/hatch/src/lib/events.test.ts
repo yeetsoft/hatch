@@ -207,6 +207,40 @@ describe('describe', () => {
   });
 });
 
+describe('describe, capability events', () => {
+  it('says where an added capability went, and what it said', () => {
+    expect(
+      describeEvent(event({ kind: 'capability_added', payload: { id: 4, position: 2, statement: 'Reads in order' } })),
+    ).toBe('added as #2: Reads in order');
+  });
+
+  it('says where a removed capability stood', () => {
+    expect(
+      describeEvent(event({ kind: 'capability_removed', payload: { id: 4, position: 3, statement: 'Gone now' } })),
+    ).toBe('removed from #3: Gone now');
+  });
+
+  it('says which line of an edit changed', () => {
+    const edit = (to: { statement: string; howToTell: string }) =>
+      event({
+        kind: 'capability_edited',
+        payload: { id: 4, position: 1, from: { statement: 'was', howToTell: 'how was' }, to },
+      });
+
+    expect(describeEvent(edit({ statement: 'is', howToTell: 'how was' }))).toBe('#1: statement changed, now is');
+    expect(describeEvent(edit({ statement: 'was', howToTell: 'how is' }))).toBe('#1: how to tell changed, now was');
+    expect(describeEvent(edit({ statement: 'is', howToTell: 'how is' }))).toBe(
+      '#1: statement and how to tell changed, now is',
+    );
+  });
+
+  it('counts the capabilities a reorder moved', () => {
+    expect(describeEvent(event({ kind: 'capability_moved', payload: { from: [1, 2, 3], to: [1, 3, 2] } }))).toBe(
+      '2 of 3 capabilities moved',
+    );
+  });
+});
+
 describe('short', () => {
   it('reads null and undefined as none', () => {
     expect(short(null)).toBe('none');

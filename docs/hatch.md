@@ -62,6 +62,8 @@ the next heading of the same level and stop.
     comments are more than notes, and how are they bound?
   - [Search](#search) - How are issues, comments and work logs searched?
   - [Dream](#dream) - What is a half-thought, before it becomes an issue?
+  - [Capability](#capability) - What does an ambition say has to be true, and
+    how would anyone tell?
   - [Issue event](#issue-event) - What has happened to an issue, and what
     kinds of event record it?
   - [Playbook](#playbook) - What is an agent told when an issue moves from
@@ -3567,6 +3569,39 @@ issue.
   `DreamDto.RemandedFrom` reads the issues a dream was remanded from.
 - `ProjectId` is a lean, not a home: `SetNull` on delete, not `Restrict`.
 
+### Capability
+
+`EfHatchCapability` — `Id`, `IssueId`, `Position`, `Statement`, `HowToTell`,
+`CreatedBy`, `CreatedAt`, `UpdatedAt`. One thing an [ambition](#issue) says
+has to be true, and the line that says how anyone would tell.
+
+- **A row, not text in the description** — for the reason a question is a
+  row and not text in a comment (see [Comment, question and
+  answer](#comment-question-and-answer)): it can be counted, and it can
+  carry a verdict.
+- **Only an ambition has them.** Every route answers `400` on an issue of any
+  other type, with a sentence naming it. `IssueId` is a cascade-delete FK:
+  deleting the ambition takes its capabilities with it. A retype that would
+  stop an ambition being one is refused while it holds any, counting them.
+- **`Position` runs 1 to n within one ambition, with no gaps.** The
+  controller holds that, not the database: a unique index is checked per
+  statement in Postgres, not at commit, so a renumber inside one
+  `SaveChangesAsync` would trip it. An add at a position shifts the rows from
+  there up by one, a removal shifts the rows above it down by one, and a
+  reorder renumbers from the list it was given.
+- **`Statement` and `HowToTell` are one line each**, a title's bound (300
+  characters), and neither may be blank. `CapabilityDto` is the row as it is.
+- **A write that changes nothing writes nothing** — no event, no
+  `UpdatedAt`. Each write that does change something writes one issue event
+  on the ambition: `capability_added`, `capability_edited`,
+  `capability_moved` or `capability_removed`.
+- **A key reads anywhere and writes only left of the implementation
+  column.** Once the ambition is in the [implementation
+  column](#status), past it, in a terminal column or in a deferred one, a key
+  gets `403` on every write and a person is never refused. What an ambition
+  asks for is settled before the work starts; changing it after is a
+  person's call.
+
 ### Issue event
 
 `EfHatchIssueEvent` — `IssueId`, `Actor`, `Kind`, `Payload` (`jsonb`), `At`.
@@ -3597,7 +3632,14 @@ declaration that was set aside, beside `remote` and `verdict` or `pullRequest`),
 `priority_changed`, `express_changed`, `wip_limit_changed` (an epic's [Stories
 at once](#stories-at-once) was set, changed or cleared - payload `{ from, to }`,
 either side null rather than the default), `dependency_added`,
-`dependency_removed`, `dreams_woven` (`PUT /issues/{key}/dreams` replaced the
+`dependency_removed`, `capability_added` (`POST /issues/{key}/capabilities` -
+payload `{ id, position, statement }`), `capability_edited` (`PATCH
+/issues/{key}/capabilities/{id}` - payload `{ id, position, from: { statement,
+howToTell }, to: { statement, howToTell } }`, whole values each side),
+`capability_moved` (`PUT /issues/{key}/capabilities/order`, one event per call
+- payload `{ from, to }`, both sides every capability id in order),
+`capability_removed` (`DELETE /issues/{key}/capabilities/{id}` - payload `{ id,
+position, statement }` as it stood), `dreams_woven` (`PUT /issues/{key}/dreams` replaced the
 set of dreams this issue drew on - payload `{ from, to }`, both sides every
 dream id sorted ascending), `remanded` (`POST /issues/{key}/remand` shelved
 this issue into a [dream](#dream) - payload `{ dreamId, to, toId, root }`, the
@@ -4203,6 +4245,9 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
 | `/issues/{key}/events` | GET | Newest first |
+| `/issues/{key}/capabilities` | GET, POST | An ambition's [capabilities](#capability). GET reads them in position order, open to a key anywhere; POST `{ statement, howToTell, position? }` adds one, at the end when no `position` is given, else at it with the rest shifted down - `201`. `400` on an issue that is not an ambition, a blank line, or a `position` outside `1..n+1` |
+| `/issues/{key}/capabilities/{id}` | PATCH, DELETE | PATCH `{ statement?, howToTell? }` - a field left out keeps its value, one sent blank is a `400`; `404` on an unknown id. DELETE closes the gap, `204` |
+| `/issues/{key}/capabilities/order` | PUT | `{ ids }` - every capability's id once, in the wanted order; `400` when the list misses, repeats or names an id that is not this ambition's. Answers the reordered list. A write (POST, PATCH, PUT or DELETE) from a key is `403` once the ambition is at or past the implementation column, or deferred; a person is never refused |
 | `/issues/{key}/playbook` | PATCH | **Person only** — plain `[RequireRole(User)]`. The issue's own model and effort; `""` hands either back to the playbook |
 | `/issues/{key}/wip` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ limit }` — see [Stories at once](#stories-at-once). `""` clears it to no limit; a number below one, or not a number, is `400`; anything but an epic is `400` naming its type |
 | `/assignees` | GET | Every person and every live key, plus who the caller is — the picker's rows and *Assign to me* in one read |

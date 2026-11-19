@@ -1326,7 +1326,8 @@ public class IssuesController(
     /// type table does not allow, and that no parent check has looked at: an
     /// issue becoming an ambition while it has a parent or a child that is not
     /// an epic, an ambition becoming a type its epics cannot hang under, and an
-    /// issue under an ambition becoming a type that cannot. Other retypes are
+    /// issue under an ambition becoming a type that cannot, and an ambition that
+    /// holds capabilities becoming anything else. Other retypes are
     /// left to the person making them. Null when none of these applies.
     /// </summary>
     /// <param name="parentKey">The patch's own <c>parentKey</c>: null keeps the parent, empty clears it, else <paramref name="named"/> is the one it is given.</param>
@@ -1336,6 +1337,14 @@ public class IssuesController(
         EfHatchIssue? parentAfter = parentKey is null
             ? issue.ParentId is { } keptId ? await db.Issues.Include(i => i.Project).FirstOrDefaultAsync(i => i.Id == keptId, ct) : null
             : named;
+
+        if (issue.Type == "ambition" && newType != "ambition")
+        {
+            var held = await db.Capabilities.CountAsync(c => c.IssueId == issue.Id, ct);
+            if (held > 0)
+                return $"{await KeyOfAsync(issue, ct)} holds {held} {(held == 1 ? "capability" : "capabilities")}, "
+                    + "so it cannot stop being an ambition";
+        }
 
         if (newType == "ambition" && parentAfter is not null)
             return $"an ambition takes no parent, and {await KeyOfAsync(parentAfter, ct)} is above {await KeyOfAsync(issue, ct)}";

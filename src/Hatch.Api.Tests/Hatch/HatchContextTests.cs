@@ -30,12 +30,12 @@ public class HatchContextTests
     }
 
     [Fact]
-    public void TheModuleOwnsThirtyNineTables()
+    public void TheModuleOwnsFortyTables()
     {
         using var db = NewContext();
 
         Assert.Equal(
-            ["Attachments", "BuildChecks", "ChangelogFiles", "ChangelogTasks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "GooseFindings", "GooseRuns", "GooseSightings", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "LocalModels", "MergeChecks", "OvernightSeen", "PersonScopeProjects", "PersonScopes", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
+            ["Attachments", "BuildChecks", "Capabilities", "ChangelogFiles", "ChangelogTasks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "GooseFindings", "GooseRuns", "GooseSightings", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "LocalModels", "MergeChecks", "OvernightSeen", "PersonScopeProjects", "PersonScopes", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 
@@ -248,6 +248,21 @@ public class HatchContextTests
         Assert.Equal(
             DeleteBehavior.Cascade,
             ForeignKeyOn(db, typeof(EfHatchDreamThread), foreignKey).DeleteBehavior);
+    }
+
+    /// <summary>
+    /// A capability has no meaning without its ambition, so deleting the issue
+    /// takes its rows. Pinned as model metadata, as <see cref="DreamThreadEdges_CascadeWithEitherSide"/> is,
+    /// since the in-memory provider's cascade is not Postgres's.
+    /// </summary>
+    [Fact]
+    public void ACapability_CascadesWithItsIssue()
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.Cascade,
+            ForeignKeyOn(db, typeof(EfHatchCapability), nameof(EfHatchCapability.IssueId)).DeleteBehavior);
     }
 
     /// <summary>
