@@ -11679,6 +11679,32 @@ public class WorkControllerTests
             rows.Single(r => r.Key == Key(inMerges)).MergeWork);
     }
 
+    [Fact]
+    public async Task ReviewRead_AMergesColumnIssueWithARecordedHeadBranch_ComesBackOnceWithItsBranch()
+    {
+        // A merges-column row in a checkout the runner holds is both a held row
+        // and a merging one; with a head branch recorded, the read once threw on
+        // the duplicate and answered 500 to every runner, stopping the train.
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var inMerges = await h.FileAsync("task", "ready to merge", approved.Id);
+        await h.SetPullRequestAsync(inMerges, "https://example.com/o/r/pull/1");
+        inMerges.PullRequestHeadBranch = "feature/ready";
+        await h.Db.SaveChangesAsync();
+        await h.VerdictAsync(inMerges, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(inMerges, BuildVerdicts.Passed);
+
+        var rows = Value(await h.Work.GetReview(["git@example.com:o/r.git"], null, default));
+
+        var row = Assert.Single(rows);
+        Assert.Equal("feature/ready", row.Branch);
+        Assert.Equal(WorkKinds.Merge, row.MergeWork?.Kind);
+    }
+
     // ---- The playbook file flag (HA-824) ----
 
     [Fact]
