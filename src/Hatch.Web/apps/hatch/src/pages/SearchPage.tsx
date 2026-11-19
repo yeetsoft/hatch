@@ -5,6 +5,7 @@ import { getSearch, getStatuses } from '../api/client';
 import { Facet } from '../components/Facet';
 import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
+import { tileFill } from '../lib/columns';
 import { message } from '../lib/errors';
 import { facetClass } from '../lib/facet';
 import { createLedger } from '../lib/refresh';
@@ -261,7 +262,7 @@ export function SearchPage() {
                         <Link to={`/issues/${hit.card.key}`}>{hit.card.key}</Link>
                       </td>
                       <td>
-                        <TypeBadge type={hit.card.type} />
+                        <TypeBadge type={hit.card.type} fill={tileFill(statuses ?? [], hit.card.statusId)} />
                       </td>
                       <td>{hit.card.title}</td>
                       <td>

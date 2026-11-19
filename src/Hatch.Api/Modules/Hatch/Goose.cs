@@ -75,6 +75,14 @@ public static class GooseSettings
     /// </summary>
     public static TimeSpan TrainReadyBound(HatchOptions options) => TimeSpan.FromMinutes(
         options.GooseTrainReadyMinutes >= 0 ? options.GooseTrainReadyMinutes : new HatchOptions().GooseTrainReadyMinutes);
+
+    /// <summary>
+    /// How long a question may wait before <see cref="QuestionsWaitingCheck"/>
+    /// opens a finding. Zero turns the check off, as <see cref="TrainReadyBound"/>'s
+    /// zero does, and only a negative falls back to the default.
+    /// </summary>
+    public static TimeSpan QuestionBound(HatchOptions options) => TimeSpan.FromHours(
+        options.GooseQuestionHours >= 0 ? options.GooseQuestionHours : new HatchOptions().GooseQuestionHours);
 }
 
 /// <summary>One label and value a <see cref="FindingCheck"/> reported for a finding, as stored in <see cref="EfHatchGooseFinding.Evidence"/>.</summary>

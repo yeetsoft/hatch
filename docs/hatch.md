@@ -5282,6 +5282,29 @@ that it never has), how many other rows share the merges column, and how many
 times a driver has been passed over on this head since the condition began,
 with which runners.
 
+#### `questions-waiting`
+
+The goose's finding for questions left unanswered too long
+(`QuestionsWaitingCheck`). It reads `Questions.Waiting` - open, on an issue
+outside a terminal column - and adds no second rule for what waiting means.
+Its subject is `board` and it names no project, so at most one such finding is
+open and only an unbounded caller reads it (see **Scope** above). The token is
+constant (`past-bound`), so a second question crossing the bound refreshes the
+one row rather than opening another; it closes when none is past the bound.
+
+A question counts once `now - asked >= Hatch__GooseQuestionHours` (default 24;
+zero turns the check off, a negative falls back to 24), so one at exactly 24
+hours opens the finding. The check applies the bound itself by choosing
+whether there is a candidate, and returns a zero bound to `FindingCheck`.
+A question on an issue filed from a finding is left out. The sentence gives the
+count and the bound and no duration, for example `3 questions have waited more
+than 24 hours`; the evidence lists every question past the bound, oldest first:
+the issue's key as the label, then its title, who asked, when, and the
+question's first line. The run's entry says how many waiting questions it
+looked at and how many were past the bound. `BeganAt` is the first sweep that
+sees a question past the bound - at most one sweep interval after it, the same
+clock `train-ready` has. It judges by age alone and suggests or gives no answer.
+
 ## Reports
 
 The board says what is where. The reports say **when it was** — questions about

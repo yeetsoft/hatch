@@ -104,6 +104,11 @@ From a terminal, `hatch questions` lists what is open and `hatch answer` settles
 one, taking an option by its number ([the CLI reference](cli-reference#answer)
 has the rest).
 
+A question that has waited longer than `Hatch__GooseQuestionHours` (a day, by
+default) opens one finding from [the goose](the-goose#questions-waiting), which
+lists every such question, oldest first. It only says they are waiting; it
+suggests no answer and answers none.
+
 ## Where the answer lives afterwards
 
 On the issue, as an answer comment bound to the question it settles, with who
