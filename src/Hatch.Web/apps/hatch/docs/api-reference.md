@@ -424,6 +424,10 @@ name 400s, naming the levels. Nothing in dispatch reads the level yet.
 `IssueDto` and `IssueCardDto` also carry `preApprovalPassedOver` and `priorityPassedOver`: the key of the
 nearest ancestor whose level was passed over at a project line because its setter has no say in this
 ticket's project (or none was recorded), or null. Read live, beside `preApprovalFrom` and `priorityFrom`.
+`IssueDto` also carries `startedBy` (a name, or null for a key's move, an issue started before this was
+recorded, or one never started) and `startedAt` (null only where it never crossed): written the first time
+a move, a PATCH, a bulk edit or a hop carries the issue rightward across the board's send-back column, and
+overwritten by the next crossing, including back to nobody for a key's.
 `playbook` 400s an unknown model or effort - the same validation a playbook
 file is held to. `landing` 400s a malformed remote, sha or trunk, and the
 first write for a repository 400s if it omits `trunk`. Every field here

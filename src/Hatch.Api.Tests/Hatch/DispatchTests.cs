@@ -1915,6 +1915,55 @@ public class DispatchTests
         Assert.Equal(nobodyKey, tree.PassedOver(byNobody.Id).Priority!.Value.Key);
     }
 
+    // ---- PriorityTree.PreApprovalSetter: the row EffectivePreApproval settled on, never a different one (HA-2481) ----
+
+    [Fact]
+    public async Task PriorityTree_PreApprovalSetter_OwnRow_IsItsOwnSetter()
+    {
+        var h = await NewAsync();
+        var setter = h.Actors.AddPerson("Ada");
+        var issue = await h.FileAsync("story", "S", h.Todo);
+        await h.SetLevelAsync(issue, PreApprovalLevels.Express, setter.Id);
+
+        var tree = await h.TreeAsync();
+        Assert.Equal(setter.Id, tree.PreApprovalSetter(issue.Id));
+    }
+
+    [Fact]
+    public async Task PriorityTree_PreApprovalSetter_InheritedFromAnAncestor_IsTheAncestorsSetter_NotTheDescendants()
+    {
+        var h = await NewAsync();
+        var setter = h.Actors.AddPerson("Ada");
+        var epic = await h.FileAsync("epic", "E", h.Todo);
+        await h.SetLevelAsync(epic, PreApprovalLevels.PreApproved, setter.Id);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+
+        var tree = await h.TreeAsync();
+        Assert.Equal(setter.Id, tree.PreApprovalSetter(story.Id));
+    }
+
+    [Fact]
+    public async Task PriorityTree_PreApprovalSetter_NoLevelAnywhere_IsNull()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "S", h.Todo);
+
+        var tree = await h.TreeAsync();
+        Assert.Null(tree.PreApprovalSetter(issue.Id));
+    }
+
+    [Fact]
+    public async Task PriorityTree_PreApprovalSetter_LevelWithNoSetterRecorded_IsNull()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "S", h.Todo);
+        await h.SetLevelAsync(issue, PreApprovalLevels.Express, null);
+
+        var tree = await h.TreeAsync();
+        Assert.Equal(PreApprovalLevels.Express, tree.EffectivePreApproval(issue.Id).Level);
+        Assert.Null(tree.PreApprovalSetter(issue.Id));
+    }
+
     [Fact]
     public async Task PriorityTree_InsideOneProject_NoTestIsMade_ASetterWithNoRoleAtAllIsHonoured()
     {
