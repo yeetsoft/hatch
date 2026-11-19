@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Modal, PageHeader, Text } from '@hatch/ui';
 import {
+  liftBoardPause,
   orderRunnerSession,
   patchRunner,
   patchRunnerSession,
@@ -53,7 +54,7 @@ function SessionsCards({
   const hosts = new Set(live.map((session) => session.host).filter((host): host is string => host !== null));
   const actions = sessionActions(
     runner.name,
-    { patchRunnerSession, orderRunnerSession, withdrawSessionOrder, pauseAllSessions, stopAllSessions },
+    { patchRunnerSession, orderRunnerSession, withdrawSessionOrder, liftBoardPause, pauseAllSessions, stopAllSessions },
     reload,
   );
   const loops = liveLoopSessions(live).length;

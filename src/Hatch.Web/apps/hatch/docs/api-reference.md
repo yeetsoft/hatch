@@ -1061,6 +1061,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | PATCH | `/runners/{name}/sessions/{id}` | **person** | Sets one session's state, by its id, without touching any sibling session under the same key |
 | POST | `/runners/{name}/sessions/{id}/order` | **person** | Orders one session to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/sessions/{id}/order` | **person** | Withdraws whatever order that session holds |
+| DELETE | `/runners/{name}/sessions/{id}/pause` | **person** | Lifts a `board-paused` pause on one session - clears `agentDownUntil`, `agentDownKind` and `agentDownLine`, and resets the failure streak that led to it; `409` for a pause the session set on itself (`not-starting` or `signed-out`), which is the runner's own to clear; `204` and no write for a session that is not paused, or whose pause has passed |
 | POST | `/runners/{name}/pause-all` | **person** | Pauses every live `loop` session under this key at once |
 | POST | `/runners/{name}/stop-all` | **person** | Stops every live `loop` session under this key at once |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
@@ -1155,7 +1156,12 @@ field all leave it whole. Once `agentDownUntil` has passed the heartbeat writes
 the three as it always did. A new session row for the same key and checkout,
 started while the pause is still in force, begins with the same three. Unlike exhaustion, a runner
 whose agent is down is left out of `Dispatch`'s peer set and is never elected
-driver until the check passes.
+driver until the check passes. `DELETE /runners/{name}/sessions/{id}/pause` is
+the operator's way to end a board pause early: it clears every row at that
+key and checkout with a live `board-paused` pause, ended ones included, so a
+restarted loop does not inherit the pause straight back from the row it
+replaced. The next heartbeat is then answered with the session's own stored
+state, and three more releases that spent nothing pause it again.
 
 `models` is a fact the runner reports, written on every beat like `remotes`:
 an absent one leaves the row alone, `[]` clears it, and any other list replaces

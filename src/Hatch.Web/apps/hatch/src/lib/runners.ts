@@ -178,6 +178,17 @@ export function sessionParts(session: RunnerSession, runner: Runner, now: Date):
   return factsParts(sessionFacts(session, runner), now);
 }
 
+/** Whether a session is under a live board pause - the one a person, not the
+    runner itself, may lift. */
+export function isBoardPaused(session: RunnerSession, now: Date): boolean {
+  return (
+    session.agentDownKind === 'board-paused' &&
+    session.agentDownUntil !== null &&
+    session.agentDownUntil !== undefined &&
+    Date.parse(session.agentDownUntil) > now.getTime()
+  );
+}
+
 /**
  * The sessions worth a line under their runner, in the server's order.
  *

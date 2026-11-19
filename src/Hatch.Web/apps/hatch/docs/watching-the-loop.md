@@ -183,6 +183,19 @@ one at a time, so the order box is replaced by that line while it stands. The lo
 takes an order at its next heartbeat, paused or running, then returns to what its
 state says. A `once` session has no controls and says `one increment`.
 
+A session the board paused for dropping three tickets in a row without
+spending a token (`Paused by the board until …` - see [the
+runner](the-runner#when-the-board-pauses-a-session)) draws one more control,
+**Lift pause**, and no other session does. Pressing it ends the pause at
+once rather than waiting out the hour: the row redraws without it on the next
+read, the session's next heartbeat answers as normal, and its next claim is
+taken. Three more releases that spend nothing pause it again. It never
+appears on a session paused by its own agent (`not-starting` or
+`signed-out`) - that is the runner's own to clear, by signing back in or
+fixing whatever would not start. See
+[troubleshooting](troubleshooting#a-session-keeps-getting-paused-by-the-board)
+for what to check before lifting it.
+
 **Pause all** and **Stop all** sit in the card's heading when at least one loop
 session is live. **Pause all** acts at once. **Stop all** asks first - `Stop 3
 sessions after their current increment?` - and each session finishes its current
