@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { isGoToShortcut, isTypingTarget, isUndoShortcut, postShortcutLabel, undoShortcutLabel } from './shortcuts';
+import {
+  isGoToShortcut,
+  isNewIssueShortcut,
+  isTypingTarget, isUndoShortcut, postShortcutLabel, undoShortcutLabel } from './shortcuts';
 
 const chord = (key: string, mods: Partial<Record<'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey', boolean>> = {}) => ({
   key,
@@ -28,6 +31,28 @@ describe('isGoToShortcut', () => {
   it('is not any other key', () => {
     expect(isGoToShortcut(chord('?', { shiftKey: true }))).toBe(false);
     expect(isGoToShortcut(chord('z'))).toBe(false);
+  });
+});
+
+describe('isNewIssueShortcut', () => {
+  it('is a bare c', () => {
+    expect(isNewIssueShortcut(chord('c'))).toBe(true);
+  });
+
+  it('accepts a capital C, which Caps Lock and Shift send', () => {
+    expect(isNewIssueShortcut(chord('C'))).toBe(true);
+    expect(isNewIssueShortcut(chord('C', { shiftKey: true }))).toBe(true);
+  });
+
+  it('steps aside for Meta, Ctrl and Alt, so copy still copies', () => {
+    expect(isNewIssueShortcut(chord('c', { metaKey: true }))).toBe(false);
+    expect(isNewIssueShortcut(chord('c', { ctrlKey: true }))).toBe(false);
+    expect(isNewIssueShortcut(chord('c', { altKey: true }))).toBe(false);
+  });
+
+  it('is not any other key', () => {
+    expect(isNewIssueShortcut(chord('v'))).toBe(false);
+    expect(isNewIssueShortcut(chord('/'))).toBe(false);
   });
 });
 
