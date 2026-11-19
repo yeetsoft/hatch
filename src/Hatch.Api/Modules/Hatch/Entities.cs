@@ -973,6 +973,19 @@ public class EfHatchIssue
     /// </summary>
     public string Description { get; set; } = "";
 
+    /// <remarks>
+    /// A concurrency token: every <c>UPDATE</c> of an issue row carries
+    /// <c>AND "StatusId" = &lt;the value read&gt;</c>, so a request that read the
+    /// column, and then wrote after another request had moved the issue, matches
+    /// no row and throws <c>DbUpdateConcurrencyException</c>. The whole
+    /// <c>SaveChanges</c> rolls back, so the loser writes no event and moves no
+    /// task. Only this column, not the whole row (<c>xmin</c>): claim
+    /// heartbeats, rank writes and <c>UpdatedAt</c> touches are not moves and
+    /// must not refuse one. The merged route catches the loser and answers the
+    /// gate's own 409 (<c>WorkController.MergedWork</c>); every other route's
+    /// loser reaches <c>ConcurrentMoveFilter</c>, which answers a 409 too.
+    /// </remarks>
+    [ConcurrencyCheck]
     public required int StatusId { get; set; }
     public EfHatchStatus? Status { get; set; }
 

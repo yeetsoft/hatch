@@ -726,6 +726,7 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("StatusId")
+                        .IsConcurrencyToken()
                         .HasColumnType("integer");
 
                     b.Property<string>("Title")

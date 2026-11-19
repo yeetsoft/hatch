@@ -696,7 +696,7 @@ the second half of this page, after the board's own.
 | GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner - the calling key's own name where none is sent - so an issue omitted for it, or on a model its key refuses, comes back blocked |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
-| POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
+| POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged; of two reports of one merge, the first moves the issue and the second gets a `409` |
 | POST | `/work/{key}/pushback` | Carries a merge-column issue back to review once its branch conflicts or its build fails |
 | POST | `/work/{key}/landed` | Advances a trunk-landing issue once its commit is confirmed landed and the trunk is green |
 | POST | `/work/{key}/closed` | Records that the pull request recorded on an issue closed without merging |

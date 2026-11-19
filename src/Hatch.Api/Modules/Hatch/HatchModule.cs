@@ -83,6 +83,10 @@ public static class HatchModule
         services.AddScoped<RequestScope>();
         services.Configure<MvcOptions>(o => o.Filters.Add<ScopeResolutionFilter>());
 
+        // The loser of a race to move an issue (StatusId is a concurrency
+        // token) is answered with a 409 rather than a 500.
+        services.Configure<MvcOptions>(o => o.Filters.Add<ConcurrentMoveFilter>());
+
         // The container runner's entrypoint authenticates the `claude` CLI it
         // starts with this - the one thing the pasted token still does. The
         // credential is its own interface so that where the token lives is one
