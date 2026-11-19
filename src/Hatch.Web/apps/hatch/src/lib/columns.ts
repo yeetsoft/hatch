@@ -12,6 +12,7 @@
    the board is made of. */
 
 import type { Status } from '../types';
+import type { TileFill } from '../components/TypeGlyph';
 
 /**
  * The columns the board draws, in the order it draws them.
@@ -180,4 +181,33 @@ export function landingFocus(statuses: Status[], statusId: number): number | nul
   if (at < 0) return lanes[0]?.id ?? null;
   if (at < lanes.length - 1) return lanes[at + 1].id;
   return lanes[at - 1]?.id ?? null;
+}
+
+/**
+ * Which fill a ticket's type tile wears in a list that mixes columns: an
+ * outline before work starts, solid while it is under way, and a tick once it
+ * has landed.
+ *
+ * A terminal column is landed and a deferred one is an outline, since shelved
+ * work has not started. Otherwise a column left of implementation() is an
+ * outline, in board order, and every other open column is solid. A board with
+ * no implementation column has nothing left of it, so every open column is
+ * solid, and so is a status that is not known yet - a list is drawn before its
+ * columns have loaded.
+ *
+ * A client-side reading with no server twin: nothing on the server asks it.
+ */
+export function tileFill(statuses: Status[], statusId: number | undefined): TileFill {
+  const status = statuses.find((s) => s.id === statusId);
+  if (!status) return 'solid';
+  if (status.isTerminal) return 'landed';
+  if (status.isDeferred) return 'outline';
+
+  const impl = implementation(statuses);
+  if (!impl) return 'solid';
+
+  const board = boardColumns(statuses);
+  return board.findIndex((s) => s.id === status.id) < board.findIndex((s) => s.id === impl.id)
+    ? 'outline'
+    : 'solid';
 }

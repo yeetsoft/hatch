@@ -8,6 +8,7 @@ import {
   narrowColumns,
   sendBack,
   statusChoices,
+  tileFill,
 } from './columns';
 import type { Status } from '../types';
 
@@ -233,5 +234,63 @@ describe('columnTracks', () => {
 
   it('is empty with no columns', () => {
     expect(columnTracks([], new Set())).toBe('');
+  });
+});
+
+describe('tileFill', () => {
+  const draft = status(1, 10);
+  const breakdown = status(2, 20);
+  const backlog = status(3, 30);
+  const todo = status(4, 40);
+  const doing = status(5, 50, { isImplementation: true });
+  const review = status(6, 60);
+  const approved = status(7, 70, { isProtected: true });
+  const done = status(8, 80, { isTerminal: true });
+  const deferred = status(9, 90, { isDeferred: true });
+  const stock = [draft, breakdown, backlog, todo, doing, review, approved, done, deferred];
+
+  it('is an outline before the implementation column on the stock board', () => {
+    for (const s of [draft, breakdown, backlog, todo]) expect(tileFill(stock, s.id)).toBe('outline');
+  });
+
+  it('is solid from the implementation column to the end of the open columns', () => {
+    for (const s of [doing, review, approved]) expect(tileFill(stock, s.id)).toBe('solid');
+  });
+
+  it('is landed in a terminal column and an outline in a deferred one', () => {
+    expect(tileFill(stock, done.id)).toBe('landed');
+    expect(tileFill(stock, deferred.id)).toBe('outline');
+  });
+
+  it('measures the boundary where nothing is ticked', () => {
+    const a = status(1, 10);
+    const b = status(2, 20);
+    const c = status(3, 30);
+    const d = status(4, 40, { isTerminal: true });
+    const board = [a, b, c, d];
+
+    expect(implementation(board)?.id).toBe(b.id);
+    expect(tileFill(board, a.id)).toBe('outline');
+    expect(tileFill(board, b.id)).toBe('solid');
+    expect(tileFill(board, c.id)).toBe('solid');
+    expect(tileFill(board, d.id)).toBe('landed');
+  });
+
+  it('leaves every open column solid where the board has no implementation column', () => {
+    const review = status(1, 10);
+    const done = status(2, 20, { isTerminal: true });
+    const shelf = status(3, 30, { isDeferred: true });
+    const board = [review, done, shelf];
+
+    expect(implementation(board)).toBeNull();
+    expect(tileFill(board, review.id)).toBe('solid');
+    expect(tileFill(board, done.id)).toBe('landed');
+    expect(tileFill(board, shelf.id)).toBe('outline');
+  });
+
+  it('is solid for a status that is not known yet', () => {
+    expect(tileFill(stock, 999)).toBe('solid');
+    expect(tileFill(stock, undefined)).toBe('solid');
+    expect(tileFill([], todo.id)).toBe('solid');
   });
 });
