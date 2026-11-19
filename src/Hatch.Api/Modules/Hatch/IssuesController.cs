@@ -544,6 +544,7 @@ public class IssuesController(
         if (!ReadEdit(request, out var edit, out var editError)) return BadRequest(editError);
 
         var actor = await caller.ActorNameAsync(ct);
+        var who = await SetterAuthority.CallerAsync(actors, ct);
         var now = time.GetUtcNow();
 
         // Decided once, against the issue as LoadAsync first returned it.
@@ -557,7 +558,7 @@ public class IssuesController(
         {
             var gate = new WipGate(db, actors, claims, now);
             var (changed, error, conflict, full, _, forbidden) = await StageEditAsync(
-                issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+                issue, edit, actor, who, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
             if (forbidden is not null) return new ObjectResult(forbidden) { StatusCode = StatusCodes.Status403Forbidden };
             if (full is not null) return Conflict(full);
             if (conflict is not null) return Conflict(conflict);
@@ -583,7 +584,7 @@ public class IssuesController(
 
             var gate = new WipGate(db, actors, claims, now);
             var (changed, error, conflict, full, _, forbidden) = await StageEditAsync(
-                issue, edit, actor, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
+                issue, edit, actor, who, now, new ColumnBottoms(ranks), gate, request.WipOverride, ct);
             if (forbidden is not null) return new ObjectResult(forbidden) { StatusCode = StatusCodes.Status403Forbidden };
             if (full is not null) return Conflict(full);
             if (conflict is not null) return Conflict(conflict);
@@ -651,6 +652,7 @@ public class IssuesController(
         if (edit.IsEmpty) return BadRequest("a bulk edit has to change something");
 
         var actor = await caller.ActorNameAsync(ct);
+        var who = await SetterAuthority.CallerAsync(actors, ct);
         var now = time.GetUtcNow();
 
         // One tracker for the batch: fifty issues sent to the same column are
@@ -714,7 +716,7 @@ public class IssuesController(
             foreach (var (key, issue) in resolved)
             {
                 var (moved, error, conflict, full, rekeyedByThis, forbidden) =
-                    await StageEditAsync(issue, edit, actor, now, bottoms, gate, wipOverride: false, ct);
+                    await StageEditAsync(issue, edit, actor, who, now, bottoms, gate, wipOverride: false, ct);
                 if (forbidden is not null) failures.Add(new IssueBulkFailureDto(key, forbidden));
                 else if (full is not null) failures.Add(new IssueBulkFailureDto(key, full.Error));
                 else if (conflict is not null) failures.Add(new IssueBulkFailureDto(key, conflict));
@@ -794,7 +796,7 @@ public class IssuesController(
     /// it, named by the caller or not. Empty unless a move happened.
     /// </returns>
     private async Task<(bool Changed, string? Error, string? Conflict, WipRefusalDto? Full, IReadOnlyList<(string From, string To)> Rekeyed, string? Forbidden)> StageEditAsync(
-        EfHatchIssue issue, IssueEdit edit, string actor, DateTimeOffset now, ColumnBottoms bottoms,
+        EfHatchIssue issue, IssueEdit edit, string actor, Guid? who, DateTimeOffset now, ColumnBottoms bottoms,
         WipGate gate, bool wipOverride, CancellationToken ct)
     {
         List<(string From, string To)> rekeyed = [];
@@ -933,15 +935,20 @@ public class IssuesController(
 
         if (status is not null)
         {
-            // The whole row rather than the name, because two of its flags are
-            // read below - what is being left as well as what is being entered.
-            var from = await db.Statuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == issue.StatusId, ct);
+            // The whole ordered board, read once: the from row needs two of
+            // its flags below, NoCode.ClearOnMove needs the same board to walk,
+            // and Columns.CrossesStart needs it to say whether this move starts
+            // the issue - one query rather than three for the same move.
+            var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+            var from = statuses.FirstOrDefault(s => s.Id == issue.StatusId);
             events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, IssueEventPayload.StatusChanged(from, status), now));
+
+            Starts.Record(issue, from is not null && Columns.CrossesStart(statuses, from.Id, status.Id), who, now);
 
             issue.StatusId = status.Id;
             issue.ClosedAt = Columns.ClosedAt(from, status, now, issue.ClosedAt);
             if (ChangelogTasks.JustClosed(from, status, issue)) justClosed.Add(issue);
-            if (NoCode.ClearOnMove(issue, status, await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct), actor, now) is { } cleared)
+            if (NoCode.ClearOnMove(issue, status, statuses, actor, now) is { } cleared)
                 events.Add(cleared);
             // A column change through PATCH has no neighbours to sit between,
             // so the card goes to the bottom of the new column. The board sends
@@ -1172,16 +1179,21 @@ public class IssuesController(
             if (wip.Kind == WipVerdictKind.Refused) return Conflict(wip.Refusal);
 
             var actor = await caller.ActorNameAsync(ct);
-            var from = await db.Statuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == issue.StatusId, ct);
+            var who = await SetterAuthority.CallerAsync(actors, ct);
+            var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+            var from = statuses.FirstOrDefault(s => s.Id == issue.StatusId);
             issue.Events.Add(Event(actor, EfHatchIssueEvent.StatusChanged, IssueEventPayload.StatusChanged(from, status), now));
             if (wip.Kind == WipVerdictKind.Overridden)
                 foreach (var over in wip.Overrides)
                     issue.Events.Add(Event(actor, EfHatchIssueEvent.WipOverridden, WipOverriddenPayload(over, status.Name), now));
             issue.UpdatedAt = now;
+
+            Starts.Record(issue, from is not null && Columns.CrossesStart(statuses, from.Id, status.Id), who, now);
+
             issue.StatusId = status.Id;
             issue.ClosedAt = Columns.ClosedAt(from, status, now, issue.ClosedAt);
             if (ChangelogTasks.JustClosed(from, status, issue)) justClosed.Add(issue);
-            if (NoCode.ClearOnMove(issue, status, await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct), actor, now) is { } cleared)
+            if (NoCode.ClearOnMove(issue, status, statuses, actor, now) is { } cleared)
                 issue.Events.Add(cleared);
 
             // The board has no deferred column to drop onto, so this endpoint

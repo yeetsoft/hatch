@@ -719,6 +719,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
 
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("StartedBy")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("StatusId")
                         .HasColumnType("integer");
 

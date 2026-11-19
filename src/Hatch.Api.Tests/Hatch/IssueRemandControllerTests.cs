@@ -45,6 +45,39 @@ public class IssueRemandControllerTests
         Assert.DoesNotContain(EfHatchIssueEvent.Remanded, await h.EventKindsAsync(h.Done.Id));
     }
 
+    // ---- Who started it (HA-2481): a remand always shelves into a deferred column, so it never crosses Columns.SendBack and never writes StartedBy ----
+
+    [Fact]
+    public async Task ARemand_LeavesAnAlreadyStartedIssuesStarterAlone()
+    {
+        var h = await NewAsync();
+        var starter = h.Actors.AddPerson("Ada");
+        var row = await h.Db.Issues.SingleAsync(i => i.Id == h.Root.Id);
+        row.StartedBy = starter.Id;
+        row.StartedAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        await h.Controller.Remand(h.Root.Key, new DreamRemandRequest(h.Shelf.Id), default);
+
+        h.Db.ChangeTracker.Clear();
+        var after = await h.Db.Issues.SingleAsync(i => i.Id == h.Root.Id);
+        Assert.Equal(starter.Id, after.StartedBy);
+        Assert.Equal(Now.AddDays(-1), after.StartedAt);
+    }
+
+    [Fact]
+    public async Task ARemand_OfAnIssueNeverStarted_WritesNoStarter()
+    {
+        var h = await NewAsync();
+
+        await h.Controller.Remand(h.Root.Key, new DreamRemandRequest(h.Shelf.Id), default);
+
+        h.Db.ChangeTracker.Clear();
+        var after = await h.Db.Issues.SingleAsync(i => i.Id == h.Root.Id);
+        Assert.Null(after.StartedBy);
+        Assert.Null(after.StartedAt);
+    }
+
     [Fact]
     public async Task TheDream_ReadsTheRootsTitleAndDescription_AndCarriesItsKeyProjectAndAuthor()
     {
@@ -271,6 +304,7 @@ public class IssueRemandControllerTests
         public required HatchContext Db { get; init; }
         public required IssueRemandController Controller { get; init; }
         public required DreamsController Dreams { get; init; }
+        public required StubActorDirectory Actors { get; init; }
         public required int ProjectId { get; init; }
         public required EfHatchStatus Open { get; init; }
         public required EfHatchStatus Closed { get; init; }
@@ -340,12 +374,14 @@ public class IssueRemandControllerTests
 
         var time = new FakeTimeProvider(Now);
         var caller = new StubCallerIdentity { Person = new EfPerson { Name = "a person", CreatedAt = Now, UpdatedAt = Now } };
+        var actors = new StubActorDirectory();
 
         var h = new Harness
         {
             Db = db,
-            Controller = new IssueRemandController(db, new StubActorDirectory(), new RankService(db), caller, time),
+            Controller = new IssueRemandController(db, actors, new RankService(db), caller, time),
             Dreams = new DreamsController(db, caller, time),
+            Actors = actors,
             ProjectId = project.Id,
             Open = open,
             Closed = closed,

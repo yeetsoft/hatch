@@ -446,4 +446,68 @@ public class ColumnsTests
             "nothing is dispatched from \"Parked\" - it is a deferred column, so this row can never run",
             Columns.UnreachableReason(board, 3, 4, false));
     }
+
+    // Five columns, so there is a column to the left of SendBack ("To Do") to
+    // move out of: Backlog, To Do, Doing, Review, Done. Implementation is
+    // "Doing" (Advance(Doing) lands on Review, the awaiting-review column),
+    // and SendBack is "To Do" (Target(To Do) lands on "Doing").
+    static List<EfHatchStatus> FiveColumnBoard(out EfHatchStatus backlog, out EfHatchStatus todo, out EfHatchStatus doing, out EfHatchStatus review, out EfHatchStatus done)
+    {
+        backlog = S(1, "Backlog", 10);
+        todo = S(2, "To Do", 20);
+        doing = S(3, "Doing", 30);
+        review = S(4, "Review", 40);
+        done = S(5, "Done", 50, terminal: true);
+        return new List<EfHatchStatus> { backlog, todo, doing, review, done };
+    }
+
+    [Fact]
+    public void CrossesStart_LeftOfSendBackIntoItOrPastIt_IsTrue()
+    {
+        var board = FiveColumnBoard(out var backlog, out var todo, out var doing, out _, out _);
+
+        Assert.True(Columns.CrossesStart(board, backlog.Id, todo.Id));
+        Assert.True(Columns.CrossesStart(board, backlog.Id, doing.Id));
+    }
+
+    [Fact]
+    public void CrossesStart_RightOfSendBack_IsFalseWhicheverDirection()
+    {
+        var board = FiveColumnBoard(out _, out _, out var doing, out var review, out _);
+
+        Assert.False(Columns.CrossesStart(board, doing.Id, review.Id));
+        Assert.False(Columns.CrossesStart(board, review.Id, doing.Id));
+    }
+
+    [Fact]
+    public void CrossesStart_WithinSendBackItself_IsFalse()
+    {
+        var board = FiveColumnBoard(out _, out var todo, out _, out _, out _);
+
+        Assert.False(Columns.CrossesStart(board, todo.Id, todo.Id));
+    }
+
+    [Fact]
+    public void CrossesStart_FromADeferredColumn_CountsAsLeftOfSendBack()
+    {
+        var backlog = S(1, "Backlog", 10);
+        var todo = S(2, "To Do", 20);
+        var parked = S(3, "Parked", 25, deferred: true);
+        var doing = S(4, "Doing", 30);
+        var review = S(5, "Review", 40);
+        var done = S(6, "Done", 50, terminal: true);
+        var board = new List<EfHatchStatus> { backlog, todo, parked, doing, review, done };
+
+        Assert.True(Columns.CrossesStart(board, parked.Id, doing.Id));
+    }
+
+    [Fact]
+    public void CrossesStart_NoSendBackColumn_IsFalse()
+    {
+        var review = S(1, "Review", 10);
+        var done = S(2, "Done", 20, terminal: true);
+        var board = new List<EfHatchStatus> { review, done };
+
+        Assert.False(Columns.CrossesStart(board, review.Id, done.Id));
+    }
 }

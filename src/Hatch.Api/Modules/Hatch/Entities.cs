@@ -1302,6 +1302,30 @@ public class EfHatchIssue
     public Guid? PreApprovalSetBy { get; set; }
 
     /// <summary>
+    /// The person who first moved this issue rightward across
+    /// <see cref="Hatch.Api.Modules.Hatch.Columns.SendBack"/> - the column
+    /// work gets started in. Null for a key's move, and null on an issue
+    /// started before this was recorded: an event carries an actor's name,
+    /// not an id, so there is nothing to backfill from.
+    /// </summary>
+    /// <remarks>
+    /// The latest crossing overwrites it, both ways: sent back to To Do and
+    /// started again, by the same person or another, this becomes whoever
+    /// started it the second time. Set by <see cref="Starts"/>, the one
+    /// helper every writer of <see cref="StatusId"/> that can move an issue
+    /// right calls.
+    /// </remarks>
+    public Guid? StartedBy { get; set; }
+
+    /// <summary>
+    /// When this issue last crossed <see cref="Hatch.Api.Modules.Hatch.Columns.SendBack"/>
+    /// rightward - set alongside <see cref="StartedBy"/> by every crossing,
+    /// including a key's, which clears <see cref="StartedBy"/> but still
+    /// starts the clock. Null only where no crossing has ever been recorded.
+    /// </summary>
+    public DateTimeOffset? StartedAt { get; set; }
+
+    /// <summary>
     /// Whether this issue's work prefers or requires a local model - a
     /// <see cref="Hatch.Contracts.LocalModelLevels"/> value: None, Prefer or
     /// Require. Its own row's level only; what the issue reads is the nearest

@@ -15299,6 +15299,113 @@ public class WorkControllerTests
         Assert.Equal(h.Done, (await h.Db.Issues.FirstAsync(i => i.Id == deep.Id)).StatusId);
     }
 
+    // ---- Who started it (HA-2481): a hop that crosses Columns.SendBack records it too ----
+    //
+    // The board here (inbox, todo, doing "in progress", review, done) has
+    // SendBack measuring to "todo", so a hop out of Inbox - the one column
+    // left of it - is the one that crosses. A hop that only ever moves
+    // Todo -> InProgress (the ordinary case most tests above exercise) never
+    // crosses, by the same rule a person's move doesn't - see IssueStartsTests.
+
+    [Fact]
+    public async Task Hop_Express_FromInbox_RecordsTheLevelsSetter()
+    {
+        var h = await NewAsync();
+        var ada = h.Actors.AddPerson("Ada");
+        var issue = await h.FileAsync("story", "carried out of the backlog", h.Inbox);
+        issue.PreApproval = PreApprovalLevels.Express;
+        issue.PreApprovalSetBy = ada.Id;
+        await h.Db.SaveChangesAsync();
+        await h.TickExpressSkipsAsync(h.Inbox);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        Assert.Equal(h.Todo, moved.StatusId);
+
+        var row = await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(ada.Id, row.StartedBy);
+        Assert.NotNull(row.StartedAt);
+    }
+
+    [Fact]
+    public async Task Hop_Express_FromInbox_WithNoSetterRecorded_RecordsNobody()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried out of the backlog", h.Inbox);
+        issue.PreApproval = PreApprovalLevels.Express;
+        await h.Db.SaveChangesAsync();
+        await h.TickExpressSkipsAsync(h.Inbox);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        Assert.Equal(h.Todo, moved.StatusId);
+
+        var row = await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Null(row.StartedBy);
+        Assert.NotNull(row.StartedAt);
+    }
+
+    [Fact]
+    public async Task Hop_Parent_FromInbox_RecordsTheParentsStarter()
+    {
+        var h = await NewAsync();
+        var starter = h.Actors.AddPerson("Ada");
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        epic.StartedBy = starter.Id;
+        var story = await h.FileAsync("story", "pulled off the backlog", h.Inbox, parentId: epic.Id);
+        await h.Db.SaveChangesAsync();
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var moved = Value(await h.Work.HopWork(Key(story), null, null, null, default));
+        Assert.Equal(h.Todo, moved.StatusId);
+
+        var row = await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == story.Id);
+        Assert.Equal(starter.Id, row.StartedBy);
+        Assert.NotNull(row.StartedAt);
+    }
+
+    [Fact]
+    public async Task Hop_Under_FromInbox_RecordsTheParentsStarter()
+    {
+        var h = await NewAsync();
+        var starter = h.Actors.AddPerson("Ada");
+        var epic = await h.FileAsync("epic", "carried in", h.InProgress);
+        epic.StartedBy = starter.Id;
+        var story = await h.FileAsync("story", "S", h.Inbox, parentId: epic.Id);
+        await h.Db.SaveChangesAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.TickExpressSkipsAsync(h.Inbox);
+
+        var moved = Value(await h.Work.HopWork(Key(story), null, null, null, default));
+        Assert.Equal(h.Todo, moved.StatusId);
+
+        var row = await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == story.Id);
+        Assert.Equal(starter.Id, row.StartedBy);
+        Assert.NotNull(row.StartedAt);
+    }
+
+    [Fact]
+    public async Task Hop_Epic_FromInbox_RecordsTheParentsStarter()
+    {
+        var h = await NewAsync();
+        var starter = h.Actors.AddPerson("Ada");
+        var running = await h.FileAsync("epic", "running above it", h.InProgress);
+        running.StartedBy = starter.Id;
+        var epic = await h.FileAsync("epic", "E", h.Inbox, parentId: running.Id);
+        await h.FileAsync("story", "under E", h.Inbox, parentId: epic.Id);
+        await h.Db.SaveChangesAsync();
+        // Ticked on "todo" rather than the usual "in progress", so a sub-epic
+        // one column left of it - standing in Inbox - lands inside the WIP
+        // section on the single step a hop ever takes, and so crosses
+        // SendBack ("todo") rather than merely reaching it from the left.
+        await h.TickWipAsync(h.Todo, h.Review);
+
+        var moved = Value(await h.Work.HopWork(Key(epic), null, null, null, default));
+        Assert.Equal(h.Todo, moved.StatusId);
+
+        var row = await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == epic.Id);
+        Assert.Equal(starter.Id, row.StartedBy);
+        Assert.NotNull(row.StartedAt);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);

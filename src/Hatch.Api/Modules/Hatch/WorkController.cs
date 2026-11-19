@@ -873,6 +873,20 @@ public class WorkController(
             });
         }
 
+        // Who started it, by hop kind: an express hop carries the setter of
+        // the pre-approval level that carried it, since no person stood
+        // behind the hop itself; an epic, under or parent hop carries the
+        // parent's own starter, since the parent is who started this family
+        // of work. A send-back, approve or close hop crosses nothing - see
+        // Columns.CrossesStart - so who it names here is never written.
+        var who = hopKind switch
+        {
+            HopKinds.Epic or HopKinds.Under or HopKinds.Parent => parent?.StartedBy,
+            HopKinds.SendBack or HopKinds.Approve or HopKinds.Close => null,
+            _ => gate.PreApprovalSetter(issue.Id),
+        };
+        Starts.Record(issue, Columns.CrossesStart(statuses, from.Id, target.Id), who, now);
+
         issue.Rank = await ranks.BottomAsync(target.Id, ct);
         issue.StatusId = target.Id;
         issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);

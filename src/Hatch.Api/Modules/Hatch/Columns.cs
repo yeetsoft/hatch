@@ -241,6 +241,27 @@ public static class Columns
     }
 
     /// <summary>
+    /// Whether a move from <paramref name="fromId"/> to <paramref name="toId"/>
+    /// starts the issue: a rightward move from a column left of
+    /// <see cref="SendBack"/> to that column or any column past it. False on a
+    /// board with no <see cref="SendBack"/> column at all. A deferred
+    /// <paramref name="fromId"/> counts as left of it, since <see cref="Board"/>
+    /// excludes it and it is never found at or past any column measured off
+    /// that list.
+    /// </summary>
+    public static bool CrossesStart(List<EfHatchStatus> statuses, int fromId, int toId)
+    {
+        if (SendBack(statuses) is not { } sendBack) return false;
+
+        var board = Board(statuses);
+        var sendBackAt = board.FindIndex(s => s.Id == sendBack.Id);
+        var fromAt = board.FindIndex(s => s.Id == fromId);
+        var toAt = board.FindIndex(s => s.Id == toId);
+
+        return fromAt < sendBackAt && toAt >= sendBackAt;
+    }
+
+    /// <summary>
     /// The column that feeds <see cref="Implementation"/>: the one whose own
     /// <see cref="Target"/> is the implementation column, measured the same
     /// way <see cref="Implementation"/>'s own fallback measures the
