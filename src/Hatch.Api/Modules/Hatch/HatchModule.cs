@@ -118,9 +118,16 @@ public static class HatchModule
         services.AddScoped<IAppJob, GooseJob>();
         services.AddSingleton<IGooseLock, PostgresGooseLock>();
 
+        // Scoped like Dispatch: it holds a scoped HatchContext, and its one
+        // cached ReadySnapshot is meant to live no longer than the sweep that
+        // built it - see ReadyWork's own remarks.
+        services.AddScoped<ReadyWork>();
+
         // The sweep's own checks, in registration order - a sweep with none
         // still records a run, so this list is additive and never required.
         services.AddScoped<IGooseCheck, TrainReadyCheck>();
+        services.AddScoped<IGooseCheck, ReadyUnclaimedCheck>();
+        services.AddScoped<IGooseCheck, ReadyNoRunnerCheck>();
         services.AddScoped<IGooseCheck, RepeatClaimsCheck>();
         services.AddScoped<IGooseCheck, QuestionsWaitingCheck>();
 

@@ -188,6 +188,23 @@ public class HatchOptions
     public int GooseTrainReadyMinutes { get; set; } = 30;
 
     /// <summary>
+    /// How long a project may have ready work and a live, idle runner able to
+    /// take some of it, with no claim taken anywhere in the project, before
+    /// the <c>ready-unclaimed</c> check opens a finding - see
+    /// <see cref="ReadyUnclaimedCheck"/>. Zero turns the check off; a negative
+    /// falls back to the default. The guard is <see cref="GooseSettings.UnclaimedBound"/>.
+    /// </summary>
+    public int GooseUnclaimedMinutes { get; set; } = 10;
+
+    /// <summary>
+    /// How long a project may have ready work that no live runner can take
+    /// before the <c>ready-no-runner</c> check opens a finding - see
+    /// <see cref="ReadyNoRunnerCheck"/>. Zero turns the check off; a negative
+    /// falls back to the default. The guard is <see cref="GooseSettings.NoRunnerBound"/>.
+    /// </summary>
+    public int GooseNoRunnerMinutes { get; set; } = 15;
+
+    /// <summary>
     /// How many claims by one runner on one ticket, with nothing about the
     /// ticket moving between them, make the <c>claim-repeating</c> check open a
     /// finding - see <see cref="RepeatClaimsCheck"/>.

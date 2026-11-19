@@ -136,7 +136,7 @@ export function IssueTypesPage() {
 
       <GallerySection
         title="Heat"
-        note="Flame for priority: economy draws no flame and fades the tile to 40%, normal draws nothing, expedited shows only the ember's tip above the tile, and emergency draws the whole flame. An emergency that is also pre-approved streams the flame back off the leaning tile, over two lines. The flame is amber with a paler core, and red is left to the bug. The tile takes an outline in the ground's colour where a flame is behind it."
+        note="Flame for priority: economy draws no flame and fades the tile to 40%, normal draws nothing, expedited shows only the ember's tip above the tile, and emergency draws the whole flame. An emergency that is also pre-approved streams the flame back off the leaning tile, over two lines. The flame is amber with a paler core, and red is left to the bug. The tile takes an outline in the ground's colour where a flame is behind it. Only an emergency moves: its flame flickers and its lines streak, and under reduced motion it is still."
       >
         <MarkRows states={HEAT_STATES} />
       </GallerySection>

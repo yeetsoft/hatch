@@ -157,14 +157,22 @@ export function TypeTile({
       focusable="false"
     >
       {marks.flame && (
-        <g transform={marks.flameTransform} className="hatch-type-tile-flame">
-          <path d={FLAME_BODY} style={{ fill: 'var(--heat)' }} />
-          <path d={FLAME_BODY} transform={FLAME_CORE} style={{ fill: 'var(--heat-core)' }} />
+        <g
+          transform={marks.flameTransform}
+          className={marks.emergency ? 'hatch-type-tile-flame hatch-type-tile-flame--emergency' : 'hatch-type-tile-flame'}
+        >
+          {/* Inner groups carry the flicker: a CSS transform on the outer group would replace its transform attribute. */}
+          <g className="hatch-type-tile-flame-body">
+            <path d={FLAME_BODY} style={{ fill: 'var(--heat)' }} />
+          </g>
+          <g className="hatch-type-tile-flame-core">
+            <path d={FLAME_BODY} transform={FLAME_CORE} style={{ fill: 'var(--heat-core)' }} />
+          </g>
         </g>
       )}
       {marks.trail && (
         <path
-          className="hatch-type-tile-trail"
+          className={marks.emergency ? 'hatch-type-tile-trail hatch-type-tile-trail--emergency' : 'hatch-type-tile-trail'}
           d={marks.trail}
           style={{
             fill: 'none',

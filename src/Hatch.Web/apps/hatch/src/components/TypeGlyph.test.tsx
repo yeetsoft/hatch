@@ -128,7 +128,7 @@ describe('AmbitionTile', () => {
 describe('TypeTile marks', () => {
   const marked = (type: IssueType, props: Partial<ComponentProps<typeof TypeTile>> = {}) =>
     renderToStaticMarkup(<TypeTile type={type} {...props} />);
-  const trailOf = (html: string) => /class="hatch-type-tile-trail" d="([^"]*)"/.exec(html)?.[1];
+  const trailOf = (html: string) => /class="hatch-type-tile-trail[^"]*" d="([^"]*)"/.exec(html)?.[1];
   const lines = (d: string | undefined) => (d ? d.split('M').length - 1 : 0);
   const faceOf = (html: string) => /<(?:path|circle) class="hatch-type-tile-face"[^>]*>/.exec(html)![0];
 
@@ -195,6 +195,24 @@ describe('TypeTile marks', () => {
         expect(html).toContain('fill:var(--heat-core)');
         expect(html.indexOf('hatch-type-tile-flame')).toBeLessThan(html.indexOf('hatch-type-tile-face'));
         expect(html).toContain('viewBox="-12 -8 29 25"');
+      }
+    });
+
+    it('marks the flame and trail as moving only for an emergency', () => {
+      const moving = (html: string) => html.includes('hatch-type-tile-flame--emergency');
+      const streaks = (html: string) => html.includes('hatch-type-tile-trail--emergency');
+
+      expect(moving(marked(type, { priority: 'emergency' }))).toBe(true);
+      expect(streaks(marked(type, { priority: 'emergency' }))).toBe(false);
+      expect(streaks(marked(type, { priority: 'emergency', preApproval: 'express' }))).toBe(true);
+      expect(streaks(marked(type, { priority: 'emergency', preApproval: 'preapproved' }))).toBe(true);
+      expect(marked(type, { priority: 'emergency' })).toContain('hatch-type-tile-flame-body');
+      expect(marked(type, { priority: 'emergency' })).toContain('hatch-type-tile-flame-core');
+
+      for (const priority of ['paused', 'low', 'normal', 'economy', 'expedited'] as const) {
+        const html = marked(type, { priority, preApproval: 'preapproved' });
+        expect(moving(html), priority).toBe(false);
+        expect(streaks(html), priority).toBe(false);
       }
     });
 

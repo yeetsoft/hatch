@@ -668,8 +668,11 @@ public sealed class Dispatch(
     /// share a <c>Where</c>.
     /// <see cref="Where"/> is the checkout it runs at, the other half of the key
     /// <see cref="Runners.HeldAsync"/> reads a claim by.
+    /// <see cref="LastSeenAt"/> is the beat's own heartbeat for a beat peer, or
+    /// the session's for a session peer - <see cref="ReadyBoardAsync"/>'s own
+    /// need; every other reader of this record has never asked for it.
     /// </summary>
-    private sealed record Peer(string Id, string Name, string Where, RunnerDeclaration Declaration, bool Pulling = false);
+    private sealed record Peer(string Id, string Name, string Where, RunnerDeclaration Declaration, DateTimeOffset LastSeenAt, bool Pulling = false);
 
     /// <summary>
     /// Every peer that is here, running, and has budget left, excluding
@@ -693,13 +696,13 @@ public sealed class Dispatch(
             if (string.Equals(runner.Name, excludeName, StringComparison.Ordinal)) continue;
 
             if (runner.Beat is { } beat && IsLiveBeat(beat, now, liveSince))
-                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, beat.Where ?? "", await RunnerDeclaration.OfAsync(beat, actors, ct, runner.Config), beat.Pulling));
+                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, beat.Where ?? "", await RunnerDeclaration.OfAsync(beat, actors, ct, runner.Config), beat.LastSeenAt, beat.Pulling));
 
             if (sessions is null || runner.Sessions is null) continue;
             foreach (var session in runner.Sessions)
             {
                 if (!IsLiveSession(session, runner.Config, now, liveSince)) continue;
-                peers.Add(new Peer($"session:{session.Id}", runner.Name, session.Where ?? "", await RunnerDeclaration.OfAsync(runner, [session], actors, ct), session.Pulling));
+                peers.Add(new Peer($"session:{session.Id}", runner.Name, session.Where ?? "", await RunnerDeclaration.OfAsync(runner, [session], actors, ct), session.LastSeenAt, session.Pulling));
             }
         }
 
@@ -913,6 +916,15 @@ public sealed class Dispatch(
     public sealed record StepTakers(IReadOnlyList<string> Takers, IReadOnlyList<RunnerReasonDto> Untaken);
 
     /// <summary>
+    /// <see cref="StepTakers"/> plus, for <see cref="ReadyBoardAsync"/> alone,
+    /// which peers - by <see cref="Peer.Id"/>, not by name - take the row: a
+    /// name's several sessions may hold different checkouts, and only
+    /// <see cref="Runners.HeldAsync"/>'s own key, the pair, says which of them
+    /// is idle.
+    /// </summary>
+    private sealed record StepReadiness(IReadOnlyList<string> Takers, IReadOnlyList<RunnerReasonDto> Untaken, IReadOnlyList<string> TakenByPeerIds);
+
+    /// <summary>
     /// For every row the board judges actionable, which live runners could
     /// take it, and why each that cannot cannot - the queue's
     /// <c>takers=true</c> read. Keyed by issue id; every judged row gets an
@@ -942,35 +954,54 @@ public sealed class Dispatch(
             .ToList();
         if (judged.Count == 0) return (null, new Dictionary<long, StepTakers>());
 
+        var scans = new Dictionary<string, Scan>();
+        foreach (var peer in fleet)
+            scans[peer.Id] = await PeerRowsAsync(peer, offsetMinutes, ct);
+
+        var readiness = await ReadinessAsync(board, judged, fleet, scans, ct);
+        return (board, readiness.ToDictionary(p => p.Key, p => new StepTakers(p.Value.Takers, p.Value.Untaken)));
+    }
+
+    /// <summary>
+    /// <see cref="TakersWithRowsAsync"/>'s and <see cref="ReadyBoardAsync"/>'s
+    /// shared half: for each of <paramref name="ids"/>, which of
+    /// <paramref name="fleet"/>'s names take it, why each name that does not
+    /// cannot - one representative peer's own sentence, the way
+    /// <see cref="TakersAsync"/> has always read it - and which peers, by id,
+    /// take it at all, additive across a name's several sessions.
+    /// </summary>
+    private async Task<Dictionary<long, StepReadiness>> ReadinessAsync(
+        Scan board, IReadOnlyList<long> ids, List<Peer> fleet, Dictionary<string, Scan> scans, CancellationToken ct)
+    {
         var groups = fleet
             .GroupBy(p => p.Name, StringComparer.Ordinal)
             .Select(g => g.ToList())
             .ToList();
 
-        var scans = new Dictionary<string, Scan>();
-        foreach (var peer in fleet)
-            scans[peer.Id] = await PeerRowsAsync(peer, offsetMinutes, ct);
-
         var boardRows = board.Rows.GroupBy(r => r.Issue.Id).ToDictionary(g => g.Key, g => g.First());
 
-        var result = new Dictionary<long, StepTakers>();
-        foreach (var id in judged)
+        bool Takes(Peer peer, long id)
+        {
+            var scan = scans[peer.Id];
+            return scan.Failure is null && scan.Rows.Any(r =>
+                r.Issue.Id == id && (r.Blocked is null || r.BlockedKind == BlockedKinds.Turn));
+        }
+
+        var result = new Dictionary<long, StepReadiness>();
+        foreach (var id in ids)
         {
             var takers = new List<string>();
+            var takenByPeerIds = new List<string>();
             var untaken = new List<RunnerReasonDto>();
 
             foreach (var group in groups)
             {
-                var takes = group.Any(peer =>
-                {
-                    var scan = scans[peer.Id];
-                    return scan.Failure is null && scan.Rows.Any(r =>
-                        r.Issue.Id == id && (r.Blocked is null || r.BlockedKind == BlockedKinds.Turn));
-                });
+                var taking = group.Where(peer => Takes(peer, id)).ToList();
 
-                if (takes)
+                if (taking.Count > 0)
                 {
                     takers.Add(group[0].Name);
+                    takenByPeerIds.AddRange(taking.Select(p => p.Id));
                     continue;
                 }
 
@@ -983,14 +1014,15 @@ public sealed class Dispatch(
             }
 
             takers.Sort(StringComparer.Ordinal);
-            result[id] = new StepTakers(
+            result[id] = new StepReadiness(
                 takers,
                 takers.Count < 2
                     ? untaken.OrderBy(u => u.Runner, StringComparer.Ordinal).ToList()
-                    : []);
+                    : [],
+                takenByPeerIds);
         }
 
-        return (board, result);
+        return result;
     }
 
     /// <summary>
@@ -1031,6 +1063,103 @@ public sealed class Dispatch(
         }
 
         return listed;
+    }
+
+    /// <summary>One ready step, as <see cref="ReadyBoardAsync"/> reads it - see <see cref="ReadyBoard"/>.</summary>
+    public sealed record ReadyStep(
+        long IssueId, int ProjectId, string ProjectKey, string Key, long Rank,
+        IReadOnlyList<string> Takers, IReadOnlyList<string> TakenByPeerIds, IReadOnlyList<RunnerReasonDto> Untaken);
+
+    /// <summary>One live, non-refusing peer, as <see cref="ReadyBoardAsync"/> names it - <see cref="Id"/> is <see cref="Peer.Id"/>, the key <see cref="Runners.HeldAsync"/> is not keyed by, so a caller joins on <see cref="Name"/> and <see cref="Where"/> instead.</summary>
+    public sealed record ReadyPeer(string Id, string Name, string Where, DateTimeOffset LastSeenAt);
+
+    /// <summary>One runner <see cref="Runner.JoinAsync"/> knows of at all, live or not, and the newest of its beat's or any of its sessions' heartbeats.</summary>
+    public sealed record KnownRunner(string Name, DateTimeOffset LastSeenAt);
+
+    /// <summary>
+    /// <see cref="ReadyBoardAsync"/>'s answer: every ready step the board holds,
+    /// who could take each, the live fleet those takers are drawn from, and
+    /// every runner this Hatch has ever heard from - live or not, since
+    /// <c>ready-no-runner</c> names a quiet one too.
+    /// </summary>
+    public sealed record ReadyBoard(IReadOnlyList<ReadyStep> Steps, IReadOnlyList<ReadyPeer> LivePeers, IReadOnlyList<KnownRunner> KnownRunners);
+
+    /// <summary>
+    /// Every ready step on the whole board - HA-2497's own read, shared by
+    /// <see cref="ReadyWork"/> so its two checks never scan twice or disagree
+    /// with each other, or with <see cref="TakersAsync"/>, about what "ready"
+    /// means. A ready step is a row the walk calls clear, or parked only
+    /// behind higher-ranking work - the same reading <see cref="TakersAsync"/>
+    /// gives "judged" - that is not a hop and whose <see cref="ScanRow.Kind"/>
+    /// is <see cref="WorkKinds.Advance"/>, <see cref="WorkKinds.Conflicts"/> or
+    /// <see cref="WorkKinds.Build"/>: the merges column's own kinds
+    /// (<see cref="WorkKinds.Merge"/>, <see cref="WorkKinds.Update"/>,
+    /// <see cref="WorkKinds.Pushback"/>, <see cref="WorkKinds.Hold"/>) are the
+    /// train's, not a session's to claim.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="TakersAsync"/>, this scans the board whether or not a
+    /// peer is live at all - a board nobody is watching is exactly the case
+    /// <c>ready-no-runner</c> exists to catch - and, for every step, names
+    /// which peers (by id, not only by name) take it, so <see cref="ReadyWork"/>
+    /// can tell an idle peer from a busy one of the same name at a different
+    /// checkout.
+    /// </remarks>
+    public async Task<ReadyBoard> ReadyBoardAsync(DateTimeOffset liveSince, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
+
+        var board = await ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var known = await KnownRunnersAsync(ct);
+        if (board.Failure is not null) return new ReadyBoard([], [], known);
+
+        var ready = board.Rows
+            .Where(r => !r.Hop && (r.Blocked is null || r.BlockedKind == BlockedKinds.Turn)
+                && r.Kind is WorkKinds.Advance or WorkKinds.Conflicts or WorkKinds.Build)
+            .ToList();
+
+        var scans = new Dictionary<string, Scan>();
+        foreach (var peer in fleet)
+            scans[peer.Id] = await PeerRowsAsync(peer, 0, ct);
+
+        var readiness = await ReadinessAsync(board, ready.Select(r => r.Issue.Id).ToList(), fleet, scans, ct);
+
+        var steps = ready.Select(r =>
+        {
+            var found = readiness[r.Issue.Id];
+            return new ReadyStep(
+                r.Issue.Id, r.Issue.ProjectId, r.Issue.Project!.Key, IssueKey.Format(r.Issue.Project!.Key, r.Issue.Number), r.Issue.Rank,
+                found.Takers, found.TakenByPeerIds, found.Untaken);
+        }).ToList();
+
+        var livePeers = fleet.Select(p => new ReadyPeer(p.Id, p.Name, p.Where, p.LastSeenAt)).ToList();
+
+        return new ReadyBoard(steps, livePeers, known);
+    }
+
+    /// <summary>
+    /// Every runner <see cref="Runner.JoinAsync"/> knows of, live or not, with
+    /// the newest of its beat's own heartbeat and any of its sessions' - not
+    /// <see cref="Runner.LastSeenAt"/>, which never looks at a session. Falls
+    /// back to the bare heartbeat table with no key store, as
+    /// <see cref="LivePeersAsync"/> does.
+    /// </summary>
+    private async Task<IReadOnlyList<KnownRunner>> KnownRunnersAsync(CancellationToken ct)
+    {
+        var joined = keys is not null
+            ? await Runner.JoinAsync(db, keys, ct)
+            : (await db.LegacyRunners.AsNoTracking().ToListAsync(ct)).Select(r => new Runner(null, null, r)).ToList();
+
+        return joined.Select(r =>
+        {
+            var at = r.Beat?.LastSeenAt;
+            if (r.Sessions is not null)
+                foreach (var session in r.Sessions)
+                    if (at is null || session.LastSeenAt > at) at = session.LastSeenAt;
+
+            return new KnownRunner(r.Name, at ?? r.LastSeenAt);
+        }).ToList();
     }
 
     /// <summary>
