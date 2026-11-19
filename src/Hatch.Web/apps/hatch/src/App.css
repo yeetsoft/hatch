@@ -6227,8 +6227,8 @@ input.hatch-inline-title-input {
 
 /* The type pill on the issue page's Details card, and the band it opens onto -
    the priority pill's shapes (above) with one face per type instead of per
-   level. The faces keep their own fills until the tile's token colours reach
-   them, so for now the tile inside sits on a face of another colour. */
+   level. Every face is the page's own border and ink: the colour is said once,
+   by the tile inside. */
 .hatch-type-pill {
   display: inline-flex;
   align-self: flex-start;
@@ -6252,53 +6252,19 @@ input.hatch-inline-title-input {
   opacity: 0.6;
 }
 
-.hatch-type-pill.epic,
-.hatch-type-badge.epic {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--on-accent);
-}
-
-.hatch-type-pill.reflection,
-.hatch-type-badge.reflection {
-  border-color: var(--series-6);
-  background: var(--series-6);
-  color: var(--on-accent);
-}
-
-.hatch-type-pill.story,
-.hatch-type-badge.story {
-  border-color: var(--series-7);
-  background: var(--series-7);
-  color: var(--on-accent);
-}
-
-.hatch-type-pill.task,
-.hatch-type-badge.task {
-  border-color: var(--series-3);
-  background: var(--series-3);
-  color: var(--on-accent);
-}
-
-.hatch-type-pill.bug,
-.hatch-type-badge.bug {
-  border-color: var(--danger);
-  background: var(--danger);
-  color: var(--on-accent);
-}
-
-/* Reflection's orange and task's pink are the two light fills white cannot
-   carry (about 3.3:1 and 2.7:1 on the light theme), so those faces take the
-   page's own ink instead - 5.6:1 and 6.7:1 there, and no worse than
-   --on-accent on the dark theme's fills. The glyph keeps the type's colour on
-   a card; only the ink on this face changes. */
-.hatch-type-pill.reflection,
-.hatch-type-badge.reflection,
-.hatch-type-pill.task,
-.hatch-type-badge.task,
-.hatch-type-pill-step.reflection.here,
-.hatch-type-pill-step.task.here {
+.hatch-badge.hatch-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  background: none;
   color: var(--ink);
+  border: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+
+/* Badges run in a row on the Playbooks page; the border would have them touch. */
+.hatch-badge.hatch-type-badge + .hatch-badge.hatch-type-badge {
+  margin-left: var(--sp-1);
 }
 
 .hatch-type-pill-press {
@@ -6354,28 +6320,28 @@ input.hatch-inline-title-input {
 }
 
 .hatch-type-pill-band.epic {
-  background: color-mix(in srgb, var(--primary) 10%, var(--card));
-  border-left-color: var(--primary);
+  background: color-mix(in srgb, var(--type-epic) 10%, var(--card));
+  border-left-color: var(--type-epic);
 }
 
 .hatch-type-pill-band.reflection {
-  background: color-mix(in srgb, var(--series-6) 10%, var(--card));
-  border-left-color: var(--series-6);
+  background: color-mix(in srgb, var(--type-reflection) 10%, var(--card));
+  border-left-color: var(--type-reflection);
 }
 
 .hatch-type-pill-band.story {
-  background: color-mix(in srgb, var(--series-7) 10%, var(--card));
-  border-left-color: var(--series-7);
+  background: color-mix(in srgb, var(--type-story) 10%, var(--card));
+  border-left-color: var(--type-story);
 }
 
 .hatch-type-pill-band.task {
-  background: color-mix(in srgb, var(--series-3) 10%, var(--card));
-  border-left-color: var(--series-3);
+  background: color-mix(in srgb, var(--type-task) 10%, var(--card));
+  border-left-color: var(--type-task);
 }
 
 .hatch-type-pill-band.bug {
-  background: color-mix(in srgb, var(--danger) 10%, var(--card));
-  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--type-bug) 10%, var(--card));
+  border-left-color: var(--type-bug);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6410,52 +6376,14 @@ input.hatch-inline-title-input {
   background: color-mix(in srgb, var(--line-strong) 18%, transparent);
 }
 
-/* The type this issue already is. Disabled rather than merely marked:
-   pressing it would write an event saying the type moved from story to story. */
+/* The type this issue already is, marked the way the priority band marks its
+   level. Disabled rather than merely marked: pressing it would write an event
+   saying the type moved from story to story. */
 .hatch-type-pill-step.here {
-  color: var(--on-accent);
+  background: var(--line-strong);
+  color: var(--ink);
   cursor: default;
   opacity: 1;
-}
-
-.hatch-type-pill-step.epic {
-  border-color: var(--primary);
-}
-
-.hatch-type-pill-step.epic.here {
-  background: var(--primary);
-}
-
-.hatch-type-pill-step.reflection {
-  border-color: var(--series-6);
-}
-
-.hatch-type-pill-step.reflection.here {
-  background: var(--series-6);
-}
-
-.hatch-type-pill-step.story {
-  border-color: var(--series-7);
-}
-
-.hatch-type-pill-step.story.here {
-  background: var(--series-7);
-}
-
-.hatch-type-pill-step.task {
-  border-color: var(--series-3);
-}
-
-.hatch-type-pill-step.task.here {
-  background: var(--series-3);
-}
-
-.hatch-type-pill-step.bug {
-  border-color: var(--danger);
-}
-
-.hatch-type-pill-step.bug.here {
-  background: var(--danger);
 }
 
 /* The weave mode pill (Dreams), in place of the Mode dropdown: shaped after
