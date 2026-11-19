@@ -1891,6 +1891,17 @@ public record ReviewDto(
 /// <paramref name="ReviewsHeldBack"/>. Empty, not null, on a board with a review
 /// column; null on one without. Defaults to null so an older client still reads.
 /// </param>
+/// <param name="Findings">
+/// Every open goose finding the reader may see, longest-standing first: the
+/// condition that began earliest leads, then the lower id. A finding that names
+/// no project is left out for a reader whose scope is narrowed. Empty, not null,
+/// on every board shape. Defaults to null so an older client still reads.
+/// </param>
+/// <param name="Goose">
+/// The goose's own state: when its last sweep ran, how often it should, and
+/// whether it has stopped. Answered on every board shape, and to every reader
+/// whatever their scope. Defaults to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1912,7 +1923,39 @@ public record AttentionDto(
     IReadOnlyList<StalledIssueDto>? Stalled = null,
     int StallResumeSeconds = 0,
     IReadOnlyList<ContributionHeldDto>? ContributionsHeld = null,
-    IReadOnlyList<ProjectLineHeldDto>? HeldAtProjectLine = null);
+    IReadOnlyList<ProjectLineHeldDto>? HeldAtProjectLine = null,
+    IReadOnlyList<AttentionFindingDto>? Findings = null,
+    AttentionGooseDto? Goose = null);
+
+/// <summary>
+/// One open goose finding, as the attention panel draws it - see
+/// <see cref="AttentionDto.Findings"/>.
+/// </summary>
+/// <param name="Id">The finding's id.</param>
+/// <param name="Check">The check's own name, e.g. <c>train-ready</c>.</param>
+/// <param name="ProjectKey">The project the finding names, or null where the check names none.</param>
+/// <param name="Sentence">A sentence a person can act on.</param>
+/// <param name="BeganAt">When the condition began - the age a row shows is counted from here.</param>
+/// <param name="OpenedAt">When the condition had stood long enough that the finding was written.</param>
+/// <param name="BugIssueKey">The bug filed from this finding, or null until one is.</param>
+/// <param name="IssueKey">
+/// The issue the finding is about, when its subject is one of the finding's own
+/// project's issues, or null - the row then links to the project's board. Derived
+/// when read, never stored.
+/// </param>
+public record AttentionFindingDto(
+    long Id, string Check, string? ProjectKey, string Sentence,
+    DateTimeOffset BeganAt, DateTimeOffset OpenedAt, string? BugIssueKey, string? IssueKey);
+
+/// <summary>The goose's own state - see <see cref="AttentionDto.Goose"/>.</summary>
+/// <param name="LastSweepAt">When the newest run's last sweep ran, or null when no run is stored.</param>
+/// <param name="IntervalSeconds">Seconds the goose waits between sweeps.</param>
+/// <param name="Stopped">
+/// True when the newest run's last sweep is older than three intervals - or, with
+/// no run stored, when the server has been up longer than that. Judged by the
+/// read's own clock; the sweep never writes it.
+/// </param>
+public record AttentionGooseDto(DateTimeOffset? LastSweepAt, int IntervalSeconds, bool Stopped);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -

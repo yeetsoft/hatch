@@ -1801,6 +1801,21 @@ another project". An entry leaves when an approver of `projectKey` sets the leve
 on the issue itself, or when the issue moves; a child held for its parent's pull
 has no level to set, so it leaves only by a move. It is in the queue's order,
 and empty, not null, whatever the board's shape. It is not counted here.
+`findings` lists every open [goose](the-goose#findings) finding you may see,
+longest-standing first (`beganAt`, then `id`); each entry carries `id`, `check`,
+`projectKey` (null where the check names no project), `sentence`, `beganAt`,
+`openedAt`, `bugIssueKey` (null until a bug is filed from it) and `issueKey`,
+the issue the finding is about, or null when it is about the project - derived
+when read, from the finding's token being a key in its own project, and never
+stored. A caller whose scope is narrowed gets only the findings naming a project
+they can see, and never one that names none. It is empty, not null, whatever the
+board's shape. `goose` is the goose's own state: `lastSweepAt` (null when no run
+is stored), `intervalSeconds` and `stopped`, true when the newest run's last
+sweep is older than three intervals - or, with no run stored, when the server
+has been up that long. The read judges `stopped` by its own clock, and the sweep
+never writes it. It is answered to every caller whatever their scope. Both are
+omitted by a server that predates them, so a client reads an absent field as
+none found and a goose that is running.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.
