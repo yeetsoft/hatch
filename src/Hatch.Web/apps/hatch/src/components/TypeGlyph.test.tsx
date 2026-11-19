@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { TypeGlyph, TypeTile } from './TypeGlyph';
+import { HATCH_MARK_BODY, HATCH_MARK_CAP } from '@hatch/ui';
+import { AmbitionTile, TypeGlyph, TypeTile } from './TypeGlyph';
 import { ISSUE_TYPES } from '../types';
 import type { IssueType } from '../types';
 
@@ -57,5 +58,53 @@ describe('TypeTile', () => {
     expect(picture('task')).not.toContain('hatch-type-tile-picture');
     expect(picture('story')).toContain('hatch-type-tile-picture');
     expect(picture('story')).not.toContain('hatch-type-tile-stroke');
+  });
+});
+
+describe('AmbitionTile', () => {
+  const html = renderToStaticMarkup(<AmbitionTile />);
+  const paths = [...html.matchAll(/<path [^>]*>/g)].map((match) => match[0]);
+  const dOf = (path: string) => /\sd="([^"]*)"/.exec(path)![1];
+
+  it("draws the egg from the mark's two paths, not a copy", () => {
+    const egg = paths.filter((path) => path.includes('hatch-type-tile-picture')).map(dOf);
+
+    expect(egg).toEqual([HATCH_MARK_CAP, HATCH_MARK_BODY]);
+  });
+
+  it('wears the same rounded square as the other sizes of work', () => {
+    const face = paths.find((path) => path.includes('hatch-type-tile-face'))!;
+
+    expect(dOf(face)).toBe(dOf(/<path [^>]*hatch-type-tile-face[^>]*>/.exec(tile('epic'))![0]));
+  });
+
+  it('keeps the egg at its final size, centred on the silhouette', () => {
+    expect(html).toContain('<g transform="translate(2.0500 1.9905) scale(0.119)">');
+    expect(html).not.toContain('1.1');
+  });
+
+  it('gives each tile its own gradient, and points its face at it', () => {
+    const two = renderToStaticMarkup(
+      <>
+        <AmbitionTile />
+        <AmbitionTile />
+      </>,
+    );
+    const ids = [...two.matchAll(/<linearGradient id="([^"]+)"/g)].map((match) => match[1]);
+    const fills = [...two.matchAll(/fill:url\(#([^)]+)\)/g)].map((match) => match[1]);
+
+    expect(new Set(ids).size).toBe(2);
+    expect(fills).toEqual(ids);
+  });
+
+  it('reads both gradient tokens in its stops and holds no colour literal', () => {
+    expect(html).toContain('style="stop-color:var(--gradient-ink-from)"');
+    expect(html).toContain('style="stop-color:var(--gradient-ink-to)"');
+    expect(html).not.toMatch(/#[0-9a-f]{3,8}/i);
+    expect(html).not.toMatch(/rgb|hsl/i);
+  });
+
+  it('runs the gradient from top left to bottom right over the tile', () => {
+    expect(html).toContain('gradientUnits="userSpaceOnUse" x1="1" y1="1" x2="15" y2="15"');
   });
 });

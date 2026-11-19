@@ -139,6 +139,24 @@ describe('tokens.css', () => {
     }
   });
 
+  /* The ambition's tile (AmbitionTile) lays --on-accent on the gradient, so
+     here the pairing is the ink against each stop, not the stop against --bg. */
+  it('keeps --on-accent at 4.5:1 or better on each gradient ink stop, in every theme', () => {
+    for (const token of ['--gradient-ink-from', '--gradient-ink-to']) {
+      for (const [name, block] of [['light', light], ['dark', darkAttr], ['dark (media)', darkMedia]] as const) {
+        expect(block, `--on-accent is missing from ${name}`).toHaveProperty('--on-accent');
+        expect(block, `${token} is missing from ${name}`).toHaveProperty(token);
+
+        const inkLuminance = luminance(block['--on-accent']);
+        const stopLuminance = luminance(block[token]);
+        const [hi, lo] = inkLuminance >= stopLuminance ? [inkLuminance, stopLuminance] : [stopLuminance, inkLuminance];
+        const ratio = (hi + 0.05) / (lo + 0.05);
+
+        expect(ratio, `--on-accent on ${token} in ${name} is below 4.5:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   /* Read as text, as designCss.test.ts reads App.css: there is no DOM here to
      force colours in. */
   it('paints .hatch-gradient-ink by clipping to the text, and gives forced colours a plain ink', () => {

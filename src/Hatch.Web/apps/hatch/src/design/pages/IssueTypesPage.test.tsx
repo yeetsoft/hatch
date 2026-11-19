@@ -39,6 +39,18 @@ describe('IssueTypesPage', () => {
     }
   });
 
+  it('shows the ambition tile at four sizes, naming both gradient tokens and what it stands for', () => {
+    const row = html.split('design-type-row design-type-row--ambition')[1].split('</section>')[0];
+
+    for (const size of [14, 16, 24, 72]) {
+      expect(row).toMatch(new RegExp(`design-type-tile design-type-tile--${size}"><svg`));
+    }
+    expect(row.match(/design-type-tile design-type-tile--/g)).toHaveLength(4);
+    expect(row).toContain('--gradient-ink-from');
+    expect(row).toContain('--gradient-ink-to');
+    expect(html).toContain('The ambition is not an issue type on the trunk yet');
+  });
+
   it('shows the five tiles side by side at 14 pixels on a card', () => {
     expect(card.match(/design-type-tile design-type-tile--14"><svg/g)).toHaveLength(ISSUE_TYPE_ROWS.length);
     expect(card).not.toMatch(/design-type-tile--(16|24|72)/);
