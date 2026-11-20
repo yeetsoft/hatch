@@ -30,12 +30,12 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
             // Oldest first: a comment thread is read downwards.
             .OrderBy(c => c.CreatedAt)
             .ThenBy(c => c.Id)
-            .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.Level, c.CreatedAt, c.DeliveredAt, c.DeliveredTo })
+            .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.Level, c.CreatedAt, c.DeliveredAt, c.DeliveredTo, c.AuthorKind })
             .ToListAsync(ct);
 
         return comments
             .Select(c => new CommentDto(c.Id, c.Author, c.Body, c.Kind, c.AnswersId, Questions.ReadOptions(c.Options), c.CreatedAt, c.DeliveredAt, c.DeliveredTo,
-                c.Kind == EfHatchComment.Question ? QuestionLevels.Normalise(c.Level) : null))
+                c.Kind == EfHatchComment.Question ? QuestionLevels.Normalise(c.Level) : null, AuthorKind: c.AuthorKind))
             .ToList();
     }
 
@@ -106,12 +106,14 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
         }
 
         var actor = await caller.ActorNameAsync(ct);
+        var authorKind = await caller.IsProgramAsync(ct) ? ActorKind.Key : ActorKind.Person;
         var now = time.GetUtcNow();
 
         var comment = new EfHatchComment
         {
             IssueId = issueId,
             Author = actor,
+            AuthorKind = authorKind,
             Body = body,
             Kind = kind,
             AnswersId = request.AnswersId,
@@ -146,7 +148,8 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
         return new CommentDto(
             comment.Id, comment.Author, comment.Body, comment.Kind, comment.AnswersId,
             Questions.ReadOptions(comment.Options), comment.CreatedAt,
-            Level: kind == EfHatchComment.Question ? QuestionLevels.Normalise(comment.Level) : null);
+            Level: kind == EfHatchComment.Question ? QuestionLevels.Normalise(comment.Level) : null,
+            AuthorKind: comment.AuthorKind);
     }
 
     /// <summary>

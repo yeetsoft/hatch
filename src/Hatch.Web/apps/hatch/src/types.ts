@@ -1002,6 +1002,10 @@ export interface Comment {
   /** On an answer inside a Question: whether it was given after its issue
       closed. False on every other comment. */
   answeredAfter: boolean;
+  /** Which kind of caller wrote this. Mirrors ActorKind. Null on a comment
+      the board wrote in its own voice, and on one written before the column
+      existed. */
+  authorKind: AssigneeKind | null;
 }
 
 /** How far work may go on an issue before one of its questions is answered:

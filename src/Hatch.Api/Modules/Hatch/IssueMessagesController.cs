@@ -124,5 +124,5 @@ public class IssueMessagesController(
             .Where(c => c.IssueId == issueId && c.Kind == EfHatchComment.Message && c.DeliveredAt == null);
 
     private static CommentDto ToDto(EfHatchComment c) =>
-        new(c.Id, c.Author, c.Body, c.Kind, c.AnswersId, null, c.CreatedAt, c.DeliveredAt, c.DeliveredTo);
+        new(c.Id, c.Author, c.Body, c.Kind, c.AnswersId, null, c.CreatedAt, c.DeliveredAt, c.DeliveredTo, AuthorKind: c.AuthorKind);
 }

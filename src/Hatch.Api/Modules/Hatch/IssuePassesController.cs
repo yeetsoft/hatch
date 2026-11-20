@@ -79,7 +79,7 @@ public class IssuePassesController(HatchContext db) : ControllerBase
             : await db.Comments.AsNoTracking()
                 .Where(c => c.IssueId == issue.Id && c.CreatedAt >= earliest && c.CreatedAt <= latest)
                 .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
-                .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.Level, c.CreatedAt, c.DeliveredAt, c.DeliveredTo })
+                .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.Level, c.CreatedAt, c.DeliveredAt, c.DeliveredTo, c.AuthorKind })
                 .ToListAsync(ct);
 
         var result = new List<AmbitionPassDto>();
@@ -103,7 +103,7 @@ public class IssuePassesController(HatchContext db) : ControllerBase
             var commentDtos = comments
                 .Where(c => c.CreatedAt >= entry.StartedAt && c.CreatedAt <= entry.EndedAt)
                 .Select(c => new CommentDto(c.Id, c.Author, c.Body, c.Kind, c.AnswersId, Questions.ReadOptions(c.Options), c.CreatedAt, c.DeliveredAt, c.DeliveredTo,
-                    c.Kind == EfHatchComment.Question ? QuestionLevels.Normalise(c.Level) : null))
+                    c.Kind == EfHatchComment.Question ? QuestionLevels.Normalise(c.Level) : null, AuthorKind: c.AuthorKind))
                 .ToList();
 
             result.Add(new AmbitionPassDto(

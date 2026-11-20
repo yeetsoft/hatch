@@ -354,6 +354,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
 
+                    b.Property<string>("AuthorKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Body")
                         .IsRequired()
                         .HasColumnType("text");

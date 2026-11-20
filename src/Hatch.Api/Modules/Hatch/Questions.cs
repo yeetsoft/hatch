@@ -173,14 +173,15 @@ public static class Questions
             .Where(c => c.AnswersId != null && ids.Contains(c.AnswersId.Value))
             .OrderBy(c => c.CreatedAt)
             .ThenBy(c => c.Id)
-            .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.CreatedAt })
+            .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.CreatedAt, c.AuthorKind })
             .ToListAsync(ct);
 
         var closedAt = rows.ToDictionary(r => r.Id, r => r.IssueClosedAt);
         var byQuestion = answers
             .Select(a => new CommentDto(
                 a.Id, a.Author, a.Body, a.Kind, a.AnswersId, ReadOptions(a.Options), a.CreatedAt,
-                AnsweredAfter: closedAt[a.AnswersId!.Value] is { } closed && a.CreatedAt > closed))
+                AnsweredAfter: closedAt[a.AnswersId!.Value] is { } closed && a.CreatedAt > closed,
+                AuthorKind: a.AuthorKind))
             .GroupBy(a => a.AnswersId!.Value)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<CommentDto>)g.ToList());
 

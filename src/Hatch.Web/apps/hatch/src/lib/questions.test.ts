@@ -26,6 +26,7 @@ const comment = (kind: CommentKind, body: string, answersId: number | null = nul
   deliveredTo: null,
   level: null,
   answeredAfter: false,
+  authorKind: null,
 });
 
 describe('threadQuestions', () => {
