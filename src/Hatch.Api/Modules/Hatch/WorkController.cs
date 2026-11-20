@@ -1643,7 +1643,7 @@ public class WorkController(
             repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
             has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor);
         var hopped = hop && blocked is null;
-        var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
+        var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing, Dispatch.IsPass(issue, from, rowTo, implementationStatus));
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
             && rowTo is not null && rowTo.Id == review?.Id;
         var releaseNoteFor = await ReleaseNoteForAsync(issue.Id, ct);
@@ -1780,7 +1780,7 @@ public class WorkController(
             ? null
             : await _dispatch.MatchAsync(from.Id, checkColumn.Id, issue.Type, isParent, issue.ProjectId, ct);
 
-        var to = Dispatch.ReviewTarget(statuses, from, checkColumn, checkMatch?.Playbook);
+        var to = Dispatch.ReviewTarget(issue, statuses, from, checkColumn, checkMatch?.Playbook);
         if (to is null) return (null, null);
 
         if (checkMatch?.Playbook is { IsCheck: true }) return (to, checkMatch);

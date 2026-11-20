@@ -1184,7 +1184,12 @@ reflection or an ambition with children answers [the hop](#the-hop) and [an
 epic's own limit](#an-epics-own-limit) exactly the way an epic does: an epic
 under an ambition standing in the implementation column is carried as a
 sub-epic is, and one under an ambition left of it is folded with *its parent
-epic is not running*.
+epic is not running*. An ambition standing in the implementation column is
+dispatched to its own pass, a move from that column to itself, while fewer of
+its epics are open than its limit (one when it has none; a deferred epic does
+not count). At the limit it is folded with *2 of its epics are open, and it
+runs 2 at once - the next pass runs when one closes*, and an ambition with no
+epics is clear.
 
 A parent may stand in another project. The one refusal that keeps a line is
 [one pull request](#one-pull-request): a task cannot be filed, moved or
