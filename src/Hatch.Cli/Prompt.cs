@@ -56,6 +56,8 @@ public static class Prompt
             : "_No description. That is itself worth noting on the ticket._");
         lines.Add("");
 
+        if (work.Ambition is { Principles.Count: > 0 } ambition) lines.AddRange(Principles(ambition));
+
         if (work.NextBriefLimit is { } limit)
         {
             lines.Add("## How long the brief may be");
@@ -332,6 +334,24 @@ public static class Prompt
             yield return $"- {where}`{c.Branch}` at {c.BranchSha} does not merge with `{c.Trunk}` at {c.TrunkSha}. Conflicted files:";
             foreach (var file in c.Files) yield return $"  - {file}";
         }
+
+        yield return "";
+    }
+
+    /// <summary>
+    /// The principles of the ambition standing above the ticket, which every
+    /// session working under it holds to. Written straight after the brief, so
+    /// they are read before anything the rest of the prompt asks.
+    /// </summary>
+    private static IEnumerable<string> Principles(WorkAmbitionDto ambition)
+    {
+        yield return "## Principles";
+        yield return "";
+        yield return $"Every session working under {ambition.Key}, {ambition.Title}, holds to these principles.";
+        yield return "";
+
+        foreach (var principle in ambition.Principles)
+            yield return $"- {principle}";
 
         yield return "";
     }
