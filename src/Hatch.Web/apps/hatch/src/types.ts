@@ -1045,6 +1045,28 @@ export interface BallotNode {
 /** Every question waiting on a person, under the topmost issue of each chain. */
 export interface Ballot {
   roots: BallotNode[];
+  /** The same questions as one list, in the order to answer them. */
+  questions: BallotQuestion[];
+}
+
+/** A recorded landing: the repository, and the sha the work reached the trunk at. */
+export interface BallotLanding {
+  canonical: string;
+  sha: string;
+}
+
+/** One waiting question and the work it holds. The look-back fields are null on any other question. */
+export interface BallotQuestion {
+  question: Question;
+  /** The issue and every issue beneath it outside a terminal or deferred column. */
+  holds: number;
+  /** The recommended option's label: what the work went ahead on. */
+  wentAheadOn: string | null;
+  issueStatus: string | null;
+  closedAt: string | null;
+  /** Whether the merged route carried the issue to its column. */
+  merged: boolean | null;
+  landings: BallotLanding[] | null;
 }
 
 export type IssueEventKind =

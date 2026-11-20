@@ -1738,7 +1738,45 @@ public record QuestionDto(
 /// <param name="Roots">
 /// The topmost issue of each chain, oldest waiting question beneath it first.
 /// </param>
-public record BallotDto(IReadOnlyList<BallotNodeDto> Roots);
+/// <param name="Questions">
+/// The same waiting questions as one list, in the order to answer them: those
+/// that are not look-backs first, the one holding the most work at the top, and
+/// the look-backs after, oldest first.
+/// </param>
+public record BallotDto(IReadOnlyList<BallotNodeDto> Roots, IReadOnlyList<BallotQuestionDto> Questions);
+
+/// <summary>One waiting question on the ballot, with the work it holds.</summary>
+/// <param name="Question">The question, as the tree carries it.</param>
+/// <param name="Holds">
+/// The issue it is on and every issue beneath it that stands in neither a
+/// terminal nor a deferred column. A look-back on a closed issue with nothing
+/// open beneath it holds none.
+/// </param>
+/// <param name="WentAheadOn">
+/// A look-back's recommended option, by label: what the work went ahead on.
+/// Null on any other question, and on a look-back with no recommended option.
+/// </param>
+/// <param name="IssueStatus">A look-back's issue's column, by name. Null on any other question.</param>
+/// <param name="ClosedAt">When a look-back's issue closed. Null on any other question, or while it has no closing time.</param>
+/// <param name="Merged">
+/// Whether the merged route carried a look-back's issue to its column, read
+/// off a status change marked <c>merged</c>. Null on any other question.
+/// </param>
+/// <param name="Landings">
+/// The landings recorded on a look-back's issue, by repository. Empty when
+/// none is; null on any other question.
+/// </param>
+public record BallotQuestionDto(
+    QuestionDto Question,
+    int Holds,
+    string? WentAheadOn = null,
+    string? IssueStatus = null,
+    DateTimeOffset? ClosedAt = null,
+    bool? Merged = null,
+    IReadOnlyList<BallotLandingDto>? Landings = null);
+
+/// <summary>A landing recorded on an issue: the repository, and the sha its work reached the trunk at.</summary>
+public record BallotLandingDto(string Canonical, string Sha);
 
 /// <summary>
 /// One issue on the ballot: a container for the issues below it that have a

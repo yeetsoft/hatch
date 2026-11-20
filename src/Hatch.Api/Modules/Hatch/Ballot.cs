@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -31,7 +32,7 @@ public static class Ballot
         if (projectIds.Count > 0) source = source.Where(c => projectIds.Contains(c.Issue!.ProjectId));
 
         var questions = await Questions.ProjectAsync(db, source, ct);
-        if (questions.Count == 0) return new BallotDto([]);
+        if (questions.Count == 0) return new BallotDto([], []);
 
         var leafIds = await source.Select(c => c.IssueId).Distinct().ToListAsync(ct);
 
@@ -98,7 +99,122 @@ public static class Ballot
         IEnumerable<long> Ordered(IEnumerable<long> ids) => ids.OrderBy(OldestBeneath);
 
         var roots = Ordered(rows.Values.Where(r => r.ParentId is null).Select(r => r.Id));
-        return new BallotDto(roots.Select(id => Node(rows[id])).ToList());
+        return new BallotDto(
+            roots.Select(id => Node(rows[id])).ToList(),
+            await OrderedAsync(db, questions, idByKey, ct));
+    }
+
+    /// <summary>
+    /// The questions as one list, in the order to answer them: the one holding
+    /// the most work first, then the strictest level, then the oldest asked.
+    /// Look-backs follow, oldest first - the work already went ahead on them.
+    /// </summary>
+    private static async Task<List<BallotQuestionDto>> OrderedAsync(
+        HatchContext db, List<QuestionDto> questions, Dictionary<string, long> idByKey, CancellationToken ct)
+    {
+        var closed = await db.Statuses.AsNoTracking()
+            .Where(s => s.IsTerminal || s.IsDeferred)
+            .Select(s => s.Id)
+            .ToListAsync(ct);
+
+        // One fold of the tracker, not a reload per question.
+        var tree = await Rollup.LoadAsync(db, ct);
+        var below = questions
+            .Select(q => idByKey[q.IssueKey])
+            .Distinct()
+            .ToDictionary(id => id, id => tree.DescendantIds(id));
+
+        var wanted = below.Keys.Concat(below.Values.SelectMany(ids => ids)).Distinct().ToList();
+        var statusOf = await db.Issues.AsNoTracking()
+            .Where(i => wanted.Contains(i.Id))
+            .Select(i => new { i.Id, i.StatusId })
+            .ToDictionaryAsync(i => i.Id, i => i.StatusId, ct);
+
+        bool Open(long id) => statusOf.TryGetValue(id, out var status) && !closed.Contains(status);
+        var holds = below.ToDictionary(kv => kv.Key, kv => (Open(kv.Key) ? 1 : 0) + kv.Value.Count(Open));
+
+        var lookBackIds = questions.Where(q => q.LookBack).Select(q => idByKey[q.IssueKey]).Distinct().ToList();
+        var standing = await LookBackStandingAsync(db, lookBackIds, ct);
+
+        BallotQuestionDto Entry(QuestionDto q)
+        {
+            var id = idByKey[q.IssueKey];
+            if (!q.LookBack) return new BallotQuestionDto(q, holds[id]);
+
+            var (status, closedAt, merged, landings) = standing[id];
+            return new BallotQuestionDto(
+                q,
+                holds[id],
+                q.Options?.FirstOrDefault(o => o.Recommended)?.Label,
+                status,
+                closedAt,
+                merged,
+                landings);
+        }
+
+        return questions
+            .OrderBy(q => q.LookBack)
+            .ThenBy(q => q.LookBack ? 0 : -holds[idByKey[q.IssueKey]])
+            .ThenBy(q => q.LookBack ? 0 : QuestionLevels.Rank(q.Level))
+            .ThenBy(q => q.AskedAt)
+            .ThenBy(q => q.Id)
+            .Select(Entry)
+            .ToList();
+    }
+
+    /// <summary>
+    /// What has happened to each issue a look-back is on: its column and
+    /// closing time, whether the merged route carried it, and its landings.
+    /// Three queries however many look-backs there are.
+    /// </summary>
+    private static async Task<Dictionary<long, (string Status, DateTimeOffset? ClosedAt, bool Merged, IReadOnlyList<BallotLandingDto> Landings)>>
+        LookBackStandingAsync(HatchContext db, List<long> issueIds, CancellationToken ct)
+    {
+        if (issueIds.Count == 0) return [];
+
+        var issues = await db.Issues.AsNoTracking()
+            .Where(i => issueIds.Contains(i.Id))
+            .Select(i => new { i.Id, Status = i.Status!.Name, i.ClosedAt })
+            .ToListAsync(ct);
+
+        // Parsed here rather than filtered in SQL: a handful of rows, and a
+        // JSON containment filter would have to branch on the provider.
+        var changes = await db.IssueEvents.AsNoTracking()
+            .Where(e => issueIds.Contains(e.IssueId) && e.Kind == EfHatchIssueEvent.StatusChanged)
+            .Select(e => new { e.IssueId, e.Payload })
+            .ToListAsync(ct);
+        var merged = changes.Where(e => MarkedMerged(e.Payload)).Select(e => e.IssueId).ToHashSet();
+
+        var landings = await db.Landings.AsNoTracking()
+            .Where(l => issueIds.Contains(l.IssueId))
+            .OrderBy(l => l.Canonical)
+            .Select(l => new { l.IssueId, l.Canonical, l.Sha })
+            .ToListAsync(ct);
+        var landedOn = landings
+            .GroupBy(l => l.IssueId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<BallotLandingDto>)g.Select(l => new BallotLandingDto(l.Canonical, l.Sha)).ToList());
+
+        return issues.ToDictionary(
+            i => i.Id,
+            i => (i.Status, i.ClosedAt, merged.Contains(i.Id), landedOn.GetValueOrDefault(i.Id, [])));
+    }
+
+    /// <summary>Whether a status change's payload carries <c>merged: true</c>. A payload that will not parse says no.</summary>
+    private static bool MarkedMerged(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("merged", out var flag)
+                && flag.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
