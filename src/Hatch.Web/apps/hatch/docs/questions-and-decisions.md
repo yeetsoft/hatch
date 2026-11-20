@@ -214,6 +214,17 @@ hang under a task. It lands in the leftmost column when a person overturns and
 in the agents' column when an API key does. It is [filed from](issues#filed-from)
 the issue the question was on.
 
+## Making an answer a principle
+
+Where a question has an ambition above it, at any depth, its answer can become one of that ambition's principles with a press. It shows in two places:
+
+- On the issue page, under an answered question's own answer.
+- On the Ballot's look-back card, as a checkbox beside **Keep** and **Overturn**. Ticking it adds the sentence box; pressing either button answers the question first and promotes right after.
+
+Both start with the sentence prefilled from the answer, collapsed to one line, and it is the person's to edit before pressing **Promote** - an answer like `per-node` is not a rule anyone could hold to as written. It is a person's press alone: a key is refused, the way it is refused setting a question's level ([the three levels](#the-three-levels)).
+
+The press appends the sentence as a bullet under the ambition's `## Principles` heading, adding the heading itself where the ambition had none. Success names the ambition - *Now a principle of* and a link; a refusal shows the server's own sentence and keeps what was typed. The ambition's History shows it as `principle_promoted`, beside the `redescribed` row the same edit writes - the two land in the one save, so they read together.
+
 ## Where the answer lives afterwards
 
 On the issue, as an answer comment bound to the question it settles, with who
