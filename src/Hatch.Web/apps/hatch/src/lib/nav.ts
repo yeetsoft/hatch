@@ -24,6 +24,7 @@ export type NavEntry = ({ kind: 'link' } & NavRow) | ({ kind: 'group' } & NavGro
 export const NAV: NavEntry[] = [
   { kind: 'link', to: '/search', label: 'Search' },
   { kind: 'link', to: '/ballot', label: 'Ballot' },
+  { kind: 'link', to: '/ambitions', label: 'Ambitions' },
   {
     kind: 'group',
     label: 'Track',

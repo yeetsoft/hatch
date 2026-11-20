@@ -8,7 +8,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `hatch-menu__trigger hatch-menu__trigger--accent${isActive ? ' hatch-menu__trigger--active' : ''}`;
 
 /**
- * The app's nav: Search and Ballot as links, Track, Agents and Manage as menus. The
+ * The app's nav: Search, Ballot and Ambitions as links, Track, Agents and Manage as menus. The
  * board is the logo's, and Docs the settings menu's. `lib/nav.ts` is the one
  * place to change what it shows or where a page lives; this component only
  * draws whatever that file returns.
