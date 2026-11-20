@@ -16,7 +16,7 @@
      of that story and `receivedAt` is how old, so the wording never guesses at
      staleness from a timestamp. */
 
-import type { Utilization, UtilizationLimit } from '../types';
+import type { Utilization, UtilizationLimit, UtilizationRunner } from '../types';
 
 /** The window the ring runs down, in milliseconds. The session limit's own,
     which the account resets on. */
@@ -154,6 +154,17 @@ export function agePhrase(readAt: string | null | undefined, now: Date): string 
 
   const hours = Math.floor(minutes / 60);
   return hours === 1 ? 'read 1 hour ago' : `read ${hours} hours ago`;
+}
+
+/**
+ * A runner's own age, in the panel behind the headline: `no reading yet` for
+ * one that is up but has reported nothing of its own, else the same words
+ * `agePhrase` says for the headline.
+ */
+export function runnerAgePhrase(runner: UtilizationRunner, now: Date): string {
+  if (runner.limits === null) return 'no reading yet';
+
+  return agePhrase(runner.receivedAt, now);
 }
 
 /**
