@@ -124,6 +124,14 @@ works that out when it reads, and nothing is stored for it. Every entry's own
 comments follow, rendered the way the Comments section renders a body. The
 verdict lines sit in a grid on a desktop and stack one per line on a phone.
 
+## Principles
+
+An ambition's description can hold a `## Principles` heading, with one bullet per principle beneath it. That heading, on an ambition's own description, is the only place anything reads a principle from - an epic that is not an ambition carries none, whatever a heading of the same name on its own description might say.
+
+Every session dispatched on an issue under an ambition, at any depth, is told each principle in its prompt, straight after the ticket's own description - see [the prompt, section by section](what-a-session-is-told#principles). A person can edit the bullets by hand, the way any description is edited, and the next session dispatched reads whatever is there.
+
+A person can also grow the list with a press rather than typing a bullet: promoting an answered question appends its sentence as one, under the heading, adding the heading itself where the ambition had none yet. [Questions and decisions](questions-and-decisions#making-an-answer-a-principle) says where the press sits and what it does.
+
 ## How a ticket reads
 
 A ticket is read by a person first. These rules say how it should read.
