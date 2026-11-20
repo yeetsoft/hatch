@@ -12,12 +12,13 @@ import {
   rowPercent,
   rowResetPhrase,
   rowSentence,
+  runnerAgePhrase,
   sessionLimit,
   timeGoneFraction,
   usageVars,
   worstRow,
 } from './utilization';
-import type { Utilization, UtilizationLimit } from '../types';
+import type { Utilization, UtilizationLimit, UtilizationRunner } from '../types';
 
 const NOW = new Date('2026-09-07T08:00:00Z');
 
@@ -36,6 +37,7 @@ const reading = (over: Partial<Utilization> = {}): Utilization => ({
   readAt: at(0),
   receivedAt: at(0),
   limits: [limit()],
+  runners: [],
   ...over,
 });
 
@@ -167,6 +169,28 @@ describe('agePhrase', () => {
 
   it('says there has never been one when there is no instant', () => {
     expect(agePhrase(null, NOW)).toBe('never read');
+  });
+});
+
+describe('runnerAgePhrase', () => {
+  const runner = (over: Partial<UtilizationRunner> = {}): UtilizationRunner => ({
+    name: 'here:/checkouts/one',
+    live: true,
+    state: 'ok',
+    readAt: at(0),
+    receivedAt: at(0),
+    limits: [limit()],
+    ...over,
+  });
+
+  it('says there is no reading yet for a runner with no limits at all', () => {
+    expect(runnerAgePhrase(runner({ state: null, readAt: null, receivedAt: null, limits: null }), NOW)).toBe(
+      'no reading yet',
+    );
+  });
+
+  it('otherwise reads the same age agePhrase does, off receivedAt', () => {
+    expect(runnerAgePhrase(runner({ receivedAt: at(-4 * 60_000) }), NOW)).toBe('read 4 minutes ago');
   });
 });
 

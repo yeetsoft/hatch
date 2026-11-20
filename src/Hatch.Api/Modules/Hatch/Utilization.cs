@@ -16,6 +16,20 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 public record UtilizationLimit(string Window, string Label, int Percent, DateTimeOffset? ResetsAt);
 
+/// <summary>
+/// One runner of the caller's, behind the headline: whether it is live, and
+/// its own reading on the same terms the headline is judged on.
+///
+/// <paramref name="State"/>, <paramref name="ReadAt"/>, <paramref name="ReceivedAt"/>
+/// and <paramref name="Limits"/> are all null together where this runner has
+/// never reported a reading of its own - up, or just linked, but silent so
+/// far - so a client can tell "no reading yet" from "not linked" without a
+/// second field.
+/// </summary>
+public record UtilizationRunner(
+    string Name, bool Live, string? State, DateTimeOffset? ReadAt, DateTimeOffset? ReceivedAt,
+    IReadOnlyList<UtilizationLimit>? Limits);
+
 /// <summary>A whole reading: how good it is, when it was taken, and what it said.</summary>
 /// <remarks>
 /// <paramref name="State"/> is the whole of the degraded story, so a client
@@ -31,9 +45,15 @@ public record UtilizationLimit(string Window, string Label, int Percent, DateTim
 /// account - a clock that can run ahead or behind Hatch's own. Freshness is
 /// judged on <paramref name="ReceivedAt"/>, Hatch's own clock at the moment
 /// this reading actually changed.
+///
+/// <paramref name="Runners"/> is the panel behind the headline: one entry per
+/// live runner of the caller's, plus the runner that holds the headline even
+/// once it is no longer live, so the headline is never unexplained. See
+/// <see cref="Utilization.PanelAsync"/>.
 /// </remarks>
 public record UtilizationReading(
-    string State, DateTimeOffset ReadAt, DateTimeOffset ReceivedAt, IReadOnlyList<UtilizationLimit> Limits);
+    string State, DateTimeOffset ReadAt, DateTimeOffset ReceivedAt, IReadOnlyList<UtilizationLimit> Limits,
+    IReadOnlyList<UtilizationRunner> Runners);
 
 public static class UtilizationStates
 {
@@ -152,7 +172,7 @@ public static class Utilization
 
         return new UtilizationReading(
             state, best.ReadAt, best.ReceivedAt,
-            windows.Select(w => new UtilizationLimit(w.Window, w.Label, w.Percent, w.ResetsAt)).ToList());
+            windows.Select(w => new UtilizationLimit(w.Window, w.Label, w.Percent, w.ResetsAt)).ToList(), []);
     }
 
     /// <summary>
@@ -188,6 +208,63 @@ public static class Utilization
         }
 
         return Of(readings, now);
+    }
+
+    /// <summary>
+    /// The headline, plus the panel behind it: one entry per runner of
+    /// <paramref name="personId"/>'s that is live now, or that holds the
+    /// headline reading even though it has gone quiet - see
+    /// <see cref="RunnerEntries"/>. Null stays null, the endpoint's own
+    /// <c>204</c>, since a caller with no reading has no panel either.
+    /// </summary>
+    public static async Task<UtilizationReading?> PanelAsync(
+        HatchContext db, IAuthService keys, Runners runnerRules, RunnerSessions sessionRules, Guid personId,
+        DateTimeOffset now, CancellationToken ct)
+    {
+        var headline = await ReadAsync(db, keys, personId, now, ct);
+        if (headline is null) return null;
+
+        var mine = (await Runner.JoinAsync(db, keys, ct)).Where(r => r.OwnerPersonId == personId).ToList();
+        var entries = RunnerEntries(mine, runnerRules, sessionRules, headline, now);
+
+        return headline with { Runners = entries };
+    }
+
+    /// <summary>
+    /// The panel's own rows: a live runner of <paramref name="mine"/>'s, or
+    /// the one runner whose own reading matches <paramref name="headline"/>'s
+    /// exactly - the account-wide freshest is always the best triple of
+    /// exactly one runner's own set, so that match is exactly one entry in
+    /// the ordinary case. Pure, so a test builds <see cref="Runner"/> records
+    /// by hand rather than seeding a database.
+    ///
+    /// A beat and a key sharing one name under two different people - already
+    /// unresolved anywhere else in this area - is out of scope here: this does
+    /// not re-derive the headline from this same join, it only matches against
+    /// the one already read.
+    /// </summary>
+    public static IReadOnlyList<UtilizationRunner> RunnerEntries(
+        IReadOnlyList<Runner> mine, Runners runnerRules, RunnerSessions sessionRules, UtilizationReading headline,
+        DateTimeOffset now)
+    {
+        var entries = new List<UtilizationRunner>();
+
+        foreach (var r in mine)
+        {
+            var triples = new List<(string? Usage, DateTimeOffset? ReadAt, DateTimeOffset? ReceivedAt)>();
+            if (r.Beat is { } beat) triples.Add((beat.Usage, beat.UsageReadAt, beat.UsageReceivedAt));
+            if (r.Sessions is { } sessions) triples.AddRange(sessions.Select(s => (s.Usage, s.UsageReadAt, s.UsageReceivedAt)));
+
+            var own = Of(triples, now);
+            var live = r.IsLive(runnerRules, sessionRules, now);
+            var isHeadline = own is not null && own.ReadAt == headline.ReadAt && own.ReceivedAt == headline.ReceivedAt;
+
+            if (!live && !isHeadline) continue;
+
+            entries.Add(new UtilizationRunner(r.Name, live, own?.State, own?.ReadAt, own?.ReceivedAt, own?.Limits));
+        }
+
+        return entries;
     }
 
     /// <summary>

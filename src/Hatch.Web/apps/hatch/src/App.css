@@ -9319,6 +9319,42 @@ button.hatch-option.chosen {
   border-top: 1px solid var(--line);
 }
 
+/* The panel behind the headline: one row per runner of mine, under the
+   account's own windows above. */
+.hatch-usage-runners {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-3) 0 0;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hatch-usage-runner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.hatch-usage-runner-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.hatch-usage-runner-name {
+  font-weight: 600;
+  font-size: var(--t-body);
+  color: var(--ink);
+}
+
+.hatch-usage-runner-state,
+.hatch-usage-runner-age {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 /* ---- The work queue ----
 
    The control in the board's header, and the modal it opens. */

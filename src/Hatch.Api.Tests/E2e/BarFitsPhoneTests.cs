@@ -216,7 +216,7 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
         var rows = Enumerable.Range(0, RowsPerSection).ToList();
 
         var utilization = new UtilizationReading(
-            UtilizationStates.Ok, now, now, [new UtilizationLimit("session", "Session", 100, now.AddHours(1))]);
+            UtilizationStates.Ok, now, now, [new UtilizationLimit("session", "Session", 100, now.AddHours(1))], []);
 
         var overnight = new OvernightDto(null, null, 0, [], Unseen: 99);
 

@@ -488,7 +488,9 @@ time is unknown. Its colour is one of three bands by percent used, green under
 50%, yellow to 79% and red from 80%, coloured by whichever of your windows has
 the highest percentage. Pressing it opens every window your account
 reports, each with its own percent used and how old the reading is, and a
-button to refresh it. The page itself re-reads every thirty seconds, and
+button to refresh it. Below those windows, every runner of yours draws its
+own row, named, live or gone, with its own age and its own windows - one row
+for one runner. The page itself re-reads every thirty seconds, and
 again whenever a backgrounded tab is brought forward, so it follows a
 runner within about a minute. [Flow, WIP and the battery](flow-wip-and-the-battery)
 covers what the board does with this reading.

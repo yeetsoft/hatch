@@ -1,4 +1,7 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -18,7 +21,7 @@ public class UtilizationTests
         new(UtilizationWindows.Weekly, "Weekly", percent, Now + untilReset);
 
     private static UtilizationReading Reading(params UtilizationLimit[] limits) =>
-        new(UtilizationStates.Ok, Now, Now, limits);
+        new(UtilizationStates.Ok, Now, Now, limits, []);
 
     [Fact]
     public void ExactlyAtTheReserveBoundary_ReadsAhead()
@@ -209,5 +212,84 @@ public class UtilizationTests
 
         Assert.Equal(UtilizationStates.Ok, reading!.State);
         Assert.Equal(Now, reading.ReceivedAt);
+    }
+
+    // ---- RunnerEntries, the panel behind the headline (HA-2535) ----
+
+    private static string UsageJson(int percent) =>
+        System.Text.Json.JsonSerializer.Serialize(new[] { new RunnerUsageWindowDto(UtilizationWindows.Session, "Session", percent, null) });
+
+    private static Runners RunnerRules(int goneAfterSeconds = 90) =>
+        new(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = goneAfterSeconds }), Options.Create(new AuthOptions()), new StubHatchRevision());
+
+    private static RunnerSessions SessionRules(int goneAfterSeconds = 90) => new(RunnerRules(goneAfterSeconds));
+
+    private static EfHatchRunner Beat(string name, DateTimeOffset lastSeenAt, int? percent = null, DateTimeOffset? readAt = null) => new()
+    {
+        Name = name,
+        Kind = EfHatchRunner.LoopKind,
+        State = EfHatchRunner.Running,
+        FirstSeenAt = lastSeenAt,
+        LastSeenAt = lastSeenAt,
+        Usage = percent is { } p ? UsageJson(p) : null,
+        UsageReadAt = percent is not null ? readAt ?? lastSeenAt : null,
+        UsageReceivedAt = percent is not null ? readAt ?? lastSeenAt : null,
+    };
+
+    [Fact]
+    public void TwoRunners_AreBothListed()
+    {
+        var one = Beat("runner-one", Now, 10);
+        var two = Beat("runner-two", Now, 20);
+        var headline = Reading(new UtilizationLimit(UtilizationWindows.Session, "Session", 10, null)) with { ReadAt = Now, ReceivedAt = Now };
+
+        var entries = Utilization.RunnerEntries(
+            [new Runner(null, null, one), new Runner(null, null, two)], RunnerRules(), SessionRules(), headline, Now);
+
+        Assert.Equal(["runner-one", "runner-two"], entries.Select(e => e.Name));
+        Assert.All(entries, e => Assert.True(e.Live));
+    }
+
+    [Fact]
+    public void AGoneRunner_StillHoldsTheHeadline()
+    {
+        var goneAt = Now.AddHours(-3);
+        var gone = Beat("runner-gone", goneAt, 42, goneAt);
+        var headline = Reading(new UtilizationLimit(UtilizationWindows.Session, "Session", 42, null)) with { ReadAt = goneAt, ReceivedAt = goneAt };
+
+        var entries = Utilization.RunnerEntries([new Runner(null, null, gone)], RunnerRules(), SessionRules(), headline, Now);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal("runner-gone", entry.Name);
+        Assert.False(entry.Live);
+        Assert.NotNull(entry.Limits);
+    }
+
+    [Fact]
+    public void ALiveRunnerWithNoReading_HasNoLimits()
+    {
+        var silent = Beat("runner-silent", Now);
+        var headline = Reading(new UtilizationLimit(UtilizationWindows.Session, "Session", 10, null)) with { ReadAt = Now.AddMinutes(-5), ReceivedAt = Now.AddMinutes(-5) };
+
+        var entries = Utilization.RunnerEntries([new Runner(null, null, silent)], RunnerRules(), SessionRules(), headline, Now);
+
+        var entry = Assert.Single(entries);
+        Assert.True(entry.Live);
+        Assert.Null(entry.Limits);
+        Assert.Null(entry.State);
+        Assert.Null(entry.ReadAt);
+        Assert.Null(entry.ReceivedAt);
+    }
+
+    [Fact]
+    public void ARunnerNeitherLiveNorTheHeadlinesHolder_IsDropped()
+    {
+        var goneAt = Now.AddHours(-3);
+        var dropped = Beat("runner-dropped", goneAt, 99, goneAt);
+        var headline = Reading(new UtilizationLimit(UtilizationWindows.Session, "Session", 10, null)) with { ReadAt = Now, ReceivedAt = Now };
+
+        var entries = Utilization.RunnerEntries([new Runner(null, null, dropped)], RunnerRules(), SessionRules(), headline, Now);
+
+        Assert.Empty(entries);
     }
 }
