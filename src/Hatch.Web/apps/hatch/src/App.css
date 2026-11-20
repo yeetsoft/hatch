@@ -9083,9 +9083,13 @@ button.hatch-option.chosen {
   right: 0;
   width: 380px;
   max-width: calc(100vw - 2 * var(--sp-4));
-  /* Over the page and under Modal's 100 - the same lane the issue picker's
-     popup takes. */
-  z-index: 10;
+  /* Over .hatch-confirmations's 90 and under Modal's 100: a Modal this panel
+     opens (FindingBugDialog, TrunkBuildBugDialog) renders in place, nested
+     inside the panel, so it is only ever compared against the panel's own
+     stacking context - raising the panel above the confirmation chicklets is
+     what keeps a dialog it opens from being covered by one. The issue
+     picker's popup stays at 10; it never opens a Modal from inside itself. */
+  z-index: 95;
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -10328,7 +10332,8 @@ button.hatch-option.chosen {
   flex-direction: column;
   align-items: flex-start;
   /* Over the page and under Modal's 100, so a dialog is drawn over the
-     chicklets rather than under them. */
+     chicklets rather than under them - except a Modal opened from inside
+     .hatch-attention-panel, which the panel's own, higher 95 now covers. */
   z-index: 90;
   /* The region is wider and taller than what it draws, and the board under the
      empty part of it stays clickable. Each chicklet takes its own clicks back
