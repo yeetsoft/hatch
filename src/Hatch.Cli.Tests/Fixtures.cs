@@ -99,7 +99,8 @@ public static class Fixtures
         string? releaseNoteFor = null,
         string? model = null,
         bool modelIsLocal = false,
-        string? localModel = null) =>
+        string? localModel = null,
+        IReadOnlyList<QuestionDto>? buildPast = null) =>
         new(
             Issue: issue ?? Issue(key, localModel: localModel),
             FromStatus: Status(3, from),
@@ -128,7 +129,8 @@ public static class Fixtures
             OffersNoCode: offersNoCode,
             ReleaseNoteFor: releaseNoteFor,
             Model: hop ? null : model,
-            ModelIsLocal: modelIsLocal);
+            ModelIsLocal: modelIsLocal,
+            BuildPast: buildPast);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
@@ -320,13 +322,16 @@ public static class Fixtures
         DateTimeOffset? deliveredAt = null, string? deliveredTo = null) =>
         new(id, author, body, "message", null, null, DateTimeOffset.Parse("2026-09-28T03:00:00+00:00"), deliveredAt, deliveredTo);
 
-    public static QuestionDto Question(long id, string key = "AER-1", string body = "Which way?", bool answered = false) =>
+    public static QuestionDto Question(
+        long id, string key = "AER-1", string body = "Which way?", bool answered = false,
+        string level = QuestionLevels.HoldName, IReadOnlyList<QuestionOptionDto>? options = null) =>
         new(
             Id: id, IssueKey: key, IssueTitle: "A ticket", Body: body, AskedBy: "hatch",
-            AskedAt: DateTimeOffset.UnixEpoch, Options: null,
+            AskedAt: DateTimeOffset.UnixEpoch, Options: options,
             Answers: answered
                 ? [new CommentDto(id + 100, "Nathan", "That way.", "answer", id, null, DateTimeOffset.UnixEpoch)]
-                : []);
+                : [],
+            Level: level);
 
     public static WorkLogEntryDto WorkLogRow(
         decimal cost = 1.5m, long tokens = 12_345, long durationMs = 65_000,

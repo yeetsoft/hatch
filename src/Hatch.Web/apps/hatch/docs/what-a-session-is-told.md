@@ -148,6 +148,23 @@ gave it, introduced as settled. The one thing a session must not do is reopen a
 question somebody has already answered, so the answers are carried here rather
 than left for it to find in the thread.
 
+### Open questions you may build past
+
+When a question is open on the ticket or on one above it, is at the `build` or
+`merge` level, and has a recommended option ([questions and
+decisions](questions-and-decisions)). Each one says who asked it and on which
+ticket, the question, the recommended option with its detail, and the level
+with one sentence on what it means for this session. At `build`: build on the
+recommendation; the pull request waits in review until a person answers. At
+`merge`: build on it; it merges, and a person looks over the answer after.
+Then the session is told never to answer one of these and never to ask it
+again. A `hold` question never appears here: nothing is dispatched past it.
+
+The closing instructions add a paragraph asking the session to name each
+question it built past, by key and recommended option, in its comment on the
+ticket and in the work-log summary, so the look back has something to read.
+With no such question, neither the section nor the paragraph is written.
+
 ### Said to you since the last session
 
 When a person left the agent a message while no session was running on the

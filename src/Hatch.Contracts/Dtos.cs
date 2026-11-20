@@ -3163,6 +3163,12 @@ public record DreamRemandResultDto(
 /// session runs on the row's ordinary model: no local runner was free, or
 /// the asker named none. A client may say so; nothing is wrong.
 /// </param>
+/// <param name="BuildPast">
+/// The open questions on this issue and the issues above it that a session may
+/// build past: each is at <c>build</c> or <c>merge</c> and carries a recommended
+/// option, so the session builds on that and does not ask again. Separate from
+/// <paramref name="Questions"/>, which stays this ticket's own. Null reads as none.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3196,7 +3202,8 @@ public record WorkDto(
     string? ReleaseNoteFor = null,
     string? Model = null,
     bool ModelIsLocal = false,
-    bool ModelFellBack = false);
+    bool ModelFellBack = false,
+    IReadOnlyList<QuestionDto>? BuildPast = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether

@@ -897,6 +897,10 @@ ticket requires it, or prefers it and the asking runner runs it; and
 one, yet the session runs on the row's ordinary model. `model` is the same
 value as `playbook.model`, the issue's own override first, and both are null on
 a hop, as `playbook` is.
+The `WorkDto` also carries `buildPast`, the open questions on the issue and the
+issues above it that the session may build past: each is at `build` or `merge`
+and has a recommended option. It is a second list beside `questions`, which
+stays the ticket's own, and is null where there are none.
 
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus
