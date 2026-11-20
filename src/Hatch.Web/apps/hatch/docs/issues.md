@@ -69,6 +69,16 @@ its capabilities; unlink it first. Each change shows on the epic's History as
 "serves changed". Deleting the epic or the capability removes the link and
 nothing else.
 
+Both show on the issue page, read-only. An ambition's page draws a Capabilities
+section above Progress: one row per capability, in order, with its statement and
+how to tell, its state as one of "Holds", "Does not hold", "Cannot tell" or "Not
+checked", what the newest verdict looked at and its sha, and the epics that
+serve it. An ambition with none says so and shows the `hatch capability add`
+command to start one. An epic's page draws a Serves section naming each
+capability it serves, with the ambition it belongs to and that capability's
+state. The section is left out when the epic serves nothing, and no other type
+draws either one.
+
 ## How a ticket reads
 
 A ticket is read by a person first. These rules say how it should read.
