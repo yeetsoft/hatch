@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NewIssueDialog, OnePrField, omitDefault } from './NewIssueDialog';
 import { REMEMBERED_PROJECT_STORAGE_KEY } from '../lib/defaultProject';
+import { parentHint } from '../lib/parents';
 import { IssueConfirmationsContext, type IssueConfirmations } from '../lib/useIssueConfirmations';
 import type { AssigneeDirectory, Project } from '../types';
 
@@ -274,7 +275,26 @@ describe('NewIssueDialog', () => {
     expect(html).toContain('ZED-…');
   });
 
-  it('offers no one-PR steps while Type is the default task', () => {
+  it('opens on Epic, and draws the Parent field an epic takes', () => {
+    stubStorage();
+
+    const html = renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [PROJECT],
+        candidates: [],
+        defaultProjectKey: '',
+        directory: null,
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+
+    expect(html).toContain(parentHint('epic'));
+    expect(html).toContain('hatch-field__label">Parent<');
+  });
+
+  it('offers no one-PR steps while Type is the default epic', () => {
     stubStorage();
 
     const html = renderToStaticMarkup(

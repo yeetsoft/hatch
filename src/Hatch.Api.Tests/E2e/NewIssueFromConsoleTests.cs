@@ -92,12 +92,12 @@ public class NewIssueFromConsoleTests(ITestOutputHelper output)
             });
             output.WriteLine("dialog: " + await harness.ScreenshotAsync(deadline, "dialog"));
 
-            // The parent picker lists the board's issues for the chosen project, and no other's.
+            // The parent picker lists the epics of every project in scope, the chosen one's first, and none outside it.
             await harness.ClickAsync(deadline, ParentButton);
             await harness.WaitForVisibleAsync(deadline, ParentOptions);
             var parents = string.Join("|", await Texts(harness, deadline, ParentOptions));
             Assert.Contains("AAA-1", parents);
-            Assert.DoesNotContain("BBB-1", parents);
+            Assert.Contains("BBB-1", parents);
             output.WriteLine("parents: " + await harness.ScreenshotAsync(deadline, "parents"));
             await harness.ClickAsync(deadline, ParentButton);
 
@@ -158,7 +158,7 @@ public class NewIssueFromConsoleTests(ITestOutputHelper output)
     private static async Task<IReadOnlyList<string>> Texts(E2eHarness harness, Deadline deadline, string selector) =>
         await deadline.BoundAsync($"reading {selector}", () => harness.Page!.Locator(selector).AllInnerTextsAsync());
 
-    /// <summary>Three projects, one column, and a story in the first two: the first filing under AAA is AAA-2, and the story is what the parent picker offers.</summary>
+    /// <summary>Three projects, one column, and an epic in the first two: the first filing under AAA is AAA-2, and the epic is what the parent picker offers.</summary>
     private static async Task SeedAsync(IServiceProvider services)
     {
         using var scope = services.CreateScope();
@@ -178,8 +178,8 @@ public class NewIssueFromConsoleTests(ITestOutputHelper output)
             {
                 ProjectId = projects[i].Id,
                 Number = 1,
-                Type = "story",
-                Title = $"A story in {projects[i].Key}",
+                Type = "epic",
+                Title = $"An epic in {projects[i].Key}",
                 Description = "",
                 StatusId = status.Id,
                 Rank = 1024,

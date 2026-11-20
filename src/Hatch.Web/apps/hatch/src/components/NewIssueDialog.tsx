@@ -103,7 +103,7 @@ export function NewIssueDialog({
   onCreated: (created: Issue) => void;
 }) {
   const [projectId, setProjectId] = useState<number | null>(null);
-  const [type, setType] = useState<IssueType>('task');
+  const [type, setType] = useState<IssueType>('epic');
   const [onePr, setOnePr] = useState<OnePrSetting>('inherit');
   const [priority, setPriority] = useState<Priority>('normal');
   const [preApproval, setPreApproval] = useState<PreApproval>('none');

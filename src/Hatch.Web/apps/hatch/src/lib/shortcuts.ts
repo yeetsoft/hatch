@@ -42,6 +42,14 @@ export function isNewIssueShortcut(e: KeyChord): boolean {
   return (e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey;
 }
 
+/**
+ * Whether this keystroke is a bare Escape: none of Meta, Ctrl, Alt or Shift held,
+ * which are somebody else's chords.
+ */
+export function isEscapeShortcut(e: KeyChord): boolean {
+  return e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+}
+
 /** The input types that are a control rather than somewhere to type. */
 const NOT_TEXT = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
 
