@@ -117,6 +117,7 @@ function BallotBranch({
                     questionId={q.id}
                     options={q.options}
                     wentAheadOn={keepOption(q.options)}
+                    ambitionKey={q.ambitionKey}
                     onDone={onAnswered}
                   />
                 )

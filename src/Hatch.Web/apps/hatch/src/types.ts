@@ -1039,6 +1039,13 @@ export interface QuestionOverturn {
   taskKey: string;
 }
 
+/** What promoting an answer into a principle answers with: the ambition it
+    landed on and the sentence it became. Mirrors QuestionPromoteDto. */
+export interface QuestionPromote {
+  ambitionKey: string;
+  principle: string;
+}
+
 /** One issue on the ballot: a container for the issues below it that have a
     question waiting, and the holder of any waiting on itself. `excerpt` is the
     description's first lines, markdown as written - drawn as plain text. */

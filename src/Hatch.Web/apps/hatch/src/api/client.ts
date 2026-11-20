@@ -94,6 +94,7 @@ import type {
   Question,
   QuestionLevel,
   QuestionOverturn,
+  QuestionPromote,
   QueueEntry,
   Revision,
   Runner,
@@ -412,8 +413,8 @@ export const stopAllSessions = (name: string) =>
 
 export const getIssue = (key: string) => fetchJson<Issue>(`/api/issues/${seg(key)}`);
 
-export const getIssueQuestions = (key: string) =>
-  fetchJson<Question[]>(`/api/issues/${seg(key)}/questions`);
+export const getIssueQuestions = (key: string, open = true) =>
+  fetchJson<Question[]>(`/api/issues/${seg(key)}/questions${open ? '' : '?open=false'}`);
 
 /** The issues a filter finds, as cards. An absent field is left off the query
     string entirely - an empty `parentKey` means "no parent" to the server, so
@@ -530,6 +531,15 @@ export const overturnQuestion = (key: string, id: number, answer: string) =>
   fetchJson<QuestionOverturn>(`/api/issues/${seg(key)}/questions/${id}/overturn`, {
     method: 'POST',
     ...asJson({ answer }),
+  });
+
+/** Promote a question's answer, or the sentence given instead, into a
+    principle of the ambition above its issue. A refusal comes back as a
+    plain sentence - see QuestionPromoteController. */
+export const promoteQuestion = (key: string, id: number, principle: string) =>
+  fetchJson<QuestionPromote>(`/api/issues/${seg(key)}/questions/${id}/promote`, {
+    method: 'POST',
+    ...asJson({ principle }),
   });
 
 /** Who works an issue - `human`, `agent` or `inherit`. Its own route, closed
