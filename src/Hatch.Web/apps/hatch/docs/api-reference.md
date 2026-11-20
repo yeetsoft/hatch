@@ -497,8 +497,9 @@ one; `404` for no such key.
 | POST | `/issues/{key}/messages/deliver` | key | Marks messages read; answers with the ones this call marked |
 | PUT | `/issues/{key}/questions/{id}/level` | **person** | Sets an open question's level, `{ "level": "build" }` |
 | POST | `/issues/{key}/questions/{id}/overturn` | key | Answers a look-back question against the loop and files the rework, `{ "answer": "..." }` |
+| POST | `/issues/{key}/questions/{id}/promote` | **person** | Turns an answered question's answer into a principle of the ambition above it, `{ "principle": "..." }` |
 
-Eight of the nine are a key's; the level is a person's. Both question routes take `?open=` (default `true`):
+Eight of the ten are a key's; the level and the promote are a person's. Both question routes take `?open=` (default `true`):
 open is unanswered and either not terminal or asked at `merge`, which stays
 open on a closed issue until it is answered; `open=false` is every question,
 answered and obviated ones included.
@@ -548,7 +549,9 @@ most one recommended, labels unique case-insensitively. `QuestionDto` is
 `Options`, `Answers` (oldest first - an empty list is what "open" means, no
 second flag), `Obviated`, `Level` (never null: `hold` unless a person set another), and
 `LookBack` - true for an open `merge` question whose issue has reached a
-terminal column, derived when read. `IssueEventDto` is `Id`, `Actor`, `Kind`, an
+terminal column, derived when read - and an optional `AmbitionKey`, the key of the
+ambition above the question's issue at any depth, null where none stands above it,
+derived when read. `IssueEventDto` is `Id`, `Actor`, `Kind`, an
 optional `Payload`, `At`. `MessageDeliverRequest` is an optional `Ids` - exact
 ids, or null for every unread one; ids that are not unread messages on the
 issue are ignored rather than refused.
@@ -585,6 +588,22 @@ with a sentence for an empty or over-length answer, for a comment that is not a 
 on that issue, for a question already answered, for a question not asked at `merge`, and
 for one whose issue has not reached a terminal column; nothing is written. An unknown key
 is a `404`.
+
+`POST /issues/{key}/questions/{id}/promote` takes a `QuestionPromoteRequest`, one
+optional `Principle`, and answers with a `QuestionPromoteDto`: `AmbitionKey`, the key of
+the ambition the sentence landed on, and `Principle`, the sentence as written there. It
+is a person's, as every person-only route is: a key gets `403` with `key_not_accepted`,
+and nothing is written. The sentence is `Principle`, trimmed, or the question's newest
+answer when none is sent, then collapsed - every run of whitespace, newlines included, to
+one space - before it is checked or compared. It `400`s with a sentence for an empty
+sentence, one over 500 characters, a comment that is not a question on the issue, a
+question with no answer, an issue with no ambition above it at any depth, and a sentence
+already a bullet under the ambition's `## Principles` heading, compared trimmed and
+without case. It appends `- <sentence>` after the last bullet under that heading, adding
+the heading itself when the ambition's description has none, and writes two events on the
+ambition in the one save: `redescribed`, payload `{ from, to }` as any description edit
+writes, and `principle_promoted`, payload `{ questionId, issueKey, principle }`. An
+unknown key is a `404`.
 
 Every write here leaves an event carrying the caller's name as the actor, so
 the trail says who did what without anybody being asked to record it.

@@ -1026,6 +1026,9 @@ export interface Question {
   /** An open `merge` question on an issue that has shipped: the work went ahead
       on its recommendation and the answer is a look back. */
   lookBack: boolean;
+  /** The key of the ambition above this question's issue, at any depth, or
+      null where none stands above it. */
+  ambitionKey?: string | null;
 }
 
 /** What overturning a look-back question answers with: the question, now
@@ -1096,6 +1099,7 @@ export type IssueEventKind =
   | 'pre_approval_changed'
   | 'local_model_changed'
   | 'question_level_changed'
+  | 'principle_promoted'
   | 'one_pr_changed'
   | 'runner_tags_changed'
   | 'dangerous_changed'
