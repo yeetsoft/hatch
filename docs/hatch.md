@@ -6614,6 +6614,21 @@ missing configuration:
     nobody. A peer that refuses the model is no peer that could take a ticket
     another runner let go of. Said after the model item and before the
     toolchain item.
+12b. The move's `from` column is one the asking runner's key **does not
+    work** — its column rule, set on the Runners page and stored on the key's
+    config row beside the refused models. Under `except`, a move out of a
+    listed column folds; under `only`, a move out of a column that is not
+    listed folds. A rule of `all`, and a key with no config row, fold
+    nothing, and an id that names no column is dropped before the rule is
+    judged. Gated as the refusal item is — never a hop, never an idle review
+    self-move — and read for the same runner, off `?runner=`, `?asRunner=` or
+    the calling key's own name, so a peer's scan behind `takers`, `untaken`
+    and the let-go deferral each judge the peer on its own rule. *"HA-12 in
+    In Progress is not worked by build-box - it works only Breakdown, In
+    Review"*, or *"… it works every column except In Progress, Testing"*, the
+    columns named in board order; an `only` rule with nothing listed reads
+    *"it works no column"*. Kind `other`. Waits on nobody. Said after the
+    refusal item and before the toolchain item.
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version

@@ -6508,6 +6508,190 @@ public class WorkControllerTests
         Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
     }
 
+    // ---- Refused columns: a runner never handed a move out of a column it does not work ----
+
+    /// <summary>A key with a config row carrying the column rule <paramref name="mode"/> over <paramref name="ids"/>.</summary>
+    private static async Task<EfApiKey> ColumnRuleKeyAsync(Harness h, string mode, params int[] ids)
+    {
+        var key = await h.AddKeyAsync(RunnerName());
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig
+        {
+            ApiKeyId = key.Id,
+            StatusMode = mode,
+            StatusIds = RunnerStatusIdsColumn.Write(ids),
+            UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+        return key;
+    }
+
+    private static async Task<string> ColumnNameAsync(Harness h, int id) =>
+        (await h.Db.Statuses.SingleAsync(s => s.Id == id)).Name;
+
+    [Fact]
+    public async Task Queue_OnlyRule_LeavesTheListedColumnClear_AndFoldsTheRest()
+    {
+        var h = await NewAsync();
+        var doing = await h.FileAsync("task", "in progress", h.InProgress);
+        var todo = await h.FileAsync("task", "to do", h.Todo);
+        var key = await ColumnRuleKeyAsync(h, RunnerStatusMode.Only, h.InProgress);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default, runner: key.Name));
+
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(doing)).Blocked);
+        var folded = queue.Single(e => e.Issue.Key == Key(todo));
+        Assert.Equal(
+            $"{Key(todo)} in {await ColumnNameAsync(h, h.Todo)} is not worked by {key.Name} - it works only {await ColumnNameAsync(h, h.InProgress)}",
+            folded.Blocked);
+        Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_ExceptRule_FoldsTheListedColumn_AndLeavesTheRestClear()
+    {
+        var h = await NewAsync();
+        var doing = await h.FileAsync("task", "in progress", h.InProgress);
+        var todo = await h.FileAsync("task", "to do", h.Todo);
+        var key = await ColumnRuleKeyAsync(h, RunnerStatusMode.Except, h.InProgress);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default, runner: key.Name));
+
+        Assert.Equal(
+            $"{Key(doing)} in {await ColumnNameAsync(h, h.InProgress)} is not worked by {key.Name} - it works every column except {await ColumnNameAsync(h, h.InProgress)}",
+            queue.Single(e => e.Issue.Key == Key(doing)).Blocked);
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(todo)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AllRule_AndNoConfigRow_FoldNothing()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "in progress", h.InProgress);
+        await h.FileAsync("task", "to do", h.Todo);
+        var all = await ColumnRuleKeyAsync(h, RunnerStatusMode.All, h.InProgress);
+        var bare = await h.AddKeyAsync(RunnerName());
+
+        Assert.All(Value(await h.Work.GetQueue(0, null, default, runner: all.Name)), e => Assert.Null(e.Blocked));
+        Assert.All(Value(await h.Work.GetQueue(0, null, default, runner: bare.Name)), e => Assert.Null(e.Blocked));
+    }
+
+    [Fact]
+    public async Task Queue_AColumnRuleNamingNoColumn_ChangesNothing()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "in progress", h.InProgress);
+        var key = await ColumnRuleKeyAsync(h, RunnerStatusMode.Except, 999_999);
+
+        Assert.All(Value(await h.Work.GetQueue(0, null, default, runner: key.Name)), e => Assert.Null(e.Blocked));
+    }
+
+    [Fact]
+    public async Task Work_ANamedTicketWithNoRunnerName_IsJudgedOnTheCallingKeysColumnRule()
+    {
+        var h = await NewAsync();
+        var doing = await h.FileAsync("task", "in progress", h.InProgress);
+        var todo = await h.FileAsync("task", "to do", h.Todo);
+        h.Caller.Key = await ColumnRuleKeyAsync(h, RunnerStatusMode.Except, h.InProgress);
+
+        Assert.Equal(
+            $"{Key(doing)} in {await ColumnNameAsync(h, h.InProgress)} is not worked by {h.Caller.Key.Name} - it works every column except {await ColumnNameAsync(h, h.InProgress)}",
+            Value(await h.Work.GetWork(Key(doing), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(todo), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_AColumnRule_NeverHandsOverAMoveOutOfARefusedColumn()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "in progress", h.InProgress);
+        var todo = await h.FileAsync("task", "to do", h.Todo);
+        var key = await ColumnRuleKeyAsync(h, RunnerStatusMode.Except, h.InProgress);
+
+        Assert.Equal(Key(todo), Value(await h.Work.GetNextWork(0, null, null, default, runner: key.Name)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Queue_AHop_IsNeverFoldedOnAColumnRule()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var key = await ColumnRuleKeyAsync(h, RunnerStatusMode.Except, h.Inbox);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, runner: key.Name));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Queue_AnIdleReviewSelfMove_KeepsItsOwnSentenceRatherThanTheColumnRule()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "up for review, clean", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean);
+        var key = await ColumnRuleKeyAsync(h, RunnerStatusMode.Except, h.Review);
+
+        var blocked = Only(await h.Work.GetQueue(0, null, default, runner: key.Name)).Blocked;
+
+        Assert.NotNull(blocked);
+        Assert.DoesNotContain("is not worked by", blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ARunnerWrongOnTagsAndColumns_HearsAboutTheTagsFirst()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+        var key = await ColumnRuleKeyAsync(h, RunnerStatusMode.Except, h.InProgress);
+
+        Assert.Equal(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
+            Only(await h.Work.GetQueue(0, null, default, runner: key.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_Takers_ARunnerThatRefusesTheColumn_IsUntaken_AndThePeerIsATaker()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+        var refuses = await ColumnRuleKeyAsync(h, RunnerStatusMode.Except, h.InProgress);
+        await AddLoopRunnerAsync(h, refuses.Name);
+        var other = RunnerName();
+        await AddLoopRunnerAsync(h, other);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
+
+        var column = await ColumnNameAsync(h, h.InProgress);
+        Assert.Equal(new[] { other }, entry.Takers);
+        Assert.Equal(
+            new RunnerReasonDto(refuses.Name, $"{Key(issue)} in {column} is not worked by {refuses.Name} - it works every column except {column}"),
+            entry.Untaken!.Single());
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatDoesNotWorkTheColumn_IsNotOneThatCouldTakeTheTicket()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.InProgress);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        var peer = await ColumnRuleKeyAsync(h, RunnerStatusMode.Only, h.Todo);
+        await AddLoopRunnerAsync(h, peer.Name);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B is the only other live runner, and B does not work the column: nobody else could take it.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+
+        var config = await h.Db.RunnerConfigs.SingleAsync(c => c.ApiKeyId == peer.Id);
+        config.StatusMode = RunnerStatusMode.All;
+        await h.Db.SaveChangesAsync();
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
     [Fact]
     public async Task Models_ABadEntry_IsRefusedWithTheRunnerModelsSentence()
     {

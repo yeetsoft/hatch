@@ -1,4 +1,5 @@
 using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -20,6 +21,11 @@ namespace Hatch.Api.Modules.Hatch;
 /// - empty for a keyless row and for a key with no config row. See
 /// <see cref="Hatch.Contracts.RunnerModels.Refuses"/>.
 /// </param>
+/// <param name="StatusMode">
+/// The runner's column rule, from its config row - <c>all</c> for a keyless
+/// row and for a key with no config row. See <see cref="Dispatch.ColumnFold"/>.
+/// </param>
+/// <param name="StatusIds">The column ids <paramref name="StatusMode"/> reads against.</param>
 /// <param name="OwnerPersonId">
 /// The person the runner's key belongs to, whether or not <paramref name="Mine"/>
 /// is set - <paramref name="Principal"/> is only resolved under <c>Mine</c>.
@@ -37,8 +43,13 @@ public sealed record RunnerDeclaration(
     Actor? Principal,
     string Name,
     IReadOnlyList<string> Refused,
-    Guid? OwnerPersonId = null)
+    Guid? OwnerPersonId = null,
+    string StatusMode = RunnerStatusMode.All,
+    IReadOnlyList<int>? StatusIds = null)
 {
+    /// <summary>What this runner refuses - models and columns - as a pass judges it.</summary>
+    public RunnerRefusal ToRefusal() => new(Name, Refused, StatusMode, StatusIds);
+
     /// <summary>
     /// The sentence saying why this runner cannot be answered for, or null. A
     /// <c>Mine</c> runner with no owner has no tickets of its own, and a scan
@@ -70,7 +81,9 @@ public sealed record RunnerDeclaration(
             principal,
             row.Name,
             config is null ? [] : RunnerTagColumn.Read(config.RefusedModels),
-            row.ForPersonId);
+            row.ForPersonId,
+            config?.StatusMode ?? RunnerStatusMode.All,
+            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds));
     }
 
     /// <summary>
@@ -138,7 +151,9 @@ public sealed record RunnerDeclaration(
         return new RunnerDeclaration(
             repos, under, mine, TagDeclaration.Of(tags, refusesDangerous), has, models, projects, principal, runner.Name,
             config is null ? [] : RunnerTagColumn.Read(config.RefusedModels),
-            runner.OwnerPersonId);
+            runner.OwnerPersonId,
+            config?.StatusMode ?? RunnerStatusMode.All,
+            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds));
     }
 
     /// <summary>
