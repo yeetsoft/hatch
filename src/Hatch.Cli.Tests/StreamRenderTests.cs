@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Hatch.Cli.Tests;
 
 /// <summary>
@@ -577,5 +579,46 @@ public sealed class StreamRenderTests
         render.Read(Fixtures.AssistantText("SECRET-PROSE")).ToList();
 
         Assert.DoesNotContain("SECRET", render.Open!.Line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_recorded_background_wait_reads_as_three_turns_and_the_last_result_wins()
+    {
+        var facts = new RunFacts();
+        var render = new StreamRender("/tmp/checkout", facts);
+        var results = new List<JsonElement>();
+
+        foreach (var line in StreamFile("claude-background-wait.jsonl"))
+        {
+            render.Read(line).ToList();
+
+            using var doc = JsonDocument.Parse(line);
+            if (doc.RootElement.GetProperty("type").GetString() != "result") continue;
+
+            results.Add(doc.RootElement.Clone());
+            Assert.Null(render.Open);
+        }
+
+        // The first turn ends and the session is woken twice: once for the
+        // background command finishing, once for the monitor on it ending.
+        Assert.Equal(3, results.Count);
+        Assert.Null(render.Open);
+
+        var last = results[^1];
+        Assert.Equal(last.GetProperty("result").GetString(), facts.ResultText);
+        Assert.Equal(last.GetProperty("duration_ms").GetInt64(), facts.Result!.DurationMs);
+    }
+
+    private static string[] StreamFile(string name)
+    {
+        const string relative = "src/Hatch.Cli.Tests/Streams";
+
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, relative.Replace('/', Path.DirectorySeparatorChar), name);
+            if (File.Exists(candidate)) return File.ReadAllLines(candidate).Where(l => l.Length > 0).ToArray();
+        }
+
+        throw new FileNotFoundException($"Could not find {relative}/{name} above {AppContext.BaseDirectory}.");
     }
 }
