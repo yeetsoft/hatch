@@ -96,11 +96,16 @@ all read it, and `hatch questions` shows it beside who asked.
   merged.
 - `merge` - the work merges, and the answer is looked over after.
 
-Nothing sets a level yet, so every question reads `hold`, and the `hold` row of
-[what an open question blocks](#what-an-open-question-blocks) is what the board
-does. Only a person will ever set one, never a key: asking with a
-level is refused, because a session cannot decide how far its own question lets
-it go.
+Every question reads `hold` until a person sets another level. Whoever may answer
+a question may set its level, with `PUT /api/issues/{key}/questions/{id}/level`;
+no owner or approver role is needed, because it only loosens what that same person
+could end by answering. A key cannot: asking with a level is refused, and so is the
+route, because a session cannot decide how far its own question lets it go.
+
+`build` and `merge` are refused on a question with no recommended option, since a
+session would have nothing to build on. A person may always lower an open question
+back to `hold`, and an answered question's level cannot be changed at all. A change is on the
+ticket's trail as `question_level_changed`, with both levels and the person's name.
 
 ## How the operator answers
 

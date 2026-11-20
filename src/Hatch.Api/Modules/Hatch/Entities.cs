@@ -1774,7 +1774,7 @@ public class EfHatchComment
     /// <see cref="QuestionLevels.ByStrictness"/>. Null on every non-question and
     /// on every question asked before the column existed - both read as
     /// <see cref="QuestionLevels.HoldName"/> through <see cref="QuestionLevels.Normalise"/>.
-    /// Nothing writes it yet.
+    /// Set by a person through <c>PUT /api/issues/{key}/questions/{id}/level</c>.
     /// </summary>
     [MaxLength(MaxLevelLength)]
     public string? Level { get; set; }
@@ -2801,6 +2801,13 @@ public class EfHatchIssueEvent
     /// by name, the same as <see cref="PreApprovalChanged"/>.
     /// </summary>
     public const string LocalModelChanged = "local_model_changed";
+
+    /// <summary>
+    /// A question's level changed - see <see cref="EfHatchComment.Level"/>. The
+    /// payload carries <c>questionId</c> and both levels by name, as
+    /// <c>from</c> and <c>to</c>.
+    /// </summary>
+    public const string QuestionLevelChanged = "question_level_changed";
 
     /// <summary>
     /// An issue's human-work override changed - see
