@@ -310,6 +310,14 @@ public sealed class IncrementReport
     public IReadOnlyList<string> Filed { get; set; } = [];
 
     /// <summary>
+    /// The ids of an ambition's capabilities whose newest verdict is not the
+    /// one they had at dispatch - progress on a pass, which leaves the
+    /// ambition where it stands. Empty for every other ticket, and for a read
+    /// that did not happen.
+    /// </summary>
+    public IReadOnlyList<long> Judged { get; set; } = [];
+
+    /// <summary>
     /// A plain increment's session wrote no work-log title - the no-fence
     /// case the override in <see cref="Increment.RunAsync"/> catches.
     /// </summary>
@@ -394,6 +402,7 @@ public sealed class IncrementReport
             var pieces = new List<string>();
             if (Ended != From) pieces.Add($"moved it from \"{From}\" to \"{Ended}\"");
             if (Filed.Count > 0) pieces.Add($"filed {Filed.Count} under it");
+            if (Judged.Count > 0) pieces.Add($"judged {Judged.Count} {(Judged.Count == 1 ? "capability" : "capabilities")}");
             return string.Join(" and ", pieces);
         }
     }
@@ -427,6 +436,8 @@ public sealed class IncrementReport
         : RunTimeStopped ? $"stopped for run time after {Format.Duration((long)(RunAfter ?? TimeSpan.Zero).TotalSeconds)}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : CheckReason is { Length: > 0 } cr ? $"{cr}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : (NoWorkLog || ResultErrored) && Done.Length > 0 ? $"the session {Cause}, and it {Done}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        : Judged.Count > 0 ? $"judged {Judged.Count} {(Judged.Count == 1 ? "capability" : "capabilities")}, "
+            + (Filed.Count > 0 ? $"filed {Filed.Count} under it" : "carved nothing")
         : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
         : Recused && Stalled ? $"recused itself ({RecusedReason ?? "no reason given"})"
         : Stalled && StillFailing.Count > 0
@@ -534,6 +545,13 @@ public sealed class Increment(
             // count: an operator who answered one question in another terminal
             // while this ran would otherwise see the arithmetic come out to zero.
             var before = work.Questions.Where(q => q.Answers.Count == 0).Select(q => q.Id).ToHashSet();
+
+            // A pass over an ambition leaves it where it stands, so a move
+            // cannot say it worked. A verdict can: the newest one on each
+            // capability, read now and again once the session ends. A read
+            // that fails is not known, and not known is never a stall.
+            var judging = work.Issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id;
+            var verdictsBefore = judging ? await ReadVerdictsAsync(board, report.Key, ct) : null;
 
             var facts = new RunFacts();
             _facts = facts;
@@ -856,12 +874,19 @@ public sealed class Increment(
                     report.EndedInReview = later?.InReview ?? false;
                     report.Filed = later?.Children.Select(c => c.Key).Except(work.Children.Select(c => c.Key)).ToList() ?? [];
 
+                    if (verdictsBefore is not null && await ReadVerdictsAsync(board, report.Key, ct) is { } verdictsAfter)
+                    {
+                        report.Judged = verdictsAfter
+                            .Where(a => !verdictsBefore.TryGetValue(a.Key, out var was) || was != a.Value)
+                            .Select(a => a.Key).ToList();
+                    }
+
                     // A conflict or a build increment is judged by the branch,
                     // below, and not by the column: it starts and ends in
                     // review, so "did not move" is what success looks like. The
                     // column is still read and still reported.
                     if (report.Ended != report.From) report.Moved = true;
-                    else if (conflict is null && build is null && report.Filed.Count == 0) report.Stalled = true;
+                    else if (conflict is null && build is null && report.Filed.Count == 0 && report.Judged.Count == 0) report.Stalled = true;
                 }
                 catch (HatchException e)
                 {
@@ -1082,7 +1107,7 @@ public sealed class Increment(
                 // limit, and the "not known" reads above never reach a verdict
                 // at all.
                 if (report.Preempted) report.ReleaseOutcome = ClaimOutcomes.Preempted;
-                else if (!report.Unservable && (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0)) report.ReleaseOutcome = ClaimOutcomes.Worked;
+                else if (!report.Unservable && (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0 || report.Judged.Count > 0)) report.ReleaseOutcome = ClaimOutcomes.Worked;
             }
             catch (OperationCanceledException)
             {
@@ -1784,6 +1809,24 @@ public sealed class Increment(
         {
             say.Complain(e.Message);
             say.Complain($"hatch: {work.Issue.Key} - could not mark what was said to the session as read; the session's hooks will hand it over");
+        }
+    }
+
+    /// <summary>
+    /// Each capability of the ambition by id, with the id of its newest
+    /// verdict, or null with none. Null altogether when the board did not
+    /// answer: a read that did not happen must not read as a pass that did
+    /// nothing.
+    /// </summary>
+    private static async Task<Dictionary<long, long?>?> ReadVerdictsAsync(Board board, string key, CancellationToken ct)
+    {
+        try
+        {
+            return (await board.CapabilitiesAsync(key, ct)).ToDictionary(c => c.Id, c => c.NewestVerdict?.Id);
+        }
+        catch (HatchException)
+        {
+            return null;
         }
     }
 

@@ -210,6 +210,72 @@ public sealed class PromptTests
         Assert.Contains("## Opening a pull request", prompt, StringComparison.Ordinal);
     }
 
+    /// <summary>An ambition under a row whose from and to column are one, with git writes denied: the stock pass row.</summary>
+    private static WorkDto PassWork() =>
+        Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", type: "ambition")) with
+        {
+            ToStatus = Fixtures.Status(3, "In Progress"),
+            Playbook = Fixtures.Playbook(deniedTools: ["Bash(git push *)"]),
+        };
+
+    private const string OldClosing =
+        "leaves this ticket where it found it is recorded as having done nothing -\n" +
+        "so move it, or ask, before you stop.";
+
+    [Fact]
+    public void A_pass_over_an_ambition_ends_by_saying_the_ambition_stays_where_it_stands()
+    {
+        var prompt = Prompt.Compose(PassWork());
+
+        var ends = prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal);
+        Assert.True(ends > 0);
+        var closing = prompt[ends..];
+
+        Assert.Contains("AER-12 stays in \"In Progress\" when you stop.", closing, StringComparison.Ordinal);
+        Assert.Contains("`hatch capability judge`", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("where it found it", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("should be in", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("so move it, or ask", closing, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_pass_over_an_ambition_reads_the_trunk_and_cuts_nothing()
+    {
+        var branches = new[] { new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x" } };
+        var prompt = Prompt.Compose(PassWork(), branches: branches);
+
+        Assert.Contains("origin has no branch for this issue. The tree is on the trunk at origin's tip.", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("cut `aer-12-x`", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
+        Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("ordinary")]
+    [InlineData("check")]
+    [InlineData("trunk")]
+    [InlineData("conflict")]
+    [InlineData("build")]
+    [InlineData("denied")]
+    [InlineData("ambition-moving")]
+    [InlineData("story-same-column")]
+    public void Every_other_row_keeps_the_closing_that_says_leaving_the_ticket_is_doing_nothing(string row)
+    {
+        var text = row switch
+        {
+            // An ambition that moves between columns is not a pass.
+            "ambition-moving" => Prompt.Compose(Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", type: "ambition"))),
+            // Neither is a story under a row that happens to end where it began.
+            "story-same-column" => Prompt.Compose(
+                Fixtures.Work("AER-12", issue: Fixtures.Issue("AER-12", type: "story")) with { ToStatus = Fixtures.Status(3, "In Progress") }),
+            _ => WorkOf(row),
+        };
+
+        Assert.Contains(OldClosing, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("stays in", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("`hatch capability judge`", text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_trunk_landing_project_with_no_branch_is_told_to_commit_on_the_trunk()
     {
