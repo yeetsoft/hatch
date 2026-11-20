@@ -99,6 +99,12 @@ public interface IUsageProbe
     /// switched probing off for this process, or the CLI never answered.
     /// </summary>
     Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct);
+
+    /// <summary>
+    /// The console's own sentence for why probing has latched off for this
+    /// CLI version, or null while it has not.
+    /// </summary>
+    string? OffReason { get; }
 }
 
 /// <summary>
