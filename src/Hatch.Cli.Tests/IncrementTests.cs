@@ -1748,6 +1748,132 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    private static CapabilityDto Capability(long id, long? verdict) =>
+        new(id, (int)id, "It holds.", "Look.", "hatch", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+            verdict is null ? "not_checked" : "holds",
+            verdict is null ? null : new CapabilityVerdictDto(verdict.Value, id, "holds", "the trunk", "abc123", "hatch", DateTimeOffset.UnixEpoch),
+            []);
+
+    /// <summary>An ambition under a pass: the row's from and to column are one.</summary>
+    private static WorkDto PassWork(int letGo = 0) =>
+        Fixtures.Work("AER-1", issue: Fixtures.Issue("AER-1", type: "ambition"), letGo: letGo) with
+        {
+            ToStatus = Fixtures.Status(3, "In Progress"),
+        };
+
+    /// <summary>
+    /// Wires a pass: the board's capabilities before the session and after it, the
+    /// ambition where it was, and nothing said by the session but its work-log.
+    /// </summary>
+    private static async Task<(IncrementReport Report, Harness H)> PassAsync(
+        long?[] before, long?[] after, int letGo = 0)
+    {
+        var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", PassWork(letGo));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Reply("PUT", "/api/issues/AER-1/stall", HttpStatusCode.OK, "{}");
+
+        // The first read is the dispatch's, then the board answers with the second from then on.
+        h.Wire.Once("GET", "/api/issues/AER-1/capabilities", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(before.Select((v, i) => Capability(i + 1, v)).ToList(), Fixtures.Json));
+        h.Wire.Json("GET", "/api/issues/AER-1/capabilities", after.Select((v, i) => Capability(i + 1, v)).ToList());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            PassWork(letGo), h.Root, "opus", "high", quiet: false, claim, default);
+        await claim.ReleaseAsync();
+        return (report, h);
+    }
+
+    /// <summary>
+    /// HA-2525: a pass that records a verdict and moves nothing did the work the
+    /// row asks. Released worked, no let-go comment, and not a stall.
+    /// </summary>
+    [Fact]
+    public async Task A_pass_that_judged_a_capability_and_moved_nothing_worked()
+    {
+        var (report, h) = await PassAsync(before: [null, 7, null], after: [null, 9, 10]);
+        using var _ = h;
+
+        Assert.Equal([2, 3], report.Judged);
+        Assert.Empty(report.Filed);
+        Assert.Equal("judged 2 capabilities, carved nothing", report.Outcome);
+        Assert.False(report.Moved);
+        Assert.False(report.Stalled);
+        Assert.False(report.LetGo);
+        Assert.Null(report.Flag);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+    }
+
+    [Fact]
+    public async Task A_pass_that_judged_one_capability_says_so_in_the_singular()
+    {
+        var (report, h) = await PassAsync(before: [null], after: [4]);
+        using var _ = h;
+
+        Assert.Equal("judged 1 capability, carved nothing", report.Outcome);
+    }
+
+    [Fact]
+    public async Task A_second_pass_that_judged_is_not_flagged_for_the_one_before_it()
+    {
+        var (report, h) = await PassAsync(before: [3], after: [8], letGo: 1);
+        using var _ = h;
+
+        Assert.False(report.Stalled);
+        Assert.False(report.LetGo);
+        Assert.Null(report.Flag);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+    }
+
+    [Fact]
+    public async Task A_pass_that_recorded_no_verdict_and_moved_nothing_is_still_a_stall()
+    {
+        var (report, h) = await PassAsync(before: [null, 7], after: [null, 7]);
+        using var _ = h;
+
+        Assert.Empty(report.Judged);
+        Assert.True(report.Stalled);
+        Assert.True(report.LetGo);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Contains("left AER-1 where it found it and let it go", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_pass_whose_capabilities_could_not_be_read_afterwards_is_not_called_a_stall_on_that_account()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", PassWork());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Reply("PUT", "/api/issues/AER-1/stall", HttpStatusCode.OK, "{}");
+        h.Wire.Reply("GET", "/api/issues/AER-1/capabilities", HttpStatusCode.InternalServerError, "boom");
+
+        var report = await h.Runtime.Increment().RunAsync(
+            PassWork(), h.Root, "opus", "high", quiet: false, claim, default);
+
+        // Nothing was known to have been judged, so the column decides, as it always did.
+        Assert.Empty(report.Judged);
+        Assert.True(report.Stalled);
+        await claim.ReleaseAsync();
+    }
+
     /// <summary>
     /// HA-224: a session that writes <see cref="SessionHooks.Clamp"/> - whichever
     /// hook or callback did it - is read back onto the report once the session

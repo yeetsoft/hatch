@@ -217,7 +217,8 @@ public static class Prompt
             trunkLanding: trunkLanding,
             asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type, releaseNoteFor: work.ReleaseNoteFor,
             startsHere: BoundForImplementation(work), deniesGitWrites: deniesGitWrites,
-            offersNoCode: work.OffersNoCode ?? true));
+            offersNoCode: work.OffersNoCode ?? true,
+            staysPut: issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id));
         return string.Join('\n', lines);
     }
 
@@ -603,7 +604,8 @@ public static class Prompt
         string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
         bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
         bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
-        bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null) =>
+        bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null,
+        bool staysPut = false) =>
     [
         "## Reaching Hatch",
         "",
@@ -696,12 +698,21 @@ public static class Prompt
         ..PreApproval(preApproval),
         "## Where this increment ends",
         "",
-        isCheck
-            ? $"{key}'s session ends with a verdict, not a move: a pass sends it to \"{to}\", and a fail sends it to \"{failStatus}\"."
-            : $"{key} should be in \"{to}\" when you stop, and no further.",
-        "Only the operator moves work into a terminal column. An increment that",
-        "leaves this ticket where it found it is recorded as having done nothing -",
-        "so move it, or ask, before you stop.",
+        ..(staysPut ? new[]
+        {
+            $"{key} stays in \"{to}\" when you stop. Only the operator moves work into a",
+            "terminal column. A verdict on every capability (`hatch capability judge`)",
+            "is this increment's work, and an increment that records none is recorded",
+            "as having done nothing - so judge them, or ask, before you stop.",
+        } : new[]
+        {
+            isCheck
+                ? $"{key}'s session ends with a verdict, not a move: a pass sends it to \"{to}\", and a fail sends it to \"{failStatus}\"."
+                : $"{key} should be in \"{to}\" when you stop, and no further.",
+            "Only the operator moves work into a terminal column. An increment that",
+            "leaves this ticket where it found it is recorded as having done nothing -",
+            "so move it, or ask, before you stop.",
+        }),
         "",
         "Do not edit playbooks. The API refuses it, and the refusal is deliberate:",
         "an agent that could widen its own instructions and its own budget is a loop",
