@@ -170,6 +170,9 @@ public sealed partial class StreamRender : IAgentStreamReader
     /// <summary>The tool call that has started and not returned, newest first - see <see cref="IAgentStreamReader.Open"/>.</summary>
     public OpenCall? Open => _open.Current;
 
+    /// <summary>Whether the session is between turns - see <see cref="IAgentStreamReader.TurnEnded"/>.</summary>
+    public bool TurnEnded { get; private set; }
+
     /// <summary>
     /// The four counts added up, over every assistant message seen so far in
     /// this session - the live version of the figure the work log eventually
@@ -243,6 +246,7 @@ public sealed partial class StreamRender : IAgentStreamReader
         {
             case "system" when Text(e, "subtype") == "init":
                 _facts.Started = true;
+                TurnEnded = false;
                 break;
 
             case "assistant":
@@ -259,6 +263,7 @@ public sealed partial class StreamRender : IAgentStreamReader
 
             case "result":
                 _open.Clear();
+                TurnEnded = true;
                 break;
         }
     }
