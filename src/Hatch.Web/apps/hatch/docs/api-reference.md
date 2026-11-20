@@ -503,17 +503,31 @@ open on a closed issue until it is answered; `open=false` is every question,
 answered and obviated ones included.
 
 `GET /ballot` answers the waiting questions of `/questions` as a tree, in one
-read: `{ roots: [...] }`, each root the topmost issue of a chain with the
+read: `{ roots: [...], questions: [...] }`, each root the topmost issue of a chain with the
 questions waiting beneath it. `?projectId=` narrows it to the projects named,
 and repeats as `/plan`'s does. An issue appears once however many questions
 sit under it; roots, and each node's children, run oldest waiting question
 beneath first, and a node's own `questions` oldest first. `BallotDto` is
-`Roots`. `BallotNodeDto` is `Key`, `ProjectKey`, `Type`, `Title`, `Excerpt`
+`Roots` and `Questions`. `BallotNodeDto` is `Key`, `ProjectKey`, `Type`, `Title`, `Excerpt`
 (the first three non-blank lines of the description, markdown as written, cut
 to 300 characters with a `.` appended when cut, empty when there is none),
 `IsTerminal` (an ancestor can stand in a terminal column, and so can the issue a
 waiting `merge` question is on; any other waiting question's issue never does), `Children` (more `BallotNodeDto`) and `Questions`
 (`QuestionDto`s, as below).
+
+`questions` is the same waiting questions as one list, in the order to answer
+them, narrowed by `?projectId=` as `roots` is. Each `BallotQuestionDto` is
+`Question` (a `QuestionDto`), `Holds`, and five look-back fields, null on a
+question that is not a look-back. `Holds` is the issue the question is on and
+every issue beneath it outside a terminal or deferred column, so a question on
+an open leaf holds one and a look-back on a closed issue with nothing open
+beneath it holds none. The order is the questions that are not look-backs
+first, by `Holds` descending, then by level with `hold` before `build` before
+`merge`, then oldest asked first; look-backs follow, oldest first. A look-back
+also carries `WentAheadOn` (the recommended option's label, null when none is
+marked), `IssueStatus` (the issue's column name), `ClosedAt`, `Merged` (whether
+a status change marked `merged` is on its trail) and `Landings` (each a
+`BallotLandingDto`: `Canonical` and `Sha`, empty when none is recorded).
 
 `CommentDto` is `Id`, `Author`, `Body`, `Kind` (`""`, `question`, `answer` or
 `message`), an optional `AnswersId`, an optional `Options`, `CreatedAt`, an
@@ -756,6 +770,7 @@ on the project, naming the project's key and the Playbooks page.
 | DELETE | `/issues/{key}/capabilities/{id}` | Removes one and closes the gap |
 | GET | `/issues/{key}/capabilities/{id}/verdicts` | A capability's verdicts, newest first |
 | POST | `/issues/{key}/capabilities/{id}/verdicts` | Records a verdict on a capability |
+| GET | `/issues/{key}/passes` | An ambition's passes, with the verdicts and comments each gave |
 
 A capability is one thing an ambition says has to be true, and a line saying
 how anyone would tell. Every route answers `400` on an issue that is not an
@@ -828,6 +843,35 @@ A verdict writes one `capability_judged` event on the ambition, with payload
 `{ id, position, verdict, sha, author }` - see docs/hatch.md. Removing a
 capability removes its verdicts; the events on the ambition remain.
 
+### An ambition's passes
+
+GET `/issues/{key}/passes` answers every pass an ambition has had, newest
+first, as `AmbitionPassDto[]`. `400` on an issue that is not an ambition,
+naming its type; `404` on an unknown key. Open to a key and a person, like
+the routes above.
+
+A pass is one work log row on the ambition that ran from the implementation
+column and was released `worked` or carried no outcome; a row released
+`dropped`, `preempted`, `recused`, `unservable`, `abandoned` or `unstarted`,
+or one from any other column, is left out. Each is an
+`AmbitionPassDto(RowId, SessionId, StartedAt, EndedAt, Title, Summary,
+CanRecordVerdicts, Sha, Verdicts, Comments)`. `CanRecordVerdicts` is true
+where the row is typed `ambition` and ended in the column it started in,
+false for an `epic` row. `Sha` is the sha its `Verdicts` share, or null where
+they differ or there are none.
+
+`Verdicts` is every verdict on the ambition's capabilities timed between the
+row's start and end, one per capability, as
+`AmbitionPassVerdictDto(Id, CapabilityId, Position, Statement, Verdict,
+LookedAt, Sha, Author, At, Changed)`. `Changed` is true where the verdict's
+word differs from the one the next older pass gave the same capability; a
+capability the older pass did not judge is not changed. `Comments` is the
+`CommentDto[]` posted on the ambition between the row's start and end,
+oldest first.
+
+A verdict timed inside no row's window answers as a pass of its own, with no
+`RowId` or `SessionId`, dated at the verdict's own time - so nothing recorded
+is ever hidden.
 
 ## Serves
 

@@ -10,7 +10,9 @@ namespace Hatch.Api.Tests.Hatch;
 /// What is pinned is the shape a reader cannot recover from getting wrong: a
 /// container drawn once however many questions sit beneath it, and an order
 /// that puts the question that has waited longest first at every level -
-/// since the page is answered from the top.
+/// since the page is answered from the top. The same questions come back a
+/// second way, as one list ordered by the work each holds, and what is pinned
+/// there is that order and the look-back fields a person acts on.
 /// </summary>
 public class BallotControllerTests
 {
@@ -218,6 +220,192 @@ public class BallotControllerTests
         Assert.Empty(Value(await h.Ballot.GetBallot(null, default)).Roots);
     }
 
+    // ---- The ordered list ----
+
+    [Fact]
+    public async Task AnEpicQuestionOverThreeOpenTasks_ComesBeforeAStoryQuestionOverOne()
+    {
+        var h = await NewAsync();
+
+        // The story is asked first, so only what it holds can put it second.
+        var story = await h.FileAsync("story", "small");
+        await h.FileAsync("task", "its task", parentId: story.Id);
+        var epic = await h.FileAsync("epic", "large");
+        for (var i = 0; i < 3; i++) await h.FileAsync("task", $"task {i}", parentId: epic.Id);
+        await h.AskAsync(story, "story question", at: Now.AddHours(1));
+        await h.AskAsync(epic, "epic question", at: Now.AddHours(2));
+
+        var ordered = Value(await h.Ballot.GetBallot(null, default)).Questions;
+
+        Assert.Equal(["epic question", "story question"], ordered.Select(q => q.Question.Body));
+        Assert.Equal([4, 2], ordered.Select(q => q.Holds));
+        Assert.All(ordered, q => Assert.Null(q.WentAheadOn));
+        Assert.All(ordered, q => Assert.Null(q.Landings));
+    }
+
+    [Fact]
+    public async Task AQuestionOnALeaf_HoldsOne()
+    {
+        var h = await NewAsync();
+        var task = await h.FileAsync("task", "alone");
+        await h.AskAsync(task, "which?");
+
+        var entry = Assert.Single(Value(await h.Ballot.GetBallot(null, default)).Questions);
+
+        Assert.Equal(1, entry.Holds);
+    }
+
+    [Fact]
+    public async Task AHoldAndABuildQuestionHoldingTheSame_ComeHoldFirst()
+    {
+        var h = await NewAsync();
+        var build = await h.FileAsync("task", "build one");
+        var hold = await h.FileAsync("task", "hold one");
+        await h.AskAsync(build, "build question", at: Now.AddHours(1), level: QuestionLevels.BuildName);
+        await h.AskAsync(hold, "hold question", at: Now.AddHours(2), level: QuestionLevels.HoldName);
+
+        var ordered = Value(await h.Ballot.GetBallot(null, default)).Questions;
+
+        Assert.Equal(["hold question", "build question"], ordered.Select(q => q.Question.Body));
+    }
+
+    [Fact]
+    public async Task TheSameLevelAndHolds_ComeOldestAskedFirst()
+    {
+        var h = await NewAsync();
+        var one = await h.FileAsync("task", "one");
+        var two = await h.FileAsync("task", "two");
+        await h.AskAsync(one, "newer", at: Now.AddHours(2));
+        await h.AskAsync(two, "older", at: Now.AddHours(1));
+
+        var ordered = Value(await h.Ballot.GetBallot(null, default)).Questions;
+
+        Assert.Equal(["older", "newer"], ordered.Select(q => q.Question.Body));
+    }
+
+    [Fact]
+    public async Task LookBacks_SitAfterEveryOpenQuestion_OldestFirst()
+    {
+        var h = await NewAsync();
+
+        // An open question over one task is asked last; the look-backs, asked
+        // earlier, still come after it.
+        var epic = await h.FileAsync("epic", "closed epic", statusId: h.Done);
+        await h.FileAsync("task", "still open", parentId: epic.Id);
+        var shipped = await h.FileAsync("task", "shipped", statusId: h.Done);
+        var waiting = await h.FileAsync("task", "waiting");
+        await h.AskAsync(shipped, "second look-back", at: Now.AddHours(2), level: QuestionLevels.MergeName);
+        await h.AskAsync(epic, "first look-back", at: Now.AddHours(1), level: QuestionLevels.MergeName);
+        await h.AskAsync(waiting, "open question", at: Now.AddHours(3));
+
+        var ordered = Value(await h.Ballot.GetBallot(null, default)).Questions;
+
+        Assert.Equal(["open question", "first look-back", "second look-back"], ordered.Select(q => q.Question.Body));
+        Assert.Equal([false, true, true], ordered.Select(q => q.Question.LookBack));
+
+        // The closed epic holds its one open child and not itself; the shipped task holds none.
+        Assert.Equal([1, 1, 0], ordered.Select(q => q.Holds));
+    }
+
+    [Fact]
+    public async Task ADoneChildAndADeferredChild_AreNotCounted()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "s");
+        await h.FileAsync("task", "open", parentId: story.Id);
+        await h.FileAsync("task", "finished", parentId: story.Id, statusId: h.Done);
+        await h.FileAsync("task", "shelved", parentId: story.Id, statusId: h.Shelved);
+        await h.AskAsync(story, "?");
+
+        var entry = Assert.Single(Value(await h.Ballot.GetBallot(null, default)).Questions);
+
+        Assert.Equal(2, entry.Holds);
+    }
+
+    [Fact]
+    public async Task ALookBack_CarriesWhatTheWorkWentAheadOnAndWhatHappenedSince()
+    {
+        var h = await NewAsync();
+        var merged = await h.FileAsync("task", "merged", statusId: h.Done);
+        var landed = await h.FileAsync("task", "landed", statusId: h.Done);
+        var plain = await h.FileAsync("task", "plain", statusId: h.Done);
+        merged.ClosedAt = Now.AddHours(5);
+        await h.AskAsync(
+            merged, "which route?", at: Now.AddHours(1), level: QuestionLevels.MergeName,
+            options: [new QuestionOptionDto("keep"), new QuestionOptionDto("drop", Recommended: true)]);
+        await h.AskAsync(landed, "landed?", at: Now.AddHours(2), level: QuestionLevels.MergeName);
+        await h.AskAsync(plain, "plain?", at: Now.AddHours(3), level: QuestionLevels.MergeName);
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = merged.Id,
+            Actor = "train",
+            Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = "{\"from\":\"todo\",\"to\":\"done\",\"merged\":true}",
+            At = Now.AddHours(5),
+        });
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = plain.Id,
+            Actor = "operator",
+            Kind = EfHatchIssueEvent.StatusChanged,
+            Payload = "{\"from\":\"todo\",\"to\":\"done\"}",
+            At = Now.AddHours(5),
+        });
+        h.Db.Landings.Add(new EfHatchLanding
+        {
+            IssueId = landed.Id,
+            Remote = "git@example.test:org/repo.git",
+            Canonical = "example.test/org/repo",
+            Trunk = "main",
+            Sha = "abc1234",
+            RecordedAt = Now.AddHours(4),
+            RecordedBy = "runner",
+        });
+        await h.Db.SaveChangesAsync();
+
+        var ordered = Value(await h.Ballot.GetBallot(null, default)).Questions;
+        var byBody = ordered.ToDictionary(q => q.Question.Body);
+
+        var first = byBody["which route?"];
+        Assert.Equal("drop", first.WentAheadOn);
+        Assert.Equal("done", first.IssueStatus);
+        Assert.Equal(Now.AddHours(5), first.ClosedAt);
+        Assert.True(first.Merged);
+        Assert.Empty(first.Landings!);
+
+        var second = byBody["landed?"];
+        Assert.Null(second.WentAheadOn);
+        Assert.False(second.Merged);
+        var landing = Assert.Single(second.Landings!);
+        Assert.Equal(("example.test/org/repo", "abc1234"), (landing.Canonical, landing.Sha));
+
+        Assert.False(byBody["plain?"].Merged);
+    }
+
+    [Fact]
+    public async Task ProjectId_NarrowsTheOrderedListAsItNarrowsTheRoots()
+    {
+        var h = await NewAsync();
+        var here = await h.FileAsync("task", "here");
+        var there = await h.FileAsync("task", "there", project: h.Other);
+        await h.AskAsync(here, "a");
+        await h.AskAsync(there, "b");
+
+        Assert.Equal(["a", "b"], Value(await h.Ballot.GetBallot(null, default)).Questions.Select(q => q.Question.Body).Order());
+
+        var one = Assert.Single(Value(await h.Ballot.GetBallot([h.Other], default)).Questions);
+        Assert.Equal("b", one.Question.Body);
+    }
+
+    [Fact]
+    public async Task NoWaitingQuestions_IsAnEmptyOrderedList()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "quiet");
+
+        Assert.Empty(Value(await h.Ballot.GetBallot(null, default)).Questions);
+    }
+
     // ---- The harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
@@ -230,6 +418,7 @@ public class BallotControllerTests
         public required int Other { get; init; }
         public required int Todo { get; init; }
         public required int Done { get; init; }
+        public required int Shelved { get; init; }
 
         private int next = 1;
 
@@ -256,7 +445,9 @@ public class BallotControllerTests
             return issue;
         }
 
-        public async Task<EfHatchComment> AskAsync(EfHatchIssue issue, string body, DateTimeOffset? at = null)
+        public async Task<EfHatchComment> AskAsync(
+            EfHatchIssue issue, string body, DateTimeOffset? at = null, string? level = null,
+            IReadOnlyList<QuestionOptionDto>? options = null)
         {
             var comment = new EfHatchComment
             {
@@ -264,6 +455,8 @@ public class BallotControllerTests
                 Author = "hatch-agent",
                 Body = body,
                 Kind = EfHatchComment.Question,
+                Level = level,
+                Options = Questions.WriteOptions(options),
                 CreatedAt = at ?? Now,
             };
 
@@ -302,7 +495,8 @@ public class BallotControllerTests
         var other = new EfHatchProject { Key = "OPS", Name = "Operations", CreatedAt = Now };
         var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
         var done = new EfHatchStatus { Name = "done", SortOrder = 40, IsTerminal = true };
-        db.AddRange(project, other, todo, done);
+        var shelved = new EfHatchStatus { Name = "shelved", SortOrder = 50, IsDeferred = true };
+        db.AddRange(project, other, todo, done, shelved);
         await db.SaveChangesAsync();
 
         return new Harness
@@ -313,6 +507,7 @@ public class BallotControllerTests
             Other = other.Id,
             Todo = todo.Id,
             Done = done.Id,
+            Shelved = shelved.Id,
         };
     }
 

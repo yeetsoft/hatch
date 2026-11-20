@@ -79,6 +79,14 @@ capability it serves, with the ambition it belongs to and that capability's
 state. The section is left out when the epic serves nothing, and no other type
 draws either one.
 
+An ambition's page also draws Epics in flight, between Capabilities and
+Progress. It lists each direct child in a column that is neither terminal nor
+deferred: the key as a link, the title, the column's name, and the capabilities
+the epic serves as numbered badges. One line says how many are open and how many
+the ambition runs at once, in the shape "2 open, runs 2 at once"; an ambition
+with no limit set runs one. With no open epic the section says so. On a phone the
+column and badges stack under the title. No other type draws it.
+
 ## Passes
 
 A pass is a session on an ambition standing in the implementation column, aimed
