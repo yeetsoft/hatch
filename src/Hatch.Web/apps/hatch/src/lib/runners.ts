@@ -16,9 +16,10 @@ import { resetClockWords } from './attention';
 import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
 import { refusedModelsDraft, refusedModelsRequest } from './runnerModels';
+import { sameColumnIds } from './runnerColumns';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import { compactTokens, parseTokenCount, thousands, TOKEN_FIELD_HINT } from './workLog';
-import type { Runner, RunnerPatchRequest, RunnerSession } from '../types';
+import type { Runner, RunnerPatchRequest, RunnerSession, RunnerStatusMode } from '../types';
 
 /** The eight states a row can be in, in the order they are decided. */
 export type RunnerActivity = 'gone' | 'agent-down' | 'exhausted' | 'throttled' | 'paused' | 'stopping' | 'working' | 'idle';
@@ -762,6 +763,10 @@ export interface RunnerSettings {
   tags: string;
   under: string;
   refusedModels: string;
+  /** The column rule. The ids are kept across a change of mode, so flipping
+      `only` to `except` and back loses no ticks; `all` ignores them. */
+  statusMode: RunnerStatusMode;
+  statusIds: number[];
 }
 
 /** What a row's tags and under look like in the form that edits them. */
@@ -770,7 +775,17 @@ export function settingsOf(runner: Runner): RunnerSettings {
     tags: runnerTagsDraft(runner.tags),
     under: runner.under ?? '',
     refusedModels: refusedModelsDraft(runner.refusedModels),
+    statusMode: runner.statusMode ?? 'all',
+    statusIds: runner.statusIds ?? [],
   };
+}
+
+/** Whether the draft's column rule differs from the runner's. Under `all` the
+    ids are not part of the rule, and their order never is. */
+function ruleChanged(draft: RunnerSettings, runner: Runner): boolean {
+  const mode = runner.statusMode ?? 'all';
+  if (draft.statusMode !== mode) return true;
+  return mode !== 'all' && !sameColumnIds(draft.statusIds, runner.statusIds ?? []);
 }
 
 /** Whether the settings form is holding anything the row is not. */
@@ -778,23 +793,32 @@ export function settingsChanged(draft: RunnerSettings, runner: Runner): boolean 
   return (
     draft.under.trim() !== (runner.under ?? '').trim() ||
     !sameTags(runnerTagsRequest(draft.tags), runner.tags) ||
-    !sameTags(refusedModelsRequest(draft.refusedModels), runner.refusedModels)
+    !sameTags(refusedModelsRequest(draft.refusedModels), runner.refusedModels) ||
+    ruleChanged(draft, runner)
   );
 }
 
-/** The settings form as two requests' worth: the `PATCH` body, exactly `tags`
-    and `under` so saving leaves every ceiling alone, and the refused models,
-    which have a route of their own - `RunnerPatchRequest` carries no such
-    field, on purpose. */
+/** The settings form as two requests' worth: the `PATCH` body - `tags` and
+    `under`, plus the column rule where it changed, so saving leaves every
+    ceiling alone - and the refused models, which have a route of their own:
+    `RunnerPatchRequest` carries no such field, on purpose. */
 export interface RunnerSettingsRequest {
   patch: RunnerPatchRequest;
   refusedModels: string[];
 }
 
-/** The settings form as its requests. */
-export function settingsRequest(draft: RunnerSettings): RunnerSettingsRequest {
+/**
+ * The settings form as its requests. The column rule rides the `PATCH` only
+ * where it changed, and then as a pair - the server refuses one without the
+ * other, and refuses either on a runner with no key, so a save of tags alone
+ * must not carry it. Under `all` the list sent is empty.
+ */
+export function settingsRequest(draft: RunnerSettings, runner: Runner): RunnerSettingsRequest {
+  const rule: RunnerPatchRequest = ruleChanged(draft, runner)
+    ? { statusMode: draft.statusMode, statusIds: draft.statusMode === 'all' ? [] : draft.statusIds }
+    : {};
   return {
-    patch: { tags: runnerTagsRequest(draft.tags), under: draft.under.trim() },
+    patch: { tags: runnerTagsRequest(draft.tags), under: draft.under.trim(), ...rule },
     refusedModels: refusedModelsRequest(draft.refusedModels),
   };
 }

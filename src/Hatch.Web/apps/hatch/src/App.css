@@ -9882,6 +9882,73 @@ button.hatch-option.chosen {
   padding: var(--sp-3) 0;
 }
 
+/* ---- A runner's columns ----
+
+   The Columns section of the runner's settings card. A row is the column's own
+   pill; a column the runner does not work is the same pill, dimmed, so the
+   column's colour still names it. */
+
+.hatch-runner-columns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hatch-runner-columns legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.hatch-runner-columns-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.hatch-runner-columns-modes label,
+.hatch-runner-column label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-runner-columns-bulk {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.hatch-runner-columns-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-runner-column {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.hatch-runner-column--dim .hatch-status-pill {
+  opacity: 0.35;
+}
+
+.hatch-runner-column-only {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: var(--t-label);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* ---- Filed and moved issue confirmations ---- */
 
 /* The corner where an issue filed, or a card moved, in this tab says so. Fixed to the window

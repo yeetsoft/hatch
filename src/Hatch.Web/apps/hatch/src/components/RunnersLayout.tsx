@@ -4,19 +4,23 @@ import { Button, EmptyState, PageHeader } from '@hatch/ui';
 import { CreateRunnerDialog } from './CreateRunnerDialog';
 import { LocalModelsCard } from './LocalModelsCard';
 import { RunnerList } from './RunnerList';
+import { getStatuses } from '../api/client';
+import { useLoaded } from '../lib/useLoaded';
 import { useRunners } from '../lib/useRunners';
 import { useMe } from '../lib/useMe';
 import { useAttentionContext } from '../lib/useAttentionContext';
 import { waitingOnARunnerLines } from '../lib/attention';
 import { usePhone } from '../lib/viewport';
 import type { RunnerSecret } from '../lib/runnerKey';
-import type { Runner } from '../types';
+import type { Runner, Status } from '../types';
 
 export type { RunnerSecret } from '../lib/runnerKey';
 
 /** What the layout hands its detail route through the `<Outlet/>` context. */
 export interface RunnersOutlet {
   runners: Runner[] | null;
+  /** The board's columns, for the settings card's column list. Null until read, and after a failed read. */
+  statuses: Status[] | null;
   secret: RunnerSecret | null;
   setSecret: (secret: RunnerSecret | null) => void;
   /** Ask the poll again now - a save asks, so the card draws what is true. */
@@ -37,6 +41,7 @@ export function RunnersIndex() {
  */
 export function RunnersLayout() {
   const { runners, error, reload } = useRunners(true, true);
+  const { data: statuses } = useLoaded(getStatuses);
   const { me, isAdmin } = useMe();
   const { attention } = useAttentionContext();
   const wallOff = me?.kind === 'local' || me?.kind === 'none';
@@ -45,7 +50,7 @@ export function RunnersLayout() {
   const navigate = useNavigate();
   const [secret, setSecret] = useState<RunnerSecret | null>(null);
   const [creating, setCreating] = useState(false);
-  const outlet = { runners, secret, setSecret, reload };
+  const outlet = { runners, statuses, secret, setSecret, reload };
 
   const match = useMatch('/runners/:name');
   const selected = match?.params.name;
