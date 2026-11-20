@@ -100,6 +100,8 @@ the next heading of the same level and stop.
   - [Check](#check) - How does a playbook judge instead of edit?
   - [Running an epic](#running-an-epic) - How does a person start a
     top-level epic and walk away?
+  - [Running a pass](#running-a-pass) - How does a person start an ambition's
+    own pass and walk away?
   - [A night-mode board](#a-night-mode-board) - How is a board laid out so a
     pre-approved epic runs Draft to Done unattended?
   - [Preemption](#preemption) - Who is told by a heartbeat that they have
@@ -6829,7 +6831,7 @@ runners, the epic's story limit and the local-model level still cross.
    qualifying for one of the first four changes meaning (HA-394). Where the
    issue already stands in that column, or left of it, this is not a hop:
    going further would cross the Backlog threshold and re-require
-   prioritisation, and the twenty-fourth condition below folds the move instead.
+   prioritisation, and the twenty-fifth condition below folds the move instead.
 6. **approve** — a [pre-approved](#pre-approval) issue standing in the
    review column with a pull request recorded, whose branch
    `MergeWork.Judge` says would merge cleanly or merely needs bringing
@@ -7199,6 +7201,18 @@ Setting a board up so this whole path runs for one epic, start to finish,
 with nobody pressing anything but the one drag nothing skips, is [its own
 walkthrough](#a-night-mode-board).
 
+### Running a pass
+
+A pass is the ambition's own version of running an epic. The operator's one
+press is moving the ambition into the implementation column; after that, the
+next pass runs unattended, the same way the next pass carries a started epic
+along with no session. Unlike an epic, the ambition is never carried out of
+that column by a pass itself: the parent-closeout row (`In Progress → In
+Review`, shape `parent`) never fires for one, since the ambition's own column
+never advances past where the operator put it. Only the operator moves an
+ambition on. The two sentences a pass's own fold speaks are under [the
+dispatcher](#the-dispatcher).
+
 ### A night-mode board
 
 How to set a board up so a pre-approved epic runs from `Draft` to `Done`
@@ -7216,7 +7230,7 @@ repeated here. Tick `ExpressSkips` on `Draft` and on `Backlog`. Leave `To
 Do` unticked - what that costs, and why, is its own sentence under the path,
 below.
 
-**The playbooks the path needs.** [Playbooks](#playbooks) seeds nine rows;
+**The playbooks the path needs.** [Playbooks](#playbooks) seeds ten rows;
 this path only ever fires six of them, by current identity:
 
 - `Breakdown → Backlog`, `epic` and `Breakdown → Backlog`, `story` -
@@ -7232,7 +7246,9 @@ Not part of this path: the ninth row, `Breakdown → Backlog`, `task,bug`, and
 the `To Do → In Progress` `epic` row - that row is retired on any
 WIP-enabled board the moment a move crosses into the WIP section, whatever
 `To Do` is ticked; see [the epic row above](#playbooks) for why the guard
-reads that way.
+reads that way. The ambition's pass row, like the ninth row, is not part of
+this path either - an ambition is outside this walkthrough entirely, since
+the path carries an epic, never an ambition.
 
 **WIP room.** Give the [WIP section](#wip) a limit that admits at least one
 epic and at least one story at once - the epic slice and the `story,bug`
@@ -8200,6 +8216,15 @@ done`, `its only child is not done` for exactly one, or `nothing is filed under
 it` for none at all — each closing with "an epic is verified once its stories
 are".
 
+**An ambition's own pass has its own two sentences, from `FamilyGate.PassFold`.**
+Where fewer epics are open than the ambition's own limit allows, it is clear;
+at the limit, *"{N} of its epics {is/are} open, and it runs {M} at once - the
+next pass runs when one closes"*. Where room is open but a pass already ran
+and nothing has reopened it, *"a pass ran on it {N} {unit}s ago and nothing
+has opened room since - the next runs when an epic under it closes or a
+person changes it"* instead. See [the eighteenth condition](#what-makes-an-issue-actionable)
+and [running a pass](#running-a-pass).
+
 **A hop is marked, not merely clear.** `QueueEntryDto.Hop` is true on a row
 that is express, stands in a column marked `ExpressSkips`, and clears every
 fold above it — so a reader of the queue, and `hatch queue` at a terminal, can
@@ -8370,7 +8395,7 @@ and sits beside the new prescribed text. The reworded text does not say the merg
 for a build dispatch it is not: it points at the branch section for the state of
 the tree.
 
-Ten rows are seeded, for the same reason the columns are: a Hatch whose agent
+Eleven rows are seeded, for the same reason the columns are: a Hatch whose agent
 loop cannot run until somebody fills in a table is a Hatch that ships broken.
 Seven come from `Playbooks.cs` (20260903204217) directly: the three
 breakdown rows, the epic start, the analysis row, the implementation row and
@@ -8799,10 +8824,10 @@ moot while no session sets `CODEX_HOME`.
 
 ### What makes an issue actionable
 
-Twenty-five conditions, the twenty-second a way out of the twenty-first rather than
-one more gate, the twenty-third a fact about the issue rather than another way
-out, the twenty-fourth a fact about the walk rather than either, and the
-twenty-fifth a fact about the issue again, the same shape as the fifth. An
+Twenty-six conditions, the twenty-third a way out of the twenty-second rather than
+one more gate, the twenty-fourth a fact about the issue rather than another way
+out, the twenty-fifth a fact about the walk rather than either, and the
+twenty-sixth a fact about the issue again, the same shape as the fifth. An
 issue is the loop's to pick up when it meets every one before it, and the
 sentence saying which one it failed is what `work/queue` reports:
 
@@ -8818,7 +8843,7 @@ sentence saying which one it failed is what `work/queue` reports:
    that decision, made in advance (`Dispatch.cs:1249`, `:1252`) — see [the
    five paths past the terminal guard](#the-five-paths-past-the-terminal-guard).
    The review column is dispatched to itself instead of either (see the
-   twentieth condition), and never into the column after it.
+   twenty-first condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
    that says *this is being worked right now*; everything below it is about
    whether the issue could be worked at all, which is why nothing else is said
@@ -8863,7 +8888,7 @@ sentence saying which one it failed is what `work/queue` reports:
    not, the issue is folded with the sentence naming the window and the
    numbers, and where no reading exists for the account at all, or the key
    belongs to nobody, with that sentence instead. `work/{key}` is not asked
-   this at all, and neither is a hop — see the twenty-second condition.
+   this at all, and neither is a hop — see the twenty-third condition.
 8. **It is not [low](#expedite) level on an account whose session window is
    behind pace**, asked only of an unattended pass, reading the same account
    the seventh condition reads. The account's session window alone is projected
@@ -8872,7 +8897,7 @@ sentence saying which one it failed is what `work/queue` reports:
    does not, the issue is folded with the sentence naming the window and the
    numbers, and where no reading exists for the account at all, or the key
    belongs to nobody, with that sentence instead. `work/{key}` is not asked
-   this at all, and neither is a hop — see the twenty-second condition.
+   this at all, and neither is a hop — see the twenty-third condition.
 9. **Nobody's name is on it.** An issue [assigned](#assignee) to a person is
    somebody's to do, and an unattended pass leaves it alone. An issue assigned
    to an API key, or to nobody, is picked up exactly as it always was. A
@@ -8956,7 +8981,16 @@ sentence saying which one it failed is what `work/queue` reports:
     [Running an epic](#running-an-epic) for why. The sentence names how many of
     its counted children are still open, that its only child is not done, or
     that nothing is filed under it at all.
-18. **The [WIP section](#wip) has room for it**, when the move is into it: the
+18. **An ambition's pass has room**, asked only of an ambition's own pass
+    (implementation aimed at itself). Fewer of its epics are open — not
+    terminal, not deferred — than its own limit allows (one, where unset);
+    where room is open but a pass already ran since nothing reopened it, the
+    fold instead names how long ago and that the next one runs when an epic
+    under it closes or a person changes the ambition's limit, column or
+    capabilities. See [the dispatcher](#the-dispatcher) for the two
+    sentences. Never asked of anything but a pass — the epic fold (17)
+    speaks for every other parent.
+19. **The [WIP section](#wip) has room for it**, when the move is into it: the
     load, not counting this issue, is below the limit, nor counting any
     ancestor of this issue already standing in it — a family crosses together,
     at the cost of the one slot its nearest counted member already spent. Said
@@ -8968,7 +9002,7 @@ sentence saying which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy: `work/{key}` is refused by
     it too, and overriding it
     is done on the board, by moving the card in.
-19. **An epic above it has room too**, when the move is into the WIP section
+20. **An epic above it has room too**, when the move is into the WIP section
     and this issue's parent is an epic: the load under that epic, not
     counting this issue, is below its own `WipLimit` (an epic with no `WipLimit` has no limit, and this holds trivially) —
     see [An epic's own limit](#an-epics-own-limit). Said right after the
@@ -8977,7 +9011,7 @@ sentence saying which one it failed is what `work/queue` reports:
     about the board rather than the loop's policy, so `work/{key}` is refused
     by it too. Not asked for a task, for an epic moving itself, or for an
     issue whose parent is not an epic.
-20. **In review, its branch conflicts with the trunk or its build failed —
+21. **In review, its branch conflicts with the trunk or its build failed —
     or it is [pre-approved](#pre-approval) and `MergeWork.Judge` would merge
     it or bring it current.** An issue in the review column is the loop's
     when a [merge check](#merge-check) says `conflicted`, or — on a branch
@@ -8993,16 +9027,16 @@ sentence saying which one it failed is what `work/queue` reports:
     alone — but no longer universally: once the issue is pre-approved,
     falling behind alone is enough for the approve hop to bring it current,
     with no session either. See [the dispatcher](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
-21. **A playbook covers that transition for that type — or it does not need
+22. **A playbook covers that transition for that type — or it does not need
     one.** Without one there is nothing to say to the session — and a column no
     playbook leads out of is exactly [how a column becomes the
     operator's](#status), which is why the absence is a fold rather than an
     error. **This is also where the issue's type is decided**, and the only
     place: a type an unattended run does not pick up is a type no row names for
     that move, said in the words that name the fix.
-22. **Unless it does not need a session at all.** An issue that is
+23. **Unless it does not need a session at all.** An issue that is
     [express](#pre-approval) and stands in a column marked
-    [`ExpressSkips`](#status) is [a hop](#the-hop): the twenty-first condition's
+    [`ExpressSkips`](#status) is [a hop](#the-hop): the twenty-second condition's
     absence is answered not by a playbook but by the pass carrying the issue on
     itself, with `POST /api/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a pause,
@@ -9013,7 +9047,7 @@ sentence saying which one it failed is what `work/queue` reports:
     eighth conditions — from a flagged issue, a model the runner cannot
     spawn, or a development dependency the runner lacks — the thirteenth, the
     fourteenth and the fifteenth, none of which a hop meets — or from the park
-    below — the twenty-fourth. A clear hop
+    below — the twenty-fifth. A clear hop
     is still carried across either way, parked or not; being carried across is
     not an escape from being the first clear row the walk saw, so a clear hop
     in a higher tier still parks the tiers below it.
@@ -9024,7 +9058,7 @@ sentence saying which one it failed is what `work/queue` reports:
     epic at or past the implementation column; a top-level epic is carried
     only by the move that lands it there (HA-1069). Where nothing is filed,
     the refinement is its own fold rather than a
-    fall-through to the twenty-first condition: "nothing is filed under it — an
+    fall-through to the twenty-second condition: "nothing is filed under it — an
     epic runs its stories, and it has none". A story or bug standing in a
     column marked `ExpressSkips`, whose parent is an epic at or past the
     implementation column, is a third kind: the epic's own pull reaching the
@@ -9049,7 +9083,7 @@ sentence saying which one it failed is what `work/queue` reports:
     implementation column, not terminal and not waiting on the story's pull
     request. Where the column is so marked but such a sibling is already in
     flight, the refinement is its own fold rather than a fall-through to the
-    twenty-first condition's "no playbook covers this": "{sibling}, sharing its
+    twenty-second condition's "no playbook covers this": "{sibling}, sharing its
     parent's branch, is already in flight - one sibling at a time", kind
     `family` — the only one of `FamilyGate.Pulls`'s two conditions this fold can
     still be naming, since the hold above has already spoken for a parent
@@ -9062,7 +9096,7 @@ sentence saying which one it failed is what `work/queue` reports:
     back to it needs no playbook and spawns no session, for the same reason
     the first four need none. Where no such column exists, or the issue
     already stands in it or left of it, this is not a hop, and condition
-    twenty-three, just below, folds the move instead.
+    twenty-four, just below, folds the move instead.
 
     A [pre-approved](#pre-approval) issue standing in the review column, with a
     pull request recorded, whose branch `MergeWork.Judge` says would merge
@@ -9070,7 +9104,7 @@ sentence saying which one it failed is what `work/queue` reports:
     into the column ticked `MergesPullRequest` with nobody reading the diff
     first, since a pre-approval already is that reading. Where the branch
     instead conflicts or its build has failed, this is not that hop; the
-    twentieth condition's own fold governs it exactly as it would an issue
+    twenty-first condition's own fold governs it exactly as it would an issue
     with no pre-approval at all.
 
     A pre-approved parent, or a parent in a project whose *A passing check
@@ -9082,7 +9116,7 @@ sentence saying which one it failed is what `work/queue` reports:
     terminal column strictly right of review. A childless pre-approved issue
     is never carried this way: nothing is filed under it for every child to be
     done of, so it is not this kind of hop at all.
-23. **A childless issue's brief is no longer than its matched playbook's own
+24. **A childless issue's brief is no longer than its matched playbook's own
     `BriefLimit`, where one is set.** Not asked at all where the matched
     playbook leaves `BriefLimit` null, or where the issue already has a
     child — a brief big enough to want breaking down is exactly what children
@@ -9097,7 +9131,7 @@ sentence saying which one it failed is what `work/queue` reports:
     its brief is 18,044 characters, and this move is spawned on at most
     8,000 - cut it into tasks first
     ```
-24. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
+25. **Nothing in a strictly higher [priority](#expedite) tier is clear.** The
     tiers are walked top down, once each, across every row the walk
     reaches: emergency in an unpaused project; then an expedited project's
     expedited, normal, low and economy rows; then every other unpaused
@@ -9134,7 +9168,7 @@ sentence saying which one it failed is what `work/queue` reports:
     and a tier parked behind one would be a tier that never runs for as long
     as it stands — so a fold is never live for this rule's purposes, and the
     only thing that parks a lower tier is a row with no fold at all.
-25. **It is not human work, on its own row or on an ancestor's.** [Human
+26. **It is not human work, on its own row or on an ancestor's.** [Human
     work](#human-work) is read the same shape `EffectiveLocalModel` is:
     the nearest ancestor — itself first — whose own value is not `inherit`,
     `agent` with nothing set anywhere. Folded with *human work - a person
@@ -9147,12 +9181,12 @@ sentence saying which one it failed is what `work/queue` reports:
     human ancestor and dispatch honours it. A fact about the issue like the
     claim and the pause before it, so `work/{key}` asks it too.
 
-Nineteen of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-21, 23 and 25 — are facts about the issue, and `work/{key}` asks them too. The
-twenty-second is as well, and `work/{key}` answers it the same way `work/queue`
+Twenty of them — 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+21, 22, 24 and 26 — are facts about the issue, and `work/{key}` asks them too. The
+twenty-third is as well, and `work/{key}` answers it the same way `work/queue`
 does: `WorkDto.Hop`. The other four — 6, 7, 8 and 9 — are the loop's policy and
 are asked only when the pass is asking;
-see [one more, on `next` alone](#one-more-on-next-alone). The twenty-fourth is
+see [one more, on `next` alone](#one-more-on-next-alone). The twenty-fifth is
 neither: not a fact about one issue, since it depends on every other row the
 same walk reaches, and not the loop's policy, since it folds `work/queue`
 exactly as it folds `work/next`. It is a fact about the walk itself, asked only
