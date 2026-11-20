@@ -105,7 +105,10 @@ import type {
   StatusPatchRequest,
   StatusRunnerTagsWriteRequest,
   Timeline,
+  GooseFinding,
   GooseFindingBugRequest,
+  GooseRun,
+  GooseRunDetail,
   TrunkBuildBugRequest,
   Utilization,
   WipSection,
@@ -755,6 +758,17 @@ export const getAttention = () => fetchJson<Attention>('/api/attention');
     refused `403`, because the bug it files is expedited. */
 export const fileTrunkBuildBug = (id: number, request?: TrunkBuildBugRequest) =>
   fetchJson<Issue>(`/api/trunk-builds/${id}/bug`, { method: 'POST', ...(request ? asJson(request) : {}) });
+
+/** The goose's runs, newest first, without the per-check detail. A caller
+    whose scope is narrower is answered an empty list - a run holds what was
+    seen across every project. */
+export const getGooseRuns = () => fetchJson<GooseRun[]>('/api/goose/runs');
+
+/** One run, with what each check looked at and concluded. */
+export const getGooseRun = (id: number) => fetchJson<GooseRunDetail>(`/api/goose/runs/${id}`);
+
+/** Every finding the caller's projects have: open ones first, then closed ones, newest first. */
+export const getGooseFindings = () => fetchJson<GooseFinding[]>('/api/goose/findings');
 
 /** Files the bug a goose finding's *File a bug* button asks for, or answers the
     one already filed - see GooseFindingBugController. Person-only, as

@@ -881,7 +881,7 @@ describe('AttentionHuman findings', () => {
     const html = draw(attention({ findings: [finding({ issueKey: 'AER-9', bugIssueKey: 'AER-77' })] }));
 
     expect(html).toContain('href="/issues/AER-77" data-discover="true">AER-77</a>');
-    expect(html.match(/<a /g)?.length).toBe(2);
+    expect(html.match(/<a /g)?.length).toBe(3);
     expect(html).not.toMatch(/<a [^>]*>(?:(?!<\/a>).)*<a /s);
   });
 
@@ -889,7 +889,7 @@ describe('AttentionHuman findings', () => {
     const html = draw(attention({ findings: [finding({ issueKey: 'AER-9' })] }));
 
     expect(html).toMatch(/<button[^>]*>File a bug<\/button>/);
-    expect(html.match(/<a /g)?.length).toBe(1);
+    expect(html.match(/<a /g)?.length).toBe(2);
     expect(html).not.toMatch(/<a [^>]*>(?:(?!<\/a>).)*<button/s);
     expect(findingDialogProps).toMatchObject({ open: false, findingId: finding().id, projectKey: finding().projectKey });
   });
@@ -901,11 +901,19 @@ describe('AttentionHuman findings', () => {
     expect(html).not.toContain('File a bug');
   });
 
-  it('says first that the goose has stopped and when it last ran, linked to its docs page', () => {
+  it('links every finding to the goose’s page, beside the row link and not inside it', () => {
+    const html = draw(attention({ findings: [finding({ issueKey: 'AER-9' })] }));
+
+    expect(html).toContain('href="/goose" data-discover="true">Goose</a>');
+    expect(html).not.toMatch(/<a [^>]*>(?:(?!<\/a>).)*<a /s);
+  });
+
+  it('says first that the goose has stopped and when it last ran, linked to its page', () => {
     const g = goose({ stopped: true });
     const html = draw(attention({ findings: [finding()], goose: g }));
 
-    expect(html).toContain('href="/docs/the-goose"');
+    expect(html).toContain('href="/goose"');
+    expect(html).not.toContain('href="/docs/the-goose"');
     expect(html).toContain(gooseStoppedWords(g, new Date()));
     expect(html.indexOf(gooseStoppedWords(g, new Date()))).toBeLessThan(html.indexOf(finding().sentence));
   });

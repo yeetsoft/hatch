@@ -133,8 +133,9 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
  * when the finding is about the project, and beside it either the button that
  * files a bug or the bug already filed.
  *
- * The row is the link, and the bug's own link or button sits beside it, never
- * inside it: an anchor never holds an anchor, nor a button.
+ * The row is the link, and the goose page's link and the bug's own link or
+ * button sit beside it, never inside it: an anchor never holds an anchor, nor a
+ * button.
  */
 function FindingRow({ finding: f, now, onFiled }: { finding: AttentionFinding; now: Date; onFiled: () => void }) {
   const [open, setOpen] = useState(false);
@@ -155,6 +156,9 @@ function FindingRow({ finding: f, now, onFiled }: { finding: AttentionFinding; n
       </Link>
 
       <span className="hatch-attention-row-actions hatch-attention-bug">
+        {/* The goose's page, where this finding is read in full. A link of its
+            own beside the row's, for the same reason the bug's is. */}
+        <Link to="/goose">Goose</Link>
         {f.bugIssueKey ? (
           <Link to={`/issues/${f.bugIssueKey}`}>{f.bugIssueKey}</Link>
         ) : (
@@ -235,7 +239,7 @@ export function AttentionHuman({
           <ul className="hatch-attention-rows">
             {goose !== null && gooseStopped && (
               <li>
-                <Link className="hatch-attention-row" to="/docs/the-goose">
+                <Link className="hatch-attention-row" to="/goose">
                   <span className="hatch-attention-row-head">
                     <span className="hatch-attention-key">The goose</span>
                   </span>

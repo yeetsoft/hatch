@@ -39,6 +39,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { ImportPage } from './pages/ImportPage';
 import { DocsPage } from './pages/DocsPage';
 import { RunnerPage } from './pages/RunnerPage';
+import { GoosePage } from './pages/GoosePage';
 import { OvernightPage } from './pages/OvernightPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -208,6 +209,7 @@ function AppShell() {
                 <Route path=":name" element={<RunnerDetail />} />
               </Route>
               <Route path="/overnight" element={<OvernightPage />} />
+              <Route path="/goose" element={<GoosePage />} />
               <Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/issues/:key" element={<IssueRoute />} />

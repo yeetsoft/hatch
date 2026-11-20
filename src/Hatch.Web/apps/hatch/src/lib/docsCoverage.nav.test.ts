@@ -13,6 +13,7 @@ const SCREENS: Record<string, string> = {
   '/runners': 'watching-the-loop',
   '/leaderboard': 'watching-the-loop',
   '/overnight': 'watching-the-loop',
+  '/goose': 'the-goose',
   '/history': 'watching-the-loop',
   '/playbooks': 'playbooks',
   '/runner': 'the-runner',
