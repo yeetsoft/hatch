@@ -100,7 +100,8 @@ public static class Fixtures
         string? model = null,
         bool modelIsLocal = false,
         string? localModel = null,
-        IReadOnlyList<QuestionDto>? buildPast = null) =>
+        IReadOnlyList<QuestionDto>? buildPast = null,
+        WorkAmbitionDto? ambition = null) =>
         new(
             Issue: issue ?? Issue(key, localModel: localModel),
             FromStatus: Status(3, from),
@@ -130,7 +131,8 @@ public static class Fixtures
             ReleaseNoteFor: releaseNoteFor,
             Model: hop ? null : model,
             ModelIsLocal: modelIsLocal,
-            BuildPast: buildPast);
+            BuildPast: buildPast,
+            Ambition: ambition);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(
