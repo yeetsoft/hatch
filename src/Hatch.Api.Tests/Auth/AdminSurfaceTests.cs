@@ -118,6 +118,10 @@ public class AdminSurfaceTests
         "IssueThreadController.AddComment",
         "IssueThreadController.GetEvents",
 
+        // The look-back answer that files its rework: whoever may answer may
+        // overturn, so it takes a key as AddComment does.
+        "QuestionOverturnController.Overturn",
+
         // The other end of a message written by AddComment: a session, or the
         // runner spawning one, marking what it has put in front of the model.
         // Key-accepting for the reason AddComment is - the key a spawned agent
@@ -973,6 +977,7 @@ public class AdminSurfaceTests
         "ProjectsController.GetRepositories",
         "ProjectsController.PatchProject",
         "PullRequestStateController.PutPullRequestState",
+        "QuestionOverturnController.Overturn",
         "QuestionsController.GetIssueQuestions",
         "QuestionsController.GetQuestions",
         "ReportsController.GetActivityReport",
