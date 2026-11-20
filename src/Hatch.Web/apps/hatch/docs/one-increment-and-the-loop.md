@@ -300,7 +300,9 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
 
 1. **Usage probe.** For an agent that has a usage probe (Claude), the
    loop asks the CLI for its own usage, at most every two minutes and after an
-   increment, so the bars are the account's and not the last session's.
+   increment, so the bars are the account's and not the last session's. It is
+   asked while the loop naps between passes too, however long `--interval` is,
+   and each answer is beaten at once, so an idle runner's reading stays fresh.
 2. **Heartbeat and stop conditions.** The heartbeat says this runner is here
    and reads back what **Agents → Runners** would like it to do: paused, stopping, a
    different scope, different bounds. Anything the board changed is printed
