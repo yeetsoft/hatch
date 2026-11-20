@@ -21,10 +21,10 @@ public static partial class UsageReport
 {
     /// <summary>
     /// How stale a usage probe's reading is allowed to get before it is asked
-    /// for again - at the top of an idle pass, and every this long through a
-    /// running increment. The server's own freshness window is five minutes;
-    /// this plus one <c>--interval</c> stays inside it - see the decisions on
-    /// HA-173, criterion 1.4.
+    /// for again - while the loop is idle, however long its <c>--interval</c>
+    /// is, and every this long through a running increment. The server's own
+    /// freshness window is five minutes - see the decisions on HA-173,
+    /// criterion 1.4.
     /// </summary>
     public static readonly TimeSpan ProbeMaxAge = TimeSpan.FromMinutes(2);
 

@@ -2040,6 +2040,147 @@ public sealed class GoToWorkTests
     }
 
     /// <summary>
+    /// What a nap is made of: a loop with nothing on the board, a clock the
+    /// test drives, and a probe whose answer it chooses.
+    /// </summary>
+    private sealed class Nap : IDisposable
+    {
+        public Harness H { get; } = new();
+        public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        public FakeProbingSessions Fake { get; }
+        public CancellationTokenSource Interrupting { get; } = new();
+        public Task<int> Running { get; }
+        public DateTimeOffset Start { get; }
+
+        public Nap(Func<IReadOnlyList<string>?> behaviour, int interval = 600)
+        {
+            H.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+            H.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
+            Fake = new FakeProbingSessions { Behaviour = behaviour };
+            Start = Clock.GetUtcNow();
+
+            var runtime = H.Runtime with { Sessions = Fake, Clock = Clock };
+            Running = new GoToWorkCommand(runtime).RunAsync(
+                ["--interval", interval.ToString(CultureInfo.InvariantCulture)], Interrupting.Token);
+        }
+
+        public IReadOnlyList<RunnerHeartbeatRequest> Beats() => H.Wire.Calls
+            .Where(c => c.Path == "/api/runners/sessions")
+            .Select(c => c.Read<RunnerHeartbeatRequest>())
+            .ToList();
+
+        /// <summary>
+        /// Five seconds at a time - the nap's own slice - until the condition
+        /// holds, so a step that outruns the nap delays a probe rather than
+        /// losing it. Answers how long the clock was driven for.
+        /// </summary>
+        public async Task<TimeSpan> DriveUntilAsync(Func<bool> until, string what)
+        {
+            var from = Clock.GetUtcNow();
+            for (var i = 0; !until(); i++)
+            {
+                Assert.True(i < 60, $"the clock was driven five minutes and {what} did not happen");
+                Clock.Advance(TimeSpan.FromSeconds(5));
+                await Task.Delay(10);
+            }
+            return Clock.GetUtcNow() - from;
+        }
+
+        public async Task SettleAsync()
+        {
+            await Harness.Eventually(() => H.Wire.Calls.Any(c => c.Path == "/api/runners/sessions"), "the pass's own beat");
+            await Task.Delay(50);
+        }
+
+        public void Dispose()
+        {
+            Interrupting.Cancel();
+            try { Running.GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            Interrupting.Dispose();
+            H.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// HA-2537: with --interval 600 the loop naps ten minutes, and the nap is
+    /// not a plain sleep. The probe keeps its own two-minute clock through it,
+    /// and each answer is beaten at once, so the board's reading never ages
+    /// past what it trusts - without ending the nap or starting a pass.
+    /// </summary>
+    [Fact]
+    public async Task A_napping_loop_probes_every_probe_max_age_and_beats_each_answer()
+    {
+        using var nap = new Nap(() => [Fixtures.UsageReport([("session", 61, null)]), Fixtures.Result(turns: 0)]);
+        await nap.SettleAsync();
+
+        // The pass's own probe and beat, before the nap.
+        Assert.Single(nap.Fake.Probed);
+        Assert.Single(nap.Beats());
+
+        for (var round = 1; round <= 4; round++)
+        {
+            var driven = await nap.DriveUntilAsync(
+                () => nap.Fake.Probed.Count == round + 1, $"probe {round + 1}");
+            Assert.InRange(driven, UsageReport.ProbeMaxAge - TimeSpan.FromSeconds(10), UsageReport.ProbeMaxAge + TimeSpan.FromSeconds(30));
+
+            await Harness.Eventually(() => nap.Beats().Count == round + 1, $"a beat after probe {round + 1}");
+            var beat = nap.Beats()[^1];
+            Assert.Equal(nap.Clock.GetUtcNow(), beat.UsageReadAt);
+            Assert.Equal(61, Assert.Single(beat.Usage!).Percent);
+        }
+
+        // No pass started: the nap was never ended, so the board was not read again.
+        Assert.Equal(1, nap.H.Wire.Count("GET", Queue));
+    }
+
+    [Fact]
+    public async Task A_nap_under_the_probe_clock_asks_for_nothing_beyond_the_passes_own()
+    {
+        using var nap = new Nap(() => [Fixtures.UsageReport([("session", 61, null)]), Fixtures.Result(turns: 0)]);
+        await nap.SettleAsync();
+
+        for (var i = 0; i < 18; i++)
+        {
+            nap.Clock.Advance(TimeSpan.FromSeconds(5));
+            await Task.Delay(10);
+        }
+        await Task.Delay(50);
+
+        Assert.Single(nap.Fake.Probed);
+        Assert.Single(nap.Beats());
+    }
+
+    [Fact]
+    public async Task A_probe_that_answers_nothing_during_a_nap_beats_nothing_new()
+    {
+        using var nap = new Nap(() => null);
+        await nap.SettleAsync();
+
+        await nap.DriveUntilAsync(() => nap.Fake.Probed.Count >= 3, "two probes in the nap");
+        await Task.Delay(50);
+
+        var beats = nap.Beats();
+        Assert.Single(beats);
+        Assert.Null(beats[0].Usage);
+        Assert.Null(beats[0].UsageReadAt);
+    }
+
+    [Fact]
+    public async Task A_latched_off_probe_does_nothing_new_during_a_nap()
+    {
+        using var nap = new Nap(() => [Fixtures.UsageReport([("session", 99, null)]), Fixtures.Result(turns: 1)]);
+        await nap.SettleAsync();
+
+        // The one probe that cost a turn latched the guard: every later one answers nothing.
+        await nap.DriveUntilAsync(() => nap.Fake.Probed.Count >= 3, "two probes in the nap");
+        await Task.Delay(50);
+
+        Assert.Single(nap.Beats());
+        Assert.Empty(nap.H.Runtime.Readout.Snapshot().UsageWindows);
+    }
+
+    /// <summary>
     /// The guard belongs to the runner, not the loop: the loop keeps checking
     /// in every pass it is due, but a probe that has already cost a turn once
     /// answers nothing for the rest of the process, never handing the loop a

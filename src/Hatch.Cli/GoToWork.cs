@@ -1565,52 +1565,80 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // send that instead of the fuller account the CLI's own login reports.
         var workedSinceProbe = false;
 
+        // One probe, when it is due or forced: the top of a pass asks, and so
+        // does every slice of a nap. Answers whether it came back with windows.
+        async Task<bool> ProbeAsync(bool force)
+        {
+            if (runtime.Sessions is not IUsageProbe probe) return false;
+
+            var probeNow = runtime.Clock.GetUtcNow();
+            var due = probedAt is not { } last || probeNow - last >= UsageReport.ProbeMaxAge || force;
+            if (!due) return false;
+
+            probedAt = probeNow;
+            var (probed, windows) = await UsageReport.ProbeAndSetUsageAsync(
+                probe, runtime.TempDirectory, runtime.Readout, probeNow, ct);
+
+            if (windows is { } found)
+            {
+                var session = found.FirstOrDefault(w => w.Window == "session");
+                lastProbedResetsAt = session?.ResetsAt;
+                tally.CorrectExhausted(session);
+                var spentAt = runtime.Clock.GetUtcNow();
+                foreach (var (model, resetsAt) in ModelNarrowing.Spent(found, spentAt))
+                {
+                    if (runtime.Narrowing.Narrow(model, resetsAt, spentAt)) SayNarrowed(model, resetsAt);
+                }
+                runtime.Say.Line(session is not null
+                    ? $"hatch: probe found a session window, resetsAt={session.ResetsAt:O}"
+                    : "hatch: probe found no session window");
+                lastProbeOutcome = null;
+                return true;
+            }
+
+            runtime.Say.Line("hatch: probe found no session window");
+
+            var outcome = probed is null ? "probe returned nothing" : "the probe's lines did not parse";
+            if (outcome != lastProbeOutcome)
+            {
+                lastProbeOutcome = outcome;
+                var joined = probed is null ? "" : UsageReport.Said(probed);
+                var preview = joined.Length > 500 ? joined[..500] : joined;
+                runtime.Say.Line($"hatch: {outcome} - {preview}");
+            }
+            return false;
+        }
+
+        // What the nap does between its slices: the loop is up and no increment
+        // runs, so the probe keeps its own clock however long --interval is, and
+        // an answer is beaten at once so the board's reading does not age. The
+        // row keeps State, so the instruction a beat answers with is dropped
+        // here and re-sent at the next pass's beat. A probe that fails is said
+        // and tried again - it must never end the nap. A HatchException from the
+        // beat is the refusal that this name is live elsewhere, and propagates.
+        async Task IdleAsync(CancellationToken napCt)
+        {
+            try
+            {
+                if (await ProbeAsync(force: false))
+                    await BeatAsync(line, under, mine, tally, once, napCt);
+            }
+            catch (Exception e) when (e is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or TimeoutException)
+            {
+                runtime.Say.Complain($"hatch: a usage probe while idle failed - {e.Message}");
+            }
+        }
+
+        Task<bool> NapAsync(int seconds, Tally napTally, CancellationToken napCt, Func<bool>? wake = null, bool checkNow = false)
+            => this.NapAsync(seconds, napTally, napCt, wake, checkNow, IdleAsync);
+
         while (!ct.IsCancellationRequested)
         {
             if (ProfileMoved(once, restart, tally, ref unusable) is { } moved) return moved;
 
-            if (runtime.Sessions is IUsageProbe probe)
-            {
-                var probeNow = runtime.Clock.GetUtcNow();
-                var due = probedAt is not { } last || probeNow - last >= UsageReport.ProbeMaxAge || workedSinceProbe;
-                workedSinceProbe = false;
-
-                if (due)
-                {
-                    probedAt = probeNow;
-                    var (probed, windows) = await UsageReport.ProbeAndSetUsageAsync(
-                        probe, runtime.TempDirectory, runtime.Readout, probeNow, ct);
-
-                    if (windows is { } found)
-                    {
-                        var session = found.FirstOrDefault(w => w.Window == "session");
-                        lastProbedResetsAt = session?.ResetsAt;
-                        tally.CorrectExhausted(session);
-                        var spentAt = runtime.Clock.GetUtcNow();
-                        foreach (var (model, resetsAt) in ModelNarrowing.Spent(found, spentAt))
-                        {
-                            if (runtime.Narrowing.Narrow(model, resetsAt, spentAt)) SayNarrowed(model, resetsAt);
-                        }
-                        runtime.Say.Line(session is not null
-                            ? $"hatch: probe found a session window, resetsAt={session.ResetsAt:O}"
-                            : "hatch: probe found no session window");
-                        lastProbeOutcome = null;
-                    }
-                    else
-                    {
-                        runtime.Say.Line("hatch: probe found no session window");
-
-                        var outcome = probed is null ? "probe returned nothing" : "the probe's lines did not parse";
-                        if (outcome != lastProbeOutcome)
-                        {
-                            lastProbeOutcome = outcome;
-                            var joined = probed is null ? "" : UsageReport.Said(probed);
-                            var preview = joined.Length > 500 ? joined[..500] : joined;
-                            runtime.Say.Line($"hatch: {outcome} - {preview}");
-                        }
-                    }
-                }
-            }
+            var forced = workedSinceProbe;
+            workedSinceProbe = false;
+            await ProbeAsync(forced);
 
             // Once per iteration, at the top - which is the one moment in a
             // pass when no claim is held. That is what makes "picked up between
@@ -3040,7 +3068,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// morning lands at three in the morning however long the interval is.
     /// </summary>
     private async Task<bool> NapAsync(
-        int seconds, Tally tally, CancellationToken ct, Func<bool>? wake = null, bool checkNow = false)
+        int seconds, Tally tally, CancellationToken ct, Func<bool>? wake = null, bool checkNow = false,
+        Func<CancellationToken, Task>? idle = null)
     {
         // The keyboard's n cancels only this linked source, never ct - so a
         // stop is still told apart from a wake below. Only the idle nap opts
@@ -3079,6 +3108,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                 left -= slice;
                 if (tally.ShouldStop()) return false;
+
+                if (idle is not null) await idle(ct);
 
                 // Finished waiting, go around again - the same answer an ordinary
                 // completed nap gives, which is what lets the loop re-evaluate
