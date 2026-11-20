@@ -262,6 +262,7 @@ public class ScopeRouteMatrixTests
         ("ActivityController.GetActivity", Rows(false, t => Get("/api/activity"), t => Get($"/api/activity?projectId={t.ProjectId}"))),
         ("AssigneeController.GetAssignees", Rows(false, t => Get("/api/assignees"))),
         ("AttentionController.GetAttention", Rows(false, t => Get("/api/attention"))),
+        ("AmbitionsController.GetAmbitions", Rows(false, t => Get("/api/ambitions"), t => Get($"/api/ambitions?projectId={t.ProjectId}"))),
         ("BallotController.GetBallot", Rows(false, t => Get("/api/ballot"), t => Get($"/api/ballot?projectId={t.ProjectId}"))),
         ("BoardController.GetBoard", Rows(true, t => Get("/api/board"))),
         ("ChangelogController.GetChangelog", Rows(false, t => Get("/api/changelog"), t => Get($"/api/changelog?projectId={t.ProjectId}"))),
