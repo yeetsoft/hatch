@@ -125,6 +125,45 @@ describe('BallotCards', () => {
     expect(html).not.toContain('aria-label="Set level"');
   });
 
+  it('draws a program look-back as answered by a session, with the key, the decision, and what it found', () => {
+    const withAnswer: BallotQuestion = {
+      ...lookBackItem,
+      wentAheadOn: 'Change it.',
+      question: question({
+        id: 3,
+        level: 'merge',
+        lookBack: true,
+        options,
+        answers: [
+          {
+            id: 10,
+            author: 'hatch-loop',
+            body: 'Change it.\n\nIt cost less than keeping it.',
+            kind: 'answer',
+            answersId: 3,
+            options: null,
+            createdAt: '2026-02-03T09:00:00Z',
+            deliveredAt: null,
+            deliveredTo: null,
+            level: null,
+            answeredAfter: false,
+            authorKind: 'key',
+          },
+        ],
+      }),
+    };
+    const html = render([withAnswer]);
+
+    expect(html).toContain('Answered by a session');
+    expect(html).toContain('hatch-loop');
+    expect(html).toContain('Change it.');
+    expect(html).toContain('Found in');
+    expect(html).toContain('It cost less than keeping it.');
+    expect(html).not.toContain('Decided without you');
+    expect(html).toContain('>Keep<');
+    expect(html).toContain('>Overturn<');
+  });
+
   it('says its work landed on the trunk where the pull request did not merge', () => {
     const html = render([{ ...lookBackItem, merged: false, landings: [{ canonical: 'a/b', sha: 'abc' }] }]);
 

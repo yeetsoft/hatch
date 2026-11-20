@@ -2,7 +2,7 @@
    sentences around it. Pure, so the order and the words can be read without a
    page to render. */
 
-import type { BallotNode, BallotQuestion, QuestionOption } from '../types';
+import type { BallotNode, BallotQuestion, Comment, QuestionOption } from '../types';
 
 /** The root holding `issueKey` at any depth, or null where no root does. */
 export function rootOf(roots: BallotNode[], issueKey: string): BallotNode | null {
@@ -46,6 +46,20 @@ export function thenWords(open: number, lookBack: number): string {
     on - or null where the question recommended none. */
 export const keepOption = (options: QuestionOption[] | null): string | null =>
   options?.find((o) => o.recommended)?.label ?? null;
+
+/** The first answer a key wrote, split at its first non-blank line - who
+    wrote it, that line, and everything after, trimmed - or null where no key
+    has answered. What a look-back draws instead of "Decided without you". */
+export function programAnswer(answers: Comment[]): { by: string; first: string; rest: string } | null {
+  const answer = answers.find((a) => a.authorKind === 'key');
+  if (!answer) return null;
+
+  const lines = answer.body.replace(/\r\n/g, '\n').split('\n');
+  const at = lines.findIndex((l) => l.trim().length > 0);
+  if (at === -1) return { by: answer.author, first: '', rest: '' };
+
+  return { by: answer.author, first: lines[at].trim(), rest: lines.slice(at + 1).join('\n').trim() };
+}
 
 /** What has happened to the issue since the decision, as one sentence: the
     column it stands in, when it closed, and how its work reached the trunk.
