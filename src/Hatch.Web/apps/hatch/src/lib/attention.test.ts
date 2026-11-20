@@ -70,6 +70,7 @@ const question = (over: Partial<Question> = {}): Question => ({
   options: null,
   answers: [],
   level: 'hold',
+  lookBack: false,
   ...over,
 });
 

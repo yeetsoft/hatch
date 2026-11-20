@@ -31,6 +31,7 @@ const comment = (over: Partial<Comment> = {}): Comment => ({
   deliveredAt: null,
   deliveredTo: null,
   level: null,
+  answeredAfter: false,
   ...over,
 });
 

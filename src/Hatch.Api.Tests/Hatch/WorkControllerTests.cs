@@ -8610,7 +8610,26 @@ public class WorkControllerTests
         var queue = await h.Work.GetQueue(0, null, default);
 
         Assert.Null(EntryFor(queue, building).Blocked);
-        Assert.Null(EntryFor(queue, merging).Blocked);
+        var merged = EntryFor(queue, merging);
+        Assert.Null(merged.Blocked);
+        Assert.True(merged.Hop);
+        Assert.Equal(HopKinds.Approve, merged.HopKind);
+    }
+
+    [Fact]
+    public async Task Question_AtMerge_DoesNotFoldTheCloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        await AskAtAsync(h, issue, QuestionLevels.MergeName);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
     }
 
     [Theory]

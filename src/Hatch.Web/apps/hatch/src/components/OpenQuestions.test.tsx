@@ -203,4 +203,18 @@ describe('the card at each level', () => {
     expect(html).toContain('HA-1 shipped with these open.');
     expect(html).not.toContain('built and merged');
   });
+
+  it('says a merge question waits for a look back once the issue shipped', () => {
+    const html = waiting([question({ id: 1, level: 'merge' }), question({ id: 2 })], true);
+
+    expect(html).toContain('A question asked at merge waits for a look back');
+    expect(html).not.toContain('An answer is welcome, not needed.');
+  });
+
+  it('keeps the welcome-not-needed sentence on a shipped ticket with no merge question', () => {
+    const html = waiting(two, true);
+
+    expect(html).toContain('HA-1 shipped with these open. An answer is welcome, not needed.');
+    expect(html).not.toContain('look back');
+  });
 });

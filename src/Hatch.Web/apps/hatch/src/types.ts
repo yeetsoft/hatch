@@ -999,6 +999,9 @@ export interface Comment {
   /** How far work may go before this question is answered. Null on anything
       that is not a question. */
   level: QuestionLevel | null;
+  /** On an answer inside a Question: whether it was given after its issue
+      closed. False on every other comment. */
+  answeredAfter: boolean;
 }
 
 /** How far work may go on an issue before one of its questions is answered:
@@ -1020,6 +1023,9 @@ export interface Question {
   /** How far work may go before this is answered. `hold` unless a person said
       otherwise; never null. */
   level: QuestionLevel;
+  /** An open `merge` question on an issue that has shipped: the work went ahead
+      on its recommendation and the answer is a look back. */
+  lookBack: boolean;
 }
 
 /** One issue on the ballot: a container for the issues below it that have a

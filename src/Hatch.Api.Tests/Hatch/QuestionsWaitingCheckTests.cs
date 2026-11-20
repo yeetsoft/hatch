@@ -118,6 +118,19 @@ public class QuestionsWaitingCheckTests
     }
 
     [Fact]
+    public async Task AMergeQuestionOnADoneIssue_IsCountedUntilAnswered_AndAHoldOneIsNot()
+    {
+        var h = NewHarness();
+        await h.AskAsync("merge", Now - TimeSpan.FromHours(100), terminal: true, level: QuestionLevels.MergeName);
+        await h.AskAsync("hold", Now - TimeSpan.FromHours(100), terminal: true, level: QuestionLevels.HoldName);
+
+        var observation = await h.Check.RunAsync(CancellationToken.None);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("1 waiting questions, 1 past 24 hours", observation.Looked);
+    }
+
+    [Fact]
     public async Task AQuestionOnAnIssueFiledFromAFinding_IsLeftOut()
     {
         var h = NewHarness();
@@ -227,7 +240,7 @@ public class QuestionsWaitingCheckTests
 
         /// <summary>A new issue in the open column (or the done one) with one question asked at <paramref name="at"/>.</summary>
         public async Task<EfHatchComment> AskAsync(
-            string name, DateTimeOffset at, string author = "Zimm-runner", string body = "A question", bool terminal = false)
+            string name, DateTimeOffset at, string author = "Zimm-runner", string body = "A question", bool terminal = false, string? level = null)
         {
             var issue = new EfHatchIssue
             {
@@ -237,7 +250,7 @@ public class QuestionsWaitingCheckTests
             };
             var question = new EfHatchComment
             {
-                Issue = issue, Author = author, Body = body, Kind = EfHatchComment.Question, CreatedAt = at,
+                Issue = issue, Author = author, Body = body, Kind = EfHatchComment.Question, CreatedAt = at, Level = level,
             };
             Db.AddRange(issue, question);
             await Db.SaveChangesAsync();
