@@ -215,6 +215,10 @@ nothing but the prompt keeps a session to that. Two things go further:
   date, and reports each hypothesis it finds as confirmed, refuted or
   unreadable in a `Hypotheses read` section that is always present. It ends
   by declaring no code rather than moving its own ticket to Backlog.
+- **The pass row** carries the reflection row's own denied-tools list —
+  `Edit`, `Write`, `NotebookEdit` and the git writers — so a pass judges and
+  files but never changes the tree. It moves no ticket either, since it is
+  told to leave the ambition exactly where it stands.
 - **A check playbook** is the only kind of row that cannot move its ticket at
   all. While its claim is held, a key's move of that ticket is refused; the
   session records a verdict, pass or fail with its findings, and the runner
@@ -235,7 +239,7 @@ nothing but the prompt keeps a session to that. Two things go further:
 Who moves work on each edge is set out in [the board and its
 columns](the-board-and-its-columns#who-moves-work).
 
-## The ten rows Hatch seeds
+## The eleven rows Hatch seeds
 
 The column names below are the stock ones.
 
@@ -247,6 +251,7 @@ The column names below are the stock ones.
 | Breakdown → Review | reflections | Reads the board's own history for a window, writes the report, files each recommendation and hypothesis linked back to it, and declares no code | Judges, with denied tools |
 | To Do → In Progress | epics | Chooses which story starts | Judges |
 | To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam, each titled in one short line, keeping the summary at the top first and plain | Judges |
+| In Progress → In Progress | ambitions | Reads the ambition's capabilities against the trunk, records a verdict on each, and carves as many epics under it as its own limit allows | Judges, with denied tools |
 | In Progress → In Review | any type, leaf | Writes the code, gets it green, pushes it and puts it up for review with a comment opening in one sentence saying what landed | **Edits** |
 | In Progress → In Review | any type, parent | Closeout: verifies the ticket against the trunk once its children are done, and comments the verdict opening with one sentence saying whether it holds | Judges |
 | In Progress → In Review | epics | Verifies the epic's own criteria against the trunk, comments the verdict opening with one sentence saying whether it holds, and files what is missing | Judges |
@@ -257,7 +262,7 @@ for dreams that bear on the epic it is turning into a plan — woven or
 hand-written alike — quotes the ones that do into the brief, and records
 which it drew on.
 
-Ten rows are seeded, but a stock board ends with nine. The epic row on **To Do →
+Eleven rows are seeded, but a stock board ends with ten. The epic row on **To Do →
 In Progress** is retired wherever the board pulls an epic across that move
 itself, because a session told to choose what starts would be telling the board
 what it has already decided. It goes only while its prompt is still the seeded
