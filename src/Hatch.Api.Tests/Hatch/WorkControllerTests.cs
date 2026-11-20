@@ -8387,6 +8387,258 @@ public class WorkControllerTests
         Assert.False(entry.Hop);
     }
 
+    // ---- Question levels: hold folds every move, build folds what would merge or close ----
+
+    private static async Task<EfHatchComment> AskAtAsync(Harness h, EfHatchIssue issue, string level)
+    {
+        var question = await h.AskAsync(issue, "per-node or global?");
+        question.Level = level;
+        await h.Db.SaveChangesAsync();
+        return question;
+    }
+
+    private static QueueEntryDto EntryFor(ActionResult<IReadOnlyList<QueueEntryDto>> queue, EfHatchIssue issue) =>
+        Value(queue).Single(e => e.Issue.Key == Key(issue));
+
+    /// <summary>A pre-approved story in review that would be carried into the merge column.</summary>
+    private static async Task<EfHatchIssue> ReadyToMergeAsync(Harness h, long? parentId = null)
+    {
+        var issue = await h.FileAsync("story", "ready to merge", h.Review, parentId: parentId);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+        return issue;
+    }
+
+    private static async Task AddApprovedAsync(Harness h)
+    {
+        h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Question_AtHold_FoldsEveryMoveWithTodaysSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "waiting on a person", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await AskAtAsync(h, issue, QuestionLevels.HoldName);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal("1 unanswered question - it is waiting on a person, not on an agent", entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Question_AtHoldOnAnEpic_FoldsAStoryBeneathItNamingTheEpic()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress, rank: 4096);
+        var story = await h.FileAsync("story", "beneath it", h.Todo, parentId: epic.Id);
+        await h.ExpressAsync(story);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await AskAtAsync(h, epic, QuestionLevels.HoldName);
+
+        var entry = EntryFor(await h.Work.GetQueue(0, null, default), story);
+
+        Assert.Equal($"1 unanswered question on {Key(epic)} - it is waiting on a person, not on an agent", entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Question_AtBuild_DispatchesAStoryInToDoAsUsual()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "being built", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await AskAtAsync(h, issue, QuestionLevels.BuildName);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Question_AtBuild_FoldsTheApproveHop()
+    {
+        var h = await NewAsync();
+        await AddApprovedAsync(h);
+        var issue = await ReadyToMergeAsync(h);
+        await AskAtAsync(h, issue, QuestionLevels.BuildName);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal($"1 unanswered question at build on {Key(issue)} - it is built, and a person answers before it merges", entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Question_AtBuild_FoldsTheCloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        await AskAtAsync(h, issue, QuestionLevels.BuildName);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal($"1 unanswered question at build on {Key(issue)} - it is built, and a person answers before it merges", entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Question_AtBuildOnAnEpic_DispatchesAStoryBeneathAndFoldsItsApproveHopNamingTheEpic()
+    {
+        var h = await NewAsync();
+        await AddApprovedAsync(h);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress, rank: 4096);
+        var building = await h.FileAsync("story", "being built", h.Todo, parentId: epic.Id);
+        await h.ExpressAsync(building);
+        await h.TickExpressSkipsAsync(h.Todo);
+        var merging = await ReadyToMergeAsync(h, parentId: epic.Id);
+        await AskAtAsync(h, epic, QuestionLevels.BuildName);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        Assert.Null(EntryFor(queue, building).Blocked);
+        var held = EntryFor(queue, merging);
+        Assert.Equal($"1 unanswered question at build on {Key(epic)} - it is built, and a person answers before it merges", held.Blocked);
+        Assert.Equal(BlockedKinds.Person, held.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Question_AtBuild_InATrunkProject_FoldsTheMoveIntoImplementationAndLetsEarlierMovesGo()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var building = await h.FileAsync("story", "about to be built", h.Todo);
+        var earlier = await h.FileAsync("story", "not yet in to do", h.Inbox);
+        await h.ExpressAsync(building);
+        await h.ExpressAsync(earlier);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        await AskAtAsync(h, building, QuestionLevels.BuildName);
+        await AskAtAsync(h, earlier, QuestionLevels.BuildName);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        var held = EntryFor(queue, building);
+        Assert.Equal($"1 unanswered question at build on {Key(building)} - it is built, and a person answers before it merges", held.Blocked);
+        Assert.Equal(BlockedKinds.Person, held.BlockedKind);
+        Assert.Null(EntryFor(queue, earlier).Blocked);
+    }
+
+    [Fact]
+    public async Task Question_AtMerge_FoldsNothing()
+    {
+        var h = await NewAsync();
+        await AddApprovedAsync(h);
+        var building = await h.FileAsync("story", "being built", h.Todo);
+        await h.ExpressAsync(building);
+        await h.TickExpressSkipsAsync(h.Todo);
+        var merging = await ReadyToMergeAsync(h);
+        await AskAtAsync(h, building, QuestionLevels.MergeName);
+        await AskAtAsync(h, merging, QuestionLevels.MergeName);
+
+        var queue = await h.Work.GetQueue(0, null, default);
+
+        Assert.Null(EntryFor(queue, building).Blocked);
+        Assert.Null(EntryFor(queue, merging).Blocked);
+    }
+
+    [Theory]
+    [InlineData(QuestionLevels.HoldName)]
+    [InlineData(QuestionLevels.BuildName)]
+    [InlineData(QuestionLevels.MergeName)]
+    public async Task Question_OnADangerousIssue_IsFoldedAtAnyLevelNamingBoth(string level)
+    {
+        var h = await NewAsync();
+        var issue = await FileFlaggedAsync(h);
+        await AskAtAsync(h, issue, level);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            $"1 unanswered question on {Key(issue)}, and it is flagged dangerous (load-tests the API) - a person answers before any of it moves",
+            entry.Blocked);
+        Assert.Equal(BlockedKinds.Person, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Question_OnADangerousAncestor_FoldsAChildWhoseOwnQuestionIsAtMerge()
+    {
+        var h = await NewAsync();
+        var epic = await FileFlaggedAsync(h);
+        var story = await h.FileAsync("story", "beneath it", h.Todo, parentId: epic.Id);
+        await h.ExpressAsync(story);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await AskAtAsync(h, story, QuestionLevels.MergeName);
+
+        var entry = EntryFor(await h.Work.GetQueue(0, null, default), story);
+
+        Assert.Equal(
+            $"1 unanswered question on {Key(story)}, and it is flagged dangerous (load-tests the API) - a person answers before any of it moves",
+            entry.Blocked);
+    }
+
+    [Fact]
+    public async Task Question_OnARowInTheMergesColumn_IsJudgedByTheMergeJudgeFirst()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "waiting to merge", merges.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await AskAtAsync(h, issue, QuestionLevels.HoldName);
+
+        var entry = EntryFor(await h.Work.GetQueue(0, null, default), issue);
+
+        Assert.DoesNotContain("unanswered question", entry.Blocked);
+    }
+
+    [Theory]
+    [InlineData(QuestionLevels.HoldName, true)]
+    [InlineData(QuestionLevels.BuildName, true)]
+    [InlineData(QuestionLevels.MergeName, false)]
+    public async Task VerdictWork_PassWithAQuestion_StaysInReviewAtHoldAndBuild_AndMergesAtMerge(string level, bool stays)
+    {
+        var h = await NewAsync();
+        var playbookId = await ReviewCheckAsync(h);
+        var approved = await AddApprovedColumnAsync(h);
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        await AskAtAsync(h, issue, level);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        Value(await h.Work.VerdictWork(Key(issue), token, ct: default));
+        var row = await h.Db.Issues.Include(i => i.Events).Include(i => i.Comments).FirstAsync(i => i.Id == issue.Id);
+        var verdictRow = await h.Db.Verdicts.FirstAsync(v => v.IssueId == issue.Id);
+
+        Assert.NotNull(verdictRow.AppliedAt);
+        Assert.Contains(row.Comments, c => c.Kind == EfHatchComment.Verdict && c.Body == "looks right");
+
+        if (stays)
+        {
+            Assert.Equal(h.Review, row.StatusId);
+            Assert.Empty(row.Events.Where(e => e.Kind == EfHatchIssueEvent.StatusChanged));
+            Assert.Contains(row.Comments, c => c.Body.StartsWith($"Passed its check and stays in review - 1 unanswered question", StringComparison.Ordinal));
+            Assert.DoesNotContain(row.Comments, c => c.Body.StartsWith("Approved by", StringComparison.Ordinal));
+        }
+        else
+        {
+            Assert.Equal(approved.Id, row.StatusId);
+            Assert.Contains(row.Comments, c => c.Body.StartsWith("Approved by", StringComparison.Ordinal));
+        }
+    }
+
     [Fact]
     public async Task GetWork_OnAPreApprovedReviewRowWithADoneChild_NamesDoneAndIsAHop()
     {
@@ -11114,7 +11366,7 @@ public class WorkControllerTests
         // Each returns before it reads anything but the columns and the hop kind.
         static Blocking Fold(EfHatchStatus from, EfHatchStatus? to) =>
             Dispatch.BlockedWithKind(
-                null!, from, to, null, 0, 0, 0, null, null, default!, default!, default!, null, null, default!,
+                null!, from, to, null, 0, 0, null, null, default!, default!, default!, null, null, default!,
                 null!, null!, null, null!, null, null!);
 
         var terminal = Fold(new EfHatchStatus { Name = "done", SortOrder = 10, IsTerminal = true }, null);

@@ -3394,6 +3394,16 @@ sets it with `PUT /issues/{key}/questions/{id}/level` - never a key, and
 option, and an answered question cannot change. A change writes a
 `question_level_changed` event, and setting the level already held writes nothing.
 
+`Questions.WaitingLevelsAsync` reads the levels for the dispatcher: one row per
+issue with a [waiting](#comment-question-and-answer) question, holding the
+strictest `Level` among its rows (`QuestionLevels.Strictest`, a null reading as
+`hold`) and the count of questions at that level alone, so *1 question at build*
+never counts a `merge` one. `PriorityTree.ForAsync` always loads it, with the
+query filters off like the rest of the tree, and `PriorityTree.EffectiveQuestion`
+walks the issue and its parents for the strictest, nearer on a tie, with the key
+it was found on - null for the issue's own. A tree built without the read would
+honour no question, so it is not opt-in.
+
 Most comments are notes: a commit sha, a summary for a reviewer, a change of
 mind. Four are not, and those carry a `Kind`.
 
@@ -6474,8 +6484,17 @@ missing configuration:
    it up until they set it back*, naming the ancestor when the level is not
    the issue's own. A fact about the issue, so `work/{key}` is refused by it
    too, the same as the claim above it.
-7. The issue holds an unanswered question — *it is waiting on a person, not on
-   an agent*.
+7. The issue, or an ancestor, holds an unanswered question that holds this move
+   (`Dispatch.QuestionFold`). At `hold` every move is folded — *it is waiting on
+   a person, not on an agent*, naming the ancestor when the question is its
+   own. At `build` only a move out of review into a merges or terminal column
+   is folded (the approve and close hops and a check's advance), and in a
+   trunk-landing project the move into the implementation column — *it is
+   built, and a person answers before it merges*. `merge` folds nothing. A
+   dangerous issue is folded at any level, naming the question's key and the
+   reason. Every one is a person's to answer (`BlockedKinds.Person`), and it
+   sits after the merges column's judgement, so a pull request there merges
+   whatever is open.
 8. The project's *primary* [repository](#repository) — the first — matches none
    of the remotes the caller declared, on every move a session is spawned for:
    everything but a [hop](#the-hop), which runs no session and needs no
@@ -6712,6 +6731,23 @@ review column can only be the check's own merge column — `Columns.Target`
 self-dispatches review ahead of any other protected column — so `crosses`
 reads false there, and the express, epic and under arms stay withheld from it
 exactly as they are from a review self-move.
+
+**An open question holds the approve and close hops at `build`.** A hop is
+folded by the same question fold as every other move
+(`Dispatch.QuestionFold`, the seventh fold in the list of what makes an issue
+actionable). At `hold` every kind is folded. At `build` the work is built but not merged or
+closed, so the approve hop out of review into the merges column and the close
+hop into a terminal column are folded — *1 unanswered question at build on
+`<key>` - it is built, and a person answers before it merges* — naming an
+ancestor's key where the question is an ancestor's. The verdict apply follows
+the same rule: `WorkController.VerdictWork`, where a passing check on a project
+with *A passing check approves the merge* on would carry the issue into the
+merges column, asks `QuestionFold` for that move first. Where it holds, the
+issue stays in review with no status or rank change, the verdict is still
+applied, and a comment says *Passed its check and stays in `<column>` - `<the
+sentence>`*. That holds at `hold` too, since nothing beneath a `hold` question
+moves. `MergedWork` and `LandedWork` are not touched: a merge on the forge or a
+landing on the trunk is a fact, not a dispatch.
 
 The epic, under and parent kinds cross a project line only on the starter's
 say. Inside one project a running parent carries its children, whoever started
@@ -8836,8 +8872,10 @@ sentence saying which one it failed is what `work/queue` reports:
    `?mine=true` pass inverts this condition rather than skipping it: it takes
    only a ticket assigned to the caller's own person or key, and folds every
    other one — see [one more, on `next` alone](#one-more-on-next-alone).
-10. **It holds no unanswered question.** It is waiting on a person, and another
-   agent sent at it would ask the same thing again or guess at the answer.
+10. **It holds no unanswered question that holds the move.** It is waiting on a
+   person, and another agent sent at it would ask the same thing again or guess
+   at the answer. A question's level decides which moves it holds — see
+   [the hop](#the-hop) — and `merge` holds none.
 11. **The project's primary [repository](#repository) matches a remote the caller
    declared** — or the caller declared nothing at all, which this condition
    does not fold on, exactly as an issue page or an older CLI does not. A
