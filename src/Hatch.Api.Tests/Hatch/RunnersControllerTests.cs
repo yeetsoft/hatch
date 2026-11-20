@@ -943,6 +943,70 @@ public class RunnersControllerTests
         Assert.Contains("63", row.Usage);
     }
 
+    private static readonly RunnerUsageWindowDto[] OneWindow = [new("session", "Session", 63, null)];
+
+    [Fact]
+    public async Task ABeatSendingAReadingAndASource_StoresTheSourceAndProbeOff()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: OneWindow, UsageReadAt: Now, UsageSource: "stream", UsageProbeOff: "not signed in"));
+
+        var row = await h.RowAsync();
+        Assert.Equal("stream", row.UsageSource);
+        Assert.Equal("not signed in", row.UsageProbeOff);
+    }
+
+    [Fact]
+    public async Task ABeatWithAReadingAndNoSource_LeavesAStoredSourceAndReasonUntouched()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: OneWindow, UsageReadAt: Now, UsageSource: "stream", UsageProbeOff: "not signed in"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: [new RunnerUsageWindowDto("session", "Session", 70, null)], UsageReadAt: Now.AddMinutes(1)));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.RowAsync();
+        Assert.Contains("70", row.Usage);
+        Assert.Equal("stream", row.UsageSource);
+        Assert.Equal("not signed in", row.UsageProbeOff);
+    }
+
+    [Fact]
+    public async Task ABeatWithASourceAndNoProbeOff_ClearsAStoredReason()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: OneWindow, UsageReadAt: Now, UsageSource: "stream", UsageProbeOff: "not signed in"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: OneWindow, UsageReadAt: Now.AddMinutes(1), UsageSource: "probe"));
+
+        var row = await h.RowAsync();
+        Assert.Equal("probe", row.UsageSource);
+        Assert.Null(row.UsageProbeOff);
+    }
+
+    [Fact]
+    public async Task ASourceWithNoReading_IsNotStored_OnANewRowOrAnOldOne()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(UsageSource: "stream", UsageProbeOff: "off"));
+        var fresh = await h.RowAsync();
+        Assert.Null(fresh.UsageSource);
+        Assert.Null(fresh.UsageProbeOff);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Usage: OneWindow, UsageReadAt: Now, UsageSource: "stream"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(UsageSource: "probe", UsageProbeOff: "off"));
+        var row = await h.RowAsync();
+        Assert.Equal("stream", row.UsageSource);
+        Assert.Null(row.UsageProbeOff);
+    }
+
     /// <summary>
     /// HA-2536: freshness is judged on Hatch's own clock at the moment a
     /// reading actually changed, not the runner's word for when it read the
@@ -1736,6 +1800,48 @@ public class RunnersControllerTests
 
     private static Task<EfHatchRunnerSession> OnlySessionAsync(Harness h) =>
         h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+
+    [SkippableFact]
+    public async Task ASessionBeat_StoresTheSourceWithAReading_AndLeavesItAloneWithout()
+    {
+        var (h, _) = await KeyedAsync();
+
+        // The first beat seeds the row: a source with a reading is stored.
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: PausedWhere, Usage: OneWindow, UsageReadAt: Now,
+            UsageSource: "stream", UsageProbeOff: "not signed in"));
+        var seeded = await OnlySessionAsync(h);
+        Assert.Equal("stream", seeded.UsageSource);
+        Assert.Equal("not signed in", seeded.UsageProbeOff);
+
+        // A reading with no source, and then no reading at all, change nothing.
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: PausedWhere, Usage: OneWindow, UsageReadAt: Now.AddMinutes(1)));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: PausedWhere, UsageSource: "probe"));
+        var kept = await OnlySessionAsync(h);
+        Assert.Equal("stream", kept.UsageSource);
+        Assert.Equal("not signed in", kept.UsageProbeOff);
+
+        // A source with a null reason clears the reason.
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: PausedWhere, Usage: OneWindow, UsageReadAt: Now.AddMinutes(2), UsageSource: "probe"));
+        var cleared = await OnlySessionAsync(h);
+        Assert.Equal("probe", cleared.UsageSource);
+        Assert.Null(cleared.UsageProbeOff);
+    }
+
+    [SkippableFact]
+    public async Task ANewSessionRowWhoseFirstBeatHasASourceButNoReading_StoresNeither()
+    {
+        var (h, _) = await KeyedAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: PausedWhere, UsageSource: "stream", UsageProbeOff: "off"));
+
+        var row = await OnlySessionAsync(h);
+        Assert.Null(row.UsageSource);
+        Assert.Null(row.UsageProbeOff);
+    }
 
     // Needs Postgres: HeartbeatSessionAsync's MarkGoneAsync runs a conditional
     // UPDATE the in-memory provider refuses - see SkippableFact's own.

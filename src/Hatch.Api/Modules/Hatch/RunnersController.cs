@@ -1728,6 +1728,12 @@ public class RunnersController(
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
             UsageReceivedAt = Utilization.Serialise(request.Usage) is not null ? now : null,
+            // The source describes a reading, so a new row stores one only
+            // where its first beat carries a reading.
+            UsageSource = Utilization.Serialise(request.Usage) is not null ? request.UsageSource : null,
+            UsageProbeOff = Utilization.Serialise(request.Usage) is not null && request.UsageSource is not null
+                ? request.UsageProbeOff
+                : null,
         };
 
         Bound(row, request);
@@ -1882,6 +1888,15 @@ public class RunnersController(
             if (row.UsageReadAt != request.UsageReadAt) row.UsageReceivedAt = now;
             row.Usage = usage;
             row.UsageReadAt = request.UsageReadAt;
+
+            // The source and the probe's reason travel together: a beat that
+            // names a source is authoritative for both (a null reason clears
+            // one), and one that does not leaves both as they were.
+            if (request.UsageSource is not null)
+            {
+                row.UsageSource = request.UsageSource;
+                row.UsageProbeOff = request.UsageProbeOff;
+            }
         }
     }
 
@@ -1944,6 +1959,10 @@ public class RunnersController(
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
             UsageReceivedAt = Utilization.Serialise(request.Usage) is not null ? now : null,
+            UsageSource = Utilization.Serialise(request.Usage) is not null ? request.UsageSource : null,
+            UsageProbeOff = Utilization.Serialise(request.Usage) is not null && request.UsageSource is not null
+                ? request.UsageProbeOff
+                : null,
             Models = models,
             Has = has,
             Image = Fits(request.Image, EfHatchRunner.MaxImageLength),
@@ -2070,6 +2089,13 @@ public class RunnersController(
             if (session.UsageReadAt != request.UsageReadAt) session.UsageReceivedAt = now;
             session.Usage = usage;
             session.UsageReadAt = request.UsageReadAt;
+
+            // Source and probe reason travel together, as on the runner row.
+            if (request.UsageSource is not null)
+            {
+                session.UsageSource = request.UsageSource;
+                session.UsageProbeOff = request.UsageProbeOff;
+            }
         }
     }
 

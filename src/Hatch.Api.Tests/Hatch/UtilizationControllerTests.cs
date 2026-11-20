@@ -115,7 +115,7 @@ public class UtilizationControllerTests
     /// A row seeded the pre-migration way, with <c>UsageReadAt</c> and no
     /// <c>UsageReceivedAt</c> at all - see <see cref="Harness.SeedAsync"/>,
     /// which never sets it - still judges fresh/stale correctly: <see
-    /// cref="Utilization.Of(IEnumerable{ValueTuple{string, DateTimeOffset?, DateTimeOffset?}}, DateTimeOffset)"/>
+    /// cref="Utilization.Of(IEnumerable{ValueTuple{string, DateTimeOffset?, DateTimeOffset?, string, string}}, DateTimeOffset)"/>
     /// falls back to <c>ReadAt</c> where <c>ReceivedAt</c> is null.
     /// </summary>
     [SkippableFact]

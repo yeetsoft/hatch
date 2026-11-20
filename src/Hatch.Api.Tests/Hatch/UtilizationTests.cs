@@ -181,7 +181,7 @@ public class UtilizationTests
     public void AReadingReportedAhead_ButReceivedNow_ReadsOk()
     {
         // The runner's own clock says ten minutes in the future; Hatch received it now.
-        var readings = new[] { (Usage, (DateTimeOffset?)Now.AddMinutes(10), (DateTimeOffset?)Now) };
+        var readings = new[] { (Usage, (DateTimeOffset?)Now.AddMinutes(10), (DateTimeOffset?)Now, (string?)null, (string?)null) };
 
         var reading = Utilization.Of(readings, Now);
 
@@ -194,8 +194,8 @@ public class UtilizationTests
     {
         // The first reading's own ReadAt is later, but it was received first;
         // the second reading was received a minute after it, and wins.
-        var earlierReceived = (Usage, (DateTimeOffset?)Now.AddMinutes(5), (DateTimeOffset?)Now);
-        var laterReceived = (Usage, (DateTimeOffset?)Now.AddMinutes(1), (DateTimeOffset?)Now.AddMinutes(1));
+        var earlierReceived = (Usage, (DateTimeOffset?)Now.AddMinutes(5), (DateTimeOffset?)Now, (string?)null, (string?)null);
+        var laterReceived = (Usage, (DateTimeOffset?)Now.AddMinutes(1), (DateTimeOffset?)Now.AddMinutes(1), (string?)null, (string?)null);
 
         var reading = Utilization.Of([earlierReceived, laterReceived], Now);
 
@@ -206,12 +206,24 @@ public class UtilizationTests
     [Fact]
     public void ARowWithNoReceivedAt_FallsBackToItsOwnReadAt()
     {
-        var readings = new[] { (Usage, (DateTimeOffset?)Now, (DateTimeOffset?)null) };
+        var readings = new[] { (Usage, (DateTimeOffset?)Now, (DateTimeOffset?)null, (string?)null, (string?)null) };
 
         var reading = Utilization.Of(readings, Now);
 
         Assert.Equal(UtilizationStates.Ok, reading!.State);
         Assert.Equal(Now, reading.ReceivedAt);
+    }
+
+    [Fact]
+    public void TheFreshestReadingsSourceAndProbeOff_RideOntoTheResult()
+    {
+        var older = (Usage, (DateTimeOffset?)Now.AddMinutes(-3), (DateTimeOffset?)Now.AddMinutes(-3), (string?)"stream", (string?)"old reason");
+        var fresher = (Usage, (DateTimeOffset?)Now, (DateTimeOffset?)Now, (string?)"probe", (string?)null);
+
+        var reading = Utilization.Of([fresher, older], Now);
+
+        Assert.Equal("probe", reading!.Source);
+        Assert.Null(reading.ProbeOff);
     }
 
     // ---- RunnerEntries, the panel behind the headline (HA-2535) ----
@@ -234,6 +246,21 @@ public class UtilizationTests
         Usage = percent is { } p ? UsageJson(p) : null,
         UsageReadAt = percent is not null ? readAt ?? lastSeenAt : null,
         UsageReceivedAt = percent is not null ? readAt ?? lastSeenAt : null,
+    };
+
+    private static EfHatchRunnerSession SessionOf(
+        int percent, DateTimeOffset readAt, string? source = null, string? probeOff = null) => new()
+    {
+        ApiKeyId = Guid.NewGuid(),
+        Kind = EfHatchRunner.LoopKind,
+        State = EfHatchRunner.Running,
+        StartedAt = readAt,
+        LastSeenAt = readAt,
+        Usage = UsageJson(percent),
+        UsageReadAt = readAt,
+        UsageReceivedAt = readAt,
+        UsageSource = source,
+        UsageProbeOff = probeOff,
     };
 
     [Fact]
@@ -279,6 +306,35 @@ public class UtilizationTests
         Assert.Null(entry.State);
         Assert.Null(entry.ReadAt);
         Assert.Null(entry.ReceivedAt);
+    }
+
+    [Fact]
+    public void ARunnersEntry_CarriesTheSourceAndProbeOffOfItsFreshestReading_NotAnOlderOne()
+    {
+        var older = Beat("runner-one", Now, 10, Now.AddMinutes(-4));
+        older.UsageSource = "stream";
+        older.UsageProbeOff = "old reason";
+        var sessions = new[] { SessionOf(20, Now, source: "probe", probeOff: null) };
+        var headline = Reading(new UtilizationLimit(UtilizationWindows.Session, "Session", 20, null)) with { ReadAt = Now, ReceivedAt = Now };
+
+        var entries = Utilization.RunnerEntries(
+            [new Runner(null, null, older, sessions)], RunnerRules(), SessionRules(), headline, Now);
+
+        var entry = Assert.Single(entries);
+        Assert.Equal("probe", entry.Source);
+        Assert.Null(entry.ProbeOff);
+    }
+
+    [Fact]
+    public void ARunnerWithNoReading_HasNoSourceOrProbeOff()
+    {
+        var silent = Beat("runner-silent", Now);
+        var headline = Reading(new UtilizationLimit(UtilizationWindows.Session, "Session", 10, null)) with { ReadAt = Now.AddMinutes(-5), ReceivedAt = Now.AddMinutes(-5) };
+
+        var entry = Assert.Single(Utilization.RunnerEntries([new Runner(null, null, silent)], RunnerRules(), SessionRules(), headline, Now));
+
+        Assert.Null(entry.Source);
+        Assert.Null(entry.ProbeOff);
     }
 
     [Fact]

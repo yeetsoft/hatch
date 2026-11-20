@@ -180,6 +180,8 @@ describe('runnerAgePhrase', () => {
     readAt: at(0),
     receivedAt: at(0),
     limits: [limit()],
+    source: null,
+    probeOff: null,
     ...over,
   });
 
