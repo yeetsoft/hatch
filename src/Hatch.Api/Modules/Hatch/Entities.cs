@@ -563,6 +563,40 @@ public class EfHatchPersonScopeProject
     public EfHatchProject? Project { get; set; }
 }
 
+/// <summary>The two home screens a person can choose, and nothing else.</summary>
+public static class PersonHomeValue
+{
+    public const string Board = "board";
+    public const string Ambitions = "ambitions";
+
+    /// <summary>What a person with no row, or a row nobody recognises, gets.</summary>
+    public const string Default = Board;
+
+    public static bool IsKnown(string? home) => home is Board or Ambitions;
+}
+
+/// <summary>
+/// The screen one person opens Hatch on. A person with no row gets
+/// <see cref="PersonHomeValue.Board"/>, which is what makes the table safe to
+/// add to an installation that has people already.
+/// </summary>
+[Table("PersonHomes")]
+public class EfHatchPersonHome
+{
+    /// <summary>
+    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
+    /// <see cref="EfHatchPersonScope.PersonId"/> is one.
+    /// </summary>
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public Guid PersonId { get; set; }
+
+    /// <summary>One of <see cref="PersonHomeValue"/>.</summary>
+    [MaxLength(10)]
+    public required string Home { get; set; }
+
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
+
 /// <summary>
 /// The last instant one reader read the Overnight page - one row per person,
 /// never a browser's cookie, so a badge cleared on a phone is cleared on the

@@ -4,6 +4,7 @@ using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Settings;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -33,7 +34,8 @@ public class MeController(
     ICallerIdentity caller,
     ISiteSettingsService settings,
     ICallerScope callerScope,
-    IOptions<AuthOptions> options) : ControllerBase
+    IOptions<AuthOptions> options,
+    HatchContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<MeDto>> GetMe(CancellationToken ct)
@@ -44,11 +46,11 @@ public class MeController(
 
         if (await caller.ApiKeyAsync(ct) is { } key)
             return new MeDto("key", key.Name, key.Owner?.Role.ToString().ToLowerInvariant(),
-                true, false, false, key.Owner?.Name, scope);
+                true, false, false, key.Owner?.Name, scope, await HomeOfAsync(key.OwnerPersonId, ct));
 
         if (await caller.PersonAsync(ct) is { } signedIn)
             return new MeDto("person", signedIn.Name, signedIn.Role.ToString().ToLowerInvariant(), true, true, false,
-                Scope: scope);
+                Scope: scope, Home: await HomeOfAsync(signedIn.Id, ct));
 
         var local = await caller.LocalAsync(ct);
         if (local is not { Kind: ActorKind.Person } person)
@@ -58,7 +60,7 @@ public class MeController(
             // page still redeems an invite without the wall or Google
             // configured, so this caller can always sign in.
             if (!options.Value.Enabled && local is null)
-                return new MeDto("none", "", null, true, false, true, Scope: scope);
+                return new MeDto("none", "", null, true, false, true, Scope: scope, Home: await HomeOfAsync(null, ct));
 
             return NoContent();
         }
@@ -70,7 +72,26 @@ public class MeController(
             (await settings.GetAsync(ct)).LocalPersonName,
             options.Value.LocalPerson.Name);
 
-        return new MeDto("local", person.Name, null, configured, false, options.Value.Google.Configured, Scope: scope);
+        return new MeDto("local", person.Name, null, configured, false, options.Value.Google.Configured,
+            Scope: scope, Home: await HomeOfAsync(person.Id, ct));
+    }
+
+    /// <summary>
+    /// The person's own row, or <see cref="PersonHomeValue.Default"/> for nobody,
+    /// no row, or a value nobody recognises - a stale value reads as the board
+    /// and never breaks the nav strip.
+    /// </summary>
+    private async Task<string> HomeOfAsync(Guid? personId, CancellationToken ct)
+    {
+        if (personId is not { } id)
+            return PersonHomeValue.Default;
+
+        var home = await db.PersonHomes.AsNoTracking()
+            .Where(h => h.PersonId == id)
+            .Select(h => h.Home)
+            .FirstOrDefaultAsync(ct);
+
+        return PersonHomeValue.IsKnown(home) ? home! : PersonHomeValue.Default;
     }
 
     /// <summary>
