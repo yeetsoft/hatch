@@ -4170,6 +4170,65 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* ---- Passes, on an ambition's issue page ----
+
+   One entry per work-log row from the implementation column: its title or
+   the word Pass, its date and sha, one line per capability it judged, and
+   its comments. The verdict lines sit in a grid on a desk and stack on a
+   phone, the same break EpicsInFlight's meta uses. */
+.hatch-pass-list {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+}
+
+.hatch-pass {
+  min-width: 0;
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.hatch-pass-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-pass-verdicts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--sp-2);
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+}
+
+.hatch-pass-verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hatch-pass-changed {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.hatch-pass .hatch-comment {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 40rem) {
+  .hatch-pass-verdicts {
+    grid-template-columns: 1fr;
+  }
+}
+
 .hatch-key-preview {
   color: var(--muted);
   font-size: var(--t-label);

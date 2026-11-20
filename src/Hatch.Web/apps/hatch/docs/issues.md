@@ -104,6 +104,19 @@ each epic saying which capabilities it serves, and leaves the ambition
 standing where it is — an ambition is never carried on by a pass, only by the
 operator.
 
+An ambition's issue page has a Passes section, after Epics in flight, reading
+`GET /issues/{key}/passes` on the same tolerant terms as Capabilities: a
+failure is a sentence in the section, not the page's error. Every pass is an
+entry, newest first, headed by its work-log title (or the word Pass, where
+the row has none), its date and the sha it judged against. Each capability it
+judged is a line with the position, the state word and, where that word
+changed from the pass before, a mark saying so. A pass whose verdicts could
+not be recorded as data says that instead of a line; a verdict recorded with
+no pass around it — no work-log row at all — shows as its own entry, saying
+it was recorded outside a pass. Every entry's own comments follow, rendered
+the way the Comments section renders a body. The verdict lines sit in a grid
+on a desktop and stack one per line on a phone.
+
 ## How a ticket reads
 
 A ticket is read by a person first. These rules say how it should read.

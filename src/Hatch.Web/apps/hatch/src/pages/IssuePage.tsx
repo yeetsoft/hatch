@@ -13,6 +13,7 @@ import {
   getEvents,
   getIssueCapabilities,
   getIssueDreams,
+  getIssuePasses,
   getIssueServes,
   getIssue,
   getIssuePlan,
@@ -116,6 +117,8 @@ import { wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
 import { LEGAL_PARENT_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
 import type {
+  AmbitionPass,
+  AmbitionPassVerdict,
   AssigneeDirectory,
   AssigneeRequest,
   Board,
@@ -159,6 +162,8 @@ export function IssuePage() {
   const [workLogError, setWorkLogError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<Capability[] | null>(null);
   const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
+  const [passes, setPasses] = useState<AmbitionPass[] | null>(null);
+  const [passesError, setPassesError] = useState<string | null>(null);
   const [serves, setServes] = useState<ServedCapability[] | null>(null);
   /* The speed bump in front of taking a ticket off a runner, and whether the
      clear is in flight. Two flags rather than one, because the dialog stays up
@@ -263,6 +268,14 @@ export function IssuePage() {
       () => null,
     );
 
+    /* And the eleventh: an ambition's passes, on the same tolerant terms as
+       the capabilities read - a non-ambition's 400 is caught here and left
+       for `Passes` to never draw. */
+    const passing = getIssuePasses(key).then(
+      (loaded) => ({ loaded, failure: null as string | null }),
+      (err: unknown) => ({ loaded: null, failure: message(err) }),
+    );
+
     try {
       const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams, loadedRemanded] = await Promise.all([
         getIssue(key),
@@ -300,6 +313,10 @@ export function IssuePage() {
     setCapabilitiesError(capped.failure);
 
     setServes(await serving);
+
+    const passed = await passing;
+    setPasses(passed.loaded);
+    setPassesError(passed.failure);
   }, [key]);
 
   useEffect(() => {
@@ -1106,6 +1123,8 @@ export function IssuePage() {
         statuses={board.statuses}
       />
 
+      <Passes issue={issue} passes={passes} error={passesError} />
+
       {(filings.length > 0 || issue.childKeys.length > 0) && (
         <Progress
           rollup={rollup}
@@ -1599,6 +1618,117 @@ export function EpicsInFlight({
         </>
       )}
     </IssueSection>
+  );
+}
+
+/**
+ * Every pass an ambition has had, newest first: the verdict it gave each
+ * capability, what changed since the pass before, and the comments said
+ * while it ran. Omitted entirely off any type but an ambition.
+ */
+export function Passes({
+  issue,
+  passes,
+  error,
+}: {
+  issue: Issue;
+  passes: AmbitionPass[] | null;
+  error: string | null;
+}) {
+  if (issue.type !== 'ambition') return null;
+
+  const now = new Date();
+
+  return (
+    <IssueSection id="passes" title="Passes" count={passes ? passes.length : undefined}>
+      {error && <p className="text-danger">{error}</p>}
+      {!passes && !error && <p className="text-muted">Loading…</p>}
+
+      {passes && passes.length === 0 && <p className="text-muted">This ambition has had no pass yet.</p>}
+
+      {passes && passes.length > 0 && (
+        <ul className="hatch-pass-list">
+          {passes.map((pass, i) => (
+            <PassEntry key={pass.rowId ?? `loose-${pass.verdicts[0]?.id ?? i}`} pass={pass} now={now} />
+          ))}
+        </ul>
+      )}
+    </IssueSection>
+  );
+}
+
+/**
+ * One pass: its title or the word Pass, its date and the sha it judged
+ * against, one line per capability it judged (or the sentence saying why
+ * there is none), and its comments. A pass with no session (`rowId` null) is
+ * one verdict recorded with nothing around it.
+ */
+function PassEntry({ pass, now }: { pass: AmbitionPass; now: Date }) {
+  const loose = pass.rowId === null;
+
+  return (
+    <li className="hatch-pass">
+      <div className="hatch-pass-head">
+        <strong>{pass.title ?? 'Pass'}</strong>
+        <DatedAt at={pass.endedAt} now={now} />
+        {pass.sha && <span className="text-muted">{shortSha(pass.sha)}</span>}
+      </div>
+
+      {loose && (
+        <>
+          <ul className="hatch-pass-verdicts">
+            {pass.verdicts.map((verdict) => (
+              <PassVerdictLine key={verdict.id} verdict={verdict} />
+            ))}
+          </ul>
+          <p className="text-muted">Recorded outside a pass.</p>
+        </>
+      )}
+
+      {!loose && !pass.canRecordVerdicts && <p className="text-muted">Verdicts not recorded as data.</p>}
+
+      {!loose && pass.canRecordVerdicts && pass.verdicts.length === 0 && (
+        <p className="text-muted">This pass judged no capability.</p>
+      )}
+
+      {!loose && pass.canRecordVerdicts && pass.verdicts.length > 0 && (
+        <ul className="hatch-pass-verdicts">
+          {pass.verdicts.map((verdict) => (
+            <PassVerdictLine key={verdict.id} verdict={verdict} />
+          ))}
+        </ul>
+      )}
+
+      {!loose && pass.comments.length > 0 && (
+        <ul className="hatch-comments">
+          {pass.comments.map((comment) => (
+            <li key={comment.id} className="hatch-comment">
+              <div className="hatch-comment-head">
+                <strong>{comment.author}</strong>
+                <span className="text-muted">{new Date(comment.createdAt).toLocaleString()}</span>
+              </div>
+              <ProseClamp source={comment.body} limit={null} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/** One capability's verdict within a pass: its position, the state word, and
+    a mark where that word changed from the pass before. */
+function PassVerdictLine({ verdict }: { verdict: AmbitionPassVerdict }) {
+  return (
+    <li className="hatch-pass-verdict">
+      <span className="hatch-capability-badge" title={verdict.statement}>
+        #{verdict.position}
+      </span>
+      <span className={`hatch-capability-state hatch-capability-state-${verdict.verdict.replace(/_/g, '-')}`}>
+        {capabilityStateLabel(verdict.verdict)}
+      </span>
+      {verdict.changed && <span className="hatch-pass-changed">changed</span>}
+    </li>
   );
 }
 

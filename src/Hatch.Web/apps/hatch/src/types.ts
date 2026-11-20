@@ -1645,6 +1645,39 @@ export interface Capability {
   servedBy: string[];
 }
 
+/** One verdict within a pass. Mirrors AmbitionPassVerdictDto. */
+export interface AmbitionPassVerdict {
+  id: number;
+  capabilityId: number;
+  position: number;
+  statement: string;
+  verdict: 'holds' | 'does_not_hold' | 'cannot_tell';
+  lookedAt: string;
+  sha: string;
+  author: string;
+  at: string;
+  /** Whether this verdict's word differs from the one the next older pass
+      gave the same capability. */
+  changed: boolean;
+}
+
+/** One pass at an ambition: a work log row that ran from the implementation
+    column, with the verdicts it recorded and the comments said while it ran -
+    or, with `rowId` null, one verdict recorded with no pass around it.
+    Mirrors AmbitionPassDto. */
+export interface AmbitionPass {
+  rowId: number | null;
+  sessionId: string | null;
+  startedAt: string;
+  endedAt: string;
+  title: string | null;
+  summary: string | null;
+  canRecordVerdicts: boolean;
+  sha: string | null;
+  verdicts: AmbitionPassVerdict[];
+  comments: Comment[];
+}
+
 /** One capability an issue serves, with the ambition it belongs to. Mirrors
     ServedCapabilityDto. */
 export interface ServedCapability {
