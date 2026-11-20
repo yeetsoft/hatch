@@ -1727,6 +1727,10 @@ public record CommentCreateRequest(
 /// ahead on its recommendation and the answer is a look back. Derived at read
 /// time; nothing is stored.
 /// </param>
+/// <param name="AmbitionKey">
+/// The key of the ambition above the question's issue, at any depth, or null
+/// where none stands above it. Derived at read time; nothing is stored.
+/// </param>
 public record QuestionDto(
     long Id,
     string IssueKey,
@@ -1738,7 +1742,8 @@ public record QuestionDto(
     IReadOnlyList<CommentDto> Answers,
     bool Obviated = false,
     string Level = QuestionLevels.HoldName,
-    bool LookBack = false);
+    bool LookBack = false,
+    string? AmbitionKey = null);
 
 /// <summary>
 /// What a person decides against the loop on a look-back question - an
@@ -1752,6 +1757,27 @@ public record QuestionOverturnRequest(string? Answer);
 /// answered, and the key of the task filed to bring the work in line.
 /// </summary>
 public record QuestionOverturnDto(QuestionDto Question, string TaskKey);
+
+/// <summary>
+/// The sentence to promote into a principle - an answer's own words, or
+/// one given instead. What
+/// <c>POST /api/issues/{key}/questions/{id}/promote</c> takes.
+/// </summary>
+/// <param name="Principle">
+/// The sentence, trimmed. Null or empty takes the question's newest answer
+/// instead.
+/// </param>
+public record QuestionPromoteRequest(string? Principle)
+{
+    /// <summary>Enough for a sentence; a principle longer than this is a paragraph, not a bullet.</summary>
+    public const int MaxPrincipleLength = 500;
+}
+
+/// <summary>
+/// What promoting an answer into a principle answers with: the ambition it
+/// landed on, and the sentence as written there.
+/// </summary>
+public record QuestionPromoteDto(string AmbitionKey, string Principle);
 
 /// <summary>
 /// Every waiting question in the house, each under the chain of issues that
