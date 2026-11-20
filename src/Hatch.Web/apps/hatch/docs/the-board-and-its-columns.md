@@ -5,7 +5,7 @@ order: 10
 summary: The seven columns a stock board ships with, and who moves work out of each.
 ---
 
-This is the stock board, which is what the **Hatch** logo at the left of the bar opens, unless the person chose Ambitions as their home screen on the Settings page: the board is the home page otherwise, and the bar has no Board link of its own. An
+This is the stock board, which is what the **Hatch** logo at the left of the bar opens, unless the person chose Ambitions in the Home screen card on the Settings page: the board is the home page otherwise, and the bar has no Board link of its own. An
 operator may rename its columns, add more and reorder them, so nothing below
 depends on a name: each column is described by what happens in it, and the
 names are only what a fresh install calls them.
