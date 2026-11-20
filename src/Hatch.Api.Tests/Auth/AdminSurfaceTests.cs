@@ -355,6 +355,10 @@ public class AdminSurfaceTests
         // see OvernightController.PostSeen.
         "OvernightController.PostSeen",
 
+        // Choosing a home screen is a person's own, never a key's - see
+        // MeHomeController.PutHome.
+        "MeHomeController.PutHome",
+
         // What shipped, a window at a time - key-accepting and open to a
         // person the same way OvernightController's read is. See
         // ChangelogController.
@@ -811,6 +815,10 @@ public class AdminSurfaceTests
         // Marking the night as seen is a person's own mark, never a key's or
         // a keyless runner's. See OvernightController.PostSeen.
         "OvernightController.PostSeen",
+
+        // Choosing a home screen is a person's own, never a key's or a
+        // keyless runner's. See MeHomeController.PutHome.
+        "MeHomeController.PutHome",
 
         // Running a backup is the operator's own act, never a key's or a
         // keyless runner's. See BackupController.PostBackupRun.

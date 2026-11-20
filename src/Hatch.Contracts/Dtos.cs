@@ -5992,6 +5992,12 @@ public record MeDto(
     string Kind, string Name, string? Role, bool Configured, bool CanSignOut, bool CanSignIn,
     string? Owner = null, MeScopeDto? Scope = null, string Home = "board");
 
+/// <summary>The body of <c>PUT /api/me/home</c>.</summary>
+/// <param name="Home">
+/// <c>board</c> or <c>ambitions</c>. Anything else, or nothing, is a 400.
+/// </param>
+public record PutHomeRequest(string? Home);
+
 /// <summary>
 /// The caller's own scope, as <c>GET /api/me</c> reports it.
 /// </summary>

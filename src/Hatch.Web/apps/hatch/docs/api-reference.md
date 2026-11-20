@@ -1396,6 +1396,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/backup` | key | The backup folder's truth and the last attempt's: configured, path, keep-days, copies, and the last outcome |
 | POST | `/backup/run` | **person** | Runs one backup attempt, capped at two minutes, and answers the same shape `GET /backup` does |
 | GET | `/me` | key | Who, or what, is calling - a browser or a key or a runner - for the nav strip |
+| PUT | `/me/home` | **person** | Sets the caller's own home screen, `board` or `ambitions`, and answers the fresh `/me` |
 
 A claim heartbeat under a key touches the key's live session at the claim's
 checkout. If the sweep has already ended that session while the claim was still
@@ -1729,7 +1730,10 @@ that predates it - carries on as before.
 It is read from a row of the caller's own, a key reading its owner's. With no
 row, no owner, or nobody at all, it is `board`, and so is a stored value this
 server does not recognise. A client that finds no `home` - a server that
-predates it - reads `board`.
+predates it - reads `board`. A person sets it with `PUT /me/home`, a body of
+`{ "home": "board" }` or `{ "home": "ambitions" }`, which answers the same
+body `GET /me` would now give. Any other word is a `400` naming the two, and a
+key, a keyless runner, or nobody signed in is a `403` with a sentence.
 
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
 ever used - it edits, it never creates. With the wall up, it also 403s a
@@ -2028,7 +2032,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **45** person-only paths on this page,
+on this page with both) - there are **46** person-only paths on this page,
 across both halves together:
 
 ```
@@ -2078,6 +2082,7 @@ GET    /runner/download/{rid}
 GET    /settings
 PUT    /settings
 POST   /overnight/seen
+PUT    /me/home
 POST   /backup/run
 POST   /playbooks
 PATCH  /playbooks/{id}
@@ -2085,9 +2090,9 @@ DELETE /playbooks/{id}
 ```
 
 Thirty-one belong to a project, a column, the WIP section, a ticket's own
-fields, or attachment upload and delete; the other twelve are a runner's own record (now
+fields, or attachment upload and delete; the other thirteen are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
-`/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
+`/runner` pair, Hatch's settings on both verbs, marking the overnight seen, the home screen,
 running a backup, and the three playbook writes.
 
 Two writes that look like the same shape are deliberately **not** on this
