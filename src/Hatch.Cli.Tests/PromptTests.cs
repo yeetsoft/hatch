@@ -627,6 +627,57 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void An_ambition_above_the_ticket_puts_its_principles_after_the_description_and_before_everything_else()
+    {
+        var work = Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", description: "The brief."),
+            children: [Fixtures.Card("AER-13")],
+            nextBriefLimit: 8000,
+            ambition: new WorkAmbitionDto("AER-1", "The ambition's title", ["First principle.", "Second principle."]));
+        var repositories = new[]
+        {
+            new Checkouts.RepositoryLine("/Users/x/code/hatch", "https://example.test/hatch.git", true, null),
+        };
+
+        var prompt = Prompt.Compose(work, repositories);
+
+        Assert.Contains("## Principles", prompt, StringComparison.Ordinal);
+        Assert.Contains("Every session working under AER-1, The ambition's title, holds to these principles.", prompt, StringComparison.Ordinal);
+        Assert.Contains("- First principle.\n- Second principle.\n", prompt, StringComparison.Ordinal);
+
+        var descriptionIndex = prompt.IndexOf("The brief.", StringComparison.Ordinal);
+        var sectionIndex = prompt.IndexOf("## Principles", StringComparison.Ordinal);
+        Assert.True(descriptionIndex < sectionIndex, "section should come after the description");
+        Assert.True(sectionIndex < prompt.IndexOf("## How long the brief may be", StringComparison.Ordinal), "section should come before the brief limit");
+        Assert.True(sectionIndex < prompt.IndexOf("## Repositories", StringComparison.Ordinal), "section should come before ## Repositories");
+        Assert.True(sectionIndex < prompt.IndexOf("## Its children", StringComparison.Ordinal), "section should come before ## Its children");
+    }
+
+    [Fact]
+    public void A_ticket_with_no_ambition_above_it_has_no_principles_section()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.DoesNotContain("## Principles", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_ambition_with_no_principles_leaves_the_section_out()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", ambition: new WorkAmbitionDto("AER-1", "Title", [])));
+
+        Assert.DoesNotContain("## Principles", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_pass_over_an_ambition_has_no_principles_section()
+    {
+        var prompt = Prompt.Compose(PassWork());
+
+        Assert.DoesNotContain("## Principles", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_ticket_both_sent_back_and_limited_prints_both_sections()
     {
         var work = Fixtures.Work(

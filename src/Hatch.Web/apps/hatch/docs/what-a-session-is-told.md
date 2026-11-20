@@ -29,6 +29,15 @@ from one column to another, as resolving conflicts with the trunk, or as fixing
 a failing build; the parent and the ready and due dates, where the ticket has
 them; and then the description, which is the brief.
 
+### Principles
+
+Only when the dispatch has an ambition above it, at any depth, and that
+ambition has at least one principle. It comes straight after the description,
+ahead of every other section. It opens by naming the ambition by its key and
+title and saying every session working under it holds to these principles, and
+then lists one bullet per principle, as the ambition's own description wrote
+them under its `## Principles` heading.
+
 ### Repositories
 
 When the dispatch has any. A line for each repository the ticket's project
