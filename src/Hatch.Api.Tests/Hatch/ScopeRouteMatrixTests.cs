@@ -340,6 +340,7 @@ public class ScopeRouteMatrixTests
         ("IssueCapabilitiesController.DeleteCapability", Lookup(t => Delete($"/api/issues/{t.Key}/capabilities/1")) with { Destructive = true }),
         ("IssueCapabilitiesController.GetVerdicts", Lookup(t => Get($"/api/issues/{t.Key}/capabilities/1/verdicts"))),
         ("IssueCapabilitiesController.PostVerdict", Lookup(t => Post($"/api/issues/{t.Key}/capabilities/1/verdicts", new { verdict = "holds", lookedAt = "x", sha = "abc" }))),
+        ("IssuePassesController.GetPasses", Lookup(t => Get($"/api/issues/{t.Key}/passes"))),
         ("IssueDependenciesController.AddDependency", Lookup(t => Post($"/api/issues/{t.Key}/dependencies", new { dependsOnKey = OtherIssue }))),
         ("IssueDependenciesController.RemoveDependency", Lookup(t => Delete($"/api/issues/{t.Key}/dependencies/{OtherIssue}")) with { Destructive = true }),
         ("IssueRunnerOmissionsController.PutOmittedRunner", Lookup(t => Put($"/api/issues/{t.Key}/omitted-runners/r", new { reason = "x" }))),
