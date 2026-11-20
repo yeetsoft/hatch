@@ -207,6 +207,8 @@ public sealed class RunnerSessions(Runners runners)
             ThrottledUntil: session.ThrottledUntil,
             Usage: session.Usage,
             UsageReadAt: session.UsageReadAt,
+            UsageSource: session.UsageSource,
+            UsageProbeOff: session.UsageProbeOff,
             Remotes: session.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
             Clones: session.Clones,
             Mine: session.Mine,

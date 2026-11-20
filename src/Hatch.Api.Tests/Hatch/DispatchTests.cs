@@ -3319,6 +3319,65 @@ public class DispatchTests
         Assert.Null(Dispatch.RefusalFold(ModelIssue(), todo, ModelRow("sonnet", "alpha:1b"), refusal));
     }
 
+    // ---- A column rule: a runner that does not work the column is never handed a move out of it ----
+
+    private static readonly IReadOnlyList<EfHatchStatus> RuleBoard =
+    [
+        new() { Id = 1, Name = "To Do", SortOrder = 10 },
+        new() { Id = 2, Name = "Breakdown", SortOrder = 20 },
+        new() { Id = 3, Name = "In Progress", SortOrder = 30 },
+        new() { Id = 4, Name = "Testing", SortOrder = 40 },
+        new() { Id = 5, Name = "In Review", SortOrder = 50 },
+    ];
+
+    private static string? ColumnFoldFrom(int fromId, string mode, params int[] ids) =>
+        Dispatch.ColumnFold(ModelIssue(), RuleBoard.Single(s => s.Id == fromId), new RunnerRefusal("build-box", [], mode, ids), RuleBoard);
+
+    [Fact]
+    public void ColumnFold_Only_AListedColumnIsClear_AnUnlistedOneFoldsWithTheOnlySentence()
+    {
+        Assert.Null(ColumnFoldFrom(2, RunnerStatusMode.Only, 5, 2));
+        Assert.Equal(
+            "AER-7 in To Do is not worked by build-box - it works only Breakdown, In Review",
+            ColumnFoldFrom(1, RunnerStatusMode.Only, 5, 2));
+    }
+
+    [Fact]
+    public void ColumnFold_Except_AListedColumnFoldsWithTheExceptSentence_AnUnlistedOneIsClear()
+    {
+        Assert.Equal(
+            "AER-7 in In Progress is not worked by build-box - it works every column except In Progress, Testing",
+            ColumnFoldFrom(3, RunnerStatusMode.Except, 4, 3));
+        Assert.Null(ColumnFoldFrom(1, RunnerStatusMode.Except, 4, 3));
+    }
+
+    [Fact]
+    public void ColumnFold_All_ANullRefusal_AndNoStoredIds_FoldNothing()
+    {
+        Assert.Null(ColumnFoldFrom(3, RunnerStatusMode.All, 3));
+        Assert.Null(Dispatch.ColumnFold(ModelIssue(), RuleBoard[0], null, RuleBoard));
+        Assert.Null(Dispatch.ColumnFold(ModelIssue(), RuleBoard[0], new RunnerRefusal("build-box", []), RuleBoard));
+        Assert.Null(ColumnFoldFrom(3, RunnerStatusMode.Except));
+    }
+
+    [Fact]
+    public void ColumnFold_AnOnlyRuleWithNothingListed_WorksNoColumn() =>
+        Assert.Equal(
+            "AER-7 in To Do is not worked by build-box - it works no column",
+            ColumnFoldFrom(1, RunnerStatusMode.Only));
+
+    [Fact]
+    public void ColumnFold_AnIdNamingNoColumn_ChangesNothing()
+    {
+        Assert.Null(ColumnFoldFrom(3, RunnerStatusMode.Except, 99));
+        Assert.Equal(
+            "AER-7 in To Do is not worked by build-box - it works only Breakdown",
+            ColumnFoldFrom(1, RunnerStatusMode.Only, 99, 2));
+        Assert.Equal(
+            "AER-7 in To Do is not worked by build-box - it works no column",
+            ColumnFoldFrom(1, RunnerStatusMode.Only, 99));
+    }
+
     // ---- A preferred local model: the asker that can run it gets it, and the rest are left for a free one ----
 
     private static readonly EfHatchStatus TodoColumn = new() { Name = "todo", SortOrder = 20 };

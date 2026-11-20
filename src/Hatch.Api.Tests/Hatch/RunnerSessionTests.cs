@@ -46,6 +46,8 @@ public class RunnerSessionTests
             ThrottledUntil = Now.AddHours(3),
             Usage = "[{\"window\":\"5h\"}]",
             UsageReadAt = Now.AddMinutes(1),
+            UsageSource = "probe",
+            UsageProbeOff = "not signed in",
             Remotes = "origin",
             Clones = true,
             Mine = false,
@@ -94,6 +96,8 @@ public class RunnerSessionTests
         Assert.Equal(Now.AddHours(3), row.ThrottledUntil);
         Assert.Equal("[{\"window\":\"5h\"}]", row.Usage);
         Assert.Equal(Now.AddMinutes(1), row.UsageReadAt);
+        Assert.Equal("probe", row.UsageSource);
+        Assert.Equal("not signed in", row.UsageProbeOff);
         Assert.Equal("origin", row.Remotes);
         Assert.True(row.Clones);
         Assert.False(row.Mine);
@@ -152,6 +156,8 @@ public class RunnerSessionTests
         Assert.Null(row.ThrottledUntil);
         Assert.Null(row.Usage);
         Assert.Null(row.UsageReadAt);
+        Assert.Null(row.UsageSource);
+        Assert.Null(row.UsageProbeOff);
         Assert.Null(row.Remotes);
         Assert.Null(row.Clones);
         Assert.Null(row.Mine);

@@ -496,8 +496,9 @@ one; `404` for no such key.
 | GET | `/ballot` | key | Every waiting question, each under the chain of issues that encloses it |
 | POST | `/issues/{key}/messages/deliver` | key | Marks messages read; answers with the ones this call marked |
 | PUT | `/issues/{key}/questions/{id}/level` | **person** | Sets an open question's level, `{ "level": "build" }` |
+| POST | `/issues/{key}/questions/{id}/overturn` | key | Answers a look-back question against the loop and files the rework, `{ "answer": "..." }` |
 
-Seven of the eight are a key's; the level is a person's. Both question routes take `?open=` (default `true`):
+Eight of the nine are a key's; the level is a person's. Both question routes take `?open=` (default `true`):
 open is unanswered and either not terminal or asked at `merge`, which stays
 open on a closed issue until it is answered; `open=false` is every question,
 answered and obviated ones included.
@@ -563,6 +564,27 @@ session would have nothing to build on. `hold` is always allowed on an open ques
 Sending the level the question already holds is a `200` that writes nothing. A change
 writes a `question_level_changed` event, payload `{ questionId, from, to }`, with the
 person as actor.
+
+`POST /issues/{key}/questions/{id}/overturn` takes a `QuestionOverturnRequest`, one `Answer`:
+an option's label, or a sentence in prose. It is for a look back - an unanswered `merge`
+question whose issue has reached a terminal column - and answers with a
+`QuestionOverturnDto`: `Question`, that question's `QuestionDto` now answered, and
+`TaskKey`, the key of the task filed. Whoever may answer may overturn, so a key may, as it
+may post a comment. In one save it writes the answer as a comment of kind `answer` under
+the caller's name, with the body as sent, and an `answered` event as any answer writes,
+and files one task. The task is filed from the issue (`filedFromKey`) and hangs under it;
+where the issue is a task and cannot take one, it hangs under the nearest ancestor that
+can, and under nothing where none can. It lands where a filing lands: the leftmost column
+for a person, the agents' column for a key. Its title is `Bring {key} in line with the
+answer`. Its description says what was decided (the recommended option's label), what the
+person decided instead, who overturned it and when, that the work is to be brought in line
+with the answer, and names the issue key and question id, with the question's body
+quoted. Keeping the recommendation needs no route of its own: the page answers with the
+recommended label through `POST /issues/{key}/comments`, as for any option. It `400`s
+with a sentence for an empty or over-length answer, for a comment that is not a question
+on that issue, for a question already answered, for a question not asked at `merge`, and
+for one whose issue has not reached a terminal column; nothing is written. An unknown key
+is a `404`.
 
 Every write here leaves an event carrying the caller's name as the actor, so
 the trail says who did what without anybody being asked to record it.
@@ -1306,8 +1328,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 |---|---|---|---|
 | GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil` |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts |
-| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts; `usageSource` and `usageProbeOff` say where the usage reading came from and why its probe is off, and travel together: a beat that names a `usageSource` sets both (a null `usageProbeOff` clears a stored reason), and a beat without one leaves both as they were, with or without a reading |
+| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way, and takes `usageSource`/`usageProbeOff` on the same pairing rule; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause |
 | POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
@@ -1510,6 +1532,16 @@ seven - `os`, `arch`, `agentVersion`, `container`, `username`,
 `processStartedAt`, `ip` - beside the rest of the session. That same
 `RunnerSessionDto` is what `GET /runners` answers under each runner's
 `sessions`, and what `hatch runners --json` prints unchanged.
+
+A heartbeat's `usageSource` and `usageProbeOff` say where its usage reading came
+from and why its probe is off. They travel together, the way `agentDown` and its
+fields do: a beat that names a `usageSource` is authoritative for both on that
+beat (`usageProbeOff` null means the probe is not off, and clears a reason
+stored earlier), and a beat without one leaves both exactly as they were,
+whether or not it carries a reading. A source with no reading is not stored.
+`POST /issues/{key}/claim/heartbeat` takes the same two fields beside its usage
+reading, under the same rule. `RunnerSessionDto` answers both back, and so does
+each `GET /utilization` runner entry, from its freshest reading.
 
 The body takes three accelerator facts beside them - `acceleratorMemoryBytes`
 (the total across devices, in bytes), `acceleratorDeviceCount` and
@@ -1816,11 +1848,11 @@ reporting one, which is the ordinary state for a fresh install rather than
 an error. `ReadAt` is the runner's own word for when it read the account;
 `ReceivedAt` is Hatch's own clock at the moment that reading last actually
 changed, and `State` is judged on it. `Runners` is the panel behind that
-headline: one `UtilizationRunner(Name, Live, State, ReadAt, ReceivedAt, Limits)`
+headline: one `UtilizationRunner(Name, Live, State, ReadAt, ReceivedAt, Limits, Source, ProbeOff)`
 per runner of the caller's that is live now, plus the one runner whose own
 reading is the headline even once it is no longer live, so the headline is
 never unexplained. A runner that is up but has reported nothing of its own
-carries `Live: true` with the other four fields null, which is how a client
+carries `Live: true` with the other six fields null, which is how a client
 tells "no reading yet" from "not linked" without a second field. Another
 person's runners, and an ownerless key's, never appear.
 

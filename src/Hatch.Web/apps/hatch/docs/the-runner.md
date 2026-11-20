@@ -684,6 +684,27 @@ and nothing is written. The board's own entry for the model is never edited -
 that stays a person's - and `hatch runners refuse --lift <id>` takes the
 refusal off.
 
+### Refused columns
+
+A key can also say which columns its runner works. The rule is one of three
+words: **all** (the whole board, and what a key with no rule works under),
+**except** the columns listed, or **only** the columns listed. It is set on
+the Runners page alone - not `hatch config` and not a `HATCH_*` variable - and
+it lives on the key's config row beside the refused models.
+
+The board reads it on every dispatch read, so a change binds on the runner's
+next dispatch with no restart. A runner is never handed a move *out of* a
+column it does not work, and `hatch queue` says why in one sentence: *HA-12 in
+In Progress is not worked by build-box - it works only Breakdown, In Review*,
+or *it works every column except In Progress, Testing*. The columns are named
+in board order, an `only` rule with nothing listed reads *it works no column*,
+and an id that names no column is ignored.
+
+The rule leaves hops alone: a hop spawns no session, so a runner that does not
+work a column can still carry a ticket across it. It also leaves an idle review
+self-move to the review judge's own sentence. A runner that is wrong on both
+the tags and the columns hears about the tags first.
+
 ## The runner's name
 
 A runner's name is its key's. The board reads it from `GET /api/me`
@@ -1077,6 +1098,12 @@ served checkout](one-increment-and-the-loop#one-loop-per-served-checkout) has
 the lock's detail.
 
 #### Splitting the work by column
+
+The one-step road is the **Columns** rule on the Runners page: name the
+columns a runner works, or the ones it does not, and the board stops handing
+it the rest ([Refused columns](#refused-columns)). Tags remain for the finer
+cut - the union of project, ancestor, issue and column - which a column rule
+cannot say.
 
 A tagged column gates every move *out of* it, hops included, for a runner
 that does not advertise the union of the project's, its ancestors', the

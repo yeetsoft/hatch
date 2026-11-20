@@ -94,10 +94,11 @@ public sealed class Dispatch(
     /// is not applied, so a peer's scan never starts peer scans of its own.
     /// </param>
     /// <param name="refusal">
-    /// The models the asking runner's key refuses, see <see cref="RefusalFold"/>.
+    /// The models the asking runner's key refuses, see <see cref="RefusalFold"/>,
+    /// and the columns it works, see <see cref="ColumnFold"/>.
     /// Null reads them off <paramref name="asking"/>'s name - none where that is
     /// null too, so a board-wide scan refuses nothing. A peer's scan passes its
-    /// own, and an empty list says fold nothing and look nothing up.
+    /// own, and an empty list with a rule of <c>all</c> says fold nothing and look nothing up.
     /// </param>
     /// <param name="within">
     /// The projects a scan may take candidates from, over and above the
@@ -429,7 +430,8 @@ public sealed class Dispatch(
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
                         has: has, requirement: requirement, refusal: refusal, leftFor: leftFor);
                     if (!hop && (ModelFold(issue, status, playbook, models, localLevel, leftFor) is not null
-                                  || RefusalFold(issue, status, playbook, refusal, localLevel, models) is not null))
+                                  || RefusalFold(issue, status, playbook, refusal, localLevel, models) is not null
+                                  || ColumnFold(issue, status, refusal, statuses) is not null))
                         modelFolded = true;
                     if (requirement is not null && rowTo is not null
                         && CodeGated(issue, status, rowTo, hop, implementation, merged, built)
@@ -619,7 +621,7 @@ public sealed class Dispatch(
         /// stopping one), its agent is the model's and its list names it, it is
         /// not pulling a model, and it holds no live claim. Its own scan then has
         /// to find the ticket takeable, so tags, omissions, refusals, <c>has</c>,
-        /// projects and scope all fold it with no second copy of the rules. With
+        /// projects, column rule and scope all fold it with no second copy of the rules. With
         /// no runner store, none is free.
         /// </summary>
         public async Task<string?> FreeLocalAsync(long issueId, string localModel, CancellationToken ct)
@@ -747,7 +749,7 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
-            has: declared.Has, refusal: new RunnerRefusal(peer.Name, declared.Refused),
+            has: declared.Has, refusal: declared.ToRefusal(),
             within: await PeerWithinAsync(peer, ct));
         if (scan.Failure is not null) return [];
 
@@ -760,7 +762,8 @@ public sealed class Dispatch(
     /// <summary>
     /// <see cref="TakeableByAsync"/> with the peer's models and dependencies left
     /// unjudged: what it would take if it never folded on either. Every other
-    /// field stays the peer's own.
+    /// field stays the peer's own, its column rule included - a row stuck on
+    /// columns is not stuck on a toolchain.
     /// </summary>
     private async Task<HashSet<long>> TakeableIgnoringToolchainByAsync(Peer peer, int offsetMinutes, CancellationToken ct)
     {
@@ -771,7 +774,8 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: ModelDeclaration.Unjudged,
-            has: HasDeclaration.Unjudged, refusal: new RunnerRefusal(peer.Name, []),
+            has: HasDeclaration.Unjudged,
+            refusal: new RunnerRefusal(peer.Name, [], declared.StatusMode, declared.StatusIds),
             within: await PeerWithinAsync(peer, ct));
         if (scan.Failure is not null) return [];
 
@@ -869,7 +873,7 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
-            has: declared.Has, refusal: new RunnerRefusal(peer.Name, declared.Refused),
+            has: declared.Has, refusal: declared.ToRefusal(),
             within: await PeerWithinAsync(peer, ct));
     }
 
@@ -1878,6 +1882,36 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// Why the asking runner will not take a move out of this column: its column
+    /// rule - <c>only</c> the listed columns, or every column <c>except</c> them -
+    /// leaves <paramref name="from"/> out. Null for a scan with no refusal, a rule
+    /// of <c>all</c>, and a column the rule works. An id that names no column is
+    /// dropped before the rule is judged, so it changes nothing; the columns are
+    /// named in the order <paramref name="statuses"/> keeps, the board's.
+    /// </summary>
+    internal static string? ColumnFold(
+        EfHatchIssue issue, EfHatchStatus from, RunnerRefusal? refusal, IReadOnlyList<EfHatchStatus> statuses)
+    {
+        if (refusal is null || refusal.StatusMode == RunnerStatusMode.All) return null;
+
+        var listed = (refusal.StatusIds ?? []).ToHashSet();
+        var named = statuses.Where(s => listed.Contains(s.Id)).ToList();
+        var folded = refusal.StatusMode switch
+        {
+            RunnerStatusMode.Only => named.All(s => s.Id != from.Id),
+            RunnerStatusMode.Except => named.Any(s => s.Id == from.Id),
+            _ => false,
+        };
+        if (!folded) return null;
+
+        var names = string.Join(", ", named.Select(s => s.Name));
+        var works = refusal.StatusMode == RunnerStatusMode.Only
+            ? (named.Count == 0 ? "it works no column" : $"it works only {names}")
+            : $"it works every column except {names}";
+        return $"{IssueKey.Format(issue.Project!.Key, issue.Number)} in {from.Name} is not worked by {refusal.Runner} - {works}";
+    }
+
+    /// <summary>
     /// The models the key named <paramref name="name"/> refuses, read once for a
     /// pass. Null for no name, no key store, and a name no key answers to - a
     /// board-wide scan or an unknown runner refuses nothing.
@@ -1890,7 +1924,9 @@ public sealed class Dispatch(
         if (key is null) return null;
 
         var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
-        return new RunnerRefusal(name, config is null ? [] : RunnerTagColumn.Read(config.RefusedModels));
+        return config is null
+            ? new RunnerRefusal(name, [])
+            : new RunnerRefusal(name, RunnerTagColumn.Read(config.RefusedModels), config.StatusMode, RunnerStatusIdsColumn.Read(config.StatusIds));
     }
 
     /// <summary>
@@ -2725,6 +2761,11 @@ public sealed class Dispatch(
         // model is never dispatched a move on it, from any door.
         if (!hop && !reviewIdle && RefusalFold(issue, from, playbook, refusal, gate.EffectiveLocalModel(issue.Id).Level, models) is { } refusalBlock)
             return new Blocking(refusalBlock, BlockedKinds.Other);
+
+        // Beside the refusal fold, and gated as it is: a runner that does not
+        // work the column is never dispatched a move out of it, from any door.
+        if (!hop && !reviewIdle && ColumnFold(issue, from, refusal, statuses) is { } columnBlock)
+            return new Blocking(columnBlock, BlockedKinds.Other);
 
         // After the model and refusal folds, before the dependencies: a runner that cannot
         // build the ticket's code is not asked to wait on what blocks it. The
@@ -3585,11 +3626,14 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
 public sealed record RunnerAsking(string Name, DateTimeOffset LiveSince);
 
 /// <summary>
-/// The models the asking runner's key refuses, see <see cref="RunnerModels.Refuses"/>.
-/// An empty <see cref="Models"/> folds nothing, and is what a scan passes to
-/// say "no refusal, and do not look one up".
+/// The models the asking runner's key refuses, see <see cref="RunnerModels.Refuses"/>,
+/// and the column rule it works under, see <see cref="Dispatch.ColumnFold"/>. An empty
+/// <see cref="Models"/> and a <see cref="StatusMode"/> of <c>all</c> fold
+/// nothing, and are what a scan passes to say "no refusal, and do not look one up".
 /// </summary>
-public sealed record RunnerRefusal(string Runner, IReadOnlyList<string> Models);
+public sealed record RunnerRefusal(
+    string Runner, IReadOnlyList<string> Models,
+    string StatusMode = RunnerStatusMode.All, IReadOnlyList<int>? StatusIds = null);
 
 /// <summary>
 /// The tags a caller's runner advertises, or that the scan answers for no

@@ -25,10 +25,15 @@ public record UtilizationLimit(string Window, string Label, int Percent, DateTim
 /// never reported a reading of its own - up, or just linked, but silent so
 /// far - so a client can tell "no reading yet" from "not linked" without a
 /// second field.
+///
+/// <paramref name="Source"/> and <paramref name="ProbeOff"/> are what the
+/// runner last said about where that reading came from, and why its probe is
+/// off, read off the same reading as the rest: null where it said nothing, and
+/// so null whenever there is no reading.
 /// </summary>
 public record UtilizationRunner(
     string Name, bool Live, string? State, DateTimeOffset? ReadAt, DateTimeOffset? ReceivedAt,
-    IReadOnlyList<UtilizationLimit>? Limits);
+    IReadOnlyList<UtilizationLimit>? Limits, string? Source = null, string? ProbeOff = null);
 
 /// <summary>A whole reading: how good it is, when it was taken, and what it said.</summary>
 /// <remarks>
@@ -53,7 +58,7 @@ public record UtilizationRunner(
 /// </remarks>
 public record UtilizationReading(
     string State, DateTimeOffset ReadAt, DateTimeOffset ReceivedAt, IReadOnlyList<UtilizationLimit> Limits,
-    IReadOnlyList<UtilizationRunner> Runners);
+    IReadOnlyList<UtilizationRunner> Runners, string? Source = null, string? ProbeOff = null);
 
 public static class UtilizationStates
 {
@@ -143,11 +148,12 @@ public static class Utilization
     /// has ever reported one - the endpoint's <c>204</c>.
     /// </summary>
     public static UtilizationReading? Of(IEnumerable<EfHatchRunner> runners, DateTimeOffset now) =>
-        Of(runners.Select(r => (r.Usage, r.UsageReadAt, r.UsageReceivedAt)), now);
+        Of(runners.Select(r => (r.Usage, r.UsageReadAt, r.UsageReceivedAt, r.UsageSource, r.UsageProbeOff)), now);
 
     /// <summary>
-    /// The same judgement over bare <c>(usage, read time, received time)</c>
-    /// triples, so a runner row and a <see cref="EfHatchRunnerSession"/> - both
+    /// The same judgement over bare <c>(usage, read time, received time, source,
+    /// probe-off reason)</c> tuples, the last two carried onto whichever
+    /// reading is freshest, so a runner row and a <see cref="EfHatchRunnerSession"/> - both
     /// of which carry the account's last reading - are weighed together.
     /// Ordered, and judged <c>ok</c>/<c>stale</c>, on <c>ReceivedAt ?? ReadAt</c>:
     /// a row written before <see cref="EfHatchRunner.UsageReceivedAt"/> existed
@@ -155,14 +161,16 @@ public static class Utilization
     /// goes dark on upgrade.
     /// </summary>
     public static UtilizationReading? Of(
-        IEnumerable<(string? Usage, DateTimeOffset? ReadAt, DateTimeOffset? ReceivedAt)> readings, DateTimeOffset now)
+        IEnumerable<(string? Usage, DateTimeOffset? ReadAt, DateTimeOffset? ReceivedAt, string? Source, string? ProbeOff)> readings,
+        DateTimeOffset now)
     {
-        (string Usage, DateTimeOffset ReadAt, DateTimeOffset ReceivedAt)? freshest = null;
-        foreach (var (usage, readAt, receivedAt) in readings)
+        (string Usage, DateTimeOffset ReadAt, DateTimeOffset ReceivedAt, string? Source, string? ProbeOff)? freshest = null;
+        foreach (var (usage, readAt, receivedAt, source, probeOff) in readings)
         {
             if (usage is null || readAt is not { } at) continue;
             var receivedOrRead = receivedAt ?? at;
-            if (freshest is null || receivedOrRead > freshest.Value.ReceivedAt) freshest = (usage, at, receivedOrRead);
+            if (freshest is null || receivedOrRead > freshest.Value.ReceivedAt)
+                freshest = (usage, at, receivedOrRead, source, probeOff);
         }
 
         if (freshest is not { } best) return null;
@@ -172,7 +180,8 @@ public static class Utilization
 
         return new UtilizationReading(
             state, best.ReadAt, best.ReceivedAt,
-            windows.Select(w => new UtilizationLimit(w.Window, w.Label, w.Percent, w.ResetsAt)).ToList(), []);
+            windows.Select(w => new UtilizationLimit(w.Window, w.Label, w.Percent, w.ResetsAt)).ToList(), [],
+            best.Source, best.ProbeOff);
     }
 
     /// <summary>
@@ -187,9 +196,9 @@ public static class Utilization
     {
         var readings = (await db.LegacyRunners.AsNoTracking()
                 .Where(r => r.ForPersonId == personId && r.Usage != null)
-                .Select(r => new { r.Usage, r.UsageReadAt, r.UsageReceivedAt })
+                .Select(r => new { r.Usage, r.UsageReadAt, r.UsageReceivedAt, r.UsageSource, r.UsageProbeOff })
                 .ToListAsync(ct))
-            .Select(r => (r.Usage, r.UsageReadAt, r.UsageReceivedAt))
+            .Select(r => (r.Usage, r.UsageReadAt, r.UsageReceivedAt, r.UsageSource, r.UsageProbeOff))
             .ToList();
 
         if (keys is not null)
@@ -202,9 +211,9 @@ public static class Utilization
             if (owned.Count > 0)
                 readings.AddRange((await db.RunnerSessions.AsNoTracking()
                         .Where(s => owned.Contains(s.ApiKeyId) && s.Usage != null)
-                        .Select(s => new { s.Usage, s.UsageReadAt, s.UsageReceivedAt })
+                        .Select(s => new { s.Usage, s.UsageReadAt, s.UsageReceivedAt, s.UsageSource, s.UsageProbeOff })
                         .ToListAsync(ct))
-                    .Select(s => (s.Usage, s.UsageReadAt, s.UsageReceivedAt)));
+                    .Select(s => (s.Usage, s.UsageReadAt, s.UsageReceivedAt, s.UsageSource, s.UsageProbeOff)));
         }
 
         return Of(readings, now);
@@ -251,9 +260,10 @@ public static class Utilization
 
         foreach (var r in mine)
         {
-            var triples = new List<(string? Usage, DateTimeOffset? ReadAt, DateTimeOffset? ReceivedAt)>();
-            if (r.Beat is { } beat) triples.Add((beat.Usage, beat.UsageReadAt, beat.UsageReceivedAt));
-            if (r.Sessions is { } sessions) triples.AddRange(sessions.Select(s => (s.Usage, s.UsageReadAt, s.UsageReceivedAt)));
+            var triples = new List<(string? Usage, DateTimeOffset? ReadAt, DateTimeOffset? ReceivedAt, string? Source, string? ProbeOff)>();
+            if (r.Beat is { } beat) triples.Add((beat.Usage, beat.UsageReadAt, beat.UsageReceivedAt, beat.UsageSource, beat.UsageProbeOff));
+            if (r.Sessions is { } sessions)
+                triples.AddRange(sessions.Select(s => (s.Usage, s.UsageReadAt, s.UsageReceivedAt, s.UsageSource, s.UsageProbeOff)));
 
             var own = Of(triples, now);
             var live = r.IsLive(runnerRules, sessionRules, now);
@@ -261,7 +271,7 @@ public static class Utilization
 
             if (!live && !isHeadline) continue;
 
-            entries.Add(new UtilizationRunner(r.Name, live, own?.State, own?.ReadAt, own?.ReceivedAt, own?.Limits));
+            entries.Add(new UtilizationRunner(r.Name, live, own?.State, own?.ReadAt, own?.ReceivedAt, own?.Limits, own?.Source, own?.ProbeOff));
         }
 
         return entries;

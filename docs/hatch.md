@@ -2720,9 +2720,16 @@ once the call has been open past the agent's own tool timeout (ten minutes),
 so a hung call goes quiet one window after the last line it carried - unless
 the claim carries a run cap (below), in which case it carries on past the
 timeout until the cap itself stops the run; with no cap, it is exactly as
-before. A dead
+before. A streamed
+session whose turn has ended while its process runs on - a background command
+or monitor, with the session woken when it finishes - is waiting, and the
+runner carries the wait the way it carries a call: `waiting on background work,
+<n>m`, by the same rules (at least once a minute, ended past the agent's tool
+timeout unless the claim carries a run cap, and never sent while it has said
+something else lately). A new turn clears it, and an open call wins over a
+wait. A dead
 runner sends nothing, and its claim lapses on this rule unchanged; a `--quiet`
-session has no stream to see a call open in, so it carries none of this. Every reader treats a quiet claim exactly as it treats an expired
+session has no stream to see a call open or a turn end in, so it carries none of this. Every reader treats a quiet claim exactly as it treats an expired
 one — the dispatcher, the board, the issue page, the Runners page, and a take —
 because `IssueClaims.IsLive` is the one place both conditions are asked, and
 nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is
@@ -6614,6 +6621,21 @@ missing configuration:
     nobody. A peer that refuses the model is no peer that could take a ticket
     another runner let go of. Said after the model item and before the
     toolchain item.
+12b. The move's `from` column is one the asking runner's key **does not
+    work** — its column rule, set on the Runners page and stored on the key's
+    config row beside the refused models. Under `except`, a move out of a
+    listed column folds; under `only`, a move out of a column that is not
+    listed folds. A rule of `all`, and a key with no config row, fold
+    nothing, and an id that names no column is dropped before the rule is
+    judged. Gated as the refusal item is — never a hop, never an idle review
+    self-move — and read for the same runner, off `?runner=`, `?asRunner=` or
+    the calling key's own name, so a peer's scan behind `takers`, `untaken`
+    and the let-go deferral each judge the peer on its own rule. *"HA-12 in
+    In Progress is not worked by build-box - it works only Breakdown, In
+    Review"*, or *"… it works every column except In Progress, Testing"*, the
+    columns named in board order; an `only` rule with nothing listed reads
+    *"it works no column"*. Kind `other`. Waits on nobody. Said after the
+    refusal item and before the toolchain item.
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
