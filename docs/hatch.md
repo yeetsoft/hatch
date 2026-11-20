@@ -10875,6 +10875,18 @@ door — see item 12a of [the dispatcher](#the-dispatcher) — and across the
 fleet, [a move no live runner can take](#a-move-no-live-runner-can-take)
 counts a live runner that refuses the model as not offering it.
 
+**It can also carry a column rule.** `statusMode` and `statusIds` on `PATCH
+/api/runners/{name}` say which columns this key's runner works - `all` (the
+whole board, the rule a runner with none carries today), `except` (every
+column but the ones named) or `only` (just the ones named). The two fields
+are taken together, never one without the other, and `all` keeps the ids
+`[]` regardless of what was sent. The rule lives on the key's own config row,
+the same as tags and refused models, so a name with no key is refused it
+outright - there is nowhere for it to live. A column deleted after the rule
+was written is dropped from `statusIds` on the next read rather than carried
+as a ghost id. Nothing reads this rule for dispatch yet, and the Runners page
+draws nothing for it - both come with a later ticket.
+
 **It also says whether it refuses dangerous work, and which projects it is
 bound to, on every beat.** `refusesDangerous` and `projects` ride every
 heartbeat beside `remotes` and `agent`, the same way `models` and `has` do
