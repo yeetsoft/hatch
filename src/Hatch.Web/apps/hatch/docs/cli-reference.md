@@ -1067,6 +1067,11 @@ It ends with `answered <n> of <total>` and, if any were answered, a `hatch work`
 line for the tickets that are now clear, since answering is only half of it.
 With nothing open it prints `hatch: nothing is waiting on an answer` instead.
 
+A look-back question - one asked at `merge` on an issue that has since closed -
+is walked here like any other, and the option you pick is recorded the same
+way. It never files the rework a disagreement would need: overturning is only
+on [the Ballot](questions-and-decisions#looking-back).
+
 ### api
 
 ```

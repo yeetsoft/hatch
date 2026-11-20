@@ -672,6 +672,11 @@ the parent itself landed in; a ticket that has already stopped, terminal or
 deferred, is left exactly where it is, never re-closed in a different
 flavour.
 
+Closing a ticket settles no `merge` question still open on it: the work went
+ahead on the recommended option before you were asked, and the question keeps
+waiting, now as a [look back](questions-and-decisions#looking-back) on the
+Ballot, until you keep it or overturn it.
+
 ## Import and bulk edit
 
 **Manage → Import** reads a directory of `.md` files, previews what each one

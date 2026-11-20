@@ -227,3 +227,8 @@ answer and who gave it, as settled under *Decisions already made* ([what a
 session is told](what-a-session-is-told#decisions-already-made)), and is told
 not to ask again. Answering a question once is what stops the next session from
 reopening it.
+
+An overturn leaves the same answer comment and nothing more on the question
+itself. The rework it files is a separate ticket, [filed
+from](issues#filed-from) the issue the question was on — that task, not the
+question, is where to look for what an overturn set in motion.
