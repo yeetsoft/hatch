@@ -3384,7 +3384,12 @@ gap](#the-changelog-task).
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
-`Options`, `DeliveredAt`, `DeliveredTo`, `CreatedAt`.
+`Options`, `Level`, `DeliveredAt`, `DeliveredTo`, `CreatedAt`.
+
+`Level` is how far work may go before a question is answered: `hold`, `build`
+or `merge`, strictest first. It is null on everything that is not a question and
+on a question asked before the column existed, and both read as `hold`. Nothing
+writes it yet, and `POST /issues/{key}/comments` refuses one.
 
 Most comments are notes: a commit sha, a summary for a reviewer, a change of
 mind. Four are not, and those carry a `Kind`.

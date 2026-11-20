@@ -14,6 +14,7 @@ const comment = (kind: CommentKind, body: string, answersId: number | null = nul
   createdAt: '2026-09-05T00:00:00Z',
   deliveredAt: null,
   deliveredTo: null,
+  level: null,
 });
 
 describe('threadQuestions', () => {
@@ -193,6 +194,7 @@ const question = (over: Partial<Question> = {}): Question => ({
   askedAt: '2026-09-05T00:00:00Z',
   options: null,
   answers: [],
+  level: 'hold',
   ...over,
 });
 

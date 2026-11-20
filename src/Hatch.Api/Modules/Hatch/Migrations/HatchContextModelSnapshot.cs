@@ -376,6 +376,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("Level")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Options")
                         .HasColumnType("jsonb");
 

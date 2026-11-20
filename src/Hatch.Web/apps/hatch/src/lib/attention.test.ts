@@ -69,6 +69,7 @@ const question = (over: Partial<Question> = {}): Question => ({
   askedAt: ago(60 * 60_000),
   options: null,
   answers: [],
+  level: 'hold',
   ...over,
 });
 

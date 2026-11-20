@@ -1767,6 +1767,18 @@ public class EfHatchComment
     /// </remarks>
     public string? Options { get; set; }
 
+    public const int MaxLevelLength = 16;
+
+    /// <summary>
+    /// How far work may go on the issue before this question is answered: one of
+    /// <see cref="QuestionLevels.ByStrictness"/>. Null on every non-question and
+    /// on every question asked before the column existed - both read as
+    /// <see cref="QuestionLevels.HoldName"/> through <see cref="QuestionLevels.Normalise"/>.
+    /// Nothing writes it yet.
+    /// </summary>
+    [MaxLength(MaxLevelLength)]
+    public string? Level { get; set; }
+
     /// <summary>
     /// When a <see cref="Message"/> was put in front of a session, or null while
     /// it has not been. Written once, by a conditional <c>UPDATE</c> whose
