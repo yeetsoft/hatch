@@ -495,12 +495,13 @@ public static class Fixtures
         });
 
     public static string Result(
-        string sessionId = "s-1", decimal cost = 1.5m, int turns = 12, bool error = false, string said = "") =>
+        string sessionId = "s-1", decimal cost = 1.5m, int turns = 12, bool error = false, string said = "",
+        long durationMs = 65_000) =>
         JsonSerializer.Serialize(new
         {
             type = "result",
             session_id = sessionId,
-            duration_ms = 65_000,
+            duration_ms = durationMs,
             num_turns = turns,
             is_error = error,
             total_cost_usd = cost,

@@ -101,6 +101,17 @@ public sealed class StreamRenderTests
     }
 
     [Fact]
+    public void A_session_woken_by_a_wait_sums_duration_and_turns_over_every_result()
+    {
+        var (facts, _) = Play(
+            Fixtures.Result(turns: 10, durationMs: 60_000),
+            Fixtures.Result(turns: 3, durationMs: 5_000));
+
+        Assert.Equal(13, facts.Result!.Turns);
+        Assert.Equal(65_000, facts.Result.DurationMs);
+    }
+
+    [Fact]
     public void A_run_that_ended_badly_says_so_rather_than_saying_done()
     {
         var (_, lines) = Play(Fixtures.Result(error: true));
@@ -582,7 +593,7 @@ public sealed class StreamRenderTests
     }
 
     [Fact]
-    public void A_recorded_background_wait_reads_as_three_turns_and_the_last_result_wins()
+    public void A_recorded_background_wait_sums_duration_and_turns_but_the_last_result_wins_the_rest()
     {
         var facts = new RunFacts();
         var render = new StreamRender("/tmp/checkout", facts);
@@ -606,7 +617,11 @@ public sealed class StreamRenderTests
 
         var last = results[^1];
         Assert.Equal(last.GetProperty("result").GetString(), facts.ResultText);
-        Assert.Equal(last.GetProperty("duration_ms").GetInt64(), facts.Result!.DurationMs);
+
+        var totalDuration = results.Sum(r => r.GetProperty("duration_ms").GetInt64());
+        var totalTurns = results.Sum(r => r.GetProperty("num_turns").GetInt64());
+        Assert.Equal(totalDuration, facts.Result!.DurationMs);
+        Assert.Equal(totalTurns, facts.Result.Turns);
     }
 
     [Fact]
