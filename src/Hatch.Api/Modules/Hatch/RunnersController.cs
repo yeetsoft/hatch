@@ -83,11 +83,12 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
         var visibleKeys = await VisibleKeysAsync(ct);
+        var statusIds = await StatusIdsAsync(ct);
         var localModels = await LocalModelsAsync(ct);
 
         var dtos = new List<RunnerDto>(visible.Count);
         foreach (var r in visible)
-            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, visibleKeys, localModels, now, ct));
+            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, visibleKeys, statusIds, localModels, now, ct));
 
         return dtos;
     }
@@ -114,7 +115,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await LocalModelsAsync(ct), now, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -182,7 +183,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await LocalModelsAsync(ct), time.GetUtcNow(), ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
@@ -210,6 +211,10 @@ public class RunnersController(
     private async Task<IReadOnlySet<string>> VisibleKeysAsync(CancellationToken ct) =>
         (await db.Projects.Select(p => p.Key).ToListAsync(ct)).ToHashSet();
 
+    /// <summary>The board's own column ids, read once per request: a stale id a column rule still names is dropped on read by whoever threads this through.</summary>
+    private async Task<IReadOnlySet<int>> StatusIdsAsync(CancellationToken ct) =>
+        (await db.Statuses.Select(s => s.Id).ToListAsync(ct)).ToHashSet();
+
     /// <summary>The local-models table, oldest first, read once per request and threaded through <see cref="ProjectAsync"/>.</summary>
     private Task<List<EfHatchLocalModel>> LocalModelsAsync(CancellationToken ct) =>
         db.LocalModels.AsNoTracking().OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).ToListAsync(ct);
@@ -218,7 +223,7 @@ public class RunnersController(
     private async Task<RunnerDto> ProjectAsync(
         Runner runner, Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
-        SiteSettingsSnapshot site, IReadOnlySet<string> visibleKeys, IReadOnlyList<EfHatchLocalModel> localModels,
+        SiteSettingsSnapshot site, IReadOnlySet<string> visibleKeys, IReadOnlySet<int> statusIds, IReadOnlyList<EfHatchLocalModel> localModels,
         DateTimeOffset now, CancellationToken ct)
     {
         var ownerId = runner.OwnerPersonId;
@@ -230,6 +235,10 @@ public class RunnersController(
             runner, Holding(held, (runner.Name, runner.Beat?.Where ?? "")), drivers.GetValueOrDefault(runner.Name, []), forName, canControl, order,
             yours: Yours(ownerId, wallEnabled, callerPerson),
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
+
+        // A column deleted since this rule was written is dropped on read
+        // rather than carried as a ghost id nothing on the board can show.
+        dto = dto with { StatusIds = dto.StatusIds.Where(statusIds.Contains).ToList() };
 
         // A beat-less key with no legacy row still has what its live loop
         // sessions declared, the same union RunnerDeclaration.OfAsync folds.
@@ -945,6 +954,26 @@ public class RunnersController(
         if (Tokens(request.MaxTokensPerHour, "--max-tokens-per-hour", out var maxTokensPerHour) is { } tokensPerHourError) return BadRequest(tokensPerHourError);
         if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
 
+        if (request.StatusMode is null != request.StatusIds is null)
+            return BadRequest("a runner's column rule takes a mode and a list together");
+
+        if ((request.StatusMode is not null || request.StatusIds is not null) && aggregate.Key is null)
+            return BadRequest($"{runner} has no key - its column rule has nowhere to live");
+
+        if (RunnerStatusMode.Normalise(request.StatusMode, out var normalisedStatusMode) is { } statusModeRefusal)
+            return BadRequest(statusModeRefusal);
+
+        var normalisedStatusIds = Array.Empty<int>();
+        if (request.StatusIds is not null && normalisedStatusMode != RunnerStatusMode.All)
+        {
+            var distinctIds = request.StatusIds.Distinct().ToArray();
+            var columnIds = await StatusIdsAsync(ct);
+            foreach (var id in distinctIds)
+                if (!columnIds.Contains(id)) return BadRequest($"there is no column {id}");
+
+            normalisedStatusIds = distinctIds;
+        }
+
         DateTimeOffset? untilAt = null;
         if (request.UntilAt is { } until && until.Trim().Length > 0)
         {
@@ -976,7 +1005,7 @@ public class RunnersController(
             // the same thing. A key with no config row yet gets one here.
             var bounded = request.Under is not null || request.MaxRuns is not null || request.MaxSpend is not null
                 || request.MaxTokens is not null || request.MaxTokensPerHour is not null || request.UntilAt is not null
-                || request.Tags is not null;
+                || request.Tags is not null || request.StatusMode is not null;
 
             if (bounded)
             {
@@ -991,6 +1020,11 @@ public class RunnersController(
                 if (request.MaxTokensPerHour is not null) { config.MaxTokensPerHour = maxTokensPerHour; if (beatRow is not null) beatRow.MaxTokensPerHour = maxTokensPerHour; }
                 if (request.UntilAt is not null) { config.UntilAt = untilAt; if (beatRow is not null) beatRow.UntilAt = untilAt; }
                 if (request.Tags is not null) { config.Tags = RunnerTagColumn.Write(normalisedTags); if (beatRow is not null) beatRow.Tags = beatTags; }
+                if (request.StatusMode is not null)
+                {
+                    config.StatusMode = normalisedStatusMode;
+                    config.StatusIds = RunnerStatusIdsColumn.Write(normalisedStatusIds);
+                }
 
                 config.UpdatedAt = now;
             }
@@ -1013,7 +1047,7 @@ public class RunnersController(
         return await ProjectAsync(
             new Runner(aggregate.Key, config ?? aggregate.Config, beatRow, aggregate.Sessions),
             await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, keys, now, ct),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await LocalModelsAsync(ct), now, ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -1140,7 +1174,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await LocalModelsAsync(ct), now, ct);
+        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
         return new RunnerMintedDto(dto, rotated.Secret);
     }
 
@@ -1559,7 +1593,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await LocalModelsAsync(ct), now, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
     }
 
     // ---- The one narrowing ----

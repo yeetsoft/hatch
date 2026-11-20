@@ -384,6 +384,8 @@ public class HatchContext : DbContext, IModuleContext
             // migrated row carries.
             e.Property(c => c.Tags).HasColumnType("jsonb").HasDefaultValue("[]");
             e.Property(c => c.RefusedModels).HasColumnType("jsonb").HasDefaultValue("[]");
+            e.Property(c => c.StatusMode).HasDefaultValue("all");
+            e.Property(c => c.StatusIds).HasColumnType("jsonb").HasDefaultValue("[]");
             // The same scale EfHatchRunner.MaxSpend has.
             e.Property(c => c.MaxSpend).HasPrecision(18, 2);
         });

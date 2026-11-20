@@ -4574,6 +4574,120 @@ public class RunnersControllerTests
         Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
     }
 
+    // ---- The column rule ----
+
+    [Fact]
+    public async Task Patch_WithOnlyModeAndTwoIds_AnswersThemAndAGetAgrees()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+        var doing = h.Db.Statuses.Add(new EfHatchStatus { Name = "doing", SortOrder = 20 }).Entity;
+        var review = h.Db.Statuses.Add(new EfHatchStatus { Name = "review", SortOrder = 30 }).Entity;
+        await h.Db.SaveChangesAsync();
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(StatusMode: "only", StatusIds: [doing.Id, review.Id]));
+
+        Assert.Equal("only", patched.StatusMode);
+        Assert.Equal([doing.Id, review.Id], patched.StatusIds);
+        Assert.Equivalent(await h.GetAsync(Runner), patched);
+    }
+
+    [Fact]
+    public async Task Patch_WithAllModeAndANonEmptyList_AnswersAllAndAnEmptyList()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(StatusMode: "all", StatusIds: [999]));
+
+        Assert.Equal("all", patched.StatusMode);
+        Assert.Empty(patched.StatusIds);
+    }
+
+    [Fact]
+    public async Task Patch_WithOnlyOneOfModeOrIds_Is400()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+
+        var modeOnly = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(StatusMode: "all"), default);
+        Assert.IsType<BadRequestObjectResult>(modeOnly.Result);
+        Assert.Contains("mode and a list together", Reason(modeOnly.Result), StringComparison.Ordinal);
+
+        var idsOnly = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(StatusIds: [1]), default);
+        Assert.IsType<BadRequestObjectResult>(idsOnly.Result);
+        Assert.Contains("mode and a list together", Reason(idsOnly.Result), StringComparison.Ordinal);
+
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_WithAnUnknownModeOrAnUnknownId_Is400NamingWhatWasWrong()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+
+        var badMode = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(StatusMode: "sometimes", StatusIds: [1]), default);
+        Assert.IsType<BadRequestObjectResult>(badMode.Result);
+        Assert.Contains("sometimes", Reason(badMode.Result), StringComparison.Ordinal);
+
+        var badId = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(StatusMode: "except", StatusIds: [999]), default);
+        Assert.IsType<BadRequestObjectResult>(badId.Result);
+        Assert.Contains("999", Reason(badId.Result), StringComparison.Ordinal);
+
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_ColumnRule_ByAViewerOrAKey_Is403()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var byViewer = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(StatusMode: "all", StatusIds: []), default);
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)byViewer.Result!).StatusCode);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+
+        var hKey = await NewAsync(program: true, wall: true);
+        await hKey.AddKeyAsync(Runner);
+        var byKey = await hKey.Runners.PatchRunner(Runner, new RunnerPatchRequest(StatusMode: "all", StatusIds: []), default);
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)byKey.Result!).StatusCode);
+        Assert.Empty(await hKey.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_WithNoKey_RefusesTheColumnRuleFields_ButOtherFieldsStillSave()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(StatusMode: "all", StatusIds: []), default);
+        Assert.IsType<BadRequestObjectResult>(refusal.Result);
+        Assert.Contains("no key", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "2"));
+        Assert.Equal(2, patched.MaxRuns);
+    }
+
+    [Fact]
+    public async Task Get_AfterAColumnIsDeleted_DropsItsIdFromStatusIds()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+        var doing = h.Db.Statuses.Add(new EfHatchStatus { Name = "doing", SortOrder = 20 }).Entity;
+        await h.Db.SaveChangesAsync();
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(StatusMode: "only", StatusIds: [doing.Id]));
+
+        h.Db.Statuses.Remove(doing);
+        await h.Db.SaveChangesAsync();
+
+        var dto = await h.GetAsync(Runner);
+        Assert.Empty(dto!.StatusIds);
+    }
+
     // ---- Refused models ----
 
     [Fact]

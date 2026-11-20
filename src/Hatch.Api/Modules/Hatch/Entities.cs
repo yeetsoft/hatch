@@ -4397,6 +4397,26 @@ public class EfHatchRunnerConfig
     /// </summary>
     public string RefusedModels { get; set; } = "[]";
 
+    /// <summary>
+    /// Which half of <see cref="StatusIds"/> this runner's column rule reads as
+    /// - <see cref="Hatch.Contracts.RunnerStatusMode.All"/>, <c>Except</c> or
+    /// <c>Only</c>, normalised by <see cref="Hatch.Contracts.RunnerStatusMode.Normalise"/>
+    /// before it ever reaches this column. Defaults to <c>all</c>, the same
+    /// unbounded rule a runner with no rule at all works today. Empty on a
+    /// keyless beat row: the rule lives on the key's own config row, never the
+    /// legacy one.
+    /// </summary>
+    public string StatusMode { get; set; } = "all";
+
+    /// <summary>
+    /// The column ids <see cref="StatusMode"/> reads against, as a jsonb array
+    /// of ints written through <see cref="RunnerStatusIdsColumn"/>. Empty, not
+    /// null, the same way <see cref="Tags"/> is - and meaningless while
+    /// <see cref="StatusMode"/> is <c>all</c>, which keeps it <c>[]</c>
+    /// regardless of what was sent.
+    /// </summary>
+    public string StatusIds { get; set; } = "[]";
+
     /// <summary>The epic to stay inside, or null for the whole board, as <see cref="EfHatchRunner.Under"/>.</summary>
     [MaxLength(EfHatchRunner.MaxUnderLength)]
     public string? Under { get; set; }
