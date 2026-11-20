@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -142,10 +143,15 @@ public static class Ballot
             if (!q.LookBack) return new BallotQuestionDto(q, holds[id]);
 
             var (status, closedAt, merged, landings) = standing[id];
+            var programAnswer = q.Answers.FirstOrDefault(a => a.AuthorKind == ActorKind.Key);
+            var wentAheadOn = programAnswer is not null
+                ? Questions.FirstLine(programAnswer.Body)
+                : q.Options?.FirstOrDefault(o => o.Recommended)?.Label;
+
             return new BallotQuestionDto(
                 q,
                 holds[id],
-                q.Options?.FirstOrDefault(o => o.Recommended)?.Label,
+                wentAheadOn,
                 status,
                 closedAt,
                 merged,

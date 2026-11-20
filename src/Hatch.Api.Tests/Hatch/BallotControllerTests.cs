@@ -1,4 +1,5 @@
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -383,6 +384,22 @@ public class BallotControllerTests
     }
 
     [Fact]
+    public async Task AKeyOnlyAnsweredQuestion_IsALookBackWithWentAheadOnTheAnswersFirstLine()
+    {
+        var h = await NewAsync();
+        var task = await h.FileAsync("task", "open one");
+        var question = await h.AskAsync(
+            task, "which route?", level: QuestionLevels.BuildName,
+            options: [new QuestionOptionDto("keep"), new QuestionOptionDto("drop", Recommended: true)]);
+        await h.AnswerAsync(task, question, "Drop it.\n\nMore detail follows.", ActorKind.Key);
+
+        var entry = Assert.Single(Value(await h.Ballot.GetBallot(null, default)).Questions);
+
+        Assert.True(entry.Question.LookBack);
+        Assert.Equal("Drop it.", entry.WentAheadOn);
+    }
+
+    [Fact]
     public async Task ProjectId_NarrowsTheOrderedListAsItNarrowsTheRoots()
     {
         var h = await NewAsync();
@@ -465,15 +482,16 @@ public class BallotControllerTests
             return comment;
         }
 
-        public async Task AnswerAsync(EfHatchIssue issue, EfHatchComment question, string body)
+        public async Task AnswerAsync(EfHatchIssue issue, EfHatchComment question, string body, string? authorKind = null)
         {
             Db.Comments.Add(new EfHatchComment
             {
                 IssueId = issue.Id,
-                Author = "operator",
+                Author = authorKind == ActorKind.Key ? "hatch-loop" : "operator",
                 Body = body,
                 Kind = EfHatchComment.Answer,
                 AnswersId = question.Id,
+                AuthorKind = authorKind,
                 CreatedAt = Now,
             });
 

@@ -124,6 +124,74 @@ public class QuestionOverturnTests
         Assert.Equal(before, await h.CountsAsync());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AKeyOnlyAnswer_IsOverturned_AtBuildOnAnOpenIssueOrAtMergeOnAClosedOne(bool closed)
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", closed ? h.Done : h.Agents, closedAt: closed ? Now : null);
+        var question = await h.AskAsync(story, closed ? QuestionLevels.MergeName : QuestionLevels.BuildName);
+        await h.AnswerAsync(question, ActorKind.Key, "Went with the first store anyway.\n\nMore detail follows.");
+
+        var result = Assert.IsType<OkObjectResult>((await h.Overturn(story, question, "Use the other store")).Result);
+        var overturn = Assert.IsType<QuestionOverturnDto>(result.Value);
+
+        var task = await h.Db.Issues.SingleAsync(i => i.FiledFromId == story.Id);
+        Assert.Equal(overturn.TaskKey, $"AER-{task.Number}");
+        Assert.Contains("The loop decided: Went with the first store anyway.", task.Description);
+        Assert.Contains("Use the other store", task.Description);
+
+        var answers = overturn.Question.Answers;
+        Assert.Equal(2, answers.Count);
+        Assert.Contains(answers, a => a.Body == "Use the other store");
+    }
+
+    [Fact]
+    public async Task APersonsAnswer_IsRefusedEvenAlongsideAKeysAnswer()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", h.Done, closedAt: Now);
+        var question = await h.AskAsync(story, QuestionLevels.MergeName);
+        await h.AnswerAsync(question, ActorKind.Key, "Keep the first store");
+        await h.AnswerAsync(question, ActorKind.Person, "Keep the first store");
+        var before = await h.CountsAsync();
+
+        Assert.IsType<BadRequestObjectResult>((await h.Overturn(story, question, "No")).Result);
+        Assert.Equal(before, await h.CountsAsync());
+    }
+
+    [Fact]
+    public async Task AKeyOnlyAnswer_AtHold_IsRefused()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", h.Agents);
+        var question = await h.AskAsync(story, QuestionLevels.HoldName);
+        await h.AnswerAsync(question, ActorKind.Key, "Keep the first store");
+        var before = await h.CountsAsync();
+
+        Assert.IsType<BadRequestObjectResult>((await h.Overturn(story, question, "No")).Result);
+        Assert.Equal(before, await h.CountsAsync());
+    }
+
+    [Fact]
+    public async Task Keep_AsAPersonsAnswerThroughTheCommentsRoute_LandsBesideTheProgramsAndClearsTheBallot()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", h.Agents);
+        var question = await h.AskAsync(story, QuestionLevels.BuildName);
+        await h.AnswerAsync(question, ActorKind.Key, "Keep the first store");
+
+        var before = Assert.Single((await h.Ballot.GetBallot(null, default)).Value!.Questions);
+        Assert.True(before.Question.LookBack);
+
+        var request = new CommentCreateRequest("Keep the first store", EfHatchComment.Answer, question.Id);
+        var result = Assert.IsType<CommentDto>((await h.Thread.AddComment($"AER-{story.Number}", request, default)).Value);
+        Assert.Equal("Keep the first store", result.Body);
+
+        Assert.Empty((await h.Ballot.GetBallot(null, default)).Value!.Questions);
+    }
+
     [Fact]
     public async Task AnUnknownIssueOrKey_IsNotFound()
     {
@@ -140,6 +208,7 @@ public class QuestionOverturnTests
         public required HatchContext Db { get; init; }
         public required QuestionOverturnController Controller { get; init; }
         public required BallotController Ballot { get; init; }
+        public required IssueThreadController Thread { get; init; }
         public required WorkControllerTests.StubCallerIdentity Caller { get; init; }
         public required int ProjectId { get; init; }
         public required int Inbox { get; init; }
@@ -175,12 +244,12 @@ public class QuestionOverturnTests
             return question;
         }
 
-        public async Task AnswerAsync(EfHatchComment question)
+        public async Task AnswerAsync(EfHatchComment question, string? authorKind = null, string body = "Yes")
         {
             Db.Comments.Add(new EfHatchComment
             {
-                IssueId = question.IssueId, Author = "person", Body = "Yes", Kind = EfHatchComment.Answer,
-                AnswersId = question.Id, CreatedAt = Now.AddHours(1),
+                IssueId = question.IssueId, Author = authorKind == ActorKind.Key ? "hatch-loop" : "person", Body = body,
+                Kind = EfHatchComment.Answer, AnswersId = question.Id, AuthorKind = authorKind, CreatedAt = Now.AddHours(1),
             });
             await Db.SaveChangesAsync();
         }
@@ -210,6 +279,7 @@ public class QuestionOverturnTests
             Db = db,
             Controller = new QuestionOverturnController(db, new RankService(db), caller, new FakeTimeProvider(Now)),
             Ballot = new BallotController(db),
+            Thread = new IssueThreadController(db, caller, new FakeTimeProvider(Now)),
             Caller = caller,
             ProjectId = project.Id, Inbox = inbox.Id, Agents = agents.Id, Done = done.Id,
         };

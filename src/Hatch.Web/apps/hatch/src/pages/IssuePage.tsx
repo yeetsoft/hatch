@@ -2095,7 +2095,7 @@ function Description({ issue, onSave }: { issue: Issue; onSave: (description: st
   );
 }
 
-function Comments({
+export function Comments({
   issueKey,
   comments,
   answered,
@@ -2155,6 +2155,7 @@ function Comments({
           <li key={comment.id} className={`hatch-comment${comment.kind ? ` hatch-comment-${comment.kind}` : ''}`}>
             <div className="hatch-comment-head">
               <strong>{comment.author}</strong>
+              {comment.authorKind === 'key' && <Badge>a session</Badge>}
               {/* The thread still shows everything, newest first -
                   the card above is for acting, this is for reading back what
                   was decided and when. */}

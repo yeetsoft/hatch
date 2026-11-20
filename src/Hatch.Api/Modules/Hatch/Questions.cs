@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -29,13 +30,55 @@ public static class Questions
             .Where(c => c.Kind == EfHatchComment.Question)
             .Where(c => !db.Comments.Any(a => a.AnswersId == c.Id));
 
-    /// Every unanswered question outside a terminal column, and every unanswered <c>merge</c> question wherever its issue stands - the one a person is actually still owed.
+    /// Every unanswered question outside a terminal column, every unanswered <c>merge</c> question wherever its issue stands, and every <c>build</c> or <c>merge</c> question a key alone has answered - the one a person is actually still owed.
     public static IQueryable<EfHatchComment> Waiting(HatchContext db) =>
-        Open(db).Where(c => !c.Issue!.Status!.IsTerminal || c.Level == QuestionLevels.MergeName);
+        Open(db).Where(c => !c.Issue!.Status!.IsTerminal || c.Level == QuestionLevels.MergeName)
+            .Union(ProgramAnswered(db));
 
     /// Every unanswered question outside a terminal column - what can still hold work, so a merge question awaiting its look back on a closed issue is not here.
     public static IQueryable<EfHatchComment> Holding(HatchContext db) =>
         Open(db).Where(c => !c.Issue!.Status!.IsTerminal);
+
+    /// <summary>
+    /// Every <c>build</c> or <c>merge</c> question with at least one answer, none of them a
+    /// person's - the loop decided alone, on an open or a closed issue, and nobody has looked
+    /// back on it yet. A null <see cref="EfHatchComment.AuthorKind"/> counts as a person's, so a
+    /// row answered before the column existed stays answered rather than reopening as a look
+    /// back.
+    /// </summary>
+    private static IQueryable<EfHatchComment> ProgramAnswered(HatchContext db) =>
+        db.Comments.AsNoTracking()
+            .Where(c => c.Kind == EfHatchComment.Question)
+            .Where(c => c.Level == QuestionLevels.BuildName || c.Level == QuestionLevels.MergeName)
+            .Where(c => db.Comments.Any(a => a.AnswersId == c.Id))
+            .Where(c => !db.Comments.Any(a => a.AnswersId == c.Id && a.AuthorKind != ActorKind.Key));
+
+    /// <summary>
+    /// Whether a question is a look back: the work already went ahead on it, and what is left
+    /// is to keep or overturn it after the fact. <see cref="ProjectAsync"/> and
+    /// <see cref="QuestionOverturnController"/> both read this, so neither can decide a question
+    /// is a look back the other does not.
+    /// </summary>
+    /// <remarks>
+    /// True at <c>build</c> or <c>merge</c> when every answer given is a key's and there is at
+    /// least one, whatever column the issue stands in - the loop decided and only a program
+    /// spoke on it. Also true, as before, at <c>merge</c> with no answers once the issue has
+    /// reached a terminal column - the work went ahead on the recommendation with nobody
+    /// answering at all.
+    /// </remarks>
+    public static bool IsLookBack(string? level, bool issueIsTerminal, IReadOnlyList<string?> answerAuthorKinds)
+    {
+        var normalised = QuestionLevels.Normalise(level);
+        if (normalised == QuestionLevels.HoldName) return false;
+
+        if (answerAuthorKinds.Count > 0) return answerAuthorKinds.All(k => k == ActorKind.Key);
+
+        return normalised == QuestionLevels.MergeName && issueIsTerminal;
+    }
+
+    /// <summary>The first non-blank line of a comment body, trimmed. Empty where the body is all blank.</summary>
+    public static string FirstLine(string body) =>
+        body.Split('\n').Select(l => l.TrimEnd('\r').Trim()).FirstOrDefault(l => l.Length > 0) ?? "";
 
     /// <summary>How many questions each issue is waiting on. Issues waiting on none are absent rather than zero.</summary>
     public static async Task<Dictionary<long, int>> WaitingCountsAsync(HatchContext db, CancellationToken ct) =>
@@ -196,9 +239,9 @@ public static class Questions
             byQuestion.TryGetValue(r.Id, out var found) ? found : [],
             r.IssueIsTerminal,
             QuestionLevels.Normalise(r.Level),
-            LookBack: r.IssueIsTerminal
-                && QuestionLevels.Normalise(r.Level) == QuestionLevels.MergeName
-                && !byQuestion.ContainsKey(r.Id),
+            LookBack: IsLookBack(
+                r.Level, r.IssueIsTerminal,
+                byQuestion.TryGetValue(r.Id, out var ownAnswers) ? ownAnswers.Select(a => a.AuthorKind).ToList() : []),
             AmbitionKey: ambitionIds[r.IssueId] is { } ambitionId ? ambitionKeys.GetValueOrDefault(ambitionId) : null)).ToList();
     }
 }

@@ -571,25 +571,27 @@ writes a `question_level_changed` event, payload `{ questionId, from, to }`, wit
 person as actor.
 
 `POST /issues/{key}/questions/{id}/overturn` takes a `QuestionOverturnRequest`, one `Answer`:
-an option's label, or a sentence in prose. It is for a look back - an unanswered `merge`
-question whose issue has reached a terminal column - and answers with a
-`QuestionOverturnDto`: `Question`, that question's `QuestionDto` now answered, and
-`TaskKey`, the key of the task filed. Whoever may answer may overturn, so a key may, as it
-may post a comment. In one save it writes the answer as a comment of kind `answer` under
-the caller's name, with the body as sent, and an `answered` event as any answer writes,
-and files one task. The task is filed from the issue (`filedFromKey`) and hangs under it;
-where the issue is a task and cannot take one, it hangs under the nearest ancestor that
-can, and under nothing where none can. It lands where a filing lands: the leftmost column
-for a person, the agents' column for a key. Its title is `Bring {key} in line with the
-answer`. Its description says what was decided (the recommended option's label), what the
-person decided instead, who overturned it and when, that the work is to be brought in line
-with the answer, and names the issue key and question id, with the question's body
-quoted. Keeping the recommendation needs no route of its own: the page answers with the
-recommended label through `POST /issues/{key}/comments`, as for any option. It `400`s
-with a sentence for an empty or over-length answer, for a comment that is not a question
-on that issue, for a question already answered, for a question not asked at `merge`, and
-for one whose issue has not reached a terminal column; nothing is written. An unknown key
-is a `404`.
+an option's label, or a sentence in prose. It is for a look back, accepted in either of two
+cases: an unanswered `merge` question whose issue has reached a terminal column, or a
+`build` or `merge` question every one of whose answers is a key's - whatever column its
+issue stands in, open or closed. It answers with a `QuestionOverturnDto`: `Question`, that
+question's `QuestionDto` now answered, and `TaskKey`, the key of the task filed. Whoever may
+answer may overturn, so a key may, as it may post a comment. In one save it writes the
+answer as a comment of kind `answer` under the caller's name, with the body as sent, and an
+`answered` event as any answer writes, and files one task. The task is filed from the issue
+(`filedFromKey`) and hangs under it; where the issue is a task and cannot take one, it hangs
+under the nearest ancestor that can, and under nothing where none can. It lands where a
+filing lands: the leftmost column for a person, the agents' column for a key. Its title is
+`Bring {key} in line with the answer`. Its description says what was decided - a session's
+own answer where one answered, else the recommended option's label - what the person
+decided instead, who overturned it and when, that the work is to be brought in line with
+the answer, and names the issue key and question id, with the question's body quoted.
+Keeping the decision needs no route of its own: the page answers with it through
+`POST /issues/{key}/comments`, as for any option. It `400`s with a sentence for an empty or
+over-length answer, for a comment that is not a question on that issue, for a question a
+person has answered, for a question a key answered at `hold`, for a question not asked at
+`merge` with no answers at all, and for one whose issue has not reached a terminal column
+with no answers at all; nothing is written. An unknown key is a `404`.
 
 `POST /issues/{key}/questions/{id}/promote` takes a `QuestionPromoteRequest`, one
 optional `Principle`, and answers with a `QuestionPromoteDto`: `AmbitionKey`, the key of
