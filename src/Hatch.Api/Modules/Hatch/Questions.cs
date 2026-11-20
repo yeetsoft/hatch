@@ -99,6 +99,7 @@ public static class Questions
                 c.Body,
                 c.Author,
                 c.Options,
+                c.Level,
                 c.CreatedAt,
                 IssueProjectKey = c.Issue!.Project!.Key,
                 IssueNumber = c.Issue!.Number,
@@ -131,6 +132,7 @@ public static class Questions
             r.CreatedAt,
             ReadOptions(r.Options),
             byQuestion.TryGetValue(r.Id, out var found) ? found : [],
-            r.IssueIsTerminal)).ToList();
+            r.IssueIsTerminal,
+            QuestionLevels.Normalise(r.Level))).ToList();
     }
 }

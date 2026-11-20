@@ -1033,7 +1033,9 @@ decisions](questions-and-decisions) has what happens to the ticket from there.
 
 It prints `asked question #<n> on <key> as <author>`, then says the ticket will
 not be dispatched again until it is answered, with the `hatch answer` line to
-do it and the ticket's URL.
+do it and the ticket's URL. Its last line is the question's level. `ask` takes
+no level of its own, so it reads `level: hold`, with a sentence saying nothing
+is dispatched on the ticket until a person answers.
 
 ### questions
 
@@ -1041,7 +1043,8 @@ do it and the ticket's URL.
 hatch questions [AER-12]
 ```
 
-Everything waiting on an answer, or just that ticket's. Reads only.
+Everything waiting on an answer, or just that ticket's. Each question shows its
+level beside who asked it: `asked by <name>, <time> - level hold`. Reads only.
 
 ### answer
 

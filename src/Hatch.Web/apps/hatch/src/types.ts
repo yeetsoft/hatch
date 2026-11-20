@@ -996,7 +996,15 @@ export interface Comment {
   /** The runner that was holding the issue then, or whoever called where
       nothing was. Null while undelivered. */
   deliveredTo: string | null;
+  /** How far work may go before this question is answered. Null on anything
+      that is not a question. */
+  level: QuestionLevel | null;
 }
+
+/** How far work may go on an issue before one of its questions is answered:
+    `hold` nothing moves, `build` it is built and stands in review, `merge` it
+    merges. Strictest first. */
+export type QuestionLevel = "hold" | "build" | "merge";
 
 /** A question with whatever has been said back to it. Empty `answers` is what
     "open" means - there is no second flag saying so. See QuestionDto. */
@@ -1009,6 +1017,9 @@ export interface Question {
   askedAt: string;
   options: QuestionOption[] | null;
   answers: Comment[];
+  /** How far work may go before this is answered. `hold` unless a person said
+      otherwise; never null. */
+  level: QuestionLevel;
 }
 
 /** One issue on the ballot: a container for the issues below it that have a

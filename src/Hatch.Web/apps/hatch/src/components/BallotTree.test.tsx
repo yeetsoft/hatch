@@ -24,6 +24,7 @@ const question = (over: Partial<Question> = {}): Question => ({
   askedAt,
   options: null,
   answers: [],
+  level: 'hold',
   ...over,
 });
 

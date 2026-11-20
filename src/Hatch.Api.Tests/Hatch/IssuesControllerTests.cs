@@ -2739,6 +2739,61 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task AQuestion_ReadsHoldFromEveryReader_AndANoteReadsNull()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        await h.AskAsync("AER-1", "per-node or global?");
+        Created(await h.Thread.AddComment("AER-1", new CommentCreateRequest("just a note"), default));
+
+        Assert.Equal("hold", Assert.Single(Value(await h.Questions.GetQuestions(open: true, default))).Level);
+        Assert.Equal("hold", Assert.Single(Value(await h.Questions.GetIssueQuestions("AER-1", open: true, default))).Level);
+
+        var thread = Value(await h.Thread.GetComments("AER-1", default));
+        Assert.Equal("hold", thread.Single(c => c.Kind == EfHatchComment.Question).Level);
+        Assert.Null(thread.Single(c => c.Kind == EfHatchComment.Note).Level);
+    }
+
+    [Fact]
+    public async Task AQuestionWithALevelInTheColumn_ReadsItFromEveryReader()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+        var asked = await h.AskAsync("AER-1", "per-node or global?");
+
+        var row = await h.Db.Comments.SingleAsync(c => c.Id == asked.Id);
+        row.Level = QuestionLevels.BuildName;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("build", Assert.Single(Value(await h.Questions.GetQuestions(open: true, default))).Level);
+        Assert.Equal("build", Assert.Single(Value(await h.Questions.GetIssueQuestions("AER-1", open: true, default))).Level);
+        Assert.Equal("build", Value(await h.Thread.GetComments("AER-1", default)).Single().Level);
+    }
+
+    [Fact]
+    public async Task ACommentCarryingALevel_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        var result = await h.Thread.AddComment(
+            "AER-1", new CommentCreateRequest("per-node or global?", EfHatchComment.Question, Level: "merge"), default);
+
+        var refused = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Contains("set by a person", Assert.IsType<string>(refused.Value));
+        Assert.Empty(h.Db.Comments);
+    }
+
+    [Fact]
+    public async Task AskingAQuestion_ReturnsItAtHold()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the thing");
+
+        Assert.Equal("hold", (await h.AskAsync("AER-1", "per-node or global?")).Level);
+    }
+
+    [Fact]
     public async Task AnAnswer_ClosesTheQuestionItNames()
     {
         var h = await NewAsync();

@@ -10,11 +10,11 @@ public sealed class QuestionCommandsTests
 
     private static QuestionDto AQuestion(
         long id = 1, string key = "AER-12", string body = "Which way?",
-        IReadOnlyList<QuestionOptionDto>? options = null) =>
-        new(id, key, "A ticket", body, "hatch", DateTimeOffset.UnixEpoch, options, []);
+        IReadOnlyList<QuestionOptionDto>? options = null, string level = "hold") =>
+        new(id, key, "A ticket", body, "hatch", DateTimeOffset.UnixEpoch, options, [], Level: level);
 
     private static CommentDto Asked(long id = 5, IReadOnlyList<QuestionOptionDto>? options = null) =>
-        new(id, "hatch", "Which way?", "question", null, options, DateTimeOffset.UnixEpoch);
+        new(id, "hatch", "Which way?", "question", null, options, DateTimeOffset.UnixEpoch, Level: "hold");
 
     // ---- ask ----
 
@@ -102,6 +102,18 @@ public sealed class QuestionCommandsTests
     }
 
     [Fact]
+    public async Task Ask_closes_with_the_level_the_question_was_given()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("POST", Comments, Asked());
+
+        await new QuestionCommands(h.Cli).AskAsync(["AER-12", "Which way?"], default);
+
+        Assert.Contains("level: hold - nothing is dispatched on AER-12 until a person answers", h.Said);
+        Assert.EndsWith("level: hold - nothing is dispatched on AER-12 until a person answers", h.Said.TrimEnd());
+    }
+
+    [Fact]
     public async Task Two_questions_in_one_call_is_refused_because_a_question_is_a_row()
     {
         using var h = new CliHarness();
@@ -151,6 +163,18 @@ public sealed class QuestionCommandsTests
         await new QuestionCommands(h.Cli).QuestionsAsync([], default);
         Assert.Equal("hatch: nothing is waiting on an answer", h.Said);
         Assert.Equal(1, h.Wire.Count("GET", "/api/questions"));
+    }
+
+    [Fact]
+    public async Task Each_question_names_its_level_beside_who_asked_it()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/questions", new[] { AQuestion(level: "build") });
+
+        await new QuestionCommands(h.Cli).QuestionsAsync([], default);
+
+        Assert.Contains("asked by hatch, ", h.Said);
+        Assert.Contains(" - level build", h.Said);
     }
 
     [Fact]

@@ -515,14 +515,18 @@ question is on never does), `Children` (more `BallotNodeDto`) and `Questions`
 
 `CommentDto` is `Id`, `Author`, `Body`, `Kind` (`""`, `question`, `answer` or
 `message`), an optional `AnswersId`, an optional `Options`, `CreatedAt`, an
-optional `DeliveredAt`, an optional `DeliveredTo`. `CommentCreateRequest` is
-`Body`, an optional `Kind` (omitted means an ordinary note), an optional
-`AnswersId`, an optional `Options`. `QuestionOptionDto` is `Label`, an
+optional `DeliveredAt`, an optional `DeliveredTo`, and a `Level` that is set on
+a question (`hold`, `build` or `merge`) and null on everything else.
+`CommentCreateRequest` is `Body`, an optional `Kind` (omitted means an ordinary
+note), an optional `AnswersId`, an optional `Options`, and a `Level` that it
+only carries so it can be refused: a comment sent with one is a `400`, since a
+level is set by a person after the question is asked. `QuestionOptionDto` is `Label`, an
 optional `Detail`, `Recommended` - at most eight options per question, at
 most one recommended, labels unique case-insensitively. `QuestionDto` is
 `Id`, `IssueKey`, `IssueTitle`, `Body`, `AskedBy`, `AskedAt`, an optional
 `Options`, `Answers` (oldest first - an empty list is what "open" means, no
-second flag), `Obviated`. `IssueEventDto` is `Id`, `Actor`, `Kind`, an
+second flag), `Obviated`, `Level` (never null: `hold` unless a person said
+otherwise). `IssueEventDto` is `Id`, `Actor`, `Kind`, an
 optional `Payload`, `At`. `MessageDeliverRequest` is an optional `Ids` - exact
 ids, or null for every unread one; ids that are not unread messages on the
 issue are ignored rather than refused.

@@ -61,6 +61,23 @@ on you (n)*, though the question stays open on the record.
 The board asks too. A check that fails twice in a row posts a question in prose
 and holds the ticket, and that one blocks exactly as an agent's does.
 
+## The three levels
+
+Every question carries a level saying how far work may go before it is answered.
+`GET /api/questions`, `GET /api/issues/{key}/questions` and the ticket's comments
+all read it, and `hatch questions` shows it beside who asked.
+
+- `hold` - nothing moves. This is every question's default, and what a question
+  asked before levels existed reads as.
+- `build` - work is dispatched and built and stands in review, but is not
+  merged.
+- `merge` - the work merges, and the answer is looked over after.
+
+Nothing sets a level yet, so every question reads `hold`, and the hold above is
+what the board does. Only a person will ever set one, never a key: asking with a
+level is refused, because a session cannot decide how far its own question lets
+it go.
+
 ## How the operator answers
 
 An unanswered question shows in four places:
