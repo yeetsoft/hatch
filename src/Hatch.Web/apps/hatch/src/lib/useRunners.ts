@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { getAllRunners, getRunners } from '../api/client';
 import type { Runner } from '../types';
 
-/** How often the page re-asks. Shorter than the nav battery's two minutes
+/** How often the page re-asks. Shorter than the nav battery's thirty seconds
     because this is a control surface somebody is watching while they press
-    something: a Pause that took two minutes to show as paused would read as a
-    button that did nothing. */
+    something: a Pause that took thirty seconds to show as paused would read
+    as a button that did nothing. */
 export const POLL_MS = 20 * 1000;
 
 export interface RunnersState {

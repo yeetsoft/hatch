@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { getUtilization } from '../api/client';
 import type { Utilization } from '../types';
 
-/** How often the page re-asks. Half the server's five-minute window, so what
-    the nav shows is never older than the window itself. */
-export const POLL_MS = 2 * 60 * 1000;
+/** How often the page re-asks. Matches the claim heartbeat's own interval,
+    which is the newest reading the server can ever be holding - polling
+    faster would just repeat a question the server has already answered.
+    A runner's own probe still runs on its own two-minute clock, so a reading
+    can still be older than the console even at this pace. */
+export const POLL_MS = 30 * 1000;
 
 export interface UtilizationState {
   /** Null both before the first answer and for the 204. The two are the same
@@ -26,10 +29,10 @@ export interface UtilizationState {
  * Three things move it:
  *
  * - The first load.
- * - A two-minute poll. The server no longer holds a reading for five minutes
- *   of its own - it holds whatever a runner's heartbeat last reported - so
- *   this is what notices a new one has arrived without anybody pressing
- *   anything.
+ * - A thirty-second poll. The server no longer holds a reading for five
+ *   minutes of its own - it holds whatever a runner's heartbeat last
+ *   reported - so this is what notices a new one has arrived without
+ *   anybody pressing anything.
  * - `visibilitychange`. A backgrounded tab's timers are throttled to the point
  *   of stopping, so a tab brought forward after an hour would otherwise show an
  *   hour-old number until the next tick. Focus is not enough on its own: a tab
