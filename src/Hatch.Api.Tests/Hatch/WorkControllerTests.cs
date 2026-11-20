@@ -2891,6 +2891,63 @@ public class WorkControllerTests
         Assert.Null(work.BuildPast);
     }
 
+    // ---- HA-2572: the ambition and its principles ----
+
+    [Fact]
+    public async Task Work_OnAStoryTwoLevelsUnderAnAmbition_CarriesItsKeyTitleAndPrinciples()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "Ship it right", h.InProgress);
+        ambition.Description = "A short summary.\n\n## Principles\n\n- per-node, not per-run\n- say why, not just what\n";
+        await h.Db.SaveChangesAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress, parentId: ambition.Id);
+        var story = await h.FileAsync("story", "under it", h.Todo, parentId: epic.Id);
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        Assert.Equal(Key(ambition), work.Ambition!.Key);
+        Assert.Equal("Ship it right", work.Ambition.Title);
+        Assert.Equal(["per-node, not per-run", "say why, not just what"], work.Ambition.Principles);
+    }
+
+    [Fact]
+    public async Task Work_WithNoAmbitionAnywhereAbove_GetsNoAmbition()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "stands on its own", h.Todo);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Ambition);
+    }
+
+    [Fact]
+    public async Task Work_OnAnAmbitionsOwnDispatch_GetsNoAmbition()
+    {
+        var h = await NewAsync();
+        h.Db.Playbooks.Add(Playbook(h.InProgress, h.InProgress, "ambition", "sonnet"));
+        await h.Db.SaveChangesAsync();
+        var ambition = await h.FileAsync("ambition", "the ambition itself", h.InProgress);
+        ambition.Description = "## Principles\n\n- not its own ambition\n";
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null(Value(await h.Work.GetWork(Key(ambition), null, default)).Ambition);
+    }
+
+    [Fact]
+    public async Task Work_OnAnAmbitionWithNoPrinciplesHeading_StillGetsKeyAndTitle_WithAnEmptyList()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "no principles yet", h.InProgress);
+        ambition.Description = "Just prose, no heading of that name.";
+        await h.Db.SaveChangesAsync();
+        var story = await h.FileAsync("story", "under it", h.Todo, parentId: ambition.Id);
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        Assert.Equal(Key(ambition), work.Ambition!.Key);
+        Assert.Equal("no principles yet", work.Ambition.Title);
+        Assert.Empty(work.Ambition.Principles);
+    }
+
     [Fact]
     public async Task Work_CarriesTheUnreadMessagesAndNotTheOnesAlreadyDelivered()
     {
