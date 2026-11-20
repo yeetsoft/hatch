@@ -355,6 +355,7 @@ public class ScopeRouteMatrixTests
         ("IssueExpediteController.PutIssueExpedite", Lookup(t => Put($"/api/issues/{t.Key}/expedite", new { expedited = false }))),
         ("IssuePreApprovalController.PutIssuePreApproval", Lookup(t => Put($"/api/issues/{t.Key}/pre-approval", new { level = "none" }))),
         ("IssueLocalModelController.PutIssueLocalModel", Lookup(t => Put($"/api/issues/{t.Key}/local-model", new { level = "none" }))),
+        ("QuestionLevelController.PutQuestionLevel", Lookup(t => Put($"/api/issues/{t.Key}/questions/1/level", new { level = "hold" }))),
         ("IssueHumanWorkController.PutIssueHumanWork", Lookup(t => Put($"/api/issues/{t.Key}/human-work", new { value = "inherit" }))),
         ("IssuePreApprovalController.PutIssueExpress", Lookup(t => Put($"/api/issues/{t.Key}/express", new { express = false }))),
         ("IssueOnePrController.PutIssueOnePr", Lookup(t => Put($"/api/issues/{t.Key}/one-pr", new { value = "inherit" }))),
