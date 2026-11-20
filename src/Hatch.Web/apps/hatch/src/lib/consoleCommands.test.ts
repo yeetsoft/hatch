@@ -196,11 +196,11 @@ describe('commandRows', () => {
       'Go to Board',
       'Go to Search',
       'Go to Ballot',
+      'Go to Ambitions',
       'Go to Dreams',
       'Go to Plan',
       'Go to Reports',
       'Go to History',
-      'Go to Runners',
     ]);
   });
 
