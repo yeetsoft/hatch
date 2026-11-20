@@ -2876,6 +2876,13 @@ public record PreApprovalRequest(string Level);
 public record LocalModelRequest(string Level);
 
 /// <summary>
+/// The level to set on a question, by name - <c>"hold"</c>, <c>"build"</c> or
+/// <c>"merge"</c> - see <see cref="QuestionLevels"/>. One required string for
+/// the same reason <see cref="PreApprovalRequest"/> is.
+/// </summary>
+public record QuestionLevelRequest(string Level);
+
+/// <summary>
 /// The override to set, by name - <c>"human"</c>, <c>"agent"</c> or
 /// <c>"inherit"</c> - see <see cref="EfHatchIssue.HumanWork"/>.
 /// </summary>
