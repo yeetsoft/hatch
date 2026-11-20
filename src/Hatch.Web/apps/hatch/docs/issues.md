@@ -107,15 +107,21 @@ operator.
 An ambition's issue page has a Passes section, after Epics in flight, reading
 `GET /issues/{key}/passes` on the same tolerant terms as Capabilities: a
 failure is a sentence in the section, not the page's error. Every pass is an
-entry, newest first, headed by its work-log title (or the word Pass, where
-the row has none), its date and the sha it judged against. Each capability it
-judged is a line with the position, the state word and, where that word
-changed from the pass before, a mark saying so. A pass whose verdicts could
-not be recorded as data says that instead of a line; a verdict recorded with
-no pass around it — no work-log row at all — shows as its own entry, saying
-it was recorded outside a pass. Every entry's own comments follow, rendered
-the way the Comments section renders a body. The verdict lines sit in a grid
-on a desktop and stack one per line on a phone.
+entry, newest first. Each is read from one work-log row that ran from the
+implementation column and ended worked or with no outcome; its verdicts and
+comments are the ones timed between the row's start and end. An entry is
+headed by its work-log title (or the word Pass, where the row has none), its
+date and the sha it judged against. Each capability it judged is a line with
+the position, the state word and, where that word changed from the pass before,
+a mark saying so.
+
+A row from before the ambition had its type was an epic's pass, so its verdicts
+were never recorded as data. Its entry says "Verdicts not recorded as data"
+in place of the lines. A verdict timed inside no row's window is listed as its
+own entry, "Recorded outside a pass", dated at the verdict's own time. The page
+works that out when it reads, and nothing is stored for it. Every entry's own
+comments follow, rendered the way the Comments section renders a body. The
+verdict lines sit in a grid on a desktop and stack one per line on a phone.
 
 ## How a ticket reads
 
