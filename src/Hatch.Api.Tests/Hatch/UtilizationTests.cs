@@ -18,7 +18,7 @@ public class UtilizationTests
         new(UtilizationWindows.Weekly, "Weekly", percent, Now + untilReset);
 
     private static UtilizationReading Reading(params UtilizationLimit[] limits) =>
-        new(UtilizationStates.Ok, Now, limits);
+        new(UtilizationStates.Ok, Now, Now, limits);
 
     [Fact]
     public void ExactlyAtTheReserveBoundary_ReadsAhead()
@@ -167,5 +167,47 @@ public class UtilizationTests
         Assert.NotNull(economy.Fold);
         Assert.Null(low.Fold);
         Assert.NotNull(low.ClearNote);
+    }
+
+    // ---- Of, freshness judged on ReceivedAt rather than ReadAt (HA-2536) ----
+
+    private static readonly string Usage =
+        System.Text.Json.JsonSerializer.Serialize(new[] { new RunnerUsageWindowDto(UtilizationWindows.Session, "Session", 10, null) });
+
+    [Fact]
+    public void AReadingReportedAhead_ButReceivedNow_ReadsOk()
+    {
+        // The runner's own clock says ten minutes in the future; Hatch received it now.
+        var readings = new[] { (Usage, (DateTimeOffset?)Now.AddMinutes(10), (DateTimeOffset?)Now) };
+
+        var reading = Utilization.Of(readings, Now);
+
+        Assert.Equal(UtilizationStates.Ok, reading!.State);
+        Assert.Equal(Now, reading.ReceivedAt);
+    }
+
+    [Fact]
+    public void AnEarlierReadAtDoesNotBeatALaterReceivedAt()
+    {
+        // The first reading's own ReadAt is later, but it was received first;
+        // the second reading was received a minute after it, and wins.
+        var earlierReceived = (Usage, (DateTimeOffset?)Now.AddMinutes(5), (DateTimeOffset?)Now);
+        var laterReceived = (Usage, (DateTimeOffset?)Now.AddMinutes(1), (DateTimeOffset?)Now.AddMinutes(1));
+
+        var reading = Utilization.Of([earlierReceived, laterReceived], Now);
+
+        Assert.Equal(Now.AddMinutes(1), reading!.ReceivedAt);
+        Assert.Equal(Now.AddMinutes(1), reading.ReadAt);
+    }
+
+    [Fact]
+    public void ARowWithNoReceivedAt_FallsBackToItsOwnReadAt()
+    {
+        var readings = new[] { (Usage, (DateTimeOffset?)Now, (DateTimeOffset?)null) };
+
+        var reading = Utilization.Of(readings, Now);
+
+        Assert.Equal(UtilizationStates.Ok, reading!.State);
+        Assert.Equal(Now, reading.ReceivedAt);
     }
 }

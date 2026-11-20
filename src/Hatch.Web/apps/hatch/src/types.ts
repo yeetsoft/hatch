@@ -2189,12 +2189,18 @@ export interface UtilizationLimit {
 /** A reading of my own Claude headroom. Mirrors UtilizationReading. */
 export interface Utilization {
   /** `ok` read within the freshness window; `stale` outside it - still the
-      last thing this account is known to have reported, whose age `readAt`
-      gives. There is no third state: a reading is kept, not swept, and the
-      endpoint answers no content at all rather than a value where no runner
-      of mine has ever reported one. */
+      last thing this account is known to have reported, whose age
+      `receivedAt` gives. There is no third state: a reading is kept, not
+      swept, and the endpoint answers no content at all rather than a value
+      where no runner of mine has ever reported one. */
   state: string;
+  /** The runner's own word for when it read the account - its clock, which
+      can run ahead or behind Hatch's own. Freshness is judged on
+      `receivedAt`, not this. */
   readAt: string;
+  /** Hatch's own clock at the moment this reading last actually changed.
+      What `state` and a battery's age are judged on. */
+  receivedAt: string;
   /** In the order the runner reported them. Nothing here sorts or filters. */
   limits: UtilizationLimit[];
 }
