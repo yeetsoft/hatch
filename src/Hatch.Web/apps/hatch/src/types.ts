@@ -1057,6 +1057,40 @@ export interface Ballot {
   questions: BallotQuestion[];
 }
 
+/** One epic open beneath an ambition, as the Ambitions read draws it. */
+export interface AmbitionOpenEpic {
+  key: string;
+  projectKey: string;
+  title: string;
+  statusId: number;
+  statusName: string;
+  /** The positions of the ambition's capabilities this epic serves, ascending. */
+  serves: number[];
+  waitsOnPerson: boolean;
+  /** One line saying so, where `waitsOnPerson` is true. */
+  why: string | null;
+}
+
+/** One ambition and where it stands: its capabilities counted four ways, and
+    the epics open beneath it. The four counts add up to `capabilities`. */
+export interface AmbitionRow {
+  key: string;
+  projectKey: string;
+  title: string;
+  statusId: number;
+  statusName: string;
+  /** How many epics run at once, read as one where the ambition sets none. */
+  limit: number;
+  capabilities: number;
+  holds: number;
+  inFlight: number;
+  waitsOnPerson: number;
+  notStarted: number;
+  open: AmbitionOpenEpic[];
+  /** Some child is in a project the reader's scope does not hold. */
+  childBeyondScope: boolean;
+}
+
 /** A recorded landing: the repository, and the sha the work reached the trunk at. */
 export interface BallotLanding {
   canonical: string;

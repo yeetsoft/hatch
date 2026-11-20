@@ -17,6 +17,7 @@ import { PullToRefresh } from './components/PullToRefresh';
 import { ScopeControl } from './components/ScopeControl';
 import { DesignIndexPage, DesignPage } from './design/DesignPage';
 import { BoardPage } from './pages/BoardPage';
+import { AmbitionsPage } from './pages/AmbitionsPage';
 import { BallotPage } from './pages/BallotPage';
 import { PlanPage } from './pages/PlanPage';
 import { DreamsPage } from './pages/DreamsPage';
@@ -189,6 +190,7 @@ function AppShell() {
               <Route path="/" element={<BoardPage />} />
               <Route path="/ballot" element={<BallotPage />} />
               <Route path="/plan" element={<PlanPage />} />
+              <Route path="/ambitions" element={<AmbitionsPage />} />
               <Route path="/dreams" element={<DreamsPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/reports/timeline" element={<TimelinePage />} />
