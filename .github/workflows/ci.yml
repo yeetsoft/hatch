@@ -473,7 +473,10 @@ jobs:
   # hatch-runner-image or hatch-cli, because a slow Docker build is a
   # different risk from the C# around it.
   hatch-image-cli:
-    timeout-minutes: 14
+    # Raised from 14 to 20 alongside the step below (HA-2520), so that step's
+    # own timeout still fires first, with a clear message, instead of this
+    # job's own timeout cutting it off instead.
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -504,8 +507,14 @@ jobs:
       # With no --platform, the build reads the platform off the local
       # hatch-runner:ci - a local image has no registry manifest, so this
       # falls back to `docker image inspect`, which is linux/amd64 here.
+      # A step's ceiling is three times the slowest of the last thirty green trunk runs,
+      # or twice where three times would reach the job's own, so it can fire first (HA-2428).
+      # Raised from 10 to 14: playwright's apt --with-deps install has twice now run past
+      # 10 minutes on a slow mirror, and the slowest of the last thirty green runs was
+      # only 278s - three times that reached the job's own 14-minute ceiling, so the job's
+      # was raised too, to 20 (HA-2520).
       - name: hatch image build
-        timeout-minutes: 10
+        timeout-minutes: 14
         run: artifacts/hatch/linux-x64/hatch image build --base hatch-runner:ci --image hatch-image-cli:ci
 
       - name: hatch --help runs in the result
