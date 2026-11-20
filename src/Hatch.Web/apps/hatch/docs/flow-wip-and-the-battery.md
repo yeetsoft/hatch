@@ -153,8 +153,8 @@ used: green under 50%, yellow from 50% to 79%, red from 80%. The battery takes
 the worst window, the one with the highest percentage, and never the `extra`
 credit-line row. Opened, each window is two bars, spent and time gone; a dashed time bar
 means no reset is known, and a window that has already reset reads as not
-started. A reading is `ok` within five minutes of when it was read and `stale`
-after, still shown with its age; there is no other state. Refresh re-reads
+started. A reading is `ok` within five minutes of when Hatch received it and
+`stale` after, still shown with its age; there is no other state. Refresh re-reads
 Hatch's own row only. [Watching the loop](watching-the-loop#the-battery) has the
 panel itself.
 

@@ -1693,6 +1693,7 @@ public class RunnersController(
             ForPersonId = forPersonId,
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
+            UsageReceivedAt = Utilization.Serialise(request.Usage) is not null ? now : null,
         };
 
         Bound(row, request);
@@ -1842,6 +1843,9 @@ public class RunnersController(
         // reading alone - see the remark on RunnerHeartbeatRequest.Usage.
         if (Utilization.Serialise(request.Usage) is { } usage)
         {
+            // UsageReceivedAt only moves when the reading itself changed, so
+            // an idle beat resending the same reading does not look new.
+            if (row.UsageReadAt != request.UsageReadAt) row.UsageReceivedAt = now;
             row.Usage = usage;
             row.UsageReadAt = request.UsageReadAt;
         }
@@ -1905,6 +1909,7 @@ public class RunnersController(
             Pulling = kind == EfHatchRunner.LoopKind && request.Pulling == true,
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
+            UsageReceivedAt = Utilization.Serialise(request.Usage) is not null ? now : null,
             Models = models,
             Has = has,
             Image = Fits(request.Image, EfHatchRunner.MaxImageLength),
@@ -2026,6 +2031,9 @@ public class RunnersController(
 
         if (Utilization.Serialise(request.Usage) is { } usage)
         {
+            // UsageReceivedAt only moves when the reading itself changed, so
+            // an idle beat resending the same reading does not look new.
+            if (session.UsageReadAt != request.UsageReadAt) session.UsageReceivedAt = now;
             session.Usage = usage;
             session.UsageReadAt = request.UsageReadAt;
         }

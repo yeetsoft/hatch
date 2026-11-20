@@ -943,6 +943,27 @@ public class RunnersControllerTests
         Assert.Contains("63", row.Usage);
     }
 
+    /// <summary>
+    /// HA-2536: freshness is judged on Hatch's own clock at the moment a
+    /// reading actually changed, not the runner's word for when it read the
+    /// account - so a beat resending the identical reading must not move it.
+    /// </summary>
+    [Fact]
+    public async Task TwoBeatsCarryingTheIdenticalReading_LeaveUsageReceivedAtAtTheFirstBeat()
+    {
+        var h = await NewAsync();
+        var readAt = Now.AddMinutes(-1);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: [new RunnerUsageWindowDto("session", "Session", 63, null)], UsageReadAt: readAt));
+        var firstReceivedAt = (await h.RowAsync()).UsageReceivedAt;
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Usage: [new RunnerUsageWindowDto("session", "Session", 63, null)], UsageReadAt: readAt));
+
+        Assert.Equal(firstReceivedAt, (await h.RowAsync()).UsageReceivedAt);
+    }
+
     [Fact]
     public async Task APercentPast100_IsClamped()
     {

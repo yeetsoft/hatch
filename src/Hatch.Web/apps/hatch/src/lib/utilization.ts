@@ -13,7 +13,7 @@
      instant at all. Unknown is a third answer, not a zero - a ring drawn empty
      says "no time left", which is the opposite of "we do not know".
    - A reading can be older than the poll that fetched it. `state` is the whole
-     of that story and `readAt` is how old, so the wording never guesses at
+     of that story and `receivedAt` is how old, so the wording never guesses at
      staleness from a timestamp. */
 
 import type { Utilization, UtilizationLimit } from '../types';
@@ -312,5 +312,5 @@ export function batteryLabel(reading: Utilization | null, now: Date): string {
     worst && worst.window !== 'session' ? `, coloured by ${worst.label} at ${rowPercent(worst, now)}%` : '';
 
   const body = `${headline}${colouredBy}`;
-  return reading.state === 'stale' ? `${body} (${agePhrase(reading.readAt, now)})` : body;
+  return reading.state === 'stale' ? `${body} (${agePhrase(reading.receivedAt, now)})` : body;
 }

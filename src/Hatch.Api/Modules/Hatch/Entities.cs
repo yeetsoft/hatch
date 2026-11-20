@@ -4280,6 +4280,13 @@ public class EfHatchRunner
     public DateTimeOffset? UsageReadAt { get; set; }
 
     /// <summary>
+    /// Hatch's own clock at the moment <see cref="Usage"/> last actually
+    /// changed - unlike <see cref="UsageReadAt"/>, which is the runner's own
+    /// word and can run ahead or behind, this is what freshness is judged on.
+    /// </summary>
+    public DateTimeOffset? UsageReceivedAt { get; set; }
+
+    /// <summary>
     /// The person this runner works for - the calling key's owner, the same
     /// resolution <c>--mine</c> takes, written on every beat because whose key
     /// this is can change on the API Keys page and the row must follow. Null
@@ -4515,6 +4522,9 @@ public class EfHatchRunnerSession
 
     /// <summary>When this session read <see cref="Usage"/>, as <see cref="EfHatchRunner.UsageReadAt"/>.</summary>
     public DateTimeOffset? UsageReadAt { get; set; }
+
+    /// <summary>When <see cref="Usage"/> last actually changed, as <see cref="EfHatchRunner.UsageReceivedAt"/>.</summary>
+    public DateTimeOffset? UsageReceivedAt { get; set; }
 
     /// <summary>The checkouts this session served, as <see cref="EfHatchRunner.Remotes"/>.</summary>
     public string? Remotes { get; set; }

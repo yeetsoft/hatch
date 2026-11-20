@@ -2536,6 +2536,32 @@ public class IssueClaimTests
         Assert.Null(old.UsageReadAt);
     }
 
+    /// <summary>
+    /// HA-2536: the claim heartbeat's own writer, same as the loop's
+    /// heartbeat - a beat resending the identical reading must not move
+    /// <c>UsageReceivedAt</c>.
+    /// </summary>
+    [SkippableFact]
+    public async Task UnderAKey_ABeatResendingTheIdenticalReading_LeavesUsageReceivedAtAtTheFirstBeat()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("loop-key");
+        var sessionId = await h.AddSessionAsync(h.Caller.Key.Id, SharedWhere, Now);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(50));
+        var readAt = h.Time.GetUtcNow();
+        await BeatAsync(h, issue, token, Session(10), readAt);
+        var firstReceivedAt = (await h.SessionAsync(sessionId)).UsageReceivedAt;
+
+        h.Time.Advance(TimeSpan.FromSeconds(50));
+        await BeatAsync(h, issue, token, Session(10), readAt);
+
+        Assert.Equal(firstReceivedAt, (await h.SessionAsync(sessionId)).UsageReceivedAt);
+    }
+
     [SkippableFact]
     public async Task UnderAKey_AnEndedSessionAtTheCheckout_IsLeftAlone()
     {

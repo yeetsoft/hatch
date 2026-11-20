@@ -1765,10 +1765,13 @@ bucket name, a `level` other than `epic` or `story`, a `loose` other than
 None of the four queries is itself bounded by the range - the fold needs an
 issue's first move even where it falls outside it - but the ranges' bounds
 are. `utilization` answers a
-`UtilizationReading(State, ReadAt, Limits)` off whatever this caller's own
-runners last reported on their own heartbeat, never the account's endpoint
-directly, and `204`s for a caller with no runner ever reporting one, which
-is the ordinary state for a fresh install rather than an error.
+`UtilizationReading(State, ReadAt, ReceivedAt, Limits)` off whatever this
+caller's own runners last reported on their own heartbeat, never the
+account's endpoint directly, and `204`s for a caller with no runner ever
+reporting one, which is the ordinary state for a fresh install rather than
+an error. `ReadAt` is the runner's own word for when it read the account;
+`ReceivedAt` is Hatch's own clock at the moment that reading last actually
+changed, and `State` is judged on it.
 
 `attention` is the one request the nav strip's badge and panel both draw
 from, since two polls a poll interval apart would show a lit control beside

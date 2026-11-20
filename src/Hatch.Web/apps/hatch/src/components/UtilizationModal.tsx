@@ -100,7 +100,7 @@ export function UtilizationModal({
               the last session, and it is worth knowing how old it is even
               when nothing has gone wrong. */}
           <Text tone="muted">
-            {agePhrase(reading.readAt, now)}
+            {agePhrase(reading.receivedAt, now)}
             {reading.state === 'stale' && ' — no runner of mine has reported since'}
           </Text>
           <Button variant="secondary" disabled={refreshing} onClick={refresh}>
