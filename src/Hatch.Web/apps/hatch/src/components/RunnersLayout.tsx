@@ -71,6 +71,7 @@ export function RunnersLayout() {
         wallOff={wallOff}
         now={now}
         onCreate={() => setCreating(true)}
+        statuses={statuses}
       />
       <LocalModelsCard />
     </>

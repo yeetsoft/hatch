@@ -37,7 +37,9 @@ Each row opens that runner's detail, and has three lines:
   starting until … - <what it said>`, `Agent needs signing in - <what it
   said>`, `Gone - last seen …`, or `Not started`. The full line is its tooltip.
 - Its owner, or `no owner`, then the machine it runs on - or `{n} machines` when
-  its live sessions are on several.
+  its live sessions are on several. A runner with a column rule closes the same
+  line with it too, as `only Breakdown, In Review` or `skips In Progress,
+  Testing`.
 
 **The glyph** is the runner's most urgent state among its live sessions, ranked
 gone, agent down, out of usage, throttled, paused or stopping, working, idle,

@@ -121,4 +121,18 @@ public sealed class ColumnsTests
         Assert.Null(Columns.AwaitingReview([Fixtures.Status(1, "Done", terminal: true)]));
         Assert.Null(Columns.AwaitingReview([]));
     }
+
+    [Fact]
+    public void Workable_DropsTerminalAndDeferredColumns_AndOrdersBySortOrder()
+    {
+        var statuses = new List<StatusDto>
+        {
+            Fixtures.Status(1, "In Progress") with { SortOrder = 2 },
+            Fixtures.Status(2, "Done", terminal: true) with { SortOrder = 3 },
+            Fixtures.Status(3, "Parked", deferred: true) with { SortOrder = 4 },
+            Fixtures.Status(4, "Backlog") with { SortOrder = 1 },
+        };
+
+        Assert.Equal(["Backlog", "In Progress"], Columns.Workable(statuses).Select(s => s.Name));
+    }
 }

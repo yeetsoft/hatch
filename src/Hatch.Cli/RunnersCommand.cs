@@ -84,7 +84,8 @@ public sealed class RunnersCommand(Cli cli)
             return 0;
         }
 
-        foreach (var line in Render(rows, cli.Clock.GetUtcNow())) cli.Say.Line(line);
+        var statuses = await cli.Board.StatusesAsync(ct);
+        foreach (var line in Render(rows, statuses, cli.Clock.GetUtcNow())) cli.Say.Line(line);
         return 0;
     }
 
@@ -166,10 +167,10 @@ public sealed class RunnersCommand(Cli cli)
         foreach (var model in models) cli.Say.Line(model);
     }
 
-    private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
+    private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, IReadOnlyList<StatusDto> statuses, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Bound(r) + Models(r) + Refuses(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Bound(r) + Models(r) + Refuses(r) + ColumnRule(r, statuses))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -281,6 +282,24 @@ public sealed class RunnersCommand(Cli cli)
     /// </summary>
     private static string Refuses(RunnerDto row) =>
         row.RefusedModels.Count > 0 ? $"  refuses {string.Join(", ", row.RefusedModels)}" : "";
+
+    /// <summary>
+    /// The columns a runner's rule names, closing its row after the models it
+    /// refuses: <c>only Breakdown, In Review</c> under <see cref="RunnerStatusMode.Only"/>,
+    /// <c>skips In Progress, Testing</c> under <see cref="RunnerStatusMode.Except"/>, in
+    /// board order - nothing under <see cref="RunnerStatusMode.All"/>, or where the rule
+    /// names none of the board's current columns. A Hatch too old to send
+    /// <c>StatusMode</c>/<c>StatusIds</c> leaves the DTO at its own defaults
+    /// (<c>all</c>, none), so the row prints nothing new.
+    /// </summary>
+    private static string ColumnRule(RunnerDto row, IReadOnlyList<StatusDto> statuses)
+    {
+        if (row.StatusMode == RunnerStatusMode.All) return "";
+        var named = Columns.Workable(statuses).Where(s => row.StatusIds.Contains(s.Id)).Select(s => s.Name).ToList();
+        if (named.Count == 0) return "";
+        var word = row.StatusMode == RunnerStatusMode.Only ? "only" : "skips";
+        return $"  {word} {string.Join(", ", named)}";
+    }
 
     /// <summary>
     /// The state word, in the order <c>runnerActivity</c> reads it - silence
