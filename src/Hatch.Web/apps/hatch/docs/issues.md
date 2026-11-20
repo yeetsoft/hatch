@@ -113,7 +113,8 @@ comments are the ones timed between the row's start and end. An entry is
 headed by its work-log title (or the word Pass, where the row has none), its
 date and the sha it judged against. Each capability it judged is a line with
 the position, the state word and, where that word changed from the pass before,
-a mark saying so.
+a mark saying so, followed by what was looked at, its sha, its author and its
+date.
 
 A row from before the ambition had its type was an epic's pass, so its verdicts
 were never recorded as data. Its entry says "Verdicts not recorded as data"

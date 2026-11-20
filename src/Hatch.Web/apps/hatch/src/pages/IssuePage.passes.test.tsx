@@ -113,6 +113,20 @@ describe('Passes', () => {
     expect(html.slice(secondVerdict)).not.toContain('changed');
   });
 
+  it('shows a verdict line with what was looked at, the shortened sha, the author and the date', () => {
+    const html = render([
+      pass({
+        rowId: 1,
+        verdicts: [verdict({ lookedAt: 'the tests', sha: 'abcdef1234567', author: 'nathan' })],
+      }),
+    ]);
+    expect(html).toContain('the tests');
+    expect(html).toContain('abcdef1');
+    expect(html).not.toContain('abcdef1234567');
+    expect(html).toContain('by nathan, ');
+    expect(html).toContain('<time');
+  });
+
   it('shows the sentence and the comment for an entry whose verdicts could not be recorded', () => {
     const html = render([
       pass({
