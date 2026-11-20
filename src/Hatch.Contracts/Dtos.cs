@@ -3011,6 +3011,26 @@ public record CapabilityVerdictDto(
 /// <summary>Records a verdict on a capability. <paramref name="Verdict"/> is one of <c>holds</c>, <c>does_not_hold</c>, <c>cannot_tell</c>.</summary>
 public record CapabilityVerdictRequest(string Verdict, string LookedAt, string Sha);
 
+/// <summary>
+/// One pass at an ambition: a work log row that ran from the implementation
+/// column, with the verdicts it recorded and the comments said while it ran -
+/// see <c>GET /issues/{key}/passes</c>.
+/// </summary>
+/// <param name="RowId">The work log row this pass came from, or null for a verdict standing in no row's window.</param>
+/// <param name="SessionId">The row's session id, or null with <paramref name="RowId"/>.</param>
+/// <param name="CanRecordVerdicts">True where the row is typed <c>ambition</c> and ended in the column it started in; false for an <c>epic</c> row or a loose verdict.</param>
+/// <param name="Sha">The sha <paramref name="Verdicts"/> share, or null where they differ or there are none.</param>
+public record AmbitionPassDto(
+    long? RowId, string? SessionId, DateTimeOffset StartedAt, DateTimeOffset EndedAt,
+    string? Title, string? Summary, bool CanRecordVerdicts, string? Sha,
+    IReadOnlyList<AmbitionPassVerdictDto> Verdicts, IReadOnlyList<CommentDto> Comments);
+
+/// <summary>One verdict within a pass - see <see cref="AmbitionPassDto"/>.</summary>
+/// <param name="Changed">True where this verdict's word differs from the one the next older pass gave the same capability; false where that pass did not judge it.</param>
+public record AmbitionPassVerdictDto(
+    long Id, long CapabilityId, int Position, string Statement,
+    string Verdict, string LookedAt, string Sha, string Author, DateTimeOffset At, bool Changed);
+
 /// <summary>Replaces the set of capabilities an epic serves, with the capability ids it should now carry.</summary>
 public record IssueServesWriteRequest(IReadOnlyList<long> CapabilityIds);
 
