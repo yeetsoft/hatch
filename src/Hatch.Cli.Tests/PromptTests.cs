@@ -428,6 +428,73 @@ public sealed class PromptTests
             Prompt.Compose(Fixtures.Work("AER-12")), StringComparison.Ordinal);
     }
 
+    // ---- HA-2531: open questions a session may build past ----
+
+    private static readonly IReadOnlyList<QuestionOptionDto> Recommending =
+    [
+        new("Use the queue", "Slower, but it survives a restart.", Recommended: true),
+        new("Call it inline"),
+    ];
+
+    [Fact]
+    public void A_build_question_above_the_ticket_is_carried_in_with_its_recommendation_and_the_build_sentence()
+    {
+        var work = Fixtures.Work("AER-12", buildPast:
+            [Fixtures.Question(1, key: "AER-10", body: "Queue or inline?", level: QuestionLevels.BuildName, options: Recommending)]);
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("## Open questions you may build past", prompt, StringComparison.Ordinal);
+        Assert.Contains("**Asked (hatch) on AER-10:** Queue or inline?", prompt, StringComparison.Ordinal);
+        Assert.Contains("**Recommended:** Use the queue - Slower, but it survives a restart.", prompt, StringComparison.Ordinal);
+        Assert.Contains("**Level:** build. Build on the recommendation. Your pull request waits in review until a person answers.",
+            prompt, StringComparison.Ordinal);
+        Assert.Contains("Never answer one of these, and never ask it again.", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Call it inline", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_merge_question_gets_the_merge_sentence()
+    {
+        var work = Fixtures.Work("AER-12", buildPast:
+            [Fixtures.Question(1, key: "AER-12", level: QuestionLevels.MergeName, options: [new("Inline", Recommended: true)])]);
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("**Recommended:** Inline", prompt, StringComparison.Ordinal);
+        Assert.Contains("**Level:** merge. Build on the recommendation. It merges, and a person looks over the answer after.",
+            prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("waits in review", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_section_follows_decisions_already_made_and_the_closing_asks_for_the_questions_by_name()
+    {
+        var work = Fixtures.Work("AER-12",
+            questions: [Fixtures.Question(1, answered: true)],
+            buildPast: [Fixtures.Question(2, key: "AER-10", level: QuestionLevels.BuildName, options: Recommending)]);
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.True(
+            prompt.IndexOf("## Decisions already made", StringComparison.Ordinal)
+                < prompt.IndexOf("## Open questions you may build past", StringComparison.Ordinal));
+        Assert.Contains("Name each question you built past", prompt, StringComparison.Ordinal);
+        Assert.True(
+            prompt.IndexOf("Name each question you built past", StringComparison.Ordinal)
+                < prompt.IndexOf("Last of all, say what you did", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_ticket_with_nothing_to_build_past_is_unchanged_byte_for_byte()
+    {
+        var plain = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Equal(plain, Prompt.Compose(Fixtures.Work("AER-12", buildPast: [])));
+        Assert.DoesNotContain("## Open questions", plain, StringComparison.Ordinal);
+        Assert.DoesNotContain("Name each question you built past", plain, StringComparison.Ordinal);
+    }
+
     // ---- HA-118: a ticket already let go of once or more ----
 
     [Fact]
