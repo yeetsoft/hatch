@@ -4,9 +4,9 @@ import { hasBattery } from '../lib/utilization';
 import { UtilizationBattery } from './UtilizationBattery';
 import { UtilizationModal } from './UtilizationModal';
 
-/** How often the phrases are re-read. The reading itself is polled far less
-    often; this is only so `resets in 1h 20m` does not sit at 1h 20m for two
-    minutes while the ring beside it says otherwise. */
+/** How often the phrases are re-read. The reading itself polls at the same
+    pace now; this timer still earns its keep so `resets in 1h 20m` does not
+    sit still between polls while the ring beside it says otherwise. */
 const TICK_MS = 30 * 1000;
 
 /**

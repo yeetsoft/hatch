@@ -4654,7 +4654,9 @@ belonged to a reading Hatch fetched, and this one arrives on a heartbeat a
 runner was already sending. One number, `UsageReadAt`, and arithmetic against
 it at the moment somebody asks: `ok` inside five minutes of it, `stale`
 outside. The Refresh button in the modal re-reads Hatch's own row; there is
-nothing upstream left for it to bypass.
+nothing upstream left for it to bypass. The page itself re-reads every thirty
+seconds, and when a tab is brought forward, so the battery follows a runner
+within about a minute.
 
 ### The credentials, still
 
