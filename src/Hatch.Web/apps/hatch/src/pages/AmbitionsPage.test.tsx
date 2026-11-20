@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { AmbitionList } from './AmbitionsPage';
-import type { AmbitionOpenEpic, AmbitionRow, Status } from '../types';
+import { AmbitionList, AmbitionsBody, holdQuestions, WaitingStrip } from './AmbitionsPage';
+import type { AmbitionOpenEpic, AmbitionRow, Ballot, BallotNode, Question, Status } from '../types';
 
 /* No DOM runner: the row is rendered from props, the way PlanPage.test.tsx
    does it for EpicCard. */
@@ -127,5 +127,160 @@ describe('AmbitionList', () => {
     const html = render(row('AER-1', { statusId: 99, statusName: 'Gone' }));
 
     expect(html).toContain('<span class="text-muted">Gone</span>');
+  });
+});
+
+/* The strip above the rows: drawn from a ballot and a fixed clock. */
+const NOW = new Date('2026-11-20T12:00:00Z');
+
+const question = (id: number, issueKey: string, over: Partial<Question> = {}): Question => ({
+  id,
+  issueKey,
+  issueTitle: `title ${issueKey}`,
+  body: `body ${id}
+second line ${id}`,
+  askedBy: 'runner',
+  askedAt: '2026-11-17T12:00:00Z',
+  options: null,
+  answers: [],
+  level: 'hold',
+  lookBack: false,
+  ...over,
+});
+
+const node = (key: string, type: BallotNode['type'], over: Partial<BallotNode> = {}): BallotNode => ({
+  key,
+  projectKey: key.split('-')[0],
+  type,
+  title: `${type} ${key}`,
+  excerpt: '',
+  isTerminal: false,
+  children: [],
+  questions: [],
+  ...over,
+});
+
+const ballot = (...roots: BallotNode[]): Ballot => ({ roots, questions: [] });
+
+const strip = (b: Ballot | null, error: string | null = null, scopeKeys: string[] = []): string =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <WaitingStrip ballot={b} error={error} scopeKeys={scopeKeys} now={NOW} />
+    </MemoryRouter>,
+  );
+
+const tree = (): Ballot =>
+  ballot(
+    node('AER-1', 'ambition', {
+      questions: [question(1, 'AER-1')],
+      children: [
+        node('AER-2', 'epic', {
+          questions: [question(2, 'AER-2'), question(3, 'AER-2', { level: 'build', body: 'a build matter' })],
+        }),
+      ],
+    }),
+  );
+
+describe('WaitingStrip', () => {
+  it('draws one line per hold question, in the ballot order, each linking to the ballot', () => {
+    const html = strip(tree());
+
+    expect(html).toContain('2 decisions waiting on you');
+    expect(html.match(/hatch-ambition-strip-line"/g)).toHaveLength(2);
+    expect(html.match(/href="\/ballot"/g)).toHaveLength(2);
+    expect(html.match(/ambition AER-1/g)).toHaveLength(2);
+    expect(html).toContain('>AER-1<');
+    expect(html).toContain('>AER-2<');
+    expect(html).toContain('body 1');
+    expect(html).toContain('body 2');
+    expect(html).not.toContain('second line');
+    expect(html).toContain('3 days');
+    expect(html).not.toContain('a build matter');
+    expect(html.indexOf('body 1')).toBeLessThan(html.indexOf('body 2'));
+  });
+
+  it('says decision, not decisions, for one', () => {
+    const html = strip(ballot(node('AER-1', 'ambition', { questions: [question(1, 'AER-1')] })));
+
+    expect(html).toContain('1 decision waiting on you');
+    expect(html).not.toContain('1 decisions');
+  });
+
+  it('leaves out a look-back', () => {
+    const html = strip(
+      ballot(node('AER-1', 'ambition', { questions: [question(1, 'AER-1', { level: 'merge', lookBack: true })] })),
+    );
+
+    expect(html).not.toContain('hatch-ambition-strip-line');
+    expect(html).toContain('Nothing is waiting on you.');
+  });
+
+  it('draws no line for a ballot whose only root is an epic', () => {
+    const html = strip(ballot(node('AER-2', 'epic', { questions: [question(1, 'AER-2')] })));
+
+    expect(html).not.toContain('hatch-ambition-strip-line');
+    expect(html).toContain('Nothing is waiting on you.');
+  });
+
+  it('draws its sentence for an empty ballot', () => {
+    expect(strip(ballot())).toContain('Nothing is waiting on you.');
+  });
+
+  it('links to the ballot under the scope of the tab', () => {
+    expect(strip(tree(), null, ['AER'])).toContain('href="/ballot?scope=AER"');
+  });
+});
+
+describe('AmbitionsBody', () => {
+  it('draws the failure sentence and still draws the rows when the ballot could not be read', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AmbitionsBody
+          data={{ ambitions: [row('AER-1')], statuses, ballot: null, ballotError: 'boom', scopeKey: '' }}
+          scopeKeys={[]}
+          now={NOW}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('could not be read: boom');
+    expect(html).not.toContain('hatch-ambition-strip-line');
+    expect(html).toContain('hatch-ambition-row');
+  });
+
+  it('draws the strip above the rows', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AmbitionsBody
+          data={{ ambitions: [row('AER-1')], statuses, ballot: tree(), ballotError: null, scopeKey: '' }}
+          scopeKeys={[]}
+          now={NOW}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(html.indexOf('decisions waiting on you')).toBeGreaterThan(-1);
+    expect(html.indexOf('decisions waiting on you')).toBeLessThan(html.indexOf('hatch-ambition-row'));
+  });
+});
+
+describe('holdQuestions', () => {
+  it('walks an ambition, its epic and its story in order and keeps only hold', () => {
+    const b = ballot(
+      node('AER-1', 'ambition', {
+        questions: [question(1, 'AER-1'), question(2, 'AER-1', { level: 'build' })],
+        children: [
+          node('AER-2', 'epic', {
+            questions: [question(3, 'AER-2')],
+            children: [node('AER-3', 'story', { questions: [question(4, 'AER-3')] })],
+          }),
+          node('AER-4', 'epic', { questions: [question(5, 'AER-4')] }),
+        ],
+      }),
+      node('AER-9', 'epic', { questions: [question(6, 'AER-9')] }),
+    );
+
+    expect(holdQuestions(b).map((h) => h.question.id)).toEqual([1, 3, 4, 5]);
+    expect(holdQuestions(b).every((h) => h.ambition === 'ambition AER-1')).toBe(true);
   });
 });

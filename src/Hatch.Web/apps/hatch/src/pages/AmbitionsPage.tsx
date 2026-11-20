@@ -1,18 +1,26 @@
 import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '@hatch/ui';
-import { getAmbitions, getStatuses } from '../api/client';
+import { getAmbitions, getBallot, getStatuses } from '../api/client';
 import { ScopeGate } from '../components/ScopeGate';
 import { StatusPill } from '../components/StatusPill';
+import { waitedWords } from '../lib/attention';
+import { firstLine } from '../lib/dreams';
+import { message } from '../lib/errors';
+import { scopedPath } from '../lib/scope';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
-import type { AmbitionRow, Status } from '../types';
+import type { AmbitionRow, Ballot, BallotNode, Question, Status } from '../types';
 
-/** The two reads this page is made of, arriving together so a pill is never
-    drawn without the colour of its column. */
-interface AmbitionsView {
+/** The reads this page is made of, arriving together so a pill is never drawn
+    without the colour of its column. The ballot is the exception in what it
+    does on failure: it is one strip on the page, so its failure is carried
+    here as a sentence and never rejects the rest. */
+export interface AmbitionsView {
   ambitions: AmbitionRow[];
   statuses: Status[];
+  ballot: Ballot | null;
+  ballotError: string | null;
   /** The scope this was fetched under, in the form `scopeKey` below takes. */
   scopeKey: string;
 }
@@ -42,11 +50,17 @@ function AmbitionsContent() {
   const scopeKey = scope.isScoped ? scope.keys.join(',') : '';
 
   const load = useCallback(async (): Promise<AmbitionsView> => {
-    const [ambitions, statuses] = await Promise.all([
+    /* Handlers are attached at the call, so a ballot that fails is caught here
+       and handed to the strip rather than blanking the rows. */
+    const [ambitions, statuses, read] = await Promise.all([
       getAmbitions(scope.isScoped ? scope.ids : undefined),
       getStatuses(),
+      getBallot(scope.isScoped ? scope.ids : undefined).then(
+        (b) => ({ ballot: b, failure: null as string | null }),
+        (err: unknown) => ({ ballot: null, failure: message(err) }),
+      ),
     ]);
-    return { ambitions, statuses, scopeKey };
+    return { ambitions, statuses, ballot: read.ballot, ballotError: read.failure, scopeKey };
   }, [scope.isScoped, scope.ids, scopeKey]);
 
   const { data, error } = useLoaded<AmbitionsView>(load);
@@ -58,6 +72,22 @@ function AmbitionsContent() {
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data || !current) return <p className="text-muted">Loading…</p>;
 
+  return <AmbitionsBody data={data} scopeKeys={scope.isScoped ? scope.keys : []} now={new Date()} error={error} />;
+}
+
+/** The page under its gate: the header, the strip of what is waiting, then the
+    rows. Apart from the loading so a test can draw it from props. */
+export function AmbitionsBody({
+  data,
+  scopeKeys,
+  now,
+  error = null,
+}: {
+  data: AmbitionsView;
+  scopeKeys: string[];
+  now: Date;
+  error?: string | null;
+}) {
   return (
     <div className="hatch-page">
       <PageHeader
@@ -67,10 +97,66 @@ function AmbitionsContent() {
 
       {error && <p className="text-danger">{error}</p>}
 
-      {/* The strip above the rows is drawn here, by the story after this one. */}
+      <WaitingStrip ballot={data.ballot} error={data.ballotError} scopeKeys={scopeKeys} now={now} />
 
       <AmbitionList ambitions={data.ambitions} statuses={data.statuses} />
     </div>
+  );
+}
+
+/** Every question at `hold` on an ambition's tree, with the ambition's title.
+    The ballot already orders roots, children and each node's questions, so
+    this walks it as it comes: a node's own questions, then each child. */
+export function holdQuestions(ballot: Ballot): { ambition: string; question: Question }[] {
+  const found: { ambition: string; question: Question }[] = [];
+
+  const walk = (node: BallotNode, ambition: string) => {
+    for (const question of node.questions) if (question.level === 'hold') found.push({ ambition, question });
+    for (const child of node.children) walk(child, ambition);
+  };
+
+  for (const root of ballot.roots) if (root.type === 'ambition') walk(root, root.title);
+  return found;
+}
+
+/** The hold-level questions on the ambitions in scope, each a line linking to
+    the ballot; or one sentence where there are none or the read failed. */
+export function WaitingStrip({
+  ballot,
+  error,
+  scopeKeys,
+  now,
+}: {
+  ballot: Ballot | null;
+  error: string | null;
+  scopeKeys: string[];
+  now: Date;
+}) {
+  if (error || !ballot) {
+    return <p className="text-danger">What is waiting on you could not be read: {error ?? 'no answer'}</p>;
+  }
+
+  const lines = holdQuestions(ballot);
+  if (lines.length === 0) return <p className="text-muted">Nothing is waiting on you.</p>;
+
+  return (
+    <section className="hatch-ambition-strip">
+      <h2>
+        {lines.length} {lines.length === 1 ? 'decision' : 'decisions'} waiting on you
+      </h2>
+      <ul className="hatch-ambition-strip-lines">
+        {lines.map(({ ambition, question }) => (
+          <li key={question.id}>
+            <Link to={scopedPath('/ballot', scopeKeys)} className="hatch-ambition-strip-line">
+              <strong>{ambition}</strong>
+              <span className="hatch-plan-key">{question.issueKey}</span>
+              <span>{firstLine(question.body)}</span>
+              <span className="text-muted">{waitedWords(question.askedAt, now)}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
