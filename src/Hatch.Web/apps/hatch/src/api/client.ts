@@ -51,6 +51,7 @@ import type {
   OvernightDto,
   ParsedEpic,
   PastedPlan,
+  AmbitionRow,
   Ballot,
   Plan,
   Person,
@@ -632,6 +633,16 @@ export const getBallot = (projectId?: number | number[]) => {
   for (const id of ([] as number[]).concat(projectId ?? [])) params.append('projectId', String(id));
   const qs = params.toString();
   return fetchJson<Ballot>(`/api/ballot${qs ? `?${qs}` : ''}`);
+};
+
+/** Every ambition across projects, each with its capabilities counted four
+    ways and the epics open under it. `projectId`, given, narrows to those
+    projects - repeated per id, and left off when none, as `getBallot`'s is. */
+export const getAmbitions = (projectId?: number | number[]) => {
+  const params = new URLSearchParams();
+  for (const id of ([] as number[]).concat(projectId ?? [])) params.append('projectId', String(id));
+  const qs = params.toString();
+  return fetchJson<AmbitionRow[]>(`/api/ambitions${qs ? `?${qs}` : ''}`);
 };
 
 // ---- Work ----
