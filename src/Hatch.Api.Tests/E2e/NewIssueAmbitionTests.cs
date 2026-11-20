@@ -61,7 +61,7 @@ public class NewIssueAmbitionTests(ITestOutputHelper output)
             await harness.WaitForFirstColumnAsync(deadline);
             var page = harness.Page!;
 
-            // An ambition: the dialog opens on a task, so pick the type first.
+            // An ambition: the dialog opens on an epic, so pick the type first.
             await harness.ClickAsync(deadline, ".hatch-board-new");
             await harness.WaitForVisibleAsync(deadline, Panel);
             await PickTypeAsync(harness, deadline, "ambition");

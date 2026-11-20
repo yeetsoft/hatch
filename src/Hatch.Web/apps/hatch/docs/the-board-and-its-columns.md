@@ -287,7 +287,15 @@ the button's tooltip says `c`. Like `/`, it is a letter while you are typing:
 in a text box, a description editor or the board's search box, `c` types `c`.
 It opens nothing with Ctrl, Cmd or Alt held, so Ctrl+C and Cmd+C still copy,
 and nothing while a dialog, the peek or the console is open, or while a card
-is being dragged. It works on the board only.
+is being dragged. It works on the board only. The dialog opens on *epic*; a
+type you pick and file carries to the next filing on the same page.
+
+Press Escape on the board and the flow view's banding goes off, and the band
+button reads unpressed. Escape goes to the smaller thing first: with a dialog
+open (a card's peek, the work queue, New issue) the first Escape closes the
+dialog and the banding stays, and the second turns it off; an open filter
+menu folds, and the board's search box clears, before Escape reaches the
+banding. It does nothing with Ctrl, Cmd, Alt or Shift held.
 
 The first character of the prompt says what it lists:
 
