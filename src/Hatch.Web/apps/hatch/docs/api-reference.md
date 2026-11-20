@@ -498,7 +498,8 @@ one; `404` for no such key.
 | PUT | `/issues/{key}/questions/{id}/level` | **person** | Sets an open question's level, `{ "level": "build" }` |
 
 Seven of the eight are a key's; the level is a person's. Both question routes take `?open=` (default `true`):
-open is unanswered and not terminal, `open=false` is every question,
+open is unanswered and either not terminal or asked at `merge`, which stays
+open on a closed issue until it is answered; `open=false` is every question,
 answered and obviated ones included.
 
 `GET /ballot` answers the waiting questions of `/questions` as a tree, in one
@@ -510,14 +511,17 @@ beneath first, and a node's own `questions` oldest first. `BallotDto` is
 `Roots`. `BallotNodeDto` is `Key`, `ProjectKey`, `Type`, `Title`, `Excerpt`
 (the first three non-blank lines of the description, markdown as written, cut
 to 300 characters with a `.` appended when cut, empty when there is none),
-`IsTerminal` (an ancestor can stand in a terminal column; the issue a waiting
-question is on never does), `Children` (more `BallotNodeDto`) and `Questions`
+`IsTerminal` (an ancestor can stand in a terminal column, and so can the issue a
+waiting `merge` question is on; any other waiting question's issue never does), `Children` (more `BallotNodeDto`) and `Questions`
 (`QuestionDto`s, as below).
 
 `CommentDto` is `Id`, `Author`, `Body`, `Kind` (`""`, `question`, `answer` or
 `message`), an optional `AnswersId`, an optional `Options`, `CreatedAt`, an
 optional `DeliveredAt`, an optional `DeliveredTo`, and a `Level` that is set on
-a question (`hold`, `build` or `merge`) and null on everything else. A person sets it with
+a question (`hold`, `build` or `merge`) and null on everything else, and an
+`AnsweredAfter` that is true only on an answer given after its issue closed - set on the
+answers inside a `QuestionDto`, false on every other comment, and derived when
+read. A person sets the level with
 `PUT /issues/{key}/questions/{id}/level`; a key cannot.
 `CommentCreateRequest` is `Body`, an optional `Kind` (omitted means an ordinary
 note), an optional `AnswersId`, an optional `Options`, and a `Level` that it
@@ -527,7 +531,9 @@ optional `Detail`, `Recommended` - at most eight options per question, at
 most one recommended, labels unique case-insensitively. `QuestionDto` is
 `Id`, `IssueKey`, `IssueTitle`, `Body`, `AskedBy`, `AskedAt`, an optional
 `Options`, `Answers` (oldest first - an empty list is what "open" means, no
-second flag), `Obviated`, `Level` (never null: `hold` unless a person set another). `IssueEventDto` is `Id`, `Actor`, `Kind`, an
+second flag), `Obviated`, `Level` (never null: `hold` unless a person set another), and
+`LookBack` - true for an open `merge` question whose issue has reached a
+terminal column, derived when read. `IssueEventDto` is `Id`, `Actor`, `Kind`, an
 optional `Payload`, `At`. `MessageDeliverRequest` is an optional `Ids` - exact
 ids, or null for every unread one; ids that are not unread messages on the
 issue are ignored rather than refused.

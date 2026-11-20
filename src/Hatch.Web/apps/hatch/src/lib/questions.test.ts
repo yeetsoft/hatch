@@ -25,6 +25,7 @@ const comment = (kind: CommentKind, body: string, answersId: number | null = nul
   deliveredAt: null,
   deliveredTo: null,
   level: null,
+  answeredAfter: false,
 });
 
 describe('threadQuestions', () => {
@@ -210,6 +211,7 @@ const question = (over: Partial<Question> = {}): Question => ({
   options: null,
   answers: [],
   level: 'hold',
+  lookBack: false,
   ...over,
 });
 

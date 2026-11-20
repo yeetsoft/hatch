@@ -58,7 +58,10 @@ every story and task beneath it.
   build still goes ahead. In a project that lands on the trunk there is no merge
   to hold, since building is landing, so the move into the implementation column
   is folded instead and the moves before it go ahead.
-- At `merge`, nothing is folded.
+- At `merge`, nothing is folded: not a move, a hop or an advance, the approve
+  and close hops included. The question does not go away when the ticket closes.
+  It stays on the ballot, in the attention panel and in `hatch questions` until
+  it is answered, as a look back.
 
 Every one of these counts as waiting on a person, so the attention panel and
 `hatch queue` read them the same way. A ticket flagged dangerous is the one case
@@ -77,9 +80,12 @@ What an open question does not block:
 - Commenting on the ticket, filing under it or reading it.
 - The merge column, as above.
 
-A question on a ticket in a terminal column stops counting. The attention panel
-drops it and the issue page titles the section *Asked (n)* instead of *Waiting
-on you (n)*, though the question stays open on the record.
+A `hold` or `build` question on a ticket in a terminal column stops counting.
+The attention panel drops it and the issue page titles the section *Asked (n)*
+instead of *Waiting on you (n)*, though the question stays open on the record. A
+`merge` question does not stop: it keeps counting after the ticket closes, and
+reads as a look back until it is answered. An answer given after the ticket
+closed is marked as given after the fact.
 
 The board asks too. A check that fails twice in a row posts a question in prose
 and holds the ticket, and that one blocks exactly as an agent's does.
