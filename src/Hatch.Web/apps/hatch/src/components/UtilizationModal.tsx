@@ -6,6 +6,8 @@ import {
   rowResetPhrase,
   rowSentence,
   runnerAgePhrase,
+  runnerProbeOffPhrase,
+  runnerSourcePhrase,
   timeGoneFraction,
   usageVars,
 } from '../lib/utilization';
@@ -91,12 +93,17 @@ export function UtilizationModal({
   }
 
   function runnerRow(runner: UtilizationRunner) {
+    const sourcePhrase = runnerSourcePhrase(runner);
+    const probeOffPhrase = runnerProbeOffPhrase(runner);
+
     return (
       <li key={runner.name} className="hatch-usage-runner">
         <div className="hatch-usage-runner-head">
           <span className="hatch-usage-runner-name">{runner.name}</span>
           <span className="hatch-usage-runner-state">{runner.live ? 'live' : 'gone'}</span>
           <span className="hatch-usage-runner-age">{runnerAgePhrase(runner, now)}</span>
+          {sourcePhrase && <span className="hatch-usage-runner-source">{sourcePhrase}</span>}
+          {probeOffPhrase && <span className="hatch-usage-runner-probe-off">{probeOffPhrase}</span>}
         </div>
         {runner.limits && <ul className="hatch-usage-rows">{runner.limits.map((limit, at) => limitRow(limit, at))}</ul>}
       </li>

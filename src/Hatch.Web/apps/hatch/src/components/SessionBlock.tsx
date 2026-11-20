@@ -39,6 +39,7 @@ export function SessionBlock({
       <RunnerGlyph state={activity} label={words} />
       {session.where != null && <span className="hatch-runner-name">{session.where}</span>}
       <Text tone="muted">{words}</Text>
+      {session.usageProbeOff && <Text tone="muted">{`probe off: ${session.usageProbeOff}`}</Text>}
       <Text tone="muted">{agoPhrase(session.lastSeenAt, now)}</Text>
 
       {claimKey ? (

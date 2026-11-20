@@ -180,7 +180,8 @@ the runner holds, so an edit made here survives it. A runner made by `hatch work
 or `go-to-work --once` never takes bounds from that heartbeat.
 
 **Live sessions.** One block per live session, oldest first, so a block never
-moves as it beats: its checkout, its state and how long ago it was heard from;
+moves as it beats: its checkout, its state and how long ago it was heard from, and, when its
+usage probe is off, `probe off: ` and the reason beside the state;
 the ticket it holds, as a link, and the last line it printed (or `nothing yet`);
 its controls; its runs, spend and token budget; and its own bounds, narrowed by
 its flags. A `go-to-work` loop that stops at one of its own bounds ends on
@@ -505,7 +506,10 @@ the highest percentage. Pressing it opens every window your account
 reports, each with its own percent used and how old the reading is, and a
 button to refresh it. Below those windows, every runner of yours draws its
 own row, named, live or gone, with its own age and its own windows - one row
-for one runner. The page itself re-reads every thirty seconds, and
+for one runner. A row also says where its reading came from, `from the session
+stream` or `from a probe`, and, when the runner's usage probe is off, `probe
+off: ` and the reason; a reading that has not said where from shows neither.
+The page itself re-reads every thirty seconds, and
 again whenever a backgrounded tab is brought forward, so it follows a
 runner within about a minute. [Flow, WIP and the battery](flow-wip-and-the-battery)
 covers what the board does with this reading.

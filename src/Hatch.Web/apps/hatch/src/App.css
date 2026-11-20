@@ -9554,6 +9554,7 @@ button.hatch-option.chosen {
 .hatch-usage-runner-head {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: var(--sp-2);
 }
 
@@ -9564,7 +9565,9 @@ button.hatch-option.chosen {
 }
 
 .hatch-usage-runner-state,
-.hatch-usage-runner-age {
+.hatch-usage-runner-age,
+.hatch-usage-runner-source,
+.hatch-usage-runner-probe-off {
   font-size: var(--t-label);
   color: var(--muted);
 }
