@@ -2720,9 +2720,16 @@ once the call has been open past the agent's own tool timeout (ten minutes),
 so a hung call goes quiet one window after the last line it carried - unless
 the claim carries a run cap (below), in which case it carries on past the
 timeout until the cap itself stops the run; with no cap, it is exactly as
-before. A dead
+before. A streamed
+session whose turn has ended while its process runs on - a background command
+or monitor, with the session woken when it finishes - is waiting, and the
+runner carries the wait the way it carries a call: `waiting on background work,
+<n>m`, by the same rules (at least once a minute, ended past the agent's tool
+timeout unless the claim carries a run cap, and never sent while it has said
+something else lately). A new turn clears it, and an open call wins over a
+wait. A dead
 runner sends nothing, and its claim lapses on this rule unchanged; a `--quiet`
-session has no stream to see a call open in, so it carries none of this. Every reader treats a quiet claim exactly as it treats an expired
+session has no stream to see a call open or a turn end in, so it carries none of this. Every reader treats a quiet claim exactly as it treats an expired
 one — the dispatcher, the board, the issue page, the Runners page, and a take —
 because `IssueClaims.IsLive` is the one place both conditions are asked, and
 nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is
