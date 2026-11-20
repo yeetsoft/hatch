@@ -5339,6 +5339,8 @@ public record RunnerDto(
     IReadOnlyList<string>? DrivesTold = null,
     string? Image = null,
     IReadOnlyList<string> RefusedModels = null!,
+    string StatusMode = RunnerStatusMode.All,
+    IReadOnlyList<int> StatusIds = null!,
     DateTimeOffset? AgentDownUntil = null,
     string? AgentDownKind = null,
     string? AgentDownLine = null,
@@ -5356,6 +5358,7 @@ public record RunnerDto(
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
     public IReadOnlyList<RunnerSessionDto> Sessions { get; init; } = Sessions ?? [];
     public IReadOnlyList<string> RefusedModels { get; init; } = RefusedModels ?? [];
+    public IReadOnlyList<int> StatusIds { get; init; } = StatusIds ?? [];
     public IReadOnlyList<string> Hold { get; init; } = Hold ?? [];
 }
 
@@ -5775,6 +5778,13 @@ public record RunnerInstructionDto(
 /// heartbeat's own tags, this is the one write that reaches a row after its
 /// first beat has seeded it.
 /// </param>
+/// <param name="StatusMode">
+/// <see cref="RunnerStatusMode.All"/>, <c>Except</c> or <c>Only</c> - taken
+/// together with <see cref="StatusIds"/>, never alone: one present with the
+/// other absent is refused. <c>all</c> keeps the ids an empty list
+/// regardless of what was sent.
+/// </param>
+/// <param name="StatusIds">The column ids <see cref="StatusMode"/> reads against, judged against the board's own columns.</param>
 public record RunnerPatchRequest(
     string? State = null,
     string? Under = null,
@@ -5783,7 +5793,9 @@ public record RunnerPatchRequest(
     string? UntilAt = null,
     IReadOnlyList<string>? Tags = null,
     string? MaxTokens = null,
-    string? MaxTokensPerHour = null);
+    string? MaxTokensPerHour = null,
+    string? StatusMode = null,
+    IReadOnlyList<int>? StatusIds = null);
 
 /// <summary>
 /// The body of <c>PUT /runners/{name}/refused-models</c>. <paramref name="Models"/>

@@ -199,6 +199,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             {
                 Tags = RunnerTagColumn.Read(tagged.Tags).Order(StringComparer.Ordinal).ToArray(),
                 RefusedModels = RunnerTagColumn.Read(tagged.RefusedModels).Order(StringComparer.Ordinal).ToArray(),
+                StatusMode = tagged.StatusMode,
+                StatusIds = RunnerStatusIdsColumn.Read(tagged.StatusIds),
             };
         }
 
