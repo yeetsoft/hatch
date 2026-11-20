@@ -7309,6 +7309,58 @@ input.hatch-inline-title-input {
   gap: var(--sp-4);
 }
 
+/* A question's level: its meaning in a line, then the three buttons that set
+   it. The pill is `.hatch-localmodel-step`'s, and wraps so it holds at phone
+   width. */
+.hatch-question-level {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1-5);
+  margin-top: var(--sp-3);
+}
+
+.hatch-question-level-words,
+.hatch-question-level-note {
+  margin: 0;
+  font-size: var(--t-label);
+}
+
+.hatch-question-level-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.hatch-question-level-steps {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.hatch-question-level-step {
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hatch-question-level-step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-strong) 18%, transparent);
+}
+
+.hatch-question-level-step.here {
+  background: var(--line-strong);
+  cursor: default;
+  opacity: 1;
+}
+
 .hatch-question + .hatch-question {
   border-top: 1px solid var(--line);
   padding-top: var(--sp-4);

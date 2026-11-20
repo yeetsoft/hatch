@@ -24,6 +24,7 @@ import {
   rotateRunner,
   revokeRunner,
   searchIssues,
+  setQuestionLevel,
   setRunnerOwner,
   stopAllSessions,
   suggestRunnerName,
@@ -715,5 +716,25 @@ describe('getQueue', () => {
     const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
     expect(urls[0]).not.toContain('takers');
     expect(urls[1]).toContain('takers=true');
+  });
+});
+
+describe('setQuestionLevel', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('PUTs the level to the question and returns the question', async () => {
+    const question = { id: 7, level: 'build' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(question), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await setQuestionLevel('HA-12', 7, 'build');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/issues/HA-12/questions/7/level',
+      expect.objectContaining({ method: 'PUT', body: '{"level":"build"}' }),
+    );
+    expect(result).toEqual(question);
   });
 });

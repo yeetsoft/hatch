@@ -12,7 +12,7 @@
    having: a question with nothing pointing at it. Never a flag, so it cannot be
    set wrong. */
 
-import type { Comment, IssueCard, Question, QuestionOption } from '../types';
+import type { Comment, IssueCard, Question, QuestionLevel, QuestionOption } from '../types';
 
 export interface QuestionThread {
   question: Comment;
@@ -30,6 +30,7 @@ export interface AskedQuestion {
   author: string;
   askedAt: string;
   options: QuestionOption[] | null;
+  level: QuestionLevel;
 }
 
 export const fromComment = (c: Comment): AskedQuestion => ({
@@ -38,6 +39,9 @@ export const fromComment = (c: Comment): AskedQuestion => ({
   author: c.author,
   askedAt: c.createdAt,
   options: c.options,
+  // A comment off a question carries none; a question always has one, and
+  // `hold` is what a question without a stated level means.
+  level: c.level ?? 'hold',
 });
 
 /** The same shape, for a question fetched by itself rather than threaded out
@@ -48,7 +52,31 @@ export const fromQuestion = (q: Question): AskedQuestion => ({
   author: q.askedBy,
   askedAt: q.askedAt,
   options: q.options,
+  level: q.level,
 });
+
+/** What each level means, in the words a person reads it by. Ordered as the
+    server ranks them, strictest first (QuestionLevels.ByStrictness). */
+export const LEVEL_WORDS: Record<QuestionLevel, string> = {
+  hold: 'nothing moves until this is answered',
+  build: 'built but not merged until this is answered',
+  merge: 'merges now; the answer is looked over after',
+};
+
+const STRICTNESS: QuestionLevel[] = ['hold', 'build', 'merge'];
+
+/** The lowest level among the questions, which is what the issue as a whole is
+    held to: one `hold` stops everything, however many others are looser. Where
+    nothing is asked, `hold` - the level that assumes nothing. */
+export const strictestLevel = (questions: AskedQuestion[]): QuestionLevel =>
+  questions.reduce<QuestionLevel>(
+    (lowest, q) => (STRICTNESS.indexOf(q.level) < STRICTNESS.indexOf(lowest) ? q.level : lowest),
+    questions.length === 0 ? 'hold' : questions[0].level,
+  );
+
+/** Whether the question can be raised above `hold`: only a recommendation gives
+    the work something to build on, so a question without one stays held. */
+export const canRaise = (q: AskedQuestion): boolean => q.options?.some((o) => o.recommended) ?? false;
 
 /** Every question on the issue, oldest first, each with what was said back. */
 export function threadQuestions(comments: Comment[]): QuestionThread[] {
