@@ -34,6 +34,7 @@ const BASE: Playbook = {
   briefLimit: null,
   deniedTools: [],
   isCheck: false,
+  answersQuestions: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,

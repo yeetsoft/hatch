@@ -26,6 +26,7 @@ const BASE: Playbook = {
   briefLimit: null,
   deniedTools: [],
   isCheck: false,
+  answersQuestions: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -356,6 +357,16 @@ describe('PlaybookRow', () => {
       <PlaybookRow playbook={notCheck} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
     );
     expect(notCheckHtml).not.toContain('hatch-badge--danger');
+  });
+
+  it('shows the answers-questions badge on a flagged row only', () => {
+    const show = (playbook: Playbook) =>
+      renderToStaticMarkup(
+        <PlaybookRow playbook={playbook} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+      );
+    expect(show({ ...BASE, answersQuestions: true })).toContain('answers questions');
+    expect(show(BASE)).not.toContain('answers questions');
+    expect(show({ ...BASE, isCheck: true, deniedTools: ['Bash'] })).not.toContain('answers questions');
   });
 
   it('shows the note badge only when passed a note', () => {
