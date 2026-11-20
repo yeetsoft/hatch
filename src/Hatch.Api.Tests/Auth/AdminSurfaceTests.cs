@@ -568,6 +568,7 @@ public class AdminSurfaceTests
         // agent's: a key that could set it could steer its own ticket's cost
         // and quality. No approver is needed - it passes no gate.
         "IssueLocalModelController.PutIssueLocalModel",
+        "QuestionLevelController.PutQuestionLevel",
 
         // Who works this issue: human or agent. A person's call, not an
         // agent's - a key that could set it could keep a runner off its own
@@ -819,6 +820,7 @@ public class AdminSurfaceTests
         "IssuePreApprovalController.PutIssueExpress",
         "IssuePreApprovalController.PutIssuePreApproval",
         "IssueLocalModelController.PutIssueLocalModel",
+        "QuestionLevelController.PutQuestionLevel",
         "IssueHumanWorkController.PutIssueHumanWork",
         "IssueStallController.PutHold",
         "StatusesController.PutExpressSkips",

@@ -1059,6 +1059,7 @@ export type IssueEventKind =
   | 'express_changed'
   | 'pre_approval_changed'
   | 'local_model_changed'
+  | 'question_level_changed'
   | 'one_pr_changed'
   | 'runner_tags_changed'
   | 'dangerous_changed'
