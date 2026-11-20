@@ -609,6 +609,53 @@ public sealed class StreamRenderTests
         Assert.Equal(last.GetProperty("duration_ms").GetInt64(), facts.Result!.DurationMs);
     }
 
+    [Fact]
+    public void A_fresh_reader_has_not_ended_a_turn()
+    {
+        Assert.False(new StreamRender("/tmp/checkout", new RunFacts()).TurnEnded);
+    }
+
+    /// <summary>
+    /// Lines 1-14 are the first turn, 15 its result, 16-18 the background
+    /// task finishing, 19 the second turn opening, 24 its result, 25 the third
+    /// turn opening and 27 its result.
+    /// </summary>
+    private static readonly (int Lines, bool TurnEnded)[] BackgroundWaitTurns =
+        [(14, false), (4, true), (5, false), (1, true), (2, false), (1, true)];
+
+    [Fact]
+    public void A_recorded_background_wait_ends_a_turn_at_each_result_and_reopens_at_the_next_init()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+        var seen = new List<bool>();
+
+        foreach (var line in StreamFile("claude-background-wait.jsonl"))
+        {
+            render.Read(line).ToList();
+            seen.Add(render.TurnEnded);
+        }
+
+        Assert.Equal(ExpandTurns(), seen);
+    }
+
+    [Fact]
+    public void TurnEnded_is_current_the_moment_Read_returns_whether_or_not_its_lines_are_enumerated()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+        var seen = new List<bool>();
+
+        foreach (var line in StreamFile("claude-background-wait.jsonl"))
+        {
+            _ = render.Read(line);
+            seen.Add(render.TurnEnded);
+        }
+
+        Assert.Equal(ExpandTurns(), seen);
+    }
+
+    private static List<bool> ExpandTurns() =>
+        BackgroundWaitTurns.SelectMany(t => Enumerable.Repeat(t.TurnEnded, t.Lines)).ToList();
+
     private static string[] StreamFile(string name)
     {
         const string relative = "src/Hatch.Cli.Tests/Streams";
