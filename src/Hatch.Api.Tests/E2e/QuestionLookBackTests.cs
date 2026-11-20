@@ -70,7 +70,7 @@ public class QuestionLookBackTests(ITestOutputHelper output)
             await harness.WaitForVisibleAsync(deadline, ".hatch-question:has-text(\"Q-hold\")");
             await deadline.BoundAsync("reading the old sentence", () => Assertions.Expect(lead).ToHaveTextAsync($"{seeded.Hold} shipped with these open. An answer is welcome, not needed."));
 
-            await harness.GoToAsync(deadline, "/ballot");
+            await harness.GoToAsync(deadline, "/ballot?view=list");
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForVisibleAsync(deadline, ".hatch-ballot .hatch-question:has-text(\"Q-merge\")");
             Assert.Equal(0, await deadline.BoundAsync("looking for the hold question", () => page.Locator(".hatch-ballot .hatch-question:has-text(\"Q-hold\")").CountAsync()));
