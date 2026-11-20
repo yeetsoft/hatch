@@ -1667,6 +1667,66 @@ public class DispatchTests
         Assert.Equal(5, Dispatch.MatchWeave(rows, 1)!.Id);
     }
 
+    // ---- A row that answers questions is never matched ----
+
+    private static EfHatchPlaybook AnsweringRow(int id, string types, bool answers, int fromSort = 30) => new()
+    {
+        Id = id,
+        FromStatusId = fromSort,
+        FromStatus = new EfHatchStatus { Name = $"c{fromSort}", SortOrder = fromSort },
+        ToStatusId = fromSort,
+        Types = types,
+        Shape = EfHatchPlaybook.AnyShape,
+        Prompt = "do the thing",
+        Model = "sonnet",
+        Effort = "high",
+        AnswersQuestions = answers,
+        CreatedAt = Now,
+        UpdatedAt = Now,
+    };
+
+    [Fact]
+    public void Match_ReturnsThePassRowForAnAmbition_WhenAFlaggedRowSitsOnTheSameEdge()
+    {
+        // The flagged row is filed first, so only the flag keeps it from winning the tie on id.
+        var rows = new List<EfHatchPlaybook> { AnsweringRow(1, "ambition", answers: true), AnsweringRow(2, "ambition", answers: false) };
+
+        Assert.Equal(2, Dispatch.Match(rows, 30, 30, "ambition", isParent: false, projectId: 1)!.Id);
+    }
+
+    [Theory]
+    [InlineData("ambition")]
+    [InlineData("")]
+    public void Match_ReturnsNothing_WhenOnlyAFlaggedRowCoversTheType(string types)
+    {
+        var rows = new List<EfHatchPlaybook> { AnsweringRow(1, types, answers: true) };
+
+        Assert.Null(Dispatch.Match(rows, 30, 30, "ambition", isParent: false, projectId: 1));
+    }
+
+    [Theory]
+    [InlineData("reflection")]
+    [InlineData("")]
+    public void MatchReflection_SkipsAFlaggedRow(string types)
+    {
+        var flagged = AnsweringRow(1, types, answers: true);
+
+        Assert.Null(Dispatch.MatchReflection([flagged], 1));
+        Assert.Equal(2, Dispatch.MatchReflection([flagged, AnsweringRow(2, "reflection", answers: false)], 1)!.Id);
+    }
+
+    [Theory]
+    [InlineData("epic")]
+    [InlineData("")]
+    public void MatchWeave_SkipsAFlaggedRow(string types)
+    {
+        // Leftmost column, so only the flag keeps it from being picked.
+        var flagged = AnsweringRow(1, types, answers: true, fromSort: 10);
+
+        Assert.Null(Dispatch.MatchWeave([flagged], 1));
+        Assert.Equal(2, Dispatch.MatchWeave([flagged, AnsweringRow(2, "epic", answers: false, fromSort: 20)], 1)!.Id);
+    }
+
     // ---- StalledFold: SL-418's one shared held/stall rule ----
 
     [Fact]

@@ -236,6 +236,20 @@ public class PlaybookProposalsControllerTests
     }
 
     [Fact]
+    public async Task ARowThatWouldBeACheckAndAnswerQuestions_IsRefusedWithThePatchSentence()
+    {
+        var h = await NewAsync();
+        var patch = new PlaybookPatchRequest(null, null, null, null, null, null, IsCheck: true, AnswersQuestions: true);
+        var expected = await ExpectedRefusalAsync(h, patch);
+
+        var result = await h.Proposals.SubmitProposal(
+            new PlaybookProposalRequest("why", null, [ChangeFrom(h.Playbook.Id, patch)]), default);
+
+        Assert.Equal("a playbook is a check or it answers questions, not both", expected);
+        Assert.Contains(expected, Reason(result.Result));
+    }
+
+    [Fact]
     public async Task ANonexistentToStatusId_IsRefused()
     {
         var h = await NewAsync();
@@ -633,6 +647,22 @@ public class PlaybookProposalsControllerTests
     }
 
     [Fact]
+    public async Task ApproveAll_OnAnAnswersQuestionsChange_WritesTheColumn_AndLeavesIsCheckAlone()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(
+            patch: new PlaybookPatchRequest(null, null, null, null, null, null, AnswersQuestions: true));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default));
+
+        Assert.True(Assert.Single(result.Playbooks).AnswersQuestions);
+        var row = await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id);
+        Assert.True(row.AnswersQuestions);
+        Assert.False(row.IsCheck);
+    }
+
+    [Fact]
     public async Task ApproveAll_OnALocalModelChange_WritesTheColumn_AndLeavesTheModelAlone()
     {
         var h = await NewAsync();
@@ -927,7 +957,8 @@ public class PlaybookProposalsControllerTests
 
     private static PlaybookProposalChangeRequest ChangeFrom(int playbookId, PlaybookPatchRequest patch) => new(
         playbookId, patch.FromStatusId, patch.ToStatusId, patch.Types, patch.Prompt, patch.Model, patch.Effort,
-        patch.Budget, patch.BriefLimit, patch.Shape, patch.DeniedTools, patch.ProjectId, patch.IsCheck);
+        patch.Budget, patch.BriefLimit, patch.Shape, patch.DeniedTools, patch.ProjectId, patch.IsCheck,
+        AnswersQuestions: patch.AnswersQuestions);
 
     /// <summary>
     /// The sentence <c>PATCH /playbooks/{id}</c> would give for the same patch, read off a twin

@@ -1225,7 +1225,7 @@ beside the row's own `DefaultPrompt`, `Model`, `LocalModel` (the Ollama id a mov
 (millions of tokens), `BriefLimit` (characters), `QuietLimitSeconds` (seconds a
 claim may go without a word; null inherits the server's quiet lapse) and
 `MaxRunSeconds` (seconds a session may run before it is cut off; null means no
-limit - stored, not yet read), `DeniedTools`, `IsCheck`,
+limit - stored, not yet read), `DeniedTools`, `IsCheck`, `AnswersQuestions` (a row a session runs on to answer one question; the match never returns it, and a row is never also a check - a `POST` or `PATCH` that would make it both is a `400`),
 `Source` - `"board"` or `"project"`, by whether `ProjectId` names one - and
 `UnreachableReason`.
 `UnreachableReason` is read-only and null wherever the dispatcher could pick

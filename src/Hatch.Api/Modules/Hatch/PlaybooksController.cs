@@ -82,6 +82,9 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         if (await PlaybookPatches.Refusal(db, request.FromStatusId, request.ToStatusId, types, shape, projectId, id: null, ct) is { } error)
             return BadRequest(error);
 
+        if ((request.IsCheck ?? false) && (request.AnswersQuestions ?? false))
+            return BadRequest(PlaybookPatches.CheckAndAnswersRefusal);
+
         var prompt = request.Prompt?.Trim() ?? "";
         if (PlaybookFile.InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
 
@@ -149,6 +152,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
             LocalModel = localModel,
             DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
             IsCheck = request.IsCheck ?? false,
+            AnswersQuestions = request.AnswersQuestions ?? false,
             ProjectId = projectId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -188,6 +192,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         playbook.LocalModel = next.LocalModel;
         playbook.DeniedTools = next.DeniedTools;
         playbook.IsCheck = next.IsCheck;
+        playbook.AnswersQuestions = next.AnswersQuestions;
         playbook.ProjectId = next.ProjectId;
         playbook.UpdatedAt = time.GetUtcNow();
 
@@ -267,5 +272,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         state.QuietLimitSeconds,
         unreachableReason,
         state.MaxRunSeconds,
-        state.LocalModel);
+        state.LocalModel,
+        state.AnswersQuestions);
 }

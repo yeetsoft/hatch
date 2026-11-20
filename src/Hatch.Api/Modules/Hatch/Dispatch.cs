@@ -3339,11 +3339,14 @@ public sealed class Dispatch(
     /// <summary>
     /// The same rule against rows already in hand, which is how a scan matches
     /// a whole board's worth of transitions without a query a row. The matrix
-    /// is small enough to read whole and the tie-break is arithmetic.
+    /// is small enough to read whole and the tie-break is arithmetic. A row that
+    /// <see cref="EfHatchPlaybook.AnswersQuestions"/> is never returned: it is
+    /// reached by name, not by matching, and an operator who leaves its types
+    /// empty must not have it cover everything.
     /// </summary>
     public static EfHatchPlaybook? Match(List<EfHatchPlaybook> playbooks, int from, int to, string type, bool isParent, int projectId) =>
         playbooks
-            .Where(p => p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
+            .Where(p => !p.AnswersQuestions && p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderByDescending(p => p.ProjectId is not null)
             .ThenByDescending(p => p.Specificity)
@@ -3360,7 +3363,8 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? MatchReflection(List<EfHatchPlaybook> playbooks, int projectId) =>
         playbooks
-            .Where(p => (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("reflection"))
+            .Where(p => !p.AnswersQuestions
+                        && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("reflection"))
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderByDescending(p => p.ProjectId is not null)
             .ThenByDescending(p => p.Specificity)
@@ -3378,7 +3382,8 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? MatchWeave(List<EfHatchPlaybook> playbooks, int projectId) =>
         playbooks
-            .Where(p => (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("epic"))
+            .Where(p => !p.AnswersQuestions
+                        && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("epic"))
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderBy(p => p.FromStatus!.SortOrder)
             .ThenByDescending(p => p.ProjectId is not null)

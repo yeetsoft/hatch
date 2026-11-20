@@ -3337,6 +3337,13 @@ public class EfHatchPlaybook
     /// </summary>
     public bool IsCheck { get; set; }
 
+    /// <summary>
+    /// Whether this row is the one a session runs on to answer a single
+    /// question. It is never a check, and the ordinary match never returns it:
+    /// only a dispatch aimed at it by name reaches it.
+    /// </summary>
+    public bool AnswersQuestions { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
     public required DateTimeOffset UpdatedAt { get; set; }
 
