@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageHeader } from '@hatch/ui';
 import { getBallot } from '../api/client';
+import { BallotCards } from '../components/BallotCards';
 import { BallotPeek } from '../components/BallotPeek';
 import type { BallotPeekTarget } from '../components/BallotPeek';
 import { BallotTree } from '../components/BallotTree';
 import { ScopeGate } from '../components/ScopeGate';
+import { scopedPath } from '../lib/scope';
 import { useAttentionContext } from '../lib/useAttentionContext';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
@@ -33,7 +36,28 @@ export function BallotPage() {
 
 function BallotContent() {
   const scope = useScope();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const { attention, reload: reloadAttention } = useAttentionContext();
+
+  /* The card is the default; `?view=list` is the list by issue. Set with
+     replace so the scope in the same query survives and Back does not step
+     through the switch. */
+  const listView = params.get('view') === 'list';
+  const setView = (list: boolean) => {
+    const next = new URLSearchParams(params);
+    if (list) next.set('view', 'list');
+    else next.delete('view');
+    setParams(next, { replace: true });
+  };
+
+  /* Back to where the person came from; a page opened cold has nowhere behind
+     it in this app, so it goes home instead. */
+  const close = () => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    if (idx > 0) navigate(-1);
+    else navigate(scopedPath('/', scope.keys));
+  };
 
   /* The issue the dialog is open on, and the sentence for one that could not be
      read. The dialog is the board's own peek, so answering there leaves it open
@@ -86,18 +110,37 @@ function BallotContent() {
     <div className="hatch-page">
       <PageHeader
         title="Ballot"
-        description="Every question waiting on an answer, under the issue it was asked on."
+        description="Every question waiting on an answer, the one holding the most work first."
       />
 
       {error && <p className="text-danger">{error}</p>}
       {peekError && <p className="text-danger">{peekError}</p>}
 
-      <BallotTree
-        roots={data.ballot.roots}
-        projects={scope.allProjects}
-        onAnswered={answered}
-        onPreview={(node) => setPeeking({ key: node.key, openQuestions: node.questions.length })}
-      />
+      <div className="hatch-ballot-switch" role="group" aria-label="View">
+        <button type="button" aria-pressed={!listView} onClick={() => setView(false)}>
+          One at a time
+        </button>
+        <button type="button" aria-pressed={listView} onClick={() => setView(true)}>
+          By issue
+        </button>
+      </div>
+
+      {listView ? (
+        <BallotTree
+          roots={data.ballot.roots}
+          projects={scope.allProjects}
+          onAnswered={answered}
+          onPreview={(node) => setPeeking({ key: node.key, openQuestions: node.questions.length })}
+        />
+      ) : (
+        <BallotCards
+          questions={data.ballot.questions}
+          roots={data.ballot.roots}
+          onAnswered={answered}
+          onClose={close}
+          onList={() => setView(true)}
+        />
+      )}
 
       <BallotPeek
         target={peeking}

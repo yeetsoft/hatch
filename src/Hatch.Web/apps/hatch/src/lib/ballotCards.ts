@@ -1,0 +1,43 @@
+/* The ballot drawn one card at a time: which question is on the card, and the
+   sentences around it. Pure, so the order and the words can be read without a
+   page to render. */
+
+import type { BallotNode, BallotQuestion, QuestionOption } from '../types';
+
+/** The root holding `issueKey` at any depth, or null where no root does. */
+export function rootOf(roots: BallotNode[], issueKey: string): BallotNode | null {
+  const holds = (node: BallotNode): boolean => node.key === issueKey || node.children.some(holds);
+  return roots.find(holds) ?? null;
+}
+
+/**
+ * The questions in the order the cards come: those not skipped, in the order
+ * the server ranked them, then those skipped, in the order they were skipped.
+ * A skipped id the server no longer lists - answered elsewhere - is dropped.
+ */
+export function cardQueue(questions: BallotQuestion[], skipped: number[]): BallotQuestion[] {
+  const byId = new Map(questions.map((q) => [q.question.id, q]));
+  const later = skipped.flatMap((id) => byId.get(id) ?? []);
+  const skippedIds = new Set(skipped);
+  return [...questions.filter((q) => !skippedIds.has(q.question.id)), ...later];
+}
+
+/** The options with the recommended one first and the rest as they were. */
+export const optionsRecommendedFirst = (options: QuestionOption[]): QuestionOption[] => [
+  ...options.filter((o) => o.recommended),
+  ...options.filter((o) => !o.recommended),
+];
+
+/** What answering the question lets go of, as the pill says it. */
+export const holdsWords = (holds: number): string =>
+  holds === 0 ? 'Holds nothing' : `Holds ${holds} ${holds === 1 ? 'issue' : 'issues'}`;
+
+/** The card's footer: what is behind this question. A look-back question is one
+    already decided without the person, so it is counted apart. */
+export function thenWords(open: number, lookBack: number): string {
+  const clauses = [
+    open > 0 ? `${open} more to answer` : null,
+    lookBack > 0 ? `${lookBack} decided without you to look over` : null,
+  ].filter((c): c is string => c !== null);
+  return clauses.length === 0 ? 'Nothing else is waiting' : `Then ${clauses.join(', and ')}`;
+}
