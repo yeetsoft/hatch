@@ -1299,6 +1299,24 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("OvernightSeen", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPersonHome", b =>
+                {
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Home")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PersonId");
+
+                    b.ToTable("PersonHomes", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPersonScope", b =>
                 {
                     b.Property<Guid>("PersonId")
