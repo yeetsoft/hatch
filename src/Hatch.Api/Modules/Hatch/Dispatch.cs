@@ -385,7 +385,7 @@ public sealed class Dispatch(
                     var checkRow = checkColumn is null
                         ? null
                         : Match(candidatePlaybooks, status.Id, checkColumn.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
-                    var rowTarget = ReviewTarget(statuses, status, checkColumn, checkRow) ?? to;
+                    var rowTarget = ReviewTarget(issue, statuses, status, checkColumn, checkRow) ?? to;
                     var playbook = checkRow is { IsCheck: true }
                         ? checkRow
                         : Match(candidatePlaybooks, status.Id, rowTarget.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
@@ -487,7 +487,7 @@ public sealed class Dispatch(
 
                     rows.Add(new ScanRow(
                         issue, status, rowTo, sentence, kind,
-                        KindOf(issue, status, rowTo, merged, built, claimed.Now, landing),
+                        KindOf(issue, status, rowTo, merged, built, claimed.Now, landing, IsPass(issue, status, rowTo, implementation)),
                         hop && sentence is null,
                         sentence is null ? hopKind : null,
                         sentence is null ? hopUnder : null,
@@ -2060,13 +2060,13 @@ public sealed class Dispatch(
     public static string KindOf(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to,
         IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now,
-        MergeWork.Judgement? landing = null) =>
+        MergeWork.Judgement? landing = null, bool pass = false) =>
         from.MergesPullRequest
             ? MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 merges, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now,
                 pullRequestHeadSince: issue.PullRequestHeadSince).Kind
-            : to is not null && to.Id == from.Id
+            : to is not null && to.Id == from.Id && !pass
                 ? landing?.Kind ?? ReviewWork.Judge(issue, merges, builds).Kind
                 : WorkKinds.Advance;
 
@@ -2097,8 +2097,30 @@ public sealed class Dispatch(
     /// <see cref="Columns.Target"/> otherwise, exactly as every other move is.
     /// </summary>
     public static EfHatchStatus? ReviewTarget(
-        List<EfHatchStatus> statuses, EfHatchStatus from, EfHatchStatus? checkColumn, EfHatchPlaybook? checkRow) =>
-        checkRow is { IsCheck: true } ? checkColumn : Columns.Target(statuses, from);
+        EfHatchIssue issue, List<EfHatchStatus> statuses, EfHatchStatus from, EfHatchStatus? checkColumn, EfHatchPlaybook? checkRow) =>
+        checkRow is { IsCheck: true } ? checkColumn
+        : PassStands(issue, from, Columns.Implementation(statuses)) ? from
+        : Columns.Target(statuses, from);
+
+    /// <summary>
+    /// Whether an ambition standing in the implementation column is aimed at
+    /// that column itself, the way the review column is aimed at itself: its
+    /// work there is a pass over the epics under it, not a move to another
+    /// column. Asked of the issue and its column alone, so the target is
+    /// settled before any row has been matched.
+    /// </summary>
+    public static bool PassStands(EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? implementation) =>
+        issue.Type == "ambition"
+        && implementation is not null && from.Id == implementation.Id;
+
+    /// <summary>
+    /// Whether this move is an ambition's pass: <see cref="PassStands"/> and
+    /// the target <see cref="ReviewTarget"/> gave is the column itself. The
+    /// one question the self-move folds and kinds ask, so a pass is never read
+    /// as the review column's own self-move.
+    /// </summary>
+    public static bool IsPass(EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, EfHatchStatus? implementation) =>
+        to is not null && to.Id == from.Id && PassStands(issue, from, implementation);
 
     /// <summary>
     /// Whether this move is the one a check playbook covers: a move off the
@@ -2493,7 +2515,7 @@ public sealed class Dispatch(
         // agent's: the sentence is the judge's, whatever else (a claim, an
         // assignee) would also fold it. Only the review self-move reaches this -
         // a hop out of the column carries another column as its target.
-        if (landing is { } landed && to.Id == from.Id)
+        if (landing is { } landed && to.Id == from.Id && !IsPass(issue, from, to, implementation))
             return new Blocking(landed.Sentence, BlockedKinds.Other);
 
         // A level the walk passed over at a project line, where it would have
@@ -2612,7 +2634,8 @@ public sealed class Dispatch(
         // Dependencies gate the move into implementation, and a parent pull out
         // of a ParentPulls column - a pull request that already exists is not
         // held back by what its ticket once waited on.
-        var conflicts = to.Id == from.Id;
+        var pass = IsPass(issue, from, to, implementation);
+        var conflicts = to.Id == from.Id && !pass;
 
         if (!hop || to.Id == implementation?.Id)
         {
@@ -2687,7 +2710,18 @@ public sealed class Dispatch(
         // above - the operator shelving a story is not a gap in the epic
         // (HA-114, Taken here). Never on the move to itself: an epic in
         // review is folded by a conflict or a failing build, not by this.
-        if (IssueTypeKinds.RunsChildren(issue.Type) && !conflicts && wip is not null
+        //
+        // An ambition's pass in the implementation column is the one exception:
+        // it is not verified by its epics but run beside them, so the epic fold
+        // gives way to the room rule - clear while fewer epics are open than it
+        // allows, folded with that count otherwise. It reads the ambition's own
+        // limit, which does not depend on the WIP section.
+        if (pass)
+        {
+            if (family.PassFold(issue.Id, issue.WipLimit, statuses) is { } passBlock)
+                return Blocking.Waiting(passBlock.Sentence, BlockedKinds.Family, passBlock.Open);
+        }
+        else if (IssueTypeKinds.RunsChildren(issue.Type) && !conflicts && wip is not null
             && Columns.AtOrPastImplementation(statuses, from.Id)
             && family.EpicFold(issue.Id, statuses) is { } epicBlock)
             return Blocking.Waiting(epicBlock, BlockedKinds.Family, family.EpicOpenChildren(issue.Id, statuses));
@@ -2864,6 +2898,10 @@ public sealed class Dispatch(
         IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now,
         EfHatchPlaybook? implementationPlaybook = null)
     {
+        // An ambition's pass is a session on the column it stands in, never a
+        // hop: no arm below may carry it anywhere.
+        if (IsPass(issue, from, to, Columns.Implementation(statuses))) return null;
+
         // For the review column a protected `to` that differs from `from` can
         // only be the check's own merge column, because Columns.Target
         // self-dispatches review before any protected next column - so this
@@ -4722,6 +4760,24 @@ public sealed class FamilyGate
         return counted == 1
             ? "its only child is not done - an epic is verified once its stories are"
             : $"{open} of its {counted} children {(open == 1 ? "is" : "are")} not done - an epic is verified once its stories are";
+    }
+
+    /// <summary>
+    /// Why an ambition's pass should not run: how many of its epics are open
+    /// against how many it runs at once. Open is counted the way
+    /// <see cref="EpicFold"/> counts it - not terminal, a deferred epic left
+    /// out. The limit is the ambition's own <paramref name="limit"/>, and null
+    /// reads as one. Null where fewer are open than the limit, which includes
+    /// an ambition with no epics at all: its pass has nothing to wait on.
+    /// </summary>
+    public (string Sentence, IReadOnlyList<long> Open)? PassFold(long issueId, int? limit, List<EfHatchStatus> statuses)
+    {
+        var (_, openIds) = EpicCounts(Children(issueId), statuses);
+        var allowed = limit ?? 1;
+        if (openIds.Count < allowed) return null;
+
+        var open = openIds.Count;
+        return ($"{open} of its epics {(open == 1 ? "is" : "are")} open, and it runs {allowed} at once - the next pass runs when one closes", openIds);
     }
 
     /// <summary>

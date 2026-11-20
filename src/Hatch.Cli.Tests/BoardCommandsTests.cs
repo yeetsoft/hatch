@@ -874,6 +874,14 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public void The_queue_draws_a_pass_as_a_move_to_its_own_column()
+    {
+        var lines = BoardCommands.Draw([Fixtures.Row("AER-1", selfMove: true)]);
+
+        Assert.EndsWith("In Progress  -> In Progress", lines.Single());
+    }
+
+    [Fact]
     public void The_marker_column_switches_on_for_a_project_level_alone()
     {
         var lines = BoardCommands.Draw([Fixtures.Row("AER-1", projectPriority: ProjectPriorities.Expedited), Fixtures.Row("AER-2")]);
