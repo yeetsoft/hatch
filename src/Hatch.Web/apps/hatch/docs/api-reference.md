@@ -623,9 +623,10 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | GET | `/search` | Full-text search across title, description, comments and work log, paged |
 | GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
+| GET | `/ambitions` | Every ambition with its capabilities counted four ways and the epics open under it; takes a repeatable `projectId` |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
-All four a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
+All five a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
 `createdFrom`/`createdTo`, `closedFrom`/`closedTo`, `limit` (1-200, default
 50) and `offset`; with `q`, best match first and closed-ahead-of-open among
 equals, without it newest first (closed, else created). `/plan` takes an

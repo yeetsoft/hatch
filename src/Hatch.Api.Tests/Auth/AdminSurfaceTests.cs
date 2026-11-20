@@ -163,6 +163,7 @@ public class AdminSurfaceTests
         // nothing: it reads the same waiting comments, and the issues above
         // them, under the same scope as the board.
         "BallotController.GetBallot",
+        "AmbitionsController.GetAmbitions",
         "ImportController.Preview",
         "ImportController.PreviewText",
         "ImportController.Import",
@@ -900,6 +901,7 @@ public class AdminSurfaceTests
         "GooseController.ListRuns",
         "BackupController.GetBackup",
         "BallotController.GetBallot",
+        "AmbitionsController.GetAmbitions",
         "BoardController.GetBoard",
         "BroughtCurrentController.PutBroughtCurrent",
         "BuildCheckController.PutBuildCheck",
