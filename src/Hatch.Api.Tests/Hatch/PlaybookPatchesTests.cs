@@ -49,6 +49,19 @@ public class PlaybookPatchesTests
     }
 
     [Fact]
+    public void AnswersQuestions_is_set_kept_when_null_and_cleared_when_false()
+    {
+        var set = PlaybookPatches.Apply(State(), new PlaybookPatchRequest(null, null, null, null, null, null, AnswersQuestions: true));
+        Assert.True(set.AnswersQuestions);
+
+        var kept = PlaybookPatches.Apply(set, Patch(model: "opus"));
+        Assert.True(kept.AnswersQuestions);
+
+        var cleared = PlaybookPatches.Apply(set, new PlaybookPatchRequest(null, null, null, null, null, null, AnswersQuestions: false));
+        Assert.False(cleared.AnswersQuestions);
+    }
+
+    [Fact]
     public void A_field_left_null_in_the_request_is_untouched()
     {
         var current = State();

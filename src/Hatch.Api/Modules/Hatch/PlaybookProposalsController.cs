@@ -260,6 +260,7 @@ public class PlaybookProposalsController(
             row.LocalModel = next.LocalModel;
             row.DeniedTools = next.DeniedTools;
             row.IsCheck = next.IsCheck;
+            row.AnswersQuestions = next.AnswersQuestions;
             row.ProjectId = next.ProjectId;
             row.UpdatedAt = now;
         }
