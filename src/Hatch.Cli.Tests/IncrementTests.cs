@@ -2870,6 +2870,164 @@ public sealed class IncrementTests
     }
 
     /// <summary>
+    /// A session whose turn has ended and is woken again by background work,
+    /// after longer than the quiet window but inside the agent's tool timeout:
+    /// the runner says it is waiting, so the session is not stopped for quiet
+    /// and finishes in its next turn.
+    /// </summary>
+    [Fact]
+    public async Task One_long_wait_keeps_the_claim_talking_and_the_session_is_not_stopped_for_quiet()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
+
+        h.Sessions.Behaviour = async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: ""));
+            await Task.Delay(TimeSpan.FromSeconds(6), clock, ct);
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return new SessionResult(0, "");
+        };
+
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var running = h.Runtime with { ToolCeiling = TimeSpan.FromSeconds(10) };
+        var task = running.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        var seen = new List<string>();
+        for (var i = 0; i < 400 && !task.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+            if (claim.Chatter.Line is { } line && (seen.Count == 0 || seen[^1] != line)) seen.Add(line);
+        }
+
+        var report = await task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(report.QuietStopped);
+        Assert.True(report.Moved);
+        Assert.Contains(seen, l => l.StartsWith("waiting on background work, 0m", StringComparison.Ordinal));
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A wait still going past the agent's tool timeout is hung: the chatter ends, and the window runs out one lapse after the last line.</summary>
+    [Fact]
+    public async Task A_wait_past_the_ceiling_stops_the_chatter_and_the_session_is_stopped_for_quiet()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var clock = new FakeTimeProvider(start);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+
+        h.Sessions.Behaviour = async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: ""));
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(60), clock, ct);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            return new SessionResult(143, "");
+        };
+
+        var running = h.Runtime with { ToolCeiling = TimeSpan.FromSeconds(4) };
+        var task = running.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 400 && !task.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+        }
+
+        var report = await task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.QuietStopped);
+
+        // It talked for as long as the wait was inside the ceiling, and was
+        // stopped only after the ceiling had passed.
+        Assert.True(clock.GetUtcNow() - start > TimeSpan.FromSeconds(4));
+        Assert.StartsWith("waiting on background work", claim.Chatter.Line!, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// A wait past the agent's tool timeout, on a claim carrying a run cap,
+    /// keeps the chatter going past the ceiling - the run cap bounds it here -
+    /// so the session is stopped for run time, never for quiet.
+    /// </summary>
+    [Fact]
+    public async Task A_wait_past_the_ceiling_on_a_capped_claim_keeps_talking_until_the_run_cap_stops_it()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var clock = new FakeTimeProvider(start);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 12, stallLapseSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        h.Sessions.Behaviour = async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.Result(said: ""));
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(60), clock, ct);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            return new SessionResult(143, "");
+        };
+
+        var running = h.Runtime with { ToolCeiling = TimeSpan.FromSeconds(4) };
+        var task = running.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 400 && !task.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+        }
+
+        var report = await task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.RunTimeStopped);
+        Assert.False(report.QuietStopped);
+
+        // The clock passed the ceiling while the wait was still being carried.
+        Assert.True(clock.GetUtcNow() - start > TimeSpan.FromSeconds(4));
+        Assert.StartsWith("waiting on background work", claim.Chatter.Line!, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
     /// A heartbeat refused with <c>reason: "quiet"</c> is read the same way a
     /// locally fired watcher is - here with no local watcher at all
     /// (<c>stallLapseSeconds</c> defaults to 0, so none is even started), which

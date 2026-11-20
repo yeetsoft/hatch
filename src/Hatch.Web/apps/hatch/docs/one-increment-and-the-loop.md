@@ -110,8 +110,11 @@ call returns, is not sent while the session thinks or writes between calls,
 and ends once a call has stayed open past the agent's own timeout, so a hung
 call is still caught - unless the claim carries a run-time cap, in which case
 it carries on past that timeout until the cap itself stops the run; with no
-cap, as before. A `--quiet` session prints nothing and carries none of
-it. Any other heartbeat
+cap, as before. A session whose turn has ended while its process runs on, to
+wait for background work, is carried the same way: the runner says
+`waiting on background work, <n>m`, on the same terms as a call, until the
+session starts a new turn. A `--quiet` session prints nothing and carries none
+of it. Any other heartbeat
 failure is weather and is retried, but one that keeps failing past the
 ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) or its
 playbook's quiet limit stops the
