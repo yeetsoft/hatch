@@ -131,6 +131,14 @@ the nav bar and in the phone menu. It lists every ambition across every
 project, in one read, each with where it stands. It follows the tab's
 project scope the same way Plan and Ballot do, and nothing is stored for it.
 
+A person may make this page their home screen, in the **Home screen** card
+on the Settings page. The root address (`/`) then opens Ambitions, and the
+**Hatch** logo leads here too; the board is the default, and what a person
+who has chosen nothing gets. A key reads the choice (`home` on `GET /me`)
+but cannot change it - `PUT /me/home` takes a person only. See [the board
+and its columns](the-board-and-its-columns) and
+[the API reference](api-reference).
+
 Above the rows is a strip of what is waiting on the reader: one line for
 every question at the hold level anywhere on an ambition's tree, the
 ambition itself included. A line names the ambition, the key of the issue
