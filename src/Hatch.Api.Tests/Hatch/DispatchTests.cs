@@ -2658,6 +2658,81 @@ public class DispatchTests
         Assert.Equal(h.Review, row.To!.Id);
     }
 
+    // ---- An ambition's pass ----
+
+    private static async Task<(Harness H, EfHatchIssue Ambition)> PassAsync(int? limit, int openEpics, int closedEpics = 0, int deferredEpics = 0)
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.AddPlaybookAsync(h.InProgress, h.InProgress, types: "ambition");
+        var ambition = await h.FileAsync("ambition", "A", h.InProgress, wipLimit: limit);
+        for (var i = 0; i < openEpics; i++) await h.FileAsync("epic", $"open {i}", h.Todo, parentId: ambition.Id);
+        for (var i = 0; i < closedEpics; i++) await h.FileAsync("epic", $"closed {i}", h.Done, parentId: ambition.Id);
+        if (deferredEpics > 0)
+        {
+            var shelved = new EfHatchStatus { Name = "shelved", SortOrder = 50, IsDeferred = true };
+            h.Db.Statuses.Add(shelved);
+            await h.Db.SaveChangesAsync();
+            for (var i = 0; i < deferredEpics; i++) await h.FileAsync("epic", $"shelved {i}", shelved.Id, parentId: ambition.Id);
+        }
+
+        return (h, ambition);
+    }
+
+    [Theory]
+    [InlineData(2, 1, 0, 0)]
+    [InlineData(null, 0, 0, 0)]
+    [InlineData(2, 1, 0, 1)]
+    [InlineData(1, 0, 3, 0)]
+    public async Task ScanAsync_AnAmbitionWithRoom_IsDispatchedToItsPassRow(int? limit, int openEpics, int closedEpics, int deferredEpics)
+    {
+        var (h, ambition) = await PassAsync(limit, openEpics, closedEpics, deferredEpics);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var row = RowFor(scan, ambition);
+        Assert.Null(row.Blocked);
+        Assert.Equal(h.InProgress, row.To!.Id);
+        Assert.Equal(row.From.Id, row.To!.Id);
+        Assert.False(row.Hop);
+        Assert.Null(row.HopKind);
+        Assert.Equal(WorkKinds.Advance, row.Kind);
+    }
+
+    [Theory]
+    [InlineData(null, 1, 0, "1 of its epics is open, and it runs 1 at once - the next pass runs when one closes")]
+    [InlineData(2, 2, 0, "2 of its epics are open, and it runs 2 at once - the next pass runs when one closes")]
+    [InlineData(2, 2, 1, "2 of its epics are open, and it runs 2 at once - the next pass runs when one closes")]
+    public async Task ScanAsync_AnAmbitionAtItsLimit_IsFoldedWithTheCountAndTheLimit(int? limit, int openEpics, int deferredEpics, string sentence)
+    {
+        var (h, ambition) = await PassAsync(limit, openEpics, deferredEpics: deferredEpics);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var row = RowFor(scan, ambition);
+        Assert.Equal(sentence, row.Blocked);
+        Assert.Equal(BlockedKinds.Family, row.BlockedKind);
+        Assert.Equal(openEpics, row.WaitsOn!.Count);
+        Assert.Equal(row.From.Id, row.To!.Id);
+        Assert.False(row.Hop);
+        Assert.Equal(WorkKinds.Advance, row.Kind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnEpicInTheImplementationColumnWithOpenStories_KeepsTheEpicFold()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        await h.AddPlaybookAsync(h.InProgress, h.InProgress, types: "ambition");
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Equal("its only child is not done - an epic is verified once its stories are", RowFor(scan, epic).Blocked);
+        Assert.NotEqual(RowFor(scan, epic).From.Id, RowFor(scan, epic).To?.Id);
+    }
+
     // ---- Helpers ----
 
     private static PlaybookFileRow FileRow(
@@ -2685,10 +2760,11 @@ public class DispatchTests
         private int next = 1;
         private int nextRepoOrder;
 
-        public async Task<EfHatchIssue> FileAsync(string type, string title, int statusId, long rank = 1024, int? projectId = null, long? parentId = null)
+        public async Task<EfHatchIssue> FileAsync(string type, string title, int statusId, long rank = 1024, int? projectId = null, long? parentId = null, int? wipLimit = null)
         {
             var issue = new EfHatchIssue
             {
+                WipLimit = wipLimit,
                 ProjectId = projectId ?? ProjectId,
                 Number = next++,
                 Type = type,
