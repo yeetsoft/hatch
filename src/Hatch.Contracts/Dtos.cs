@@ -3013,6 +3013,31 @@ public record CapabilityDto(
     string CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
     string State, CapabilityVerdictDto? NewestVerdict, IReadOnlyList<string> ServedBy);
 
+/// <summary>
+/// One ambition and where it stands: its capabilities counted four ways, and
+/// the epics open beneath it. Every number is derived on read, never stored.
+/// </summary>
+/// <param name="Limit">The ambition's <c>wipLimit</c>, read as one where it is unset.</param>
+/// <param name="Capabilities">How many capabilities the ambition has. The four counts after it add up to this.</param>
+/// <param name="Holds">Capabilities whose newest verdict is <c>holds</c>.</param>
+/// <param name="InFlight">Capabilities not held that an open epic serves, where at least one of those epics is not waiting on a person.</param>
+/// <param name="WaitsOnPerson">Capabilities not held that open epics serve, every one of them waiting on a person.</param>
+/// <param name="NotStarted">Capabilities neither held nor served by an open epic.</param>
+/// <param name="Open">The epics open beneath the ambition, in rank order. An epic is open when its column is neither closed nor deferred.</param>
+/// <param name="ChildBeyondScope">Some child of this ambition is in a project the reader's scope does not hold. No key and no count of it is told.</param>
+public record AmbitionRowDto(
+    string Key, string ProjectKey, string Title, int StatusId, string StatusName, int Limit,
+    int Capabilities, int Holds, int InFlight, int WaitsOnPerson, int NotStarted,
+    IReadOnlyList<AmbitionOpenEpicDto> Open, bool ChildBeyondScope = false);
+
+/// <summary>One epic open beneath an ambition, as the Ambitions read draws it.</summary>
+/// <param name="Serves">The positions of the capabilities of its ambition that it serves, ascending.</param>
+/// <param name="WaitsOnPerson">Nothing can move on this epic until a person acts: a hold-level question, a dangerous flag over a question, or its own <c>held</c>.</param>
+/// <param name="Why">One line saying so, where <paramref name="WaitsOnPerson"/> is true. It names no key and quotes no reason, since the cause may sit on an issue the reader cannot see.</param>
+public record AmbitionOpenEpicDto(
+    string Key, string ProjectKey, string Title, int StatusId, string StatusName,
+    IReadOnlyList<int> Serves, bool WaitsOnPerson, string? Why);
+
 /// <summary>Adds a capability. Neither line may be blank.</summary>
 /// <param name="Position">Where to put it, 1 to one past the last. Left out, it goes at the end.</param>
 public record CapabilityCreateRequest(string Statement, string HowToTell, int? Position = null);
