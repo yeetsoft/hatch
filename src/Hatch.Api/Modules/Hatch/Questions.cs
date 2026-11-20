@@ -39,6 +39,44 @@ public static class Questions
             .ToDictionaryAsync(x => x.IssueId, x => x.Count, ct);
 
     /// <summary>
+    /// The strictest level each issue is waiting at, and how many of its
+    /// questions stand at that level. Issues waiting on none are absent.
+    /// </summary>
+    /// <remarks>
+    /// The count is of the strictest level alone, so a sentence saying "1
+    /// question at build" never counts a question that would have let the
+    /// work merge. A row with no level reads as <see cref="QuestionLevels.HoldName"/>.
+    /// <paramref name="ignoreFilters"/> reads every project's questions, as the
+    /// dispatcher's tree reads every project's issues.
+    /// </remarks>
+    public static async Task<Dictionary<long, (string Level, int Count)>> WaitingLevelsAsync(
+        HatchContext db, CancellationToken ct, bool ignoreFilters = false)
+    {
+        // Query-wide, so the answer lookup inside Open is unscoped too: an
+        // ancestor's question in a project the reader cannot see still holds.
+        var waiting = ignoreFilters
+            ? db.Comments.IgnoreQueryFilters().AsNoTracking()
+                .Where(c => c.Kind == EfHatchComment.Question)
+                .Where(c => !db.Comments.Any(a => a.AnswersId == c.Id))
+                .Where(c => !c.Issue!.Status!.IsTerminal)
+            : Waiting(db);
+
+        var rows = await waiting
+            .Select(c => new { c.IssueId, c.Level })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => r.IssueId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var level = QuestionLevels.Strictest(g.Select(r => r.Level));
+                    return (level, g.Count(r => QuestionLevels.Normalise(r.Level) == level));
+                });
+    }
+
+    /// <summary>
     /// The stored options as a list, or null for a question asked in prose.
     /// </summary>
     /// <remarks>

@@ -761,8 +761,6 @@ public class WorkController(
         var route = await RouteAsync(issue, from, statuses, merged, built, family.Children(issue.Id).Count > 0, ct);
         var to = route.To;
         var playbook = route.Match?.Playbook;
-        var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
-        var waiting = questions.Count(q => q.Answers.Count == 0);
 
         var landing = inReview && (await _dispatch.LandedAsync([issue], now, ct)).TryGetValue(issue.Id, out var landed) ? landed : (MergeWork.Judgement?)null;
 
@@ -785,7 +783,7 @@ public class WorkController(
             : (IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)>)new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
         var driver = drivers.TryGetValue(issue.ProjectId, out var d) ? d : ((string Name, DateTimeOffset LastSeenAt)?)null;
         var blocked = Dispatch.Blocked(
-            issue, from, rowTo, playbook, waiting, letGo, sendBackStreak,
+            issue, from, rowTo, playbook, letGo, sendBackStreak,
             null, // a hop takes no ready-date fold of its own, and no economy or low fold either - see Dispatch.Blocked's loop parameter
             null,
             gate,
@@ -954,36 +952,60 @@ public class WorkController(
         {
             var approvedColumn = Columns.Approves(statuses, from, issue.Project!.CheckApprovesMerge);
             var approves = approvedColumn is not null && !string.IsNullOrWhiteSpace(issue.PullRequestUrl);
-            var target = approves ? approvedColumn! : Columns.Target(statuses, from)!;
 
-            issue.Events.Add(new EfHatchIssueEvent
-            {
-                Actor = actor,
-                Kind = EfHatchIssueEvent.StatusChanged,
-                Payload = approves
-                    ? JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId), ("approved", "check")))
-                    : JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId))),
-                At = now,
-            });
-
+            // The same fold a hop asks: an open question at build holds what
+            // would merge the work, and one at hold holds every move. The check
+            // has still passed, so the verdict is applied and the issue stays.
+            string? questionHold = null;
             if (approves)
             {
-                var playbook = await db.Playbooks.Include(p => p.FromStatus).Include(p => p.ToStatus)
-                    .FirstAsync(p => p.Id == playbookId, ct);
+                var gate = await DependencyGate.ForAsync(db, actors, statuses, ct);
+                questionHold = Dispatch.QuestionFold(issue, from, approvedColumn!, gate, statuses, Columns.Implementation(statuses));
+            }
+
+            if (questionHold is not null)
+            {
                 db.Comments.Add(new EfHatchComment
                 {
                     IssueId = issue.Id,
                     Author = actor,
-                    Body = $"Approved by {playbook.FromStatus!.Name} → {playbook.ToStatus!.Name}'s passing verdict.",
+                    Body = $"Passed its check and stays in {from.Name} - {questionHold}.",
                     CreatedAt = now,
                 });
             }
+            else
+            {
+                var target = approves ? approvedColumn! : Columns.Target(statuses, from)!;
 
-            issue.Rank = await ranks.BottomAsync(target.Id, ct);
-            issue.StatusId = target.Id;
-            issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
-            if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
-                issue.Events.Add(cleared);
+                issue.Events.Add(new EfHatchIssueEvent
+                {
+                    Actor = actor,
+                    Kind = EfHatchIssueEvent.StatusChanged,
+                    Payload = approves
+                        ? JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId), ("approved", "check")))
+                        : JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId))),
+                    At = now,
+                });
+
+                if (approves)
+                {
+                    var playbook = await db.Playbooks.Include(p => p.FromStatus).Include(p => p.ToStatus)
+                        .FirstAsync(p => p.Id == playbookId, ct);
+                    db.Comments.Add(new EfHatchComment
+                    {
+                        IssueId = issue.Id,
+                        Author = actor,
+                        Body = $"Approved by {playbook.FromStatus!.Name} → {playbook.ToStatus!.Name}'s passing verdict.",
+                        CreatedAt = now,
+                    });
+                }
+
+                issue.Rank = await ranks.BottomAsync(target.Id, ct);
+                issue.StatusId = target.Id;
+                issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+                if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
+                    issue.Events.Add(cleared);
+            }
         }
         else if (priorFails == 0)
         {
@@ -1594,7 +1616,6 @@ public class WorkController(
         // dispatched at all, and the answered ones are what it is dispatched
         // knowing.
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
-        var waiting = questions.Count(q => q.Answers.Count == 0);
         var buildPast = await BuildPastAsync(issue, ct);
 
         var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
@@ -1639,7 +1660,7 @@ public class WorkController(
             ? await _dispatch.LeftForLocalAsync(issue, playbook, localModelLevel, models, asking, ct)
             : null;
         var blocked = Dispatch.Blocked(
-            issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
+            issue, from, rowTo, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
             has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor);
