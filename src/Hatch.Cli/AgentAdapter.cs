@@ -214,6 +214,16 @@ public interface IAgentStreamReader
     /// not the caller enumerates its lines.
     /// </summary>
     OpenCall? Open { get; }
+
+    /// <summary>
+    /// Whether the session is between turns: true from the event that closes a
+    /// turn until the event that opens the next, false before the first result
+    /// and inside every turn after. A session can end a turn and be woken again
+    /// (a background task finishing), so this is not the end of the process.
+    /// Current the moment <see cref="Read"/> returns, as <see cref="Open"/> is.
+    /// Readers whose process ends with its turn keep the default, which says no.
+    /// </summary>
+    bool TurnEnded => false;
 }
 
 /// <summary>
