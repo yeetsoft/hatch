@@ -143,8 +143,8 @@ not drawn. Anyone who is not an owner reads it as a sentence, *Expedited.* or
 
 ## Your first epic
 
-Press **+** (New issue) on the board, set **Type** to *epic* — it opens on *task* —
-and **Project** to the one you just made, give it a **Title**, and press **File
+Press **+** (New issue) on the board, leave **Type** on *epic*, which is what
+it opens on, and set **Project** to the one you just made, give it a **Title**, and press **File
 it**. The server puts it in the leftmost column, **Draft**, and it crosses three
 columns before anything is chosen to be built:
 

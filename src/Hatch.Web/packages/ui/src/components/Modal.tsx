@@ -78,6 +78,9 @@ export interface ModalProps {
  * listeners fire on the same event before either close commits, so without
  * this check one Escape would close both.
  *
+ * The Escape it acts on is `preventDefault`ed, so a handler behind the dialog
+ * that steps aside for `defaultPrevented` does so whichever listener runs first.
+ *
  * The opener is recorded during render, not in the effect: by the time the
  * effect runs an `autoFocus` child has already taken focus, and the effect
  * would record that child rather than the button that opened the dialog. The
@@ -109,6 +112,10 @@ export function Modal({ open, onClose, title, children, footer, width = 'default
       if (e.key !== 'Escape') return;
       const panels = document.querySelectorAll('[aria-modal="true"]');
       if (panels[panels.length - 1] !== panelRef.current) return;
+      // Marks the key as taken, for a listener on the page behind that looks at
+      // `defaultPrevented`: React closes this panel in a microtask, which a real
+      // keypress runs between listeners, so `[aria-modal]` alone may be gone by then.
+      e.preventDefault();
       onCloseRef.current();
     };
     document.addEventListener('keydown', onKeyDown);

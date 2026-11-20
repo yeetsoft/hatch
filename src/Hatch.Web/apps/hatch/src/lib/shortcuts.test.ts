@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isEscapeShortcut,
   isGoToShortcut,
   isNewIssueShortcut,
   isTypingTarget, isUndoShortcut, postShortcutLabel, undoShortcutLabel } from './shortcuts';
@@ -53,6 +54,23 @@ describe('isNewIssueShortcut', () => {
   it('is not any other key', () => {
     expect(isNewIssueShortcut(chord('v'))).toBe(false);
     expect(isNewIssueShortcut(chord('/'))).toBe(false);
+  });
+});
+
+describe('isEscapeShortcut', () => {
+  it('is a bare Escape', () => {
+    expect(isEscapeShortcut(chord('Escape'))).toBe(true);
+  });
+
+  it('steps aside for any modifier', () => {
+    expect(isEscapeShortcut(chord('Escape', { metaKey: true }))).toBe(false);
+    expect(isEscapeShortcut(chord('Escape', { ctrlKey: true }))).toBe(false);
+    expect(isEscapeShortcut(chord('Escape', { altKey: true }))).toBe(false);
+    expect(isEscapeShortcut(chord('Escape', { shiftKey: true }))).toBe(false);
+  });
+
+  it('is not any other key', () => {
+    expect(isEscapeShortcut(chord('Enter'))).toBe(false);
   });
 });
 
