@@ -16,7 +16,7 @@ out of it yet. Where one does have a parent, the model allows exactly this:
 an epic hangs under an epic, a reflection or an ambition, a story hangs under an epic, a task hangs under
 a story, a bug or an epic, and a bug hangs under an epic or a story.
 
-An ambition is the largest aim, broken out into epics. It takes no parent, so the issue page and the New issue dialog draw no Parent field for one, and it takes only epics: an epic's Parent picker lists ambitions beside epics and reflections. An epic of epics becomes an ambition by retyping it on its page. The server refuses the retype while the issue has a parent, or a child that is not an epic, and it refuses retyping an epic under an ambition to anything but `epic`. The Plan page draws every epic and ambition, an ambition with its tile and its epics beneath it. The Ambitions page, at `/ambitions`, opens with the ambition-tree questions waiting on the reader, each a link to the ballot, then lists each ambition with its capability bar and the epics open under it.
+An ambition is the largest aim, broken out into epics. It takes no parent, so the issue page and the New issue dialog draw no Parent field for one, and it takes only epics: an epic's Parent picker lists ambitions beside epics and reflections. An epic of epics becomes an ambition by retyping it on its page. The server refuses the retype while the issue has a parent, or a child that is not an epic, and it refuses retyping an epic under an ambition to anything but `epic`. The Plan page draws every epic and ambition, an ambition with its tile and its epics beneath it. [The Ambitions page](#the-ambitions-page) lists every ambition across projects with where it stands.
 
 That is wider than the planning habit of an epic taking stories and a story
 taking tasks. The habit is a way of breaking work down, not a rule the model
@@ -123,6 +123,70 @@ own entry, "Recorded outside a pass", dated at the verdict's own time. The page
 works that out when it reads, and nothing is stored for it. Every entry's own
 comments follow, rendered the way the Comments section renders a body. The
 verdict lines sit in a grid on a desktop and stack one per line on a phone.
+
+## The Ambitions page
+
+The Ambitions page, at `/ambitions`, is a top-level link after **Ballot** on
+the nav bar and in the phone menu. It lists every ambition across every
+project, in one read, each with where it stands. It follows the tab's
+project scope the same way Plan and Ballot do, and nothing is stored for it.
+
+Above the rows is a strip of what is waiting on the reader: one line for
+every question at the hold level anywhere on an ambition's tree, the
+ambition itself included. A line names the ambition, the key of the issue
+the question is on, the first words of the question, and how long it has
+waited; the whole line links to the Ballot, under the tab's scope. With
+none waiting, the strip is one sentence: "Nothing is waiting on you." Where
+the read behind the strip fails, the strip says so in a sentence of its own
+and the rows beneath it still draw.
+
+A row is the ambition's title, linking to the ambition's own page, its
+project key and its column. Beside that, "N capabilities" with a bar and a
+legend: one segment and one legend entry per count that is not zero, each in
+its own colour, the segments in proportion to each other. An ambition with no
+capabilities says so instead: "This ambition has no capabilities yet." Last,
+"In flight, N of M" (M its own limit, read as one where it has none), then,
+with at least one epic open, "N open, runs M at once" and each open epic by
+its key, title and column, with the numbers of the capabilities it serves as
+badges, or a dash where it serves none. With no epic open the third part
+says so instead: "No epic is open under this ambition." Rows come in board
+order: by column, then by rank, then by id. With no ambition in the tab's scope, the
+page says "No ambition in scope." On a phone the three parts of a row, and
+the words of a strip line, stack one above the other instead of running side
+by side.
+
+The bar's four counts are read afresh on every visit, never stored, and a
+capability is counted once, in the first of these that is true of it:
+
+1. **Holds.** Its newest verdict is "holds".
+2. **Waiting on a person.** At least one open epic serves it, and every open
+   epic that serves it is waiting on a person.
+3. **In flight.** At least one open epic serves it (and did not already
+   count as waiting on a person above).
+4. **Not started.** None of the above - including a capability whose newest
+   verdict is "does not hold" or "cannot tell", or one never checked at all,
+   as long as no open epic serves it.
+
+An open epic is a direct child of the ambition standing in a column that is
+neither terminal nor deferred, the same reckoning [Epics in
+flight](#capabilities) above uses. An epic is waiting on a person when any of
+three things is true of it: a question at the hold level is open on it or on
+an ancestor, the ambition itself included; it is flagged dangerous and some
+question, at any level, is open on it or an ancestor; or it is itself held.
+A question on a story beneath the epic does not make the epic wait - other
+work under it can still move - though that question still shows in the strip
+above the rows. A column with no playbook is not read as waiting on a person
+here; [the queue](watching-the-loop) is where that is said.
+
+For example, an ambition with four capabilities and two open epics might
+count: one capability held (its newest verdict is "holds"); one capability
+in flight (an open epic serves it, and that epic has no question or hold
+against it); one capability waiting on a person (an open epic serves it, and
+a hold-level question is open on that epic); and one not started (no open
+epic serves it, whatever its own verdict happens to be). The bar draws one
+segment each for holds, in flight, waiting and not started, and the legend
+beneath it reads "1 hold, 1 in flight, 1 waiting on a person, 1 not
+started."
 
 ## Principles
 

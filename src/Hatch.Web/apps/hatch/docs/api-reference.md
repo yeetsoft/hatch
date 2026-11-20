@@ -659,11 +659,28 @@ roots with its epics as entries beneath it, and never under `loose`.
 `AssigneeDirectoryDto(Me?, Assignees)`. `docs/hatch-planning.md` has the
 plan's arithmetic in full.
 
+`/ambitions` takes an optional, repeatable `projectId`, the same filter
+`/plan` takes, and answers one `AmbitionRowDto` per ambition the caller may
+see, in board order: column sort order, then rank, then id. Its fields are
+`Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Limit` (the
+ambition's `wipLimit`, read as one where it is unset), `Capabilities`,
+`Holds`, `InFlight`, `WaitsOnPerson` and `NotStarted` (the four counts,
+adding up to `Capabilities`), `Open` (its open epics, in rank order), and
+`ChildBeyondScope` (as `/plan` reads it: some child sits in a project the
+caller's scope does not hold). `Open` carries one `AmbitionOpenEpicDto` per
+open epic: `Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Serves`
+(the positions, ascending, of the capabilities of its own ambition that it
+serves), `WaitsOnPerson`, and `Why` - one sentence saying so, naming no key,
+null unless `WaitsOnPerson` is true. Every number on the page is derived on
+read; nothing behind it is stored.
+
 **Refusals.** `/search` 400s an invalid `type`, a `limit` outside 1-200, a
 negative `offset`, or an unparseable date bound. `/plan/{key}` 404s an
 unknown key; `/plan` with a `projectId` naming no project answers an empty
 plan rather than a 404, since an empty or just-deleted project is a legal
-thing to look at - true of each id when several are given.
+thing to look at - true of each id when several are given. `/ambitions`
+answers the same way: a `projectId` naming no project contributes nothing to
+the list rather than 404ing, true of each id when several are given.
 
 ## Attachments, images and import
 

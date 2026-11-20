@@ -115,7 +115,8 @@ ticket's trail as `question_level_changed`, with both levels and the person's na
 
 ## How the operator answers
 
-An unanswered question shows in four places:
+An unanswered question shows in four places, and a hold-level one on an
+ambition's tree in a fifth:
 
 - The **Ballot**, at `/ballot`, the first place a question shows. It is a link
   beside **Search** in the nav bar, a row straight after Search in the phone
@@ -153,6 +154,9 @@ An unanswered question shows in four places:
 - Clicking the card behind the badge opens the peek with the same card drawn
   above the Description, answerable the same way. The badge clears on the
   board behind the dialog once it is.
+- A hold-level question anywhere on an ambition's tree also shows atop [the
+  Ambitions page](issues#the-ambitions-page), in the strip above the rows,
+  each line linking to the Ballot.
 
 Under each question's options, on the Ballot, the issue page's card and the
 peek alike, a line says its level in words - *nothing moves until this is
