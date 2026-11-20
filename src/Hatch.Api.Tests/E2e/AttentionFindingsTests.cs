@@ -96,7 +96,7 @@ public class AttentionFindingsTests(ITestOutputHelper output)
                 await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} h3:text-is(\"{Heading}\")");
                 // The stopped row first, to the goose's page.
                 await harness.WaitForVisibleAsync(
-                    deadline, $"{PanelSelector} li:first-child > a.hatch-attention-row[href$=\"/docs/the-goose\"]:has-text(\"The goose has stopped. It last ran 12 minutes ago.\")");
+                    deadline, $"{PanelSelector} li:first-child > a.hatch-attention-row[href$=\"/goose\"]:has-text(\"The goose has stopped. It last ran 12 minutes ago.\")");
                 // The finding about an issue: its row to the issue, its bug a sibling link.
                 await harness.WaitForVisibleAsync(
                     deadline, $"{PanelSelector} li:has(> a.hatch-attention-row[href$=\"/issues/{AboutAnIssue.IssueKey}\"]:has-text(\"{AboutAnIssue.Sentence}\"):has-text(\"3 hours\")) > .hatch-attention-row-actions > a[href$=\"/issues/{AboutAnIssue.BugIssueKey}\"]");
