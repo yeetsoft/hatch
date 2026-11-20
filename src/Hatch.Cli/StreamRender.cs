@@ -164,6 +164,8 @@ public sealed partial class StreamRender : IAgentStreamReader
     private long _said;
     private readonly HashSet<string> _counted = [];
     private long _peakContext;
+    private long _durationMsSoFar;
+    private int _turnsSoFar;
     private readonly ReadsLedger _reads = new();
     private readonly OpenCalls _open = new();
 
@@ -435,16 +437,19 @@ public sealed partial class StreamRender : IAgentStreamReader
         _facts.ReleaseNote = ReleaseNote(resultText);
         _facts.ReleaseNoteFor = ReleaseNoteTarget(resultText);
 
+        _durationMsSoFar += duration;
+        _turnsSoFar += turns;
+
         _facts.ResultText = resultText;
         _facts.Result = new WorkLogEntryRequest(
             SessionId: id,
             StartedAt: default,
             EndedAt: default,
-            DurationMs: duration,
+            DurationMs: _durationMsSoFar,
             Title: title,
             Summary: summary,
             IsError: failed,
-            Turns: turns,
+            Turns: _turnsSoFar,
             CostUsd: cost ?? 0m,
             Models: Models(e));
 

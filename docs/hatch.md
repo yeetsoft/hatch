@@ -5139,7 +5139,10 @@ Every number on the page comes from one table: `hatch.work_log_entries`, the row
 the dispatcher writes at the end of every unattended increment. It carries the
 session id, the issue, both instants, the duration, the turns, the four token
 counts, the notional USD — null when the agent reported no price — whether
-the run errored, and what the session said it did in its `work-log` block.
+the run errored, and what the session said it did in its `work-log` block. The
+duration and the turns are summed over every turn the session ended, not just
+the last: a session woken by a background task between turns ends more than
+one, and each adds to the row rather than overwriting it.
 For a repo-sourced project's session, the row
 also carries which of the three layers its playbook came from, and, for the
 file, the trunk, the sha and the hash it was confirmed against at spawn -
