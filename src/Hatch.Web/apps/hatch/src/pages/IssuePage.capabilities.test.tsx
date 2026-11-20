@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { Capabilities, Serves } from './IssuePage';
+import { DatedAt } from '../components/DatedAt';
 import type { Board, Capability, Issue, IssueCard, ServedCapability, Status } from '../types';
 
 /* No DOM runner: both sections are rendered from props, the way
@@ -105,6 +106,16 @@ describe('Capabilities', () => {
     expect(html).toContain('the tests');
     expect(html).toContain('abcdef1');
     expect(html).not.toContain('abcdef1234567');
+    expect(html).toContain('by nathan, ');
+    expect(html).toContain('dateTime="2026-01-01T00:00:00Z"');
+    expect(html).toContain(`>${new Date('2026-01-01T00:00:00Z').toLocaleDateString()}</time>`);
+    expect(html).toContain('title="');
+  });
+
+  it('draws no date for a capability with no verdict', () => {
+    const html = renderCapabilities([capability({ id: 2, state: 'not_checked', newestVerdict: null })]);
+    expect(html).toContain('Not checked');
+    expect(html).not.toContain('<time');
   });
 
   it('links an epic serving it with its status pill, and bare-keys one off the board', () => {
@@ -140,5 +151,16 @@ describe('Serves', () => {
     expect(html).toContain('Holds');
     expect(html).toContain('Not checked');
     expect(html.indexOf('zeta')).toBeLessThan(html.indexOf('alpha'));
+  });
+});
+
+describe('DatedAt', () => {
+  it('prints the date inline and puts the full time and the ago phrase in the title', () => {
+    const at = '2026-01-01T00:00:00Z';
+    const html = renderToStaticMarkup(<DatedAt at={at} now={new Date('2026-01-03T00:00:00Z')} />);
+    expect(html).toContain(`dateTime="${at}"`);
+    expect(html).toContain(`>${new Date(at).toLocaleDateString()}</time>`);
+    expect(html).toContain(new Date(at).toLocaleString());
+    expect(html).toContain('2 days ago');
   });
 });
