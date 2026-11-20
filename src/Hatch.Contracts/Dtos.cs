@@ -1741,6 +1741,19 @@ public record QuestionDto(
     bool LookBack = false);
 
 /// <summary>
+/// What a person decides against the loop on a look-back question - an
+/// option's label, or a sentence in prose. What
+/// <c>POST /api/issues/{key}/questions/{id}/overturn</c> takes.
+/// </summary>
+public record QuestionOverturnRequest(string? Answer);
+
+/// <summary>
+/// What overturning a look-back question answers with: the question, now
+/// answered, and the key of the task filed to bring the work in line.
+/// </summary>
+public record QuestionOverturnDto(QuestionDto Question, string TaskKey);
+
+/// <summary>
 /// Every waiting question in the house, each under the chain of issues that
 /// encloses it - what <c>GET /api/ballot</c> answers.
 /// </summary>

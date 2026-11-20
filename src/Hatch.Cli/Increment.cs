@@ -1516,7 +1516,7 @@ public sealed class Increment(
 
             // Outside the loop above, for the same reason as the usage read
             // below: a tool call opening or returning is not always a line.
-            inFlight.Note(render.Open, _clock.GetUtcNow());
+            inFlight.Note(render.Open, render.TurnEnded, _clock.GetUtcNow());
 
             // Outside the loop above, and reading the property rather than
             // Read's own (always empty) result: a rate_limit_event draws no
@@ -1664,15 +1664,24 @@ public sealed class Increment(
         stopping.Cancel();
     }
 
-    /// <summary>The tool call a streamed session is inside of, and since when. Written by the stream's callback, read by the talker.</summary>
+    /// <summary>
+    /// What a streamed session is inside of that the stream says nothing
+    /// about - a tool call, or a wait after its turn has ended - and since
+    /// when. Written by the stream's callback, read by the talker.
+    /// </summary>
     private sealed class InFlight
     {
         private readonly object _gate = new();
         private OpenCall? _call;
         private DateTimeOffset _since;
+        private DateTimeOffset? _waitingSince;
 
-        /// <summary>The reader's open call, as of now: a new one starts the clock, none clears it.</summary>
-        public void Note(OpenCall? open, DateTimeOffset now)
+        /// <summary>
+        /// The reader's open call and turn, as of now: a new call starts the
+        /// clock, none clears it; a turn that has ended starts the wait's
+        /// clock once and keeps it, and a new turn clears it.
+        /// </summary>
+        public void Note(OpenCall? open, bool turnEnded, DateTimeOffset now)
         {
             lock (_gate)
             {
@@ -1682,6 +1691,9 @@ public sealed class Increment(
                     _call = open;
                     _since = now;
                 }
+
+                if (!turnEnded) _waitingSince = null;
+                else _waitingSince ??= now;
             }
         }
 
@@ -1689,21 +1701,28 @@ public sealed class Increment(
         {
             lock (_gate) return _call is { } call ? (call, _since) : null;
         }
+
+        /// <summary>Since when the session has been between turns, or null if it is inside one.</summary>
+        public DateTimeOffset? GetWait()
+        {
+            lock (_gate) return _waitingSince;
+        }
     }
 
     /// <summary>
-    /// Says on the claim, once a minute, that a tool call is still running -
-    /// because the stream is silent for the whole of one, and a silent claim
-    /// is a stopped one.
+    /// Says on the claim, once a minute, that a tool call is still running or
+    /// that the session is waiting on background work - because the stream is
+    /// silent for the whole of either, and a silent claim is a stopped one.
     /// </summary>
     /// <remarks>
-    /// It speaks only while a call is open (a session thinking, writing, or
-    /// between calls gets nothing), only until the call is past
+    /// It speaks only while a call is open or the reader says the turn has
+    /// ended (a session thinking, writing, or between calls gets nothing; an
+    /// open call wins over a wait), only until the call or wait is past
     /// <paramref name="ceiling"/> (a call the agent itself should have ended is
     /// hung, and the quiet window then runs as it always has) - unless the
     /// claim carries a run cap, in which case it keeps talking past the
     /// ceiling too, since <see cref="WatchRunTimeAsync"/> is what bounds the
-    /// call there, not this - and only when nothing else has been said for
+    /// call or wait there, not this - and only when nothing else has been said for
     /// half a beat, so a real line - a sub-agent talking - keeps the card. A
     /// runner that has died runs no loop and says nothing, so its claim
     /// lapses on the server's rule unchanged. The line is the call as the
@@ -1723,15 +1742,19 @@ public sealed class Increment(
                 return;
             }
 
-            if (inFlight.Get() is not { } open) continue;
+            var open = inFlight.Get();
+            var since = open?.Since ?? inFlight.GetWait();
+            if (since is not { } started) continue;
 
             var now = _clock.GetUtcNow();
-            var age = now - open.Since;
+            var age = now - started;
             var capped = claim.RunLimit is { } cap && cap > TimeSpan.Zero;
             if (age >= ceiling && !capped) continue;
             if (now - (claim.Chatter.SaidAt ?? claim.TakenAt) < every / 2) continue;
 
-            claim.Chatter.Line = $"still running: {open.Call.Line}, {(int)age.TotalMinutes}m";
+            claim.Chatter.Line = open is { } call
+                ? $"still running: {call.Call.Line}, {(int)age.TotalMinutes}m"
+                : $"waiting on background work, {(int)age.TotalMinutes}m";
         }
     }
 

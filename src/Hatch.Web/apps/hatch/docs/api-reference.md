@@ -496,8 +496,9 @@ one; `404` for no such key.
 | GET | `/ballot` | key | Every waiting question, each under the chain of issues that encloses it |
 | POST | `/issues/{key}/messages/deliver` | key | Marks messages read; answers with the ones this call marked |
 | PUT | `/issues/{key}/questions/{id}/level` | **person** | Sets an open question's level, `{ "level": "build" }` |
+| POST | `/issues/{key}/questions/{id}/overturn` | key | Answers a look-back question against the loop and files the rework, `{ "answer": "..." }` |
 
-Seven of the eight are a key's; the level is a person's. Both question routes take `?open=` (default `true`):
+Eight of the nine are a key's; the level is a person's. Both question routes take `?open=` (default `true`):
 open is unanswered and either not terminal or asked at `merge`, which stays
 open on a closed issue until it is answered; `open=false` is every question,
 answered and obviated ones included.
@@ -563,6 +564,27 @@ session would have nothing to build on. `hold` is always allowed on an open ques
 Sending the level the question already holds is a `200` that writes nothing. A change
 writes a `question_level_changed` event, payload `{ questionId, from, to }`, with the
 person as actor.
+
+`POST /issues/{key}/questions/{id}/overturn` takes a `QuestionOverturnRequest`, one `Answer`:
+an option's label, or a sentence in prose. It is for a look back - an unanswered `merge`
+question whose issue has reached a terminal column - and answers with a
+`QuestionOverturnDto`: `Question`, that question's `QuestionDto` now answered, and
+`TaskKey`, the key of the task filed. Whoever may answer may overturn, so a key may, as it
+may post a comment. In one save it writes the answer as a comment of kind `answer` under
+the caller's name, with the body as sent, and an `answered` event as any answer writes,
+and files one task. The task is filed from the issue (`filedFromKey`) and hangs under it;
+where the issue is a task and cannot take one, it hangs under the nearest ancestor that
+can, and under nothing where none can. It lands where a filing lands: the leftmost column
+for a person, the agents' column for a key. Its title is `Bring {key} in line with the
+answer`. Its description says what was decided (the recommended option's label), what the
+person decided instead, who overturned it and when, that the work is to be brought in line
+with the answer, and names the issue key and question id, with the question's body
+quoted. Keeping the recommendation needs no route of its own: the page answers with the
+recommended label through `POST /issues/{key}/comments`, as for any option. It `400`s
+with a sentence for an empty or over-length answer, for a comment that is not a question
+on that issue, for a question already answered, for a question not asked at `merge`, and
+for one whose issue has not reached a terminal column; nothing is written. An unknown key
+is a `404`.
 
 Every write here leaves an event carrying the caller's name as the actor, so
 the trail says who did what without anybody being asked to record it.
