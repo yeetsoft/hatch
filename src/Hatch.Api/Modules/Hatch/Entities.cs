@@ -1698,6 +1698,7 @@ public class EfHatchComment
 {
     public const int MaxBodyLength = 100_000;
     public const int MaxKindLength = 16;
+    public const int MaxAuthorKindLength = 16;
 
     /// <summary>An ordinary comment. The empty string rather than null, so the column never has two ways to say "nothing special".</summary>
     public const string Note = "";
@@ -1758,6 +1759,18 @@ public class EfHatchComment
     /// </summary>
     [MaxLength(MaxKindLength)]
     public string Kind { get; set; } = Note;
+
+    /// <summary>
+    /// <see cref="Hatch.Api.Services.Auth.ActorKind.Person"/> or
+    /// <see cref="Hatch.Api.Services.Auth.ActorKind.Key"/>: which kind of
+    /// caller wrote this. Null on everything the board writes in its own
+    /// voice - <see cref="Deferrals"/>, the stall note in
+    /// <see cref="IssueClaimController"/>, the dispatcher notes in
+    /// <see cref="WorkController"/> - and on every comment written before this
+    /// column existed.
+    /// </summary>
+    [MaxLength(MaxAuthorKindLength)]
+    public string? AuthorKind { get; set; }
 
     /// <summary>
     /// The question this answers, on the same issue. Null on everything else.

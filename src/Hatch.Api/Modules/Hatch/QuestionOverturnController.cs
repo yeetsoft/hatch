@@ -81,6 +81,7 @@ public class QuestionOverturnController(
 
         var parentId = await ParentForAsync(issue, ct);
         var actor = await caller.ActorNameAsync(ct);
+        var authorKind = await caller.IsProgramAsync(ct) ? ActorKind.Key : ActorKind.Person;
         var now = time.GetUtcNow();
 
         var recommended = Questions.ReadOptions(question.Options)?.FirstOrDefault(o => o.Recommended)?.Label;
@@ -96,6 +97,7 @@ public class QuestionOverturnController(
             {
                 IssueId = issue.Id,
                 Author = actor,
+                AuthorKind = authorKind,
                 Body = answer,
                 Kind = EfHatchComment.Answer,
                 AnswersId = id,

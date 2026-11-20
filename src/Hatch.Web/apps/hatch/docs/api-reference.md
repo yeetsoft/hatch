@@ -538,7 +538,9 @@ a question (`hold`, `build` or `merge`) and null on everything else, and an
 `AnsweredAfter` that is true only on an answer given after its issue closed - set on the
 answers inside a `QuestionDto`, false on every other comment, and derived when
 read. A person sets the level with
-`PUT /issues/{key}/questions/{id}/level`; a key cannot.
+`PUT /issues/{key}/questions/{id}/level`; a key cannot. It also carries an
+optional `AuthorKind` (`person` or `key`; null on a comment written before
+the column existed, or by the board itself).
 `CommentCreateRequest` is `Body`, an optional `Kind` (omitted means an ordinary
 note), an optional `AnswersId`, an optional `Options`, and a `Level` that it
 only carries so it can be refused: a comment sent with one is a `400`, since a
