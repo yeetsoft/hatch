@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, Field, PageHeader } from '@hatch/ui';
-import { getBackup, getHatchSettings, putHatchSettings, runBackup } from '../api/client';
+import { getBackup, getHatchSettings, putHatchSettings, putMyHome, runBackup } from '../api/client';
 import { Command } from '../components/Command';
 import { backupState, canRunNow, errorWords, folderWords, keptWords, lastSuccessWords, OFF_WORDS } from '../lib/backup';
 import { LIFETIME_CHOICES, readLifetime, writeLifetime } from '../lib/confirmationLifetime';
@@ -21,6 +21,8 @@ import {
   tokenBudgetEditable,
 } from '../lib/hatchSettings';
 import type { CredentialField, DefaultTokenField } from '../lib/hatchSettings';
+import { chooseHome, homeCardApplies, homeOf, HOME_CHOICES } from '../lib/homeScreen';
+import type { Home } from '../lib/homeScreen';
 import { announceLocalPersonChanged } from '../lib/localPerson';
 import { groupedTokens } from '../lib/runners';
 import { useAttentionContext } from '../lib/useAttentionContext';
@@ -141,6 +143,13 @@ const AGENT_CREDENTIALS: {
  * settings failing to load hides the other, and lib/backup.ts owns every
  * sentence it says.
  *
+ * The Home screen card, just above the last one, is the person's rather than
+ * the browser's: which screen the logo and the root open is written to their
+ * own row with `putMyHome`, the same way the name above is, and it fires the
+ * same LOCAL_PERSON_CHANGED event so the rest of the app re-reads it with no
+ * reload. lib/homeScreen.ts owns its rules - whether the card is drawn at
+ * all, and what pressing a radio does.
+ *
  * The last card is neither: how long a confirmation stays in the corner is
  * remembered by this browser, like the theme, and never sent anywhere. So it
  * is drawn outside everything the server says - the wall being up, or the
@@ -172,6 +181,21 @@ export function SettingsPage() {
   const { reload: reloadAttention } = useAttentionContext();
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupRunError, setBackupRunError] = useState<string | null>(null);
+  const [homeSaved, setHomeSaved] = useState<Home | null>(null);
+  const [homeBusy, setHomeBusy] = useState(false);
+  const [homeError, setHomeError] = useState<string | null>(null);
+
+  async function onChooseHome(home: Home) {
+    setHomeBusy(true);
+    const result = await chooseHome(home, { put: putMyHome, announce: announceLocalPersonChanged });
+    if ('saved' in result) {
+      setHomeSaved(result.saved);
+      setHomeError(null);
+    } else {
+      setHomeError(result.error);
+    }
+    setHomeBusy(false);
+  }
 
   async function backUpNow() {
     setBackupRunning(true);
@@ -335,6 +359,15 @@ export function SettingsPage() {
         />
       )}
 
+      {homeCardApplies(me) && (
+        <HomeScreenCard
+          checked={homeSaved ?? homeOf(me)}
+          busy={homeBusy}
+          error={homeError}
+          onChoose={(home) => void onChooseHome(home)}
+        />
+      )}
+
       <Card>
         <h2 className="hatch-section-title">Confirmations</h2>
         <Field
@@ -423,3 +456,43 @@ export function TokenBudgetCard({
 }
 
 const tokenWords = (n: number | null): string => (n === null ? 'No cap' : `${compactTokens(n)} tokens`);
+
+export function HomeScreenCard({
+  checked,
+  busy,
+  error,
+  onChoose,
+}: {
+  checked: Home;
+  busy: boolean;
+  error: string | null;
+  onChoose: (home: Home) => void;
+}) {
+  const name = useId();
+  return (
+    <Card>
+      <h2 className="hatch-section-title">Home screen</h2>
+      <Field
+        as="div"
+        label="Opens at"
+        hint="What the root address opens, and the Hatch logo at the left of the bar. It is the person's own - the same on every device they sign into - and Board is the default."
+      >
+        <fieldset className="hatch-landing-choice">
+          {HOME_CHOICES.map((c) => (
+            <label key={c.value}>
+              <input
+                type="radio"
+                name={name}
+                checked={checked === c.value}
+                disabled={busy}
+                onChange={() => onChoose(c.value)}
+              />
+              {c.label}
+            </label>
+          ))}
+        </fieldset>
+      </Field>
+      {error && <p className="text-danger">{error}</p>}
+    </Card>
+  );
+}

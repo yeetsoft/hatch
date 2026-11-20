@@ -12,6 +12,11 @@
  * One event, fired after the write the server has already acknowledged, so
  * NavLocalPerson re-reads rather than being handed a value: there is exactly
  * one answer to "who is sitting here", and it is the server's.
+ *
+ * The Home screen card on the Settings page fires it too, after it saves -
+ * the name is not what changed, but MeProvider's re-read is the same
+ * mechanism that gets HomeRoute, the logo and the root address pointed at
+ * the newly chosen screen with no reload.
  */
 export const LOCAL_PERSON_CHANGED = 'hatch:local-person-changed';
 

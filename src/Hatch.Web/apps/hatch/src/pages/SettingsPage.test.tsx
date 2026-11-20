@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { TokenBudgetCard } from './SettingsPage';
+import { HomeScreenCard, TokenBudgetCard } from './SettingsPage';
 import { defaultTokensOf } from '../lib/hatchSettings';
 import type { DefaultTokenField } from '../lib/hatchSettings';
+import type { Home } from '../lib/homeScreen';
 import type { HatchSettings } from '../types';
 
 /* No DOM runner, so neither useMe nor useLoaded resolves - the card is
@@ -95,5 +96,57 @@ describe('TokenBudgetCard', () => {
     });
 
     expect(html).toContain('disabled=""');
+  });
+});
+
+describe('HomeScreenCard', () => {
+  const renderHome = (over: { checked?: Home; busy?: boolean; error?: string | null } = {}): string =>
+    renderToStaticMarkup(
+      <HomeScreenCard
+        checked={over.checked ?? 'board'}
+        busy={over.busy ?? false}
+        error={over.error ?? null}
+        onChoose={() => {}}
+      />,
+    );
+
+  /** The label whose radio is checked, by splitting on the <label> wrapper
+      each choice renders inside. */
+  const checkedLabel = (html: string): string | undefined =>
+    html.split('<label>').slice(1).find((l) => l.includes('checked=""'));
+
+  it('checks Ambitions alone when that is saved', () => {
+    const html = renderHome({ checked: 'ambitions' });
+
+    expect(html.match(/checked=""/g)).toHaveLength(1);
+    expect(checkedLabel(html)).toContain('Ambitions');
+  });
+
+  it('checks Board alone when that is saved', () => {
+    const html = renderHome({ checked: 'board' });
+
+    expect(html.match(/checked=""/g)).toHaveLength(1);
+    expect(checkedLabel(html)).toContain('Board');
+  });
+
+  it('shows the refusal sentence and leaves the saved choice checked', () => {
+    const html = renderHome({ checked: 'board', error: 'Nobody has signed in.' });
+
+    expect(html).toContain('Nobody has signed in.');
+    expect(checkedLabel(html)).toContain('Board');
+  });
+
+  it('disables both radios while a save is in flight', () => {
+    const html = renderHome({ busy: true });
+
+    expect(html.match(/disabled=""/g)).toHaveLength(2);
+  });
+
+  it('names the root address, every device and the default in the hint', () => {
+    const html = renderHome();
+
+    expect(html).toContain('root address');
+    expect(html).toContain('every device');
+    expect(html).toContain('Board is the default');
   });
 });
