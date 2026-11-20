@@ -37,8 +37,9 @@ public static partial class UsageReport
         IUsageProbe probe, string tempDirectory, ReadoutState readout, DateTimeOffset probeNow, CancellationToken ct)
     {
         var probed = await probe.ProbeAsync(tempDirectory, ct);
+        readout.SetProbeOff(probe.OffReason);
         var windows = probed is not null ? Parse(probed, probeNow) : null;
-        if (windows is { } found) readout.SetUsage(found, probeNow);
+        if (windows is { } found) readout.SetUsage(found, probeNow, "probe");
         return (probed, windows);
     }
 

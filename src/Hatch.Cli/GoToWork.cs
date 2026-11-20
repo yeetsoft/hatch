@@ -2210,7 +2210,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // mid-night sends nothing rather than blanking what the server
                 // already holds for this account. See RunnerHeartbeatRequest.Usage.
                 Usage: usage.UsageReadAt is null ? null : usage.UsageWindows.ToDtos(),
-                UsageReadAt: usage.UsageReadAt));
+                UsageReadAt: usage.UsageReadAt,
+                UsageSource: usage.UsageReadAt is null ? null : usage.UsageSource,
+                UsageProbeOff: usage.UsageProbeOff));
 
         var beat = await runtime.Runners().BeatAsync(request, ct);
 

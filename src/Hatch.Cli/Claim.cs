@@ -411,7 +411,9 @@ public sealed class Claim : IAsyncDisposable
             var body = new ClaimHeartbeatRequest(
                 Token, line == sent && !spoke ? null : line,
                 Usage: usageMoved ? snapshot!.UsageWindows.ToDtos() : null,
-                UsageReadAt: usageMoved ? usageReadAt : null);
+                UsageReadAt: usageMoved ? usageReadAt : null,
+                UsageSource: usageMoved ? snapshot!.UsageSource : null,
+                UsageProbeOff: snapshot?.UsageProbeOff);
 
             // Quiet: a heartbeat says nothing about weather today, whatever
             // HatchClient.Send spent retrying underneath it - see docs/hatch.md,

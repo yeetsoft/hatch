@@ -1672,7 +1672,7 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         OneTicket(h);
         var readAt = DateTimeOffset.UtcNow.AddMinutes(-1);
-        h.Runtime.Readout.SetUsage([new UsageWindow("session", "Session", 0.42, null)], readAt);
+        h.Runtime.Readout.SetUsage([new UsageWindow("session", "Session", 0.42, null)], readAt, "stream");
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
@@ -1684,6 +1684,9 @@ public sealed class GoToWorkTests
         Assert.Equal("session", window.Window);
         Assert.Equal("Session", window.Label);
         Assert.Equal(42, window.Percent);
+
+        // HA-2561: a rate_limit_event's own reading rides the beat as "stream".
+        Assert.Equal("stream", beat.UsageSource);
     }
 
     [Fact]
@@ -1818,6 +1821,8 @@ public sealed class GoToWorkTests
         /// <summary>What the next probe answers with. Null is a probe that answered nothing.</summary>
         public Func<IReadOnlyList<string>?> Behaviour { get; set; } = () => null;
 
+        public string? OffReason { get; set; }
+
         private bool _costly;
 
         public Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct)
@@ -1868,6 +1873,45 @@ public sealed class GoToWorkTests
         // HA-1457: the caller says whether the probe's own answer carried a
         // session window, every time it asks.
         Assert.Contains(h.Say.Said, l => l.Contains("probe found a session window", StringComparison.Ordinal));
+
+        // HA-2561: a /usage probe's own reading rides the beat as "probe".
+        Assert.Equal("probe", beat.UsageSource);
+    }
+
+    /// <summary>
+    /// HA-2561: once a probe has latched off for this CLI version, every
+    /// later heartbeat's <c>usageProbeOff</c> carries the same sentence - and
+    /// a CLI running a version the latch never caught clears it again, with
+    /// <c>usageSource</c> still sent.
+    /// </summary>
+    [Fact]
+    public async Task UsageProbeOff_carries_the_latched_reason_and_clears_once_the_probe_works_again()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        const string reason = "the CLI took /usage as a model turn rather than a local command";
+        var fake = new FakeProbingSessions();
+        var calls = 0;
+        fake.Behaviour = () =>
+        {
+            calls++;
+            if (calls > 1) fake.OffReason = null;
+            return [Fixtures.UsageReport([("session", 42, null)]), Fixtures.Result(turns: 0)];
+        };
+        fake.OffReason = reason;
+        var runtime = h.Runtime with { Sessions = fake };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default);
+
+        var beats = h.Wire.Calls
+            .Where(c => c.Path == "/api/runners/sessions")
+            .Select(c => c.Read<RunnerHeartbeatRequest>())
+            .ToList();
+        Assert.Contains(beats, b => b.UsageProbeOff == reason);
+
+        var lastBeat = beats.Last();
+        Assert.Null(lastBeat.UsageProbeOff);
+        Assert.Equal("probe", lastBeat.UsageSource);
     }
 
     // ---- HA-1991: a spent per-model weekly window narrows that model ----
@@ -1937,7 +1981,7 @@ public sealed class GoToWorkTests
         var fake = new FakeProbingSessions { Behaviour = () => null };
         var runtime = h.Runtime with { Sessions = fake };
         var readAt = DateTimeOffset.UtcNow.AddMinutes(-1);
-        runtime.Readout.SetUsage([new UsageWindow("weekly", "Weekly", 0.10, null)], readAt);
+        runtime.Readout.SetUsage([new UsageWindow("weekly", "Weekly", 0.10, null)], readAt, "probe");
 
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 

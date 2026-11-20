@@ -296,7 +296,7 @@ public sealed class ClaimTests
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
         claim!.Readout = new ReadoutState();
         var readAt = new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero);
-        claim.Readout.SetUsage([new UsageWindow("session", "Session", 0.42, null)], readAt);
+        claim.Readout.SetUsage([new UsageWindow("session", "Session", 0.42, null)], readAt, "probe");
 
         await Harness.Eventually(
             () => Beats(h).Count(b => b.UsageReadAt is not null) >= 1, "the reading to reach the board");
@@ -311,15 +311,41 @@ public sealed class ClaimTests
         var window = Assert.Single(carried[0].Usage!);
         Assert.Equal("session", window.Window);
         Assert.Equal(42, window.Percent);
+        // HA-2561: the beat says the reading came from a probe, only when it moved.
+        Assert.Equal("probe", carried[0].UsageSource);
+        Assert.Null(Beats(h).First(b => b.UsageReadAt is null).UsageSource);
 
         // A newer reading is carried again.
-        claim.Readout.SetUsage([new UsageWindow("session", "Session", 0.55, null)], readAt.AddMinutes(2));
+        claim.Readout.SetUsage([new UsageWindow("session", "Session", 0.55, null)], readAt.AddMinutes(2), "probe");
         await Harness.Eventually(
             () => Beats(h).Count(b => b.UsageReadAt is not null) >= 2, "the newer reading to reach the board");
 
         await claim.ReleaseAsync();
 
         Assert.Equal(55, Beats(h).Last(b => b.UsageReadAt is not null).Usage![0].Percent);
+    }
+
+    /// <summary>
+    /// HA-2561: <c>usageProbeOff</c> rides every beat, not only the ones
+    /// whose reading moved - the latch can change with no new reading to
+    /// report.
+    /// </summary>
+    [Fact]
+    public async Task UsageProbeOff_rides_every_heartbeat_whether_or_not_the_reading_moved()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+        claim!.Readout = new ReadoutState();
+        claim.Readout.SetProbeOff("the CLI took /usage as a model turn rather than a local command");
+
+        await Harness.Eventually(() => Beats(h).Count >= 2, "a heartbeat with no moved reading to carry it");
+        await claim.ReleaseAsync();
+
+        Assert.All(Beats(h), b => Assert.Equal("the CLI took /usage as a model turn rather than a local command", b.UsageProbeOff));
     }
 
     [Fact]

@@ -49,6 +49,13 @@ public sealed class ClaudeAdapter(
     /// </summary>
     private bool _saidCostly;
 
+    /// <summary>
+    /// The sentence <see cref="_saidCostly"/> was first said with, without the
+    /// <c>hatch: </c> console prefix - null until <see cref="_probeCostly"/>
+    /// has latched on.
+    /// </summary>
+    private string? _offReason;
+
     /// <summary>Whether the CLI's <c>--help</c> names <c>--tools</c>. False until <see cref="CanSpawn"/> has looked.</summary>
     private bool _knowsTools;
 
@@ -62,6 +69,8 @@ public sealed class ClaudeAdapter(
     public string? Executable => _bin ?? (TryFind(configured, out var found, out _) ? found : null);
 
     public IUsageProbe Probe => this;
+
+    public string? OffReason => _offReason;
 
     public IHookOutputWriter HookOutput { get; } = new ClaudeHookOutputWriter();
 
@@ -247,7 +256,8 @@ public sealed class ClaudeAdapter(
         _probeCostly = true;
         _saidCostly = true;
         var cost = verdict.CostUsd is { } usd ? $", {Format.Spent(usd)}" : ", no cost recorded";
-        warn?.Invoke($"hatch: /usage already known to cost a turn on {version}{cost} - remembered from a previous run, no probe this run");
+        _offReason = $"/usage already known to cost a turn on {version}{cost} - remembered from a previous run, no probe this run";
+        warn?.Invoke($"hatch: {_offReason}");
     }
 
     public async Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct)
@@ -306,7 +316,8 @@ public sealed class ClaudeAdapter(
             _probeCostly = true;
             _saidCostly = true;
             var cost = UsageReport.Cost(lines);
-            warn?.Invoke($"hatch: the CLI took /usage as a model turn rather than a local command, {Format.Spent(cost)} - no further probes this run");
+            _offReason = $"the CLI took /usage as a model turn rather than a local command, {Format.Spent(cost)} - no further probes this run";
+            warn?.Invoke($"hatch: {_offReason}");
             if (_cliVersion is not null) new UsageProbeVerdict(_cliVersion, cost).Write(verdictPath ?? UsageProbeVerdict.Path());
             return null;
         }

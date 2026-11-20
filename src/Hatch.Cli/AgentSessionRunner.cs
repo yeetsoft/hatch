@@ -150,6 +150,8 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter, Action<string>? on
     public Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct) =>
         adapter.Probe?.ProbeAsync(tempDirectory, ct) ?? Task.FromResult<IReadOnlyList<string>?>(null);
 
+    public string? OffReason => adapter.Probe?.OffReason;
+
     /// <summary>
     /// The whole tree, because a session has spawned tools of its own and a
     /// lease that is over should not leave a `make test` running for four more
