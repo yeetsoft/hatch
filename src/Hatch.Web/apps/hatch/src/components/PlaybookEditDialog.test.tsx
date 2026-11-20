@@ -26,6 +26,7 @@ const BASE: Playbook = {
   briefLimit: null,
   deniedTools: [],
   isCheck: false,
+  answersQuestions: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -109,6 +110,45 @@ function saveButton(html: string): string {
   const end = html.indexOf('>Save<');
   return html.slice(html.lastIndexOf('<button', end), end);
 }
+
+/** A checkbox's opening tag, found by the text of the label that wraps it. */
+function checkbox(html: string, label: string): string {
+  const end = html.indexOf(`${label}</label>`);
+  return html.slice(html.lastIndexOf('<input', end), end);
+}
+
+describe('PlaybookEditDialog flag boxes', () => {
+  it('opens a flagged row with Answers questions ticked and Is check disabled', () => {
+    const html = render({ ...BASE, answersQuestions: true });
+    expect(checkbox(html, 'Answers questions')).toContain('checked');
+    expect(checkbox(html, 'Answers questions')).not.toContain('disabled');
+    expect(checkbox(html, 'Is check')).toContain('disabled');
+    expect(checkbox(html, 'Is check')).not.toContain('checked');
+  });
+
+  it('opens a check with Answers questions disabled and unticked', () => {
+    const html = render({ ...BASE, isCheck: true });
+    expect(checkbox(html, 'Is check')).toContain('checked');
+    expect(checkbox(html, 'Is check')).not.toContain('disabled');
+    expect(checkbox(html, 'Answers questions')).toContain('disabled');
+    expect(checkbox(html, 'Answers questions')).not.toContain('checked');
+  });
+
+  it('opens a plain row and a new playbook with both boxes unticked and enabled', () => {
+    for (const html of [render(BASE), render(null)]) {
+      for (const label of ['Is check', 'Answers questions']) {
+        expect(checkbox(html, label)).not.toContain('checked');
+        expect(checkbox(html, label)).not.toContain('disabled');
+      }
+    }
+  });
+
+  it('says what the Answers questions box is for', () => {
+    expect(render(null)).toContain(
+      'The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this or a check, not both.',
+    );
+  });
+});
 
 describe('PlaybookEditDialog own-wording panel', () => {
   it('offers to drop a prompt that differs from the prescribed text', () => {

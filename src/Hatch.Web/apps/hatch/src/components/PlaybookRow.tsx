@@ -61,6 +61,7 @@ export function PlaybookRow({
           )}
         </button>
         {isUncheckedEdit(playbook) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
+        {playbook.answersQuestions && <Badge tone="muted">answers questions</Badge>}
         {playbook.unreachableReason && <Badge tone="danger">{playbook.unreachableReason}</Badge>}
         {isOverridden(playbook) && <Badge tone="muted">the operator&apos;s own wording</Badge>}
         {limitNotes(playbook).map((n) => (

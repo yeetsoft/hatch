@@ -1904,6 +1904,8 @@ export interface Playbook {
   /** Empty means every tool. */
   deniedTools: string[];
   isCheck: boolean;
+  /** True for the row a session answers one ambition question on; it edits nothing. */
+  answersQuestions: boolean;
   /** Seconds a claim under this row may go without a word, or null to inherit the server's lapse. */
   quietLimitSeconds: number | null;
   /** The server's sentence for a row the dispatcher can never pick; null when reachable. */
@@ -1971,6 +1973,7 @@ export interface PlaybookCreateRequest {
   shape?: PlaybookShape;
   deniedTools?: string[];
   isCheck?: boolean;
+  answersQuestions?: boolean;
   projectId?: string;
 }
 
@@ -1994,6 +1997,7 @@ export interface PlaybookPatchRequest {
   shape?: PlaybookShape;
   deniedTools?: string[];
   isCheck?: boolean;
+  answersQuestions?: boolean;
   projectId?: string;
 }
 

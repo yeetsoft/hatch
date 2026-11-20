@@ -249,6 +249,8 @@ asked to answer one question on an issue. A row is a check or it answers
 questions, not both, and a save that sets both is refused with those words.
 The flag is set beside the check flag, on the Playbooks page, and a person
 sets it; the seeded row is the only one that carries it by default.
+A flagged row shows an "answers questions" badge on the page, and a proposed
+change to the flag shows on its proposal card like any other field.
 
 The ordinary match never returns a flagged row, whatever its types say. A row
 flagged with its types left empty would otherwise cover every issue on its

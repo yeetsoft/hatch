@@ -115,6 +115,8 @@ function fieldValue(field: string, p: Playbook, statuses: Status[]) {
       return deniedToolsDraft(p.deniedTools) || 'every tool';
     case 'isCheck':
       return p.isCheck ? 'yes' : 'no';
+    case 'answersQuestions':
+      return p.answersQuestions ? 'yes' : 'no';
     case 'projectId':
       return projectLabel(p);
     default:

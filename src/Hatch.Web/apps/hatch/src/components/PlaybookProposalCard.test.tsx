@@ -23,6 +23,7 @@ const BEFORE: Playbook = {
   briefLimit: null,
   deniedTools: [],
   isCheck: false,
+  answersQuestions: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -85,6 +86,18 @@ describe('PlaybookProposalCard', () => {
     expect(localRow).toContain('none');
     expect(localRow).toContain('fake:1b');
     expect(localRow.match(/hatch-playbook-proposal-cell--changed/g)).toHaveLength(2);
+  });
+
+  it('shows the answers-questions flag before and after as no and yes', () => {
+    const after: Playbook = { ...BEFORE, answersQuestions: true };
+    const html = renderToStaticMarkup(
+      <PlaybookProposalCard change={change({ after, changedFields: ['answersQuestions'] })} statuses={STATUSES} />,
+    );
+    const rows = html.match(/<tr>.*?<\/tr>/gs) ?? [];
+    const flagRow = rows.find((r) => r.includes('>Answers questions<'))!;
+    expect(flagRow).toContain('>no<');
+    expect(flagRow).toContain('>yes<');
+    expect(flagRow.match(/hatch-playbook-proposal-cell--changed/g)).toHaveLength(2);
   });
 
   it('shows the out-of-date badge and its exact reason', () => {

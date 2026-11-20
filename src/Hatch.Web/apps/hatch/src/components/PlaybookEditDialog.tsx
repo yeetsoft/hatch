@@ -57,6 +57,7 @@ interface Draft {
   maxRun: string;
   deniedTools: string;
   isCheck: boolean;
+  answersQuestions: boolean;
   projectId: string;
   prompt: string;
 }
@@ -77,6 +78,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
       maxRun: maxRunDraft(playbook.maxRunSeconds),
       deniedTools: deniedToolsDraft(playbook.deniedTools),
       isCheck: playbook.isCheck,
+      answersQuestions: playbook.answersQuestions,
       projectId: playbook.projectId === null ? '' : String(playbook.projectId),
       prompt: playbook.prompt,
     };
@@ -96,6 +98,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
     maxRun: '',
     deniedTools: '',
     isCheck: false,
+    answersQuestions: false,
     projectId: '',
     prompt: '',
   };
@@ -165,6 +168,7 @@ export function PlaybookEditDialog({
           maxRunSeconds: maxRunRequest(draft!.maxRun),
           deniedTools: deniedToolsRequest(draft!.deniedTools),
           isCheck: draft!.isCheck,
+          answersQuestions: draft!.answersQuestions,
           projectId: draft!.projectId,
           prompt,
         });
@@ -183,6 +187,7 @@ export function PlaybookEditDialog({
           maxRunSeconds: maxRunRequest(draft!.maxRun),
           deniedTools: deniedToolsRequest(draft!.deniedTools),
           isCheck: draft!.isCheck,
+          answersQuestions: draft!.answersQuestions,
           projectId: draft!.projectId || undefined,
           prompt,
         });
@@ -290,8 +295,28 @@ export function PlaybookEditDialog({
           </Field>
           <Field label="Is check" hint="A check reviews without editing. Pair it with denied tools, or it can edit anyway." as="div">
             <label>
-              <input type="checkbox" checked={draft.isCheck} onChange={(e) => write({ isCheck: e.target.checked })} />
+              <input
+                type="checkbox"
+                checked={draft.isCheck}
+                disabled={draft.answersQuestions}
+                onChange={(e) => write({ isCheck: e.target.checked })}
+              />
               Is check
+            </label>
+          </Field>
+          <Field
+            label="Answers questions"
+            hint="The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this or a check, not both."
+            as="div"
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.answersQuestions}
+                disabled={draft.isCheck}
+                onChange={(e) => write({ answersQuestions: e.target.checked })}
+              />
+              Answers questions
             </label>
           </Field>
           {hasMultipleProjects(projects) && (
