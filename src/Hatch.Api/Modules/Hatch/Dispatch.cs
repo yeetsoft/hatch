@@ -190,7 +190,6 @@ public sealed class Dispatch(
         var gate = await DependencyGate.ForAsync(db, actors, statuses, ct, tree);
         var family = await FamilyGate.ForAsync(db, actors, statuses, ct, tree);
         var wip = await Wip.LoadAsync(db, actors, claims, statuses, now, ct);
-        var open = await Questions.WaitingCountsAsync(db, ct);
         var playbooks = await db.Playbooks.AsNoTracking()
             .Include(p => p.FromStatus)
             .Include(p => p.ToStatus)
@@ -389,7 +388,6 @@ public sealed class Dispatch(
                     var playbook = checkRow is { IsCheck: true }
                         ? checkRow
                         : Match(candidatePlaybooks, status.Id, rowTarget.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
-                    var waiting = open.GetValueOrDefault(issue.Id, 0);
                     var parent = family.ParentOf(issue.Id);
                     var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
                     var hopKind = HopKind(issue, status, rowTarget, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
@@ -423,7 +421,7 @@ public sealed class Dispatch(
                     }
 
                     var blocking = BlockedWithKind(
-                        issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
+                        issue, status, rowTo, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
                         drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
@@ -1615,6 +1613,55 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// Why an open question holds this move, or null where it does not. Read
+    /// from the issue or its nearest strictest ancestor: at
+    /// <see cref="QuestionLevels.HoldName"/> every move is held; at
+    /// <see cref="QuestionLevels.BuildName"/> the work is dispatched and built,
+    /// and only what would merge or close it is held. A dangerous issue is
+    /// held at any level, before the level is read. <see cref="QuestionLevels.MergeName"/>
+    /// holds nothing here.
+    /// </summary>
+    internal static string? QuestionFold(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, DependencyGate gate,
+        List<EfHatchStatus> statuses, EfHatchStatus? implementation)
+    {
+        if (gate.EffectiveQuestion(issue.Id) is not { } question)
+            return null;
+
+        var plural = question.Count == 1 ? "" : "s";
+        var key = question.FromKey ?? IssueKey.Format(issue.Project!.Key, issue.Number);
+
+        if (gate.EffectiveDangerous(issue.Id).Reason is { } reason)
+            return $"{question.Count} unanswered question{plural} on {key}, and it is flagged dangerous ({reason}) - a person answers before any of it moves";
+
+        if (question.Level == QuestionLevels.HoldName)
+            return question.FromKey is null
+                ? $"{question.Count} unanswered question{plural} - it is waiting on a person, not on an agent"
+                : $"{question.Count} unanswered question{plural} on {question.FromKey} - it is waiting on a person, not on an agent";
+
+        if (question.Level == QuestionLevels.BuildName && HoldsAtBuild(issue, from, to, statuses, implementation))
+            return $"{question.Count} unanswered question{plural} at build on {key} - it is built, and a person answers before it merges";
+
+        return null;
+    }
+
+    /// <summary>
+    /// A move a question at build holds: out of review into the merges column or
+    /// a terminal one (the approve hop, the close hop, a passing check's
+    /// advance), or, where work lands on the trunk, into the implementation
+    /// column, since building is landing there. A self-move in review is built
+    /// work - a conflict or a red build to fix - and goes ahead.
+    /// </summary>
+    private static bool HoldsAtBuild(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, List<EfHatchStatus> statuses, EfHatchStatus? implementation)
+    {
+        if (Columns.AwaitingReview(statuses)?.Id == from.Id && to.Id != from.Id && (to.MergesPullRequest || to.IsTerminal))
+            return true;
+
+        return issue.Project!.Landing == Landings.Trunk && to.Id == implementation?.Id;
+    }
+
+    /// <summary>
     /// Why this caller's runner will not run the issue's code: the runner
     /// refuses dangerous work, and the issue or an ancestor is flagged
     /// dangerous. Null for a runner that does not refuse it, which includes
@@ -2194,11 +2241,6 @@ public sealed class Dispatch(
     /// dispatching another agent at it would only produce a second session
     /// asking the same thing or guessing at the answer.</para>
     /// </remarks>
-    /// <param name="waiting">
-    /// Unanswered questions on the issue. Checked before the playbook, because
-    /// "nobody has answered you" is a more useful sentence than "no playbook
-    /// covers this" when both are true.
-    /// </param>
     /// <param name="letGo">
     /// How many increments in a row let this issue go without moving it - see
     /// <see cref="LetGo.Count"/>. Read only when the issue is marked - a
@@ -2317,7 +2359,6 @@ public sealed class Dispatch(
         EfHatchStatus from,
         EfHatchStatus? to,
         EfHatchPlaybook? playbook,
-        int waiting,
         int letGo,
         int sendBackStreak,
         LoopScope? loop,
@@ -2347,7 +2388,7 @@ public sealed class Dispatch(
         RunnerRefusal? refusal = null,
         (string Runner, string Model)? leftFor = null) =>
         BlockedWithKind(
-            issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
+            issue, from, to, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
             repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor).Sentence;
 
@@ -2400,7 +2441,6 @@ public sealed class Dispatch(
         EfHatchStatus from,
         EfHatchStatus? to,
         EfHatchPlaybook? playbook,
-        int waiting,
         int letGo,
         int sendBackStreak,
         LoopScope? loop,
@@ -2595,8 +2635,8 @@ public sealed class Dispatch(
             }
         }
 
-        if (waiting > 0)
-            return new Blocking($"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent", BlockedKinds.Person);
+        if (QuestionFold(issue, from, to, gate, statuses, implementation) is { } questionBlock)
+            return new Blocking(questionBlock, BlockedKinds.Person);
 
         // Ahead of the repository and tag folds, both of which speak about a
         // project this runner drives - a sentence naming either would mislead
@@ -3711,6 +3751,12 @@ public sealed class PriorityTree
     // beside _rows rather than widening its tuple, as _runnerTags is.
     private readonly Dictionary<long, string?> _dangerous;
 
+    // The strictest level each issue's own waiting questions stand at, and how
+    // many stand at it - Questions.WaitingLevelsAsync. Always loaded by ForAsync:
+    // a tree built without it would honour no question, and that is the unsafe
+    // way to fail. An issue with no entry has none.
+    private readonly Dictionary<long, (string Level, int Count)> _questions;
+
     // Each issue's own local-model level - LocalModelLevels. Kept beside
     // _dangerous rather than widening _rows; an issue with no entry reads as none.
     private readonly Dictionary<long, int> _localModels;
@@ -3782,9 +3828,11 @@ public sealed class PriorityTree
         SetterAuthority? authority = null,
         HashSet<long>? visible = null,
         Dictionary<long, Guid?>? startedBy = null,
-        List<EfHatchStatus>? statuses = null)
+        List<EfHatchStatus>? statuses = null,
+        Dictionary<long, (string Level, int Count)>? questions = null)
     {
         _rows = rows;
+        _questions = questions ?? new();
         _visible = visible;
         _setters = setters ?? new();
         _authority = authority ?? SetterAuthority.Nobody;
@@ -3818,6 +3866,7 @@ public sealed class PriorityTree
         _onePr = whole._onePr;
         _runnerTags = whole._runnerTags;
         _dangerous = whole._dangerous;
+        _questions = whole._questions;
         _localModels = whole._localModels;
         _humanWork = whole._humanWork;
         _projects = whole._projects;
@@ -3891,6 +3940,7 @@ public sealed class PriorityTree
 
         var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
         var authority = await SetterAuthority.ReadAsync(db, actors, statuses, ct);
+        var questions = await Questions.WaitingLevelsAsync(db, ct, ignoreFilters);
 
         var omissionRows = await omissions.AsNoTracking()
             .Select(o => new { o.IssueId, o.RunnerName, o.Reason, o.By, o.At })
@@ -3917,7 +3967,8 @@ public sealed class PriorityTree
             authority,
             visible,
             rows.ToDictionary(r => r.Id, r => (Guid?)r.StartedBy),
-            statuses);
+            statuses,
+            questions);
     }
 
     /// <summary>
@@ -4262,6 +4313,30 @@ public sealed class PriorityTree
     }
 
     /// <summary>
+    /// The strictest open question on this issue or any ancestor: its level, the
+    /// number of questions at that level, and the key it was found on, which is
+    /// null for the issue's own. A tie in level keeps the nearer issue. Like
+    /// <see cref="EffectiveDangerous"/> the walk does not stop at a project line.
+    /// </summary>
+    public (string Level, int Count, string? FromKey)? EffectiveQuestion(long issueId)
+    {
+        var seen = new HashSet<long>();
+        long? at = issueId;
+        (string Level, int Count, string? FromKey)? best = null;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (_questions.TryGetValue(id, out var q) && TryGet(id, out var row)
+                && (best is null || QuestionLevels.Rank(q.Level) < QuestionLevels.Rank(best.Value.Level)))
+                best = (q.Level, q.Count, id == issueId ? null : row.Key);
+
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return best;
+    }
+
+    /// <summary>
     /// Whether the tasks of a story or a bug share one branch and pull request,
     /// live on this issue: the nearest story or bug at or above it, and that
     /// parent's own override if it carries one, else its project's default. An
@@ -4519,6 +4594,9 @@ public sealed class DependencyGate
 
     /// <summary>The dangerous reason live on this issue - see <see cref="PriorityTree.EffectiveDangerous"/>.</summary>
     public (string? Reason, string? FromKey) EffectiveDangerous(long issueId) => _tree.EffectiveDangerous(issueId);
+
+    /// <summary>The strictest open question on this issue or an ancestor - see <see cref="PriorityTree.EffectiveQuestion"/>.</summary>
+    public (string Level, int Count, string? FromKey)? EffectiveQuestion(long issueId) => _tree.EffectiveQuestion(issueId);
 
     /// <summary>The runners this issue's own rows omit - see <see cref="PriorityTree.OwnOmittedRunners"/>.</summary>
     public IReadOnlyList<RunnerOmissionDto> OwnOmittedRunners(long issueId) => _tree.OwnOmittedRunners(issueId);

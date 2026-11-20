@@ -36,12 +36,35 @@ session reads it, and [the CLI reference](cli-reference#ask) has the flags.
 A question is open when no comment answers it. That is worked out on each read
 and never stored, so a question cannot be open and answered at once.
 
-While a ticket holds one, the board folds it out of dispatch with *"N unanswered
-question(s) - it is waiting on a person, not on an agent"*. That is the same for
-the queue pass, for a dispatch aimed at that one ticket by name and for a hop,
-and it lasts until the question is answered. Nothing is spawned at the ticket
-and nothing is built past the question on a guess. A fix for a conflict or a red
-build in a review column is held too, since it is a dispatch like any other.
+How far the board holds a ticket depends on the question's level (see [the three
+levels](#the-three-levels)). The ticket's strictest open question counts, and so
+does the strictest one on any ticket above it, so a question on an epic reaches
+every story and task beneath it.
+
+- At `hold`, every move of the ticket is folded with *"N unanswered question(s) -
+  it is waiting on a person, not on an agent"*. Where the question is an
+  ancestor's the sentence names that ticket: *"... on HA-12 - ..."*. That is the
+  same for the queue pass, for a dispatch aimed at that one ticket by name and
+  for a hop, and it lasts until the question is answered. Nothing is spawned at
+  the ticket and nothing is built past the question on a guess. A fix for a
+  conflict or a red build in a review column is held too, since it is a dispatch
+  like any other. A passing check in the review column leaves the ticket where
+  it is rather than carrying it into the merge column, and says so in a comment.
+- At `build`, work is dispatched and built as usual, and only what would merge or
+  close it is folded: the move out of review into the merge column or a done
+  column (the approve hop and the close hop), and a passing check's advance
+  there. The sentence reads *"N unanswered question(s) at build on HA-12 - it is
+  built, and a person answers before it merges"*. A fix for a conflict or a red
+  build still goes ahead. In a project that lands on the trunk there is no merge
+  to hold, since building is landing, so the move into the implementation column
+  is folded instead and the moves before it go ahead.
+- At `merge`, nothing is folded.
+
+Every one of these counts as waiting on a person, so the attention panel and
+`hatch queue` read them the same way. A ticket flagged dangerous is the one case
+that ignores the level: with any open question on it or above it, it is folded
+with *"N unanswered question(s) on HA-12, and it is flagged dangerous (reason) -
+a person answers before any of it moves"*.
 
 One column is the exception. A column ticked **Merges PR** is judged on its
 pull request's checks before any question is read, so a pull request there merges
@@ -73,8 +96,9 @@ all read it, and `hatch questions` shows it beside who asked.
   merged.
 - `merge` - the work merges, and the answer is looked over after.
 
-Nothing sets a level yet, so every question reads `hold`, and the hold above is
-what the board does. Only a person will ever set one, never a key: asking with a
+Nothing sets a level yet, so every question reads `hold`, and the `hold` row of
+[what an open question blocks](#what-an-open-question-blocks) is what the board
+does. Only a person will ever set one, never a key: asking with a
 level is refused, because a session cannot decide how far its own question lets
 it go.
 
