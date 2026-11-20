@@ -3286,6 +3286,12 @@ public record DreamRemandResultDto(
 /// option, so the session builds on that and does not ask again. Separate from
 /// <paramref name="Questions"/>, which stays this ticket's own. Null reads as none.
 /// </param>
+/// <param name="Ambition">
+/// The ambition standing above this issue at any depth, and its principles, so
+/// a session reads what it is working toward without a separate call. Null
+/// where no ambition stands above it, and on an ambition's own dispatch - an
+/// ambition is not its own ambition.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3320,7 +3326,15 @@ public record WorkDto(
     string? Model = null,
     bool ModelIsLocal = false,
     bool ModelFellBack = false,
-    IReadOnlyList<QuestionDto>? BuildPast = null);
+    IReadOnlyList<QuestionDto>? BuildPast = null,
+    WorkAmbitionDto? Ambition = null);
+
+/// <summary>
+/// The ambition standing above a dispatched issue: its key and title, and the
+/// bullets under its description's <c>## Principles</c> heading, in order.
+/// Empty where the description has no such heading.
+/// </summary>
+public record WorkAmbitionDto(string Key, string Title, IReadOnlyList<string> Principles);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether
