@@ -2186,6 +2186,22 @@ export interface UtilizationLimit {
   resetsAt: string | null;
 }
 
+/** One runner behind the headline, mine. Mirrors UtilizationRunner. */
+export interface UtilizationRunner {
+  /** The runner's own name, as the Runners page shows it. */
+  name: string;
+  /** Whether this runner is up right now, on the same terms the Runners page judges it by. */
+  live: boolean;
+  /** This runner's own `state`/`readAt`/`receivedAt`/`limits`, or all four null
+      together where it has never reported a reading of its own - up, or just
+      linked, but silent so far. Judged on the same five-minute rule as the
+      headline's own `state`. */
+  state: string | null;
+  readAt: string | null;
+  receivedAt: string | null;
+  limits: UtilizationLimit[] | null;
+}
+
 /** A reading of my own Claude headroom. Mirrors UtilizationReading. */
 export interface Utilization {
   /** `ok` read within the freshness window; `stale` outside it - still the
@@ -2203,6 +2219,11 @@ export interface Utilization {
   receivedAt: string;
   /** In the order the runner reported them. Nothing here sorts or filters. */
   limits: UtilizationLimit[];
+  /** The panel behind the headline: one entry per runner of mine that is
+      live, plus whichever one holds the headline reading even once it is no
+      longer live. In the order `Runner.JoinAsync` answers in - last seen
+      descending, then name - the same order the Runners page reads in. */
+  runners: UtilizationRunner[];
 }
 
 // ---- What is waiting on a person ----

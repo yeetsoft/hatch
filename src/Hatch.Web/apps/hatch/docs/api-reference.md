@@ -1765,13 +1765,20 @@ bucket name, a `level` other than `epic` or `story`, a `loose` other than
 None of the four queries is itself bounded by the range - the fold needs an
 issue's first move even where it falls outside it - but the ranges' bounds
 are. `utilization` answers a
-`UtilizationReading(State, ReadAt, ReceivedAt, Limits)` off whatever this
+`UtilizationReading(State, ReadAt, ReceivedAt, Limits, Runners)` off whatever this
 caller's own runners last reported on their own heartbeat, never the
 account's endpoint directly, and `204`s for a caller with no runner ever
 reporting one, which is the ordinary state for a fresh install rather than
 an error. `ReadAt` is the runner's own word for when it read the account;
 `ReceivedAt` is Hatch's own clock at the moment that reading last actually
-changed, and `State` is judged on it.
+changed, and `State` is judged on it. `Runners` is the panel behind that
+headline: one `UtilizationRunner(Name, Live, State, ReadAt, ReceivedAt, Limits)`
+per runner of the caller's that is live now, plus the one runner whose own
+reading is the headline even once it is no longer live, so the headline is
+never unexplained. A runner that is up but has reported nothing of its own
+carries `Live: true` with the other four fields null, which is how a client
+tells "no reading yet" from "not linked" without a second field. Another
+person's runners, and an ownerless key's, never appear.
 
 `attention` is the one request the nav strip's badge and panel both draw
 from, since two polls a poll interval apart would show a lit control beside

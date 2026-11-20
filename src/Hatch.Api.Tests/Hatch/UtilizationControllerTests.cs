@@ -5,6 +5,7 @@ using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -206,6 +207,77 @@ public class UtilizationControllerTests
         }
     }
 
+    // ---- The panel: Runners beside the headline (HA-2535) ----
+
+    [SkippableFact]
+    public async Task TwoLiveRunners_AreBothListedInThePanel()
+    {
+        await using var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.SeedBeatAsync("here:/checkouts/one", nathan.Id, Now, Now, new RunnerUsageWindowDto("session", "Session", 10, null));
+        await h.SeedBeatAsync("here:/checkouts/two", nathan.Id, Now, Now, new RunnerUsageWindowDto("session", "Session", 20, null));
+
+        var reading = Value(await h.Utilization.Get(default));
+
+        Assert.Equal(2, reading.Runners.Count);
+        Assert.All(reading.Runners, r => Assert.True(r.Live));
+        Assert.Contains(reading.Runners, r => r.Name == "here:/checkouts/one");
+        Assert.Contains(reading.Runners, r => r.Name == "here:/checkouts/two");
+    }
+
+    [SkippableFact]
+    public async Task AGoneRunnerHoldingTheHeadline_IsStillListed()
+    {
+        await using var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        // Past Runners.RetentionSeconds (2h), not merely past the five-minute
+        // freshness window - Runner.IsLive reads a beat as live until it is
+        // dropped from the read altogether, not on the shorter gone horizon.
+        var goneAt = Now.AddHours(-3);
+        await h.SeedBeatAsync("here:/checkouts/one", nathan.Id, goneAt, goneAt, new RunnerUsageWindowDto("session", "Session", 42, null));
+
+        var reading = Value(await h.Utilization.Get(default));
+
+        var entry = Assert.Single(reading.Runners);
+        Assert.Equal("here:/checkouts/one", entry.Name);
+        Assert.False(entry.Live);
+        Assert.NotNull(entry.Limits);
+    }
+
+    [SkippableFact]
+    public async Task ALiveRunnerWithNoReadingYet_IsListedWithNoLimits()
+    {
+        await using var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.SeedBeatAsync("here:/checkouts/one", nathan.Id, Now, Now, new RunnerUsageWindowDto("session", "Session", 10, null));
+        await h.SeedBeatAsync("here:/checkouts/two", nathan.Id, Now, null);
+
+        var reading = Value(await h.Utilization.Get(default));
+
+        var silent = reading.Runners.Single(r => r.Name == "here:/checkouts/two");
+        Assert.True(silent.Live);
+        Assert.Null(silent.Limits);
+        Assert.Null(silent.State);
+    }
+
+    [SkippableFact]
+    public async Task AnotherPersonsRunner_NeverAppearsInThePanel()
+    {
+        await using var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        var alice = h.Actors.AddPerson("Alice");
+        await h.SeedBeatAsync("here:/checkouts/mine", nathan.Id, Now, Now, new RunnerUsageWindowDto("session", "Session", 10, null));
+        await h.SeedBeatAsync("here:/checkouts/alices", alice.Id, Now, Now, new RunnerUsageWindowDto("session", "Session", 80, null));
+        h.Actors.Principal = nathan;
+
+        var reading = Value(await h.Utilization.Get(default));
+
+        Assert.DoesNotContain(reading.Runners, r => r.Name == "here:/checkouts/alices");
+    }
+
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException("expected a value, got no content");
 
@@ -221,7 +293,12 @@ public class UtilizationControllerTests
 
         public StubAuthService Keys { get; } = new();
 
-        public UtilizationController Utilization => new(Connect(), Actors, Time, Keys);
+        private static readonly Runners RunnerRules =
+            new(Options.Create(new HatchOptions()), Options.Create(new AuthOptions()), new StubHatchRevision());
+
+        private static readonly RunnerSessions SessionRules = new(RunnerRules);
+
+        public UtilizationController Utilization => new(Connect(), Actors, Time, Keys, RunnerRules, SessionRules);
 
         private HatchContext Connect()
         {
@@ -254,6 +331,31 @@ public class UtilizationControllerTests
                 ForPersonId = forPersonId,
                 UsageReadAt = readAt,
                 Usage = JsonSerializer.Serialize(windows),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// A beat row with its own <c>LastSeenAt</c> apart from when it read
+        /// its usage - what the panel's liveness and gone-headline tests need,
+        /// and the plain <see cref="SeedAsync"/> above cannot say since it
+        /// always ties the two together. No windows at all seeds a row with
+        /// <c>Usage</c> null - a runner that is up but has never reported.
+        /// </summary>
+        public async Task SeedBeatAsync(
+            string name, Guid? forPersonId, DateTimeOffset lastSeenAt, DateTimeOffset? readAt, params RunnerUsageWindowDto[] windows)
+        {
+            var db = Connect();
+            db.LegacyRunners.Add(new EfHatchRunner
+            {
+                Name = name,
+                Kind = EfHatchRunner.LoopKind,
+                FirstSeenAt = lastSeenAt,
+                LastSeenAt = lastSeenAt,
+                State = EfHatchRunner.Running,
+                ForPersonId = forPersonId,
+                UsageReadAt = readAt,
+                Usage = windows.Length > 0 ? JsonSerializer.Serialize(windows) : null,
             });
             await db.SaveChangesAsync();
         }

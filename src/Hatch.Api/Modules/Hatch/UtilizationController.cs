@@ -26,7 +26,9 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/utilization")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class UtilizationController(HatchContext db, IActorDirectory actors, TimeProvider time, IAuthService keys) : ControllerBase
+public class UtilizationController(
+    HatchContext db, IActorDirectory actors, TimeProvider time, IAuthService keys, Runners runners, RunnerSessions sessions)
+    : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<UtilizationReading>> Get(CancellationToken ct)
@@ -34,7 +36,7 @@ public class UtilizationController(HatchContext db, IActorDirectory actors, Time
         var principal = await actors.PrincipalAsync(ct);
         if (principal is null) return NoContent();
 
-        var reading = await Utilization.ReadAsync(db, keys, principal.Id, time.GetUtcNow(), ct);
+        var reading = await Utilization.PanelAsync(db, keys, runners, sessions, principal.Id, time.GetUtcNow(), ct);
         return reading is null ? NoContent() : reading;
     }
 }

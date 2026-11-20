@@ -1,8 +1,16 @@
 import { useState } from 'react';
 import { Button, Modal, Text } from '@hatch/ui';
-import { agePhrase, rowPercent, rowResetPhrase, rowSentence, timeGoneFraction, usageVars } from '../lib/utilization';
+import {
+  agePhrase,
+  rowPercent,
+  rowResetPhrase,
+  rowSentence,
+  runnerAgePhrase,
+  timeGoneFraction,
+  usageVars,
+} from '../lib/utilization';
 import { useMe } from '../lib/useMe';
-import type { Utilization } from '../types';
+import type { Utilization, UtilizationLimit, UtilizationRunner } from '../types';
 
 /**
  * Every window my own account is reporting.
@@ -45,6 +53,56 @@ export function UtilizationModal({
     }
   }
 
+  function limitRow(limit: UtilizationLimit, key: number) {
+    const percent = rowPercent(limit, now);
+    const goneFraction = timeGoneFraction(limit.window, limit.resetsAt, now);
+    // A monthly credit limit is not a window whose length Hatch knows, so
+    // `extra` gets no time bar at all - not an empty or unknown one.
+    const hasTimeBar = limit.window !== 'extra';
+
+    return (
+      /* Keyed by position: the runner is the only thing that names these
+         rows and two scoped rows can share a label, so the index is the one
+         identifier that is actually unique here. */
+      <li key={key} className="hatch-usage-row">
+        <span className="hatch-usage-label">{limit.label}</span>
+        <span className="hatch-usage-percent">{Math.round(percent)}%</span>
+        <span className="hatch-usage-reset">{rowResetPhrase(limit, now)}</span>
+
+        {/* One picture, one sentence - the way StatusMeter.tsx announces its
+            bar - rather than two unlabelled tracks a screen reader would have
+            to guess the relationship between. */}
+        <div className="hatch-usage-bars" role="img" aria-label={rowSentence(limit, now)}>
+          <div className="hatch-usage-bar-track">
+            <div className="hatch-usage-bar-fill" style={{ ...usageVars(percent), width: `${percent}%` }} />
+          </div>
+          {hasTimeBar && (
+            <div
+              className={`hatch-usage-bar-track${goneFraction === null ? ' hatch-usage-bar-track-unknown' : ''}`}
+            >
+              {goneFraction !== null && (
+                <div className="hatch-usage-time-fill" style={{ width: `${goneFraction * 100}%` }} />
+              )}
+            </div>
+          )}
+        </div>
+      </li>
+    );
+  }
+
+  function runnerRow(runner: UtilizationRunner) {
+    return (
+      <li key={runner.name} className="hatch-usage-runner">
+        <div className="hatch-usage-runner-head">
+          <span className="hatch-usage-runner-name">{runner.name}</span>
+          <span className="hatch-usage-runner-state">{runner.live ? 'live' : 'gone'}</span>
+          <span className="hatch-usage-runner-age">{runnerAgePhrase(runner, now)}</span>
+        </div>
+        {runner.limits && <ul className="hatch-usage-rows">{runner.limits.map((limit, at) => limitRow(limit, at))}</ul>}
+      </li>
+    );
+  }
+
   return (
     <Modal
       open={open}
@@ -53,47 +111,11 @@ export function UtilizationModal({
       width="narrow"
     >
       <div className="hatch-usage">
-        <ul className="hatch-usage-rows">
-          {reading.limits.map((limit, at) => {
-            const percent = rowPercent(limit, now);
-            const goneFraction = timeGoneFraction(limit.window, limit.resetsAt, now);
-            // A monthly credit limit is not a window whose length Hatch knows,
-            // so `extra` gets no time bar at all - not an empty or unknown one.
-            const hasTimeBar = limit.window !== 'extra';
+        <ul className="hatch-usage-rows">{reading.limits.map((limit, at) => limitRow(limit, at))}</ul>
 
-            return (
-              /* Keyed by position: the runner is the only thing that names
-                 these rows and two scoped rows can share a label, so the index
-                 is the one identifier that is actually unique here. */
-              <li key={at} className="hatch-usage-row">
-                <span className="hatch-usage-label">{limit.label}</span>
-                <span className="hatch-usage-percent">{Math.round(percent)}%</span>
-                <span className="hatch-usage-reset">{rowResetPhrase(limit, now)}</span>
-
-                {/* One picture, one sentence - the way StatusMeter.tsx announces
-                    its bar - rather than two unlabelled tracks a screen reader
-                    would have to guess the relationship between. */}
-                <div className="hatch-usage-bars" role="img" aria-label={rowSentence(limit, now)}>
-                  <div className="hatch-usage-bar-track">
-                    <div
-                      className="hatch-usage-bar-fill"
-                      style={{ ...usageVars(percent), width: `${percent}%` }}
-                    />
-                  </div>
-                  {hasTimeBar && (
-                    <div
-                      className={`hatch-usage-bar-track${goneFraction === null ? ' hatch-usage-bar-track-unknown' : ''}`}
-                    >
-                      {goneFraction !== null && (
-                        <div className="hatch-usage-time-fill" style={{ width: `${goneFraction * 100}%` }} />
-                      )}
-                    </div>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        {reading.runners.length > 0 && (
+          <ul className="hatch-usage-runners">{reading.runners.map((runner) => runnerRow(runner))}</ul>
+        )}
 
         <div className="hatch-usage-foot">
           {/* The age of the number, always - a reported reading is as old as

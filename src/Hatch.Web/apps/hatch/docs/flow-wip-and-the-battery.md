@@ -159,9 +159,12 @@ the worst window, the one with the highest percentage, and never the `extra`
 credit-line row. Opened, each window is two bars, spent and time gone; a dashed time bar
 means no reset is known, and a window that has already reset reads as not
 started. A reading is `ok` within five minutes of when Hatch received it and
-`stale` after, still shown with its age; there is no other state. Refresh re-reads
-Hatch's own row only. [Watching the loop](watching-the-loop#the-battery) has the
-panel itself.
+`stale` after, still shown with its age; there is no other state. Below those
+windows, every runner of this person's own draws a row - named, live or gone,
+with its own age and, where it has reported one, its own two bars the same
+way - so a person with two runners sees two rows and can tell which one a
+number came from. Refresh re-reads Hatch's own row only. [Watching the
+loop](watching-the-loop#the-battery) has the panel itself.
 
 **What the loop does as it runs down.** An unattended pass reads the same
 reading before it touches work at the bottom of the [priority](issues#priority)

@@ -3826,7 +3826,7 @@ public class IssueClaimTests
         /// <summary>The keys the account's reading is mapped to an owner through.</summary>
         public StubAuthService Keys { get; } = new();
 
-        public UtilizationController Utilization => new(Connect(), Actors, Time, Keys);
+        public UtilizationController Utilization => new(Connect(), Actors, Time, Keys, RunnersRule, new RunnerSessions(RunnersRule));
 
         /// <summary>A connection of its own, disposed with the harness.</summary>
         public HatchContext Connect()
