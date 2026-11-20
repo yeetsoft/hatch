@@ -4170,6 +4170,65 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* ---- Passes, on an ambition's issue page ----
+
+   One entry per work-log row from the implementation column: its title or
+   the word Pass, its date and sha, one line per capability it judged, and
+   its comments. The verdict lines sit in a grid on a desk and stack on a
+   phone, the same break EpicsInFlight's meta uses. */
+.hatch-pass-list {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+}
+
+.hatch-pass {
+  min-width: 0;
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.hatch-pass-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-pass-verdicts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--sp-2);
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+}
+
+.hatch-pass-verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hatch-pass-changed {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.hatch-pass .hatch-comment {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 40rem) {
+  .hatch-pass-verdicts {
+    grid-template-columns: 1fr;
+  }
+}
+
 .hatch-key-preview {
   color: var(--muted);
   font-size: var(--t-label);
@@ -9880,6 +9939,73 @@ button.hatch-option.chosen {
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-3) 0;
+}
+
+/* ---- A runner's columns ----
+
+   The Columns section of the runner's settings card. A row is the column's own
+   pill; a column the runner does not work is the same pill, dimmed, so the
+   column's colour still names it. */
+
+.hatch-runner-columns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hatch-runner-columns legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.hatch-runner-columns-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.hatch-runner-columns-modes label,
+.hatch-runner-column label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-runner-columns-bulk {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.hatch-runner-columns-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-runner-column {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.hatch-runner-column--dim .hatch-status-pill {
+  opacity: 0.35;
+}
+
+.hatch-runner-column-only {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: var(--t-label);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* ---- Filed and moved issue confirmations ---- */

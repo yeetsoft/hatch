@@ -79,6 +79,21 @@ describe('saveRunnerSettings', () => {
     expect(calls).toEqual(['patch', 'put', 'reload']);
   });
 
+  it('sends a changed column rule in the one patch, both fields together', async () => {
+    const { calls, patch, putRefused, reload } = setup();
+    const request = {
+      patch: { tags: [], under: '', statusMode: 'only' as const, statusIds: [2] },
+      refusedModels: [],
+    };
+
+    await saveRunnerSettings('Quill', request, [], 'claude', { patch, putRefused, reload });
+
+    expect(patch).toHaveBeenCalledTimes(1);
+    expect(patch).toHaveBeenCalledWith('Quill', { tags: [], under: '', statusMode: 'only', statusIds: [2] });
+    expect(putRefused).not.toHaveBeenCalled();
+    expect(calls).toEqual(['patch', 'reload']);
+  });
+
   it('sends the list when it is cleared', async () => {
     const { patch, putRefused, reload } = setup();
     const request = { patch: { tags: [], under: '' }, refusedModels: [] };

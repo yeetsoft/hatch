@@ -30,7 +30,7 @@ import { useMe } from '../lib/useMe';
 import { usePhone } from '../lib/viewport';
 import { RecentSessions } from './RecentSessions';
 import { SessionBlock } from './SessionBlock';
-import type { Runner, RunnerPatchRequest, RunnerSession } from '../types';
+import type { Runner, RunnerPatchRequest, RunnerSession, Status } from '../types';
 
 /** The detail's two sessions cards - "Live sessions" and "Recent sessions" in
     docs/runners-page-design.md - shared between the phone and desk branches
@@ -148,10 +148,12 @@ function SessionsCards({
 function RunnerConfigCards({
   runner,
   live,
+  statuses,
   reload,
 }: {
   runner: Runner;
   live: RunnerSession[];
+  statuses: Status[] | null;
   reload: () => Promise<void>;
 }) {
   const [settingsRefusal, setSettingsRefusal] = useState<string | null>(null);
@@ -166,6 +168,7 @@ function RunnerConfigCards({
         key={`settings:${runner.name}`}
         runner={runner}
         live={live}
+        statuses={statuses}
         editable={editable}
         refusal={settingsRefusal}
         onSave={async (request) =>
@@ -242,7 +245,7 @@ export function IdentityCard({
     layout". */
 export function RunnerDetail() {
   const { name } = useParams();
-  const { runners, reload, secret, setSecret } = useRunnersOutlet();
+  const { runners, statuses, reload, secret, setSecret } = useRunnersOutlet();
   const { isAdmin } = useMe();
   const phone = usePhone();
   const now = new Date();
@@ -297,7 +300,7 @@ export function RunnerDetail() {
         <PageHeader title={name} actions={badges} level={1} />
         {secretPanel}
         <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey} />
-        <RunnerConfigCards runner={runner} live={live} reload={reload} />
+        <RunnerConfigCards runner={runner} live={live} statuses={statuses} reload={reload} />
         <SessionsCards runner={runner} live={live} now={now} reload={reload} />
       </>
     );
@@ -308,7 +311,7 @@ export function RunnerDetail() {
       <PageHeader title={name} actions={badges} level={2} />
       {secretPanel}
       <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey} />
-      <RunnerConfigCards runner={runner} live={live} reload={reload} />
+      <RunnerConfigCards runner={runner} live={live} statuses={statuses} reload={reload} />
       <SessionsCards runner={runner} live={live} now={now} reload={reload} />
     </>
   );
