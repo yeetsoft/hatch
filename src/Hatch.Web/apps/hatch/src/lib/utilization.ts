@@ -168,6 +168,22 @@ export function runnerAgePhrase(runner: UtilizationRunner, now: Date): string {
 }
 
 /**
+ * Where a runner's reading came from: `from the session stream` or `from a
+ * probe`, and nothing for one that has not said.
+ */
+export function runnerSourcePhrase(runner: UtilizationRunner): string {
+  if (runner.source === 'stream') return 'from the session stream';
+  if (runner.source === 'probe') return 'from a probe';
+
+  return '';
+}
+
+/** Why a runner's probe is off, word for word, or null while it is not. */
+export function runnerProbeOffPhrase(runner: UtilizationRunner): string | null {
+  return runner.probeOff ? `probe off: ${runner.probeOff}` : null;
+}
+
+/**
  * The row the glyph in the nav is drawn from - the five-hour session window.
  *
  * Found by `window` rather than by position: the runner decides the order and

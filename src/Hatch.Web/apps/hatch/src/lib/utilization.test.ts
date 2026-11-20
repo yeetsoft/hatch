@@ -13,6 +13,8 @@ import {
   rowResetPhrase,
   rowSentence,
   runnerAgePhrase,
+  runnerProbeOffPhrase,
+  runnerSourcePhrase,
   sessionLimit,
   timeGoneFraction,
   usageVars,
@@ -193,6 +195,39 @@ describe('runnerAgePhrase', () => {
 
   it('otherwise reads the same age agePhrase does, off receivedAt', () => {
     expect(runnerAgePhrase(runner({ receivedAt: at(-4 * 60_000) }), NOW)).toBe('read 4 minutes ago');
+  });
+});
+
+describe('runnerSourcePhrase and runnerProbeOffPhrase', () => {
+  const runner = (over: Partial<UtilizationRunner> = {}): UtilizationRunner => ({
+    name: 'here:/checkouts/one',
+    live: true,
+    state: 'ok',
+    readAt: at(0),
+    receivedAt: at(0),
+    limits: [limit()],
+    source: null,
+    probeOff: null,
+    ...over,
+  });
+
+  it('names the stream and the probe', () => {
+    expect(runnerSourcePhrase(runner({ source: 'stream' }))).toBe('from the session stream');
+    expect(runnerSourcePhrase(runner({ source: 'probe' }))).toBe('from a probe');
+  });
+
+  it('says nothing for a reading with no source', () => {
+    expect(runnerSourcePhrase(runner())).toBe('');
+  });
+
+  it('gives the probe-off reason word for word', () => {
+    expect(runnerProbeOffPhrase(runner({ probeOff: 'no login on this machine' }))).toBe(
+      'probe off: no login on this machine',
+    );
+  });
+
+  it('says nothing while the probe is not off', () => {
+    expect(runnerProbeOffPhrase(runner())).toBeNull();
   });
 });
 
