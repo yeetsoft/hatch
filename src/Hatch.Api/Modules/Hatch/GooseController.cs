@@ -28,12 +28,19 @@ public class GooseController(HatchContext db) : ControllerBase
 
         var take = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
 
-        var runs = await db.GooseRuns.AsNoTracking()
+        var rows = await db.GooseRuns.AsNoTracking()
             .OrderByDescending(r => r.LastRanAt)
             .ThenByDescending(r => r.Id)
             .Take(take)
-            .Select(r => new GooseRunDto(r.Id, r.FirstRanAt, r.LastRanAt, r.Sweeps, r.LongestMs))
             .ToListAsync(ct);
+
+        var runs = rows.Select(r =>
+        {
+            var entries = GooseEntry.Read(r.Entries);
+            return new GooseRunDto(
+                r.Id, r.FirstRanAt, r.LastRanAt, r.Sweeps, r.LongestMs,
+                entries.Count, entries.Count(e => e.Failed));
+        }).ToList();
 
         return Ok(runs);
     }

@@ -56,6 +56,7 @@ export const APP_ROUTE_ROOTS = [
   'design',
   'runners',
   'overnight',
+  'goose',
   'changelog',
   'history',
   'issues',

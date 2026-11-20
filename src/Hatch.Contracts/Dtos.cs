@@ -5740,7 +5740,11 @@ public record MeScopeDto(string Mode, IReadOnlyList<int> ProjectIds);
 /// <param name="LastRanAt">When the latest sweep folded into the run started.</param>
 /// <param name="Sweeps">How many sweeps the run holds.</param>
 /// <param name="LongestMs">The longest any of them took, in milliseconds.</param>
-public record GooseRunDto(long Id, DateTimeOffset FirstRanAt, DateTimeOffset LastRanAt, int Sweeps, long LongestMs);
+/// <param name="Checks">How many checks the run's entries hold, so a list can say it without a call per run.</param>
+/// <param name="ChecksFailed">How many of those threw.</param>
+public record GooseRunDto(
+    long Id, DateTimeOffset FirstRanAt, DateTimeOffset LastRanAt, int Sweeps, long LongestMs,
+    int Checks = 0, int ChecksFailed = 0);
 
 /// <summary>
 /// One run with what each check looked at and concluded, in the order the

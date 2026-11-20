@@ -8833,6 +8833,8 @@ button.hatch-option.chosen {
 .hatch-attention-row-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--sp-3);
 }
 
 /* The bug filed from a finding, tucked under its row at the far end: a link of
@@ -8847,6 +8849,213 @@ button.hatch-option.chosen {
 
 .hatch-attention-bug a {
   color: var(--primary);
+}
+
+/* The goose's page. A card of rows, each a button that opens in place, with its
+   actions beside the button and its body under both. */
+/* No margin of its own: .hatch-page > * centres it. */
+.hatch-goose-state {
+  font-size: var(--t-body);
+}
+
+.hatch-goose-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hatch-goose-heading {
+  margin: 0;
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hatch-goose-note {
+  margin: 0;
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-goose-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-goose-rows > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.hatch-goose-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-right: var(--sp-3);
+}
+
+.hatch-goose-toggle {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hatch-goose-toggle:hover {
+  background: var(--primary-bg);
+}
+
+.hatch-goose-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.hatch-goose-title {
+  font-size: var(--t-label);
+  overflow-wrap: anywhere;
+}
+
+.hatch-goose-meta {
+  font-size: var(--t-micro);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.hatch-goose-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hatch-goose-actions a {
+  color: var(--primary);
+}
+
+.hatch-goose-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3) var(--sp-3);
+  font-size: var(--t-label);
+}
+
+.hatch-goose-checks,
+.hatch-goose-reports {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-goose-check,
+.hatch-goose-reports > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hatch-goose-check-name,
+.hatch-goose-report-title {
+  font-weight: 600;
+}
+
+.hatch-goose-report-summary {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.hatch-goose-pairs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.hatch-goose-pair {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) 1fr;
+  gap: var(--sp-2);
+}
+
+.hatch-goose-pair dt {
+  color: var(--muted);
+}
+
+.hatch-goose-pair dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-goose-bug {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+
+.hatch-goose-subheading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--t-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.hatch-goose-subheading a {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.hatch-goose-column {
+  color: var(--muted);
+}
+
+.hatch-goose-label {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (max-width: 40rem) {
+  .hatch-goose-bar {
+    flex-wrap: wrap;
+    padding: 0 var(--sp-3) var(--sp-2) 0;
+  }
+
+  .hatch-goose-toggle {
+    min-height: 44px;
+  }
+
+  .hatch-goose-actions {
+    padding-left: var(--sp-3);
+  }
+
+  .hatch-goose-pair {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 
 .hatch-attention-row-head {

@@ -26,6 +26,41 @@ Only one sweep runs at a time, even with several servers on one database. A
 sweep that starts while another is running writes nothing. A sweep still
 running when the next is due means the next one is skipped, not queued.
 
+## The page
+
+The **Goose** page, at `/goose` and in the **Agents** group of the nav, is
+where all of this is read. You do not need the API for it. From top to bottom:
+
+- **A line saying whether the goose is running** and when it last swept. A
+  stopped goose says so in the attention panel's own words.
+- **Open findings**, longest-standing first. A row says what is wrong, which
+  check found it, its project, and how long ago the condition began.
+- **Runs**, newest first. A row says when the run first and last ran, how many
+  sweeps it holds, how long the slowest took, how many checks ran (and how many
+  of them failed), and how many findings were open at its last sweep. The last
+  sweep, because a run's entries are the latest sweep's.
+- **Closed findings**, the one that closed last first. A row says how long the
+  finding lasted and when it closed.
+
+Press a run to open it in place: each check, with what it looked at and
+concluded, or the error it failed with. Press a finding to open it: its
+evidence, one label and value to a line.
+
+An open or closed finding has the same **File a bug** button the attention
+panel has, and shows the bug's key once one is filed. Opened, a finding that
+has a bug also shows the bug's key and column, the brief it was filed with, and
+what each session on it reported, newest first: the title, the summary, when,
+and which runner. Nothing is copied to the finding. The brief is the bug's own
+description, the reports are its [work log](watching-the-loop), and the runner
+is read from the event that released each session. A session from before a
+release named its runner shows none.
+
+The page reads again every minute, the attention control's own interval. A
+caller who reaches only some of the projects sees the findings of their
+projects and no runs, with one line saying that runs cover the whole board.
+Each empty list says so: no runs yet, nothing open, nothing closed in the days
+kept.
+
 ## How to read a run
 
 The record is a list of **runs**, not a list of sweeps. A sweep that concluded
@@ -36,7 +71,8 @@ row, so a quiet board is one row however long it stays quiet. Each run shows:
   A run whose last sweep is recent is the goose still running now.
 - **Sweeps**: how many sweeps it holds. Sixty in an hour is the goose keeping
   its pace.
-- **Longest**: the slowest of those sweeps, in milliseconds.
+- **Longest**: the slowest of those sweeps, in milliseconds. The page writes it
+  as a duration, such as `340 ms` or `1.2 s`.
 
 Open a run to see its entries: one per check, in the order they ran, with what
 the check looked at, what it concluded, and whether it failed. The entries are
@@ -198,7 +234,8 @@ An open finding is listed first under **Findings** in the Human group of the
 first. Each row is the sentence and how long the condition has been true. It
 links to the issue the finding is about when its subject is an issue in the
 finding's own project - for `train-ready`, the head - and to the project's board
-otherwise. The bug filed from it, if any, is a link of its own. Every open
+otherwise. The bug filed from it, if any, is a link of its own, and so is **Goose**,
+which opens [the page](#the-page) where the finding is read in full. Every open
 finding is counted by the bar's control, which lights for it.
 
 ### When the goose stops
@@ -210,14 +247,15 @@ intervals, or, if no run is stored, when the server has been up for three
 intervals. The page reading it judges this by its own clock; a sweep never
 writes it, so a sweep that is wedged cannot say it is fine. The first row under
 **Findings** then reads *The goose has stopped. It last ran 12 minutes ago.*, or
-*It has not run since the server started.*, and counts as one thing waiting. It
-is shown to everyone, whatever their scope, because a person who cannot see a
+*It has not run since the server started.*, and counts as one thing waiting. The
+row links to [the page](#the-page). It is shown to everyone, whatever their scope, because a person who cannot see a
 run can still be hurt by there being none.
 
 ## Reading it from outside
 
-`GET /api/goose/runs` lists runs, newest first, without the per-check detail,
-and takes a `limit`. `GET /api/goose/runs/{id}` answers one run with its
+The page reads three routes. `GET /api/goose/runs` lists runs, newest first,
+without the per-check detail but with how many checks each holds
+(`checks`) and how many of them failed (`checksFailed`), and takes a `limit`. `GET /api/goose/runs/{id}` answers one run with its
 entries. `GET /api/goose/findings` lists findings, open ones first
 (longest-standing first), then closed ones (newest first); `?open=true`
 narrows it to the open ones. An API key may call all three; filing a bug from a finding is a person's press, and a key is refused it. A run holds what
