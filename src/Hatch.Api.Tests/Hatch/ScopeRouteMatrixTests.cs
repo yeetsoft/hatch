@@ -108,6 +108,7 @@ public class ScopeRouteMatrixTests
         ("LocalModelsController.DeleteLocalModel", LocalModelsAreTheHouses),
         ("LocalModelsController.GetLocalModels", LocalModelsAreTheHouses),
         ("MeController.GetMe", NamesTheCaller),
+        ("MeHomeController.PutHome", "sets the caller's own home screen; it names no project and returns none"),
         ("OvernightController.PostSeen", "marks the night seen for the caller; it names no project and returns none"),
         ("ProjectsController.CreateProject", "names no project; it makes one"),
         ("RunnerController.Download", RunnerBinary),
