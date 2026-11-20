@@ -503,17 +503,31 @@ open on a closed issue until it is answered; `open=false` is every question,
 answered and obviated ones included.
 
 `GET /ballot` answers the waiting questions of `/questions` as a tree, in one
-read: `{ roots: [...] }`, each root the topmost issue of a chain with the
+read: `{ roots: [...], questions: [...] }`, each root the topmost issue of a chain with the
 questions waiting beneath it. `?projectId=` narrows it to the projects named,
 and repeats as `/plan`'s does. An issue appears once however many questions
 sit under it; roots, and each node's children, run oldest waiting question
 beneath first, and a node's own `questions` oldest first. `BallotDto` is
-`Roots`. `BallotNodeDto` is `Key`, `ProjectKey`, `Type`, `Title`, `Excerpt`
+`Roots` and `Questions`. `BallotNodeDto` is `Key`, `ProjectKey`, `Type`, `Title`, `Excerpt`
 (the first three non-blank lines of the description, markdown as written, cut
 to 300 characters with a `.` appended when cut, empty when there is none),
 `IsTerminal` (an ancestor can stand in a terminal column, and so can the issue a
 waiting `merge` question is on; any other waiting question's issue never does), `Children` (more `BallotNodeDto`) and `Questions`
 (`QuestionDto`s, as below).
+
+`questions` is the same waiting questions as one list, in the order to answer
+them, narrowed by `?projectId=` as `roots` is. Each `BallotQuestionDto` is
+`Question` (a `QuestionDto`), `Holds`, and five look-back fields, null on a
+question that is not a look-back. `Holds` is the issue the question is on and
+every issue beneath it outside a terminal or deferred column, so a question on
+an open leaf holds one and a look-back on a closed issue with nothing open
+beneath it holds none. The order is the questions that are not look-backs
+first, by `Holds` descending, then by level with `hold` before `build` before
+`merge`, then oldest asked first; look-backs follow, oldest first. A look-back
+also carries `WentAheadOn` (the recommended option's label, null when none is
+marked), `IssueStatus` (the issue's column name), `ClosedAt`, `Merged` (whether
+a status change marked `merged` is on its trail) and `Landings` (each a
+`BallotLandingDto`: `Canonical` and `Sha`, empty when none is recorded).
 
 `CommentDto` is `Id`, `Author`, `Body`, `Kind` (`""`, `question`, `answer` or
 `message`), an optional `AnswersId`, an optional `Options`, `CreatedAt`, an
