@@ -1678,7 +1678,7 @@ function PassEntry({ pass, now }: { pass: AmbitionPass; now: Date }) {
         <>
           <ul className="hatch-pass-verdicts">
             {pass.verdicts.map((verdict) => (
-              <PassVerdictLine key={verdict.id} verdict={verdict} />
+              <PassVerdictLine key={verdict.id} verdict={verdict} now={now} />
             ))}
           </ul>
           <p className="text-muted">Recorded outside a pass.</p>
@@ -1694,7 +1694,7 @@ function PassEntry({ pass, now }: { pass: AmbitionPass; now: Date }) {
       {!loose && pass.canRecordVerdicts && pass.verdicts.length > 0 && (
         <ul className="hatch-pass-verdicts">
           {pass.verdicts.map((verdict) => (
-            <PassVerdictLine key={verdict.id} verdict={verdict} />
+            <PassVerdictLine key={verdict.id} verdict={verdict} now={now} />
           ))}
         </ul>
       )}
@@ -1716,18 +1716,24 @@ function PassEntry({ pass, now }: { pass: AmbitionPass; now: Date }) {
   );
 }
 
-/** One capability's verdict within a pass: its position, the state word, and
-    a mark where that word changed from the pass before. */
-function PassVerdictLine({ verdict }: { verdict: AmbitionPassVerdict }) {
+/** One capability's verdict within a pass: its position, the state word, a
+    mark where that word changed from the pass before, and what was looked
+    at, the sha, the author and the date behind it. */
+function PassVerdictLine({ verdict, now }: { verdict: AmbitionPassVerdict; now: Date }) {
   return (
     <li className="hatch-pass-verdict">
-      <span className="hatch-capability-badge" title={verdict.statement}>
-        #{verdict.position}
-      </span>
-      <span className={`hatch-capability-state hatch-capability-state-${verdict.verdict.replace(/_/g, '-')}`}>
-        {capabilityStateLabel(verdict.verdict)}
-      </span>
-      {verdict.changed && <span className="hatch-pass-changed">changed</span>}
+      <div className="hatch-pass-verdict-head">
+        <span className="hatch-capability-badge" title={verdict.statement}>
+          #{verdict.position}
+        </span>
+        <span className={`hatch-capability-state hatch-capability-state-${verdict.verdict.replace(/_/g, '-')}`}>
+          {capabilityStateLabel(verdict.verdict)}
+        </span>
+        {verdict.changed && <span className="hatch-pass-changed">changed</span>}
+      </div>
+      <p className="text-muted">
+        {verdict.lookedAt}, {shortSha(verdict.sha)}, by {verdict.author}, <DatedAt at={verdict.at} now={now} />
+      </p>
     </li>
   );
 }
