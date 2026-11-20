@@ -92,6 +92,7 @@ import { firstLine } from '../lib/dreams';
 import { describe } from '../lib/events';
 import { message } from '../lib/errors';
 import { agoPhrase } from '../lib/claim';
+import { DatedAt } from '../components/DatedAt';
 import { heldBy } from '../lib/stall';
 import { claimMessages, messageState, watchEvery, watching } from '../lib/messages';
 import { mayRefresh } from '../lib/refresh';
@@ -1624,7 +1625,7 @@ function CapabilityRow({ capability, board, now }: { capability: Capability; boa
         </span>
         {verdict && (
           <p className="text-muted">
-            {verdict.lookedAt}, {shortSha(verdict.sha)}, by {verdict.author} {agoPhrase(verdict.at, now)}
+            {verdict.lookedAt}, {shortSha(verdict.sha)}, by {verdict.author}, <DatedAt at={verdict.at} now={now} />
           </p>
         )}
       </div>

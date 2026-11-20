@@ -49,6 +49,16 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
           return {
             text: section ? section.textContent : null,
             rows: section ? section.querySelectorAll('.hatch-capability-row').length : 0,
+            dates: section
+              ? [...section.querySelectorAll('.hatch-capability-row')].map((row) => ({
+                  state: row.querySelector('.hatch-capability-state')?.textContent ?? '',
+                  times: [...row.querySelectorAll('time')].map((t) => ({
+                    dateTime: t.getAttribute('datetime') ?? '',
+                    text: t.textContent ?? '',
+                    title: t.getAttribute('title') ?? '',
+                  })),
+                }))
+              : [],
             innerWidth: window.innerWidth,
             scrollWidth: document.documentElement.scrollWidth,
           };
@@ -100,6 +110,7 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
                 Assert.True(text.Contains(word), $"the Capabilities section does not say \"{word}\": {text}");
             Assert.Equal(4, measured.GetProperty("rows").GetInt32());
             Assert.Contains(epic, text);
+            AssertDated(measured);
             AssertFits(measured, profile is not null);
 
             // The epics under it: both open, each with the capabilities it serves,
@@ -160,6 +171,30 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
               return !!section;
             }
             """, title);
+
+    /// <summary>
+    /// HA-2551: each row that has a verdict holds exactly one <c>time</c> element with a
+    /// non-empty <c>datetime</c>, text and title, and the not-checked row holds none.
+    /// </summary>
+    private static void AssertDated(JsonElement measured)
+    {
+        foreach (var row in measured.GetProperty("dates").EnumerateArray())
+        {
+            var state = row.GetProperty("state").GetString()!;
+            var times = row.GetProperty("times").EnumerateArray().ToList();
+            if (state == "Not checked")
+            {
+                Assert.True(times.Count == 0, $"the \"{state}\" row draws a date: {row}");
+                continue;
+            }
+
+            Assert.True(times.Count == 1, $"the \"{state}\" row holds {times.Count} time elements, not one: {row}");
+            foreach (var field in new[] { "dateTime", "text", "title" })
+                Assert.False(
+                    string.IsNullOrWhiteSpace(times[0].GetProperty(field).GetString()),
+                    $"the \"{state}\" row's time has an empty {field}: {row}");
+        }
+    }
 
     /// <summary>The page may not scroll sideways on the phone; on the desktop the same check costs nothing, so it is made there too.</summary>
     private static void AssertFits(JsonElement measured, bool phone)
