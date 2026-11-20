@@ -30,7 +30,7 @@ const meOf = (scope?: MeScope): Me => ({
 
 const renderAs = (me: Me | null, page: ReactElement): string =>
   renderToStaticMarkup(
-    <MeContext.Provider value={{ me, isAdmin: false }}>{page}</MeContext.Provider>,
+    <MeContext.Provider value={{ me, isAdmin: false, settled: true }}>{page}</MeContext.Provider>,
   );
 
 const none: MeScope = { mode: 'none', projectIds: [] };

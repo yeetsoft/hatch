@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import appSource from '../App.tsx?raw';
-import { HOME, HOME_LABEL, NAV, PHONE_ONLY, activeGroup, navFor, navRows } from './nav';
+import { HOME, HOME_LABEL, NAV, PHONE_ONLY, activeGroup, homeLabel, navFor, navRows } from './nav';
 import type { NavEntry } from './nav';
 
 // Excluded on purpose: /issues/:key is reached from a card, and
@@ -80,6 +80,12 @@ describe('the bar', () => {
     expect(tos).not.toContain('/docs');
     expect(HOME).toBe('/');
     expect(HOME_LABEL).toBe('Board');
+  });
+
+  it('names the logo for the chosen home screen', () => {
+    expect(homeLabel('board')).toBe('Board');
+    expect(homeLabel(undefined)).toBe('Board');
+    expect(homeLabel('ambitions')).toBe('Ambitions');
   });
 
   it('puts Dreams, Plan, Reports and History under Track, in that order', () => {
