@@ -365,7 +365,7 @@ public class WorkController(
             mine = declared.Mine;
             tags = declared.Tags;
             models = declared.Models;
-            asRefusal = new RunnerRefusal(asRunner, declared.Refused);
+            asRefusal = declared.ToRefusal();
             hasDeclared = declared.Has;
             projects = declared.Projects.ToList();
             principal = declared.Principal;
