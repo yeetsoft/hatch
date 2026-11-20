@@ -75,7 +75,7 @@ import { askingCount } from '../lib/questions';
 import { isWaiting } from '../lib/schedule';
 import { lineage } from '../lib/lineage';
 import type { LineageCard } from '../lib/lineage';
-import { isNewIssueShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
+import { isEscapeShortcut, isNewIssueShortcut, isTypingTarget, isUndoShortcut } from '../lib/shortcuts';
 import { useConsoleHost, useConsoleMoves } from '../lib/useConsole';
 import type { MoveResult } from '../lib/useConsole';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
@@ -731,6 +731,24 @@ function BoardContent() {
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [dragUnderway]);
+
+  // Escape turns the banding off, once nothing smaller has taken it: a dialog's own Escape
+  // closes it first (it prevents the key's default, and a dialog still drawn blocks this),
+  // a filter menu stops its Escape before the document, and a text box keeps it.
+  useEffect(() => {
+    if (!flowViz) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isEscapeShortcut(e) || e.defaultPrevented) return;
+      if (isTypingTarget(document.activeElement as HTMLElement | null)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+
+      setFlowViz(false);
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [flowViz]);
 
   /* The console is the app's, not the board's: `/` opens it from every page (see
      components/ConsoleProvider.tsx). The board offers its issues, so it lists
