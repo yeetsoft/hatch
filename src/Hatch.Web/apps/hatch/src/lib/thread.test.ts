@@ -15,6 +15,7 @@ const comment = (body: string): Comment => ({
   deliveredAt: null,
   deliveredTo: null,
   level: null,
+  answeredAfter: false,
 });
 
 describe('newestFirst', () => {

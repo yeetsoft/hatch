@@ -43,7 +43,7 @@ export function Waiting({
         {obviated ? `Asked (${questions.length})` : `Waiting on you (${questions.length})`}
       </h2>
       <p className="text-muted">
-        {obviated ? `${issueKey} shipped with these open. An answer is welcome, not needed.` : leadSentence(issueKey, questions)}
+        {obviated ? shippedSentence(issueKey, questions) : leadSentence(issueKey, questions)}
       </p>
 
       <ul className="hatch-question-list">
@@ -61,6 +61,15 @@ export function Waiting({
       </ul>
     </Card>
   );
+}
+
+/** The card's first line on a ticket that has shipped. A question asked at
+    `merge` was never waited for and still waits for a look back; any other is
+    welcome, not needed. */
+function shippedSentence(issueKey: string, questions: AskedQuestion[]): string {
+  return questions.some((q) => q.level === 'merge')
+    ? `${issueKey} shipped with these open. A question asked at merge waits for a look back; an answer to any other is welcome, not needed.`
+    : `${issueKey} shipped with these open. An answer is welcome, not needed.`;
 }
 
 /** The card's first line: what happens to the ticket while these wait, which is

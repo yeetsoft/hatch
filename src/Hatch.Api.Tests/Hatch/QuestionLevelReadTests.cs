@@ -59,6 +59,19 @@ public class QuestionLevelReadTests
         Assert.Empty(read);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WaitingLevels_AMergeQuestionOnATerminalIssueIsAbsent(bool ignoreFilters)
+    {
+        var (db, _, finished) = await SeedAsync();
+        await AskAsync(db, finished, QuestionLevels.MergeName);
+
+        var read = await Questions.WaitingLevelsAsync(db, default, ignoreFilters);
+
+        Assert.Empty(read);
+    }
+
     // ---- EffectiveQuestion ----
 
     // 1 EPIC-1 is the epic, 2 EPIC-2 a story under it, 3 EPIC-3 a task under that.

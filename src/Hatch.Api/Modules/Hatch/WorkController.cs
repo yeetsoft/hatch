@@ -1770,7 +1770,7 @@ public class WorkController(
                 .FirstOrDefaultAsync(ct);
         }
 
-        var open = await Questions.ProjectAsync(db, Questions.Waiting(db).Where(c => ids.Contains(c.IssueId)), ct);
+        var open = await Questions.ProjectAsync(db, Questions.Holding(db).Where(c => ids.Contains(c.IssueId)), ct);
         return open
             .Where(q => QuestionLevels.Rank(q.Level) > 0 && q.Options?.Any(o => o.Recommended) == true)
             .ToList();

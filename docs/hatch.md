@@ -3444,19 +3444,31 @@ at it. That is why the link runs answer→question rather than the other way: a
 decision can be refined by a second answer without editing the first, and a
 question can never be open and answered at once because two writes disagreed.
 
-**Waiting on somebody is open, and outside a terminal column.** A question
-on a ticket that has shipped is never going to get an answer, so the moment
-its issue lands in a terminal column it stops being counted, badged or
-listed anywhere a person is asked to act — though it stays open, and stays
-on the record, exactly as it always did.
-[`Questions.cs`](../src/Hatch.Api/Modules/Hatch/Questions.cs) holds both
-`Open` and `Waiting` side by side, and most of what used to read `Open`
-reads `Waiting` now: the attention panel, the board's badge, the Plan
+**Waiting on somebody is open, and either outside a terminal column or asked
+at `merge`.** A `hold` or `build` question on a ticket that has shipped is
+never going to get an answer that matters, so the moment its issue lands in
+a terminal column it stops being counted, badged or listed anywhere a person
+is asked to act — though it stays open, and stays on the record, exactly as
+it always did. A `merge` question is the exception: the work was built and
+merged without waiting for it, so it is still owed a look back, and it stays
+waiting after the issue closes until somebody answers it.
+[`Questions.cs`](../src/Hatch.Api/Modules/Hatch/Questions.cs) holds `Open`,
+`Waiting` and `Holding` side by side. `Holding` is the narrow one - open and
+outside a terminal column - and is what the dispatcher's level read and the
+build-past list use, so a closed ancestor's look-back question never holds
+the work beneath it. Most of what used to read `Open` reads `Waiting` now: the attention panel, the board's badge, the Plan
 page's meters, and the two routes a person actually answers from. One
 caller keeps reading `Open` on purpose, because what it is deciding does
 not change once a ticket has shipped: [build check](#build-check)'s rule
 four, which refuses to mark the issue stalled again while an earlier
 question is still open, whatever column it's in.
+
+Two fields on the question are derived when it is read, never stored.
+`QuestionDto.LookBack` is true for an open `merge` question whose issue has
+reached a terminal column, which is also where a merged pull request leaves
+it. `CommentDto.AnsweredAfter` is set on the answers inside a question, and is
+true where the answer is later than the issue's `ClosedAt`. A reopened issue
+has no `ClosedAt`, so both read false.
 
 `Options` is a `jsonb` list of `{ label, detail, recommended }`, null on a
 question asked in prose. It exists because the first cut of this let an agent
@@ -4855,7 +4867,8 @@ Neither half restates a rule that already lives somewhere:
   one rule written twice, in two languages, and the two would drift.
 - **Waiting means what it means everywhere else.** `questions` is the same
   call `/questions` answers with — `Questions.Waiting`, an open question
-  whose issue stands outside a terminal column — so the count on the bar,
+  whose issue stands outside a terminal column, or which was asked at
+  `merge` — so the count on the bar,
   the badge on a board card, and the list somebody actually sits down to
   answer cannot disagree. `Questions.Open` is still the wider record of
   every question ever asked; this panel, like the board and the meters,
@@ -5577,7 +5590,7 @@ held. The check pauses nothing, marks nothing stalled and changes nothing
 
 The goose's finding for questions left unanswered too long
 (`QuestionsWaitingCheck`). It reads `Questions.Waiting` - open, on an issue
-outside a terminal column - and adds no second rule for what waiting means.
+outside a terminal column or asked at `merge` - and adds no second rule for what waiting means.
 Its subject is `board` and it names no project, so at most one such finding is
 open and only an unbounded caller reads it (see **Scope** above). The token is
 constant (`past-bound`), so a second question crossing the bound refreshes the
@@ -11354,10 +11367,12 @@ parked tasks stuck at 85% forever, which is how a progress bar stops being read.
 [deferred](#status) leaf still counts: deferred is parked, not finished,
 and a person who un-parks it needs to see what is still unanswered, so a
 count that quietly dropped it would be a question nobody looking at the
-epic would know to go back for. A question on a leaf that has reached a
-**terminal** column does not: the ticket shipped with it open, nobody is
-coming back to move it, and keeping it in `waiting` forever would be the
-meter holding open a decision nobody is being asked to make.
+epic would know to go back for. A `hold` or `build` question on a leaf that
+has reached a **terminal** column does not: the ticket shipped with it open,
+nobody is coming back to move it, and keeping it in `waiting` forever would be
+the meter holding open a decision nobody is being asked to make. A `merge`
+question does count there: it is owed a look back, so a closed leaf with one
+still adds to the meter until it is answered.
 `Questions.Waiting` is where that line is drawn, and it is the same line
 the attention panel and the board's badge draw, so a subtree cannot read
 "waiting" on one screen and quiet on another.

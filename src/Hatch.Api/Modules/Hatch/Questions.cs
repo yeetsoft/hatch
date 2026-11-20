@@ -10,8 +10,10 @@ namespace Hatch.Api.Modules.Hatch;
 /// A question is open when no comment answers it - computed here rather than
 /// stored as a flag on the row, so a question cannot be open and answered at
 /// the same time because two writes disagreed. Waiting narrows that to a
-/// question whose issue stands outside a terminal column: open is the whole
-/// record, waiting is what is actually owed.
+/// question whose issue stands outside a terminal column, or one asked at
+/// <c>merge</c>, which the work did not wait for and which stays owed a look
+/// back after the issue closes: open is the whole record, waiting is what is
+/// actually owed.
 /// <see cref="BoardController"/>, <see cref="Rollup"/>,
 /// <see cref="AttentionController"/> and <see cref="QuestionsController"/>
 /// all read Waiting now; <see cref="BuildCheckController"/> still reads
@@ -27,8 +29,12 @@ public static class Questions
             .Where(c => c.Kind == EfHatchComment.Question)
             .Where(c => !db.Comments.Any(a => a.AnswersId == c.Id));
 
-    /// Every unanswered question outside a terminal column - the one a person is actually still owed.
+    /// Every unanswered question outside a terminal column, and every unanswered <c>merge</c> question wherever its issue stands - the one a person is actually still owed.
     public static IQueryable<EfHatchComment> Waiting(HatchContext db) =>
+        Open(db).Where(c => !c.Issue!.Status!.IsTerminal || c.Level == QuestionLevels.MergeName);
+
+    /// Every unanswered question outside a terminal column - what can still hold work, so a merge question awaiting its look back on a closed issue is not here.
+    public static IQueryable<EfHatchComment> Holding(HatchContext db) =>
         Open(db).Where(c => !c.Issue!.Status!.IsTerminal);
 
     /// <summary>How many questions each issue is waiting on. Issues waiting on none are absent rather than zero.</summary>
@@ -59,7 +65,8 @@ public static class Questions
                 .Where(c => c.Kind == EfHatchComment.Question)
                 .Where(c => !db.Comments.Any(a => a.AnswersId == c.Id))
                 .Where(c => !c.Issue!.Status!.IsTerminal)
-            : Waiting(db);
+            // Holding, not Waiting: a merge question on a closed ancestor is owed a look back, not a hold on its children.
+            : Holding(db);
 
         var rows = await waiting
             .Select(c => new { c.IssueId, c.Level })
@@ -139,6 +146,7 @@ public static class Questions
                 c.Options,
                 c.Level,
                 c.CreatedAt,
+                IssueClosedAt = c.Issue!.ClosedAt,
                 IssueProjectKey = c.Issue!.Project!.Key,
                 IssueNumber = c.Issue!.Number,
                 IssueTitle = c.Issue!.Title,
@@ -156,8 +164,11 @@ public static class Questions
             .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.CreatedAt })
             .ToListAsync(ct);
 
+        var closedAt = rows.ToDictionary(r => r.Id, r => r.IssueClosedAt);
         var byQuestion = answers
-            .Select(a => new CommentDto(a.Id, a.Author, a.Body, a.Kind, a.AnswersId, ReadOptions(a.Options), a.CreatedAt))
+            .Select(a => new CommentDto(
+                a.Id, a.Author, a.Body, a.Kind, a.AnswersId, ReadOptions(a.Options), a.CreatedAt,
+                AnsweredAfter: closedAt[a.AnswersId!.Value] is { } closed && a.CreatedAt > closed))
             .GroupBy(a => a.AnswersId!.Value)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<CommentDto>)g.ToList());
 
@@ -171,6 +182,9 @@ public static class Questions
             ReadOptions(r.Options),
             byQuestion.TryGetValue(r.Id, out var found) ? found : [],
             r.IssueIsTerminal,
-            QuestionLevels.Normalise(r.Level))).ToList();
+            QuestionLevels.Normalise(r.Level),
+            LookBack: r.IssueIsTerminal
+                && QuestionLevels.Normalise(r.Level) == QuestionLevels.MergeName
+                && !byQuestion.ContainsKey(r.Id))).ToList();
     }
 }

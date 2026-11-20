@@ -1592,6 +1592,10 @@ public record IssueBulkEditRequest(
 /// How far work may go before this question is answered - one of
 /// <see cref="QuestionLevels.ByStrictness"/>. Null on anything that is not a question.
 /// </param>
+/// <param name="AnsweredAfter">
+/// Set only on an answer read inside a <see cref="QuestionDto"/>: true where it
+/// was given after its issue closed. False on every other comment. Derived at read time.
+/// </param>
 public record CommentDto(
     long Id,
     string Author,
@@ -1602,7 +1606,8 @@ public record CommentDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeliveredAt = null,
     string? DeliveredTo = null,
-    string? Level = null);
+    string? Level = null,
+    bool AnsweredAfter = false);
 
 /// <summary>One dream: a line somebody wanted said, leaning toward a project or loose.</summary>
 /// <param name="WovenInto">The keys of the issues that drew on this dream, ordered by project key then issue number. Never null.</param>
@@ -1707,6 +1712,12 @@ public record CommentCreateRequest(
 /// How far work may go on the issue before this is answered - one of
 /// <see cref="QuestionLevels.ByStrictness"/>. Never null; <c>hold</c> unless a person said otherwise.
 /// </param>
+/// <param name="LookBack">
+/// Whether this is an open <c>merge</c> question whose issue has reached a
+/// terminal column, the pull request having merged with it - the work went
+/// ahead on its recommendation and the answer is a look back. Derived at read
+/// time; nothing is stored.
+/// </param>
 public record QuestionDto(
     long Id,
     string IssueKey,
@@ -1717,7 +1728,8 @@ public record QuestionDto(
     IReadOnlyList<QuestionOptionDto>? Options,
     IReadOnlyList<CommentDto> Answers,
     bool Obviated = false,
-    string Level = QuestionLevels.HoldName);
+    string Level = QuestionLevels.HoldName,
+    bool LookBack = false);
 
 /// <summary>
 /// Every waiting question in the house, each under the chain of issues that

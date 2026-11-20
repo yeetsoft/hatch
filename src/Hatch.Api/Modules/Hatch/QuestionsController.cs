@@ -25,7 +25,7 @@ public class QuestionsController(HatchContext db) : ControllerBase
     /// </summary>
     /// <param name="open">
     /// True, the default, for the ones waiting on somebody - unanswered, and
-    /// outside a terminal column. False for all of them, answers and obviated
+    /// outside a terminal column or asked at <c>merge</c>. False for all of them, answers and obviated
     /// ones included, which is what a reader catching up on decisions wants.
     /// </param>
     [HttpGet("/api/questions")]
