@@ -5,7 +5,7 @@ import { addComment, setQuestionLevel } from '../api/client';
 import { LookBackPresses } from './LookBackPresses';
 import { QuestionLevelControl, QuestionOptions } from './OpenQuestions';
 import { questionEmptyWords } from '../lib/attention';
-import { cardQueue, holdsWords, optionsRecommendedFirst, outcomeWords, rootOf, thenWords } from '../lib/ballotCards';
+import { cardQueue, holdsWords, optionsRecommendedFirst, outcomeWords, programAnswer, rootOf, thenWords } from '../lib/ballotCards';
 import { message } from '../lib/errors';
 import { renderMarkdown } from '../lib/markdown';
 import { canRaise, fromQuestion, LEVEL_WORDS } from '../lib/questions';
@@ -89,6 +89,7 @@ function BallotCard({
 }) {
   const { question } = item;
   const asked = fromQuestion(question);
+  const program = programAnswer(question.answers);
   const [body, setBody] = useState('');
   const [other, setOther] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -152,10 +153,30 @@ function BallotCard({
       {question.lookBack ? (
         <>
           <div className="hatch-ballot-card-decided">
-            <p>
-              <strong>Decided without you</strong>
-              {item.wentAheadOn !== null && <>: {item.wentAheadOn}</>}
-            </p>
+            {program ? (
+              <>
+                <p>
+                  <strong>Answered by a session</strong>: {program.by}
+                </p>
+                <p>{item.wentAheadOn}</p>
+                {program.rest && (
+                  <>
+                    <p>
+                      <strong>Found in</strong>
+                    </p>
+                    <div
+                      className="hatch-markdown"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(program.rest) }}
+                    />
+                  </>
+                )}
+              </>
+            ) : (
+              <p>
+                <strong>Decided without you</strong>
+                {item.wentAheadOn !== null && <>: {item.wentAheadOn}</>}
+              </p>
+            )}
             <p className="text-muted">{outcomeWords(item)}</p>
           </div>
           <LookBackPresses

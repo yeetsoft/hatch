@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cardQueue, holdsWords, keepOption, optionsRecommendedFirst, outcomeWords, rootOf, thenWords } from './ballotCards';
-import type { BallotNode, BallotQuestion } from '../types';
+import { cardQueue, holdsWords, keepOption, optionsRecommendedFirst, outcomeWords, programAnswer, rootOf, thenWords } from './ballotCards';
+import type { BallotNode, BallotQuestion, Comment } from '../types';
 
 const ask = (id: number): BallotQuestion => ({
   question: {
@@ -141,5 +141,55 @@ describe('outcomeWords', () => {
 
   it('is empty when the route carries nothing', () => {
     expect(outcomeWords(ask(1))).toBe('');
+  });
+});
+
+describe('programAnswer', () => {
+  const comment = (over: Partial<Comment>): Comment => ({
+    id: 1,
+    author: 'hatch-loop',
+    body: 'Went with the first store.',
+    kind: 'answer',
+    answersId: 9,
+    options: null,
+    createdAt: '2026-02-03T10:00:00Z',
+    deliveredAt: null,
+    deliveredTo: null,
+    level: null,
+    answeredAfter: false,
+    authorKind: 'key',
+    ...over,
+  });
+
+  it('is null where no answer is a key\'s', () => {
+    expect(programAnswer([])).toBeNull();
+    expect(programAnswer([comment({ authorKind: 'person' })])).toBeNull();
+    expect(programAnswer([comment({ authorKind: null })])).toBeNull();
+  });
+
+  it('splits the first key answer at its first line', () => {
+    const result = programAnswer([comment({ body: 'Went with the first store.\n\nSee the thread for why.' })]);
+    expect(result).toEqual({ by: 'hatch-loop', first: 'Went with the first store.', rest: 'See the thread for why.' });
+  });
+
+  it('is the whole body as the first line where there is only one', () => {
+    expect(programAnswer([comment({ body: 'Went with the first store.' })])).toEqual({
+      by: 'hatch-loop',
+      first: 'Went with the first store.',
+      rest: '',
+    });
+  });
+
+  it('skips blank leading lines', () => {
+    expect(programAnswer([comment({ body: '\n\n  \nWent with it.\nMore.' })])).toEqual({
+      by: 'hatch-loop',
+      first: 'Went with it.',
+      rest: 'More.',
+    });
+  });
+
+  it('takes the first key answer where a person also answered', () => {
+    const result = programAnswer([comment({ body: 'Key answer.' }), comment({ authorKind: 'person', body: 'Person answer.' })]);
+    expect(result?.first).toBe('Key answer.');
   });
 });

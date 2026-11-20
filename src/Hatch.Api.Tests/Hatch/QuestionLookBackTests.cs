@@ -1,4 +1,5 @@
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -80,6 +81,70 @@ public class QuestionLookBackTests
         Assert.False(Assert.Single(read.Answers).AnsweredAfter);
     }
 
+    [Theory]
+    [InlineData(QuestionLevels.BuildName)]
+    [InlineData(QuestionLevels.MergeName)]
+    public async Task AKeyOnlyAnswer_IsWaitingAndALookBack_OnAnOpenOrAClosedIssue(string level)
+    {
+        var h = await NewAsync();
+        var open = await h.FileAsync(h.Open);
+        var closed = await h.FileAsync(h.Done, closedAt: Now);
+        var onOpen = await h.AskAsync(open, level);
+        var onClosed = await h.AskAsync(closed, level);
+        await h.AnswerAsync(onOpen, Now.AddHours(1), ActorKind.Key);
+        await h.AnswerAsync(onClosed, Now.AddHours(1), ActorKind.Key);
+
+        var waiting = await Questions.Waiting(h.Db).Select(c => c.Id).ToListAsync();
+        Assert.Contains(onOpen.Id, waiting);
+        Assert.Contains(onClosed.Id, waiting);
+
+        var all = (await h.Controller.GetQuestions(false, default)).Value!.ToDictionary(q => q.Id);
+        Assert.True(all[onOpen.Id].LookBack);
+        Assert.True(all[onClosed.Id].LookBack);
+    }
+
+    [Fact]
+    public async Task AKeyOnlyAnswer_AtHold_IsNeitherWaitingNorALookBack()
+    {
+        var h = await NewAsync();
+        var open = await h.FileAsync(h.Open);
+        var question = await h.AskAsync(open, QuestionLevels.HoldName);
+        await h.AnswerAsync(question, Now.AddHours(1), ActorKind.Key);
+
+        Assert.DoesNotContain(question.Id, await Questions.Waiting(h.Db).Select(c => c.Id).ToListAsync());
+        var read = Assert.Single((await h.Controller.GetQuestions(false, default)).Value!);
+        Assert.False(read.LookBack);
+    }
+
+    [Fact]
+    public async Task APersonsAnswerBesideAKeysAnswer_ClearsItFromWaitingAndAsALookBack()
+    {
+        var h = await NewAsync();
+        var open = await h.FileAsync(h.Open);
+        var question = await h.AskAsync(open, QuestionLevels.MergeName);
+        await h.AnswerAsync(question, Now.AddHours(1), ActorKind.Key);
+        await h.AnswerAsync(question, Now.AddHours(2), ActorKind.Person);
+
+        Assert.DoesNotContain(question.Id, await Questions.Waiting(h.Db).Select(c => c.Id).ToListAsync());
+        var read = Assert.Single((await h.Controller.GetQuestions(false, default)).Value!);
+        Assert.False(read.LookBack);
+    }
+
+    [Fact]
+    public async Task AKeyOnlyAnsweredQuestion_DoesNotHoldWorkThroughEffectiveQuestion()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync(h.Open);
+        var task = await h.FileAsync(h.Open, parentId: story.Id);
+        var question = await h.AskAsync(story, QuestionLevels.BuildName);
+        await h.AnswerAsync(question, Now.AddHours(1), ActorKind.Key);
+
+        var tree = await PriorityTree.ForAsync(h.Db, new StubActorDirectory(), default);
+
+        Assert.Null(tree.EffectiveQuestion(task.Id));
+        Assert.Null(tree.EffectiveQuestion(story.Id));
+    }
+
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
@@ -91,12 +156,12 @@ public class QuestionLookBackTests
 
         private int next = 1;
 
-        public async Task<EfHatchIssue> FileAsync(int statusId, DateTimeOffset? closedAt = null)
+        public async Task<EfHatchIssue> FileAsync(int statusId, DateTimeOffset? closedAt = null, long? parentId = null)
         {
             var issue = new EfHatchIssue
             {
                 ProjectId = ProjectId, Number = next++, Type = "task", Title = $"issue {next}",
-                StatusId = statusId, Rank = 1024, CreatedBy = "person", CreatedAt = Now.AddDays(-1),
+                StatusId = statusId, Rank = 1024, ParentId = parentId, CreatedBy = "person", CreatedAt = Now.AddDays(-1),
                 UpdatedAt = Now.AddDays(-1), ClosedAt = closedAt,
             };
             Db.Issues.Add(issue);
@@ -117,12 +182,12 @@ public class QuestionLookBackTests
             return question;
         }
 
-        public async Task AnswerAsync(EfHatchComment question, DateTimeOffset at)
+        public async Task AnswerAsync(EfHatchComment question, DateTimeOffset at, string? authorKind = null)
         {
             Db.Comments.Add(new EfHatchComment
             {
-                IssueId = question.IssueId, Author = "person", Body = "Yes", Kind = EfHatchComment.Answer,
-                AnswersId = question.Id, CreatedAt = at,
+                IssueId = question.IssueId, Author = authorKind == ActorKind.Key ? "hatch-loop" : "person", Body = "Yes",
+                Kind = EfHatchComment.Answer, AnswersId = question.Id, AuthorKind = authorKind, CreatedAt = at,
             });
             await Db.SaveChangesAsync();
         }

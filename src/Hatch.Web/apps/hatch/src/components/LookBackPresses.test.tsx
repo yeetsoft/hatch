@@ -37,4 +37,23 @@ describe('LookBackPresses', () => {
     expect(markup).toContain('Keep');
     expect(markup).toContain('Overturn');
   });
+
+  it('enables Keep for a program answer with no options', () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <LookBackPresses
+          issueKey="HA-12"
+          questionId={3}
+          options={null}
+          wentAheadOn="Went with it anyway"
+          ambitionKey={null}
+          onDone={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    const keep = markup.match(/<button[^>]*>Keep<\/button>/)?.[0] ?? '';
+    expect(keep).not.toContain('disabled');
+    expect(markup).not.toContain('No option was recommended');
+  });
 });

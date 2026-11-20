@@ -190,27 +190,40 @@ suggests no answer and answers none.
 
 ## Looking back
 
-A look-back question is one asked at `merge` on an issue that has since closed:
-the work went ahead on the recommended option without you, and the question
-waited for your say ([what an open question blocks](#what-an-open-question-blocks)).
-The Ballot draws it apart from an open one. Above the options, *Decided without
-you* names the option the work went ahead on. A line under it says what has
-happened since: the column the issue stands in, the day it closed, and whether
-its pull request merged or its work landed on the trunk. A clause the board has
-nothing for is left out. The pill reads *Holds nothing*, since nothing waits
-beneath it.
+A look-back question is one of two kinds, each already decided without you:
+
+- Asked at `merge` on an issue that has since closed, with nobody answering:
+  the work went ahead on the recommended option, and the question waited for
+  your say ([what an open question blocks](#what-an-open-question-blocks)).
+- Asked at `build` or `merge`, answered only by a session - an API key, never a
+  person - whatever column its issue stands in, open or closed. A session's
+  own answer to a question of its own kind reads the same way, by design: the
+  mark is the author's kind, not how the answer was given.
+
+The Ballot draws either apart from an open one. Where a session answered,
+*Answered by a session* names it, then the decision - the first line of its
+answer - then *Found in*, with the rest of that answer rendered as markdown.
+Where nobody answered at all, *Decided without you* names the recommended
+option instead. Either way, a line under it says what has happened since: the
+column the issue stands in, the day it closed, and whether its pull request
+merged or its work landed on the trunk. A clause the board has nothing for is
+left out. The pill still reads what it holds, as any question's does - usually
+*Holds nothing* once an issue has closed, but not where a session answered one
+still open, and still holding live work beneath it.
 
 Two presses, on both Ballot views: the card, and the list by issue.
 
-- **Keep** agrees with the loop. It records the recommended option as your own
-  answer, exactly as pressing that option on an open question would, and the
-  card moves on. It is disabled on a question that recommended nothing, since
-  there is nothing to keep.
-- **Overturn** disagrees. It shows the other options and the box. Choosing one,
-  or typing your own, and pressing **Overturn** records that as your answer and
-  files one task to bring the work in line. The card names the task as a link,
-  and **Next** moves on. A refused overturn shows the server's sentence on the
-  card and keeps what you chose and typed.
+- **Keep** agrees with the loop. It records the decision - the session's own
+  answer where one gave it, else the recommended option - as your own answer,
+  exactly as pressing that option on an open question would, and the card
+  moves on. It is disabled only where neither a session answered nor an option
+  was recommended, since there is then nothing to keep.
+- **Overturn** disagrees. It shows the other options, where the question
+  offered any, and the box. Choosing one, or typing your own, and pressing
+  **Overturn** records that as your answer and files one task to bring the
+  work in line. The card names the task as a link, and **Next** moves on. A
+  refused overturn shows the server's sentence on the card and keeps what you
+  chose and typed.
 
 The task goes under the issue the question was on, or under its nearest
 ancestor that can take a task where that issue cannot, since a task cannot
@@ -236,6 +249,11 @@ wrote it and when. The question stays in the thread with its options, so the
 alternatives that were not taken remain on the record. Which option was taken is
 not stored separately: the answer's text is the option's label, and a second
 record saying it in numbers could only come to disagree with the first.
+
+A program's answer carries its kind: an answer an API key wrote is marked
+*a session* beside its author, on the issue page's own comment thread and
+wherever the Ballot draws it. An answer written before the column existed, or
+one the board wrote in its own voice, carries no kind and draws no mark.
 
 A later increment on the ticket is handed each answered question with its
 answer and who gave it, as settled under *Decisions already made* ([what a

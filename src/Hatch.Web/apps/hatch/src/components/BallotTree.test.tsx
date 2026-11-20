@@ -208,6 +208,43 @@ describe('BallotTree', () => {
     expect(open).not.toContain('>Overturn<');
   });
 
+  it('draws a program look-back as answered by a session, with the key, the decision, and what it found', () => {
+    const html = render([
+      node({
+        questions: [
+          question({
+            lookBack: true,
+            answers: [
+              {
+                id: 10,
+                author: 'hatch-loop',
+                body: 'Went with drop.\n\nIt was the cheaper of the two.',
+                kind: 'answer',
+                answersId: 1,
+                options: null,
+                createdAt: askedAt,
+                deliveredAt: null,
+                deliveredTo: null,
+                level: null,
+                answeredAfter: false,
+                authorKind: 'key',
+              },
+            ],
+          }),
+        ],
+      }),
+    ]);
+
+    expect(html).toContain('Answered by a session');
+    expect(html).toContain('hatch-loop');
+    expect(html).toContain('Went with drop.');
+    expect(html).toContain('Found in');
+    expect(html).toContain('It was the cheaper of the two.');
+    expect(html).not.toContain('Decided without you');
+    expect(html).toContain('>Keep<');
+    expect(html).toContain('>Overturn<');
+  });
+
   it('gives each of two questions on one issue its own box', () => {
     const html = render([node({ questions: [question({ id: 1 }), question({ id: 2, body: 'And the other?' })] })]);
 
