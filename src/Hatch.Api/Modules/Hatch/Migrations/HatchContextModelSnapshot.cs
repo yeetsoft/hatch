@@ -2121,6 +2121,18 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("jsonb")
                         .HasDefaultValue("[]");
 
+                    b.Property<string>("StatusIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("StatusMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("all");
+
                     b.Property<string>("Tags")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
