@@ -3388,8 +3388,11 @@ gap](#the-changelog-task).
 
 `Level` is how far work may go before a question is answered: `hold`, `build`
 or `merge`, strictest first. It is null on everything that is not a question and
-on a question asked before the column existed, and both read as `hold`. Nothing
-writes it yet, and `POST /issues/{key}/comments` refuses one.
+on a question asked before the column existed, and both read as `hold`. A person
+sets it with `PUT /issues/{key}/questions/{id}/level` - never a key, and
+`POST /issues/{key}/comments` refuses one. Above `hold` it needs a recommended
+option, and an answered question cannot change. A change writes a
+`question_level_changed` event, and setting the level already held writes nothing.
 
 Most comments are notes: a commit sha, a summary for a reviewer, a change of
 mind. Four are not, and those carry a `Kind`.
@@ -3727,7 +3730,8 @@ with `moved` naming the column on the last), `no_code_set_aside` (a branch or a
 pull request showed the issue did finish with code - payload `reason`, the
 declaration that was set aside, beside `remote` and `verdict` or `pullRequest`),
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
-`priority_changed`, `express_changed`, `wip_limit_changed` (an epic's [Stories
+`priority_changed`, `express_changed`, `question_level_changed` (a person set a
+question's level - payload `{ questionId, from, to }`, both by name), `wip_limit_changed` (an epic's [Stories
 at once](#stories-at-once) was set, changed or cleared - payload `{ from, to }`,
 either side null rather than the default), `dependency_added`,
 `dependency_removed`, `capability_added` (`POST /issues/{key}/capabilities` -
