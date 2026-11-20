@@ -102,7 +102,13 @@ function BallotBranch({
       {node.questions.length > 0 && (
         <ul className="hatch-question-list">
           {node.questions.map((q) => (
-            <Asked key={q.id} issueKey={q.issueKey} question={fromQuestion(q)} onAnswered={onAnswered} />
+            <Asked
+              key={q.id}
+              issueKey={q.issueKey}
+              question={fromQuestion(q)}
+              onAnswered={onAnswered}
+              onLeveled={onAnswered}
+            />
           ))}
         </ul>
       )}

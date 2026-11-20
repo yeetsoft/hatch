@@ -834,7 +834,7 @@ export function IssuePage() {
           until this card is empty the ticket does not move. And deliberately
           not an IssueSection: collapsing this would let a reader hide the
           thing that's stopping the ticket. */}
-      <Waiting issueKey={key} questions={openQuestions(comments).map((t) => fromComment(t.question))} obviated={obviated} onAnswered={() => void load()} onError={setError} />
+      <Waiting issueKey={key} questions={openQuestions(comments).map((t) => fromComment(t.question))} obviated={obviated} onAnswered={() => void load()} onLeveled={() => void load()} onError={setError} />
 
       {/* Beside Waiting and for the same reason: something else is acting on
           this ticket right now, and that is worth knowing before pressing

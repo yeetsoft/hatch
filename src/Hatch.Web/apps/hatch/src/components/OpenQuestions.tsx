@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Button, Card } from '@hatch/ui';
-import { addComment } from '../api/client';
+import { addComment, setQuestionLevel } from '../api/client';
 import { message } from '../lib/errors';
 import { renderMarkdown } from '../lib/markdown';
-import type { AskedQuestion } from '../lib/questions';
-import type { QuestionOption } from '../types';
+import { canRaise, LEVEL_WORDS, strictestLevel, type AskedQuestion } from '../lib/questions';
+import type { QuestionLevel, QuestionOption } from '../types';
+
+const LEVELS: QuestionLevel[] = ['hold', 'build', 'merge'];
 
 /**
  * The questions on this issue that nobody has answered, each with a box to
@@ -23,12 +25,14 @@ export function Waiting({
   questions,
   obviated,
   onAnswered,
+  onLeveled,
   onError,
 }: {
   issueKey: string;
   questions: AskedQuestion[];
   obviated: boolean;
   onAnswered: () => void;
+  onLeveled: () => void;
   onError?: (message: string) => void;
 }) {
   if (questions.length === 0) return null;
@@ -39,18 +43,37 @@ export function Waiting({
         {obviated ? `Asked (${questions.length})` : `Waiting on you (${questions.length})`}
       </h2>
       <p className="text-muted">
-        {obviated
-          ? `${issueKey} shipped with these open. An answer is welcome, not needed.`
-          : `${issueKey} will not be picked up again until these are answered.`}
+        {obviated ? `${issueKey} shipped with these open. An answer is welcome, not needed.` : leadSentence(issueKey, questions)}
       </p>
 
       <ul className="hatch-question-list">
         {questions.map((question) => (
-          <Asked key={question.id} issueKey={issueKey} question={question} onAnswered={onAnswered} onError={onError} />
+          <Asked
+            key={question.id}
+            issueKey={issueKey}
+            question={question}
+            obviated={obviated}
+            onAnswered={onAnswered}
+            onLeveled={onLeveled}
+            onError={onError}
+          />
         ))}
       </ul>
     </Card>
   );
+}
+
+/** The card's first line: what happens to the ticket while these wait, which is
+    what the strictest question among them allows. */
+function leadSentence(issueKey: string, questions: AskedQuestion[]): string {
+  switch (strictestLevel(questions)) {
+    case 'build':
+      return `${issueKey} will be built on the recommendation and wait in review until these are answered.`;
+    case 'merge':
+      return `${issueKey} will be built and merged on the recommendation; these wait for a look back.`;
+    default:
+      return `${issueKey} will not be picked up again until these are answered.`;
+  }
 }
 
 /**
@@ -65,15 +88,26 @@ export function Waiting({
 export function Asked({
   issueKey,
   question,
+  obviated = false,
   onAnswered,
+  onLeveled,
   onError,
 }: {
   issueKey: string;
   question: AskedQuestion;
+  /** The issue shipped: the level no longer matters, so it is not drawn. */
+  obviated?: boolean;
   onAnswered: () => void;
+  /** The level changed; the caller reads again what it holds. */
+  onLeveled: () => void;
   onError?: (message: string) => void;
 }) {
   const [body, setBody] = useState('');
+  const [leveling, setLeveling] = useState(false);
+  // Never handed to onError: the refusal belongs beside the control that was
+  // pressed, and the level stays what the prop says it is, so there is nothing
+  // to put back.
+  const [levelError, setLevelError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Only ever set where onError is absent: a caller that passes onError keeps
   // its own place to show the refusal, and this stays empty rather than the
@@ -101,6 +135,19 @@ export function Asked({
     }
   }
 
+  async function pickLevel(level: QuestionLevel) {
+    setLeveling(true);
+    setLevelError(null);
+    try {
+      await setQuestionLevel(issueKey, question.id, level);
+      onLeveled();
+    } catch (err) {
+      setLevelError(message(err));
+    } finally {
+      setLeveling(false);
+    }
+  }
+
   return (
     <li className="hatch-question">
       <div className="hatch-comment-head">
@@ -115,6 +162,16 @@ export function Asked({
 
       {question.options && (
         <QuestionOptions options={question.options} chosen={chosen} onChoose={(o) => setBody(o.label)} />
+      )}
+
+      {!obviated && (
+        <QuestionLevelControl
+          level={question.level}
+          canRaise={canRaise(question)}
+          busy={leveling}
+          error={levelError}
+          onPick={(level) => void pickLevel(level)}
+        />
       )}
 
       <div className="hatch-answer-box">
@@ -139,6 +196,60 @@ export function Asked({
       </div>
       {error && <span className="text-danger">{error}</span>}
     </li>
+  );
+}
+
+/**
+ * A question's level in words, and the three buttons that change it.
+ *
+ * Presentational: it holds nothing, so the level it shows is always the one the
+ * server last said. A question that offers no recommendation has nothing for
+ * the work to build on, so it can only hold - `build` and `merge` are not drawn
+ * at all rather than drawn and refused.
+ */
+export function QuestionLevelControl({
+  level,
+  canRaise,
+  busy,
+  error,
+  onPick,
+}: {
+  level: QuestionLevel;
+  canRaise: boolean;
+  busy: boolean;
+  error: string | null;
+  onPick: (level: QuestionLevel) => void;
+}) {
+  return (
+    <div className="hatch-question-level">
+      <p className="hatch-question-level-words">{LEVEL_WORDS[level]}</p>
+      <div className="hatch-question-level-row">
+        <div className="hatch-question-level-steps" role="group" aria-label="Set level">
+          {(canRaise ? LEVELS : LEVELS.filter((l) => l === 'hold')).map((name) => {
+            const here = name === level;
+            return (
+              <button
+                key={name}
+                type="button"
+                className={`hatch-question-level-step${here ? ' here' : ''}`}
+                title={LEVEL_WORDS[name]}
+                aria-pressed={here}
+                disabled={here || busy}
+                onClick={() => onPick(name)}
+              >
+                {name}
+              </button>
+            );
+          })}
+        </div>
+        {error && <span className="text-danger">{error}</span>}
+      </div>
+      {!canRaise && (
+        <p className="text-muted hatch-question-level-note">
+          This question offers no recommendation, so it can only hold.
+        </p>
+      )}
+    </div>
   );
 }
 

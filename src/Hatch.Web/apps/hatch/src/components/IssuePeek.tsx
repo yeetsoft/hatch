@@ -475,6 +475,7 @@ export function IssuePeek({
               questions={asked.questions.map(fromQuestion)}
               obviated={false}
               onAnswered={answered}
+              onLeveled={answered}
             />
           ))}
 

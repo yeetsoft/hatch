@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { askingCount, fromComment, fromQuestion, openQuestions, threadQuestions } from './questions';
+import {
+  askingCount,
+  canRaise,
+  fromComment,
+  fromQuestion,
+  LEVEL_WORDS,
+  openQuestions,
+  strictestLevel,
+  threadQuestions,
+  type AskedQuestion,
+} from './questions';
 import type { Comment, CommentKind, IssueCard, Question } from '../types';
 
 let next = 1;
@@ -173,7 +183,12 @@ describe('fromComment', () => {
       author: 'hatch-agent',
       askedAt: '2026-09-05T00:00:00Z',
       options: null,
+      level: 'hold',
     });
+  });
+
+  it('carries the level a question was asked at', () => {
+    expect(fromComment({ ...comment('question', 'which?'), level: 'merge' }).level).toBe('merge');
   });
 
   it('carries the options a question offered', () => {
@@ -208,7 +223,12 @@ describe('fromQuestion', () => {
       author: 'hatch-agent',
       askedAt: '2026-09-05T00:00:00Z',
       options: null,
+      level: 'hold',
     });
+  });
+
+  it('carries the level of the question', () => {
+    expect(fromQuestion(question({ level: 'build' })).level).toBe('build');
   });
 
   it('carries the options a question offered', () => {
@@ -217,5 +237,47 @@ describe('fromQuestion', () => {
 
     expect(asked.options).toEqual(options);
     expect('issueKey' in asked).toBe(false);
+  });
+});
+
+const asked = (over: Partial<AskedQuestion> = {}): AskedQuestion => ({
+  id: next++,
+  body: 'which?',
+  author: 'hatch-agent',
+  askedAt: '2026-09-05T00:00:00Z',
+  options: null,
+  level: 'hold',
+  ...over,
+});
+
+describe('strictestLevel', () => {
+  it('is hold where nothing is asked', () => {
+    expect(strictestLevel([])).toBe('hold');
+  });
+
+  it('is the level of a lone question', () => {
+    expect(strictestLevel([asked({ level: 'merge' })])).toBe('merge');
+  });
+
+  it('is the lowest of several, whatever order they come in', () => {
+    expect(strictestLevel([asked({ level: 'merge' }), asked({ level: 'build' })])).toBe('build');
+    expect(strictestLevel([asked({ level: 'merge' }), asked({ level: 'hold' }), asked({ level: 'build' })])).toBe('hold');
+  });
+});
+
+describe('canRaise', () => {
+  it('is false with no options, or none recommended', () => {
+    expect(canRaise(asked())).toBe(false);
+    expect(canRaise(asked({ options: [{ label: 'a', detail: null, recommended: false }] }))).toBe(false);
+  });
+
+  it('is true once an option is recommended', () => {
+    expect(canRaise(asked({ options: [{ label: 'a', detail: null, recommended: true }] }))).toBe(true);
+  });
+});
+
+describe('LEVEL_WORDS', () => {
+  it('has a sentence for each level', () => {
+    expect(Object.keys(LEVEL_WORDS)).toEqual(['hold', 'build', 'merge']);
   });
 });

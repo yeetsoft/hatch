@@ -146,6 +146,20 @@ describe('BallotTree', () => {
     expect(html.split('href="/issues/PRJ-3"').length - 1).toBe(0);
   });
 
+  it('says in words what level a question is at', () => {
+    const html = render([
+      node({
+        questions: [
+          question({ id: 1, level: 'build', options: [{ label: 'a', detail: null, recommended: true }] }),
+          question({ id: 2, level: 'merge', options: [{ label: 'b', detail: null, recommended: true }] }),
+        ],
+      }),
+    ]);
+
+    expect(html).toContain('built but not merged until this is answered');
+    expect(html).toContain('merges now; the answer is looked over after');
+  });
+
   it('gives a question the answer box and the Answer button the issue page has', () => {
     const html = render([node({ questions: [question()] })]);
 
@@ -171,7 +185,8 @@ describe('BallotTree', () => {
     expect(withOptions).toContain('keep');
     expect(withOptions).toContain('Costs nothing');
     expect(withOptions.split('recommended</span>').length - 1).toBe(1);
-    expect(withOptions.split('aria-pressed').length - 1).toBe(2);
+    // The two option buttons; the level control's own three are counted apart.
+    expect(withOptions.split('<button type="button" class="hatch-option').length - 1).toBe(2);
     expect(withOptions).toContain('Or say something else.');
 
     expect(render([node({ questions: [question()] })])).not.toContain('hatch-options');
