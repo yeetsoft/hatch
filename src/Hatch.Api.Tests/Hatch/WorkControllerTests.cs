@@ -579,6 +579,37 @@ public class WorkControllerTests
         Assert.Equal(WorkKinds.Advance, named.Kind);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Work_AnAmbitionWhosePassRanOnTheSameRoom_AnswersAsTheQueueDoes(bool roomOpened)
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        h.Db.Playbooks.Add(Playbook(h.InProgress, h.InProgress, "ambition", "sonnet"));
+        await h.Db.SaveChangesAsync();
+        var ambition = await h.FileAsync("ambition", "A", h.InProgress);
+        await h.SetEpicLimitAsync(ambition, 2);
+        await h.FileAsync("epic", "open", h.Todo, parentId: ambition.Id);
+        h.Db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = ambition.Id, SessionId = "pass", StartedAt = Now.AddHours(-2).AddMinutes(-10), EndedAt = Now.AddHours(-2), DurationMs = 600_000, CreatedAt = Now.AddHours(-2),
+            IssueType = "ambition", PlaybookFromStatusId = h.InProgress, PlaybookToStatusId = h.InProgress, Outcome = ClaimOutcomes.Worked,
+        });
+        if (roomOpened)
+            h.Db.IssueEvents.Add(new EfHatchIssueEvent { IssueId = ambition.Id, Actor = "operator", Kind = EfHatchIssueEvent.WipLimitChanged, At = Now.AddHours(-1) });
+        await h.Db.SaveChangesAsync();
+
+        var named = Value(await h.Work.GetWork(Key(ambition), null, default));
+        var queue = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(ambition));
+
+        var sentence = roomOpened ? null
+            : "a pass ran on it 2 hours ago and nothing has opened room since - the next runs when an epic under it closes or a person changes it";
+        Assert.Equal(sentence, named.Blocked);
+        Assert.Equal(named.Blocked, queue.Blocked);
+        if (!roomOpened) Assert.Equal(BlockedKinds.Family, queue.BlockedKind);
+    }
+
     // ---- What it waits on ----
     //
     // A dependency gates one move: the one into the column an agent writes the

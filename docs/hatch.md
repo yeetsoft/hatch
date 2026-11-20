@@ -1189,7 +1189,14 @@ dispatched to its own pass, a move from that column to itself, while fewer of
 its epics are open than its limit (one when it has none; a deferred epic does
 not count). At the limit it is folded with *2 of its epics are open, and it
 runs 2 at once - the next pass runs when one closes*, and an ambition with no
-epics is clear.
+epics is clear. A pass that ran is not repeated on the same room: an ambition
+whose newest `worked` pass is newer than anything that opened room since is
+folded with *a pass ran on it 2 hours ago and nothing has opened room since -
+the next runs when an epic under it closes or a person changes it*. A child epic
+closing or being deferred, or a person changing the ambition's limit, column or
+capabilities, opens room again; the pass's own writes (a verdict, a comment, a
+new epic) do not. A pass released `dropped` is not counted - the stall path
+retries it - and an ambition that has never had a pass is clear.
 
 A parent may stand in another project. The one refusal that keeps a line is
 [one pull request](#one-pull-request): a task cannot be filed, moved or
