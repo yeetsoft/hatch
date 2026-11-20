@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
@@ -1272,6 +1273,17 @@ public sealed class Dispatch(
     {
         var minutes = seconds / 60;
         return minutes == 1 ? "1 minute" : $"{minutes} minutes";
+    }
+
+    /// <summary>How long ago, for a sentence: minutes under an hour, hours under a day, days after; "less than a minute ago" under one.</summary>
+    internal static string Ago(TimeSpan elapsed)
+    {
+        static string Count(long n, string unit) => n == 1 ? $"1 {unit} ago" : $"{n} {unit}s ago";
+
+        if (elapsed.TotalMinutes < 1) return "less than a minute ago";
+        if (elapsed.TotalHours < 1) return Count((long)elapsed.TotalMinutes, "minute");
+        if (elapsed.TotalDays < 1) return Count((long)elapsed.TotalHours, "hour");
+        return Count((long)elapsed.TotalDays, "day");
     }
 
     // ---- The train ----
@@ -2758,7 +2770,7 @@ public sealed class Dispatch(
         // limit, which does not depend on the WIP section.
         if (pass)
         {
-            if (family.PassFold(issue.Id, issue.WipLimit, statuses) is { } passBlock)
+            if (family.PassFold(issue.Id, issue.WipLimit, statuses, claimed.Now) is { } passBlock)
                 return Blocking.Waiting(passBlock.Sentence, BlockedKinds.Family, passBlock.Open);
         }
         else if (IssueTypeKinds.RunsChildren(issue.Type) && !conflicts && wip is not null
@@ -4667,7 +4679,7 @@ public sealed record UnmetEdge(string BlockerKey, string? HolderKey, long Blocke
 public sealed class FamilyGate
 {
     /// <summary>A gate that folds nothing, for a refused scan - so <c>Scan.Family</c> is never null.</summary>
-    public static readonly FamilyGate None = new([], [], [], [], [], [], [], [], SetterAuthority.Nobody);
+    public static readonly FamilyGate None = new([], [], [], [], [], [], [], [], SetterAuthority.Nobody, []);
 
     /// <summary>
     /// The sentence for an issue with nothing filed under it at all - shared
@@ -4695,6 +4707,10 @@ public sealed class FamilyGate
     private readonly Dictionary<long, int> _projectById;
     private readonly SetterAuthority _authority;
 
+    // Each ambition whose last pass ended after the room last changed, and when
+    // that pass ended - the ones PassFold leaves alone until room opens again.
+    private readonly Dictionary<long, DateTimeOffset> _settledPass;
+
     // Set only on the copy WithPullsHonoured returns: every pull across a
     // project line reads as honoured, for the question "would this carry now".
     private bool _honourAcross;
@@ -4706,10 +4722,11 @@ public sealed class FamilyGate
         Dictionary<long, List<long>> children, HashSet<long> open, Dictionary<long, int> statusById,
         Dictionary<long, (long? ParentId, string Type, string Key, int StatusId, int ProjectId, Guid? StartedBy)> byId, HashSet<long> waiting,
         Dictionary<long, long> sharedStory, HashSet<long> changelogTasks, Dictionary<long, int> projectById,
-        SetterAuthority authority)
+        SetterAuthority authority, Dictionary<long, DateTimeOffset> settledPass)
     {
         _projectById = projectById;
         _authority = authority;
+        _settledPass = settledPass;
         _children = children;
         _open = open;
         _statusById = statusById;
@@ -4765,7 +4782,93 @@ public sealed class FamilyGate
         // its brief is the board's own, so a parent pull carries it unanalysed.
         var changelogTasks = (await db.ChangelogTasks.AsNoTracking().Select(t => t.IssueId).ToListAsync(ct)).ToHashSet();
 
-        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks, projectById, tree.Authority);
+        var settledPass = await SettledPassesAsync(db, statuses, children, ct);
+
+        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks, projectById, tree.Authority, settledPass);
+    }
+
+    /// <summary>
+    /// Every ambition whose last worked pass is newer than anything that has
+    /// opened room since, with when that pass ended - read once for the board.
+    /// A pass is a work log row that ran from the implementation column to
+    /// itself for an ambition and was released <c>worked</c>; a <c>dropped</c>
+    /// one failed and is retried by the stall path, so it never counts. Room
+    /// opens when a direct child epic moves into a terminal or deferred column,
+    /// and when the ambition's own limit, column or capabilities change. A
+    /// pass's own writes - a verdict on a capability, a comment, a claim, a
+    /// child's <c>serves_changed</c> or <c>created</c> - are not in that list,
+    /// so they cannot reopen it.
+    /// </summary>
+    private static async Task<Dictionary<long, DateTimeOffset>> SettledPassesAsync(
+        HatchContext db, List<EfHatchStatus> statuses, Dictionary<long, List<long>> children, CancellationToken ct)
+    {
+        var settled = new Dictionary<long, DateTimeOffset>();
+        if (Columns.Implementation(statuses) is not { } implementation) return settled;
+
+        var passes = (await db.WorkLog.IgnoreQueryFilters().AsNoTracking()
+                .Where(w => w.IssueType == "ambition" && w.Outcome == ClaimOutcomes.Worked
+                    && w.PlaybookFromStatusId == implementation.Id && w.PlaybookToStatusId == implementation.Id)
+                .GroupBy(w => w.IssueId)
+                .Select(g => new { IssueId = g.Key, EndedAt = g.Max(w => w.EndedAt) })
+                .ToListAsync(ct))
+            .ToDictionary(p => p.IssueId, p => p.EndedAt);
+        if (passes.Count == 0) return settled;
+
+        // Each ambition's own events and its direct children's, newer than the
+        // oldest pass: one read, then sorted out per ambition.
+        var ambitionOf = new Dictionary<long, long>();
+        foreach (var ambitionId in passes.Keys)
+        {
+            ambitionOf[ambitionId] = ambitionId;
+            if (children.TryGetValue(ambitionId, out var epics))
+                foreach (var epicId in epics) ambitionOf[epicId] = ambitionId;
+        }
+
+        var ids = ambitionOf.Keys.ToList();
+        var since = passes.Values.Min();
+        var kinds = new[]
+        {
+            EfHatchIssueEvent.StatusChanged, EfHatchIssueEvent.WipLimitChanged,
+            EfHatchIssueEvent.CapabilityAdded, EfHatchIssueEvent.CapabilityEdited, EfHatchIssueEvent.CapabilityRemoved,
+        };
+        var events = await db.IssueEvents.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.At > since && ids.Contains(e.IssueId) && kinds.Contains(e.Kind))
+            .Select(e => new { e.IssueId, e.Kind, e.Payload, e.At })
+            .ToListAsync(ct);
+
+        var closing = statuses.Where(s => s.IsTerminal || s.IsDeferred).Select(s => s.Id).ToHashSet();
+        var opened = new Dictionary<long, DateTimeOffset>();
+        foreach (var e in events)
+        {
+            var ambitionId = ambitionOf[e.IssueId];
+            if (e.IssueId != ambitionId && !(e.Kind == EfHatchIssueEvent.StatusChanged && MovedInto(e.Payload, closing)))
+                continue;
+
+            if (!opened.TryGetValue(ambitionId, out var newest) || e.At > newest) opened[ambitionId] = e.At;
+        }
+
+        foreach (var (ambitionId, endedAt) in passes)
+            if (!opened.TryGetValue(ambitionId, out var at) || at <= endedAt)
+                settled[ambitionId] = endedAt;
+
+        return settled;
+    }
+
+    /// <summary>Whether a <c>status_changed</c> payload's <c>toId</c> is one of these columns; a payload without one is not.</summary>
+    private static bool MovedInto(string? payload, HashSet<int> columns)
+    {
+        if (string.IsNullOrEmpty(payload)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("toId", out var to)
+                && to.ValueKind == JsonValueKind.Number && to.TryGetInt32(out var id) && columns.Contains(id);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -4848,14 +4951,21 @@ public sealed class FamilyGate
     /// reads as one. Null where fewer are open than the limit, which includes
     /// an ambition with no epics at all: its pass has nothing to wait on.
     /// </summary>
-    public (string Sentence, IReadOnlyList<long> Open)? PassFold(long issueId, int? limit, List<EfHatchStatus> statuses)
+    public (string Sentence, IReadOnlyList<long> Open)? PassFold(long issueId, int? limit, List<EfHatchStatus> statuses, DateTimeOffset now)
     {
         var (_, openIds) = EpicCounts(Children(issueId), statuses);
         var allowed = limit ?? 1;
-        if (openIds.Count < allowed) return null;
+        if (openIds.Count >= allowed)
+        {
+            var open = openIds.Count;
+            return ($"{open} of its epics {(open == 1 ? "is" : "are")} open, and it runs {allowed} at once - the next pass runs when one closes", openIds);
+        }
 
-        var open = openIds.Count;
-        return ($"{open} of its epics {(open == 1 ? "is" : "are")} open, and it runs {allowed} at once - the next pass runs when one closes", openIds);
+        // Room is open, but a pass has already run on this room and taken what
+        // it could: the next waits for something to change the room.
+        return _settledPass.TryGetValue(issueId, out var endedAt)
+            ? ($"a pass ran on it {Dispatch.Ago(now - endedAt)} and nothing has opened room since - the next runs when an epic under it closes or a person changes it", openIds)
+            : null;
     }
 
     /// <summary>
