@@ -90,6 +90,7 @@ import type {
   ProjectRepositoryWriteRequest,
   ProjectRunnerTagsWriteRequest,
   Question,
+  QuestionLevel,
   QueueEntry,
   Revision,
   Runner,
@@ -504,6 +505,16 @@ export const setPreApproval = (key: string, level: 'none' | 'express' | 'preappr
     an API key - see IssueLocalModelController. */
 export const setLocalModel = (key: string, level: LocalModel) =>
   fetchJson<Issue>(`/api/issues/${seg(key)}/local-model`, {
+    method: 'PUT',
+    ...asJson({ level }),
+  });
+
+/** How far a question is allowed to go on its recommendation - `hold`, `build`
+    or `merge`. Its own route, and a person's alone: the level is the
+    operator's say over how much runs ahead of an answer - see
+    QuestionLevelController. A refusal comes back as a plain sentence. */
+export const setQuestionLevel = (key: string, id: number, level: QuestionLevel) =>
+  fetchJson<Question>(`/api/issues/${seg(key)}/questions/${id}/level`, {
     method: 'PUT',
     ...asJson({ level }),
   });

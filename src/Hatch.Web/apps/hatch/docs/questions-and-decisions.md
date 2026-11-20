@@ -118,6 +118,22 @@ An unanswered question shows in four places:
   above the Description, answerable the same way. The badge clears on the
   board behind the dialog once it is.
 
+Under each question's options, on the Ballot, the issue page's card and the
+peek alike, a line says its level in words - *nothing moves until this is
+answered*, *built but not merged until this is answered* or *merges now; the
+answer is looked over after* - above three buttons, **hold**, **build** and
+**merge**, with the current level marked and pressed. Pressing another sets it
+([the three levels](#the-three-levels)) and the page reads again. A refused
+change shows the server's sentence beside the buttons, and the level stays
+where it was. A question that offers no recommendation says so and offers only
+**hold**, since `build` and `merge` would be refused. An issue that shipped
+with questions open shows no level control, because the level no longer
+matters. The card's first line follows the strictest level among its
+questions: at `hold` the ticket is not picked up again until they are answered;
+at `build` it is built on the recommendation and waits in review; at `merge` it
+is built and merged on the recommendation, and the questions wait for a look
+back.
+
 Choosing an option makes its label the answer's text. It does not send it:
 **Answer**, or Enter, does. The box stays editable, so an answer the options did
 not anticipate is typed over the label. An answer is one line. A longer reply,
