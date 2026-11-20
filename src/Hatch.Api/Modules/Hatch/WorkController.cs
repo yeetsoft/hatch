@@ -1522,6 +1522,8 @@ public class WorkController(
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
 
+        var ambition = await AmbitionAsync(issue, ct);
+
         var children = await db.Issues.Where(i => i.ParentId == issue.Id)
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
             .Select(i => new
@@ -1744,7 +1746,28 @@ public class WorkController(
             sessionModel,
             sessionModelIsLocal,
             sessionModelFellBack,
-            buildPast.Count == 0 ? null : buildPast);
+            buildPast.Count == 0 ? null : buildPast,
+            ambition);
+    }
+
+    /// <summary>
+    /// The ambition standing above <paramref name="issue"/> at any depth, and
+    /// its principles - null where none does, including on the ambition's own
+    /// dispatch, since the walk starts at the issue's parent rather than the
+    /// issue itself and an ambition takes no parent.
+    /// </summary>
+    private async Task<WorkAmbitionDto?> AmbitionAsync(EfHatchIssue issue, CancellationToken ct)
+    {
+        var ambitionId = await IssueServesController.AmbitionAboveAsync(db, issue.ParentId, ct);
+        if (ambitionId is null) return null;
+
+        var row = await db.Issues
+            .Where(i => i.Id == ambitionId)
+            .Select(i => new { ProjectKey = i.Project!.Key, i.Number, i.Title, i.Description })
+            .FirstOrDefaultAsync(ct);
+        if (row is null) return null;
+
+        return new WorkAmbitionDto(IssueKey.Format(row.ProjectKey, row.Number), row.Title, Principles.Read(row.Description));
     }
 
     /// <summary>
