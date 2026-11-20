@@ -184,6 +184,41 @@ public static class Prompt
             lines.Add("");
         }
 
+        // Open questions the session may build past, from this ticket and the
+        // ones above it. The recommendation is the decision until a person
+        // answers, so the session builds on it and neither answers nor asks.
+        if (work.BuildPast is { Count: > 0 } past)
+        {
+            lines.Add("## Open questions you may build past");
+            lines.Add("");
+            lines.Add("These are open, on this ticket or above it, and a person has not answered them");
+            lines.Add("yet. Each carries a recommended option.");
+            lines.Add("");
+
+            for (var i = 0; i < past.Count; i++)
+            {
+                if (i > 0)
+                {
+                    lines.Add("");
+                    lines.Add("---");
+                    lines.Add("");
+                }
+
+                var recommended = past[i].Options?.FirstOrDefault(o => o.Recommended);
+                lines.Add($"**Asked ({past[i].AskedBy}) on {past[i].IssueKey}:** {past[i].Body}");
+                lines.Add("");
+                lines.Add(recommended?.Detail is { Length: > 0 } detail
+                    ? $"**Recommended:** {recommended.Label} - {detail}"
+                    : $"**Recommended:** {recommended?.Label}");
+                lines.Add("");
+                lines.Add($"**Level:** {past[i].Level}. {BuildPastLevel(past[i].Level)}");
+            }
+
+            lines.Add("");
+            lines.Add("Never answer one of these, and never ask it again.");
+            lines.Add("");
+        }
+
         // What was said to the agent on this ticket while nobody was working
         // it. A message sent mid-run reaches that run by its hooks; one that
         // nothing read is carried here instead, so it is neither lost nor
@@ -217,9 +252,18 @@ public static class Prompt
             trunkLanding: trunkLanding,
             asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type, releaseNoteFor: work.ReleaseNoteFor,
             startsHere: BoundForImplementation(work), deniesGitWrites: deniesGitWrites,
-            offersNoCode: work.OffersNoCode ?? true));
+            offersNoCode: work.OffersNoCode ?? true,
+            buildsPast: work.BuildPast is { Count: > 0 }));
         return string.Join('\n', lines);
     }
+
+    /// <summary>
+    /// What a question's level means for the session building past it - the
+    /// one place the two sentences are written.
+    /// </summary>
+    private static string BuildPastLevel(string level) => level == QuestionLevels.MergeName
+        ? "Build on the recommendation. It merges, and a person looks over the answer after."
+        : "Build on the recommendation. Your pull request waits in review until a person answers.";
 
     /// <summary>
     /// What a session is told, once, the first time its tokens cross its
@@ -603,7 +647,8 @@ public static class Prompt
         string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
         bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
         bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
-        bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null) =>
+        bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null,
+        bool buildsPast = false) =>
     [
         "## Reaching Hatch",
         "",
@@ -716,6 +761,13 @@ public static class Prompt
         "",
         ..(asksReleaseNote && releaseNoteFor is null ? ReleaseNote(key, issueType) : Array.Empty<string>()),
         ..(releaseNoteFor is null ? Array.Empty<string>() : ReleaseNoteFor(key, releaseNoteFor)),
+        ..(buildsPast ? new[]
+        {
+            "Name each question you built past, by its key and its recommended option, in your",
+            "comment on the ticket and in the work-log summary, so the look back has something",
+            "to read.",
+            "",
+        } : Array.Empty<string>()),
         "Last of all, say what you did, in a fenced block:",
         "",
         "```work-log",

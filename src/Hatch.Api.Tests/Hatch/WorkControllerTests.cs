@@ -2777,6 +2777,68 @@ public class WorkControllerTests
         Assert.Equal("per-node", Assert.Single(carried.Answers).Body);
     }
 
+    // ---- HA-2531: questions a session may build past ----
+
+    private static readonly IReadOnlyList<QuestionOptionDto> RecommendedOption =
+        [new("per-node", "Cheaper to run.", Recommended: true), new("global")];
+
+    /// <summary>A question at a level, written to the row as nothing sets one yet.</summary>
+    private static async Task<EfHatchComment> AskAtAsync(
+        Harness h, EfHatchIssue issue, string level, IReadOnlyList<QuestionOptionDto>? options)
+    {
+        var question = await h.AskAsync(issue, "per-node or global?");
+        question.Level = level;
+        question.Options = Questions.WriteOptions(options);
+        await h.Db.SaveChangesAsync();
+        return question;
+    }
+
+    [Fact]
+    public async Task Work_CarriesABuildQuestionFromAboveInBuildPast_AndLeavesQuestionsTheTicketsOwn()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        var story = await h.FileAsync("story", "under it", h.Todo, parentId: epic.Id);
+        await AskAtAsync(h, epic, QuestionLevels.BuildName, RecommendedOption);
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        var past = Assert.Single(work.BuildPast!);
+        Assert.Equal(Key(epic), past.IssueKey);
+        Assert.Equal("build", past.Level);
+        Assert.Equal("per-node", past.Options!.Single(o => o.Recommended).Label);
+        Assert.Empty(work.Questions);
+    }
+
+    [Fact]
+    public async Task Work_CarriesTheTicketsOwnMergeQuestionInBuildPast()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "asks its own", h.Todo);
+        await AskAtAsync(h, story, QuestionLevels.MergeName, RecommendedOption);
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        Assert.Equal("merge", Assert.Single(work.BuildPast!).Level);
+    }
+
+    [Fact]
+    public async Task Work_LeavesOutAHoldQuestion_OneWithNoRecommendation_AndAnAnsweredOne()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        var story = await h.FileAsync("story", "under it", h.Todo, parentId: epic.Id);
+        await AskAtAsync(h, epic, QuestionLevels.HoldName, RecommendedOption);
+        await AskAtAsync(h, epic, QuestionLevels.BuildName, [new("per-node"), new("global")]);
+        await AskAtAsync(h, epic, QuestionLevels.BuildName, null);
+        var answered = await AskAtAsync(h, story, QuestionLevels.MergeName, RecommendedOption);
+        await h.AnswerAsync(story, answered, "per-node");
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        Assert.Null(work.BuildPast);
+    }
+
     [Fact]
     public async Task Work_CarriesTheUnreadMessagesAndNotTheOnesAlreadyDelivered()
     {

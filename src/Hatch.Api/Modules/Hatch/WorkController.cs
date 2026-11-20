@@ -1595,6 +1595,7 @@ public class WorkController(
         // knowing.
         var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
         var waiting = questions.Count(q => q.Answers.Count == 0);
+        var buildPast = await BuildPastAsync(issue, ct);
 
         var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
 
@@ -1721,7 +1722,37 @@ public class WorkController(
             releaseNoteFor,
             sessionModel,
             sessionModelIsLocal,
-            sessionModelFellBack);
+            sessionModelFellBack,
+            buildPast.Count == 0 ? null : buildPast);
+    }
+
+    /// <summary>
+    /// The open questions on <paramref name="issue"/> and the issues above it
+    /// that a session may build past: at <c>build</c> or <c>merge</c>, and
+    /// carrying a recommended option to build on. A <c>hold</c> question is
+    /// never here - the dispatcher stops before a session exists - and a
+    /// question with no recommendation leaves nothing to build on. The walk up
+    /// honours the caller's scope, as every other read here does: a question's
+    /// body is content, and one in a project the caller cannot see stays there.
+    /// </summary>
+    private async Task<List<QuestionDto>> BuildPastAsync(EfHatchIssue issue, CancellationToken ct)
+    {
+        var ids = new List<long> { issue.Id };
+        var seen = new HashSet<long> { issue.Id };
+        var parentId = issue.ParentId;
+        while (parentId is { } id && seen.Add(id))
+        {
+            ids.Add(id);
+            parentId = await db.Issues.AsNoTracking()
+                .Where(i => i.Id == id)
+                .Select(i => i.ParentId)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        var open = await Questions.ProjectAsync(db, Questions.Waiting(db).Where(c => ids.Contains(c.IssueId)), ct);
+        return open
+            .Where(q => QuestionLevels.Rank(q.Level) > 0 && q.Options?.Any(o => o.Recommended) == true)
+            .ToList();
     }
 
     /// <summary>
