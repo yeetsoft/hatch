@@ -4,6 +4,7 @@ import { handledRefusal } from '../lib/signIn';
 import type {
   ActivityPage,
   ActivityReport,
+  AmbitionPass,
   CreateRunnerRequest,
   AssigneeDirectory,
   AssigneeRequest,
@@ -691,6 +692,10 @@ export const getIssueCapabilities = (key: string) => fetchJson<Capability[]>(`/a
 /** What an issue serves, with each capability's ambition. Empty for any type
     that serves nothing - see IssueServesController. */
 export const getIssueServes = (key: string) => fetchJson<ServedCapability[]>(`/api/issues/${seg(key)}/serves`);
+/** An ambition's passes, newest first, each with the verdicts it recorded and
+    the comments said while it ran. 400 off an ambition - see
+    IssuePassesController. */
+export const getIssuePasses = (key: string) => fetchJson<AmbitionPass[]>(`/api/issues/${seg(key)}/passes`);
 export const putIssueDreams = (key: string, dreamIds: number[]) =>
   fetchJson<Dream[]>(`/api/issues/${seg(key)}/dreams`, { method: 'PUT', ...asJson({ dreamIds }) });
 /** Files the epic a weave press asks for - see DreamWeaveController.PostWeave. */
