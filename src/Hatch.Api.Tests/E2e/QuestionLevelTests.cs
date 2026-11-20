@@ -119,7 +119,7 @@ public class QuestionLevelTests(ITestOutputHelper output)
             output.WriteLine($"saved {await ShotAsync(harness, deadline, $"issue-merge-{profileName}")}");
 
             // The Ballot draws what the issue page set, and sets it too.
-            await harness.GoToAsync(deadline, "/ballot");
+            await harness.GoToAsync(deadline, "/ballot?view=list");
             await harness.WaitForTopBarAsync(deadline);
             var ballot = (string tag) => $".hatch-ballot .hatch-question:has-text(\"{tag}\")";
             await harness.WaitForVisibleAsync(deadline, ballot("Q-one"));

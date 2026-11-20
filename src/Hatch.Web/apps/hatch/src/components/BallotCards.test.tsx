@@ -1,0 +1,146 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
+import { BallotCards } from './BallotCards';
+import { questionEmptyWords } from '../lib/attention';
+import { LEVEL_WORDS } from '../lib/questions';
+import type { BallotNode, BallotQuestion, Question } from '../types';
+
+/* No DOM here, so this is structural - react-dom/server, as BallotTree.test.tsx
+   reads. */
+
+vi.mock('../lib/markdown', () => ({ renderMarkdown: (source: string) => source }));
+vi.mock('../lib/clientLogger', () => ({ clientLogger: { info() {}, warn() {}, error() {} } }));
+
+const noop = () => undefined;
+
+afterEach(() => vi.unstubAllGlobals());
+
+const question = (over: Partial<Question>): Question => ({
+  id: 1,
+  issueKey: 'PRJ-2',
+  issueTitle: 'A story',
+  body: 'Which of the two should it be?',
+  askedBy: 'a-runner',
+  askedAt: '2026-01-10T09:00:00Z',
+  options: null,
+  answers: [],
+  level: 'hold',
+  lookBack: false,
+  ...over,
+});
+
+const ask = (q: Partial<Question>, holds: number): BallotQuestion => ({
+  question: question(q),
+  holds,
+  wentAheadOn: null,
+  issueStatus: null,
+  closedAt: null,
+  merged: null,
+  landings: null,
+});
+
+const roots: BallotNode[] = [
+  {
+    key: 'PRJ-1',
+    projectKey: 'PRJ',
+    type: 'epic',
+    title: 'The epic',
+    excerpt: '',
+    isTerminal: false,
+    children: [
+      { key: 'PRJ-2', projectKey: 'PRJ', type: 'story', title: 'A story', excerpt: '', isTerminal: false, children: [], questions: [] },
+    ],
+    questions: [],
+  },
+];
+
+const options = [
+  { label: 'Keep it', detail: null, recommended: false },
+  { label: 'Change it', detail: 'Costs a day.', recommended: true },
+];
+
+const three = [
+  ask({ id: 1, level: 'hold', options }, 3),
+  ask({ id: 2, level: 'build', issueKey: 'PRJ-3', issueTitle: 'A task' }, 1),
+  ask({ id: 3, level: 'merge', lookBack: true }, 0),
+];
+
+const render = (questions: BallotQuestion[]) =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <BallotCards questions={questions} roots={roots} onAnswered={noop} onClose={noop} onList={noop} />
+    </MemoryRouter>,
+  );
+
+describe('BallotCards', () => {
+  it('draws the first question with its place in the ballot', () => {
+    const html = render(three);
+
+    expect(html).toContain('Ballot');
+    expect(html).toContain('1 of 3, most blocking first');
+    expect(html).toContain('Close');
+    expect(html).toContain('Which of the two should it be?');
+  });
+
+  it('draws the chain: the root, then the issue linked with its key and title', () => {
+    const html = render(three);
+
+    expect(html).toContain('The epic');
+    expect(html).toMatch(/<a [^>]*href="\/issues\/PRJ-2"[^>]*>.*PRJ-2.*A story/);
+  });
+
+  it('draws what it holds and its level as two pills', () => {
+    const html = render(three);
+
+    expect(html).toContain('Holds 3 issues');
+    expect(html).toContain(LEVEL_WORDS.hold);
+  });
+
+  it('says issue, not issues, for one, and draws a look-back question as an open one', () => {
+    const second = render([three[1], three[0]]);
+    expect(second).toContain('Holds 1 issue<');
+    expect(second).toContain(LEVEL_WORDS.build);
+
+    const lookBack = render([three[2]]);
+    expect(lookBack).toContain('Holds nothing');
+    expect(lookBack).toContain(LEVEL_WORDS.merge);
+  });
+
+  it('puts the recommended option first', () => {
+    const html = render(three);
+
+    expect(html.indexOf('Change it')).toBeGreaterThan(-1);
+    expect(html.indexOf('Change it')).toBeLessThan(html.indexOf('Keep it'));
+    expect(html).toContain('recommended');
+  });
+
+  it('counts what is behind it: those to answer and those to look over', () => {
+    const html = render(three);
+
+    expect(html).toContain('Then 1 more to answer, and 1 decided without you to look over');
+    expect(html).toContain('Skip');
+  });
+
+  it('disables Skip on the last card', () => {
+    const html = render([three[2]]);
+
+    expect(html).toContain('Nothing else is waiting');
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Skip</);
+  });
+
+  it('offers the other answer and the level buttons, and no principle', () => {
+    const html = render(three);
+
+    expect(html).toContain('Say something else');
+    expect(html).toContain('aria-label="Set level"');
+    expect(html.toLowerCase()).not.toContain('principle');
+  });
+
+  it('says the ballot is clear, with the switch to the list, once nothing is left', () => {
+    const html = render([]);
+
+    expect(html).toContain(questionEmptyWords());
+    expect(html).toContain('Show the list by issue');
+  });
+});

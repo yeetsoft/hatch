@@ -291,6 +291,9 @@ public sealed class ClaudeAdapterTests : IDisposable
 
             Assert.Null(result);
             Assert.Single(logged, l => l.Contains("already known to cost a turn", StringComparison.Ordinal) && l.Contains("$0.38", StringComparison.Ordinal));
+
+            // HA-2561: the console's own sentence, without the "hatch: " prefix, lands on OffReason too.
+            Assert.Equal(logged.Single(l => l.Contains("already known to cost a turn", StringComparison.Ordinal))["hatch: ".Length..], ((IUsageProbe)adapter).OffReason);
         }
         finally
         {
@@ -366,11 +369,23 @@ public sealed class ClaudeAdapterTests : IDisposable
             Assert.NotNull(verdict);
             Assert.Equal("2.1.268 (Claude Code)", verdict.Version);
             Assert.Equal(0.38m, verdict.CostUsd);
+
+            // HA-2561: a probe that discovers the cost itself exposes the same sentence on OffReason.
+            Assert.Contains("the CLI took /usage as a model turn", ((IUsageProbe)adapter).OffReason);
         }
         finally
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    /// <summary>HA-2561: OffReason is null while nothing has latched the probe off.</summary>
+    [Fact]
+    public void OffReason_is_null_while_a_probe_has_not_latched_off()
+    {
+        var adapter = Adapter();
+
+        Assert.Null(((IUsageProbe)adapter).OffReason);
     }
 
     [Fact]

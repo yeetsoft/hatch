@@ -1523,7 +1523,7 @@ public sealed class Increment(
             // line, so the foreach body never runs for the raw line that
             // carried one - but Read already updated Usage by the time it
             // returned.
-            if (render.UsageReadAt is { } readAt) _readout.SetUsage(render.Usage, readAt);
+            if (render.UsageReadAt is { } readAt) _readout.SetUsage(render.Usage, readAt, "stream");
 
             // Same reason the usage read above is out here and not in the loop:
             // a usage-only assistant message draws no line either, yet still

@@ -41,7 +41,8 @@ public sealed record RunnerSnapshot(
 /// <summary>Everything the readout draws, at one instant.</summary>
 public sealed record ReadoutSnapshot(
     IncrementSnapshot? Increment, IdleSnapshot? Idle, RunnerSnapshot Runner,
-    IReadOnlyList<UsageWindow> UsageWindows, DateTimeOffset? UsageReadAt, ControlsSnapshot Controls);
+    IReadOnlyList<UsageWindow> UsageWindows, DateTimeOffset? UsageReadAt, ControlsSnapshot Controls,
+    string? UsageSource = null, string? UsageProbeOff = null);
 
 /// <summary>
 /// The one object a live increment and the idle loop between them both write
@@ -62,6 +63,8 @@ public sealed class ReadoutState
     private RunnerSnapshot _runner = RunnerSnapshot.Empty;
     private IReadOnlyList<UsageWindow> _usage = [];
     private DateTimeOffset? _usageReadAt;
+    private string? _usageSource;
+    private string? _usageProbeOff;
     private IReadOnlySet<string>? _drives;
 
     /// <summary>A session is about to be spawned. Clears whatever idle line was showing.</summary>
@@ -131,14 +134,30 @@ public sealed class ReadoutState
         get { lock (_gate) return _drives is null ? [] : [.. _drives]; }
     }
 
-    /// <summary>The account's usage windows, refreshed while a session is running, and the instant they were read.</summary>
-    public void SetUsage(IReadOnlyList<UsageWindow> windows, DateTimeOffset readAt)
+    /// <summary>
+    /// The account's usage windows, refreshed while a session is running, and
+    /// the instant they were read - <paramref name="source"/> is
+    /// <c>"stream"</c> or <c>"probe"</c>, whichever read them.
+    /// </summary>
+    public void SetUsage(IReadOnlyList<UsageWindow> windows, DateTimeOffset readAt, string source)
     {
         lock (_gate)
         {
             _usage = windows;
             _usageReadAt = readAt;
+            _usageSource = source;
         }
+    }
+
+    /// <summary>
+    /// Whether probing has latched off for this CLI version, and the
+    /// console's own sentence for why - null while it has not, settable
+    /// independently of <see cref="SetUsage"/>, since a probe that discovers
+    /// it is costly, or one that already is, never calls that at all.
+    /// </summary>
+    public void SetProbeOff(string? reason)
+    {
+        lock (_gate) _usageProbeOff = reason;
     }
 
     /// <summary>
@@ -150,7 +169,7 @@ public sealed class ReadoutState
 
     public ReadoutSnapshot Snapshot(ControlsSnapshot? controls = null)
     {
-        lock (_gate) return new ReadoutSnapshot(_increment, _idle, _runner, _usage, _usageReadAt, controls ?? NoControls);
+        lock (_gate) return new ReadoutSnapshot(_increment, _idle, _runner, _usage, _usageReadAt, controls ?? NoControls, _usageSource, _usageProbeOff);
     }
 }
 

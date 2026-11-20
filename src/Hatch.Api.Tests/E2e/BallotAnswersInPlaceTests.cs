@@ -61,7 +61,7 @@ public class BallotAnswersInPlaceTests(ITestOutputHelper output)
             var baseUrl = await harness.StartHostAsync(deadline);
             var seeded = await deadline.BoundAsync("filing the questions", () => SeedAsync(baseUrl));
 
-            await harness.OpenAsync(deadline, baseUrl, "/ballot");
+            await harness.OpenAsync(deadline, baseUrl, "/ballot?view=list");
             await harness.WaitForTopBarAsync(deadline);
 
             var row = (string key) => $".hatch-ballot .hatch-question:has-text(\"{key} question\")";

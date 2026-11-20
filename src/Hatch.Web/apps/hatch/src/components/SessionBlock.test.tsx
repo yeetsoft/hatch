@@ -144,6 +144,17 @@ describe('SessionBlock', () => {
     expect(html).toContain('Drives');
   });
 
+  it('shows why the usage probe is off, beside the state', () => {
+    expect(draw(session({ usageProbeOff: 'no login on this machine' }))).toContain(
+      'probe off: no login on this machine',
+    );
+  });
+
+  it('shows no probe-off line when the probe is not off', () => {
+    expect(draw(session({ usageProbeOff: null }))).not.toContain('probe off');
+    expect(draw(session())).not.toContain('probe off');
+  });
+
   it('omits rows for an older CLI that never reported them, but still shows a set ip', () => {
     const html = draw(
       session({

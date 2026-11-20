@@ -67,7 +67,7 @@ public sealed class ReadoutStateTests
         var state = new ReadoutState();
         var runner = new RunnerSnapshot("Chrissy", "Nathan", 3, TimeSpan.FromMinutes(5), 1.5m, null);
         state.SetRunner(runner);
-        state.SetUsage([new UsageWindow("session", "Session", 0.5, null)], Now);
+        state.SetUsage([new UsageWindow("session", "Session", 0.5, null)], Now, "probe");
 
         state.BeginIncrement("HA-1", "A ticket", "W", null, Now);
         state.EndIncrement();
@@ -82,11 +82,41 @@ public sealed class ReadoutStateTests
     {
         var state = new ReadoutState();
 
-        state.SetUsage([new UsageWindow("session", "Session", 0.5, null)], Now);
+        state.SetUsage([new UsageWindow("session", "Session", 0.5, null)], Now, "stream");
         Assert.Equal(Now, state.Snapshot().UsageReadAt);
 
         var later = Now.AddMinutes(10);
-        state.SetUsage([new UsageWindow("session", "Session", 0.6, null)], later);
+        state.SetUsage([new UsageWindow("session", "Session", 0.6, null)], later, "probe");
         Assert.Equal(later, state.Snapshot().UsageReadAt);
+    }
+
+    [Fact]
+    public void SetUsage_StampsTheSourceItWasGiven()
+    {
+        var state = new ReadoutState();
+
+        state.SetUsage([new UsageWindow("session", "Session", 0.5, null)], Now, "stream");
+        Assert.Equal("stream", state.Snapshot().UsageSource);
+
+        state.SetUsage([new UsageWindow("session", "Session", 0.6, null)], Now, "probe");
+        Assert.Equal("probe", state.Snapshot().UsageSource);
+    }
+
+    [Fact]
+    public void SetProbeOff_IsIndependentOfSetUsage()
+    {
+        var state = new ReadoutState();
+        Assert.Null(state.Snapshot().UsageProbeOff);
+
+        state.SetProbeOff("the CLI took /usage as a model turn");
+        Assert.Equal("the CLI took /usage as a model turn", state.Snapshot().UsageProbeOff);
+        Assert.Null(state.Snapshot().UsageSource);
+
+        state.SetUsage([new UsageWindow("session", "Session", 0.5, null)], Now, "stream");
+        Assert.Equal("the CLI took /usage as a model turn", state.Snapshot().UsageProbeOff);
+        Assert.Equal("stream", state.Snapshot().UsageSource);
+
+        state.SetProbeOff(null);
+        Assert.Null(state.Snapshot().UsageProbeOff);
     }
 }

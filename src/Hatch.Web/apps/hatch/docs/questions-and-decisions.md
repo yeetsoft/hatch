@@ -119,7 +119,12 @@ An unanswered question shows in four places:
 
 - The **Ballot**, at `/ballot`, the first place a question shows. It is a link
   beside **Search** in the nav bar, a row straight after Search in the phone
-  menu, and **Go to Ballot** in the console. It lists every
+  menu, and **Go to Ballot** in the console. It shows one question at a time,
+  the one holding the most work first, as a card: the issue it is on, what it
+  holds and its level, its options with the recommended one first, and **Say
+  something else** for the rest. **Skip** moves to the next without writing
+  anything, and a skipped question comes round again after the last. A switch
+  under the header, **By issue**, shows the list instead, which lists every
   waiting question under the issues that enclose it, each issue drawn with the
   first lines of its description above its questions, and a child issue nested
   inside its parent. It answers in place: each question is drawn as the issue
