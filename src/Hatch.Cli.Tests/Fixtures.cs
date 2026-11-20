@@ -163,10 +163,11 @@ public static class Fixtures
         string key, string? blocked = null, bool expedited = false, bool hop = false, string? priority = null,
         string? hopKind = null, string? hopUnder = null, string? model = null,
         IReadOnlyList<string>? deniedTools = null, IReadOnlyList<string>? takers = null,
-        IReadOnlyList<RunnerReasonDto>? untaken = null, string? trainNote = null, string? projectPriority = null) =>
+        IReadOnlyList<RunnerReasonDto>? untaken = null, string? trainNote = null, string? projectPriority = null,
+        bool selfMove = false) =>
         new(
             Issue(key, expedited: expedited, express: hop, priority: priority), Status(3, "In Progress"),
-            Status(4, "In Review"), blocked, Hop: hop, HopKind: hop ? hopKind ?? HopKinds.Express : null,
+            selfMove ? Status(3, "In Progress") : Status(4, "In Review"), blocked, Hop: hop, HopKind: hop ? hopKind ?? HopKinds.Express : null,
             HopUnder: hop ? hopUnder : null, Model: model, DeniedTools: deniedTools, Takers: takers,
             Untaken: untaken, TrainNote: trainNote, ProjectPriority: projectPriority);
 

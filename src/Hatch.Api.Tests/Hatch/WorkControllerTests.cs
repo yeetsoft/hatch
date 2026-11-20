@@ -544,6 +544,41 @@ public class WorkControllerTests
             Assert.Equal((type, Value(await h.Work.GetWork(key, null, default)).Blocked), (type, queue[key]));
     }
 
+    // ---- An ambition's pass ----
+
+    [Theory]
+    [InlineData(2, 1, 0, null)]
+    [InlineData(null, 0, 0, null)]
+    [InlineData(1, 0, 3, null)]
+    [InlineData(null, 1, 0, "1 of its epics is open, and it runs 1 at once - the next pass runs when one closes")]
+    [InlineData(2, 2, 0, "2 of its epics are open, and it runs 2 at once - the next pass runs when one closes")]
+    [InlineData(2, 2, 1, "2 of its epics are open, and it runs 2 at once - the next pass runs when one closes")]
+    public async Task Work_AnAmbitionInTheImplementationColumn_IsAimedAtItsOwnColumnAndAnswersAsThePassDoes(
+        int? limit, int open, int deferred, string? sentence)
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        h.Db.Playbooks.Add(Playbook(h.InProgress, h.InProgress, "ambition", "sonnet"));
+        await h.Db.SaveChangesAsync();
+        var ambition = await h.FileAsync("ambition", "A", h.InProgress);
+        if (limit is { } n) await h.SetEpicLimitAsync(ambition, n);
+        for (var i = 0; i < open; i++) await h.FileAsync("epic", $"open {i}", h.Todo, parentId: ambition.Id);
+        // The clear case with no epics open files closed ones instead, and the
+        // deferred column holds the shelved one the count must leave out.
+        for (var i = 0; i < (open == 0 && limit == 1 ? 3 : 0); i++) await h.FileAsync("epic", $"closed {i}", h.Done, parentId: ambition.Id);
+        for (var i = 0; i < deferred; i++) await h.FileAsync("epic", $"shelved {i}", h.Shelved, parentId: ambition.Id);
+
+        var named = Value(await h.Work.GetWork(Key(ambition), null, default));
+        var queue = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(ambition));
+
+        Assert.Equal(sentence, named.Blocked);
+        Assert.Equal(named.Blocked, queue.Blocked);
+        Assert.Equal(h.InProgress, named.FromStatus.Id);
+        Assert.Equal(named.FromStatus.Id, named.ToStatus!.Id);
+        Assert.False(named.Hop);
+        Assert.Equal(WorkKinds.Advance, named.Kind);
+    }
+
     // ---- What it waits on ----
     //
     // A dependency gates one move: the one into the column an agent writes the
