@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, Field, Text } from '@hatch/ui';
+import { RunnerColumnsField } from './RunnerColumnsField';
 import { RunnerTagsField } from './RunnerTagsField';
 import {
   declaredDangerous,
@@ -11,11 +12,13 @@ import {
   settingsRequest,
   type RunnerSettingsRequest,
 } from '../lib/runners';
-import type { Runner, RunnerSession } from '../types';
+import { columnsWords } from '../lib/runnerColumns';
+import type { Runner, RunnerSession, Status } from '../types';
 
 /**
- * The detail's "What it may work" card: the runner's tags, its under and the
- * models it refuses, saved on their own button and never together with the ceilings.
+ * The detail's "What it may work" card: the runner's tags, its under, the
+ * models it refuses and the columns it works, saved on their own button and
+ * never together with the ceilings.
  *
  * Saved on a button rather than on blur, as the bounds are: an epic key
  * half-typed is not one to send. `refusal` is the server's refusal of the last
@@ -26,12 +29,15 @@ import type { Runner, RunnerSession } from '../types';
 export function RunnerSettingsForm({
   runner,
   live,
+  statuses,
   editable,
   refusal,
   onSave,
 }: {
   runner: Runner;
   live: RunnerSession[];
+  /** The board's columns, or null before they are read or when the read failed: the Columns section waits for them. */
+  statuses: Status[] | null;
   editable: boolean;
   refusal: string | null;
   onSave: (request: RunnerSettingsRequest) => void;
@@ -70,12 +76,21 @@ export function RunnerSettingsForm({
               onChange={(refusedModels) => setDraft({ ...draft, refusedModels })}
             />
           </div>
+          {statuses && (
+            <RunnerColumnsField
+              name={runner.name}
+              statuses={statuses}
+              mode={draft.statusMode}
+              ids={draft.statusIds}
+              onChange={(statusMode, statusIds) => setDraft({ ...draft, statusMode, statusIds })}
+            />
+          )}
           {isIssueKeyShape(draft.under) && <Text tone="muted">{underLink(draft.under.trim())}</Text>}
 
           {refusal && <p className="text-danger">{refusal}</p>}
 
           <div className="hatch-form-actions">
-            <Button variant="primary" disabled={!dirty} onClick={() => onSave(settingsRequest(draft))}>
+            <Button variant="primary" disabled={!dirty} onClick={() => onSave(settingsRequest(draft, runner))}>
               Save settings
             </Button>
             <Button disabled={!dirty} onClick={() => setDraft(settingsOf(runner))}>
@@ -88,6 +103,9 @@ export function RunnerSettingsForm({
           <Text>Tags: {runner.tags.length === 0 ? 'any runner' : runner.tags.join(', ')}</Text>
           <Text>Under: {runner.under ? underLink(runner.under) : 'the whole board'}</Text>
           <Text>Refuses: {runner.refusedModels.length === 0 ? 'nothing' : runner.refusedModels.join(', ')}</Text>
+          {statuses && (
+            <Text>Columns: {columnsWords(runner.statusMode ?? 'all', runner.statusIds ?? [], statuses)}</Text>
+          )}
         </>
       )}
 

@@ -1387,8 +1387,20 @@ describe('the runner detail\'s two forms', () => {
     });
 
   it('seeds the settings from tags and under alone', () => {
-    expect(settingsOf(held())).toEqual({ tags: 'gpu\nfast', under: 'AER-930', refusedModels: '' });
-    expect(settingsOf(runner())).toEqual({ tags: '', under: '', refusedModels: '' });
+    expect(settingsOf(held())).toEqual({
+      tags: 'gpu\nfast',
+      under: 'AER-930',
+      refusedModels: '',
+      statusMode: 'all',
+      statusIds: [],
+    });
+    expect(settingsOf(runner())).toEqual({
+      tags: '',
+      under: '',
+      refusedModels: '',
+      statusMode: 'all',
+      statusIds: [],
+    });
     expect(settingsOf(runner({ refusedModels: ['fable', 'haiku'] })).refusedModels).toBe('fable\nhaiku');
   });
 
@@ -1402,15 +1414,51 @@ describe('the runner detail\'s two forms', () => {
     });
   });
 
+  it('seeds the column rule from the runner, and reads an absent one as all', () => {
+    const r = runner({ statusMode: 'only', statusIds: [2, 3] });
+    expect(settingsOf(r)).toMatchObject({ statusMode: 'only', statusIds: [2, 3] });
+    expect(settingsOf(runner())).toMatchObject({ statusMode: 'all', statusIds: [] });
+  });
+
   it('sends exactly tags and under as the patch, and the refused models beside it', () => {
-    const req = settingsRequest({ tags: 'gpu\n\nfast ', under: ' AER-930 ', refusedModels: ' fable\n\nhaiku ' });
+    const req = settingsRequest(
+      { ...settingsOf(runner()), tags: 'gpu\n\nfast ', under: ' AER-930 ', refusedModels: ' fable\n\nhaiku ' },
+      runner(),
+    );
     expect(Object.keys(req).sort()).toEqual(['patch', 'refusedModels']);
     expect(Object.keys(req.patch).sort()).toEqual(['tags', 'under']);
     expect(req).toEqual({ patch: { tags: ['gpu', 'fast'], under: 'AER-930' }, refusedModels: ['fable', 'haiku'] });
-    expect(settingsRequest({ tags: '', under: '', refusedModels: '' })).toEqual({
+    expect(settingsRequest(settingsOf(runner()), runner())).toEqual({
       patch: { tags: [], under: '' },
       refusedModels: [],
     });
+  });
+
+  it('sends neither statusMode nor statusIds when the rule is as held', () => {
+    const r = runner({ statusMode: 'only', statusIds: [2, 3] });
+    const req = settingsRequest({ ...settingsOf(r), statusIds: [3, 2] }, r);
+    expect(Object.keys(req.patch).sort()).toEqual(['tags', 'under']);
+  });
+
+  it('sends statusMode and statusIds together when the rule changed', () => {
+    const only = settingsRequest({ ...settingsOf(runner()), statusMode: 'only', statusIds: [2] }, runner());
+    expect(only.patch).toEqual({ tags: [], under: '', statusMode: 'only', statusIds: [2] });
+
+    const r = runner({ statusMode: 'except', statusIds: [3] });
+    const except = settingsRequest({ ...settingsOf(r), statusIds: [3, 5] }, r);
+    expect(except.patch).toMatchObject({ statusMode: 'except', statusIds: [3, 5] });
+  });
+
+  it('sends an empty list under all, whatever the draft still holds', () => {
+    const r = runner({ statusMode: 'only', statusIds: [2] });
+    const req = settingsRequest({ ...settingsOf(r), statusMode: 'all', statusIds: [2, 3] }, r);
+    expect(req.patch).toMatchObject({ statusMode: 'all', statusIds: [] });
+  });
+
+  it('sends the rule on a change of mode alone, keeping the ticked ids', () => {
+    const r = runner({ statusMode: 'only', statusIds: [2] });
+    const req = settingsRequest({ ...settingsOf(r), statusMode: 'except' }, r);
+    expect(req.patch).toMatchObject({ statusMode: 'except', statusIds: [2] });
   });
 
   it('sends exactly the five ceilings from the bounds form, the empty ones too', () => {
@@ -1443,6 +1491,19 @@ describe('the runner detail\'s two forms', () => {
     expect(settingsChanged({ ...settingsOf(r), refusedModels: 'haiku\nfable' }, r)).toBe(true);
     expect(settingsChanged({ ...settingsOf(r), refusedModels: '' }, r)).toBe(true);
     expect(settingsChanged({ ...settingsOf(runner()), refusedModels: 'fable' }, runner())).toBe(true);
+  });
+
+  it('notices the column rule changing: the mode, or the ids as a set', () => {
+    const r = runner({ statusMode: 'only', statusIds: [2, 3] });
+    expect(settingsChanged(settingsOf(r), r)).toBe(false);
+    expect(settingsChanged({ ...settingsOf(r), statusMode: 'except' }, r)).toBe(true);
+    expect(settingsChanged({ ...settingsOf(r), statusIds: [2] }, r)).toBe(true);
+    expect(settingsChanged({ ...settingsOf(r), statusIds: [3, 2] }, r)).toBe(false);
+    expect(settingsChanged({ ...settingsOf(runner()), statusMode: 'only' }, runner())).toBe(true);
+  });
+
+  it('ignores the ticked ids under all', () => {
+    expect(settingsChanged({ ...settingsOf(runner()), statusIds: [2, 3] }, runner())).toBe(false);
   });
 
   it('judges a bounds problem from the three fields it reads', () => {

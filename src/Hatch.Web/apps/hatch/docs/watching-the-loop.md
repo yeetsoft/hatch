@@ -123,6 +123,21 @@ same route, in the [CLI reference](cli-reference). A runner that refuses
 models says so on its row in the list, as `refuses fable`, and a caller who
 cannot edit reads `Refuses:` beside `Tags:` and `Under:`.
 
+Under **Refuses models**, a **Columns** section says which columns the runner
+works: **Every column**, **Every column except** or **Only these**. The last
+two draw a checkbox list of the board's columns - never a shipped or shelved
+one - in board order, each a pill in the column's own colour. A lit pill is a
+column the runner works and a dim one is a column it does not, whatever the
+choice: under *except* a ticked column is dim, and under *only* a ticked column
+is lit. **All** and **None** tick or clear every row, and the **only** beside a
+row ticks that row alone. Under *Only these*, nothing ticked works nothing;
+under *Every column except*, nothing ticked works everything. **Save settings**
+sends the rule only when it changed, and it binds on the board's very next
+dispatch read, like a refused model ([Refused columns](the-runner#refused-columns)).
+A caller who cannot edit reads one line beside `Refuses:`: `Columns: every
+column`, `Columns: every column except In Progress, Testing` or `Columns: only
+Breakdown, In Review`.
+
 Beneath them, **Declared by its sessions** is read-only: **Projects** is every
 project any live session was started with (every project when none), and whether
 each session **refuses dangerous work**, one line per session. Both are the
