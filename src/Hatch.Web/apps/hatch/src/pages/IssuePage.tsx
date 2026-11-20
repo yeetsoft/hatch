@@ -1098,6 +1098,14 @@ export function IssuePage() {
           "what is it waiting on". */}
       <Capabilities issue={issue} board={board} capabilities={capabilities} error={capabilitiesError} />
 
+      <EpicsInFlight
+        issue={issue}
+        rollup={rollup}
+        error={rollupError}
+        capabilities={capabilities}
+        statuses={board.statuses}
+      />
+
       {(filings.length > 0 || issue.childKeys.length > 0) && (
         <Progress
           rollup={rollup}
@@ -1513,6 +1521,82 @@ export function Capabilities({
             <CapabilityRow key={capability.id} capability={capability} board={board} now={now} />
           ))}
         </ul>
+      )}
+    </IssueSection>
+  );
+}
+
+/**
+ * The epics open under an ambition: which, what column each is in, which of
+ * the ambition's capabilities each serves, and how many run at once.
+ *
+ * Drawn from the rollup Progress already fetched and the capabilities
+ * Capabilities already fetched - nothing new is asked for. Open means a column
+ * that is neither terminal nor deferred; a status the board does not carry
+ * counts as closed. Omitted entirely off any type but an ambition.
+ */
+export function EpicsInFlight({
+  issue,
+  rollup,
+  error,
+  capabilities,
+  statuses,
+}: {
+  issue: Issue;
+  rollup: IssueRollup | null;
+  error: string | null;
+  capabilities: Capability[] | null;
+  statuses: Status[];
+}) {
+  if (issue.type !== 'ambition') return null;
+
+  const open = (rollup?.children ?? []).flatMap((child) => {
+    const status = statuses.find((s) => s.id === child.issue.statusId);
+    return status && !status.isTerminal && !status.isDeferred ? [{ card: child.issue, status }] : [];
+  });
+  const runs = issue.wipLimit ?? 1;
+
+  return (
+    <IssueSection id="epics-in-flight" title="Epics in flight" count={rollup ? open.length : undefined}>
+      {error && <p className="text-danger">{error}</p>}
+      {!rollup && !error && <p className="text-muted">Loading…</p>}
+
+      {rollup && open.length === 0 && <p className="text-muted">No epic is open under this ambition.</p>}
+
+      {rollup && open.length > 0 && (
+        <>
+          <p className="text-muted">
+            {open.length} open, runs {runs} at once
+          </p>
+          <ul className="hatch-progress-list">
+            {open.map(({ card, status }) => {
+              const served = (capabilities ?? [])
+                .filter((c) => c.servedBy.includes(card.key))
+                .sort((a, b) => a.position - b.position);
+
+              return (
+                <li key={card.key} className="hatch-progress-row">
+                  <Link to={`/issues/${card.key}`} className="hatch-plan-key">
+                    {card.key}
+                  </Link>
+                  <span className="hatch-progress-title">{card.title}</span>
+                  <span className="hatch-epics-in-flight-meta">
+                    <StatusPill status={status} size="sm" />
+                    {served.length === 0 ? (
+                      <span className="text-muted">&mdash;</span>
+                    ) : (
+                      served.map((c) => (
+                        <span key={c.id} className="hatch-capability-badge" title={c.statement}>
+                          #{c.position}
+                        </span>
+                      ))
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </IssueSection>
   );

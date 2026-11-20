@@ -422,6 +422,10 @@ public class AdminSurfaceTests
         "IssueCapabilitiesController.PostVerdict",
         "IssueCapabilitiesController.PutOrder",
 
+        // An ambition's passes, as data: a read alone, key-accepting like the
+        // rest of the module. See IssuePassesController.
+        "IssuePassesController.GetPasses",
+
         // Shelving a tree into a dream. Key-accepting like the module around
         // it - see IssueRemandController.
         "IssueRemandController.Remand",
@@ -930,6 +934,7 @@ public class AdminSurfaceTests
         "IssueMessagesController.Deliver",
         "IssueNoCodeController.PutIssueNoCode",
         "IssueOnePrController.PutIssueOnePr",
+        "IssuePassesController.GetPasses",
         "IssueReleaseNoteController.PutIssueReleaseNote",
         "IssueRemandController.Remand",
         "IssueRunnerOmissionsController.DeleteOmittedRunner",

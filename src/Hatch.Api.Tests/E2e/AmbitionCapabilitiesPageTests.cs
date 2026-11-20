@@ -33,6 +33,7 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
     /// <summary>A section is a <c>details</c> whose summary is its title; the section id is a storage key, not an element id.</summary>
     private const string Capabilities = ".hatch-issue-section:has(> summary:text-matches(\"^Capabilities\"))";
     private const string Serves = ".hatch-issue-section:has(> summary:text-matches(\"^Serves\"))";
+    private const string EpicsInFlight = ".hatch-issue-section:has(> summary:text-matches(\"^Epics in flight\"))";
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
@@ -90,7 +91,7 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
 
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
-            var (ambition, epic) = await deadline.BoundAsync("filing the ambition", () => FileAmbitionAsync(baseUrl));
+            var (ambition, epic, second) = await deadline.BoundAsync("filing the ambition", () => FileAmbitionAsync(baseUrl));
 
             // The ambition: one row per capability, four states, all drawn.
             await harness.OpenAsync(deadline, baseUrl, $"/issues/{ambition}");
@@ -111,6 +112,25 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
             Assert.Contains(epic, text);
             AssertDated(measured);
             AssertFits(measured, profile is not null);
+
+            // The epics under it: both open, each with the capabilities it serves,
+            // and the count line. The badge row sits beside the title on a desk
+            // and under it on a phone; nothing may scroll sideways.
+            await harness.WaitForVisibleAsync(deadline, $"{EpicsInFlight} .hatch-progress-row");
+            var inFlight = await harness.EvaluateAsync<JsonElement>(
+                deadline, "measuring the Epics in flight section", MeasureScript, "Epics in flight");
+            output.WriteLine($"{profileName} /issues/{ambition} epics: {inFlight}");
+            await ScrollToAsync(harness, deadline, "Epics in flight");
+            output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, $"epics-in-flight-{profileName}")}");
+
+            var inFlightText = inFlight.GetProperty("text").GetString()!;
+            Assert.Contains(epic, inFlightText);
+            Assert.Contains(second, inFlightText);
+            Assert.Contains("2 open, runs 1 at once", inFlightText);
+            Assert.Contains("#1", inFlightText);
+            Assert.Contains("#2", inFlightText);
+            Assert.Contains("#3", inFlightText);
+            AssertFits(inFlight, profile is not null);
 
             // The epic: the Serves section names the ambition and the capability it serves.
             await harness.GoToAsync(deadline, $"issues/{epic}");
@@ -187,10 +207,11 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
 
     /// <summary>
     /// A project, an ambition with four capabilities - holds, does not hold,
-    /// cannot tell and not checked - and an epic under it serving the first.
-    /// Returns the ambition's key and the epic's.
+    /// cannot tell and not checked - and two epics under it, the first serving
+    /// the first capability and the second the next two.
+    /// Returns the ambition's key and the two epics'.
     /// </summary>
-    private static async Task<(string Ambition, string Epic)> FileAmbitionAsync(string baseUrl)
+    private static async Task<(string Ambition, string Epic, string Second)> FileAmbitionAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
@@ -225,7 +246,14 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
         var putText = await put.Content.ReadAsStringAsync();
         Assert.True(put.IsSuccessStatusCode, $"PUT /api/issues/{epic.Key}/serves answered {(int)put.StatusCode}: {putText}");
 
-        return (ambition.Key, epic.Key);
+        var second = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "epic", "Order notices for staff", null, ambition.Key, null, null));
+
+        using var putSecond = await http.PutAsJsonAsync($"/api/issues/{second.Key}/serves", new IssueServesWriteRequest([ids[1], ids[2]]), Web);
+        var putSecondText = await putSecond.Content.ReadAsStringAsync();
+        Assert.True(putSecond.IsSuccessStatusCode, $"PUT /api/issues/{second.Key}/serves answered {(int)putSecond.StatusCode}: {putSecondText}");
+
+        return (ambition.Key, epic.Key, second.Key);
     }
 
     private static async Task<TResponse> PostAsync<TRequest, TResponse>(HttpClient http, string path, TRequest body)

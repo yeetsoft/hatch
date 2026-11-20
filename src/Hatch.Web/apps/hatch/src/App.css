@@ -4121,6 +4121,33 @@ input.hatch-inline-title-input {
   gap: var(--sp-2);
 }
 
+/* Epics in flight, on an ambition's issue page: the column and the capabilities
+   served sit beside the title on a desk and stack under it on a phone. Rows
+   reuse .hatch-progress-row. */
+.hatch-epics-in-flight-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+  min-width: 0;
+}
+
+.hatch-capability-badge {
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+@media (max-width: 40rem) {
+  .hatch-epics-in-flight-meta {
+    flex: 1 0 100%;
+    margin-left: 0;
+  }
+}
+
 /* The word is what tells the four states apart - these four colours are
    decoration on top of it, never instead. */
 .hatch-capability-state {

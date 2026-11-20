@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { Capabilities, Serves } from './IssuePage';
+import { Capabilities, EpicsInFlight, Serves } from './IssuePage';
 import { DatedAt } from '../components/DatedAt';
-import type { Board, Capability, Issue, IssueCard, ServedCapability, Status } from '../types';
+import type { Board, Capability, ChildRollup, Issue, IssueCard, IssueRollup, ServedCapability, Status } from '../types';
 
 /* No DOM runner: both sections are rendered from props, the way
    PlanPage.test.tsx renders EpicCard. Mocked the same way BallotTree.test.tsx
@@ -162,5 +162,76 @@ describe('DatedAt', () => {
     expect(html).toContain(`>${new Date(at).toLocaleDateString()}</time>`);
     expect(html).toContain(new Date(at).toLocaleString());
     expect(html).toContain('2 days ago');
+  });
+});
+
+describe('EpicsInFlight', () => {
+  const columns = [
+    { id: 1, name: 'In Progress', isTerminal: false, isDeferred: false, color: '#3366cc' },
+    { id: 2, name: 'In Review', isTerminal: false, isDeferred: false, color: '#3366cc' },
+    { id: 3, name: 'Done', isTerminal: true, isDeferred: false, color: '#3366cc' },
+    { id: 4, name: 'Parked', isTerminal: false, isDeferred: true, color: '#3366cc' },
+  ] as Status[];
+
+  const child = (key: string, statusId: number): ChildRollup =>
+    ({ issue: { key, type: 'epic', title: `title ${key}`, statusId }, isLeaf: false }) as ChildRollup;
+
+  const rollupOf = (...children: ChildRollup[]): IssueRollup => ({ key: 'AER-1', children }) as IssueRollup;
+
+  const renderEpics = (
+    issue: Issue,
+    rollup: IssueRollup | null,
+    capabilities: Capability[] | null = [],
+    error: string | null = null,
+  ): string =>
+    renderToStaticMarkup(
+      <MemoryRouter>
+        <EpicsInFlight issue={issue} rollup={rollup} error={error} capabilities={capabilities} statuses={columns} />
+      </MemoryRouter>,
+    );
+
+  const caps = [
+    capability({ id: 1, position: 1, statement: 'first', servedBy: ['AER-10'] }),
+    capability({ id: 2, position: 2, statement: 'second', servedBy: ['AER-10', 'AER-11'] }),
+  ];
+
+  it('lists the open epics with their column and served capabilities, and leaves a closed one out', () => {
+    const html = renderEpics(
+      { ...ambition, wipLimit: null } as Issue,
+      rollupOf(child('AER-10', 1), child('AER-11', 2), child('AER-12', 3)),
+      caps,
+    );
+    expect(html).toContain('href="/issues/AER-10"');
+    expect(html).toContain('href="/issues/AER-11"');
+    expect(html).toContain('In Progress');
+    expect(html).toContain('In Review');
+    expect(html).toContain('#1');
+    expect(html).toContain('#2');
+    expect(html).toContain('2 open, runs 1 at once');
+    expect(html).not.toContain('AER-12');
+  });
+
+  it('reads the ambition\'s own limit', () => {
+    const html = renderEpics(
+      { ...ambition, wipLimit: 2 } as Issue,
+      rollupOf(child('AER-10', 1), child('AER-11', 2)),
+      caps,
+    );
+    expect(html).toContain('2 open, runs 2 at once');
+  });
+
+  it('says so, and draws no list, with no open epic', () => {
+    const html = renderEpics(ambition, rollupOf(child('AER-10', 3), child('AER-11', 4)), caps);
+    expect(html).toContain('No epic is open under this ambition.');
+    expect(html).not.toContain('<ul');
+    expect(html).not.toContain('runs');
+  });
+
+  it.each([
+    ['an epic', 'epic'],
+    ['a story', 'story'],
+    ['a task', 'task'],
+  ])('draws nothing on %s', (_, type) => {
+    expect(renderEpics({ key: 'AER-3', type } as Issue, rollupOf(child('AER-10', 1)), caps)).toBe('');
   });
 });
