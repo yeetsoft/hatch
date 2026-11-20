@@ -19,6 +19,7 @@ const sourcesOf = (dir: URL): string[] =>
 /** Where the project list is read, by file. Each reads the one endpoint. */
 const KNOWN = [
   'api/client.ts',
+  'components/FindingBugDialog.tsx',
   'components/TrunkBuildBugDialog.tsx',
   'lib/useProjects.ts',
   'pages/ActivityReportPage.tsx',
