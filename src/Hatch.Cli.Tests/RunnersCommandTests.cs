@@ -19,7 +19,8 @@ public sealed class RunnersCommandTests
         IReadOnlyList<string>? has = null, IReadOnlyList<RunnerSessionDto>? sessions = null, string? image = null,
         DateTimeOffset? agentDownUntil = null, string? agentDownKind = null, string? agentDownLine = null,
         IReadOnlyList<string>? refusedModels = null, long? acceleratorMemoryBytes = null,
-        int? acceleratorDeviceCount = null, string? acceleratorBackend = null) =>
+        int? acceleratorDeviceCount = null, string? acceleratorBackend = null,
+        string statusMode = RunnerStatusMode.All, IReadOnlyList<int>? statusIds = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
@@ -30,7 +31,8 @@ public sealed class RunnersCommandTests
             TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has, Sessions: sessions,
             Image: image, AgentDownUntil: agentDownUntil, AgentDownKind: agentDownKind, AgentDownLine: agentDownLine,
             RefusedModels: refusedModels ?? [], AcceleratorMemoryBytes: acceleratorMemoryBytes,
-            AcceleratorDeviceCount: acceleratorDeviceCount, AcceleratorBackend: acceleratorBackend);
+            AcceleratorDeviceCount: acceleratorDeviceCount, AcceleratorBackend: acceleratorBackend,
+            StatusMode: statusMode, StatusIds: statusIds ?? []);
 
     private static RunnerSessionDto ASession(
         string where = "Fry:/code/hatch", string? agent = "claude", string? os = "Darwin 23.6.0",
@@ -57,6 +59,7 @@ public sealed class RunnersCommandTests
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
         h.Wire.Json("GET", "/api/runners", new List<RunnerDto> { ARunner(claimKey: "AER-12") });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -69,6 +72,7 @@ public sealed class RunnersCommandTests
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
         h.Wire.Json("GET", "/api/runners", new List<RunnerDto> { ARunner(claimKey: null) });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -85,6 +89,7 @@ public sealed class RunnersCommandTests
             ARunner(name: "bound", projects: ["FIL", "AER"]),
             ARunner(name: "free"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -102,6 +107,7 @@ public sealed class RunnersCommandTests
             ARunner(name: "told", projects: ["HA"], has: ["dotnet@10.0.100", "node@22.11.0", "pwsh"]),
             ARunner(name: "silent"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -119,6 +125,7 @@ public sealed class RunnersCommandTests
             ARunner(name: "told", projects: ["HA"], models: ["haiku", "sonnet"]),
             ARunner(name: "silent"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -137,6 +144,7 @@ public sealed class RunnersCommandTests
             ARunner(name: "total", tokensUsed: 950_000),
             ARunner(name: "older", runs: 3, spent: 1.25m, host: "Fry"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -155,6 +163,7 @@ public sealed class RunnersCommandTests
             ARunner(name: "told", runs: 3, spent: 1.25m, host: "Fry", projects: ["HA"]),
             ARunner(name: "mute"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -174,6 +183,7 @@ public sealed class RunnersCommandTests
             ARunner(name: "built", host: "Fry", image: "ghcr.io/o/r:1"),
             ARunner(name: "generic", host: "Fry"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -196,6 +206,7 @@ public sealed class RunnersCommandTests
             ARunner(name: "silent"),
             ARunner(name: "all", projects: ["HA"], has: ["pwsh"], acceleratorBackend: "cuda", acceleratorMemoryBytes: 25_769_803_776L, acceleratorDeviceCount: 2),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -218,6 +229,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(claimKey: "AER-12", goneAfterSeconds: 60, lastSeenAt: Now - TimeSpan.FromSeconds(120)),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -231,6 +243,7 @@ public sealed class RunnersCommandTests
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
         h.Wire.Json("GET", "/api/runners", new List<RunnerDto> { ARunner(state: "paused") });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -245,6 +258,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -259,6 +273,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "signed-out"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -273,6 +288,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(goneAfterSeconds: 60, lastSeenAt: Now - TimeSpan.FromSeconds(120), agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -288,6 +304,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(agentDownUntil: Now.AddHours(-1), agentDownKind: "not-starting"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -303,6 +320,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting", agentDownLine: "npm not found"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -317,6 +335,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(sessions: [ASession(agentDownUntil: Now.AddHours(1), agentDownKind: "signed-out")]),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -331,6 +350,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "board-paused", agentDownLine: "three sessions ended in error"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -348,6 +368,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(sessions: [ASession(agentDownUntil: Now.AddHours(1), agentDownKind: "board-paused")]),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -363,6 +384,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(agentDownUntil: Now.AddHours(-1), agentDownKind: "board-paused", agentDownLine: "three sessions ended in error"),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -394,6 +416,7 @@ public sealed class RunnersCommandTests
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
         h.Wire.Reply("GET", "/api/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync([], default));
         Assert.Contains("behind-runner", h.Said);
@@ -423,6 +446,7 @@ public sealed class RunnersCommandTests
                 ASession(where: "Leela:/code/aerie", agent: "codex", os: "Ubuntu 22.04", state: "paused"),
             ]),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -442,6 +466,7 @@ public sealed class RunnersCommandTests
                 name: "silent", goneAfterSeconds: 60, lastSeenAt: Now - TimeSpan.FromSeconds(120),
                 sessions: [ASession(endedAt: Now - TimeSpan.FromSeconds(90))]),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -462,6 +487,7 @@ public sealed class RunnersCommandTests
                 ASession(where: "Leela:/code/aerie", endedAt: Now - TimeSpan.FromSeconds(5)),
             ]),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -477,6 +503,7 @@ public sealed class RunnersCommandTests
         {
             ARunner(name: "quiet", sessions: [ASession(agent: null)]),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -496,6 +523,7 @@ public sealed class RunnersCommandTests
                 ASession(where: "Leela:/code/aerie", os: "Ubuntu 22.04"),
             ]),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -547,12 +575,72 @@ public sealed class RunnersCommandTests
             ARunner(name: "told", models: ["haiku"], refusedModels: ["haiku", "fable"]),
             ARunner(name: "silent", models: ["haiku"]),
         });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
         var lines = h.Said.Split('\n');
         Assert.EndsWith("  models haiku  refuses haiku, fable", lines.Single(l => l.StartsWith("told", StringComparison.Ordinal)));
         Assert.DoesNotContain("refuses", lines.Single(l => l.StartsWith("silent", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_row_under_only_closes_with_the_named_columns_in_board_order()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(name: "picky", statusMode: RunnerStatusMode.Only, statusIds: [3, 1]),
+        });
+        h.Wire.Json("GET", "/api/statuses", new[]
+        {
+            Fixtures.Status(1, "Breakdown"), Fixtures.Status(2, "In Progress"), Fixtures.Status(3, "In Review"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        Assert.EndsWith("  only Breakdown, In Review", lines.Single(l => l.StartsWith("picky", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_row_under_except_closes_with_skips_and_a_row_under_all_closes_with_nothing_extra()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(name: "picky", statusMode: RunnerStatusMode.Except, statusIds: [1, 2]),
+            ARunner(name: "open", statusMode: RunnerStatusMode.All),
+        });
+        h.Wire.Json("GET", "/api/statuses", new[]
+        {
+            Fixtures.Status(1, "In Progress"), Fixtures.Status(2, "Testing"), Fixtures.Status(3, "Done", terminal: true),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        Assert.EndsWith("  skips In Progress, Testing", lines.Single(l => l.StartsWith("picky", StringComparison.Ordinal)));
+        var open = lines.Single(l => l.StartsWith("open", StringComparison.Ordinal));
+        Assert.DoesNotContain("only", open);
+        Assert.DoesNotContain("skips", open);
+    }
+
+    [Fact]
+    public async Task A_rule_naming_no_current_column_closes_with_nothing_extra()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(name: "stale", statusMode: RunnerStatusMode.Only, statusIds: [99]),
+        });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(1, "Backlog") });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        var stale = lines.Single(l => l.StartsWith("stale", StringComparison.Ordinal));
+        Assert.DoesNotContain("only", stale);
     }
 }
 

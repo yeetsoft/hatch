@@ -16,10 +16,10 @@ import { resetClockWords } from './attention';
 import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
 import { refusedModelsDraft, refusedModelsRequest } from './runnerModels';
-import { sameColumnIds } from './runnerColumns';
+import { sameColumnIds, workableColumns } from './runnerColumns';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import { compactTokens, parseTokenCount, thousands, TOKEN_FIELD_HINT } from './workLog';
-import type { Runner, RunnerPatchRequest, RunnerSession, RunnerStatusMode } from '../types';
+import type { Runner, RunnerPatchRequest, RunnerSession, RunnerStatusMode, Status } from '../types';
 
 /** The eight states a row can be in, in the order they are decided. */
 export type RunnerActivity = 'gone' | 'agent-down' | 'exhausted' | 'throttled' | 'paused' | 'stopping' | 'working' | 'idle';
@@ -376,7 +376,7 @@ export function rowSecondLine(runner: Runner, now: Date): string {
     live sessions - omitted with none, named with one, counted with more -
     then the same for the image, so a runner from a built image still reads
     as one at a glance. */
-export function rowThirdLine(runner: Runner, now: Date): string {
+export function rowThirdLine(runner: Runner, now: Date, statuses: Status[] | null = null): string {
   const owner = runner.for ?? 'no owner';
   const live = liveSessions(runner, now);
   const distinct = (values: (string | null | undefined)[]): string[] =>
@@ -394,6 +394,9 @@ export function rowThirdLine(runner: Runner, now: Date): string {
 
   const refused = refusedLabel(runner);
   if (refused) parts.push(refused);
+
+  const columns = columnsLabel(runner, statuses);
+  if (columns) parts.push(columns);
 
   return parts.join(' · ');
 }
@@ -543,6 +546,22 @@ export function modelsLabel(runner: Runner): string | null {
 /** The models a runner refuses, as the row says it - or null where it refuses none. The `refuses ` prefix is deliberate, the same reason as `modelsLabel`: a bare list beside an owner reads as nothing. */
 export function refusedLabel(runner: Runner): string | null {
   return runner.refusedModels.length === 0 ? null : `refuses ${runner.refusedModels.join(', ')}`;
+}
+
+/** A runner's column rule, as the row says it: `only Breakdown, In Review` for
+    `only`, `skips In Progress, Testing` for `except`, named in board order - or
+    null under `all`, with `statuses` still null, or where the rule names none
+    of the board's current columns. The settings card's own `columnsWords`
+    reads the same rule in different words, for a different reader. */
+export function columnsLabel(runner: Runner, statuses: Status[] | null): string | null {
+  const mode = runner.statusMode ?? 'all';
+  if (mode === 'all' || statuses === null) return null;
+  const ids = runner.statusIds ?? [];
+  const named = workableColumns(statuses)
+    .filter((c) => ids.includes(c.id))
+    .map((c) => c.name);
+  if (named.length === 0) return null;
+  return mode === 'only' ? `only ${named.join(', ')}` : `skips ${named.join(', ')}`;
 }
 
 /** A runner's dependencies, joined - or null where it has reported none. The `has ` prefix is deliberate, the same reason as `modelsLabel`: a bare list beside an agent name reads as nothing. Each entry is `id` or `id@version`; the `@` becomes a space, since the version is a fact about the id, not part of it. */

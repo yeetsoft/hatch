@@ -11,6 +11,7 @@ import {
   ceilingsChanged,
   ceilingsOf,
   ceilingsRequest,
+  columnsLabel,
   declaredDangerous,
   declaredProjects,
   sessionTotals,
@@ -58,7 +59,7 @@ import {
   TOKEN_WARN_PERCENT,
   ACTIVITY_TONES,
 } from './runners';
-import type { Runner, RunnerSession } from '../types';
+import type { Runner, RunnerSession, Status } from '../types';
 import type { RunnerBounds } from './runners';
 import { agoPhrase } from './claim';
 import { TOKEN_FIELD_HINT } from './workLog';
@@ -119,6 +120,34 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   sourceDrift: 'Unknown',
   ...over,
 });
+
+const status = (id: number, name: string, sortOrder: number, over: Partial<Status> = {}): Status => ({
+  id,
+  name,
+  sortOrder,
+  isTerminal: false,
+  isDeferred: false,
+  isWip: false,
+  expressSkips: false,
+  parentPulls: false,
+  agentFiles: false,
+  isImplementation: false,
+  isProtected: false,
+  mergesPullRequest: false,
+  runnerTags: [],
+  color: '#6b7280',
+  ...over,
+});
+
+// Deliberately out of order, with a terminal and a deferred column among them.
+const board = (): Status[] => [
+  status(4, 'In Review', 40),
+  status(9, 'Done', 90, { isTerminal: true }),
+  status(2, 'Breakdown', 20),
+  status(7, 'Later', 70, { isDeferred: true }),
+  status(3, 'In Progress', 30),
+  status(5, 'Testing', 50),
+];
 
 describe('runnerActivity', () => {
   it('is idle between increments', () => {
@@ -1151,7 +1180,45 @@ describe('refusedLabel', () => {
   });
 });
 
+describe('columnsLabel', () => {
+  it('names the worked columns in board order under only', () => {
+    expect(columnsLabel(runner({ statusMode: 'only', statusIds: [4, 2] }), board())).toBe('only Breakdown, In Review');
+  });
+
+  it('names the skipped columns in board order under except', () => {
+    expect(columnsLabel(runner({ statusMode: 'except', statusIds: [5, 3] }), board())).toBe('skips In Progress, Testing');
+  });
+
+  it('is null under all, whatever the ids', () => {
+    expect(columnsLabel(runner({ statusMode: 'all', statusIds: [2, 3] }), board())).toBeNull();
+    expect(columnsLabel(runner(), board())).toBeNull();
+  });
+
+  it('is null while statuses has not loaded', () => {
+    expect(columnsLabel(runner({ statusMode: 'only', statusIds: [2] }), null)).toBeNull();
+  });
+
+  it('is null for an empty id list, under either mode', () => {
+    expect(columnsLabel(runner({ statusMode: 'only', statusIds: [] }), board())).toBeNull();
+    expect(columnsLabel(runner({ statusMode: 'except', statusIds: [] }), board())).toBeNull();
+  });
+
+  it('is null where every named id is stale - since made terminal, deferred or deleted', () => {
+    expect(columnsLabel(runner({ statusMode: 'only', statusIds: [9, 7, 99] }), board())).toBeNull();
+  });
+});
+
 describe('rowThirdLine', () => {
+  it('ends with the column rule after refusedLabel, and says nothing under all or with no statuses', () => {
+    const r = runner({ for: 'Ada', statusMode: 'only', statusIds: [4, 2] });
+    expect(rowThirdLine(r, NOW, board())).toBe('Ada · only Breakdown, In Review');
+    expect(rowThirdLine(r, NOW)).toBe('Ada');
+    expect(rowThirdLine(runner({ for: 'Ada', statusMode: 'all' }), NOW, board())).toBe('Ada');
+
+    const refusing = runner({ for: 'Ada', refusedModels: ['fable'], statusMode: 'except', statusIds: [3] });
+    expect(rowThirdLine(refusing, NOW, board())).toBe('Ada · refuses fable · skips In Progress');
+  });
+
   it('ends with what the runner refuses, after the host and image, and says nothing for none', () => {
     const r = runner({
       for: 'Ada',

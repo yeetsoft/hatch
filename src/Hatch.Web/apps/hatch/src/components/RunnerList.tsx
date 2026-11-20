@@ -1,7 +1,7 @@
 import { Button, Card, EmptyState } from '@hatch/ui';
 import { RunnerRow } from './RunnerRow';
 import { sortRunners } from '../lib/runners';
-import type { Runner } from '../types';
+import type { Runner, Status } from '../types';
 
 export interface RunnerListProps {
   /** Null while the read is out: nothing is drawn, so loading is never mistaken for empty. */
@@ -13,6 +13,8 @@ export interface RunnerListProps {
   wallOff: boolean;
   now: Date;
   onCreate?: () => void;
+  /** The board's columns, for each row's third line. Null while unread. */
+  statuses?: Status[] | null;
 }
 
 /** The sentence an empty list says, by who is reading it. Wall off is asked
@@ -51,7 +53,7 @@ function emptyState(wallOff: boolean, isAdmin: boolean, onCreate?: () => void) {
  * group of their own, collapsed unless the open runner is among them so its
  * row is never hidden. The order is `sortRunners`'s, done here at render.
  */
-export function RunnerList({ runners, selected, isAdmin, wallOff, now, onCreate }: RunnerListProps) {
+export function RunnerList({ runners, selected, isAdmin, wallOff, now, onCreate, statuses = null }: RunnerListProps) {
   if (runners === null) return null;
 
   const { shown, revoked } = sortRunners(runners, now);
@@ -59,7 +61,7 @@ export function RunnerList({ runners, selected, isAdmin, wallOff, now, onCreate 
 
   const row = (runner: Runner) => (
     <li key={runner.name}>
-      <RunnerRow runner={runner} selected={runner.name === selected} now={now} />
+      <RunnerRow runner={runner} selected={runner.name === selected} now={now} statuses={statuses} />
     </li>
   );
 

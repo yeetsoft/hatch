@@ -60,6 +60,14 @@ public static class Columns
     /// <summary>What there is instead, for the sentence that says there is no such column.</summary>
     public static string Named(IEnumerable<StatusDto> statuses) => string.Join(", ", statuses.Select(s => s.Name));
 
+    /// <summary>
+    /// The columns a runner can be told to work or skip: the ones that are
+    /// neither terminal nor deferred, in board order. The CLI's mirror of
+    /// <c>workableColumns</c> (<c>apps/hatch/src/lib/runnerColumns.ts</c>).
+    /// </summary>
+    public static IReadOnlyList<StatusDto> Workable(IEnumerable<StatusDto> statuses) =>
+        statuses.Where(s => !s.IsTerminal && !s.IsDeferred).OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList();
+
     private static List<StatusDto> Matching(IEnumerable<StatusDto> statuses, string want)
     {
         var wanted = Normalise(want);

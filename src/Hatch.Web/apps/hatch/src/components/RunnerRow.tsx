@@ -9,7 +9,7 @@ import {
   sessionParts,
   speakingSession,
 } from '../lib/runners';
-import type { Runner } from '../types';
+import type { Runner, Status } from '../types';
 
 /**
  * One runner in the list: a link to its detail, in three lines. The glyph and
@@ -17,13 +17,23 @@ import type { Runner } from '../types';
  * doing; and whose it is and where it runs. The words are `lib/runners.ts`'s -
  * this only draws them.
  */
-export function RunnerRow({ runner, selected, now }: { runner: Runner; selected: boolean; now: Date }) {
+export function RunnerRow({
+  runner,
+  selected,
+  now,
+  statuses = null,
+}: {
+  runner: Runner;
+  selected: boolean;
+  now: Date;
+  statuses?: Status[] | null;
+}) {
   const state = runnerGlyphState(runner, now);
   const speaking = speakingSession(runner, now);
   const label = speaking ? sessionParts(speaking, runner, now).words : state === 'gone' ? 'Gone' : 'Not started';
   const sessions = liveSessions(runner, now).length;
   const second = rowSecondLine(runner, now);
-  const third = rowThirdLine(runner, now);
+  const third = rowThirdLine(runner, now, statuses);
 
   return (
     <Link

@@ -649,6 +649,11 @@ A runner that refuses some models closes its line after the models it
 advertises with `  refuses haiku, fable`, comma-separated; one that refuses
 none prints nothing extra.
 
+A runner with a column rule closes its line after that with `  only Breakdown,
+In Review` or `  skips In Progress, Testing`, the columns named in board order.
+`all` adds nothing, the same as a rule naming none of the board's current
+columns. See [the runner](the-runner#refused-columns).
+
 `hatch runners refuse` reads, sets and lifts the calling key's own refused
 models - the runner is always the calling key's own name, never a flag, and a
 call with no key is refused: `hatch: a refusal is a key's - run \`hatch

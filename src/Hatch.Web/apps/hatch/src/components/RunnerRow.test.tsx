@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { RunnerRow } from './RunnerRow';
-import type { Runner, RunnerSession } from '../types';
+import type { Runner, RunnerSession, Status } from '../types';
 
 const NOW = new Date('2026-09-08T12:00:00Z');
 
@@ -79,10 +79,30 @@ const session = (over: Partial<RunnerSession> = {}): RunnerSession => ({
   ...over,
 });
 
-const draw = (r: Runner, selected = false) =>
+const status = (id: number, name: string, sortOrder: number, over: Partial<Status> = {}): Status => ({
+  id,
+  name,
+  sortOrder,
+  isTerminal: false,
+  isDeferred: false,
+  isWip: false,
+  expressSkips: false,
+  parentPulls: false,
+  agentFiles: false,
+  isImplementation: false,
+  isProtected: false,
+  mergesPullRequest: false,
+  runnerTags: [],
+  color: '#6b7280',
+  ...over,
+});
+
+const board = (): Status[] => [status(2, 'Breakdown', 20), status(3, 'In Review', 30)];
+
+const draw = (r: Runner, selected = false, statuses: Status[] | null = null) =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <RunnerRow runner={r} selected={selected} now={NOW} />
+      <RunnerRow runner={r} selected={selected} now={NOW} statuses={statuses} />
     </MemoryRouter>,
   );
 
@@ -155,6 +175,23 @@ describe('RunnerRow', () => {
     const html = draw(runner({ for: 'sam', sessions: [session({ host: 'mac-mini', image: 'ghcr.io/o/r:1' })] }));
 
     expect(html).toContain('sam · mac-mini · ghcr.io/o/r:1');
+  });
+
+  it('ends line three with the column rule when statuses are passed, under only and except', () => {
+    const only = draw(runner({ for: 'sam', statusMode: 'only', statusIds: [3, 2] }), false, board());
+    expect(only).toContain('sam · only Breakdown, In Review');
+
+    const except = draw(runner({ for: 'sam', statusMode: 'except', statusIds: [2] }), false, board());
+    expect(except).toContain('sam · skips Breakdown');
+  });
+
+  it('says nothing of a column rule under all, or with no statuses passed', () => {
+    const all = draw(runner({ for: 'sam', statusMode: 'all' }), false, board());
+    expect(all).not.toContain('only');
+    expect(all).not.toContain('skips');
+
+    const noStatuses = draw(runner({ for: 'sam', statusMode: 'only', statusIds: [2] }));
+    expect(noStatuses).not.toContain('only');
   });
 
   it('draws an agent-down session with its own glyph and words', () => {
