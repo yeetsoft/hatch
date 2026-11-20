@@ -538,7 +538,9 @@ a question (`hold`, `build` or `merge`) and null on everything else, and an
 `AnsweredAfter` that is true only on an answer given after its issue closed - set on the
 answers inside a `QuestionDto`, false on every other comment, and derived when
 read. A person sets the level with
-`PUT /issues/{key}/questions/{id}/level`; a key cannot.
+`PUT /issues/{key}/questions/{id}/level`; a key cannot. It also carries an
+optional `AuthorKind` (`person` or `key`; null on a comment written before
+the column existed, or by the board itself).
 `CommentCreateRequest` is `Body`, an optional `Kind` (omitted means an ordinary
 note), an optional `AnswersId`, an optional `Options`, and a `Level` that it
 only carries so it can be refused: a comment sent with one is a `400`, since a
@@ -1704,7 +1706,7 @@ folder configured, `409`s while another run already holds the gate, and
 `403`s for an API key, the same as a program reaching `/overnight/seen`.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
-Owner, Scope)` - `kind: key` for an API key, naming its own name, its
+Owner, Scope, Home)` - `kind: key` for an API key, naming its own name, its
 owner's name (`Owner`, null with no owner) and its owner's role lowercased (`Role`, null with no
 owner); `kind: person` when a grant holds a person;
 `kind: local` with the wall off and the machine's own person speaking;
@@ -1720,6 +1722,12 @@ whose projects are all deleted reads `none`. `projectIds` is the ids in
 ascending order for `some`, and `[]` for `all` and `none`: `all` does not list
 every project, `GET /projects` does. A client that finds no `scope` - a server
 that predates it - carries on as before.
+
+`Home` is the screen the caller chose to open Hatch on: `board` or `ambitions`.
+It is read from a row of the caller's own, a key reading its owner's. With no
+row, no owner, or nobody at all, it is `board`, and so is a stored value this
+server does not recognise. A client that finds no `home` - a server that
+predates it - reads `board`.
 
 **Refusals worth naming.** `PATCH /runners/{name}` 404s a name no runner has
 ever used - it edits, it never creates. With the wall up, it also 403s a

@@ -8,9 +8,13 @@ export interface MeValue {
   /** Null until answered, and for a caller that is nobody (a key). */
   me: Me | null;
   isAdmin: boolean;
+  /** Whether the first read has answered or failed. Set once, and never back
+      to false - a later re-read on LOCAL_PERSON_CHANGED must not blank a page
+      that is already drawn. */
+  settled: boolean;
 }
 
-export const MeContext = createContext<MeValue>({ me: null, isAdmin: false });
+export const MeContext = createContext<MeValue>({ me: null, isAdmin: false, settled: false });
 
 /**
  * Asks who is here once per load, and again when the Settings page says the
@@ -20,6 +24,7 @@ export const MeContext = createContext<MeValue>({ me: null, isAdmin: false });
  */
 export function MeProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +35,8 @@ export function MeProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setMe(answer);
       } catch {
         // Deliberately silent - see the note above.
+      } finally {
+        if (!cancelled) setSettled(true);
       }
     };
 
@@ -44,7 +51,7 @@ export function MeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const value = useMemo(() => ({ me, isAdmin: me?.role === 'admin' }), [me]);
+  const value = useMemo(() => ({ me, isAdmin: me?.role === 'admin', settled }), [me, settled]);
 
   return <MeContext.Provider value={value}>{children}</MeContext.Provider>;
 }

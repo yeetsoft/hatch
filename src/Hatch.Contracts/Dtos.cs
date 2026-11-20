@@ -1605,6 +1605,11 @@ public record IssueBulkEditRequest(
 /// Set only on an answer read inside a <see cref="QuestionDto"/>: true where it
 /// was given after its issue closed. False on every other comment. Derived at read time.
 /// </param>
+/// <param name="AuthorKind">
+/// <c>"person"</c> or <c>"key"</c> - which kind of caller wrote this. Null on a
+/// comment the board wrote in its own voice, and on one written before the
+/// column existed. See <see cref="EfHatchComment.AuthorKind"/>.
+/// </param>
 public record CommentDto(
     long Id,
     string Author,
@@ -1616,7 +1621,8 @@ public record CommentDto(
     DateTimeOffset? DeliveredAt = null,
     string? DeliveredTo = null,
     string? Level = null,
-    bool AnsweredAfter = false);
+    bool AnsweredAfter = false,
+    string? AuthorKind = null);
 
 /// <summary>One dream: a line somebody wanted said, leaning toward a project or loose.</summary>
 /// <param name="WovenInto">The keys of the issues that drew on this dream, ordered by project key then issue number. Never null.</param>
@@ -5989,9 +5995,14 @@ public record CredentialDto(string ProtectedToken);
 /// the 204 and from a server that predates it, which a client reads as
 /// "carry on as before".
 /// </param>
+/// <param name="Home">
+/// The caller's chosen home screen, <c>board</c> or <c>ambitions</c> - a key
+/// reads its owner's. <c>board</c> when there is no row. Absent from a server
+/// that predates it, which a client reads as <c>board</c>.
+/// </param>
 public record MeDto(
     string Kind, string Name, string? Role, bool Configured, bool CanSignOut, bool CanSignIn,
-    string? Owner = null, MeScopeDto? Scope = null);
+    string? Owner = null, MeScopeDto? Scope = null, string Home = "board");
 
 /// <summary>
 /// The caller's own scope, as <c>GET /api/me</c> reports it.

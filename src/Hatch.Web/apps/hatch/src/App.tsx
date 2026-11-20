@@ -16,7 +16,7 @@ import { PrimaryNav } from './components/PrimaryNav';
 import { PullToRefresh } from './components/PullToRefresh';
 import { ScopeControl } from './components/ScopeControl';
 import { DesignIndexPage, DesignPage } from './design/DesignPage';
-import { BoardPage } from './pages/BoardPage';
+import { HomeRoute } from './pages/HomeRoute';
 import { AmbitionsPage } from './pages/AmbitionsPage';
 import { BallotPage } from './pages/BallotPage';
 import { PlanPage } from './pages/PlanPage';
@@ -49,7 +49,7 @@ import { MeProvider, useMe } from './lib/useMe';
 import { scopedPath, scopeTitle } from './lib/scope';
 import { ScopeProvider, useScope } from './lib/useScope';
 import { hasMultipleProjects } from './lib/useProjects';
-import { HOME, HOME_LABEL, navRows } from './lib/nav';
+import { HOME, homeLabel, navRows } from './lib/nav';
 import { usePhone } from './lib/viewport';
 import { usePullToRefresh } from './lib/usePullToRefresh';
 
@@ -95,8 +95,9 @@ function AppShell() {
             appName="Hatch"
             homeHref={appHref(scopedPath(HOME, keys))}
             /* The bar has no Board link: the logo is the way home, so it is
-               named for where it goes and lit on the board. */
-            homeLabel={HOME_LABEL}
+               named for where it goes - the board, unless the person chose
+               Ambitions as their home screen on Settings. */
+            homeLabel={homeLabel(me?.home)}
             homeCurrent={location.pathname === HOME}
             width="full"
             /* Below the phone breakpoint PrimaryNav is absent rather than
@@ -187,7 +188,7 @@ function AppShell() {
   
           <main className="hatch-content">
             <Routes>
-              <Route path="/" element={<BoardPage />} />
+              <Route path="/" element={<HomeRoute />} />
               <Route path="/ballot" element={<BallotPage />} />
               <Route path="/plan" element={<PlanPage />} />
               <Route path="/ambitions" element={<AmbitionsPage />} />
@@ -221,10 +222,10 @@ function AppShell() {
               <Route path="/users" element={<UsersPage />} />
               <Route path="/docs" element={<DocsPage />} />
               <Route path="/docs/*" element={<DocsPage />} />
-              {/* An unknown deep link lands on the board rather than on nothing -
-                  the board is the app, and there is no page worth writing that
-                  says "that URL was wrong". */}
-              <Route path="*" element={<BoardPage />} />
+              {/* An unknown deep link lands on the root's own page rather than on
+                  nothing - that is the app, and there is no page worth writing
+                  that says "that URL was wrong". */}
+              <Route path="*" element={<HomeRoute />} />
             </Routes>
           </main>
         </div>

@@ -563,6 +563,40 @@ public class EfHatchPersonScopeProject
     public EfHatchProject? Project { get; set; }
 }
 
+/// <summary>The two home screens a person can choose, and nothing else.</summary>
+public static class PersonHomeValue
+{
+    public const string Board = "board";
+    public const string Ambitions = "ambitions";
+
+    /// <summary>What a person with no row, or a row nobody recognises, gets.</summary>
+    public const string Default = Board;
+
+    public static bool IsKnown(string? home) => home is Board or Ambitions;
+}
+
+/// <summary>
+/// The screen one person opens Hatch on. A person with no row gets
+/// <see cref="PersonHomeValue.Board"/>, which is what makes the table safe to
+/// add to an installation that has people already.
+/// </summary>
+[Table("PersonHomes")]
+public class EfHatchPersonHome
+{
+    /// <summary>
+    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
+    /// <see cref="EfHatchPersonScope.PersonId"/> is one.
+    /// </summary>
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public Guid PersonId { get; set; }
+
+    /// <summary>One of <see cref="PersonHomeValue"/>.</summary>
+    [MaxLength(10)]
+    public required string Home { get; set; }
+
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
+
 /// <summary>
 /// The last instant one reader read the Overnight page - one row per person,
 /// never a browser's cookie, so a badge cleared on a phone is cleared on the
@@ -1664,6 +1698,7 @@ public class EfHatchComment
 {
     public const int MaxBodyLength = 100_000;
     public const int MaxKindLength = 16;
+    public const int MaxAuthorKindLength = 16;
 
     /// <summary>An ordinary comment. The empty string rather than null, so the column never has two ways to say "nothing special".</summary>
     public const string Note = "";
@@ -1724,6 +1759,18 @@ public class EfHatchComment
     /// </summary>
     [MaxLength(MaxKindLength)]
     public string Kind { get; set; } = Note;
+
+    /// <summary>
+    /// <see cref="Hatch.Api.Services.Auth.ActorKind.Person"/> or
+    /// <see cref="Hatch.Api.Services.Auth.ActorKind.Key"/>: which kind of
+    /// caller wrote this. Null on everything the board writes in its own
+    /// voice - <see cref="Deferrals"/>, the stall note in
+    /// <see cref="IssueClaimController"/>, the dispatcher notes in
+    /// <see cref="WorkController"/> - and on every comment written before this
+    /// column existed.
+    /// </summary>
+    [MaxLength(MaxAuthorKindLength)]
+    public string? AuthorKind { get; set; }
 
     /// <summary>
     /// The question this answers, on the same issue. Null on everything else.

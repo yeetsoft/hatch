@@ -105,20 +105,25 @@ public class MeScopeTests
         return result.Value ?? throw new InvalidOperationException("expected a value");
     }
 
-    private static MeController Controller(
-        VisibleProjects visible, Actor? local, EfPerson? person = null, EfApiKey? key = null, bool enabled = false) =>
+    internal static MeController Controller(
+        VisibleProjects visible, Actor? local, EfPerson? person = null, EfApiKey? key = null, bool enabled = false,
+        HatchContext? db = null) =>
         new(
             new StubCaller(local, person, key),
             new StubSiteSettings(localPersonName: null),
             new FixedScope(visible),
-            Options.Create(new AuthOptions { Enabled = enabled }));
+            Options.Create(new AuthOptions { Enabled = enabled }),
+            db ?? NewContext());
+
+    internal static HatchContext NewContext() =>
+        new(new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
     internal sealed class FixedScope(VisibleProjects visible) : ICallerScope
     {
         public Task<VisibleProjects> ResolveAsync(CancellationToken ct) => Task.FromResult(visible);
     }
 
-    private sealed class StubCaller(Actor? local, EfPerson? person, EfApiKey? key) : ICallerIdentity
+    internal sealed class StubCaller(Actor? local, EfPerson? person, EfApiKey? key) : ICallerIdentity
     {
         public Task<EfAuthGrant?> GrantAsync(CancellationToken ct) => Task.FromResult<EfAuthGrant?>(null);
 
