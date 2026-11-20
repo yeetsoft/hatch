@@ -79,6 +79,23 @@ capability it serves, with the ambition it belongs to and that capability's
 state. The section is left out when the epic serves nothing, and no other type
 draws either one.
 
+## Passes
+
+A pass is a session on an ambition standing in the implementation column, aimed
+at that column itself rather than the next one. A person starts the first one
+by moving the ambition into the implementation column; after that, a pass runs
+again on its own whenever the ambition has room.
+
+It reads each capability against the trunk and records a verdict — holds, does
+not hold, cannot tell — with what it looked at and a sha, the same way any
+session records one; see [Capabilities](#capabilities) above.
+
+It carves at most as many epics under the ambition as its own limit allows
+(`wipLimit`, read as one where unset), less however many are already open,
+each epic saying which capabilities it serves, and leaves the ambition
+standing where it is — an ambition is never carried on by a pass, only by the
+operator.
+
 ## How a ticket reads
 
 A ticket is read by a person first. These rules say how it should read.
