@@ -122,13 +122,15 @@ An unanswered question shows in four places:
   menu, and **Go to Ballot** in the console. It shows one question at a time,
   the one holding the most work first, as a card: the issue it is on, what it
   holds and its level, its options with the recommended one first, and **Say
-  something else** for the rest. **Skip** moves to the next without writing
+  something else** for the rest. A question the loop decided without you is
+  drawn differently: see [looking back](#looking-back). **Skip** moves to the next without writing
   anything, and a skipped question comes round again after the last. A switch
   under the header, **By issue**, shows the list instead, which lists every
   waiting question under the issues that enclose it, each issue drawn with the
   first lines of its description above its questions, and a child issue nested
   inside its parent. It answers in place: each question is drawn as the issue
-  page draws it, with who asked and when, its options as buttons with the
+  page draws it, a look-back question with the same **Keep** and **Overturn**
+  as the card, with who asked and when, its options as buttons with the
   recommended one marked, and the answer box and **Answer** button. The
   recommended option is one press and Enter away. Once the answer lands the
   question leaves the Ballot, an issue left with no question beneath it goes
@@ -181,6 +183,36 @@ A question that has waited longer than `Hatch__GooseQuestionHours` (a day, by
 default) opens one finding from [the goose](the-goose#questions-waiting), which
 lists every such question, oldest first. It only says they are waiting; it
 suggests no answer and answers none.
+
+## Looking back
+
+A look-back question is one asked at `merge` on an issue that has since closed:
+the work went ahead on the recommended option without you, and the question
+waited for your say ([what an open question blocks](#what-an-open-question-blocks)).
+The Ballot draws it apart from an open one. Above the options, *Decided without
+you* names the option the work went ahead on. A line under it says what has
+happened since: the column the issue stands in, the day it closed, and whether
+its pull request merged or its work landed on the trunk. A clause the board has
+nothing for is left out. The pill reads *Holds nothing*, since nothing waits
+beneath it.
+
+Two presses, on both Ballot views: the card, and the list by issue.
+
+- **Keep** agrees with the loop. It records the recommended option as your own
+  answer, exactly as pressing that option on an open question would, and the
+  card moves on. It is disabled on a question that recommended nothing, since
+  there is nothing to keep.
+- **Overturn** disagrees. It shows the other options and the box. Choosing one,
+  or typing your own, and pressing **Overturn** records that as your answer and
+  files one task to bring the work in line. The card names the task as a link,
+  and **Next** moves on. A refused overturn shows the server's sentence on the
+  card and keeps what you chose and typed.
+
+The task goes under the issue the question was on, or under its nearest
+ancestor that can take a task where that issue cannot, since a task cannot
+hang under a task. It lands in the leftmost column when a person overturns and
+in the agents' column when an API key does. It is [filed from](issues#filed-from)
+the issue the question was on.
 
 ## Where the answer lives afterwards
 

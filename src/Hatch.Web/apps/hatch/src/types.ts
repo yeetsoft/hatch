@@ -1028,6 +1028,14 @@ export interface Question {
   lookBack: boolean;
 }
 
+/** What overturning a look-back question answers with: the question, now
+    answered, and the key of the task filed to bring the work in line. Mirrors
+    QuestionOverturnDto. */
+export interface QuestionOverturn {
+  question: Question;
+  taskKey: string;
+}
+
 /** One issue on the ballot: a container for the issues below it that have a
     question waiting, and the holder of any waiting on itself. `excerpt` is the
     description's first lines, markdown as written - drawn as plain text. */

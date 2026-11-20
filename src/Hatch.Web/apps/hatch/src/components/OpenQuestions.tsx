@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button, Card } from '@hatch/ui';
 import { addComment, setQuestionLevel } from '../api/client';
 import { message } from '../lib/errors';
@@ -101,6 +101,7 @@ export function Asked({
   onAnswered,
   onLeveled,
   onError,
+  after,
 }: {
   issueKey: string;
   question: AskedQuestion;
@@ -110,6 +111,8 @@ export function Asked({
   /** The level changed; the caller reads again what it holds. */
   onLeveled: () => void;
   onError?: (message: string) => void;
+  /** Drawn under the options: what a caller adds for a question of its own kind. */
+  after?: ReactNode;
 }) {
   const [body, setBody] = useState('');
   const [leveling, setLeveling] = useState(false);
@@ -172,6 +175,8 @@ export function Asked({
       {question.options && (
         <QuestionOptions options={question.options} chosen={chosen} onChoose={(o) => setBody(o.label)} />
       )}
+
+      {after}
 
       {!obviated && (
         <QuestionLevelControl

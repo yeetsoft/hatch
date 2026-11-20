@@ -193,6 +193,21 @@ describe('BallotTree', () => {
     expect(render([node({ questions: [question()] })])).not.toContain('hatch-options');
   });
 
+  it('adds Keep and Overturn under a look-back question’s options, and to no other', () => {
+    const options = [
+      { label: 'keep', detail: null, recommended: true },
+      { label: 'drop', detail: null, recommended: false },
+    ];
+    const lookBack = render([node({ questions: [question({ lookBack: true, options })] })]);
+    expect(lookBack).toContain('>Keep<');
+    expect(lookBack).toContain('>Overturn<');
+    expect(lookBack.indexOf('>Keep<')).toBeGreaterThan(lookBack.indexOf('drop'));
+
+    const open = render([node({ questions: [question({ options })] })]);
+    expect(open).not.toContain('>Keep<');
+    expect(open).not.toContain('>Overturn<');
+  });
+
   it('gives each of two questions on one issue its own box', () => {
     const html = render([node({ questions: [question({ id: 1 }), question({ id: 2, body: 'And the other?' })] })]);
 

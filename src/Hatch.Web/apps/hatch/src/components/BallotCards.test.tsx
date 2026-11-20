@@ -60,10 +60,18 @@ const options = [
   { label: 'Change it', detail: 'Costs a day.', recommended: true },
 ];
 
+const lookBackItem: BallotQuestion = {
+  ...ask({ id: 3, level: 'merge', lookBack: true, options }, 0),
+  wentAheadOn: 'Change it',
+  issueStatus: 'Done',
+  closedAt: '2026-02-03T10:00:00Z',
+  merged: true,
+};
+
 const three = [
   ask({ id: 1, level: 'hold', options }, 3),
   ask({ id: 2, level: 'build', issueKey: 'PRJ-3', issueTitle: 'A task' }, 1),
-  ask({ id: 3, level: 'merge', lookBack: true }, 0),
+  lookBackItem,
 ];
 
 const render = (questions: BallotQuestion[]) =>
@@ -97,14 +105,39 @@ describe('BallotCards', () => {
     expect(html).toContain(LEVEL_WORDS.hold);
   });
 
-  it('says issue, not issues, for one, and draws a look-back question as an open one', () => {
+  it('says issue, not issues, for one', () => {
     const second = render([three[1], three[0]]);
     expect(second).toContain('Holds 1 issue<');
     expect(second).toContain(LEVEL_WORDS.build);
+  });
 
-    const lookBack = render([three[2]]);
-    expect(lookBack).toContain('Holds nothing');
-    expect(lookBack).toContain(LEVEL_WORDS.merge);
+  it('draws a look-back question as what was decided, what happened since, and two presses', () => {
+    const html = render([lookBackItem]);
+
+    expect(html).toContain('Decided without you');
+    expect(html).toContain('Change it');
+    expect(html).toContain('It stands in Done');
+    expect(html).toContain('its pull request merged');
+    expect(html).toContain('>Keep<');
+    expect(html).toContain('>Overturn<');
+    expect(html).toContain('Holds nothing');
+    expect(html).not.toContain('Say something else');
+    expect(html).not.toContain('aria-label="Set level"');
+  });
+
+  it('says its work landed on the trunk where the pull request did not merge', () => {
+    const html = render([{ ...lookBackItem, merged: false, landings: [{ canonical: 'a/b', sha: 'abc' }] }]);
+
+    expect(html).toContain('its work landed on the trunk');
+    expect(html).not.toContain('its pull request merged');
+  });
+
+  it('draws an open question with neither the decided line nor the presses', () => {
+    const html = render([three[0]]);
+
+    expect(html).not.toContain('Decided without you');
+    expect(html).not.toContain('>Keep<');
+    expect(html).not.toContain('>Overturn<');
   });
 
   it('puts the recommended option first', () => {

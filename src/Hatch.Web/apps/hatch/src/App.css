@@ -7904,6 +7904,36 @@ button.hatch-option.chosen {
   font-size: var(--t-label);
 }
 
+.hatch-ballot-card-decided p {
+  margin: 0;
+}
+
+.hatch-ballot-card-decided {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.hatch-lookback-presses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-question .hatch-lookback-presses {
+  margin: var(--sp-3) 0;
+}
+
+.hatch-lookback-presses p {
+  margin: 0;
+}
+
+.hatch-lookback-presses-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
 .hatch-ballot-card .hatch-options,
 .hatch-ballot-card .hatch-answer-box {
   margin-top: 0;

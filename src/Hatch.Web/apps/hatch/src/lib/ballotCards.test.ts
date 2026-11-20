@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardQueue, holdsWords, optionsRecommendedFirst, rootOf, thenWords } from './ballotCards';
+import { cardQueue, holdsWords, keepOption, optionsRecommendedFirst, outcomeWords, rootOf, thenWords } from './ballotCards';
 import type { BallotNode, BallotQuestion } from '../types';
 
 const ask = (id: number): BallotQuestion => ({
@@ -103,5 +103,43 @@ describe('thenWords', () => {
 
   it('says nothing else is waiting when both are zero', () => {
     expect(thenWords(0, 0)).toBe('Nothing else is waiting');
+  });
+});
+
+describe('keepOption', () => {
+  it('is the recommended label, or null with none or no options', () => {
+    expect(
+      keepOption([
+        { label: 'a', detail: null, recommended: false },
+        { label: 'b', detail: null, recommended: true },
+      ]),
+    ).toBe('b');
+    expect(keepOption([{ label: 'a', detail: null, recommended: false }])).toBeNull();
+    expect(keepOption(null)).toBeNull();
+  });
+});
+
+describe('outcomeWords', () => {
+  const closedAt = '2026-02-03T10:00:00Z';
+  const date = new Date(closedAt).toLocaleDateString();
+  const item = (over: Partial<BallotQuestion>): BallotQuestion => ({ ...ask(1), issueStatus: 'Done', closedAt, ...over });
+
+  it('says the column, the day it closed, and that its pull request merged', () => {
+    expect(outcomeWords(item({ merged: true }))).toBe(`It stands in Done, closed ${date}, its pull request merged.`);
+  });
+
+  it('says its work landed on the trunk where there was no merge but a landing', () => {
+    expect(outcomeWords(item({ merged: false, landings: [{ canonical: 'a/b', sha: 'abc' }] }))).toBe(
+      `It stands in Done, closed ${date}, its work landed on the trunk.`,
+    );
+  });
+
+  it('leaves out the clause for neither, and for a null closedAt', () => {
+    expect(outcomeWords(item({ merged: false, landings: [] }))).toBe(`It stands in Done, closed ${date}.`);
+    expect(outcomeWords(item({ closedAt: null, merged: true }))).toBe('It stands in Done, its pull request merged.');
+  });
+
+  it('is empty when the route carries nothing', () => {
+    expect(outcomeWords(ask(1))).toBe('');
   });
 });

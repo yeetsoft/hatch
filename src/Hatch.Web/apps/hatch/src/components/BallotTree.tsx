@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
 import { Button, ProjectMark } from '@hatch/ui';
+import { LookBackPresses } from './LookBackPresses';
 import { Asked } from './OpenQuestions';
 import { TypeBadge } from './TypeBadge';
 import { questionEmptyWords } from '../lib/attention';
+import { keepOption } from '../lib/ballotCards';
 import { appHref } from '../lib/basename';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { fromQuestion } from '../lib/questions';
@@ -108,6 +110,17 @@ function BallotBranch({
               question={fromQuestion(q)}
               onAnswered={onAnswered}
               onLeveled={onAnswered}
+              after={
+                q.lookBack && (
+                  <LookBackPresses
+                    issueKey={q.issueKey}
+                    questionId={q.id}
+                    options={q.options}
+                    wentAheadOn={keepOption(q.options)}
+                    onDone={onAnswered}
+                  />
+                )
+              }
             />
           ))}
         </ul>
