@@ -15,9 +15,12 @@ import type { NavEntry } from './nav';
 // /design/:slug is reached from the gallery's own rail, and /design itself
 // only redirects to its first slug - neither is a bar entry; /design alone
 // (below, in NAV) is the row that opens it.
+// /ambitions is reached by its address until the story that adds its nav link
+// lands; that story removes it from this list.
 const EXCLUDED_ROUTES = new Set([
   '/',
   '/docs',
+  '/ambitions',
   '/issues/:key',
   '/reports/timeline',
   '/reports/cumulative-flow',

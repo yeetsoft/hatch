@@ -4170,6 +4170,105 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* ---- The Ambitions page ----
+
+   One row per ambition, in three parts: the head, the capability bar, and the
+   epics in flight. Side by side on a desk, stacked on a phone. The bar's
+   segments grow by their counts from a zero basis, so the widths are in
+   proportion without anything being summed. The legend's words carry the
+   meaning; the colours decorate them. */
+.hatch-ambition-list {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+}
+
+.hatch-ambition-row {
+  display: flex;
+  gap: var(--sp-4);
+  padding: var(--sp-4) 0;
+  border-top: 1px solid var(--line);
+}
+
+.hatch-ambition-part {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-ambition-title {
+  font-weight: 700;
+}
+
+.hatch-ambition-head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.hatch-ambition-heading {
+  margin: 0 0 var(--sp-2);
+  font-size: 1em;
+}
+
+.hatch-ambition-bar {
+  display: flex;
+  height: 0.75rem;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.hatch-ambition-segment {
+  flex-basis: 0;
+  min-width: 0;
+}
+
+.hatch-ambition-holds {
+  background: var(--success-fill);
+}
+
+.hatch-ambition-in-flight {
+  background: var(--primary);
+}
+
+.hatch-ambition-waiting {
+  background: var(--warn);
+}
+
+.hatch-ambition-not-started {
+  background: var(--line-strong);
+}
+
+.hatch-ambition-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.hatch-ambition-swatch {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: var(--sp-1);
+  border-radius: 2px;
+}
+
+.hatch-ambition-epics {
+  margin-top: var(--sp-2);
+}
+
+@media (max-width: 40rem) {
+  .hatch-ambition-row {
+    flex-direction: column;
+  }
+}
+
 /* ---- Passes, on an ambition's issue page ----
 
    One entry per work-log row from the implementation column: its title or
