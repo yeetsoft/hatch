@@ -4,14 +4,15 @@ import { LookBackPresses } from './LookBackPresses';
 import { Asked } from './OpenQuestions';
 import { TypeBadge } from './TypeBadge';
 import { questionEmptyWords } from '../lib/attention';
-import { keepOption } from '../lib/ballotCards';
+import { keepOption, programAnswer } from '../lib/ballotCards';
 import { appHref } from '../lib/basename';
+import { renderMarkdown } from '../lib/markdown';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { fromQuestion } from '../lib/questions';
 import { scopedPath } from '../lib/scope';
 import { useScope } from '../lib/useScope';
 import { useStandalone } from '../lib/viewport';
-import type { BallotNode, Project } from '../types';
+import type { BallotNode, Project, Question } from '../types';
 
 /**
  * The ballot's drawing, apart from the page that fetches it, so it can be read
@@ -110,18 +111,7 @@ function BallotBranch({
               question={fromQuestion(q)}
               onAnswered={onAnswered}
               onLeveled={onAnswered}
-              after={
-                q.lookBack && (
-                  <LookBackPresses
-                    issueKey={q.issueKey}
-                    questionId={q.id}
-                    options={q.options}
-                    wentAheadOn={keepOption(q.options)}
-                    ambitionKey={q.ambitionKey}
-                    onDone={onAnswered}
-                  />
-                )
-              }
+              after={q.lookBack && <LookBackAfter question={q} onAnswered={onAnswered} />}
             />
           ))}
         </ul>
@@ -141,5 +131,49 @@ function BallotBranch({
         </div>
       )}
     </section>
+  );
+}
+
+/** A look-back's decision, under its question: who answered and what was
+    said, where a session did, else today's plain "Decided without you" -
+    then Keep and Overturn. */
+function LookBackAfter({ question, onAnswered }: { question: Question; onAnswered: () => void }) {
+  const program = programAnswer(question.answers);
+  const wentAheadOn = program?.first ?? keepOption(question.options);
+
+  return (
+    <>
+      <div className="hatch-ballot-card-decided">
+        {program ? (
+          <>
+            <p>
+              <strong>Answered by a session</strong>: {program.by}
+            </p>
+            <p>{wentAheadOn}</p>
+            {program.rest && (
+              <>
+                <p>
+                  <strong>Found in</strong>
+                </p>
+                <div className="hatch-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(program.rest) }} />
+              </>
+            )}
+          </>
+        ) : (
+          <p>
+            <strong>Decided without you</strong>
+            {wentAheadOn !== null && <>: {wentAheadOn}</>}
+          </p>
+        )}
+      </div>
+      <LookBackPresses
+        issueKey={question.issueKey}
+        questionId={question.id}
+        options={question.options}
+        wentAheadOn={wentAheadOn}
+        ambitionKey={question.ambitionKey}
+        onDone={onAnswered}
+      />
+    </>
   );
 }

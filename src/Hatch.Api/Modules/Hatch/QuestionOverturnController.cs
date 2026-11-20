@@ -37,10 +37,15 @@ public class QuestionOverturnController(
     /// </summary>
     /// <remarks>
     /// <para>Refused with a sentence: an empty or over-long answer, a comment
-    /// that is not a question on the issue, a question already answered, a
-    /// question not asked at <c>merge</c>, and one whose issue has not reached
-    /// a terminal column. Those last two are what makes a question a look-back
-    /// - anything else can still be answered the ordinary way.</para>
+    /// that is not a question on the issue, a question a person has answered
+    /// (whatever else answered it too), a question a key answered at
+    /// <c>hold</c>, a question not asked at <c>merge</c> with no answers at
+    /// all, and one whose issue has not reached a terminal column with no
+    /// answers at all. A question is a look-back - <see cref="Questions.IsLookBack"/>
+    /// - either because every answer it has is a key's, at <c>build</c> or
+    /// <c>merge</c>, or because, as before, it was asked at <c>merge</c> and
+    /// has none at all once its issue reaches a terminal column. Anything
+    /// else can still be answered the ordinary way.</para>
     ///
     /// <para>The task is filed under the issue, or under its nearest ancestor
     /// that can take a task where the issue cannot (a task cannot hang under a
@@ -67,14 +72,25 @@ public class QuestionOverturnController(
             c => c.Id == id && c.IssueId == issue.Id && c.Kind == EfHatchComment.Question, ct);
         if (question is null) return BadRequest($"comment {id} is not a question on {key}");
 
-        if (await db.Comments.AnyAsync(a => a.AnswersId == id, ct))
-            return BadRequest($"question {id} is already answered, so there is nothing to overturn");
+        var answers = await db.Comments.AsNoTracking()
+            .Where(a => a.AnswersId == id)
+            .OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
+            .Select(a => new { a.AuthorKind, a.Body })
+            .ToListAsync(ct);
 
-        if (QuestionLevels.Normalise(question.Level) != QuestionLevels.MergeName)
-            return BadRequest($"question {id} was not asked at {QuestionLevels.MergeName}, so the work waited for it - answer it, there is nothing to overturn");
+        if (!Questions.IsLookBack(question.Level, issue.Status!.IsTerminal, answers.Select(a => a.AuthorKind).ToList()))
+        {
+            if (answers.Any(a => a.AuthorKind != ActorKind.Key))
+                return BadRequest($"question {id} is already answered, so there is nothing to overturn");
 
-        if (!issue.Status!.IsTerminal)
+            if (answers.Count > 0)
+                return BadRequest($"question {id} was answered at {QuestionLevels.HoldName}, so it was already decided - there is nothing to look back on");
+
+            if (QuestionLevels.Normalise(question.Level) != QuestionLevels.MergeName)
+                return BadRequest($"question {id} was not asked at {QuestionLevels.MergeName}, so the work waited for it - answer it, there is nothing to overturn");
+
             return BadRequest($"{key} has not closed, so question {id} is not yet a look back - answer it the ordinary way");
+        }
 
         var status = await FilingColumnAsync(ct);
         if (status is null) return Conflict("this board has no columns to put an issue in");
@@ -85,8 +101,9 @@ public class QuestionOverturnController(
         var now = time.GetUtcNow();
 
         var recommended = Questions.ReadOptions(question.Options)?.FirstOrDefault(o => o.Recommended)?.Label;
+        var programAnswer = answers.Count > 0 ? Questions.FirstLine(answers[0].Body) : null;
         var title = $"Bring {key} in line with the answer";
-        var description = Describe(key, id, question.Body, recommended, answer, actor, now);
+        var description = Describe(key, id, question.Body, recommended, programAnswer, answer, actor, now);
 
         for (var attempt = 1; ; attempt++)
         {
@@ -203,11 +220,13 @@ public class QuestionOverturnController(
     }
 
     private static string Describe(
-        string key, long questionId, string body, string? recommended, string answer, string actor, DateTimeOffset now)
+        string key, long questionId, string body, string? recommended, string? programAnswer, string answer, string actor, DateTimeOffset now)
     {
-        var decided = recommended is null
-            ? "No option was recommended, so the work went ahead without a recommendation."
-            : $"The loop decided: {recommended}";
+        var decided = programAnswer is not null
+            ? $"The loop decided: {programAnswer}"
+            : recommended is null
+                ? "No option was recommended, so the work went ahead without a recommendation."
+                : $"The loop decided: {recommended}";
 
         var quoted = string.Join('\n', body.Replace("\r\n", "\n").Split('\n').Select(l => $"> {l}"));
 
