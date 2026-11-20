@@ -146,6 +146,7 @@ public static class Questions
                 c.Options,
                 c.Level,
                 c.CreatedAt,
+                c.IssueId,
                 IssueClosedAt = c.Issue!.ClosedAt,
                 IssueProjectKey = c.Issue!.Project!.Key,
                 IssueNumber = c.Issue!.Number,
@@ -155,6 +156,17 @@ public static class Questions
             .ToListAsync(ct);
 
         if (rows.Count == 0) return [];
+
+        // One walk per distinct issue, and one key lookup per distinct
+        // ambition found - a house-wide list repeats neither for each of its
+        // questions.
+        var ambitionIds = new Dictionary<long, long?>();
+        foreach (var issueId in rows.Select(r => r.IssueId).Distinct())
+            ambitionIds[issueId] = await IssueServesController.AmbitionAboveAsync(db, issueId, ct);
+
+        var ambitionKeys = new Dictionary<long, string?>();
+        foreach (var ambitionId in ambitionIds.Values.Where(id => id is not null).Select(id => id!.Value).Distinct())
+            ambitionKeys[ambitionId] = await IssueProjection.KeyOfAsync(db, ambitionId, ct);
 
         var ids = rows.Select(r => r.Id).ToList();
         var answers = await db.Comments.AsNoTracking()
@@ -185,6 +197,7 @@ public static class Questions
             QuestionLevels.Normalise(r.Level),
             LookBack: r.IssueIsTerminal
                 && QuestionLevels.Normalise(r.Level) == QuestionLevels.MergeName
-                && !byQuestion.ContainsKey(r.Id))).ToList();
+                && !byQuestion.ContainsKey(r.Id),
+            AmbitionKey: ambitionIds[r.IssueId] is { } ambitionId ? ambitionKeys.GetValueOrDefault(ambitionId) : null)).ToList();
     }
 }

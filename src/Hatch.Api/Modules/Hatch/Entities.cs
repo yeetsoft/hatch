@@ -2810,6 +2810,15 @@ public class EfHatchIssueEvent
     public const string QuestionLevelChanged = "question_level_changed";
 
     /// <summary>
+    /// `POST /issues/{key}/questions/{id}/promote` turned an answered
+    /// question's answer into a bullet under the ambition's
+    /// <c>## Principles</c> heading. Written on the ambition, beside the
+    /// <see cref="Redescribed"/> event the same call writes for the edit
+    /// itself. The payload is <c>{ questionId, issueKey, principle }</c>.
+    /// </summary>
+    public const string PrinciplePromoted = "principle_promoted";
+
+    /// <summary>
     /// An issue's human-work override changed - see
     /// <see cref="EfHatchIssue.HumanWork"/>. The payload carries both sides
     /// as <c>human</c>, <c>agent</c> or <c>inherit</c>.
