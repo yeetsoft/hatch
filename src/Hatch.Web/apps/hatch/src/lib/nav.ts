@@ -1,3 +1,5 @@
+import type { Me } from '../types';
+
 export interface NavRow {
   to: string;
   label: string;
@@ -73,6 +75,13 @@ export const NAV: NavEntry[] = [
     name. */
 export const HOME = '/';
 export const HOME_LABEL = 'Board';
+
+/** The logo's accessible name for a person whose home screen is `home`:
+    `Ambitions` for a person who chose it on Settings, `Board` for anybody
+    else, including nobody answered yet. */
+export function homeLabel(home?: Me['home']): string {
+  return home === 'ambitions' ? 'Ambitions' : HOME_LABEL;
+}
 
 /** Rows the phone menu lists that the desktop bar does not. Docs is one: on
     the desk it is a row of the settings menu, which the phone has no room to
