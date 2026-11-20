@@ -30,11 +30,12 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
             // Oldest first: a comment thread is read downwards.
             .OrderBy(c => c.CreatedAt)
             .ThenBy(c => c.Id)
-            .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.CreatedAt, c.DeliveredAt, c.DeliveredTo })
+            .Select(c => new { c.Id, c.Author, c.Body, c.Kind, c.AnswersId, c.Options, c.Level, c.CreatedAt, c.DeliveredAt, c.DeliveredTo })
             .ToListAsync(ct);
 
         return comments
-            .Select(c => new CommentDto(c.Id, c.Author, c.Body, c.Kind, c.AnswersId, Questions.ReadOptions(c.Options), c.CreatedAt, c.DeliveredAt, c.DeliveredTo))
+            .Select(c => new CommentDto(c.Id, c.Author, c.Body, c.Kind, c.AnswersId, Questions.ReadOptions(c.Options), c.CreatedAt, c.DeliveredAt, c.DeliveredTo,
+                c.Kind == EfHatchComment.Question ? QuestionLevels.Normalise(c.Level) : null))
             .ToList();
     }
 
@@ -64,6 +65,11 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
         if (string.IsNullOrEmpty(body)) return BadRequest("a comment needs something in it");
         if (body.Length > EfHatchComment.MaxBodyLength)
             return BadRequest($"a comment is at most {EfHatchComment.MaxBodyLength} characters");
+
+        // Never taken from the request. A level is set by a person once the
+        // question exists, so one sent here is refused rather than dropped.
+        if (request.Level is not null)
+            return BadRequest("a level is set by a person after the question is asked, not when it is asked");
 
         var kind = request.Kind?.Trim() ?? EfHatchComment.Note;
         if (!EfHatchComment.IsValidKind(kind))
@@ -139,7 +145,8 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
 
         return new CommentDto(
             comment.Id, comment.Author, comment.Body, comment.Kind, comment.AnswersId,
-            Questions.ReadOptions(comment.Options), comment.CreatedAt);
+            Questions.ReadOptions(comment.Options), comment.CreatedAt,
+            Level: kind == EfHatchComment.Question ? QuestionLevels.Normalise(comment.Level) : null);
     }
 
     /// <summary>

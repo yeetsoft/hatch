@@ -30,6 +30,7 @@ const comment = (over: Partial<Comment> = {}): Comment => ({
   createdAt: at(-300_000),
   deliveredAt: null,
   deliveredTo: null,
+  level: null,
   ...over,
 });
 

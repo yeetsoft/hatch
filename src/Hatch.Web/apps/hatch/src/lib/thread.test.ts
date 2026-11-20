@@ -14,6 +14,7 @@ const comment = (body: string): Comment => ({
   createdAt: '2026-09-05T00:00:00Z',
   deliveredAt: null,
   deliveredTo: null,
+  level: null,
 });
 
 describe('newestFirst', () => {

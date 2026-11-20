@@ -92,6 +92,7 @@ const question = (over: Partial<Question> = {}): Question => ({
   askedAt: new Date().toISOString(),
   options: null,
   answers: [],
+  level: 'hold',
   ...over,
 });
 

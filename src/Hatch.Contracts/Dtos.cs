@@ -1218,6 +1218,53 @@ public static class PreApprovalLevels
 }
 
 /// <summary>
+/// How far work may go on an issue before one of its questions is answered -
+/// see <see cref="EfHatchComment.Level"/>. Unlike <see cref="PreApprovalLevels"/>
+/// the wire name is the stored value, so there is no int form.
+/// </summary>
+public static class QuestionLevels
+{
+    /// <summary>Nothing moves until a person answers. Every question's default.</summary>
+    public const string HoldName = "hold";
+
+    /// <summary>Work is dispatched and built and stands in review, but is not merged.</summary>
+    public const string BuildName = "build";
+
+    /// <summary>The work merges, and the answer is looked over after.</summary>
+    public const string MergeName = "merge";
+
+    /// <summary>Every level, strictest first. The one list the ordering is read from.</summary>
+    public static IReadOnlyList<string> ByStrictness => Order;
+
+    private static readonly string[] Order = [HoldName, BuildName, MergeName];
+
+    /// <summary>
+    /// Where the level sits in <see cref="ByStrictness"/>; zero is the strictest.
+    /// A null or unknown name ranks as <see cref="HoldName"/>.
+    /// </summary>
+    public static int Rank(string? level)
+    {
+        var at = level is null ? -1 : Array.IndexOf(Order, level);
+        return at < 0 ? 0 : at;
+    }
+
+    /// <summary>The level's own name, or <see cref="HoldName"/> for null and anything unknown.</summary>
+    public static string Normalise(string? level) => ByStrictness[Rank(level)];
+
+    /// <summary>
+    /// The strictest of the levels given, each normalised first. Nothing to
+    /// choose from is <see cref="HoldName"/>.
+    /// </summary>
+    public static string Strictest(IEnumerable<string?> levels)
+    {
+        var rank = int.MaxValue;
+        foreach (var level in levels)
+            rank = Math.Min(rank, Rank(level));
+        return rank == int.MaxValue ? HoldName : ByStrictness[rank];
+    }
+}
+
+/// <summary>
 /// The three levels an issue's local-model preference can sit at - see
 /// <see cref="EfHatchIssue.LocalModel"/>.
 /// </summary>
@@ -1541,6 +1588,10 @@ public record IssueBulkEditRequest(
 /// not been - and always null on any other kind.
 /// </param>
 /// <param name="DeliveredTo">The runner that was holding the issue then, or the caller's name where nothing was.</param>
+/// <param name="Level">
+/// How far work may go before this question is answered - one of
+/// <see cref="QuestionLevels.ByStrictness"/>. Null on anything that is not a question.
+/// </param>
 public record CommentDto(
     long Id,
     string Author,
@@ -1550,7 +1601,8 @@ public record CommentDto(
     IReadOnlyList<QuestionOptionDto>? Options,
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeliveredAt = null,
-    string? DeliveredTo = null);
+    string? DeliveredTo = null,
+    string? Level = null);
 
 /// <summary>One dream: a line somebody wanted said, leaning toward a project or loose.</summary>
 /// <param name="WovenInto">The keys of the issues that drew on this dream, ordered by project key then issue number. Never null.</param>
@@ -1624,11 +1676,17 @@ public record QuestionOptionDto(string Label, string? Detail = null, bool Recomm
 /// Offered answers, on a question only. Omitted asks in prose, which stays
 /// legal - not every decision is a menu.
 /// </param>
+/// <param name="Level">
+/// Never accepted. It exists only so the server can see one and refuse it,
+/// since an unknown JSON property is otherwise dropped without a word: a level
+/// is set by a person after the question is asked.
+/// </param>
 public record CommentCreateRequest(
     string Body,
     string? Kind = null,
     long? AnswersId = null,
-    IReadOnlyList<QuestionOptionDto>? Options = null);
+    IReadOnlyList<QuestionOptionDto>? Options = null,
+    string? Level = null);
 
 /// <summary>
 /// A question and whatever has been said back to it - what the CLI walks
@@ -1645,6 +1703,10 @@ public record CommentCreateRequest(
 /// Whether the issue this question is on has reached a terminal column - left
 /// out of the list a person answers from, kept in the record.
 /// </param>
+/// <param name="Level">
+/// How far work may go on the issue before this is answered - one of
+/// <see cref="QuestionLevels.ByStrictness"/>. Never null; <c>hold</c> unless a person said otherwise.
+/// </param>
 public record QuestionDto(
     long Id,
     string IssueKey,
@@ -1654,7 +1716,8 @@ public record QuestionDto(
     DateTimeOffset AskedAt,
     IReadOnlyList<QuestionOptionDto>? Options,
     IReadOnlyList<CommentDto> Answers,
-    bool Obviated = false);
+    bool Obviated = false,
+    string Level = QuestionLevels.HoldName);
 
 /// <summary>
 /// Every waiting question in the house, each under the chain of issues that

@@ -4,15 +4,15 @@ namespace Hatch.Cli;
 public static class Questions
 {
     /// <summary>
-    /// Where it came from, who asked, the body, and the answers it offers -
-    /// numbered, because a number is what <c>hatch.sh answer</c> takes.
+    /// Where it came from, who asked and how far work may go before it is
+    /// answered, the body, and the answers it offers - numbered, because a number is what <c>hatch.sh answer</c> takes.
     /// </summary>
     public static IEnumerable<string> Draw(IEnumerable<QuestionDto> questions)
     {
         foreach (var q in questions)
         {
             yield return $"{q.IssueKey}  #{q.Id}  {q.IssueTitle}";
-            yield return $"  asked by {q.AskedBy}, {Format.Stamp(q.AskedAt)}";
+            yield return $"  asked by {q.AskedBy}, {Format.Stamp(q.AskedAt)} - level {q.Level}";
             yield return "";
 
             foreach (var line in q.Body.ReplaceLineEndings("\n").Split('\n')) yield return $"  {line}";

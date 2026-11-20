@@ -90,6 +90,11 @@ public sealed class QuestionCommands(Cli cli)
         cli.Say.Line($"{key} will not be dispatched again until it is answered:");
         cli.Say.Line($"  hatch answer {key}");
         cli.Say.Line($"  {cli.IssueUrl(key)}");
+
+        var level = asked?.Level ?? QuestionLevels.HoldName;
+        cli.Say.Line(level == QuestionLevels.HoldName
+            ? $"level: {level} - nothing is dispatched on {key} until a person answers"
+            : $"level: {level}");
         return 0;
     }
 

@@ -1,0 +1,37 @@
+namespace Hatch.Api.Tests.Hatch;
+
+public sealed class QuestionLevelsTests
+{
+    [Fact]
+    public void ByStrictness_IsHoldThenBuildThenMerge() =>
+        Assert.Equal(["hold", "build", "merge"], QuestionLevels.ByStrictness);
+
+    [Theory]
+    [InlineData("hold", 0)]
+    [InlineData("build", 1)]
+    [InlineData("merge", 2)]
+    [InlineData(null, 0)]
+    [InlineData("nonsense", 0)]
+    public void Rank_IsTheIndex_AndAnythingUnknownRanksAsHold(string? level, int rank) =>
+        Assert.Equal(rank, QuestionLevels.Rank(level));
+
+    [Theory]
+    [InlineData(null, "hold")]
+    [InlineData("", "hold")]
+    [InlineData("nonsense", "hold")]
+    [InlineData("build", "build")]
+    [InlineData("merge", "merge")]
+    public void Normalise_ReadsNullAndUnknownAsHold(string? level, string expected) =>
+        Assert.Equal(expected, QuestionLevels.Normalise(level));
+
+    [Fact]
+    public void Strictest_IsTheLowestRank()
+    {
+        Assert.Equal("build", QuestionLevels.Strictest(["merge", "build"]));
+        Assert.Equal("hold", QuestionLevels.Strictest([null, "merge"]));
+    }
+
+    [Fact]
+    public void Strictest_OfNothing_IsHold() =>
+        Assert.Equal("hold", QuestionLevels.Strictest([]));
+}
