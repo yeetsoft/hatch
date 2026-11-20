@@ -460,7 +460,7 @@ describe('RunnerDetail: the secret panel', () => {
   // lives in RunnersLayout's own useState and this proves RunnerDetail's own
   // rule: drawn only when the held secret names the runner on screen.
   function renderWithSecret(path: string, secret: { name: string; secret: string; rotated: boolean } | null) {
-    const outlet = { runners: [runner({ name: 'Quill' }), runner({ name: 'Other' })], secret, setSecret: () => {}, reload: async () => {} };
+    const outlet = { runners: [runner({ name: 'Quill' }), runner({ name: 'Other' })], statuses: null, secret, setSecret: () => {}, reload: async () => {} };
     return renderToStaticMarkup(
       <MemoryRouter initialEntries={[path]}>
         <Routes>

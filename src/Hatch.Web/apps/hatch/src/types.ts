@@ -1645,6 +1645,39 @@ export interface Capability {
   servedBy: string[];
 }
 
+/** One verdict within a pass. Mirrors AmbitionPassVerdictDto. */
+export interface AmbitionPassVerdict {
+  id: number;
+  capabilityId: number;
+  position: number;
+  statement: string;
+  verdict: 'holds' | 'does_not_hold' | 'cannot_tell';
+  lookedAt: string;
+  sha: string;
+  author: string;
+  at: string;
+  /** Whether this verdict's word differs from the one the next older pass
+      gave the same capability. */
+  changed: boolean;
+}
+
+/** One pass at an ambition: a work log row that ran from the implementation
+    column, with the verdicts it recorded and the comments said while it ran -
+    or, with `rowId` null, one verdict recorded with no pass around it.
+    Mirrors AmbitionPassDto. */
+export interface AmbitionPass {
+  rowId: number | null;
+  sessionId: string | null;
+  startedAt: string;
+  endedAt: string;
+  title: string | null;
+  summary: string | null;
+  canRecordVerdicts: boolean;
+  sha: string | null;
+  verdicts: AmbitionPassVerdict[];
+  comments: Comment[];
+}
+
 /** One capability an issue serves, with the ambition it belongs to. Mirrors
     ServedCapabilityDto. */
 export interface ServedCapability {
@@ -3306,6 +3339,13 @@ export interface Runner {
       from PUT /runners/{name}/refused-models, never from a heartbeat. Empty,
       never null. Mirrors RunnerDto.RefusedModels. */
   refusedModels: string[];
+  /** Which columns this runner works: every one, every one but `statusIds`, or
+      only `statusIds`. Optional so a stub that predates it still compiles; absent
+      reads as `'all'`. Mirrors RunnerDto.StatusMode. */
+  statusMode?: RunnerStatusMode;
+  /** The column ids `statusMode` reads against - empty under `'all'`. Ids of
+      columns since deleted are dropped on read. Mirrors RunnerDto.StatusIds. */
+  statusIds?: number[];
   /** The Ollama ids this runner is asked to hold: the local-models table's rows
       that fit its machine, computed on read. Empty, never null - and empty for
       a runner that reports no accelerator memory. Mirrors RunnerDto.Hold. */
@@ -3395,11 +3435,17 @@ export interface CreateRunnerRequest {
   ownerPersonId?: string;
 }
 
+/** How a runner's column list reads: no list, every column but those, or only those. */
+export type RunnerStatusMode = 'all' | 'except' | 'only';
+
 /** What a person asks a runner to do next. Every field is a string, and absent
     / `''` / a value are leave alone / clear / set - the convention the two dates
     on an issue already established. Mirrors RunnerPatchRequest. */
 export interface RunnerPatchRequest {
   state?: RunnerState;
+  /** The column rule: sent with `statusIds` or not at all - the server refuses one without the other. */
+  statusMode?: RunnerStatusMode;
+  statusIds?: number[];
   under?: string;
   maxRuns?: string;
   maxSpend?: string;

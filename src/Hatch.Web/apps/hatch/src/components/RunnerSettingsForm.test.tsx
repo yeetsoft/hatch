@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { RunnerSettingsForm } from './RunnerSettingsForm';
-import type { Runner, RunnerSession } from '../types';
+import type { Runner, RunnerSession, Status } from '../types';
 
 const NOW = new Date('2026-09-08T12:00:00Z');
 
@@ -87,12 +87,42 @@ const session = (over: Partial<RunnerSession> = {}): RunnerSession => ({
   ...over,
 });
 
-const render = (r: Runner, over: { live?: RunnerSession[]; editable?: boolean; refusal?: string | null } = {}) =>
+const status = (id: number, name: string, sortOrder: number, over: Partial<Status> = {}): Status => ({
+  id,
+  name,
+  sortOrder,
+  isTerminal: false,
+  isDeferred: false,
+  isWip: false,
+  expressSkips: false,
+  parentPulls: false,
+  agentFiles: false,
+  isImplementation: false,
+  isProtected: false,
+  mergesPullRequest: false,
+  runnerTags: [],
+  color: '#6b7280',
+  ...over,
+});
+
+const BOARD: Status[] = [
+  status(2, 'Breakdown', 20),
+  status(3, 'In Progress', 30),
+  status(4, 'In Review', 40),
+  status(7, 'Later', 70, { isDeferred: true }),
+  status(9, 'Done', 90, { isTerminal: true }),
+];
+
+const render = (
+  r: Runner,
+  over: { live?: RunnerSession[]; editable?: boolean; refusal?: string | null; statuses?: Status[] | null } = {},
+) =>
   renderToStaticMarkup(
     <MemoryRouter>
       <RunnerSettingsForm
         runner={r}
         live={over.live ?? []}
+        statuses={over.statuses === undefined ? BOARD : over.statuses}
         editable={over.editable ?? true}
         refusal={over.refusal ?? null}
         onSave={() => {}}
@@ -191,5 +221,125 @@ describe('RunnerSettingsForm', () => {
     expect(html).toContain('Tags: any runner');
     expect(html).toContain('Under: the whole board');
     expect(html).toContain('Refuses: nothing');
+    expect(html).toContain('Columns: every column');
+  });
+});
+
+describe('RunnerSettingsForm, the Columns section', () => {
+  /** The list's rows, by column name: whether the row is lit and whether it is ticked. */
+  const rows = (html: string) =>
+    Object.fromEntries(
+      html
+        .split('<li ')
+        .slice(1)
+        .map((li) => [
+          /hatch-status-pill-sm[^>]*>([^<]+)</.exec(li)![1],
+          { lit: !li.includes('hatch-runner-column--dim'), ticked: /type="checkbox"[^>]*checked/.test(li) },
+        ]),
+    );
+
+  it('draws three choices, with the held one picked', () => {
+    const html = render(runner({ statusMode: 'except', statusIds: [3] }));
+    expect(html).toContain('<legend>Columns</legend>');
+    expect(html).toContain('Every column');
+    expect(html).toContain('Every column except');
+    expect(html).toContain('Only these');
+    expect(html.match(/type="radio"/g)).toHaveLength(3);
+    expect(html.match(/type="radio"[^>]*checked/g)).toHaveLength(1);
+  });
+
+  it('draws no list under every column', () => {
+    const html = render(runner());
+    expect(html).not.toContain('<li ');
+    expect(html).not.toContain('hatch-runner-columns-bulk');
+    expect(html).not.toContain('Nothing ticked');
+  });
+
+  it('draws the list dim under only, with the ticked column alone lit', () => {
+    expect(rows(render(runner({ statusMode: 'only', statusIds: [] })))).toEqual({
+      Breakdown: { lit: false, ticked: false },
+      'In Progress': { lit: false, ticked: false },
+      'In Review': { lit: false, ticked: false },
+    });
+    expect(rows(render(runner({ statusMode: 'only', statusIds: [2] })))).toEqual({
+      Breakdown: { lit: true, ticked: true },
+      'In Progress': { lit: false, ticked: false },
+      'In Review': { lit: false, ticked: false },
+    });
+  });
+
+  it('draws the list lit under except, with the ticked column alone dim', () => {
+    expect(rows(render(runner({ statusMode: 'except', statusIds: [] })))).toEqual({
+      Breakdown: { lit: true, ticked: false },
+      'In Progress': { lit: true, ticked: false },
+      'In Review': { lit: true, ticked: false },
+    });
+    expect(rows(render(runner({ statusMode: 'except', statusIds: [3] })))).toEqual({
+      Breakdown: { lit: true, ticked: false },
+      'In Progress': { lit: false, ticked: true },
+      'In Review': { lit: true, ticked: false },
+    });
+  });
+
+  it('never lists a terminal or deferred column, even one the rule names', () => {
+    const html = render(runner({ statusMode: 'only', statusIds: [7, 9] }));
+    expect(Object.keys(rows(html))).toEqual(['Breakdown', 'In Progress', 'In Review']);
+    expect(html).not.toContain('Later');
+    expect(html).not.toContain('Done');
+  });
+
+  it('lists the columns in sortOrder, each a pill in its own colour', () => {
+    const html = render(runner({ statusMode: 'only' }), {
+      statuses: [status(5, 'Second', 50, { color: '#ff0000' }), status(6, 'First', 10)],
+    });
+    expect(Object.keys(rows(html))).toEqual(['First', 'Second']);
+    expect(html).toContain('--status-color:#ff0000');
+  });
+
+  it('draws All, None and an only press on each row', () => {
+    const html = render(runner({ statusMode: 'only' }));
+    expect(html).toMatch(/<button[^>]*>All</);
+    expect(html).toMatch(/<button[^>]*>None</);
+    expect(html.match(/hatch-runner-column-only/g)).toHaveLength(3);
+    expect(html).toContain('aria-label="Only Breakdown"');
+  });
+
+  it('says what nothing ticked means, per mode', () => {
+    expect(render(runner({ statusMode: 'only' }))).toContain('Nothing ticked works nothing.');
+    expect(render(runner({ statusMode: 'except' }))).toContain('Nothing ticked works everything.');
+  });
+
+  it('sits after Refuses models and before Save settings', () => {
+    const html = render(runner({ statusMode: 'only' }));
+    expect(html.indexOf('<legend>Columns</legend>')).toBeGreaterThan(html.indexOf('Refuses models'));
+    expect(html.indexOf('<legend>Columns</legend>')).toBeLessThan(html.indexOf('Save settings'));
+  });
+
+  it('leaves Save disabled while the rule is as held', () => {
+    expect(render(runner({ statusMode: 'only', statusIds: [2] }))).toMatch(/<button[^>]*disabled[^>]*>Save settings/);
+  });
+
+  it('draws nothing until the columns are read, and the rest of the card still works', () => {
+    const html = render(runner({ statusMode: 'only', statusIds: [2] }), { statuses: null });
+    expect(html).not.toContain('<legend>Columns</legend>');
+    expect(html).toContain('Save settings');
+    expect(html).toContain('Refuses models');
+  });
+
+  it('reads the rule as one line when not editable, with no control', () => {
+    const line = (r: Runner) => render(r, { editable: false });
+    expect(line(runner())).toContain('Columns: every column');
+    expect(line(runner({ statusMode: 'except', statusIds: [3, 4] }))).toContain(
+      'Columns: every column except In Progress, In Review',
+    );
+    expect(line(runner({ statusMode: 'only', statusIds: [4, 2] }))).toContain('Columns: only Breakdown, In Review');
+    expect(line(runner({ statusMode: 'only', statusIds: [] }))).toContain('Columns: no column');
+    expect(line(runner({ statusMode: 'only', statusIds: [2] }))).not.toContain('type="radio"');
+    expect(line(runner({ statusMode: 'only', statusIds: [2] }))).not.toContain('type="checkbox"');
+  });
+
+  it('puts the read-only line after Refuses', () => {
+    const html = render(runner(), { editable: false });
+    expect(html.indexOf('Columns:')).toBeGreaterThan(html.indexOf('Refuses:'));
   });
 });

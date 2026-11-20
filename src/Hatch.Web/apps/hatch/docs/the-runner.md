@@ -698,7 +698,8 @@ column it does not work, and `hatch queue` says why in one sentence: *HA-12 in
 In Progress is not worked by build-box - it works only Breakdown, In Review*,
 or *it works every column except In Progress, Testing*. The columns are named
 in board order, an `only` rule with nothing listed reads *it works no column*,
-and an id that names no column is ignored.
+and an id that names no column is ignored. The Runners page's **Columns**
+section sets it ([What it may work](watching-the-loop#the-detail)).
 
 The rule leaves hops alone: a hop spawns no session, so a runner that does not
 work a column can still carry a ticket across it. It also leaves an idle review
