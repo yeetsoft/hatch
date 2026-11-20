@@ -871,6 +871,73 @@ public class PlaybooksControllerTests
         Assert.True((await h.ReadAsync(row.Id)).IsCheck);
     }
 
+    // ---- AnswersQuestions ----
+
+    [Fact]
+    public async Task AnswersQuestions_IsSetAndReadBack()
+    {
+        var h = await NewAsync();
+        var plain = await h.CreateAsync();
+        Assert.False(plain.AnswersQuestions);
+
+        var row = await h.CreateAsync(projectId: h.ProjectA.ToString(), answersQuestions: true);
+        Assert.True(row.AnswersQuestions);
+        Assert.True((await h.ReadAsync(row.Id)).AnswersQuestions);
+
+        var toFalse = await h.SetAsync(row.Id, answersQuestions: false);
+        Assert.False(toFalse.AnswersQuestions);
+        Assert.False((await h.ReadAsync(row.Id)).AnswersQuestions);
+
+        var toTrue = await h.SetAsync(row.Id, answersQuestions: true);
+        Assert.True(toTrue.AnswersQuestions);
+        Assert.True((await h.ReadAsync(row.Id)).AnswersQuestions);
+
+        // A patch that names another field leaves it alone.
+        var other = await h.SetAsync(row.Id, budget: "3");
+        Assert.True(other.AnswersQuestions);
+    }
+
+    [Fact]
+    public async Task ARowThatIsACheckAndAnswersQuestions_IsRefusedOnCreate()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", IsCheck: true, AnswersQuestions: true), default);
+
+        Assert.Equal("a playbook is a check or it answers questions, not both", Reason(refusal.Result));
+        Assert.Empty(await h.Db.Playbooks.ToListAsync());
+    }
+
+    [Fact]
+    public async Task SettingEitherFlagOnARowWithTheOther_IsRefusedOnPatch()
+    {
+        var h = await NewAsync();
+        var check = await h.CreateAsync(isCheck: true);
+        var answering = await h.CreateAsync(projectId: h.ProjectA.ToString(), answersQuestions: true);
+
+        var toAnswer = await h.Playbooks.PatchPlaybook(
+            check.Id, new PlaybookPatchRequest(null, null, null, null, null, null, AnswersQuestions: true), default);
+        var toCheck = await h.Playbooks.PatchPlaybook(
+            answering.Id, new PlaybookPatchRequest(null, null, null, null, null, null, IsCheck: true), default);
+        var both = await h.Playbooks.PatchPlaybook(
+            check.Id, new PlaybookPatchRequest(null, null, null, null, null, null, IsCheck: true, AnswersQuestions: true), default);
+
+        const string sentence = "a playbook is a check or it answers questions, not both";
+        Assert.Equal(sentence, Reason(toAnswer.Result));
+        Assert.Equal(sentence, Reason(toCheck.Result));
+        Assert.Equal(sentence, Reason(both.Result));
+        Assert.False((await h.ReadAsync(check.Id)).AnswersQuestions);
+        Assert.False((await h.ReadAsync(answering.Id)).IsCheck);
+
+        // Handing one flag back while taking the other is a legal swap.
+        var swapped = await h.Playbooks.PatchPlaybook(
+            check.Id, new PlaybookPatchRequest(null, null, null, null, null, null, IsCheck: false, AnswersQuestions: true), default);
+        var row = Value(swapped);
+        Assert.False(row.IsCheck);
+        Assert.True(row.AnswersQuestions);
+    }
+
     // ---- Model families ----
 
     [Fact]
@@ -1193,20 +1260,21 @@ public class PlaybooksControllerTests
 
         public async Task<PlaybookDto> CreateAsync(
             string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
-            bool? isCheck = null, string? quietLimitSeconds = null, string? maxRunSeconds = null, string? localModel = null) =>
+            bool? isCheck = null, string? quietLimitSeconds = null, string? maxRunSeconds = null, string? localModel = null,
+            bool? answersQuestions = null) =>
             Created(await Playbooks.CreatePlaybook(
                 new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit,
                     ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds,
-                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel), default));
+                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel, AnswersQuestions: answersQuestions), default));
 
         public async Task<PlaybookDto> SetAsync(
             int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
             bool? isCheck = null, string? prompt = null, string? quietLimitSeconds = null, string? maxRunSeconds = null,
-            string? localModel = null) =>
+            string? localModel = null, bool? answersQuestions = null) =>
             Value(await Playbooks.PatchPlaybook(
                 id, new PlaybookPatchRequest(null, null, null, prompt, null, null, budget, briefLimit,
                     ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds,
-                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel), default));
+                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel, AnswersQuestions: answersQuestions), default));
 
         /// <summary>There is no API to set a prescribed text, so a test sets it on the row.</summary>
         public async Task SetDefaultPromptAsync(int id)

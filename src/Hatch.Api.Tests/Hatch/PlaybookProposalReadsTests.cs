@@ -85,6 +85,20 @@ public class PlaybookProposalReadsTests
     }
 
     [Fact]
+    public async Task AnAnswersQuestionsChange_IsTheOnlyChangedField_AndAnOldBeforeReadsAsFalse()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(
+            patch: new PlaybookPatchRequest(null, null, null, null, null, null, AnswersQuestions: true));
+
+        var change = Assert.Single((await h.ReadAsync(proposal.Id)).Changes);
+
+        Assert.Equal(new[] { "answersQuestions" }, change.ChangedFields);
+        Assert.False(change.Before.AnswersQuestions);
+        Assert.True(change.After.AnswersQuestions);
+    }
+
+    [Fact]
     public async Task ALocalModelChange_IsTheOnlyChangedField_BeforeNoneAndAfterTheId()
     {
         var h = await NewAsync();
