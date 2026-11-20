@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@hatch/ui';
-import { addComment, overturnQuestion } from '../api/client';
+import { addComment, overturnQuestion, promoteQuestion } from '../api/client';
 import { QuestionOptions } from './OpenQuestions';
 import { message } from '../lib/errors';
 import type { QuestionOption } from '../types';
@@ -20,6 +20,7 @@ export function LookBackPresses({
   questionId,
   options,
   wentAheadOn,
+  ambitionKey,
   onDone,
 }: {
   issueKey: string;
@@ -27,7 +28,11 @@ export function LookBackPresses({
   options: QuestionOption[] | null;
   /** The label the work went ahead on, or null where none was recommended. */
   wentAheadOn: string | null;
-  /** Keep landed, or the person pressed Next after an overturn. */
+  /** The key of the ambition above this question's issue, or null or
+      undefined where none stands above it - the checkbox draws only where
+      there is an ambition to promote into. */
+  ambitionKey?: string | null;
+  /** Keep landed, or the person pressed Next after an overturn or a promotion. */
   onDone: () => void;
 }) {
   const [overturning, setOverturning] = useState(false);
@@ -36,11 +41,30 @@ export function LookBackPresses({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filed, setFiled] = useState<string | null>(null);
+  const [promoting, setPromoting] = useState(false);
+  const [principle, setPrinciple] = useState('');
+  const [promoted, setPromoted] = useState<string | null>(null);
+  // Set once the question's own answer (Keep or Overturn) has landed and a
+  // promotion was asked for - whatever the promotion itself does next, the
+  // answer is not retried, and the checkbox is not offered again.
+  const [answered, setAnswered] = useState(false);
 
   // What overturning can say instead: everything but the option that was taken.
   const others = (options ?? []).filter((o) => o.label !== wentAheadOn);
   // Derived, as in Asked: the pressed option is the one the box says exactly.
   const answer = body.trim() || chosen;
+
+  async function promoteAfterAnswer() {
+    setAnswered(true);
+    try {
+      const result = await promoteQuestion(issueKey, questionId, principle.trim());
+      setPromoted(result.ambitionKey);
+    } catch (err) {
+      // Never clears `principle`: the answer already landed, so this is the
+      // only thing left to retry.
+      setError(message(err));
+    }
+  }
 
   async function keep() {
     if (wentAheadOn === null) return;
@@ -48,7 +72,8 @@ export function LookBackPresses({
     setError(null);
     try {
       await addComment(issueKey, { body: wentAheadOn, kind: 'answer', answersId: questionId });
-      onDone();
+      if (promoting) await promoteAfterAnswer();
+      else onDone();
     } catch (err) {
       setError(message(err));
     } finally {
@@ -63,6 +88,7 @@ export function LookBackPresses({
     try {
       const result = await overturnQuestion(issueKey, questionId, answer);
       setFiled(result.taskKey);
+      if (promoting) await promoteAfterAnswer();
     } catch (err) {
       // Never clears `chosen` or `body`: the person's decision stays to be sent again.
       setError(message(err));
@@ -71,12 +97,20 @@ export function LookBackPresses({
     }
   }
 
-  if (filed !== null) {
+  if (filed !== null || answered) {
     return (
       <div className="hatch-lookback-presses">
-        <p>
-          Filed <Link to={`/issues/${filed}`}>{filed}</Link> to bring the work in line.
-        </p>
+        {filed !== null && (
+          <p>
+            Filed <Link to={`/issues/${filed}`}>{filed}</Link> to bring the work in line.
+          </p>
+        )}
+        {promoted !== null && (
+          <p>
+            Now a principle of <Link to={`/issues/${promoted}`}>{promoted}</Link>.
+          </p>
+        )}
+        {error && <p className="text-danger">{error}</p>}
         <Button variant="primary" onClick={onDone}>
           Next
         </Button>
@@ -86,6 +120,34 @@ export function LookBackPresses({
 
   return (
     <div className="hatch-lookback-presses">
+      {ambitionKey && (
+        <label>
+          <input
+            type="checkbox"
+            checked={promoting}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setPromoting(checked);
+              if (checked && !principle) {
+                const given = (overturning ? answer : wentAheadOn)?.replace(/\s+/g, ' ').trim();
+                if (given) setPrinciple(given);
+              }
+            }}
+          />
+          Make this a principle
+        </label>
+      )}
+      {promoting && (
+        <div className="hatch-answer-box">
+          <input
+            type="text"
+            value={principle}
+            aria-label="Principle"
+            placeholder="The principle, in a sentence."
+            onChange={(e) => setPrinciple(e.target.value)}
+          />
+        </div>
+      )}
       <div className="hatch-lookback-presses-row">
         <Button variant="primary" loading={saving && !overturning} disabled={wentAheadOn === null || saving} onClick={() => void keep()}>
           Keep
