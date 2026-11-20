@@ -2712,11 +2712,185 @@ public class DispatchTests
         var row = RowFor(scan, ambition);
         Assert.Equal(sentence, row.Blocked);
         Assert.Equal(BlockedKinds.Family, row.BlockedKind);
-        Assert.Equal(openEpics, row.WaitsOn!.Count);
+        Assert.Equal(openEpics, row.WaitsOn?.Count ?? 0);
         Assert.Equal(row.From.Id, row.To!.Id);
         Assert.False(row.Hop);
         Assert.Equal(WorkKinds.Advance, row.Kind);
     }
+
+    // ---- An ambition's pass runs once on the same room ----
+
+    private const string Settled = "a pass ran on it 2 hours ago and nothing has opened room since - the next runs when an epic under it closes or a person changes it";
+
+    /// <summary>A pass's work log row, written straight to the table: the ambition's playbook from the implementation column to itself.</summary>
+    private static async Task PassRowAsync(
+        Harness h, EfHatchIssue ambition, string? outcome = ClaimOutcomes.Worked, TimeSpan? ago = null,
+        string type = "ambition", int? from = null, int? to = null)
+    {
+        var ended = Now - (ago ?? TimeSpan.FromHours(2));
+        h.Db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = ambition.Id, SessionId = Guid.NewGuid().ToString("N"), StartedAt = ended.AddMinutes(-10), EndedAt = ended, DurationMs = 600_000, CreatedAt = ended,
+            IssueType = type, PlaybookFromStatusId = from ?? h.InProgress, PlaybookToStatusId = to ?? h.InProgress, Outcome = outcome,
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    private static async Task EventAsync(Harness h, EfHatchIssue issue, string kind, string? payload = null, TimeSpan? ago = null)
+    {
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent { IssueId = issue.Id, Actor = "operator", Kind = kind, Payload = payload, At = Now - (ago ?? TimeSpan.FromHours(1)) });
+        await h.Db.SaveChangesAsync();
+    }
+
+    private static string MovedTo(int toId) => $$"""{"to":"x","from":"y","toId":{{toId}},"fromId":1}""";
+
+    private static async Task<ScanRow> PassRowForAsync(Harness h, EfHatchIssue ambition) =>
+        RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), ambition);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task ScanAsync_AnAmbitionWithRoomAndAPassThatRan_IsFoldedUntilRoomOpens(int openEpics)
+    {
+        var (h, ambition) = await PassAsync(2, openEpics);
+        await PassRowAsync(h, ambition);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Equal(Settled, row.Blocked);
+        Assert.Equal(BlockedKinds.Family, row.BlockedKind);
+        Assert.Equal(openEpics, row.WaitsOn?.Count ?? 0);
+    }
+
+    [Theory]
+    [InlineData("child-done")]
+    [InlineData("child-deferred")]
+    [InlineData("limit")]
+    [InlineData("moved")]
+    [InlineData(EfHatchIssueEvent.CapabilityAdded)]
+    [InlineData(EfHatchIssueEvent.CapabilityEdited)]
+    [InlineData(EfHatchIssueEvent.CapabilityRemoved)]
+    public async Task ScanAsync_AnythingThatOpensRoomAfterThePass_ClearsTheFold(string what)
+    {
+        var (h, ambition) = await PassAsync(2, 1);
+        var epic = await h.Db.Issues.SingleAsync(i => i.ParentId == ambition.Id);
+        var shelved = new EfHatchStatus { Name = "parked", SortOrder = 60, IsDeferred = true };
+        h.Db.Statuses.Add(shelved);
+        await h.Db.SaveChangesAsync();
+        await PassRowAsync(h, ambition);
+
+        switch (what)
+        {
+            case "child-done": await EventAsync(h, epic, EfHatchIssueEvent.StatusChanged, MovedTo(h.Done)); break;
+            case "child-deferred": await EventAsync(h, epic, EfHatchIssueEvent.StatusChanged, MovedTo(shelved.Id)); break;
+            case "limit": await EventAsync(h, ambition, EfHatchIssueEvent.WipLimitChanged); break;
+            case "moved": await EventAsync(h, ambition, EfHatchIssueEvent.StatusChanged, MovedTo(h.Review)); break;
+            default: await EventAsync(h, ambition, what); break;
+        }
+
+        Assert.Null((await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Theory]
+    [InlineData(EfHatchIssueEvent.CapabilityJudged)]
+    [InlineData(EfHatchIssueEvent.Commented)]
+    [InlineData(EfHatchIssueEvent.Created)]
+    public async Task ScanAsync_APassesOwnWrites_DoNotClearTheFold(string kind)
+    {
+        var (h, ambition) = await PassAsync(2, 1);
+        var epic = await h.Db.Issues.SingleAsync(i => i.ParentId == ambition.Id);
+        await PassRowAsync(h, ambition);
+        await EventAsync(h, ambition, kind);
+        await EventAsync(h, epic, kind);
+
+        Assert.Equal(Settled, (await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AChildMovedToAColumnThatIsNotClosedOrDeferred_DoesNotClearTheFold()
+    {
+        var (h, ambition) = await PassAsync(2, 1);
+        var epic = await h.Db.Issues.SingleAsync(i => i.ParentId == ambition.Id);
+        await PassRowAsync(h, ambition);
+        await EventAsync(h, epic, EfHatchIssueEvent.StatusChanged, MovedTo(h.Review));
+        await EventAsync(h, epic, EfHatchIssueEvent.StatusChanged, """{"to":"Done","from":"To Do"}""");
+
+        Assert.Equal(Settled, (await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnEventOlderThanThePass_DoesNotClearTheFold()
+    {
+        var (h, ambition) = await PassAsync(2, 1);
+        await PassRowAsync(h, ambition);
+        await EventAsync(h, ambition, EfHatchIssueEvent.WipLimitChanged, ago: TimeSpan.FromHours(3));
+        await EventAsync(h, ambition, EfHatchIssueEvent.StatusChanged, MovedTo(h.InProgress), ago: TimeSpan.FromHours(5));
+
+        Assert.Equal(Settled, (await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnotherAmbitionsEvents_DoNotClearThisOnesFold()
+    {
+        var (h, ambition) = await PassAsync(2, 1);
+        var other = await h.FileAsync("ambition", "B", h.InProgress);
+        await PassRowAsync(h, ambition);
+        await EventAsync(h, other, EfHatchIssueEvent.WipLimitChanged);
+
+        Assert.Equal(Settled, (await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Theory]
+    [InlineData(ClaimOutcomes.Dropped)]
+    [InlineData(null)]
+    public async Task ScanAsync_APassThatDidNotWork_DoesNotFoldTheAmbition(string? outcome)
+    {
+        var (h, ambition) = await PassAsync(2, 1);
+        await PassRowAsync(h, ambition, outcome);
+
+        Assert.Null((await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnAmbitionThatNeverHadAPass_IsClear()
+    {
+        var (h, ambition) = await PassAsync(2, 0);
+
+        Assert.Null((await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ARowForAnotherTypeOrAnotherMove_IsNotAPass()
+    {
+        var (h, ambition) = await PassAsync(2, 1);
+        await PassRowAsync(h, ambition, type: "epic");
+        await PassRowAsync(h, ambition, from: h.Todo, to: h.InProgress);
+
+        Assert.Null((await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_APassFoldsOnTheNewestWorkedRow_NotAnOlderOne()
+    {
+        var (h, ambition) = await PassAsync(2, 1);
+        await PassRowAsync(h, ambition, ago: TimeSpan.FromHours(5));
+        await PassRowAsync(h, ambition);
+        await PassRowAsync(h, ambition, ClaimOutcomes.Dropped, ago: TimeSpan.FromMinutes(5));
+        await EventAsync(h, ambition, EfHatchIssueEvent.WipLimitChanged, ago: TimeSpan.FromHours(3));
+
+        Assert.Equal(Settled, (await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Theory]
+    [InlineData(0, "less than a minute ago")]
+    [InlineData(61, "1 minute ago")]
+    [InlineData(59 * 60, "59 minutes ago")]
+    [InlineData(60 * 60, "1 hour ago")]
+    [InlineData(23 * 3600, "23 hours ago")]
+    [InlineData(24 * 3600, "1 day ago")]
+    [InlineData(3 * 24 * 3600, "3 days ago")]
+    public void Ago_SaysHowLongAgoInTheLargestWholeUnit(int seconds, string expected) =>
+        Assert.Equal(expected, Dispatch.Ago(TimeSpan.FromSeconds(seconds)));
 
     [Fact]
     public async Task ScanAsync_AnEpicInTheImplementationColumnWithOpenStories_KeepsTheEpicFold()

@@ -50,6 +50,12 @@ public class QueryFilterAuditTests
             + "value came from outside the scope, never a hidden key. The family gate is the fourth: a child in a "
             + "project the caller cannot see still counts as open, so an epic is not closed over it. What leaves is "
             + "a count and an id."),
+        ["Dispatch.SettledPassesAsync"] = (2,
+            "The family gate's read of which ambitions have had a pass that nothing has since opened room for: "
+            + "the work log and the events of the ambitions and their direct epics. An epic in a project the caller "
+            + "cannot see still opens or fails to open its ambition's room, so a read that left it out would fold "
+            + "or clear the ambition differently for two callers. What leaves is an id and the time a pass ended, "
+            + "folded into the one sentence every caller is told."),
         ["ProjectRepositoryBinding.WinnersAsync"] = (1,
             "Which project a repository belongs to. The winner is the same project whoever asks, or two callers "
             + "would file the same outage's bug under different projects. What leaves is an id and a key."),
