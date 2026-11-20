@@ -21,13 +21,19 @@ public record UtilizationLimit(string Window, string Label, int Percent, DateTim
 /// <paramref name="State"/> is the whole of the degraded story, so a client
 /// reads one field rather than inferring staleness from a timestamp:
 /// <see cref="UtilizationStates.Ok"/> read within <see cref="Utilization.FreshFor"/>
-/// of <paramref name="ReadAt"/>; <see cref="UtilizationStates.Stale"/> outside
+/// of <paramref name="ReceivedAt"/>; <see cref="UtilizationStates.Stale"/> outside
 /// it - still the last thing this account is known to have reported, whose age
-/// <paramref name="ReadAt"/> gives. There is no third state: a reading is kept,
+/// <paramref name="ReceivedAt"/> gives. There is no third state: a reading is kept,
 /// not swept, and the endpoint answers <c>204</c> rather than a value where no
 /// runner of the caller's has ever reported one.
+///
+/// <paramref name="ReadAt"/> stays the runner's own word for when it read the
+/// account - a clock that can run ahead or behind Hatch's own. Freshness is
+/// judged on <paramref name="ReceivedAt"/>, Hatch's own clock at the moment
+/// this reading actually changed.
 /// </remarks>
-public record UtilizationReading(string State, DateTimeOffset ReadAt, IReadOnlyList<UtilizationLimit> Limits);
+public record UtilizationReading(
+    string State, DateTimeOffset ReadAt, DateTimeOffset ReceivedAt, IReadOnlyList<UtilizationLimit> Limits);
 
 public static class UtilizationStates
 {
@@ -117,29 +123,36 @@ public static class Utilization
     /// has ever reported one - the endpoint's <c>204</c>.
     /// </summary>
     public static UtilizationReading? Of(IEnumerable<EfHatchRunner> runners, DateTimeOffset now) =>
-        Of(runners.Select(r => (r.Usage, r.UsageReadAt)), now);
+        Of(runners.Select(r => (r.Usage, r.UsageReadAt, r.UsageReceivedAt)), now);
 
     /// <summary>
-    /// The same judgement over bare <c>(usage, read time)</c> pairs, so a
-    /// runner row and a <see cref="EfHatchRunnerSession"/> - both of which carry
-    /// the account's last reading - are weighed together.
+    /// The same judgement over bare <c>(usage, read time, received time)</c>
+    /// triples, so a runner row and a <see cref="EfHatchRunnerSession"/> - both
+    /// of which carry the account's last reading - are weighed together.
+    /// Ordered, and judged <c>ok</c>/<c>stale</c>, on <c>ReceivedAt ?? ReadAt</c>:
+    /// a row written before <see cref="EfHatchRunner.UsageReceivedAt"/> existed
+    /// carries no received time and falls back to its own read time, so nothing
+    /// goes dark on upgrade.
     /// </summary>
-    public static UtilizationReading? Of(IEnumerable<(string? Usage, DateTimeOffset? ReadAt)> readings, DateTimeOffset now)
+    public static UtilizationReading? Of(
+        IEnumerable<(string? Usage, DateTimeOffset? ReadAt, DateTimeOffset? ReceivedAt)> readings, DateTimeOffset now)
     {
-        (string Usage, DateTimeOffset ReadAt)? freshest = null;
-        foreach (var (usage, readAt) in readings)
+        (string Usage, DateTimeOffset ReadAt, DateTimeOffset ReceivedAt)? freshest = null;
+        foreach (var (usage, readAt, receivedAt) in readings)
         {
             if (usage is null || readAt is not { } at) continue;
-            if (freshest is null || at > freshest.Value.ReadAt) freshest = (usage, at);
+            var receivedOrRead = receivedAt ?? at;
+            if (freshest is null || receivedOrRead > freshest.Value.ReceivedAt) freshest = (usage, at, receivedOrRead);
         }
 
         if (freshest is not { } best) return null;
 
-        var state = now - best.ReadAt < FreshFor ? UtilizationStates.Ok : UtilizationStates.Stale;
+        var state = now - best.ReceivedAt < FreshFor ? UtilizationStates.Ok : UtilizationStates.Stale;
         var windows = JsonSerializer.Deserialize<List<RunnerUsageWindowDto>>(best.Usage) ?? [];
 
         return new UtilizationReading(
-            state, best.ReadAt, windows.Select(w => new UtilizationLimit(w.Window, w.Label, w.Percent, w.ResetsAt)).ToList());
+            state, best.ReadAt, best.ReceivedAt,
+            windows.Select(w => new UtilizationLimit(w.Window, w.Label, w.Percent, w.ResetsAt)).ToList());
     }
 
     /// <summary>
@@ -154,9 +167,9 @@ public static class Utilization
     {
         var readings = (await db.LegacyRunners.AsNoTracking()
                 .Where(r => r.ForPersonId == personId && r.Usage != null)
-                .Select(r => new { r.Usage, r.UsageReadAt })
+                .Select(r => new { r.Usage, r.UsageReadAt, r.UsageReceivedAt })
                 .ToListAsync(ct))
-            .Select(r => (r.Usage, r.UsageReadAt))
+            .Select(r => (r.Usage, r.UsageReadAt, r.UsageReceivedAt))
             .ToList();
 
         if (keys is not null)
@@ -169,9 +182,9 @@ public static class Utilization
             if (owned.Count > 0)
                 readings.AddRange((await db.RunnerSessions.AsNoTracking()
                         .Where(s => owned.Contains(s.ApiKeyId) && s.Usage != null)
-                        .Select(s => new { s.Usage, s.UsageReadAt })
+                        .Select(s => new { s.Usage, s.UsageReadAt, s.UsageReceivedAt })
                         .ToListAsync(ct))
-                    .Select(s => (s.Usage, s.UsageReadAt)));
+                    .Select(s => (s.Usage, s.UsageReadAt, s.UsageReceivedAt)));
         }
 
         return Of(readings, now);

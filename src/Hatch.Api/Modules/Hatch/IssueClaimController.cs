@@ -201,7 +201,7 @@ public class IssueClaimController(
         // Only a lease that actually renewed touches the row - see "One column
         // for liveness" on the ticket, and the remark on Runners.Project.
         var beat = await TouchRunnerAsync(claim, now, ct);
-        await WriteUsageAsync(claim, beat, request, ct);
+        await WriteUsageAsync(claim, beat, request, now, ct);
 
         if (await preemption.ForAsync(issue, ct) is not { } emergency) return NoContent();
 
@@ -558,7 +558,7 @@ public class IssueClaimController(
     /// increment runs; the loop's own heartbeat is sent only between
     /// increments. Never to a row by checkout: that reached every name the
     /// checkout had ever used. Nothing is written where the beat carries no
-    /// windows or no read time: <see cref="Utilization.Of(IEnumerable{ValueTuple{string, DateTimeOffset?}}, DateTimeOffset)"/>
+    /// windows or no read time: <see cref="Utilization.Of(IEnumerable{ValueTuple{string, DateTimeOffset?, DateTimeOffset?}}, DateTimeOffset)"/>
     /// skips a reading with no read time, so one without could only null out a
     /// good timestamp. The guard on <c>UsageReadAt</c> is in the <c>WHERE</c>
     /// rather than a read first, because this and the loop's own heartbeat
@@ -566,7 +566,7 @@ public class IssueClaimController(
     /// current word. Equal writes.
     /// </summary>
     private async Task WriteUsageAsync(
-        ClaimSnapshot claim, Beat beat, ClaimHeartbeatRequest request, CancellationToken ct)
+        ClaimSnapshot claim, Beat beat, ClaimHeartbeatRequest request, DateTimeOffset now, CancellationToken ct)
     {
         if (claim.Runner is null
             || request.UsageReadAt is not { } readAt
@@ -580,13 +580,19 @@ public class IssueClaimController(
                 .Where(s => s.ApiKeyId == keyId && s.Where == runner && s.EndedAt == null
                     && (s.UsageReadAt == null || s.UsageReadAt <= readAt))
                 .ExecuteUpdateAsync(
-                    s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);
+                    s => s.SetProperty(r => r.Usage, usage)
+                        .SetProperty(r => r.UsageReadAt, readAt)
+                        .SetProperty(r => r.UsageReceivedAt, r => r.UsageReadAt == readAt ? r.UsageReceivedAt : now),
+                    ct);
 
         if (beat.RunnerName is { } name)
             await db.LegacyRunners
                 .Where(r => r.Name == name && (r.UsageReadAt == null || r.UsageReadAt <= readAt))
                 .ExecuteUpdateAsync(
-                    s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);
+                    s => s.SetProperty(r => r.Usage, usage)
+                        .SetProperty(r => r.UsageReadAt, readAt)
+                        .SetProperty(r => r.UsageReceivedAt, r => r.UsageReadAt == readAt ? r.UsageReceivedAt : now),
+                    ct);
     }
 
     // ---- Odds and ends ----

@@ -34,6 +34,7 @@ const limit = (over: Partial<UtilizationLimit> = {}): UtilizationLimit => ({
 const reading = (over: Partial<Utilization> = {}): Utilization => ({
   state: 'ok',
   readAt: at(0),
+  receivedAt: at(0),
   limits: [limit()],
   ...over,
 });
@@ -385,9 +386,15 @@ describe('batteryLabel', () => {
   });
 
   it('carries the age of a stale reading, so an old number says it is old', () => {
-    const stale = reading({ state: 'stale', readAt: at(-12 * 60_000) });
+    const stale = reading({ state: 'stale', receivedAt: at(-12 * 60_000) });
 
     expect(batteryLabel(stale, NOW)).toBe('Claude session usage 17%, plenty left, resets in 1h 30m (read 12 minutes ago)');
+  });
+
+  it('ages off receivedAt rather than readAt - a runner reporting ahead of Hatch still reads just now', () => {
+    const ok = reading({ state: 'ok', readAt: at(10 * 60_000), receivedAt: at(0) });
+
+    expect(agePhrase(ok.receivedAt, NOW)).toBe('read just now');
   });
 
   it('reads as unknown when there is no battery at all', () => {

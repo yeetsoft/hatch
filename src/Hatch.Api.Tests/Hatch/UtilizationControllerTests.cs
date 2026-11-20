@@ -111,6 +111,26 @@ public class UtilizationControllerTests
     }
 
     /// <summary>
+    /// A row seeded the pre-migration way, with <c>UsageReadAt</c> and no
+    /// <c>UsageReceivedAt</c> at all - see <see cref="Harness.SeedAsync"/>,
+    /// which never sets it - still judges fresh/stale correctly: <see
+    /// cref="Utilization.Of(IEnumerable{ValueTuple{string, DateTimeOffset?, DateTimeOffset?}}, DateTimeOffset)"/>
+    /// falls back to <c>ReadAt</c> where <c>ReceivedAt</c> is null.
+    /// </summary>
+    [SkippableFact]
+    public async Task ARowWithNoUsageReceivedAt_StillJudgesFreshnessByReadAt()
+    {
+        await using var h = await NewAsync();
+        h.Actors.Principal = h.Actors.AddPerson("Nathan");
+        var readAt = Now.AddMinutes(-10);
+        await h.SeedAsync("here:/checkouts/one", h.Actors.Principal.Id, readAt, ("session", 10));
+
+        var reading = Value(await h.Utilization.Get(default));
+        Assert.Equal(UtilizationStates.Stale, reading.State);
+        Assert.Equal(readAt, reading.ReceivedAt);
+    }
+
+    /// <summary>
     /// The guard this test protected before the account it read from went
     /// away: criterion 10 says nothing vendor-shaped reaches the browser, and
     /// this is what fails loudly the day something does.
@@ -140,7 +160,7 @@ public class UtilizationControllerTests
 
         // And the shape it does carry, so this test fails loudly if the answer
         // is renamed rather than merely cleaned of somebody else's names.
-        foreach (var ours in new[] { "\"state\"", "\"readAt\"", "\"limits\"", "\"window\"", "\"label\"", "\"resetsAt\"" })
+        foreach (var ours in new[] { "\"state\"", "\"readAt\"", "\"receivedAt\"", "\"limits\"", "\"window\"", "\"label\"", "\"resetsAt\"" })
         {
             Assert.Contains(ours, json);
         }

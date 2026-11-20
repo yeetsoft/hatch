@@ -2085,6 +2085,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset?>("UsageReadAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("UsageReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Where")
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
@@ -2339,6 +2342,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("jsonb");
 
                     b.Property<DateTimeOffset?>("UsageReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("UsageReceivedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Username")
