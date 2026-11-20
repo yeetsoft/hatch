@@ -30,6 +30,27 @@ public class GooseControllerTests
         Assert.Equal(42, runs[0].LongestMs);
     }
 
+    [Fact]
+    public async Task ListRuns_CountsTheChecksAndTheOnesThatFailed()
+    {
+        var (options, db) = Open();
+        db.GooseRuns.Add(new EfHatchGooseRun
+        {
+            FirstRanAt = Now.AddMinutes(-5), LastRanAt = Now, Sweeps = 2, LongestMs = 9,
+            Entries = GooseEntry.Write([
+                new GooseEntry("a", "looked", "fine", false, null),
+                new GooseEntry("b", "looked", "", true, "boom"),
+                new GooseEntry("c", "looked", "fine", false, null),
+            ]),
+        });
+        await db.SaveChangesAsync();
+
+        var run = Assert.Single(Value(await new GooseController(db).ListRuns(null, default)));
+
+        Assert.Equal(3, run.Checks);
+        Assert.Equal(1, run.ChecksFailed);
+    }
+
     [Theory]
     [InlineData(2, 2)]
     [InlineData(0, 1)]

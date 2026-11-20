@@ -4399,7 +4399,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/playbook-proposals/reject-all` | POST | The same person-only gate as the row above. Marks every [pending proposal](#playbook-proposal) rejected, touching no playbook row. `{ proposalIds }` — the exact set the caller last read as pending. `409` naming the reload where that set has changed underneath it. A decided proposal naming an issue gets a `playbook_proposal_rejected` event |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
-| `/goose/runs` | GET | The goose's runs, newest first by last sweep, without the per-check detail; `limit` 1-200, default 50. Empty for a caller whose scope is not every project — see [the goose](#the-goose) |
+| `/goose/runs` | GET | The goose's runs, newest first by last sweep, without the per-check detail but with `checks` and `checksFailed` counts; `limit` 1-200, default 50. Empty for a caller whose scope is not every project — see [the goose](#the-goose) |
 | `/goose/runs/{id}` | GET | One run with its per-check entries; `404` for a missing id and for every id to a caller whose scope is not every project — see [the goose](#the-goose) |
 | `/goose/findings/{id}/bug` | POST | `[RequireRole(PersonRole.User)]` on the method with no `AcceptKey`, so a key is refused. Files a bug from a goose finding and stores it on the finding - expedited, no pre-approval and the leftmost column unless the optional body (`priority`, `statusId`, `preApproval`, `projectKey`) says otherwise. A `projectKey` naming another project than the finding's is `400`; a finding naming none needs one the caller can see. A second call, or one at the same moment, answers the bug already filed - see [the goose](#the-goose) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus every issue whose next move no live runner can take for want of a model or a development dependency (`waitingOnARunner`, see [a move no live runner can take](#a-move-no-live-runner-can-take)), plus every project whose clear implementation steps no live runner, or only one, can take (`runnerCapacity`, see [runner capacity](#runner-capacity)), plus every issue held or marked stalled, in board order, with who it waits on (`stalled`, `stallResumeSeconds`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
@@ -5305,6 +5305,27 @@ which has no query filter, so a narrowed caller is told too.
 every project, so for a caller whose scope is not everything the list is empty
 and a run reads as not found. The reader's page is
 [The goose](../src/Hatch.Web/apps/hatch/docs/the-goose.md).
+
+`GooseRunDto` carries `Checks` and `ChecksFailed` beside the sweep tallies, so
+the list can say how many checks a run holds without a detail call per run.
+`ListRuns` reads the rows and counts in memory from `GooseEntry.Read`, as
+`ListFindings` does for evidence.
+
+**The page.** `/goose` (`GoosePage.tsx`, HA-2502), a row in the nav's Agents
+group, reads the three routes above and draws, in order, a line for the goose's
+state (from `GET /api/attention`, which the app already polls), open findings,
+runs and closed findings, on the attention control's own interval. What can be
+decided without a browser lives in `lib/goose.ts`: durations, the tallies on a
+run's row, how many findings were open at a run's last sweep (opened by then
+and not closed until after), and ordering. A run opens in place to
+`GET /api/goose/runs/{id}`. A finding opens to its evidence; one with a bug also
+reads `GET /api/issues/{key}`, its `work-log` and its `events`, so the bug's
+description is the brief and the work log is what each session reported, and
+nothing is stored a second time. A work log row names the tool, not the runner,
+so the runner is the `runner` on the `claim_released` event whose `sessionId`
+matches the row's; a session with no such event shows none. A caller whose
+`GET /api/me` scope is not `all` is not sent for runs, and the page says why.
+The file-a-bug button is `FindingBugDialog`, shared with the attention panel.
 
 ### Findings
 

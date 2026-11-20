@@ -2344,6 +2344,60 @@ export interface AttentionFinding {
   issueKey: string | null;
 }
 
+/** One row of the goose's record: a run of sweeps that reached the same
+    conclusions. Mirrors GooseRunDto. */
+export interface GooseRun {
+  id: number;
+  firstRanAt: string;
+  lastRanAt: string;
+  /** How many sweeps the run holds. */
+  sweeps: number;
+  /** The longest any of them took, in milliseconds. */
+  longestMs: number;
+  /** How many checks the run's entries hold. Absent from a server that predates it. */
+  checks?: number;
+  /** How many of those threw. */
+  checksFailed?: number;
+}
+
+/** What one check did in a sweep. `error` is what a failed check said. Mirrors GooseEntryDto. */
+export interface GooseEntry {
+  check: string;
+  looked: string;
+  concluded: string;
+  failed: boolean;
+  error: string | null;
+}
+
+/** One run with what each check did, in the order they ran. The entries are
+    the latest sweep's. Mirrors GooseRunDetailDto. */
+export interface GooseRunDetail extends GooseRun {
+  entries: GooseEntry[];
+}
+
+/** One label and value a check reported about a finding. Mirrors GooseFindingEvidenceDto. */
+export interface GooseFindingEvidence {
+  label: string;
+  value: string;
+}
+
+/** One finding the goose opened, open or closed. Mirrors GooseFindingDto. */
+export interface GooseFinding {
+  id: number;
+  check: string;
+  subject: string;
+  projectKey: string | null;
+  sentence: string;
+  evidence: GooseFindingEvidence[];
+  /** When the condition began - never changes once the finding opens. */
+  beganAt: string;
+  openedAt: string;
+  /** Null while the finding is open. */
+  closedAt: string | null;
+  /** The bug filed from this finding, or null until one is. */
+  bugIssueKey: string | null;
+}
+
 /** The goose's own state. Mirrors AttentionGooseDto. */
 export interface AttentionGoose {
   /** When the newest run's last sweep ran, or null when no run is stored. */
