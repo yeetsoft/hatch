@@ -89,7 +89,7 @@ public class QuestionLevelTests(ITestOutputHelper output)
             await press("Q-three", "build");
             await harness.WaitForVisibleAsync(deadline, $"{row("Q-three")} .hatch-question-level .text-danger:text-is(\"{Refusal}\")");
             await Expect(deadline, "Q-three still holds", level("Q-three"), "hold");
-            output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"refused-{profileName}")}");
+            output.WriteLine($"saved {await ShotAsync(harness, deadline, $"refused-{profileName}")}");
             await harness.UnrouteAllAsync(deadline);
 
             // The real route: build, then merge.
@@ -100,26 +100,26 @@ public class QuestionLevelTests(ITestOutputHelper output)
             await Expect(deadline, "Q-two at merge", level("Q-two"), "merge");
             await Expect(deadline, "Q-two words", page.Locator(row("Q-two")).Locator(".hatch-question-level-words"), MergeWords);
 
-            // The refusal is gone with the next press, and Q-three held throughout.
+            // Q-three held throughout, and its refusal stays beside it until it is pressed again.
             await Expect(deadline, "Q-three at hold", level("Q-three"), "hold");
-            Assert.Equal(0, await deadline.BoundAsync("counting refusals", () => page.Locator($"{row("Q-three")} .text-danger").CountAsync()));
+            Assert.Equal(1, await deadline.BoundAsync("counting refusals", () => page.Locator($"{row("Q-three")} .text-danger").CountAsync()));
 
             // Q-three and Q-none still hold, so the card still leads with hold.
             await Expect(deadline, "the lead, one question holding", lead, $"{seeded.Many} will not be picked up again until these are answered.");
-            output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"issue-levels-{profileName}")}");
+            output.WriteLine($"saved {await ShotAsync(harness, deadline, $"issue-levels-{profileName}")}");
             AssertNoOverflow(await ScrollWidthsAsync(harness, deadline), profileName, "the issue page");
 
             // The lead follows the strictest level, one question at a time.
-            await harness.OpenAsync(deadline, baseUrl, $"/issues/{seeded.Lone}");
+            await harness.GoToAsync(deadline, $"/issues/{seeded.Lone}");
             await harness.WaitForVisibleAsync(deadline, row("Q-lone"));
             await press("Q-lone", "build");
             await Expect(deadline, "the lead at build", lead, $"{seeded.Lone} will be built on the recommendation and wait in review until these are answered.");
             await press("Q-lone", "merge");
             await Expect(deadline, "the lead at merge", lead, $"{seeded.Lone} will be built and merged on the recommendation; these wait for a look back.");
-            output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"issue-merge-{profileName}")}");
+            output.WriteLine($"saved {await ShotAsync(harness, deadline, $"issue-merge-{profileName}")}");
 
             // The Ballot draws what the issue page set, and sets it too.
-            await harness.OpenAsync(deadline, baseUrl, "/ballot");
+            await harness.GoToAsync(deadline, "/ballot");
             await harness.WaitForTopBarAsync(deadline);
             var ballot = (string tag) => $".hatch-ballot .hatch-question:has-text(\"{tag}\")";
             await harness.WaitForVisibleAsync(deadline, ballot("Q-one"));
@@ -130,7 +130,7 @@ public class QuestionLevelTests(ITestOutputHelper output)
                 page.Locator(ballot("Q-three")).GetByRole(AriaRole.Button, new() { Name = "build", Exact = true }).ClickAsync());
             await Expect(deadline, "Q-three set on the Ballot", page.Locator(ballot("Q-three")).Locator(".hatch-question-level-words"), BuildWords);
             Assert.Equal(1, await deadline.BoundAsync("counting buttons", () => page.Locator(ballot("Q-none")).Locator(".hatch-question-level-step").CountAsync()));
-            output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"ballot-levels-{profileName}")}");
+            output.WriteLine($"saved {await ShotAsync(harness, deadline, $"ballot-levels-{profileName}")}");
             AssertNoOverflow(await ScrollWidthsAsync(harness, deadline), profileName, "the Ballot");
 
             harness.AssertNoPageErrors();
@@ -148,6 +148,13 @@ public class QuestionLevelTests(ITestOutputHelper output)
 
     private static Task Expect(Deadline deadline, string phase, ILocator locator, string text) =>
         deadline.BoundAsync(phase, () => Assertions.Expect(locator).ToHaveTextAsync(text));
+
+    /// <summary>The pills fade between states, so wait out the fade: a look taken mid-fade shows two levels half marked.</summary>
+    private static async Task<string> ShotAsync(E2eHarness harness, Deadline deadline, string label)
+    {
+        await deadline.BoundAsync("letting the pills settle", () => Task.Delay(500));
+        return await harness.FullPageScreenshotAsync(deadline, label);
+    }
 
     private static async Task<(int Scroll, int Inner)> ScrollWidthsAsync(E2eHarness harness, Deadline deadline)
     {
