@@ -24,6 +24,7 @@ import {
   rotateRunner,
   revokeRunner,
   searchIssues,
+  overturnQuestion,
   setQuestionLevel,
   setRunnerOwner,
   stopAllSessions,
@@ -716,6 +717,26 @@ describe('getQueue', () => {
     const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
     expect(urls[0]).not.toContain('takers');
     expect(urls[1]).toContain('takers=true');
+  });
+});
+
+describe('overturnQuestion', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs the answer to the overturn route and returns the body', async () => {
+    const body = { question: { id: 7 }, taskKey: 'HA-13' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await overturnQuestion('HA-12', 7, 'Do the other thing');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/issues/HA-12/questions/7/overturn',
+      expect.objectContaining({ method: 'POST', body: '{"answer":"Do the other thing"}' }),
+    );
+    expect(result).toEqual(body);
   });
 });
 

@@ -41,3 +41,26 @@ export function thenWords(open: number, lookBack: number): string {
   ].filter((c): c is string => c !== null);
   return clauses.length === 0 ? 'Nothing else is waiting' : `Then ${clauses.join(', and ')}`;
 }
+
+/** The recommended option's label - what a look-back question's work went ahead
+    on - or null where the question recommended none. */
+export const keepOption = (options: QuestionOption[] | null): string | null =>
+  options?.find((o) => o.recommended)?.label ?? null;
+
+/** What has happened to the issue since the decision, as one sentence: the
+    column it stands in, when it closed, and how its work reached the trunk.
+    Each clause is left out where the route carries nothing for it. */
+export function outcomeWords(item: BallotQuestion): string {
+  const clauses = [
+    item.issueStatus ? `it stands in ${item.issueStatus}` : null,
+    item.closedAt ? `closed ${new Date(item.closedAt).toLocaleDateString()}` : null,
+    item.merged === true
+      ? 'its pull request merged'
+      : item.landings && item.landings.length > 0
+        ? 'its work landed on the trunk'
+        : null,
+  ].filter((c): c is string => c !== null);
+  if (clauses.length === 0) return '';
+  const sentence = clauses.join(', ');
+  return `${sentence[0].toUpperCase()}${sentence.slice(1)}.`;
+}

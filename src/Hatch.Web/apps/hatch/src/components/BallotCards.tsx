@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@hatch/ui';
 import { addComment, setQuestionLevel } from '../api/client';
+import { LookBackPresses } from './LookBackPresses';
 import { QuestionLevelControl, QuestionOptions } from './OpenQuestions';
 import { questionEmptyWords } from '../lib/attention';
-import { cardQueue, holdsWords, optionsRecommendedFirst, rootOf, thenWords } from '../lib/ballotCards';
+import { cardQueue, holdsWords, optionsRecommendedFirst, outcomeWords, rootOf, thenWords } from '../lib/ballotCards';
 import { message } from '../lib/errors';
 import { renderMarkdown } from '../lib/markdown';
 import { canRaise, fromQuestion, LEVEL_WORDS } from '../lib/questions';
@@ -148,45 +149,66 @@ function BallotCard({
         <span className="hatch-ballot-card-pill">{LEVEL_WORDS[question.level]}</span>
       </div>
 
-      {question.options && (
-        <QuestionOptions
-          options={optionsRecommendedFirst(question.options)}
-          onChoose={(option) => {
-            if (!saving) void send(option.label);
-          }}
-        />
-      )}
-
-      {other ? (
-        <div className="hatch-answer-box">
-          <input
-            type="text"
-            value={body}
-            aria-label="Your answer"
-            placeholder="The decision, in a sentence."
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && body.trim() && !saving) void send(body);
-            }}
+      {question.lookBack ? (
+        <>
+          <div className="hatch-ballot-card-decided">
+            <p>
+              <strong>Decided without you</strong>
+              {item.wentAheadOn !== null && <>: {item.wentAheadOn}</>}
+            </p>
+            <p className="text-muted">{outcomeWords(item)}</p>
+          </div>
+          <LookBackPresses
+            issueKey={question.issueKey}
+            questionId={question.id}
+            options={question.options}
+            wentAheadOn={item.wentAheadOn}
+            onDone={onAnswered}
           />
-          <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void send(body)}>
-            Answer
-          </Button>
-        </div>
+        </>
       ) : (
-        <Button className="hatch-ballot-card-other" onClick={() => setOther(true)}>
-          Say something else
-        </Button>
-      )}
-      {error && <p className="text-danger">{error}</p>}
+        <>
+          {question.options && (
+            <QuestionOptions
+              options={optionsRecommendedFirst(question.options)}
+              onChoose={(option) => {
+                if (!saving) void send(option.label);
+              }}
+            />
+          )}
 
-      <QuestionLevelControl
-        level={question.level}
-        canRaise={canRaise(asked)}
-        busy={leveling}
-        error={levelError}
-        onPick={(level) => void pickLevel(level)}
-      />
+          {other ? (
+            <div className="hatch-answer-box">
+              <input
+                type="text"
+                value={body}
+                aria-label="Your answer"
+                placeholder="The decision, in a sentence."
+                onChange={(e) => setBody(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing && body.trim() && !saving) void send(body);
+                }}
+              />
+              <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void send(body)}>
+                Answer
+              </Button>
+            </div>
+          ) : (
+            <Button className="hatch-ballot-card-other" onClick={() => setOther(true)}>
+              Say something else
+            </Button>
+          )}
+          {error && <p className="text-danger">{error}</p>}
+
+          <QuestionLevelControl
+            level={question.level}
+            canRaise={canRaise(asked)}
+            busy={leveling}
+            error={levelError}
+            onPick={(level) => void pickLevel(level)}
+          />
+        </>
+      )}
 
       <footer className="hatch-ballot-card-foot">
         <span className="text-muted">{thenWords(open, lookBack)}</span>

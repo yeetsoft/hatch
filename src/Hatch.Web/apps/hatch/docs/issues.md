@@ -183,7 +183,9 @@ it holds nothing, orders nothing and blocks nothing, and an issue filed from
 one that is still open is picked up exactly as any other. It can point at an
 issue in another project, and it clears itself if the source is deleted. It is
 set when an issue is filed, or changed later with an edit, and every change
-leaves a line in the issue's history.
+leaves a line in the issue's history. The rework task filed when a person
+[overturns a look-back question](questions-and-decisions#looking-back) is filed
+from the issue the question was on.
 
 The field sits on the issue page too, in the Details card's edit view, right
 after Parent. What it holds is read on the same page in its own section,

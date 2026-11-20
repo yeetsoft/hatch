@@ -92,6 +92,7 @@ import type {
   ProjectRunnerTagsWriteRequest,
   Question,
   QuestionLevel,
+  QuestionOverturn,
   QueueEntry,
   Revision,
   Runner,
@@ -518,6 +519,16 @@ export const setQuestionLevel = (key: string, id: number, level: QuestionLevel) 
   fetchJson<Question>(`/api/issues/${seg(key)}/questions/${id}/level`, {
     method: 'PUT',
     ...asJson({ level }),
+  });
+
+/** Overturn a look-back question: the person's own answer in place of the
+    option the work went ahead on, and one task filed to bring the work in
+    line. A refusal comes back as a plain sentence - see
+    QuestionOverturnController. */
+export const overturnQuestion = (key: string, id: number, answer: string) =>
+  fetchJson<QuestionOverturn>(`/api/issues/${seg(key)}/questions/${id}/overturn`, {
+    method: 'POST',
+    ...asJson({ answer }),
   });
 
 /** Who works an issue - `human`, `agent` or `inherit`. Its own route, closed
