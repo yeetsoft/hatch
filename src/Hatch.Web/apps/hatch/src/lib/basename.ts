@@ -45,6 +45,7 @@ export function fullHref(origin: string, pathname: string, path: string): string
 export const APP_ROUTE_ROOTS = [
   'ballot',
   'plan',
+  'ambitions',
   'dreams',
   'reports',
   'search',

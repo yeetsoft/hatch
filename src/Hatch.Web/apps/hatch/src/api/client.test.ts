@@ -8,6 +8,7 @@ import {
   getAuthMe,
   getActivityReport,
   getChangelogReport,
+  getAmbitions,
   getBallot,
   getPlan,
   getQueue,
@@ -549,6 +550,37 @@ describe('getPlan', () => {
 
   it('treats an empty list as none', async () => {
     expect(await urlOf([])).toBe('/api/plan');
+  });
+});
+
+describe('getAmbitions', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (projectId?: number | number[]) => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getAmbitions(projectId);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string with no projectId', async () => {
+    expect(await urlOf()).toBe('/api/ambitions');
+  });
+
+  it('sends one projectId, as a single value', async () => {
+    expect(await urlOf(3)).toBe('/api/ambitions?projectId=3');
+  });
+
+  it('repeats projectId once per id, given a list', async () => {
+    expect(await urlOf([3, 5])).toBe('/api/ambitions?projectId=3&projectId=5');
+  });
+
+  it('treats an empty list as none', async () => {
+    expect(await urlOf([])).toBe('/api/ambitions');
   });
 });
 
