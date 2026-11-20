@@ -2230,6 +2230,27 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Work_IsNotFoldedOnTheQuestionOfAnOverturnedLookBack_ForTheReworkItFiled()
+    {
+        var h = await NewAsync();
+        (await h.Db.Statuses.FindAsync(h.Todo))!.AgentFiles = true;
+        var story = await h.FileAsync("story", "shipped", h.Done);
+        // FileAsync numbers issues itself, so the project's next number is told where they stopped.
+        (await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).NextIssueNumber = 1000;
+        var question = await h.AskAsync(story, "per-node or global?");
+        question.Level = QuestionLevels.MergeName;
+        await h.Db.SaveChangesAsync();
+
+        var overturn = Assert.IsType<QuestionOverturnDto>(
+            Assert.IsType<OkObjectResult>((await h.Overturn.Overturn(Key(story), question.Id, new QuestionOverturnRequest("global"), default)).Result).Value);
+
+        // The rework stands under the story, in the agents' column, with its
+        // question answered - nothing left to fold it on.
+        var work = Value(await h.Work.GetWork(overturn.TaskKey, null, default));
+        Assert.Null(work.Blocked);
+    }
+
+    [Fact]
     public async Task AProseQuestion_FoldsHoweverLongItWaits()
     {
         var h = await NewAsync();
@@ -16149,6 +16170,7 @@ public class WorkControllerTests
         public required IAuthService Keys { get; init; }
         public required RunnerSessions Sessions { get; init; }
         public required WorkController Work { get; init; }
+        public required QuestionOverturnController Overturn { get; init; }
         public required BoardController Board { get; init; }
         public required StatusesController Statuses { get; init; }
         public required PlaybooksController Playbooks { get; init; }
@@ -17092,6 +17114,7 @@ public class WorkControllerTests
             Work = new WorkController(
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new HatchOptions { PublicBaseUrl = publicBaseUrl }),
                 new RankService(db), caller, runners, keys, sessions),
+            Overturn = new QuestionOverturnController(db, new RankService(db), caller, time),
             Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             Statuses = new StatusesController(db, new StubActorDirectory(), caller, time, NullLogger<StatusesController>.Instance),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now), new StubCallerIdentity())

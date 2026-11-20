@@ -318,6 +318,7 @@ public class ScopeRouteMatrixTests
         ("IssueThreadController.GetComments", Lookup(t => Get($"/api/issues/{t.Key}/comments"))),
         ("IssueThreadController.AddComment", Lookup(t => Post($"/api/issues/{t.Key}/comments", new { body = "a comment" }))),
         ("IssueThreadController.GetEvents", Lookup(t => Get($"/api/issues/{t.Key}/events"))),
+        ("QuestionOverturnController.Overturn", Lookup(t => Post($"/api/issues/{t.Key}/questions/1/overturn", new { answer = "no" }))),
         ("QuestionsController.GetIssueQuestions", Lookup(t => Get($"/api/issues/{t.Key}/questions?open=false"))),
         ("PlanController.GetIssuePlan", Lookup(t => Get($"/api/plan/{t.Key}"))),
         ("IssueWorkLogController.GetWorkLog", Lookup(t => Get($"/api/issues/{t.Key}/work-log"))),
