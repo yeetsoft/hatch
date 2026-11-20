@@ -282,6 +282,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         Pulling = beat.Pulling,
         Usage = beat.Usage,
         UsageReadAt = beat.UsageReadAt,
+        UsageSource = beat.UsageSource,
+        UsageProbeOff = beat.UsageProbeOff,
         ForPersonId = beat.ForPersonId,
         OrderKind = beat.OrderKind,
         OrderKey = beat.OrderKey,

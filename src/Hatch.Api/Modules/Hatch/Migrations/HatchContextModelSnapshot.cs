@@ -2082,11 +2082,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Usage")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("UsageProbeOff")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("UsageReadAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("UsageReceivedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UsageSource")
+                        .HasColumnType("text");
 
                     b.Property<string>("Where")
                         .HasMaxLength(240)
@@ -2341,11 +2347,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Usage")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("UsageProbeOff")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("UsageReadAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("UsageReceivedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UsageSource")
+                        .HasColumnType("text");
 
                     b.Property<string>("Username")
                         .HasMaxLength(64)

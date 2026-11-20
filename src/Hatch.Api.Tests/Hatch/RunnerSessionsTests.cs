@@ -164,6 +164,28 @@ public class RunnerSessionsTests
     }
 
     [Fact]
+    public void Project_AnswersTheUsageSourceAndProbeOffBack()
+    {
+        var session = Session();
+        session.UsageSource = "probe";
+        session.UsageProbeOff = "not signed in";
+
+        var dto = With().Project(session, null, null);
+
+        Assert.Equal("probe", dto.UsageSource);
+        Assert.Equal("not signed in", dto.UsageProbeOff);
+    }
+
+    [Fact]
+    public void Project_WithNoUsageSource_AnswersNulls()
+    {
+        var dto = With().Project(Session(), null, null);
+
+        Assert.Null(dto.UsageSource);
+        Assert.Null(dto.UsageProbeOff);
+    }
+
+    [Fact]
     public void Project_WithNoClaim_KeepsTheSessionsOwnLine()
     {
         var dto = With().Project(Session(line: "the session's own line"), null, null);

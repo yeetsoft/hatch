@@ -2192,14 +2192,19 @@ export interface UtilizationRunner {
   name: string;
   /** Whether this runner is up right now, on the same terms the Runners page judges it by. */
   live: boolean;
-  /** This runner's own `state`/`readAt`/`receivedAt`/`limits`, or all four null
-      together where it has never reported a reading of its own - up, or just
-      linked, but silent so far. Judged on the same five-minute rule as the
-      headline's own `state`. */
+  /** This runner's own `state`/`readAt`/`receivedAt`/`limits`/`source`/`probeOff`,
+      or all six null together where it has never reported a reading of its
+      own - up, or just linked, but silent so far. Judged on the same
+      five-minute rule as the headline's own `state`. `source` and `probeOff`
+      are also null where the runner has said nothing about them. */
   state: string | null;
   readAt: string | null;
   receivedAt: string | null;
   limits: UtilizationLimit[] | null;
+  /** Where the runner says its reading came from. */
+  source: string | null;
+  /** Why the runner's usage probe is off; null when it is not, or unsaid. */
+  probeOff: string | null;
 }
 
 /** A reading of my own Claude headroom. Mirrors UtilizationReading. */
@@ -3322,6 +3327,8 @@ export interface RunnerSession {
   tokensLastHour?: number | null;
   usage?: string | null;
   usageReadAt?: string | null;
+  usageSource?: string | null;
+  usageProbeOff?: string | null;
   projects?: string[];
   refusesDangerous?: boolean | null;
   orderKind?: string | null;

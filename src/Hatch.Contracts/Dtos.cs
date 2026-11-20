@@ -1357,12 +1357,21 @@ public static class HumanWorkValues
 /// Same meaning as <see cref="RunnerHeartbeatRequest.UsageReadAt"/>; absent
 /// leaves the runner's row alone.
 /// </param>
+/// <param name="UsageSource">
+/// Same meaning as <see cref="RunnerHeartbeatRequest.UsageSource"/>, including
+/// the pairing with <paramref name="UsageProbeOff"/>.
+/// </param>
+/// <param name="UsageProbeOff">
+/// Same meaning as <see cref="RunnerHeartbeatRequest.UsageProbeOff"/>.
+/// </param>
 public record ClaimHeartbeatRequest(
     Guid Token,
     string? Chatter,
     int? PlaybookId = null,
     IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
-    DateTimeOffset? UsageReadAt = null);
+    DateTimeOffset? UsageReadAt = null,
+    string? UsageSource = null,
+    string? UsageProbeOff = null);
 
 /// <summary>
 /// A new issue. It lands in the leftmost status and at the bottom of that
@@ -5334,6 +5343,8 @@ public record RunnerSessionDto(
     DateTimeOffset? ThrottledUntil = null,
     string? Usage = null,
     DateTimeOffset? UsageReadAt = null,
+    string? UsageSource = null,
+    string? UsageProbeOff = null,
     IReadOnlyList<string>? Remotes = null,
     bool? Clones = null,
     bool? Mine = null,
@@ -5470,6 +5481,21 @@ public enum RunnerBoardDrift
 /// reported, so an idle runner re-sending an hour-old reading on every poll
 /// does not make it look new.
 /// </param>
+/// <param name="UsageSource">
+/// Where <see cref="Usage"/> came from, in the sender's own words. It travels
+/// with <see cref="UsageProbeOff"/>, the way <see cref="AgentDown"/> and its
+/// three fields do: a beat that names a source is authoritative for both on
+/// that beat, so <see cref="UsageProbeOff"/> null means the probe is not off
+/// and a reason means it is. A beat with no source - an older CLI, or one with
+/// nothing to say about it - leaves both stored values alone, whether or not it
+/// carries a reading. A source with no reading is not stored: the source
+/// describes a reading, so it rides with one.
+/// </param>
+/// <param name="UsageProbeOff">
+/// Why this runner's usage probe is off, read only when <see cref="UsageSource"/>
+/// is present. Null alongside a source says the probe works, which clears a
+/// reason stored earlier.
+/// </param>
 /// <param name="Tags">
 /// Ignored; a runner's tags are never taken off a beat, the old route or the
 /// session route alike. A tag is a decision and a heartbeat is not the one to
@@ -5587,6 +5613,8 @@ public record RunnerHeartbeatRequest(
     string? AgentDownLine = null,
     IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
     DateTimeOffset? UsageReadAt = null,
+    string? UsageSource = null,
+    string? UsageProbeOff = null,
     IReadOnlyList<string>? Tags = null,
     bool? Fresh = null,
     string? Revision = null,

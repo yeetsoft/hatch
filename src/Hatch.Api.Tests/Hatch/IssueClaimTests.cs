@@ -2356,8 +2356,77 @@ public class IssueClaimTests
         JsonSerializer.Deserialize<List<RunnerUsageWindowDto>>(row.Usage!)!.Single().Percent;
 
     private static Task<ActionResult<ClaimPreemptedDto>> BeatAsync(
-        Harness h, string issue, Guid token, RunnerUsageWindowDto[]? usage, DateTimeOffset? readAt) =>
-        h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, null, usage, readAt), default);
+        Harness h, string issue, Guid token, RunnerUsageWindowDto[]? usage, DateTimeOffset? readAt,
+        string? source = null, string? probeOff = null) =>
+        h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, null, usage, readAt, source, probeOff), default);
+
+    [SkippableFact]
+    public async Task ABeatSendingASource_StoresItWithItsProbeOffOnTheRunnerRow()
+    {
+        await using var h = await NewAsync();
+        await h.AddRunnerAsync(Runner, Now, usageReadAt: Now.AddMinutes(-3), usage: Session(7));
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        await BeatAsync(h, issue, token, Session(20), Now.AddMinutes(-2), "stream", "not signed in");
+        var stored = await h.RunnerAsync(Runner);
+        Assert.Equal("stream", stored.UsageSource);
+        Assert.Equal("not signed in", stored.UsageProbeOff);
+
+        // A reading with no source leaves both alone.
+        await BeatAsync(h, issue, token, Session(30), Now.AddMinutes(-1));
+        var kept = await h.RunnerAsync(Runner);
+        Assert.Equal(30, PercentOf(kept));
+        Assert.Equal("stream", kept.UsageSource);
+        Assert.Equal("not signed in", kept.UsageProbeOff);
+
+        // A source with a null reason clears the reason.
+        await BeatAsync(h, issue, token, Session(40), Now, "probe");
+        var cleared = await h.RunnerAsync(Runner);
+        Assert.Equal("probe", cleared.UsageSource);
+        Assert.Null(cleared.UsageProbeOff);
+    }
+
+    [SkippableFact]
+    public async Task ABeatSendingASource_StoresItWithItsProbeOffOnTheLiveSession()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("loop-key");
+        var sessionId = await h.AddSessionAsync(h.Caller.Key.Id, Runner, Now);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        await BeatAsync(h, issue, token, Session(20), Now.AddMinutes(-2), "stream", "not signed in");
+        var stored = await h.SessionAsync(sessionId);
+        Assert.Equal("stream", stored.UsageSource);
+        Assert.Equal("not signed in", stored.UsageProbeOff);
+
+        await BeatAsync(h, issue, token, Session(30), Now.AddMinutes(-1));
+        var kept = await h.SessionAsync(sessionId);
+        Assert.Equal("stream", kept.UsageSource);
+        Assert.Equal("not signed in", kept.UsageProbeOff);
+
+        await BeatAsync(h, issue, token, Session(40), Now, "probe");
+        var cleared = await h.SessionAsync(sessionId);
+        Assert.Equal("probe", cleared.UsageSource);
+        Assert.Null(cleared.UsageProbeOff);
+    }
+
+    [SkippableFact]
+    public async Task ABeatSendingASourceWithNoReading_StoresNothing()
+    {
+        await using var h = await NewAsync();
+        await h.AddRunnerAsync(Runner, Now);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        await BeatAsync(h, issue, token, null, null, "stream", "off");
+
+        var row = await h.RunnerAsync(Runner);
+        Assert.Null(row.UsageSource);
+        Assert.Null(row.UsageProbeOff);
+    }
 
     [SkippableFact]
     public async Task ABeatWithAReading_IsWhatUtilizationAnswersForTheRunnersPerson()

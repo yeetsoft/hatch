@@ -4287,6 +4287,19 @@ public class EfHatchRunner
     public DateTimeOffset? UsageReceivedAt { get; set; }
 
     /// <summary>
+    /// Where <see cref="Usage"/> came from, as the runner last said. Moves
+    /// only on a beat that names a source, and always together with
+    /// <see cref="UsageProbeOff"/>.
+    /// </summary>
+    public string? UsageSource { get; set; }
+
+    /// <summary>
+    /// Why this runner's usage probe is off, or null when it is not. Written
+    /// with <see cref="UsageSource"/>, never alone.
+    /// </summary>
+    public string? UsageProbeOff { get; set; }
+
+    /// <summary>
     /// The person this runner works for - the calling key's owner, the same
     /// resolution <c>--mine</c> takes, written on every beat because whose key
     /// this is can change on the API Keys page and the row must follow. Null
@@ -4525,6 +4538,12 @@ public class EfHatchRunnerSession
 
     /// <summary>When <see cref="Usage"/> last actually changed, as <see cref="EfHatchRunner.UsageReceivedAt"/>.</summary>
     public DateTimeOffset? UsageReceivedAt { get; set; }
+
+    /// <summary>Where <see cref="Usage"/> came from, as <see cref="EfHatchRunner.UsageSource"/>.</summary>
+    public string? UsageSource { get; set; }
+
+    /// <summary>Why this session's usage probe is off, as <see cref="EfHatchRunner.UsageProbeOff"/>.</summary>
+    public string? UsageProbeOff { get; set; }
 
     /// <summary>The checkouts this session served, as <see cref="EfHatchRunner.Remotes"/>.</summary>
     public string? Remotes { get; set; }
