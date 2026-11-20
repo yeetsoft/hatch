@@ -25,7 +25,9 @@ import {
   rotateRunner,
   revokeRunner,
   searchIssues,
+  getIssueQuestions,
   overturnQuestion,
+  promoteQuestion,
   setQuestionLevel,
   setRunnerOwner,
   stopAllSessions,
@@ -769,6 +771,44 @@ describe('overturnQuestion', () => {
       expect.objectContaining({ method: 'POST', body: '{"answer":"Do the other thing"}' }),
     );
     expect(result).toEqual(body);
+  });
+});
+
+describe('promoteQuestion', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs the principle to the promote route and returns the body', async () => {
+    const body = { ambitionKey: 'HA-9', principle: 'Say it plainly' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await promoteQuestion('HA-12', 7, 'Say it plainly');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/issues/HA-12/questions/7/promote',
+      expect.objectContaining({ method: 'POST', body: '{"principle":"Say it plainly"}' }),
+    );
+    expect(result).toEqual(body);
+  });
+});
+
+describe('getIssueQuestions', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('adds open=false only when asked, leaving the default bare', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getIssueQuestions('HA-12');
+    await getIssueQuestions('HA-12', false);
+
+    const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
+    expect(urls[0]).toBe('/api/issues/HA-12/questions');
+    expect(urls[1]).toBe('/api/issues/HA-12/questions?open=false');
   });
 });
 

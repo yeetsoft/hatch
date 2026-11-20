@@ -14,6 +14,7 @@ import {
   getIssueCapabilities,
   getIssueDreams,
   getIssuePasses,
+  getIssueQuestions,
   getIssueServes,
   getIssue,
   getIssuePlan,
@@ -58,6 +59,7 @@ import { IssueSubheader } from '../components/IssueSubheader';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { MessageState } from '../components/MessageState';
 import { NewestFirstTitle } from '../components/NewestFirstGlyph';
+import { promotableAnswer, PromotePress } from '../components/PromotePress';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { IssueStatusBar } from '../components/IssueStatusBar';
@@ -134,6 +136,7 @@ import type {
   LocalModel,
   HumanWork,
   Project,
+  Question,
   RunnerTagSource,
   ServedCapability,
   Status,
@@ -151,6 +154,11 @@ export function IssuePage() {
   const { projects, byKey: projectsByKey } = useProjects();
   const move = useMoveProject((moved) => void navigate(`/issues/${moved.key}`));
   const [comments, setComments] = useState<Comment[]>([]);
+  /* This issue's own answered questions, for the promote press under each
+     answer comment - its own read, since the thread is built from comments
+     and never reads a QuestionDto otherwise. A failure draws no press rather
+     than an error. */
+  const [answered, setAnswered] = useState<Question[]>([]);
   const [events, setEvents] = useState<IssueEvent[]>([]);
   const [dreams, setDreams] = useState<Dream[]>([]);
   const [remandedDreams, setRemandedDreams] = useState<Dream[]>([]);
@@ -276,6 +284,14 @@ export function IssuePage() {
       (err: unknown) => ({ loaded: null, failure: message(err) }),
     );
 
+    /* And the twelfth: this issue's own answered questions, for the promote
+       press under each answer comment. Tolerant like `whom` - a failure
+       draws no press rather than an error on a page somebody came to read. */
+    const answering = getIssueQuestions(key, false).then(
+      (loaded) => loaded,
+      () => [] as Question[],
+    );
+
     try {
       const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams, loadedRemanded] = await Promise.all([
         getIssue(key),
@@ -317,6 +333,8 @@ export function IssuePage() {
     const passed = await passing;
     setPasses(passed.loaded);
     setPassesError(passed.failure);
+
+    setAnswered(await answering);
   }, [key]);
 
   useEffect(() => {
@@ -1168,6 +1186,7 @@ export function IssuePage() {
       <Comments
         issueKey={key}
         comments={comments}
+        answered={answered}
         claim={issue.claim}
         onAdded={() => void load()}
         onError={setError}
@@ -2079,12 +2098,16 @@ function Description({ issue, onSave }: { issue: Issue; onSave: (description: st
 function Comments({
   issueKey,
   comments,
+  answered,
   claim,
   onAdded,
   onError,
 }: {
   issueKey: string;
   comments: Comment[];
+  /** This issue's own answered questions, for the promote press under the
+      answer comment each one's newest answer landed as. */
+  answered: Question[];
   /** Only to say where a message to the agent stands - a note shows nothing of it. */
   claim: Issue['claim'];
   onAdded: () => void;
@@ -2147,6 +2170,12 @@ function Comments({
               className={comment.kind === 'question' ? 'hatch-question-body' : undefined}
             />
             {comment.options && <QuestionOptions options={comment.options} />}
+            {comment.kind === 'answer' &&
+              answered
+                .filter((q) => q.id === comment.answersId && promotableAnswer(q.answers)?.id === comment.id)
+                .map((q) => (
+                  <PromotePress key={q.id} issueKey={issueKey} questionId={q.id} ambitionKey={q.ambitionKey} answer={comment.body} />
+                ))}
           </li>
         ))}
       </ul>

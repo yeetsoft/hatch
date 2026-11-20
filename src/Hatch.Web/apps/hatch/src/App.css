@@ -8060,6 +8060,18 @@ button.hatch-option.chosen {
   gap: var(--sp-2);
 }
 
+.hatch-lookback-presses label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-promote-press {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
 .hatch-ballot-card .hatch-options,
 .hatch-ballot-card .hatch-answer-box {
   margin-top: 0;

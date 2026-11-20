@@ -163,6 +163,7 @@ function BallotCard({
             questionId={question.id}
             options={question.options}
             wentAheadOn={item.wentAheadOn}
+            ambitionKey={question.ambitionKey}
             onDone={onAnswered}
           />
         </>
