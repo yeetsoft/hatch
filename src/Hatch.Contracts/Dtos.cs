@@ -5983,9 +5983,14 @@ public record CredentialDto(string ProtectedToken);
 /// the 204 and from a server that predates it, which a client reads as
 /// "carry on as before".
 /// </param>
+/// <param name="Home">
+/// The caller's chosen home screen, <c>board</c> or <c>ambitions</c> - a key
+/// reads its owner's. <c>board</c> when there is no row. Absent from a server
+/// that predates it, which a client reads as <c>board</c>.
+/// </param>
 public record MeDto(
     string Kind, string Name, string? Role, bool Configured, bool CanSignOut, bool CanSignIn,
-    string? Owner = null, MeScopeDto? Scope = null);
+    string? Owner = null, MeScopeDto? Scope = null, string Home = "board");
 
 /// <summary>
 /// The caller's own scope, as <c>GET /api/me</c> reports it.

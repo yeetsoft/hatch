@@ -2742,6 +2742,9 @@ export interface Me {
   /** Which projects the caller reaches - a key reads its owner's. Absent from a
       server that predates it, which reads as "carry on as before". Mirrors MeScopeDto. */
   scope?: MeScope;
+  /** The caller's chosen home screen - a key reads its owner's. Absent from a
+      server that predates it, which reads as `board`. Mirrors MeDto.Home. */
+  home?: 'board' | 'ambitions';
 }
 
 /** `none` is a scope with no project in it; `all` does not list the projects

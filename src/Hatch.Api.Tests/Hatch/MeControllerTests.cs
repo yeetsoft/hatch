@@ -156,7 +156,8 @@ public class MeControllerTests
 
     private static MeController NewController(
         Actor? local, string? configuredName = null, string? settingName = null,
-        EfPerson? person = null, EfApiKey? key = null, bool googleConfigured = false, bool enabled = false) =>
+        EfPerson? person = null, EfApiKey? key = null, bool googleConfigured = false, bool enabled = false,
+        HatchContext? db = null) =>
         new(
             new StubLocalCaller(local, person, key),
             new StubSiteSettings(localPersonName: settingName),
@@ -166,7 +167,8 @@ public class MeControllerTests
                 Enabled = enabled,
                 LocalPerson = { Name = configuredName ?? "" },
                 Google = { ClientId = googleConfigured ? "id" : "", ClientSecret = googleConfigured ? "secret" : "" },
-            }));
+            }),
+            db ?? MeScopeTests.NewContext());
 
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException("expected a value");
