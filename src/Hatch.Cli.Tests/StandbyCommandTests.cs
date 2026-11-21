@@ -36,7 +36,7 @@ public sealed class StandbyCommandTests : IDisposable
 
     private StandbyItem Item() =>
         StandbyItem.For(
-            _root, "test:/checkout", null, Environment.ProcessPath, OperatingSystem.IsWindows(),
+            _root, "test:/checkout", null, null, Environment.ProcessPath, OperatingSystem.IsWindows(),
             Path.GetDirectoryName(Settings.UserConfigPath())!, out _)!;
 
     [Fact]

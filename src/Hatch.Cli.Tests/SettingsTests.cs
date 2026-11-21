@@ -418,7 +418,7 @@ public sealed class SettingsTests : IDisposable
     {
         var folder = Path.GetDirectoryName(Settings.UserConfigPath())!;
         var item = StandbyItem.For(
-            _temp, "Alder", null, "/opt/hatch/hatch", false, folder, out _);
+            _temp, "Alder", null, null, "/opt/hatch/hatch", false, folder, out _);
 
         Assert.NotNull(item);
         Assert.Equal(Settings.DefaultLogPath(), Path.GetDirectoryName(item.Log));

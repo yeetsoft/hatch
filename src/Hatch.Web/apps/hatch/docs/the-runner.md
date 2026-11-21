@@ -52,6 +52,31 @@ per-user folder (the one `hatch config` writes to). Deleting `versions/` by
 hand is safe: the next start runs the downloaded file itself, and the board is
 asked again.
 
+A plain command runs on that build too. `hatch board`, `hatch show`, `hatch
+work` and every other command except the loop's own, typed outside a loop, is
+handed on to the build recorded as current for the board the call is aimed at
+(the profile, then an exported variable, then `scripts/.env`, then the per-user
+file, as for any call), with the same arguments, and the downloaded file waits
+for it. Where no build is recorded for that board, or the call names no board,
+it runs the newest build kept: the one whose file was written last. It never
+reaches the network to decide, never downloads and never changes which build a
+board is on. Where nothing is kept, or the build chosen is the downloaded
+file itself, the downloaded file answers the command. A recorded build that is
+gone, or will not start, does not stop the command: the downloaded file answers
+it and says so in one line on standard error. A build that starts and then
+fails has given the command's own result, and is not retried.
+
+The exit code, the three streams and the terminal pass through untouched, so
+`hatch answer`, the prompts of `hatch config` and `hatch work -i` work as they
+always did, and a pipe into or out of `hatch` still works. A signal is passed on
+once and then waited for. The one thing that does not pass through exactly is a
+child a signal ended on Linux or macOS: the downloaded file answers its exit
+code, 128 plus the signal, and does not die of the signal itself. The cost is
+one more process start. `go-to-work`, `do-my-work`, `version`, `inbox` and
+`hatch --help` are not handed on; nor is a checkout through `scripts/hatch.sh`
+or `scripts/hatch.ps1`, a build nobody stamped, or the container image's build.
+A build that was handed a command never hands it on again.
+
 That page carries a command reference beneath the download, so a person who
 has just downloaded `hatch` has it in front of them. The whole reference is
 the [CLI reference](cli-reference).
@@ -1363,6 +1388,12 @@ loop at every sign-in, with no terminal and no signed-in session required:
   where `systemctl --user show-environment` succeeds; otherwise an XDG
   autostart entry (`~/.config/autostart/<id>.desktop`), for a login that
   never starts the user session systemd would run the unit under.
+
+In a downloaded `hatch` the item names the launcher, the file you downloaded,
+and never a build kept under `versions/`, so removing an old build cannot break
+the loop that starts at sign-in. Run from a kept build with no launcher above it,
+`hatch standby install` refuses in one sentence. An item an older build wrote is
+still found by `hatch standby show`.
 
 It starts the loop **paused**: the loop heartbeats but takes no ticket until
 something sets it running - the Runners page's **Resume**, or a `go-to-work

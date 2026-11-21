@@ -387,7 +387,9 @@ board call, but it needs a checkout: the item is registered for the one you
 are standing in, and under the profile you name with `--profile`, if any.
 
 - `hatch standby install` registers the item and prints the checkout, the
-  command it runs and the log it writes. It starts at the next sign-in;
+  command it runs and the log it writes. In a downloaded `hatch` the command
+  is the launcher, never a build under `versions/`; run from a kept build with
+  no launcher above it, it refuses. It starts at the next sign-in;
   `hatch go-to-work --standby` starts it now. Run again, it says it is already
   installed and changes nothing.
 - `hatch standby show`, or `hatch standby` alone, prints whether the item is
