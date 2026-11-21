@@ -4941,7 +4941,7 @@ public sealed class FamilyGate
     /// that names a question is a session that answered it, not a pass, so it
     /// never counts either. Room
     /// opens when a direct child epic moves into a terminal or deferred column,
-    /// and when the ambition's own limit, column or capabilities change. A
+    /// and when the ambition's own limit, budget, column or capabilities change. A
     /// pass's own writes - a verdict on a capability, a comment, a claim, a
     /// child's <c>serves_changed</c> or <c>created</c> - are not in that list,
     /// so they cannot reopen it.
@@ -4975,7 +4975,7 @@ public sealed class FamilyGate
         var since = passes.Values.Min();
         var kinds = new[]
         {
-            EfHatchIssueEvent.StatusChanged, EfHatchIssueEvent.WipLimitChanged,
+            EfHatchIssueEvent.StatusChanged, EfHatchIssueEvent.WipLimitChanged, EfHatchIssueEvent.BudgetChanged,
             EfHatchIssueEvent.CapabilityAdded, EfHatchIssueEvent.CapabilityEdited, EfHatchIssueEvent.CapabilityRemoved,
         };
         var events = await db.IssueEvents.IgnoreQueryFilters().AsNoTracking()

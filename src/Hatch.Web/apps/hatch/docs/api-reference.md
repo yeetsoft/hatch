@@ -299,7 +299,10 @@ moving an epic under an ambition whose every capability's newest verdict is
 holds 400s, naming the ambition and saying nothing is left to carve; one
 already hanging under that ambition may re-send its own `parentKey` with no
 refusal, and an ambition with no capabilities, or with a capability still
-without a verdict, is never refused this way. A patch that retypes an issue to
+without a verdict, is never refused this way. A key filing or moving an
+epic under an ambition whose budget is spent 400s the same way, saying the budget
+is spent and naming both amounts; an ambition with no budget is never refused
+this way, and neither is a person. A patch that retypes an issue to
 `ambition` 400s while the issue has a parent (unless the same patch clears
 `ParentKey`) or a child that is not an epic, naming the first such child by key;
 one that retypes an ambition 400s while a child could not hang under the new
@@ -961,7 +964,7 @@ to the cent, up to 1,000,000,000: `50` or `12.50`, not `$5`, `1e3`, `12.345`, `0
 (or whitespace) clears the budget. Anything else is a `400` with a sentence. Both verbs answer `400` on an issue that is not an ambition,
 naming its type: `only an ambition takes a budget - AER-12 is a story`. The write is a person's alone: a key gets `403`, with the wall on
 or off, and no other route - the issue patch, the bulk edit - takes a budget field. A change writes a `budget_changed` event holding
-the old amount, the new one and who made it. Nothing stops at the budget yet; this route only holds and reads it.
+the old amount, the new one and who made it. A spent budget stops a key filing an epic under the ambition, and the sum that refusal reads is the one this route returns; the route itself only holds and reads it.
 
 ## Serves
 

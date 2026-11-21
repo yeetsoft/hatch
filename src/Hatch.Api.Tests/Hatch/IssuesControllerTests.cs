@@ -510,6 +510,102 @@ public class IssuesControllerTests
         Assert.Equal("AER-1", Value(await h.Issues.GetIssue("AER-3", default)).ParentKey);
     }
 
+    // ---- An ambition whose budget is spent ----
+
+    [Fact]
+    public async Task AKeyFilingAnEpic_UnderAnAmbitionWhoseBudgetIsSpent_IsRefused_NamingBothAmounts()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        await h.SpendAsync("AER-1", budget: 10m, cost: 12.5m);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "one more cut", null, "AER-1", null, null), default);
+
+        var reason = Reason(result.Result);
+        Assert.Contains("the budget of AER-1 is spent", reason);
+        Assert.Contains("$12.50 of $10.00", reason);
+    }
+
+    [Fact]
+    public async Task AKeyMovingAnEpic_UnderAnAmbitionWithASpentBudget_IsRefused_ThroughPatchAndBulkEdit()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        await h.CreateAsync("epic", "elsewhere");
+        await h.SpendAsync("AER-1", budget: 10m, cost: 10m);
+        h.Caller.Key = AProgram();
+
+        var patched = await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default);
+        Assert.Contains("$10.00 of $10.00", Reason(patched.Result));
+
+        var bulk = Value(await h.Issues.BulkEdit(Bulk(["AER-2"], parentKey: "AER-1"), default));
+        var failure = Assert.Single(bulk.Failures);
+        Assert.Equal("AER-2", failure.Key);
+        Assert.Contains("the budget of AER-1 is spent", failure.Reason);
+    }
+
+    [Fact]
+    public async Task AnAmbitionWithNoBudget_IsNeverRefused_WhateverItHasCost()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        await h.SpendAsync("AER-1", budget: null, cost: 100000m);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "one more cut", null, "AER-1", null, null), default);
+
+        Assert.Equal("AER-1", Created(result).ParentKey);
+    }
+
+    [Fact]
+    public async Task AnAmbitionUnderItsBudget_IsNotRefused()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        await h.SpendAsync("AER-1", budget: 10m, cost: 9.99m);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "one more cut", null, "AER-1", null, null), default);
+
+        Assert.Equal("AER-1", Created(result).ParentKey);
+    }
+
+    [Fact]
+    public async Task APerson_IsNeverRefusedForASpentBudget_WithTheWallOnOrOff()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        await h.SpendAsync("AER-1", budget: 10m, cost: 20m);
+
+        var wallOn = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "the first cut", null, "AER-1", null, null), default);
+        Assert.Equal("AER-1", Created(wallOn).ParentKey);
+
+        h.Caller.Person = null;
+        h.Caller.Local = new Actor(ActorKind.Person, Guid.NewGuid(), "x");
+
+        var wallOff = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "the second cut", null, "AER-1", null, null), default);
+        Assert.Equal("AER-1", Created(wallOff).ParentKey);
+    }
+
+    [Fact]
+    public async Task AnEpicAlreadyUnderAnAmbitionWithASpentBudget_CanStillBeEditedByAKey()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        await h.CreateAsync("epic", "the first cut", parentKey: "AER-1");
+        await h.SpendAsync("AER-1", budget: 10m, cost: 20m);
+        h.Caller.Key = AProgram();
+
+        var patched = Value(await h.Issues.PatchIssue("AER-2", Patch(title: "the first cut, retitled", parentKey: "AER-1"), default));
+        Assert.Equal("AER-1", patched.ParentKey);
+    }
+
     [Fact]
     public async Task AnEpicMoved_LeavesAChildInAnotherProjectLinkedWithItsOldKey_AndCarriesTheRest()
     {
@@ -5191,6 +5287,20 @@ public class IssuesControllerTests
             Db.Capabilities.Add(capability);
             await Db.SaveChangesAsync();
             return capability.Id;
+        }
+
+        /// <summary>A budget on the issue named by <paramref name="key"/>, and a work log row costing <paramref name="cost"/> on it.</summary>
+        public async Task SpendAsync(string key, decimal? budget, decimal cost)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var issue = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            issue.BudgetUsd = budget;
+            Db.WorkLog.Add(new EfHatchWorkLogEntry
+            {
+                IssueId = issue.Id, SessionId = $"s-{Guid.NewGuid():N}",
+                StartedAt = Now, EndedAt = Now, DurationMs = 0, CreatedAt = Now, CostUsd = cost,
+            });
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>
