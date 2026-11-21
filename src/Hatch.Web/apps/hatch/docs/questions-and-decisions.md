@@ -140,6 +140,12 @@ The work is dispatched on the ambition, not on the issue the question is on, and
 dispatch carries the question itself as `answering`; see
 [the API reference](api-reference#work-what-a-runner-asks-the-board-for).
 
+The session reads the question in its prompt and records its answer with
+`hatch answer <key> <id> "<text>"`, on the question's own issue, or comments
+that the context does not settle it and stops
+([the question to answer](what-a-session-is-told#the-question-to-answer)).
+Either way it ends as worked, so a question it declined is not aimed at it again.
+
 The answer is a session's own, so it reads as a look back: the person looks it
 over on the Ballot afterwards and keeps or overturns it
 ([looking back](#looking-back)).

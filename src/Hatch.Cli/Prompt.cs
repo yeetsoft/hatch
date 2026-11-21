@@ -58,6 +58,8 @@ public static class Prompt
 
         if (work.Ambition is { Principles.Count: > 0 } ambition) lines.AddRange(Principles(ambition));
 
+        if (work.Answering is { } answering) lines.AddRange(QuestionToAnswer(answering, work.IssueUrl, key));
+
         if (work.NextBriefLimit is { } limit)
         {
             lines.Add("## How long the brief may be");
@@ -86,7 +88,7 @@ public static class Prompt
         if (work.LastCheckFindings is { Length: > 0 } findings) lines.AddRange(LastCheck(findings));
 
         var sharedStory = Branches.IsShared(work) ? work.BranchKey : null;
-        var deniesGitWrites = DeniesGitWrites(work.Playbook?.DeniedTools);
+        var deniesGitWrites = DeniesGitWrites(work.Playbook?.DeniedTools) || work.Kind == WorkKinds.Answer;
         if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory, deniesGitWrites));
 
         // After the branch, which says where the work goes, and before the
@@ -256,7 +258,8 @@ public static class Prompt
             startsHere: BoundForImplementation(work), deniesGitWrites: deniesGitWrites,
             offersNoCode: work.OffersNoCode ?? true,
             buildsPast: work.BuildPast is { Count: > 0 },
-            staysPut: issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id));
+            staysPut: issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id && work.Answering is null,
+            answering: work.Answering));
         return string.Join('\n', lines);
     }
 
@@ -267,6 +270,57 @@ public static class Prompt
     private static string BuildPastLevel(string level) => level == QuestionLevels.MergeName
         ? "Build on the recommendation. It merges, and a person looks over the answer after."
         : "Build on the recommendation. Your pull request waits in review until a person answers.";
+
+    /// <summary>
+    /// What the two levels mean for the session answering a question - the one
+    /// place the two sentences are written, as <see cref="BuildPastLevel"/> is
+    /// for the session building past one.
+    /// </summary>
+    private static string AnsweringLevel(string level) => level == QuestionLevels.MergeName
+        ? "At `merge`, the work built past it is merged, and a person looks over your answer after."
+        : "At `build`, the work built past it is built but not merged until the question is answered.";
+
+    /// <summary>
+    /// The question an answering dispatch is for: the issue it is on, who asked
+    /// and when, what it says, and every option with the recommended one marked.
+    /// The link swaps the last segment of the ambition's own link for the
+    /// question's issue; without an absolute http(s) link ending in the
+    /// ambition's key, it is the bare key, and nothing is made up.
+    /// </summary>
+    private static IEnumerable<string> QuestionToAnswer(WorkQuestionDto question, string? issueUrl, string ambitionKey)
+    {
+        var linked = Uri.TryCreate(issueUrl, UriKind.Absolute, out var url)
+            && url.Scheme is "http" or "https"
+            && issueUrl!.EndsWith("/" + ambitionKey, StringComparison.Ordinal);
+        var reference = linked
+            ? $"[{question.IssueKey}]({issueUrl![..^ambitionKey.Length]}{question.IssueKey})"
+            : question.IssueKey;
+
+        yield return "## The question to answer";
+        yield return "";
+        yield return $"This session is here to answer one question, on {reference}, {question.IssueTitle}.";
+        yield return $"{question.AskedBy} asked it on {Format.Stamp(question.AskedAt)}.";
+        yield return "";
+
+        foreach (var line in question.Body.ReplaceLineEndings("\n").Split('\n')) yield return line;
+
+        yield return "";
+
+        if (question.Options is { Count: > 0 } options)
+        {
+            for (var n = 0; n < options.Count; n++)
+            {
+                yield return $"{n + 1}. {options[n].Label}{(options[n].Recommended ? " (recommended)" : "")}";
+                if (options[n].Detail is not { Length: > 0 } detail) continue;
+                foreach (var line in detail.ReplaceLineEndings("\n").Split('\n')) yield return $"   {line}";
+            }
+
+            yield return "";
+        }
+
+        yield return $"**Level:** {question.Level}. {AnsweringLevel(question.Level)}";
+        yield return "";
+    }
 
     /// <summary>
     /// What a session is told, once, the first time its tokens cross its
@@ -669,7 +723,7 @@ public static class Prompt
         bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
         bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
         bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null,
-        bool buildsPast = false, bool staysPut = false) =>
+        bool buildsPast = false, bool staysPut = false, WorkQuestionDto? answering = null) =>
     [
         "## Reaching Hatch",
         "",
@@ -706,7 +760,7 @@ public static class Prompt
             "(200 characters at most).",
             "",
         }),
-        ..(isCheck || startsHere ? Array.Empty<string>() : new[]
+        ..(isCheck || startsHere || answering is not null ? Array.Empty<string>() : new[]
         {
             "Claiming is the marker that you have started. The ticket moves once, at the end,",
             "to the column under \"Where this increment ends\".",
@@ -762,7 +816,7 @@ public static class Prompt
         ..PreApproval(preApproval),
         "## Where this increment ends",
         "",
-        ..(staysPut ? new[]
+        ..(answering is not null ? AnsweringEnd(answering) : staysPut ? new[]
         {
             $"{key} stays in \"{to}\" when you stop. Only the operator moves work into a",
             "terminal column. A verdict on every capability (`hatch capability judge`)",
@@ -809,6 +863,32 @@ public static class Prompt
         $"That block becomes the work log row for this session on {key}, beside",
         "what the session cost. A run that writes none still gets a row marked as",
         "never having said what it did. Write it last, and write it once.",
+    ];
+
+    /// <summary>
+    /// How an answering increment ends. The key is the question's issue, which
+    /// is not the ambition the prompt is about: the answer and the comment both
+    /// go on the issue the question was asked on.
+    /// </summary>
+    private static string[] AnsweringEnd(WorkQuestionDto question) =>
+    [
+        "This increment answers a question and moves nothing. Answer only if the ambition's",
+        "description, its answered questions or the repository settles it:",
+        "",
+        "```",
+        $"hatch answer {question.IssueKey} {question.QuestionId} \"<text>\"",
+        "```",
+        "",
+        "The first line of the text is the decision. The lines after it say where you found it.",
+        "",
+        "If none of them settles it, say the context does not settle it, and stop:",
+        "",
+        "```",
+        $"hatch comment {question.IssueKey} \"...\"",
+        "```",
+        "",
+        "Move nothing, cut no branch, and open no pull request. Only the operator moves work",
+        "into a terminal column.",
     ];
 
     /// <summary>

@@ -38,6 +38,14 @@ public sealed class IncrementReport
     public bool Stalled { get; set; }
 
     /// <summary>
+    /// The key of the issue whose question this increment was dispatched to
+    /// answer, or null on every other increment. An answering session moves
+    /// nothing, whether it answered or declined, so the column cannot say it
+    /// worked.
+    /// </summary>
+    public string? AnsweringKey { get; init; }
+
+    /// <summary>
     /// The repo copy of the playbook file had moved, or gone missing, since this
     /// dispatch was judged - caught just before the spawn, in time to refuse it
     /// rather than run a session against a stale brief. Not a stall: the ticket
@@ -445,6 +453,7 @@ public sealed class IncrementReport
         : Stalled && StillConflicting.Count > 0
             ? $"still conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled ? $"still in \"{Ended}\"{(Flag is { Length: > 0 } ? $", {Flag}" : "")}{(KeptLast.Length > 0 ? $" - the CLI said \"{KeptLast}\"" : "")}"
+        : AnsweringKey is not null ? $"answered or declined the question on {AnsweringKey}"
         : Flag is { Length: > 0 } flag ? flag
         : "where it ended up is not known";
 }
@@ -527,6 +536,7 @@ public sealed class Increment(
             From = work.FromStatus.Name,
             To = work.ToStatus?.Name ?? "?",
             ConflictTrunk = conflict is null ? null : conflict.Found.Trunk ?? Conflicts.Trunk(work.Issue),
+            AnsweringKey = work.Answering?.IssueKey,
         };
         report.Ended = report.From;
         report.StartedAt = DateTimeOffset.UtcNow;
@@ -550,7 +560,8 @@ public sealed class Increment(
             // cannot say it worked. A verdict can: the newest one on each
             // capability, read now and again once the session ends. A read
             // that fails is not known, and not known is never a stall.
-            var judging = work.Issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id;
+            var judging = work.Issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id
+                && work.Kind != WorkKinds.Answer;
             var verdictsBefore = judging ? await ReadVerdictsAsync(board, report.Key, ct) : null;
 
             var facts = new RunFacts();
@@ -886,7 +897,7 @@ public sealed class Increment(
                     // review, so "did not move" is what success looks like. The
                     // column is still read and still reported.
                     if (report.Ended != report.From) report.Moved = true;
-                    else if (conflict is null && build is null && report.Filed.Count == 0 && report.Judged.Count == 0) report.Stalled = true;
+                    else if (conflict is null && build is null && work.Answering is null && report.Filed.Count == 0 && report.Judged.Count == 0) report.Stalled = true;
                 }
                 catch (HatchException e)
                 {
@@ -1108,6 +1119,13 @@ public sealed class Increment(
                 // at all.
                 if (report.Preempted) report.ReleaseOutcome = ClaimOutcomes.Preempted;
                 else if (!report.Unservable && (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0 || report.Judged.Count > 0)) report.ReleaseOutcome = ClaimOutcomes.Worked;
+                // An answering session moves nothing and files nothing whether
+                // it answered or declined, and the board skips a question only
+                // once a worked row names it - so a normal end is worked, and
+                // a stall (no work-log, or an errored run) is still a stall.
+                else if (work.Answering is not null && !report.Stalled && !report.Recused && !report.LostLease && !report.UsageLimited
+                    && !report.Unservable && !report.Unstarted && !report.AuthFailed && !report.HardLimited
+                    && !report.QuietStopped && !report.RunTimeStopped) report.ReleaseOutcome = ClaimOutcomes.Worked;
             }
             catch (OperationCanceledException)
             {
@@ -1916,6 +1934,7 @@ public sealed class Increment(
             PlaybookFileHash = source == "file" ? work.PlaybookFile?.Hash : null,
             Agent = adapter.Id,
             PlaybookKey = PlaybookKeyOf(work.Playbook),
+            QuestionId = work.Answering?.QuestionId,
             PlaybookFromStatusId = work.Playbook?.FromStatusId,
             PlaybookToStatusId = work.Playbook?.ToStatusId,
             IssueType = work.Issue.Type,

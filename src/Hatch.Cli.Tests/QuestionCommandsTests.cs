@@ -212,6 +212,48 @@ public sealed class QuestionCommandsTests
     }
 
     /// <summary>
+    /// The form a session with no terminal uses: the id names the question, so
+    /// nothing is listed and nobody is asked, and the answer goes on the issue
+    /// the question is on.
+    /// </summary>
+    [Fact]
+    public async Task One_shot_answer_records_the_text_against_the_question_with_no_terminal()
+    {
+        using var h = new CliHarness();
+        h.In.AtATerminal = false;
+        h.Wire.Json("POST", Comments, Asked());
+
+        Assert.Equal(0, await new QuestionCommands(h.Cli).AnswerAsync(["AER-12", "41", "child-weighted\nThe ambition says so."], default));
+
+        var sent = h.Wire.To("POST", Comments).Single().Read<CommentCreateRequest>();
+        Assert.Equal("child-weighted\nThe ambition says so.", sent.Body);
+        Assert.Equal("answer", sent.Kind);
+        Assert.Equal(41, sent.AnswersId);
+        Assert.Contains("answered question #41 on AER-12: child-weighted", h.Said);
+        Assert.DoesNotContain("The ambition says so.", h.Said);
+        Assert.Single(h.Wire.Calls);
+    }
+
+    [Theory]
+    [InlineData("AER-12", "41")]
+    [InlineData("AER-12", "41", "")]
+    [InlineData("AER-12", "41", "   ")]
+    [InlineData("AER-12", "abc", "Yes")]
+    [InlineData("AER-12", "0", "Yes")]
+    [InlineData("AER-12", "-3", "Yes")]
+    [InlineData("AER-12", "41", "Yes", "extra")]
+    public async Task One_shot_answer_refuses_what_it_cannot_record_and_calls_nothing(params string[] args)
+    {
+        using var h = new CliHarness();
+        h.In.AtATerminal = false;
+
+        Assert.Equal(1, await new QuestionCommands(h.Cli).AnswerAsync(args, default));
+        Assert.Contains("usage: hatch answer [AER-12]", h.Complained);
+        Assert.Contains("       hatch answer AER-12 <id> \"<text>\"", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    /// <summary>
     /// What gets written is the option's label, so the thread reads as the
     /// decision it was rather than as an index into a list nobody kept.
     /// </summary>

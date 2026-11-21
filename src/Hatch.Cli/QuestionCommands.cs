@@ -28,10 +28,14 @@ public sealed class QuestionCommands(Cli cli)
     public static readonly string[] AnswerUsage =
     [
         "usage: hatch answer [AER-12]",
+        "       hatch answer AER-12 <id> \"<text>\"",
         "",
         "  Every open question, one at a time, on this terminal. A number takes",
         "  that option, Enter alone leaves one open, a trailing \\ keeps typing,",
         "  and ^D stops.",
+        "",
+        "  With an id and the text, records that one answer with no terminal. The",
+        "  first line of the text is the decision; later lines say where it was found.",
     ];
 
     /// <summary>
@@ -154,7 +158,22 @@ public sealed class QuestionCommands(Cli cli)
     public async Task<int> AnswerAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, AnswerUsage);
-        if (args.Length > 1) return Usage.Refuse(cli.Say, "answer takes one issue key", AnswerUsage);
+        if (args.Length > 3) return Usage.Refuse(cli.Say, "answer takes an issue key, a question id and the answer text", AnswerUsage);
+        if (args.Length == 2) return Usage.Refuse(cli.Say, "answer needs the question id and the answer text", AnswerUsage);
+
+        // The one-shot form, for a session with no terminal: the id names the
+        // question, so nothing is listed and nobody is asked anything.
+        if (args.Length == 3)
+        {
+            if (!long.TryParse(args[1], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id) || id <= 0)
+                return Usage.Refuse(cli.Say, $"\"{args[1]}\" is not a question id", AnswerUsage);
+            if (string.IsNullOrWhiteSpace(args[2]))
+                return Usage.Refuse(cli.Say, "answer needs the answer text", AnswerUsage);
+
+            await cli.Board.AnswerAsync(args[0], id, args[2], ct);
+            cli.Say.Line($"answered question #{id} on {args[0]}: {args[2].ReplaceLineEndings("\n").Split('\n')[0]}");
+            return 0;
+        }
 
         if (!cli.In.Interactive)
         {

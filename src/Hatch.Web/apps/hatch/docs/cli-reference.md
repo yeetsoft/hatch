@@ -1060,6 +1060,7 @@ level beside who asked it: `asked by <name>, <time> - level hold`. Reads only.
 
 ```
 hatch answer [AER-12]
+hatch answer AER-12 <id> "<text>"
 ```
 
 Walks every open question, or one ticket's, one at a time on this terminal. A
@@ -1071,6 +1072,13 @@ answer is written under the key's name.
 It ends with `answered <n> of <total>` and, if any were answered, a `hatch work`
 line for the tickets that are now clear, since answering is only half of it.
 With nothing open it prints `hatch: nothing is waiting on an answer` instead.
+
+With an issue key, a question id and the text, it records that one answer and
+needs no terminal, which is how a session sent to answer a question does it. The
+first line of the text is the decision, and the lines after it say where it was
+found. It prints one line, `answered question #<id> on AER-12: <first line>`.
+A missing or non-numeric id, an id of zero, empty text, or more than three
+arguments is refused with the usage, and nothing is sent.
 
 A look-back question - one asked at `merge` on an issue that has since closed -
 is walked here like any other, and the option you pick is recorded the same

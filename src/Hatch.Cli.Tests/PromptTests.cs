@@ -218,6 +218,94 @@ public sealed class PromptTests
             Playbook = Fixtures.Playbook(deniedTools: ["Bash(git push *)"]),
         };
 
+    /// <summary>An ambition dispatched to answer a question on a child of it: the pass shape, with the question in hand.</summary>
+    private static WorkDto AnswerWork(string level = "build") =>
+        Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", type: "ambition"), kind: WorkKinds.Answer,
+            ambition: new WorkAmbitionDto("AER-1", "The ambition", ["Small steps."]),
+            answering: new WorkQuestionDto(
+                "AER-30", "Pick a weighting", 77, "Which weighting should it use?",
+                [
+                    new QuestionOptionDto("child-weighted", "Each child counts the same.", Recommended: true),
+                    new QuestionOptionDto("size-weighted"),
+                ],
+                level, "agent-one", DateTimeOffset.Parse("2026-11-01T10:00:00+00:00"))) with
+        {
+            ToStatus = Fixtures.Status(3, "In Progress"),
+            Playbook = Fixtures.Playbook(deniedTools: ["Bash(git push *)"]),
+        };
+
+    [Theory]
+    [InlineData("build", "built but not merged until the question is answered")]
+    [InlineData("merge", "merged, and a person looks over your answer after")]
+    public void An_answering_dispatch_carries_the_question_after_the_principles_and_before_the_repositories(string level, string meaning)
+    {
+        var prompt = Prompt.Compose(
+            AnswerWork(level),
+            repositories: [new Checkouts.RepositoryLine("C:/repo", "git@example.test:o/r.git", true, null)]);
+
+        var principles = prompt.IndexOf("## Principles", StringComparison.Ordinal);
+        var section = prompt.IndexOf("## The question to answer", StringComparison.Ordinal);
+        var repositories = prompt.IndexOf("## Repositories", StringComparison.Ordinal);
+        Assert.True(principles > 0 && section > principles && repositories > section);
+
+        var text = prompt[section..repositories];
+        Assert.Contains("[AER-30](https://hatch.example.test/issues/AER-30), Pick a weighting", text, StringComparison.Ordinal);
+        Assert.Contains("agent-one asked it on 2026-11-01T10:00:00+00:00", text, StringComparison.Ordinal);
+        Assert.Contains("Which weighting should it use?", text, StringComparison.Ordinal);
+        Assert.Contains("1. child-weighted (recommended)", text, StringComparison.Ordinal);
+        Assert.Contains("   Each child counts the same.", text, StringComparison.Ordinal);
+        Assert.Contains("2. size-weighted", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("size-weighted (recommended)", text, StringComparison.Ordinal);
+        Assert.Contains($"**Level:** {level}.", text, StringComparison.Ordinal);
+        Assert.Contains(meaning, text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_question_is_a_bare_key_where_the_ambition_has_no_link_to_swap()
+    {
+        var prompt = Prompt.Compose(AnswerWork() with { IssueUrl = null });
+
+        var section = prompt[prompt.IndexOf("## The question to answer", StringComparison.Ordinal)..prompt.IndexOf("## Reaching Hatch", StringComparison.Ordinal)];
+        Assert.Contains("on AER-30, Pick a weighting", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("](", section, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_answering_dispatch_ends_with_the_command_line_answer_on_the_questions_own_issue()
+    {
+        var prompt = Prompt.Compose(AnswerWork());
+
+        var closing = prompt[prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal)..];
+        Assert.Contains("hatch answer AER-30 77 \"<text>\"", closing, StringComparison.Ordinal);
+        Assert.Contains("hatch comment AER-30 \"...\"", closing, StringComparison.Ordinal);
+        Assert.Contains("the context does not settle it", closing, StringComparison.Ordinal);
+        Assert.Contains("Move nothing, cut no branch, and open no pull request", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("should be in", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("judge", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("Claiming is the marker", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_answering_dispatch_opens_no_pull_request_and_cuts_no_branch_even_on_an_edited_row()
+    {
+        var branches = new[] { new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x" } };
+        var prompt = Prompt.Compose(AnswerWork() with { Playbook = Fixtures.Playbook(deniedTools: []) }, branches: branches);
+
+        Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("cut `aer-12-x`", prompt, StringComparison.Ordinal);
+        Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_dispatch_with_no_question_has_no_such_section()
+    {
+        var prompt = Prompt.Compose(PassWork());
+
+        Assert.DoesNotContain("## The question to answer", prompt, StringComparison.Ordinal);
+        Assert.Contains("`hatch capability judge`", prompt, StringComparison.Ordinal);
+    }
+
     private const string OldClosing =
         "leaves this ticket where it found it is recorded as having done nothing -\n" +
         "so move it, or ask, before you stop.";

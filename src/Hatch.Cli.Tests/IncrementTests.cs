@@ -1850,6 +1850,75 @@ public sealed class IncrementTests
         Assert.Contains("left AER-1 where it found it and let it go", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
     }
 
+    /// <summary>An ambition dispatched to answer a question on one of its children: moves nothing, and answers or declines.</summary>
+    private static WorkDto AnswerWork(bool answering = true) =>
+        PassWork() with
+        {
+            Kind = WorkKinds.Answer,
+            Answering = answering
+                ? new WorkQuestionDto("AER-2", "A child", 41, "Which?", null, "build", "agent", DateTimeOffset.UnixEpoch)
+                : null,
+        };
+
+    private static async Task<(IncrementReport Report, Harness H)> AnswerAsync(bool answering)
+    {
+        var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", AnswerWork(answering));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Reply("PUT", "/api/issues/AER-1/stall", HttpStatusCode.OK, "{}");
+        h.Wire.Json("GET", "/api/issues/AER-1/capabilities", new List<CapabilityDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            AnswerWork(answering), h.Root, "opus", "high", quiet: false, claim, default);
+        await claim.ReleaseAsync();
+        return (report, h);
+    }
+
+    [Fact]
+    public async Task An_answering_increment_that_moves_and_files_nothing_is_released_worked()
+    {
+        var (report, h) = await AnswerAsync(answering: true);
+        using var _ = h;
+
+        Assert.False(report.Moved);
+        Assert.False(report.Stalled);
+        Assert.False(report.LetGo);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+        Assert.Equal("answered or declined the question on AER-2", report.Outcome);
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("GET", "/api/issues/AER-1/capabilities"));
+    }
+
+    [Fact]
+    public async Task An_answering_increments_work_log_row_names_the_question()
+    {
+        var (_, h) = await AnswerAsync(answering: true);
+        using var _h = h;
+
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Equal(41, billed.QuestionId);
+    }
+
+    [Fact]
+    public async Task The_same_dispatch_with_no_question_still_stalls_and_names_none()
+    {
+        var (report, h) = await AnswerAsync(answering: false);
+        using var _ = h;
+
+        Assert.True(report.Stalled);
+        Assert.NotEqual(ClaimOutcomes.Worked, report.ReleaseOutcome);
+
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        Assert.Null(billed.QuestionId);
+    }
+
     [Fact]
     public async Task A_pass_whose_capabilities_could_not_be_read_afterwards_is_not_called_a_stall_on_that_account()
     {
