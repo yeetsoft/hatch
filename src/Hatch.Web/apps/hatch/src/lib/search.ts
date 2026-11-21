@@ -4,7 +4,7 @@
 
    It reads `SearchMatch` from ../types and copies none of it. */
 
-import { ISSUE_TYPES, type SearchMatch } from '../types';
+import { ISSUE_TYPES, type SearchHit, type SearchMatch } from '../types';
 
 /** The filter the Search page's controls hold. Every field is a string,
     `''` meaning unset - what a `<select>` and an `<input type="date">` hold.
@@ -129,11 +129,30 @@ export function hasMore(shown: number, total: number): boolean {
   return shown < total;
 }
 
-/** The matched cell's words: the server's flags, joined, `work-log` worded as
-    "work log". `''` for no words typed, which is what an empty `matched`
+/** The words a `SearchMatch` reads as, where it differs from its own spelling. */
+const MATCH_WORDS: Partial<Record<SearchMatch, string>> = {
+  'work-log': 'work log',
+  'previous-title': 'previous title',
+};
+
+/** The matched cell's words: the server's flags, joined, worded by
+    `MATCH_WORDS`. `''` for no words typed, which is what an empty `matched`
     list means. */
 export function matchedWords(matched: SearchMatch[]): string {
-  return matched.map((m) => (m === 'work-log' ? 'work log' : m)).join(', ');
+  return matched.map((m) => MATCH_WORDS[m] ?? m).join(', ');
+}
+
+/** The label the previous-titles list opens with, so the wording lives here
+    with its tests. */
+export const PREVIOUS_TITLES_LABEL = 'Previously';
+
+/** The previous titles a hit's row should show: `hit.previousTitles`, newest
+    first as the server sent them, when the hit was found by one of them -
+    `[]` otherwise, including when the issue was retitled but matched on its
+    current title alone, and when `matched` is empty because nothing was
+    typed. */
+export function previousTitlesShown(hit: Pick<SearchHit, 'matched' | 'previousTitles'>): string[] {
+  return hit.matched.includes('previous-title') ? hit.previousTitles : [];
 }
 
 /** The Done column head's link to the issues closed in it - the URL grammar

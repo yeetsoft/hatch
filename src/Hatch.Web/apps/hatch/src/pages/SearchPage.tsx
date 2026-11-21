@@ -14,7 +14,9 @@ import {
   countLine,
   hasMore,
   isSearching,
+  PREVIOUS_TITLES_LABEL,
   matchedWords,
+  previousTitlesShown,
   readSearch,
   scrubbedProjectId,
   searchRequest,
@@ -255,6 +257,7 @@ export function SearchPage() {
                 {hits.map((hit) => {
                   const status = statuses?.find((s) => s.id === hit.card.statusId);
                   const words = matchedWords(hit.matched);
+                  const previousTitles = previousTitlesShown(hit);
 
                   return (
                     <tr key={hit.card.key}>
@@ -264,7 +267,19 @@ export function SearchPage() {
                       <td>
                         <TypeBadge type={hit.card.type} fill={tileFill(statuses ?? [], hit.card.statusId)} />
                       </td>
-                      <td>{hit.card.title}</td>
+                      <td>
+                        {hit.card.title}
+                        {previousTitles.length > 0 && (
+                          <div className="hatch-search-previous text-muted">
+                            {PREVIOUS_TITLES_LABEL}
+                            <ul aria-label="Previous titles">
+                              {previousTitles.map((title) => (
+                                <li key={title}>{title}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </td>
                       <td>
                         {status ? <StatusPill status={status} /> : <span>#{hit.card.statusId}</span>}
                       </td>
