@@ -1159,6 +1159,7 @@ export type IssueEventKind =
   | 'capability_moved'
   | 'capability_removed'
   | 'capability_judged'
+  | 'change_outcome_recorded'
   | 'serves_changed'
   | 'claim_taken'
   | 'claim_lapsed'
@@ -2950,6 +2951,18 @@ export interface WorkLogEntry {
   /** The files the session read and how often, heaviest first. Empty - never
       null - on a row posted without any. Mirrors WorkLogReadDto. */
   reads: { path: string; count: number }[];
+}
+
+/** What an ambition may cost and what it has cost. Mirrors IssueBudgetDto. */
+export interface IssueBudget {
+  /** The budget in dollars, or null when a person has set none. */
+  budgetUsd: number | null;
+  /** The priced sessions' sum across the whole tree beneath the ambition. */
+  spentUsd: number;
+  /** How many sessions carried no price, and so added nothing to `spentUsd`. */
+  unpricedSessions: number;
+  /** True when there is a budget and `spentUsd` has reached it. */
+  spent: boolean;
 }
 
 /** What a set of sessions cost, added up. Mirrors WorkLogTotalsDto. */

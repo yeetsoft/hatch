@@ -263,6 +263,40 @@ describe('describe, capability events', () => {
   it('draws a capability_judged event with a malformed payload as blank', () => {
     expect(describeEvent(event({ kind: 'capability_judged', payload: { id: 4 } }))).toBe('');
   });
+
+  it('says what a change outcome recorded on this epic, and why', () => {
+    expect(
+      describeEvent(
+        event({
+          kind: 'change_outcome_recorded',
+          payload: { ambition: 'AER-12', changeEventId: 9, outcome: 'carries_on', why: 'still needed' },
+        }),
+      ),
+    ).toBe('change to AER-12: carries on - still needed');
+
+    expect(
+      describeEvent(
+        event({
+          kind: 'change_outcome_recorded',
+          payload: { ambition: 'AER-12', changeEventId: 9, outcome: 'not_touched', why: 'unaffected' },
+        }),
+      ),
+    ).toBe('change to AER-12: not touched - unaffected');
+
+    expect(
+      describeEvent(
+        event({
+          kind: 'change_outcome_recorded',
+          payload: { ambition: 'AER-12', changeEventId: 9, outcome: 'serves_nothing', why: 'capability removed' },
+        }),
+      ),
+    ).toBe('change to AER-12: serves nothing - capability removed');
+  });
+
+  it('draws a change_outcome_recorded event with a malformed payload as blank', () => {
+    expect(describeEvent(event({ kind: 'change_outcome_recorded', payload: { ambition: 'AER-12', outcome: 'fine' } }))).toBe('');
+    expect(describeEvent(event({ kind: 'change_outcome_recorded', payload: { outcome: 'carries_on' } }))).toBe('');
+  });
 });
 
 describe('short', () => {

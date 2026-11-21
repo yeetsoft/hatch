@@ -132,6 +132,31 @@ works that out when it reads, and nothing is stored for it. Every entry's own
 comments follow, rendered the way the Comments section renders a body. The
 verdict lines sit in a grid on a desktop and stack one per line on a phone.
 
+## Changing an ambition
+
+A change is what happened to an ambition's capabilities since the last change
+was worked out: every capability added, edited or removed, read as a group
+rather than stored on its own. Reordering is never part of a change - it does
+not say what anything has to be, only what order the rows sit in.
+
+An epic beneath the ambition can carry an outcome on a change: carries on (the
+epic's work still stands), not touched (the change did not reach what this
+epic serves) or serves nothing (the change means this epic no longer serves
+anything, usually because what it served was removed). Each comes with a line
+saying why. An outcome is a record of a session's judgment, not a move - the
+epic's own column stays the board's to change, same as a capability's verdict
+is a record and never a move either.
+
+This is a different thing from the word outcome on a work log row, which says
+whether a session's increment moved its ticket (worked, dropped and the rest) -
+the two are never the same thing, the way a capability's verdict and a check
+session's are not.
+
+Recording again for the same epic on the same change replaces the outcome and
+the why; once a person has decided one, it cannot be recorded over. Each
+recording shows on the epic's own History, naming the ambition, the outcome
+and the why - not on the ambition's, since the judgment is about the epic.
+
 ## Budget
 
 An ambition can carry a dollar budget: how much it may cost. It is optional. An ambition has none until a person sets one, and nothing asks for one.
@@ -165,6 +190,14 @@ A pass still runs when an epic under the ambition closes, and after "stop here" 
 **Work in flight finishes.** Only a new epic is refused. An epic already open under the ambition, and the stories and tasks beneath it,
 are worked as before. The budget on its own does not fold the pass: one pass has to run to ask the question. A change to the budget opens
 room for the next pass, the way a change to Epics at once does.
+
+**On the ambition's page.** An ambition's page has a Budget card, after Capabilities and before Epics in flight, and no other type draws
+it. With a budget set it draws a bar, then a bold line such as "41% spent, for 1 of 6 capabilities", the dollars spent and the budget, and
+a sentence that at 100% the ambition stops carving and asks, and that work already in flight finishes. The capabilities that hold come from
+the Capabilities read the page already makes. Once the budget is spent the card says so in words as well as by the bar's colour. With no
+budget it shows the dollars spent so far and says no budget is set; it does not warn. Where some sessions carried no price, it says how
+many, so the figure reads as at least that much. A person sets, changes and clears the budget from the same card, and a refusal from the
+API is shown beside the field as its own sentence. If the budget cannot be read, the card says so and the rest of the page is untouched.
 
 ## The Ambitions page
 

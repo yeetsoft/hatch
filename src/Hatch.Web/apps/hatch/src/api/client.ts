@@ -5,6 +5,7 @@ import type {
   ActivityPage,
   ActivityReport,
   AmbitionPass,
+  IssueBudget,
   CreateRunnerRequest,
   AssigneeDirectory,
   AssigneeRequest,
@@ -728,6 +729,13 @@ export const getIssueServes = (key: string) => fetchJson<ServedCapability[]>(`/a
     the comments said while it ran. 400 off an ambition - see
     IssuePassesController. */
 export const getIssuePasses = (key: string) => fetchJson<AmbitionPass[]>(`/api/issues/${seg(key)}/passes`);
+/** What an ambition may cost and what it has cost. 400 off an ambition - see
+    IssueBudgetController. */
+export const getIssueBudget = (key: string) => fetchJson<IssueBudget>(`/api/issues/${seg(key)}/budget`);
+/** Sets, changes or clears an ambition's budget: a blank amount clears it. A
+    person's call - the route refuses a key. */
+export const setIssueBudget = (key: string, amount: string) =>
+  fetchJson<IssueBudget>(`/api/issues/${seg(key)}/budget`, { method: 'PATCH', ...asJson({ amount }) });
 export const putIssueDreams = (key: string, dreamIds: number[]) =>
   fetchJson<Dream[]>(`/api/issues/${seg(key)}/dreams`, { method: 'PUT', ...asJson({ dreamIds }) });
 /** Files the epic a weave press asks for - see DreamWeaveController.PostWeave. */

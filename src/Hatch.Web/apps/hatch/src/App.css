@@ -909,6 +909,29 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The Budget card's bar: one fill in one track, not the segmented bar above.
+   The fill is the primary colour at rest and the warn colour once the budget
+   is spent - the family .hatch-meter-waiting wears for something owed. The
+   card says "spent" in words as well, so colour is never the only signal. The
+   width is set inline from barFraction, already clamped to 0-100. */
+.hatch-budget-bar {
+  height: 12px;
+  margin-bottom: var(--sp-2);
+  overflow: hidden;
+  border-radius: var(--r-chip);
+  background: var(--line);
+}
+
+.hatch-budget-fill {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+}
+
+.hatch-budget-fill.hatch-budget-spent {
+  background: var(--warn-ink);
+}
+
 /* Questions nobody has answered, anywhere below this issue. The same warn
    colours the board's asking badge wears, for the same reason: this is not
    information, it is something owed, and it is why the bar has stopped. */

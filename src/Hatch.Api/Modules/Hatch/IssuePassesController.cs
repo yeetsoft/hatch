@@ -29,7 +29,7 @@ public class IssuePassesController(HatchContext db) : ControllerBase
             ? []
             : await db.WorkLog.AsNoTracking()
                 .Where(w => w.IssueId == issue.Id && w.PlaybookFromStatusId == implementation.Id
-                    && (w.Outcome == null || w.Outcome == ClaimOutcomes.Worked))
+                    && (w.Outcome == null || w.Outcome == ClaimOutcomes.Worked) && w.ChangeEventId == null)
                 .OrderByDescending(w => w.EndedAt).ThenByDescending(w => w.Id)
                 .ToListAsync(ct);
 

@@ -2747,6 +2747,63 @@ public class EfHatchCapabilityVerdict
 }
 
 /// <summary>
+/// One epic's outcome on one change to the ambition above it - see
+/// docs/hatch.md, "ChangeOutcome". A change is read, never stored (see
+/// <see cref="AmbitionChanges"/>); this is the one thing about it that is.
+/// </summary>
+/// <remarks>
+/// <see cref="ChangeEventId"/> carries no foreign key, the way
+/// <see cref="EfHatchWorkLogEntry.QuestionId"/> does not: it names an issue
+/// event's id, and an event is never deleted on its own. <see cref="Decision"/>,
+/// <see cref="DecidedBy"/> and <see cref="DecidedAt"/> stay null through this
+/// story - nothing here writes them.
+/// </remarks>
+[Table("ChangeOutcomes")]
+public class EfHatchChangeOutcome
+{
+    public const int MaxOutcomeLength = 16;
+    public const int MaxWhyLength = 300;
+    public const int MaxDecisionLength = 16;
+
+    public const string CarriesOn = "carries_on";
+    public const string NotTouched = "not_touched";
+    public const string ServesNothing = "serves_nothing";
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>The ambition the change happened to.</summary>
+    public required long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    /// <summary>The epic, a direct child of <see cref="IssueId"/>'s ambition, this outcome is about.</summary>
+    public required long EpicId { get; set; }
+    public EfHatchIssue? Epic { get; set; }
+
+    /// <summary>The id of the change's newest event - see <see cref="AmbitionChanges"/>.</summary>
+    public required long ChangeEventId { get; set; }
+
+    [MaxLength(MaxOutcomeLength)]
+    public required string Outcome { get; set; }
+
+    [MaxLength(MaxWhyLength)]
+    public required string Why { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string RecordedBy { get; set; }
+
+    public required DateTimeOffset RecordedAt { get; set; }
+
+    [MaxLength(MaxDecisionLength)]
+    public string? Decision { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? DecidedBy { get; set; }
+
+    public DateTimeOffset? DecidedAt { get; set; }
+}
+
+/// <summary>
 /// One thing that happened to an issue. Append-only, written by every mutating
 /// endpoint, never edited and never deleted except with its issue.
 ///
@@ -3051,7 +3108,9 @@ public class EfHatchIssueEvent
 
     /// <summary>
     /// `POST /issues/{key}/capabilities` added a capability to this ambition.
-    /// The payload is `{ id, position, statement }`.
+    /// The payload is `{ id, position, statement, howToTell }`. An event
+    /// written before `howToTell` was added carries none, so a reader must
+    /// not assume it.
     /// </summary>
     public const string CapabilityAdded = "capability_added";
 
@@ -3071,7 +3130,9 @@ public class EfHatchIssueEvent
 
     /// <summary>
     /// `DELETE /issues/{key}/capabilities/{id}` removed a capability. The
-    /// payload is `{ id, position, statement }` as it stood.
+    /// payload is `{ id, position, statement, howToTell }` as it stood. An
+    /// event written before `howToTell` was added carries none, so a reader
+    /// must not assume it.
     /// </summary>
     public const string CapabilityRemoved = "capability_removed";
 
@@ -3083,6 +3144,15 @@ public class EfHatchIssueEvent
     /// verdict, sha, author }`.
     /// </summary>
     public const string CapabilityJudged = "capability_judged";
+
+    /// <summary>
+    /// `POST /issues/{key}/changes/{eventId}/outcomes` recorded an outcome
+    /// on this epic - see <see cref="EfHatchChangeOutcome"/>. Written on the
+    /// epic, not on the ambition the change happened to. The payload is
+    /// `{ ambition, changeEventId, outcome, why }`, `ambition` the ambition's
+    /// display key.
+    /// </summary>
+    public const string ChangeOutcomeRecorded = "change_outcome_recorded";
 
     /// <summary>
     /// `POST /issues/{key}/remand` shelved this issue into a dream - see
@@ -3981,6 +4051,13 @@ public class EfHatchWorkLogEntry
     /// that is deleted never breaks the log.
     /// </summary>
     public long? QuestionId { get; set; }
+
+    /// <summary>
+    /// The id of the change this session answered, set only by a session that
+    /// recorded outcomes on it - see <see cref="AmbitionChanges"/>. Indexed,
+    /// and no foreign key, so a deleted event never breaks the log.
+    /// </summary>
+    public long? ChangeEventId { get; set; }
 
     /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight

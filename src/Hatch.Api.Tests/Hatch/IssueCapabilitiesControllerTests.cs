@@ -136,6 +136,7 @@ public class IssueCapabilitiesControllerTests
         Assert.Equal(added.Id, payload.GetProperty("id").GetInt64());
         Assert.Equal(1, payload.GetProperty("position").GetInt32());
         Assert.Equal("first", payload.GetProperty("statement").GetString());
+        Assert.Equal("how", payload.GetProperty("howToTell").GetString());
     }
 
     // ---- Editing ----
@@ -388,6 +389,7 @@ public class IssueCapabilitiesControllerTests
         Assert.Equal(b.Id, payload.GetProperty("id").GetInt64());
         Assert.Equal(2, payload.GetProperty("position").GetInt32());
         Assert.Equal("b", payload.GetProperty("statement").GetString());
+        Assert.Equal("b?", payload.GetProperty("howToTell").GetString());
     }
 
     [Fact]

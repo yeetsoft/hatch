@@ -63,6 +63,7 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
         new("Capabilities", db => db.Capabilities.CountAsync(), 2, 1, 0),
         new("CapabilityLinks", db => db.CapabilityLinks.CountAsync(), 2, 1, 0),
         new("CapabilityVerdicts", db => db.CapabilityVerdicts.CountAsync(), 2, 1, 0),
+        new("ChangeOutcomes", db => db.ChangeOutcomes.CountAsync(), 2, 1, 0),
         new("ChangelogTasks", db => db.ChangelogTasks.CountAsync(), 2, 1, 0),
 
         // Five proposals: one on each project's issue, two with no issue that
@@ -195,6 +196,11 @@ internal sealed record ScopeSeed(int ProjectA, int ProjectB, long IssueA, long I
             db.CapabilityVerdicts.Add(new EfHatchCapabilityVerdict
             {
                 Capability = capability, Verdict = "holds", LookedAt = "the code", Sha = "abc", Author = "test", CreatedAt = At,
+            });
+            db.ChangeOutcomes.Add(new EfHatchChangeOutcome
+            {
+                IssueId = one.Id, EpicId = two.Id, ChangeEventId = 1, Outcome = EfHatchChangeOutcome.CarriesOn,
+                Why = "why", RecordedBy = "test", RecordedAt = At,
             });
             db.ChangelogTasks.Add(new EfHatchChangelogTask { IssueId = one.Id, Canonical = canonical, CreatedAt = At });
         }

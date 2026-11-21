@@ -235,6 +235,62 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("CapabilityVerdicts", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChangeOutcome", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ChangeEventId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Decision")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<long>("EpicId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecordedBy")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Why")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EpicId");
+
+                    b.HasIndex("IssueId", "ChangeEventId", "EpicId")
+                        .IsUnique();
+
+                    b.ToTable("ChangeOutcomes", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChangelogFile", b =>
                 {
                     b.Property<long>("Id")
@@ -2658,6 +2714,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long>("CacheReadTokens")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("ChangeEventId")
+                        .HasColumnType("bigint");
+
                     b.Property<decimal?>("CostUsd")
                         .HasPrecision(18, 8)
                         .HasColumnType("numeric(18,8)");
@@ -2789,6 +2848,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ChangeEventId");
+
                     b.HasIndex("QuestionId");
 
                     b.HasIndex("SearchVector");
@@ -2863,6 +2924,25 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired();
 
                     b.Navigation("Capability");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChangeOutcome", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Epic")
+                        .WithMany()
+                        .HasForeignKey("EpicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Epic");
+
+                    b.Navigation("Issue");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChangelogTask", b =>
