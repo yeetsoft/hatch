@@ -6159,4 +6159,337 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Workspace.Prepared);
         Assert.Empty(h.Sessions.Spawned);
     }
+
+    // ---- Following the board's build (HA-2634) ----
+
+    private static readonly string BoardRevision = new('b', 40);
+
+    private static RunnerInstructionDto OnBuild(
+        string compare = RunnerBuildComparisons.Behind, string? revision = null, int? maxRuns = 1,
+        string? download = "/api/runner/download/linux-x64", string? sha = "abc123") =>
+        new("running", null, maxRuns, null, null, BoardBuild: new RunnerBoardBuildDto(revision ?? BoardRevision, 4127, compare, download, sha));
+
+    private static Runtime Downloaded(Harness h, int version = Launcher.Version) =>
+        h.Supervised with { Launcher = Launched(version), CliRevision = new FakeCliRevision(new string('a', 40), 4000) };
+
+    private static bool Claimed(Harness h) => h.Wire.To("POST", "/api/issues/AER-1/claim").Count > 0;
+
+    [Fact]
+    public async Task A_loop_told_it_is_behind_asks_for_the_board_build_and_exits_75_taking_no_ticket()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild());
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(Downloaded(h)).RunAsync([], default));
+
+        var request = BuildHandoff.Take(h.Temp);
+        Assert.NotNull(request);
+        Assert.Equal(h.Runtime.Settings.Base, request.Origin);
+        Assert.Equal(BoardRevision, request.Revision);
+        Assert.Equal(4127, request.Sequence);
+        Assert.Equal("/api/runner/download/linux-x64", request.Download);
+        Assert.Equal("abc123", request.Sha256);
+        Assert.False(string.IsNullOrEmpty(request.Rid));
+
+        Assert.NotNull(NightState.Read(h.NightState));
+        Assert.Empty(h.Wire.To("GET", Queue));
+        Assert.False(Claimed(h));
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("the board is on build bbbbbbbb (4127) - restarting to come back as it", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_paused_loop_follows_its_board_too()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild() with { State = RunnerStates.Paused });
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(Downloaded(h)).RunAsync([], default));
+
+        Assert.NotNull(BuildHandoff.Take(h.Temp));
+    }
+
+    [Fact]
+    public async Task A_loop_that_is_not_behind_takes_its_ticket()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(Downloaded(h)).RunAsync([], default));
+
+        Assert.Null(BuildHandoff.Take(h.Temp));
+        Assert.True(Claimed(h));
+    }
+
+    [Fact]
+    public async Task A_board_that_is_ahead_is_followed_only_after_ten_minutes()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild(RunnerBuildComparisons.Ahead));
+
+        Assert.Equal(0, await new GoToWorkCommand(Downloaded(h)).RunAsync([], default));
+
+        Assert.Null(BuildHandoff.Take(h.Temp));
+        Assert.True(Claimed(h));
+    }
+
+    [Fact]
+    public async Task A_loop_with_no_launcher_never_asks_whatever_it_is_told()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild());
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        Assert.Null(BuildHandoff.Take(h.Temp));
+        Assert.True(Claimed(h));
+        Assert.Null(BuildHandoff.Answered(h.Temp));
+    }
+
+    [Fact]
+    public async Task A_loop_run_with_no_restart_never_asks()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild());
+
+        Assert.Equal(0, await new GoToWorkCommand(Downloaded(h)).RunAsync(["--no-restart"], default));
+
+        Assert.Null(BuildHandoff.Take(h.Temp));
+        Assert.True(Claimed(h));
+    }
+
+    [Fact]
+    public async Task A_once_run_never_asks()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild());
+
+        Assert.Equal(0, await new GoToWorkCommand(Downloaded(h)).RunAsync(["--once"], default));
+
+        Assert.Null(BuildHandoff.Take(h.Temp));
+    }
+
+    [Fact]
+    public async Task A_launcher_too_old_to_change_build_is_told_of_once_and_the_loop_carries_on()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild(maxRuns: 2));
+
+        Assert.Equal(0, await new GoToWorkCommand(Downloaded(h, version: 1)).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Null(BuildHandoff.Take(h.Temp));
+        Assert.True(Claimed(h));
+        Assert.Single(h.Say.Said, l => l.Contains("changing build needs 2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_build_the_launcher_holds_is_not_asked_for_until_the_hold_lapses()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild());
+
+        var held = new BuildHold();
+        held.Never(BoardRevision);
+        Assert.Equal(0, await new GoToWorkCommand(Downloaded(h) with { BuildHold = held }).RunAsync([], default));
+        Assert.Null(BuildHandoff.Take(h.Temp));
+        Assert.True(Claimed(h));
+
+        using var later = new Harness();
+        OneTicket(later);
+        later.Wire.Json("POST", Beat, OnBuild());
+        var lapsed = new BuildHold();
+        lapsed.Until(BoardRevision, DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        Assert.Equal(
+            GoToWorkCommand.RestartExitCode,
+            await new GoToWorkCommand(Downloaded(later) with { BuildHold = lapsed }).RunAsync([], default));
+        Assert.NotNull(BuildHandoff.Take(later.Temp));
+    }
+
+    [Fact]
+    public async Task A_request_that_cannot_be_written_is_one_line_and_no_restart()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, OnBuild());
+        // A directory where the request file goes: the write cannot succeed.
+        Directory.CreateDirectory(Path.Combine(h.Temp, BuildHandoff.RequestFileName));
+
+        Assert.Equal(0, await new GoToWorkCommand(Downloaded(h)).RunAsync([], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("could not be written", StringComparison.Ordinal));
+        Assert.True(Claimed(h));
+    }
+
+    [Fact]
+    public async Task The_first_answered_beat_marks_the_build_answered_once()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+        // Gone after the first pass: a second write would bring it back.
+        AfterTheFirstSession(h, () => File.Delete(Path.Combine(h.Temp, BuildHandoff.AnsweredFileName)));
+
+        Assert.Equal(0, await new GoToWorkCommand(Downloaded(h)).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Null(BuildHandoff.Answered(h.Temp));
+        Assert.True(h.Wire.To("POST", Beat).Count > 1);
+    }
+
+    [Fact]
+    public async Task An_answered_beat_names_the_revision_running()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        await new GoToWorkCommand(Downloaded(h)).RunAsync([], default);
+
+        Assert.Equal(new string('a', 40), BuildHandoff.Answered(h.Temp));
+    }
+
+    [Fact]
+    public async Task A_refused_first_beat_still_counts_as_answered()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Reply("POST", Beat, HttpStatusCode.Conflict, "someone is already the runner here");
+
+        await new GoToWorkCommand(Downloaded(h)).RunAsync([], default);
+
+        Assert.Equal(new string('a', 40), BuildHandoff.Answered(h.Temp));
+    }
+
+    [Fact]
+    public async Task A_beat_that_got_no_answer_is_not_marked_answered()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Reply("POST", Beat, HttpStatusCode.NoContent);
+
+        await new GoToWorkCommand(Downloaded(h)).RunAsync(["--max-runs", "1"], default);
+
+        Assert.Null(BuildHandoff.Answered(h.Temp));
+    }
+
+    [Fact]
+    public async Task The_launchers_note_is_said_once_at_the_start()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+
+        await new GoToWorkCommand(Downloaded(h) with { BuildNote = "hatch: could not move to build bbbbbbbb - a reason" })
+            .RunAsync(["--max-runs", "2"], default);
+
+        Assert.Single(h.Say.Said, l => l.Contains("could not move to build bbbbbbbb", StringComparison.Ordinal));
+    }
+
+    /// <summary>Starts a program and records which one, so a test sees a launcher change it.</summary>
+    private sealed class RecordingChild(Func<int, IReadOnlyDictionary<string, string>, Task<int>> run) : ILaunchedChild
+    {
+        public List<string> Programs { get; } = [];
+
+        public ILaunchedProcess Start(string program, string[] args, IReadOnlyDictionary<string, string> environment)
+        {
+            Programs.Add(program);
+            return new Done(run(Programs.Count, environment));
+        }
+
+        private sealed class Done(Task<int> exited) : ILaunchedProcess
+        {
+            public Task<int> Exited => exited;
+
+            public void Forward(System.Runtime.InteropServices.PosixSignal signal) { }
+
+            public void WaitForExit(TimeSpan limit) { }
+
+            public void Dispose() { }
+        }
+    }
+
+    private sealed class KeptBytes(string revision, byte[] bytes) : IBuildFetch
+    {
+        public int Calls;
+
+        public async Task<Download> DownloadAsync(LauncherBoard board, string path, string destination, CancellationToken ct)
+        {
+            Calls++;
+            await File.WriteAllBytesAsync(destination, bytes, ct);
+            return new Download(HttpStatusCode.OK, revision, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)), bytes.Length, null);
+        }
+    }
+
+    [Fact]
+    public async Task A_launcher_brings_a_behind_loop_back_as_the_board_build_with_no_ticket_taken_before_it()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var bytes = "a build"u8.ToArray();
+        var first = new string('a', 40);
+        var sha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+        var root = Directory.CreateTempSubdirectory("hatch-follow-").FullName;
+        try
+        {
+            var store = new BuildStore(root);
+            var fetch = new KeptBytes(BoardRevision, bytes);
+            var builds = new LauncherBuilds(
+                () => new LauncherBoard(h.Runtime.Settings.Base, h.Runtime.Settings), store, fetch,
+                (_, _) => Task.FromResult<string?>(null), TimeProvider.System, TimeSpan.FromMilliseconds(10));
+
+            // The board tells the first build it is behind, and the second nothing.
+            h.Wire.Once("POST", Beat, HttpStatusCode.OK,
+                System.Text.Json.JsonSerializer.Serialize(OnBuild(sha: sha), Fixtures.Json));
+            h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+            var ticketsWhenFirstEnded = -1;
+            var child = new RecordingChild((n, env) =>
+            {
+                var runtime = h.Runtime with
+                {
+                    NightStatePath = env[Launcher.StateVariable],
+                    Launcher = LauncherLink.From(env.ToDictionary(e => e.Key, e => (string?)e.Value)),
+                    CliRevision = new FakeCliRevision(n == 1 ? first : BoardRevision, 4000 + n),
+                };
+
+                return Task.Run(async () =>
+                {
+                    var code = await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default);
+                    if (n == 1) ticketsWhenFirstEnded = h.Wire.To("POST", "/api/issues/AER-1/claim").Count;
+                    return code;
+                });
+            });
+
+            var code = await Launcher.RunAsync(
+                ["go-to-work", "--max-runs", "1"], child, "/somewhere/hatch", new LaunchSignals(), forwards: true,
+                Launcher.Version, h.Temp, _ => { }, builds);
+
+            Assert.Equal(0, code);
+            Assert.Equal(2, child.Programs.Count);
+            Assert.Equal("/somewhere/hatch", child.Programs[0]);
+            Assert.Equal(Path.Combine(root, "versions", BoardRevision, BuildStore.BinaryName), child.Programs[1]);
+            Assert.Equal(1, fetch.Calls);
+            Assert.Equal(0, ticketsWhenFirstEnded);
+            Assert.Single(h.Sessions.Spawned);
+
+            for (var i = 0; i < 500 && store.Read(h.Runtime.Settings.Base)?.Current != BoardRevision; i++)
+                await Task.Delay(10);
+            Assert.Equal(BoardRevision, store.Read(h.Runtime.Settings.Base)!.Current);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); }
+            catch (IOException) { }
+        }
+    }
 }

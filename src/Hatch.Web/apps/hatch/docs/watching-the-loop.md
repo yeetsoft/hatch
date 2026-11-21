@@ -103,8 +103,10 @@ was last used, and when it was rotated or revoked, where either has happened. Th
 owner is an admin's to change, from a list of people and *nobody*; everyone else
 reads it as text. **Rotate key** and **Revoke** are an admin's too, and neither
 appears on a revoked runner. A **Behind** badge beside the name means a live
-session's own build has fallen behind the board's (restart it against a newer
-deploy), and a **Rebuild** badge means one has fallen behind its own checkout's
+session's own build has fallen behind the board's. A downloaded runner follows
+its board by itself within a pass, so one that stays **Behind** is one that could
+not update (its heartbeat names the build, and the loop says why in its log) or
+one run with `--no-restart` or `--once`; restart it against a newer deploy, and a **Rebuild** badge means one has fallen behind its own checkout's
 source (run `make build-hatch` in that checkout, or start its supervised loop again, which builds first). A
 **Launcher behind** badge means the downloaded launcher that started the loop is
 older than the one this board's build knows: start the loop again from a fresh
