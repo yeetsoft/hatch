@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Time.Testing;
 
@@ -516,6 +517,114 @@ public sealed class HatchClientTests
         Assert.Equal("https://example.com/o/r", repo.MatchedRemote);
     }
 
+    // ---- HA-2632: the keyed download ----
+
+    /// <summary>The header and the hash come back, and the bytes land on disk.</summary>
+    [Fact]
+    public async Task A_download_reads_the_revision_header_and_hashes_what_it_wrote()
+    {
+        var temp = Directory.CreateTempSubdirectory("hatch-download-").FullName;
+        try
+        {
+            var destination = Path.Combine(temp, "hatch.exe");
+            var bytes = "a build"u8.ToArray();
+            using var wire = new DownloadWire(HttpStatusCode.OK, bytes, revision: new string('b', 40));
+            using var client = new HatchClient(Settings("hatch_ak_test"), wire);
+
+            var download = await client.DownloadAsync("/api/runner/download/win-x64", destination, default);
+
+            Assert.True(download.Ok);
+            Assert.Equal(new string('b', 40), download.Revision);
+            Assert.Equal(Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(), download.Sha256);
+            Assert.Equal(bytes.Length, download.Bytes);
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(destination));
+        }
+        finally
+        {
+            Directory.Delete(temp, true);
+        }
+    }
+
+    /// <summary>
+    /// An absolute URL, a protocol-relative one, a traversal and a route that
+    /// is not this one - none of them is a runner download, and none of them
+    /// is ever sent, because a key goes out with every request this client
+    /// makes.
+    /// </summary>
+    [Theory]
+    [InlineData("https://other.example/api/runner/download/x")]
+    [InlineData("//other.example/api/runner/download/x")]
+    [InlineData("/api/runner/download/../x")]
+    [InlineData("/api/runner/download/..")]
+    [InlineData("/api/board")]
+    public async Task A_path_outside_the_download_prefix_sends_nothing(string path)
+    {
+        using var wire = new DownloadWire(HttpStatusCode.OK, "x"u8.ToArray());
+        using var client = new HatchClient(Settings("hatch_ak_test"), wire);
+        var destination = Path.Combine(Path.GetTempPath(), $"hatch-download-{Guid.NewGuid()}");
+
+        var download = await client.DownloadAsync(path, destination, default);
+
+        Assert.False(download.Ok);
+        Assert.Empty(wire.Requested);
+        Assert.False(File.Exists(destination));
+    }
+
+    [Fact]
+    public async Task A_404_download_is_a_failure()
+    {
+        using var wire = new DownloadWire(HttpStatusCode.NotFound);
+        using var client = new HatchClient(Settings("hatch_ak_test"), wire);
+        var destination = Path.Combine(Path.GetTempPath(), $"hatch-download-{Guid.NewGuid()}");
+
+        var download = await client.DownloadAsync("/api/runner/download/win-x64", destination, default);
+
+        Assert.False(download.Ok);
+        Assert.Equal(HttpStatusCode.NotFound, download.Status);
+        Assert.False(File.Exists(destination));
+    }
+
+    /// <summary>A connection that dies mid-body is a failure, not a crash and not a partial success.</summary>
+    [Fact]
+    public async Task A_dropped_body_is_a_failure()
+    {
+        var temp = Directory.CreateTempSubdirectory("hatch-download-").FullName;
+        try
+        {
+            using var wire = new DownloadWire(HttpStatusCode.OK, "a build"u8.ToArray(), dropBody: true);
+            using var client = new HatchClient(Settings("hatch_ak_test"), wire);
+
+            var download = await client.DownloadAsync(
+                "/api/runner/download/win-x64", Path.Combine(temp, "hatch.exe"), default);
+
+            Assert.False(download.Ok);
+            Assert.Null(download.Sha256);
+        }
+        finally
+        {
+            Directory.Delete(temp, true);
+        }
+    }
+
+    [Fact]
+    public async Task A_download_sends_the_key()
+    {
+        var temp = Directory.CreateTempSubdirectory("hatch-download-").FullName;
+        try
+        {
+            using var wire = new DownloadWire(HttpStatusCode.OK, "x"u8.ToArray());
+            using var client = new HatchClient(Settings("hatch_ak_test"), wire);
+
+            await client.DownloadAsync("/api/runner/download/win-x64", Path.Combine(temp, "hatch.exe"), default);
+
+            Assert.Equal("Bearer hatch_ak_test", wire.AuthorizationSent);
+        }
+        finally
+        {
+            Directory.Delete(temp, true);
+        }
+    }
+
     private sealed record UnregisteredDto(string Nothing);
 
     /// <summary>A wire that keeps the headers it was called with, and answers nothing much.</summary>
@@ -590,5 +699,60 @@ public sealed class HatchClientTests
                 var other => throw new NotSupportedException(other.ToString()),
             };
         }
+    }
+
+    /// <summary>Answers one download, with the headers and body (or drop) a test asks for.</summary>
+    private sealed class DownloadWire(HttpStatusCode status, byte[]? body = null, string? revision = null, bool dropBody = false)
+        : HttpMessageHandler
+    {
+        public List<string> Requested { get; } = [];
+
+        public string? AuthorizationSent { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Requested.Add(request.RequestUri!.AbsolutePath);
+            AuthorizationSent = request.Headers.Authorization?.ToString();
+
+            var response = new HttpResponseMessage(status);
+            if (body is not null)
+                response.Content = new StreamContent(dropBody ? new DroppedStream(body) : new MemoryStream(body));
+            if (revision is not null)
+                response.Headers.TryAddWithoutValidation("Hatch-Revision", revision);
+
+            return Task.FromResult(response);
+        }
+    }
+
+    /// <summary>Hands back <paramref name="prefix"/> and then fails, as a connection that died mid-body would.</summary>
+    private sealed class DroppedStream(byte[] prefix) : Stream
+    {
+        private int _sent;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_sent >= prefix.Length) throw new IOException("connection dropped");
+
+            var take = Math.Min(count, prefix.Length - _sent);
+            Array.Copy(prefix, _sent, buffer, offset, take);
+            _sent += take;
+            return take;
+        }
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
