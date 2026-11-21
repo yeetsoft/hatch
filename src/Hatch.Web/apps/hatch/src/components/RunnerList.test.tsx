@@ -89,14 +89,14 @@ const gone = (name: string, over: Partial<Runner> = {}) =>
 interface Draw {
   runners: Runner[] | null;
   selected?: string;
-  isAdmin?: boolean;
+  canCreate?: boolean;
   wallOff?: boolean;
 }
 
-const draw = ({ runners, selected, isAdmin = false, wallOff = false }: Draw) =>
+const draw = ({ runners, selected, canCreate = false, wallOff = false }: Draw) =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <RunnerList runners={runners} selected={selected} isAdmin={isAdmin} wallOff={wallOff} now={NOW} onCreate={() => {}} />
+      <RunnerList runners={runners} selected={selected} canCreate={canCreate} wallOff={wallOff} now={NOW} onCreate={() => {}} />
     </MemoryRouter>,
   );
 
@@ -167,22 +167,24 @@ describe('RunnerList', () => {
   });
 
   describe('with no runners', () => {
-    it('tells an admin to create one, and offers to', () => {
-      const html = draw({ runners: [], isAdmin: true });
+    it('tells an admin or a user to create one, and offers to', () => {
+      const html = draw({ runners: [], canCreate: true });
 
       expect(html).toContain('No runners yet. A runner is a key: create one, then hand its secret to a checkout.');
       expect(html).toContain('Create runner');
+      expect(html).not.toContain('Ask an admin');
     });
 
-    it('tells anyone else to ask an admin, with no button', () => {
+    it('offers no button to a reader who cannot create, and never says to ask an admin', () => {
       const html = draw({ runners: [] });
 
-      expect(html).toContain('No runners yet. Ask an admin to create one.');
+      expect(html).toContain('No runners yet.');
       expect(html).not.toContain('Create runner');
+      expect(html).not.toContain('Ask an admin');
     });
 
-    it('tells the wall-off reader to run hatch config, with no button, even if isAdmin is set', () => {
-      const html = draw({ runners: [], wallOff: true, isAdmin: true });
+    it('tells the wall-off reader to run hatch config, with no button, even if canCreate is set', () => {
+      const html = draw({ runners: [], wallOff: true, canCreate: true });
 
       expect(html).toContain('No runners yet. Run <code>hatch config</code> in a checkout and it makes its own.');
       expect(html).not.toContain('Create runner');

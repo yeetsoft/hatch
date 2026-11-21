@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  canCreateRunner,
+  canManageKey,
   changeOwner,
   createProblem,
   createRunnerKey,
@@ -35,11 +37,48 @@ describe('keyAdvice', () => {
   });
 
   it('sends an Admin to the keys page', () => {
-    expect(keyAdvice(me({ role: 'admin' }))).toBe('needs-key-admin');
+    expect(keyAdvice(me({ role: 'admin' }))).toBe('needs-key');
   });
 
-  it('tells anyone else to ask', () => {
-    expect(keyAdvice(me({ role: 'user' }))).toBe('needs-key-user');
+  it('sends a user to the keys page too', () => {
+    expect(keyAdvice(me({ role: 'user' }))).toBe('needs-key');
+  });
+});
+
+describe('canCreateRunner', () => {
+  it('is true for a signed-in admin and a signed-in user', () => {
+    expect(canCreateRunner(me({ role: 'admin' }))).toBe(true);
+    expect(canCreateRunner(me({ role: 'user' }))).toBe(true);
+  });
+
+  it('is false until Me is answered', () => {
+    expect(canCreateRunner(null)).toBe(false);
+  });
+
+  it('is false with the wall off, where nobody has a role', () => {
+    expect(canCreateRunner(me({ kind: 'local', role: null }))).toBe(false);
+    expect(canCreateRunner(me({ kind: 'none', role: null }))).toBe(false);
+  });
+});
+
+describe('canManageKey', () => {
+  it('lets an admin manage any runner', () => {
+    expect(canManageKey(me({ role: 'admin' }), { yours: false })).toBe(true);
+    expect(canManageKey(me({ role: 'admin' }), { yours: true })).toBe(true);
+  });
+
+  it('lets a user manage only their own', () => {
+    expect(canManageKey(me({ role: 'user' }), { yours: true })).toBe(true);
+    expect(canManageKey(me({ role: 'user' }), { yours: false })).toBe(false);
+  });
+
+  it('is false with the wall off, even where yours is true', () => {
+    expect(canManageKey(me({ kind: 'local', role: null }), { yours: true })).toBe(false);
+    expect(canManageKey(me({ kind: 'none', role: null }), { yours: true })).toBe(false);
+  });
+
+  it('is false until Me is answered', () => {
+    expect(canManageKey(null, { yours: true })).toBe(false);
   });
 });
 
@@ -64,6 +103,16 @@ describe('createRunnerKey', () => {
     const result = await createRunnerKey({ createRunner, setRunnerOwner }, { name: '  Quill  ', ownerPersonId: 'p1' });
 
     expect(createRunner).toHaveBeenCalledWith({ name: 'Quill', ownerPersonId: 'p1' });
+    expect(setRunnerOwner).not.toHaveBeenCalled();
+    expect(result).toEqual({ secret: { name: 'Quill', secret: 'hatch_ak_secret', rotated: false } });
+  });
+
+  it('posts only the name, and never touches the owner, where none is given', async () => {
+    const createRunner = vi.fn().mockResolvedValue(minted());
+    const setRunnerOwner = vi.fn().mockResolvedValue(undefined);
+    const result = await createRunnerKey({ createRunner, setRunnerOwner }, { name: ' Quill ' });
+
+    expect(createRunner).toHaveBeenCalledWith({ name: 'Quill' });
     expect(setRunnerOwner).not.toHaveBeenCalled();
     expect(result).toEqual({ secret: { name: 'Quill', secret: 'hatch_ak_secret', rotated: false } });
   });
