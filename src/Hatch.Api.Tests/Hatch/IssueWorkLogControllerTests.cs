@@ -280,6 +280,21 @@ public class IssueWorkLogControllerTests
         Assert.Equal(questionId, Assert.Single((await h.ReadAsync(issue.Key)).Entries).QuestionId);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(4711L)]
+    public async Task TheChangeASessionRecordedOutcomesOn_IsStoredAndReadBack_AndAbsentOtherwise(long? changeEventId)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with { ChangeEventId = changeEventId });
+
+        Assert.Equal(changeEventId, entry.ChangeEventId);
+        Assert.Equal(changeEventId, Assert.Single(await h.RowsAsync(issue.Key)).ChangeEventId);
+        Assert.Equal(changeEventId, Assert.Single((await h.ReadAsync(issue.Key)).Entries).ChangeEventId);
+    }
+
     [Fact]
     public async Task AnOverLongModelOrDigest_IsClippedNotRefused()
     {

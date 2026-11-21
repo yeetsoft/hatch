@@ -76,7 +76,7 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
         db.Capabilities.Add(added);
         await db.SaveChangesAsync(ct);
 
-        issue.Events.Add(Event(actor, EfHatchIssueEvent.CapabilityAdded, new { id = added.Id, position, statement }, now));
+        issue.Events.Add(Event(actor, EfHatchIssueEvent.CapabilityAdded, new { id = added.Id, position, statement, howToTell }, now));
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
@@ -194,7 +194,8 @@ public class IssueCapabilitiesController(HatchContext db, ICallerIdentity caller
 
         db.Capabilities.Remove(row);
         issue.Events.Add(Event(
-            actor, EfHatchIssueEvent.CapabilityRemoved, new { id = row.Id, position = row.Position, statement = row.Statement }, now));
+            actor, EfHatchIssueEvent.CapabilityRemoved,
+            new { id = row.Id, position = row.Position, statement = row.Statement, howToTell = row.HowToTell }, now));
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 

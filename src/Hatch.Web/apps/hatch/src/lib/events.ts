@@ -160,6 +160,19 @@ export function describe(event: IssueEvent): string {
     return `#${position} judged ${verdict} at ${sha.slice(0, 7)}`;
   }
 
+  /* An outcome on this epic, from a change to the ambition above it. Carries
+     { ambition, changeEventId, outcome, why } - no from/to. */
+  if (event.kind === 'change_outcome_recorded') {
+    const { ambition, outcome, why } = event.payload ?? {};
+    const words: Record<string, string> = {
+      carries_on: 'carries on',
+      not_touched: 'not touched',
+      serves_nothing: 'serves nothing',
+    };
+    if (typeof ambition !== 'string' || typeof outcome !== 'string' || words[outcome] === undefined) return '';
+    return `change to ${short(ambition)}: ${words[outcome]} - ${short(why)}`;
+  }
+
   /* A serves change carries the capability ids each side. Either side may be
      empty, which the generic arrow would draw as a bare blank. */
   if (event.kind === 'serves_changed') {

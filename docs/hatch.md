@@ -3757,6 +3757,47 @@ the other.
   removing a capability removes its verdicts, but the events already on the
   ambition remain its history.
 
+### ChangeOutcome
+
+`EfHatchChangeOutcome` — `Id`, `IssueId`, `EpicId`, `ChangeEventId`,
+`Outcome`, `Why`, `RecordedBy`, `RecordedAt`, `Decision`, `DecidedBy`,
+`DecidedAt`. One epic's outcome on one change to the ambition above it.
+
+A **change** is read, never stored: every `capability_added`,
+`capability_edited` and `capability_removed` event on one [ambition](#issue)
+newer than the last change worked out, named by the id of its newest event.
+`capability_moved` is never part of one. A change is worked out when a work
+log entry (`EfHatchWorkLogEntry`) with outcome `worked` names it in
+`ChangeEventId`, and a change not yet worked out is the open one.
+`AmbitionChanges` is the one piece of code that reads a change, so the
+dispatcher reads the same thing `GET /issues/{key}/changes` does.
+
+- **`IssueId` is the ambition and `EpicId` the epic**, each a cascade-delete
+  FK wired as [Capability](#capability)'s `CapabilityLink` is: deleting
+  either removes the row. Unlike that link, a row keeps its own `Id` — two
+  outcomes can share an ambition and an epic across different changes — so
+  the three together (`IssueId`, `ChangeEventId`, `EpicId`) are a unique
+  index, not the key. `ChangeEventId` carries no foreign key, the way
+  `EfHatchWorkLogEntry.QuestionId` does not: it names an issue event's id.
+- **`Outcome` is one of `carries_on`, `not_touched` or `serves_nothing`** —
+  any other word is `400`, naming the three. `Why` may not be blank, and is
+  bounded at 300 characters.
+- **`POST /issues/{key}/changes/{eventId}/outcomes`** records one, `key`
+  the ambition. Never gated on the column, the way a capability verdict is
+  not: recording what a change did to an epic is a judgment about the work,
+  not a change to what the ambition asks for. Refused with `400`, naming what
+  is wrong: an issue that is not an ambition; an `eventId` that is not an
+  added, edited or removed event of it; an epic that is not a direct child of
+  the ambition; a bad `Outcome` or `Why`. Recording again for the same epic on
+  the same change replaces `Outcome`, `Why`, `RecordedBy` and `RecordedAt`; a
+  row already decided is refused with `409` and nothing is written; a
+  recording identical to the one stored writes nothing.
+- **`Decision`, `DecidedBy` and `DecidedAt` are never written here.** They
+  stand for a person's decision on a recorded outcome, a later story's.
+- **A write (new or replaced) writes one `change_outcome_recorded` event on
+  the epic** — not the ambition — see [Issue event](#issue-event). It shows
+  on the epic's own History.
+
 ### Issue event
 
 `EfHatchIssueEvent` — `IssueId`, `Actor`, `Kind`, `Payload` (`jsonb`), `At`.
@@ -3789,16 +3830,22 @@ question's level - payload `{ questionId, from, to }`, both by name), `wip_limit
 at once](#stories-at-once) was set, changed or cleared - payload `{ from, to }`,
 either side null rather than the default), `dependency_added`,
 `dependency_removed`, `capability_added` (`POST /issues/{key}/capabilities` -
-payload `{ id, position, statement }`), `capability_edited` (`PATCH
+payload `{ id, position, statement, howToTell }`; an event written before
+`howToTell` was added carries none), `capability_edited` (`PATCH
 /issues/{key}/capabilities/{id}` - payload `{ id, position, from: { statement,
 howToTell }, to: { statement, howToTell } }`, whole values each side),
 `capability_moved` (`PUT /issues/{key}/capabilities/order`, one event per call
 - payload `{ from, to }`, both sides every capability id in order),
 `capability_removed` (`DELETE /issues/{key}/capabilities/{id}` - payload `{ id,
-position, statement }` as it stood), `capability_judged` (`POST
+position, statement, howToTell }` as it stood; same note as `capability_added`),
+`capability_judged` (`POST
 /issues/{key}/capabilities/{id}/verdicts` recorded a
 [CapabilityVerdict](#capabilityverdict) - payload `{ id, position, verdict,
 sha, author }`; not `verdict_recorded`, which is a check session's own),
+`change_outcome_recorded` (`POST /issues/{key}/changes/{eventId}/outcomes`
+recorded a [ChangeOutcome](#changeoutcome) - written on the epic, not the
+ambition the change happened to - payload `{ ambition, changeEventId,
+outcome, why }`, `ambition` the ambition's display key),
 `dreams_woven` (`PUT /issues/{key}/dreams` replaced the
 set of dreams this issue drew on - payload `{ from, to }`, both sides every
 dream id sorted ascending), `serves_changed` (`PUT /issues/{key}/serves`

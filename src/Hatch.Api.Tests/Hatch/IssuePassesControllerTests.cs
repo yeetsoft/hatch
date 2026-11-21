@@ -102,6 +102,17 @@ public class IssuePassesControllerTests
     }
 
     [Fact]
+    public async Task ARowNamingAChange_DoesNotAppear()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition");
+
+        await h.PassRowAsync(ambition, Hour(0), Hour(1), changeEventId: 1);
+
+        Assert.Empty(await h.GetAsync(ambition));
+    }
+
+    [Fact]
     public async Task ARowReleasedWithNoOutcome_Counts()
     {
         var h = await NewAsync();
@@ -221,7 +232,7 @@ public class IssuePassesControllerTests
 
         public async Task<EfHatchWorkLogEntry> PassRowAsync(
             string key, DateTimeOffset start, DateTimeOffset end, string type = "ambition",
-            int? from = null, int? to = null, string? outcome = ClaimOutcomes.Worked)
+            int? from = null, int? to = null, string? outcome = ClaimOutcomes.Worked, long? changeEventId = null)
         {
             var issue = await IssueAsync(key);
             var row = new EfHatchWorkLogEntry
@@ -229,7 +240,7 @@ public class IssuePassesControllerTests
                 IssueId = issue.Id, SessionId = Guid.NewGuid().ToString("N"), StartedAt = start, EndedAt = end,
                 DurationMs = (long)(end - start).TotalMilliseconds, CreatedAt = end,
                 IssueType = type, PlaybookFromStatusId = from ?? Doing, PlaybookToStatusId = to ?? Doing, Outcome = outcome,
-                Title = "a pass", Summary = "what it did",
+                ChangeEventId = changeEventId, Title = "a pass", Summary = "what it did",
             };
             Db.WorkLog.Add(row);
             await Db.SaveChangesAsync();
