@@ -1517,6 +1517,18 @@ public class EfHatchIssue
     /// </remarks>
     public int? WipLimit { get; set; }
 
+    /// <summary>
+    /// What an ambition may cost, in dollars to the cent. Means something on an
+    /// ambition and nothing else; null is no budget, and nothing asks for one.
+    /// </summary>
+    /// <remarks>
+    /// Written only through <see cref="IssueBudgetController"/>, by a person and
+    /// never a key: a key that could raise its own ceiling is no ceiling. What
+    /// has been spent is not held here - <see cref="AmbitionBudget"/> adds it up
+    /// on each read.
+    /// </remarks>
+    public decimal? BudgetUsd { get; set; }
+
     // ---- The claim ----
     //
     // A lease on this issue held by a running dispatcher: taken before an
@@ -3005,6 +3017,13 @@ public class EfHatchIssueEvent
     /// <see cref="PriorityChanged"/>; an unset side is null, not the default.
     /// </summary>
     public const string WipLimitChanged = "wip_limit_changed";
+
+    /// <summary>
+    /// An ambition's <see cref="EfHatchIssue.BudgetUsd"/> was set, changed or
+    /// cleared. The payload carries both sides, as <see cref="WipLimitChanged"/>
+    /// does; an unset side is null.
+    /// </summary>
+    public const string BudgetChanged = "budget_changed";
 
     /// <summary>
     /// The issue was made to wait on another, or freed from one. Written on the

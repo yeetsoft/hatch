@@ -69,6 +69,11 @@ public class QueryFilterAuditTests
             "The changelog file, which is the same bytes for every caller - a trunk's own file is judged against "
             + "it, and a scoped caller who got fewer entries would see a file forever behind. It reads every "
             + "project's repositories, closed issues and tree, and returns the entries of a file."),
+        ["AmbitionBudget.ReadAsync"] = (2,
+            "What an ambition has cost: its tree and the work log of every issue in it. A budget is a fact about "
+            + "the ambition, not about who asks, so a scoped caller whose scope hides one of its epics must read "
+            + "the same figure as everyone else - and the later refusal that stops work on it must not be talked "
+            + "past by a narrower read. What leaves is a sum, a count and a flag; no row and no key does."),
         ["TrunkBuildController.PutTrunkBuild"] = (1,
             "Whether a row for this repository and trunk is stored, so a put naming a repository only a hidden "
             + "project binds is answered as a fresh row and not by the unique index failing. What is read is an "
