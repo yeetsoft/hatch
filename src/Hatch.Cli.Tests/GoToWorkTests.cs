@@ -2077,6 +2077,37 @@ public sealed class GoToWorkTests
     }
 
     /// <summary>
+    /// HA-2605: an increment that itself hits a usage limit sets
+    /// <c>ExhaustedUntil</c> in the same pass that returns
+    /// <see cref="GoToWorkCommand.Pass.Worked"/>. The reprobe that pass would
+    /// otherwise force must not run - a reading taken at the very instant of
+    /// the hit is the account's own telemetry still catching up, not evidence
+    /// of room, and a forced probe answering under full utilisation would
+    /// clear the wait it had just set, letting the very next pass claim the
+    /// same ticket again.
+    /// </summary>
+    [Fact]
+    public async Task A_pass_that_hits_a_usage_limit_does_not_force_the_reprobe_that_follows_it()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () => [Fixtures.UsageReport([("session", 30, null)]), Fixtures.Result(turns: 0)],
+        };
+        var adapter = new FakeAdapter { Limit = new UsageLimit.Recognised(DateTimeOffset.UtcNow.AddHours(1), true, "session") };
+        var runtime = h.Runtime with { Sessions = fake, Adapter = adapter };
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(2_500));
+        await new GoToWorkCommand(runtime).RunAsync(["--interval", "1"], cts.Token);
+
+        // Claimed once, not re-claimed: the wait the increment set stood
+        // through the iterations after it, rather than being cleared by a
+        // reprobe racing the hit it would otherwise be trusted to arbitrate.
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
+    }
+
+    /// <summary>
     /// HA-1588: the idle pass is not the only thing that asks. A session that
     /// is running re-probes on the same <see cref="UsageReport.ProbeMaxAge"/>
     /// clock, so the readout the claim heartbeat carries does not age while the

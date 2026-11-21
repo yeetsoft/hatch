@@ -1750,7 +1750,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                 var ordered = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, abortMerge, restart, line, ct,
                     orderedKey: ordering.Kind == RunnerOrderKinds.Work ? ordering.Key : null);
-                if (ordered == Pass.Worked) workedSinceProbe = true;
+                if (ordered == Pass.Worked && tally.ExhaustedUntil is null) workedSinceProbe = true;
                 if (ordered == Pass.Fatal) return false;
                 if (ordered == Pass.Restarting) return true;
                 continue;
@@ -2058,7 +2058,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             await poll.RunAsync(runtime, interval, ct);
 
             var pass = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, abortMerge, restart, line, ct);
-            if (pass == Pass.Worked) workedSinceProbe = true;
+            if (pass == Pass.Worked && tally.ExhaustedUntil is null) workedSinceProbe = true;
             if (pass == Pass.Fatal) return false;
             if (pass == Pass.Restarting) return true;
 
