@@ -186,6 +186,71 @@ public sealed class GoToWorkSigningTests
         Assert.Contains("cannot sign", stall.Body, StringComparison.Ordinal);
     }
 
+    // ---- A loop that could never work anything (HA-2657) ----
+
+    private static ProjectDto Project(string key, bool allowsUnsigned) =>
+        new(1, key, key, 0, DateTimeOffset.UnixEpoch, null, null, [], null, [], false, false, AllowsUnsignedCommits: allowsUnsigned);
+
+    [Fact]
+    public async Task A_loop_that_cannot_sign_where_no_project_allows_it_exits_78_before_anything_is_claimed()
+    {
+        using var h = new Harness { CanSign = Locked };
+        Ticket(h, allowsUnsigned: false);
+        h.Wire.Json("GET", "/api/projects", new[] { Project("AER", false) });
+
+        Assert.Equal(78, await Once(h));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("GET", Queue));
+        Assert.Contains(h.Say.Complained, l => l.Contains("AER", StringComparison.Ordinal) && l.Contains("only signed commits", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("no secret key", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l => l.Contains("allow unsigned commits", StringComparison.Ordinal));
+
+        // Nothing is left held: a second loop on the same checkout takes the lock.
+        using var again = LoopLock.Take(h.Runtime.Root, h.Runtime.TempDirectory, out var refusal);
+        Assert.NotNull(again);
+    }
+
+    [Fact]
+    public async Task A_loop_that_cannot_sign_runs_as_usual_where_a_project_allows_it()
+    {
+        using var h = new Harness { CanSign = Locked };
+        Ticket(h, allowsUnsigned: true);
+        h.Wire.Json("GET", "/api/projects", new[] { Project("AER", false), Project("OTH", true) });
+
+        Assert.Equal(0, await Once(h));
+
+        Assert.Single(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_loop_that_cannot_sign_carries_on_against_a_board_that_does_not_list_projects()
+    {
+        using var h = new Harness { CanSign = Locked };
+        Ticket(h, allowsUnsigned: false);
+
+        Assert.Equal(0, await Once(h));
+
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_ticket_let_go_for_want_of_a_signer_ends_the_loop_with_78_where_no_project_allows_it()
+    {
+        // Signing works at the start and does not at the first ticket.
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Works), CanSignLater = Locked };
+        Ticket(h, allowsUnsigned: false);
+        h.Wire.Json("GET", "/api/projects", new[] { Project("AER", false) });
+
+        Assert.Equal(78, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+        Assert.Contains(h.Say.Said, l => l.Contains("no project this runner serves allows unsigned commits", StringComparison.Ordinal));
+    }
+
     // ---- The start-up line ----
 
     [Fact]

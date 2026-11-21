@@ -10730,6 +10730,15 @@ except the last one:
   [when an increment does nothing](#when-an-increment-does-nothing) — and
   neither is [the wait that follows one](#runners-on-the-board): the loop is
   spending nothing while it waits, so there is nothing there to fail.
+- **A machine that cannot sign** — exit `78`, the third one nobody asks for.
+  Where git cannot sign a commit and no project the runner serves allows an
+  unsigned one, every ticket it could claim would be let go again. So it says
+  so and exits `78` at the start, before a heartbeat or a claim, or at the first
+  ticket it has to let go for that reason, holding no claim and printing the
+  tally. It fails open against a board that does not answer or is too old to
+  list the setting. A supervisor does not run it again on `78`: the launcher and
+  both scripts pass it through, and a runner set's host exits `78` only when
+  every member did.
 - **A workspace that cannot be made current** — the other one nobody asks for,
   and the only condition that ends a night without an increment having failed. A
   tree that will not reset is a tree every ticket would be built wrong on, and

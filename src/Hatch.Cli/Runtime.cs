@@ -228,13 +228,16 @@ public sealed record Runtime(
     /// the start: what git said, and that commits there will be unsigned where a
     /// project allows it. A checkout git can sign in, or is not set to sign in,
     /// is not mentioned. Asked at once rather than in turn, since each failing
-    /// one may take the whole limit to answer.
+    /// one may take the whole limit to answer. Returns every answer, so the start
+    /// can ask whether any project could be worked at all.
     /// </summary>
-    public async Task SayCannotSignAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<(string Path, SigningCheck Check)>> SayCannotSignAsync(CancellationToken ct)
     {
         var asked = await Task.WhenAll(Checkouts.Select(async c => (c.Path, Check: await CanSignAsync(c.Path, ct, fresh: true))));
         foreach (var (path, check) in asked.Where(a => a.Check.Fails))
             Say.Complain($"hatch: {path} - git cannot sign commits here ({check.Why}), so commits will be unsigned where a project allows it");
+
+        return asked;
     }
 
     /// <summary>

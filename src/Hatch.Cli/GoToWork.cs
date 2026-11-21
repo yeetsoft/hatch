@@ -322,6 +322,14 @@ public sealed class Tally
     /// </summary>
     public bool Fatal { get; set; }
 
+    /// <summary>
+    /// Set with <see cref="StopWhy"/> and <see cref="Pass.Fatal"/> when a ticket
+    /// was let go for want of a signer and no project the runner serves allows
+    /// an unsigned commit, so the loop exits <see cref="GoToWorkCommand.CannotSignExitCode"/>
+    /// and not 1. <see cref="Fatal"/> does not set it.
+    /// </summary>
+    public bool CannotSign { get; set; }
+
     // Everything the loop has to stop for, and none of them set by default. An
     // unattended run that stopped for a reason nobody asked for would be a run
     // somebody has to check on, which is the thing being built away from.
@@ -890,6 +898,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// </remarks>
     public const int RestartExitCode = 75;
 
+    /// <summary>
+    /// 78 is <c>EX_CONFIG</c>: git here cannot sign a commit and no project
+    /// this runner serves allows an unsigned one, so it could never work a
+    /// ticket. It collides with 0, 1, 2, 75 and 130 in no way, and a supervisor
+    /// must not run the loop again on it - nothing it does changes the answer.
+    /// </summary>
+    public const int CannotSignExitCode = 78;
+
     /// <summary>How long a loop runs before the backstop restarts it anyway.</summary>
     private const int RestartAfterMinutes = 30;
 
@@ -1309,7 +1325,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // Said once, here, and not on every increment: a locked key is a
             // thing to know about before the night, and the board's projects
             // decide per ticket whether it matters.
-            await runtime.SayCannotSignAsync(ct);
+            var signingAnswers = await runtime.SayCannotSignAsync(ct);
+
+            // Where git can never sign and no project allows it unsigned, every
+            // ticket would be let go again: say so now, before a heartbeat, a
+            // claim or anything an earlier session left to end. The finally
+            // frees the locks; nothing is claimed and no tally is built.
+            if (await CannotSign.RefusalAsync(runtime.Board, projects, signingAnswers, ct) is { } cannotSign)
+            {
+                foreach (var line in cannotSign) runtime.Say.Complain(line);
+                return CannotSignExitCode;
+            }
 
             // The lock is ours, so no live loop holds these checkouts: whatever
             // session a dead one left running in them is nobody's, and the claim
@@ -1432,7 +1458,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
             }
 
-            return refused ? 1 : restarting ? RestartExitCode : 0;
+            return tally.CannotSign ? CannotSignExitCode : refused ? 1 : restarting ? RestartExitCode : 0;
         }
         finally
         {
@@ -2951,6 +2977,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 tally.Refused(refused);
                 releaseOutcome = refused.ReleaseOutcome;
                 line.Line = $"{refused.Key} needs a runner that can sign commits";
+
+                // Asked again here: git may have been able to sign at the start
+                // and not now. With no project this runner serves allowing an
+                // unsigned commit, every ticket it is offered will be let go the
+                // same way, so it stops and says why, holding no claim.
+                if (await CannotSign.NoneAllowAsync(runtime.Board, runtime.Board.Projects, ct))
+                {
+                    tally.CannotSign = true;
+                    tally.StopWhy = "git cannot sign and no project this runner serves allows unsigned commits";
+                    return Pass.Fatal;
+                }
 
                 // Straight on to the next ticket only where the board took the
                 // let-go: the one that comes back is then flagged, and waits. A

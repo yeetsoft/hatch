@@ -176,6 +176,7 @@ public sealed class LauncherTests : IDisposable
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(3)]
+    [InlineData(78)]
     [InlineData(130)]
     public async Task Any_other_exit_code_ends_the_launcher_with_that_code(int exit)
     {
