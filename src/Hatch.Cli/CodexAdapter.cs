@@ -227,6 +227,7 @@ public class CodexAdapter(string? configured = null, string? path = null) : IAge
         // runner that dispatched it, not the person the checkout belongs to.
         Reach.OnPath(start.Environment, Reach.OwnDirectory(Environment.ProcessPath));
         Reach.ToHatch(start.Environment, request.Settings);
+        if (request.Unsigned) Reach.Unsigned(start.Environment);
         ConfigureEnvironment(start.Environment);
 
         if (exec) start.ArgumentList.Add("exec");

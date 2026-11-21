@@ -79,6 +79,16 @@ public sealed class IncrementReport
     public string? ReleaseOutcome { get; set; }
 
     /// <summary>
+    /// The runner could not sign a commit and the project allows only signed
+    /// ones, so it spawned nothing and let the ticket go. Not a run: the tally
+    /// lists it apart and it never counts toward the failures that end a night.
+    /// </summary>
+    public bool CannotSign { get; set; }
+
+    /// <summary>What git said when it could not sign, for <see cref="CannotSign"/>'s comment; empty where git is simply not set to sign.</summary>
+    public string SigningWhy { get; set; } = "";
+
+    /// <summary>
     /// One of <see cref="ClaimLostReasons"/>, carried onto <see cref="ReleaseOutcome"/> -
     /// <see cref="ClaimLostReasons.Quiet"/> for a quiet stop, <see cref="ClaimLostReasons.RunTime"/>
     /// for a run-time stop, dropped or flagged alike, and null for every other release this
@@ -429,7 +439,8 @@ public sealed class IncrementReport
 
     /// <summary>What became of the ticket, in the phrase both the running commentary and the tally say it in.</summary>
     public string Outcome =>
-        Moved ? $"{From} -> {Ended}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        CannotSign ? $"this runner cannot sign commits{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        : Moved ? $"{From} -> {Ended}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
         : UsageLimited ? $"out of {AgentDisplayName} usage until {UsageLimit.Clock(UsageLimitResetAt!.Value, UsageLimitResetKnown)}{(UsageLimitPassed ? " (the named reset had just passed)" : UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Unservable ? $"{UnservableModel} is not one this runner can spawn"
@@ -509,6 +520,62 @@ public sealed class Increment(
     /// </summary>
     public string? SessionId => _facts?.SessionId;
 
+    /// <summary>
+    /// What a ticket is told when this runner cannot sign a commit and its
+    /// project allows only signed ones: which runner, and what git said.
+    /// </summary>
+    internal static string CannotSignSentence(string runnerName, string why) =>
+        $"{(runnerName.Length > 0 ? runnerName : "This runner")} cannot sign commits, and this project allows only signed ones, so it did not start on this ticket.\n\n"
+        + (why.Length > 0 ? $"Git said: {why}\n\n" : "Git is not set to sign commits here.\n\n")
+        + "The ticket is free for a runner that can.";
+
+    /// <summary>
+    /// Lets a ticket go without spawning anything, because this runner cannot sign
+    /// a commit and the project allows only signed ones. The first time in a row
+    /// is one quiet comment; the second is the stall the board already resumes
+    /// by itself, as for any other ticket that keeps coming back. The report
+    /// releases the claim as dropped, and is not a run.
+    /// </summary>
+    public async Task<IncrementReport> CannotSignAsync(
+        WorkDto work, SigningCheck signing, string runnerName, CancellationToken ct)
+    {
+        var report = new IncrementReport
+        {
+            Key = work.Issue.Key,
+            From = work.FromStatus.Name,
+            To = work.ToStatus?.Name ?? "?",
+            Ended = work.FromStatus.Name,
+            CannotSign = true,
+            Stalled = true,
+            SigningWhy = signing.Why,
+            ReleaseOutcome = ClaimOutcomes.Dropped,
+        };
+
+        say.Line("");
+        say.Line($"hatch: {report.Key} - this project allows only signed commits and this runner cannot sign{(signing.Why.Length > 0 ? $" ({signing.Why})" : "")} - letting it go");
+
+        if (work.LetGo == 0)
+        {
+            await LetGo.CannotSignAsync(board, say, report.Key, runnerName, signing.Why, ct);
+            report.LetGo = true;
+            report.Flag = "let go";
+            return report;
+        }
+
+        int? open = null;
+        try
+        {
+            open = (await board.QuestionsAsync(report.Key, open: true, ct)).Count;
+        }
+        catch (HatchException e)
+        {
+            say.Complain(e.Message);
+        }
+
+        await FlagStallAsync(report, open, work.LetGo, runnerName, ct);
+        return report;
+    }
+
     public async Task<IncrementReport> RunAsync(
         WorkDto work, string root, string model, string effort, bool quiet,
         Claim claim, CancellationToken ct,
@@ -521,7 +588,8 @@ public sealed class Increment(
         Func<CancellationToken, Task<bool>>? checkTreeUnchanged = null,
         string runnerName = "",
         int incrementNumber = 1,
-        IReadOnlyList<RepoSince>? since = null)
+        IReadOnlyList<RepoSince>? since = null,
+        CommitSigning? signing = null)
     {
         // A caller that passes only ct - every call site before this ticket,
         // and every existing test - is comparing ct against itself, so Skipped
@@ -650,7 +718,7 @@ public sealed class Increment(
                 }
             }
 
-            var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping, addDirs, repositories, branches, conflict?.Found, build?.Found, since);
+            var result = await SpawnAsync(work, root, model, effort, quiet, facts, claim, stopping, addDirs, repositories, branches, conflict?.Found, build?.Found, since, signing);
             report.ExitCode = result.ExitCode;
             report.SessionId = facts.SessionId;
             report.Cost = facts.CostUsd;
@@ -1336,7 +1404,7 @@ public sealed class Increment(
         RunFacts facts, Claim claim, CancellationTokenSource stopping,
         IReadOnlyList<string>? addDirs, IReadOnlyList<Checkouts.RepositoryLine>? repositories,
         IReadOnlyList<BranchEntry>? branches, Rechecked? conflict, BuildFound? build,
-        IReadOnlyList<RepoSince>? since)
+        IReadOnlyList<RepoSince>? since, CommitSigning? signing)
     {
         var ct = stopping.Token;
 
@@ -1378,10 +1446,13 @@ public sealed class Increment(
             }
         }
 
-        var prompt = Prompt.Compose(work, repositories, branches, conflict, build, since);
+        var prompt = Prompt.Compose(work, repositories, branches, conflict, build, since, signing);
         var render = adapter.CreateReader(root, facts, model);
         var request = new SessionRequest(root, model, effort, prompt, quiet, addDirs, hooks?.Opaque, work.Playbook?.DeniedTools ?? [],
-            SessionId: facts.SessionId, Settings: settings);
+            SessionId: facts.SessionId, Settings: settings)
+        {
+            Unsigned = signing is { State: Signing.Fails, Allows: true },
+        };
 
         // Whichever side wrote hooks.Clamp - the streamed callback below, or a
         // --quiet session's own transcript-reading hook - this is the one place
@@ -2068,7 +2139,9 @@ public sealed class Increment(
             return;
         }
 
-        var body = report.QuietStopped
+        var body = report.CannotSign
+            ? CannotSignSentence(runnerName, report.SigningWhy)
+            : report.QuietStopped
             ? $"""
               An unattended increment ran here, and the runner stopped the session itself rather
               than wait for the board to: {report.QuietWhy}.
@@ -2104,9 +2177,10 @@ public sealed class Increment(
 
         if (report.SteppedOff) body += "\n\n" + SteppedOffSentence(report, runnerName);
 
-        body += report.SessionId is { Length: > 0 } session
-            ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {adapter.ResumeCommand(session)}"
-            : "\n\nThere is no session to resume: the run ended before it said what its id was.";
+        if (!report.CannotSign)
+            body += report.SessionId is { Length: > 0 } session
+                ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {adapter.ResumeCommand(session)}"
+                : "\n\nThere is no session to resume: the run ended before it said what its id was.";
 
         if (report.Kept.Length > 0) body += "\n\n" + Scrub.Fence(report.Kept);
 
@@ -2147,7 +2221,9 @@ public sealed class Increment(
 
             if (waiting == 0)
             {
-                var why = report.QuietStopped
+                var why = report.CannotSign
+                    ? "this runner cannot sign commits"
+                    : report.QuietStopped
                     ? report.QuietWhy
                     : report.RunTimeStopped
                     ? report.RunTimeWhy

@@ -3437,6 +3437,12 @@ public record DreamRemandResultDto(
 /// because an open <c>build</c> or <c>merge</c> question stands beneath it.
 /// Null on every other dispatch.
 /// </param>
+/// <param name="AllowsUnsignedCommits">
+/// Whether the project lets a runner that cannot sign a commit make it unsigned.
+/// True by default, and absent from an older board's answer, which reads as true.
+/// Where it is false a runner that cannot sign lets the ticket go rather than
+/// commit unsigned.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3473,7 +3479,8 @@ public record WorkDto(
     bool ModelFellBack = false,
     IReadOnlyList<QuestionDto>? BuildPast = null,
     WorkAmbitionDto? Ambition = null,
-    WorkQuestionDto? Answering = null);
+    WorkQuestionDto? Answering = null,
+    bool AllowsUnsignedCommits = true);
 
 /// <summary>
 /// The question an answering dispatch is for: where it stands, what it says,

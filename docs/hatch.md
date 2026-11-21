@@ -9450,6 +9450,22 @@ One pass, from the board to the release:
    that does not answer, spawns anyway and says so rather than refusing a
    session over a question it could not even ask.
 
+   Also between the reset and the spawn, **before the issue's branch is
+   prepared**, the runner asks git whether it can sign a commit in the checkout
+   the session will run in (`off`, `works` or `fails`: one `commit-tree -S`
+   of a test object, ended at twenty seconds, touching no ref, index or tree;
+   a `fails` is not asked again for thirty minutes). Where it fails and the
+   dispatch's `AllowsUnsignedCommits` (true by default) is true, the increment's
+   own git calls and its session run with `commit.gpgsign` and `tag.gpgsign`
+   false through `GIT_CONFIG_COUNT` and its numbered pairs, after any the
+   environment held - `-c` on the runner's own calls where git is older than
+   2.31 - and the branch section of the prompt says to commit as usual and
+   say "committed unsigned". Where the machine cannot sign (`off` or `fails`)
+   and the project allows only signed commits, nothing is spawned: the ticket
+   is let go with one comment, a second in a row is flagged stalled, and the
+   increment is no run and no failure. See [signing
+   commits](../src/Hatch.Web/apps/hatch/docs/the-runner.md#signing-commits).
+
    The session's environment is set first from this runner's own `HATCH_BASE`
    and `HATCH_KEY`, plus `PATH` — the pair is how the session spawned is the
    same runner as the loop that spawned it - see

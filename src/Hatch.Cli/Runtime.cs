@@ -38,6 +38,37 @@ public sealed record Runtime(
     /// <summary>The models this runner has stopped offering. A reference, so it survives <c>runtime with { ... }</c>.</summary>
     public ModelNarrowing Narrowing { get; init; } = new();
 
+    /// <summary>The checkouts that could not sign, held thirty minutes. A reference, so it survives <c>runtime with { ... }</c>.</summary>
+    public SigningCache SigningCache { get; init; } = new();
+
+    /// <summary>
+    /// Whether this increment's git calls and session are making commits
+    /// unsigned: set by the gate, cleared when the pass ends. A reference, so
+    /// every workspace the runtime makes reads the one flag.
+    /// </summary>
+    public UnsignedCommits Unsigned { get; init; } = new();
+
+    /// <summary>
+    /// How a checkout is asked whether git can sign there. Replaceable so a test
+    /// can say what a machine answered without a signing program to run.
+    /// </summary>
+    public Func<string, CancellationToken, Task<SigningCheck>> SigningProbe { get; init; } =
+        (root, ct) => GitSigning.CheckAsync(root, GitSigning.Limit, ct);
+
+    /// <summary>
+    /// Can git sign in <paramref name="root"/>? A checkout that answered
+    /// <see cref="Signing.Fails"/> in the last thirty minutes is not asked
+    /// again unless <paramref name="fresh"/> says to - the start-up line is.
+    /// </summary>
+    public async Task<SigningCheck> CanSignAsync(string root, CancellationToken ct, bool fresh = false)
+    {
+        if (!fresh && SigningCache.Failed(root, Clock.GetUtcNow()) is { } remembered) return remembered;
+
+        var check = await SigningProbe(root, ct);
+        SigningCache.Record(root, check, Clock.GetUtcNow());
+        return check;
+    }
+
     /// <summary>
     /// This process's own build identity, read once off the entry assembly -
     /// see CliRevision.cs. Replaceable so a test can assert what a heartbeat
@@ -166,6 +197,20 @@ public sealed record Runtime(
     }
 
     /// <summary>
+    /// One line for each checkout this run serves where git cannot sign, said at
+    /// the start: what git said, and that commits there will be unsigned where a
+    /// project allows it. A checkout git can sign in, or is not set to sign in,
+    /// is not mentioned. Asked at once rather than in turn, since each failing
+    /// one may take the whole limit to answer.
+    /// </summary>
+    public async Task SayCannotSignAsync(CancellationToken ct)
+    {
+        var asked = await Task.WhenAll(Checkouts.Select(async c => (c.Path, Check: await CanSignAsync(c.Path, ct, fresh: true))));
+        foreach (var (path, check) in asked.Where(a => a.Check.Fails))
+            Say.Complain($"hatch: {path} - git cannot sign commits here ({check.Why}), so commits will be unsigned where a project allows it");
+    }
+
+    /// <summary>
     /// The same board, quiet - what the idle poll reads with, since it says
     /// nothing about weather today, the way a claim's own heartbeat does not
     /// either. See <see cref="HatchClient.Quiet"/>.
@@ -229,7 +274,7 @@ public sealed record Runtime(
     /// <summary>The real ones, over whichever checkout each call names.</summary>
     public Runtime WithGit() => this with
     {
-        Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
+        Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain, unsigned: Unsigned),
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         SourceRevision = () => new GitSourceRevision(Root),
