@@ -50,6 +50,7 @@ export function RunnerRow({
           <strong className="hatch-runner-name">{runner.name}</strong>
         </span>
         {sessions > 1 && <Badge tone="muted">x{sessions}</Badge>}
+        {runner.preferred && <Badge tone="primary">preferred</Badge>}
         {runner.revokedAt && <Badge tone="muted">revoked</Badge>}
         {signingFails(runner) && <Badge tone="danger">signing fails</Badge>}
       </span>

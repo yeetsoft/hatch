@@ -3539,6 +3539,8 @@ export interface RunnerPatchRequest {
   /** The column rule: sent with `statusIds` or not at all - the server refuses one without the other. */
   statusMode?: RunnerStatusMode;
   statusIds?: number[];
+  /** The preferred mark: absent leaves it alone. The server refuses it on a runner with no key. */
+  preferred?: boolean;
   under?: string;
   maxRuns?: string;
   maxSpend?: string;

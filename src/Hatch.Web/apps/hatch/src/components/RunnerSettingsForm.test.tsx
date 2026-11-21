@@ -226,6 +226,29 @@ describe('RunnerSettingsForm', () => {
   });
 });
 
+describe('RunnerSettingsForm, the Preferred mark', () => {
+  const box = (html: string) => /<input type="checkbox"[^>]*>/.exec(html.slice(html.indexOf('>Preferred<')))?.[0];
+
+  it('draws an unchecked checkbox and its hint on an unmarked runner', () => {
+    const html = render(runner());
+    expect(html).toContain('Takes work before runners without this. With less work than runners, the others sit idle.');
+    expect(box(html)).toBeDefined();
+    expect(box(html)).not.toContain('checked');
+  });
+
+  it('draws the checkbox checked on a marked runner', () => {
+    expect(box(render(runner({ preferred: true })))).toContain('checked');
+  });
+
+  it('says yes or no with no control to a reader', () => {
+    const yes = render(runner({ preferred: true }), { editable: false });
+    expect(yes).toContain('Preferred: yes');
+    expect(yes).not.toContain('Takes work before');
+    expect(yes).not.toContain('type="checkbox"');
+    expect(render(runner(), { editable: false })).toContain('Preferred: no');
+  });
+});
+
 describe('RunnerSettingsForm, the Columns section', () => {
   /** The list's rows, by column name: whether the row is lit and whether it is ticked. */
   const rows = (html: string) =>

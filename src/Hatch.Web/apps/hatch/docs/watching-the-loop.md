@@ -30,7 +30,8 @@ belong to nobody.
 Each row opens that runner's detail, and has three lines:
 
 - The glyph, the runner's name, and on the right an `x2` badge (or `x3`, and so
-  on) when more than one session is live, and a `revoked` badge when it is.
+  on) when more than one session is live, a `preferred` badge when the runner
+  carries the preferred mark, and a `revoked` badge when it is.
 - What it is doing: `Working HA-12 - <its last line>` (with `+1 more` when
   several sessions work), `Idle - seen 4 minutes ago`, `Paused`, `Stopping`,
   `Over 200k tokens/hour until 3:40am`, `Out of usage until …`, `Agent not
@@ -147,6 +148,19 @@ dispatch read, like a refused model ([Refused columns](the-runner#refused-column
 A caller who cannot edit reads one line beside `Refuses:`: `Columns: every
 column`, `Columns: every column except In Progress, Testing` or `Columns: only
 Breakdown, In Review`.
+
+Below the columns, a **Preferred** checkbox marks the runner as one that takes
+work before runners without the mark. Its hint reads: *Takes work before runners
+without this. With less work than runners, the others sit idle.* It saves with
+**Save settings** and goes back with **Revert**, like the rest of the card, and
+the request carries it only when it changed. A caller who cannot edit reads
+`Preferred: yes` or `Preferred: no` after `Columns:`, with no control. The mark
+is only a person's to set: the runner's owner or an admin, and a runner with no
+key refuses it.
+
+The web's work queue draws the same `preferred` badge beside a marked runner's
+name in its list of runners, and on no other. The badge sits on that list, not on
+the **Reading as** choice, which takes plain names.
 
 Beneath them, **Declared by its sessions** is read-only: **Projects** is every
 project any live session was started with (every project when none), and whether
