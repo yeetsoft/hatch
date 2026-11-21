@@ -134,6 +134,9 @@ public class HatchContext : DbContext, IModuleContext
 
         var issue = modelBuilder.Entity<EfHatchIssue>();
 
+        // Dollars and cents, the scale MaxSpend has.
+        issue.Property(i => i.BudgetUsd).HasPrecision(18, 2);
+
         // Restrict, not cascade: a project or a status is deleted through an
         // endpoint that first refuses while anything still points at it (409
         // with a reason). Cascade here would turn that considered refusal into

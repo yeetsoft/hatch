@@ -854,6 +854,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<decimal?>("BudgetUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<string>("ClaimChatter")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");

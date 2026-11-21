@@ -510,6 +510,13 @@ public class AdminSurfaceTests
         // See IssueWipLimitController.
         "IssueWipLimitController.PatchIssueWipLimit",
 
+        // What an ambition may cost, cut the same way as the limit just above:
+        // a key that could set its own ambition's budget could lift its own
+        // ceiling. The read is open to a key - see AcceptsKey. See
+        // IssueBudgetController.
+        "IssueBudgetController.PatchIssueBudget",
+        "IssueBudgetController.GetIssueBudget",
+
         // The runners, and the same split drawn a third time. The heartbeat and
         // the read are a dispatcher's - a loop that could not say it was alive
         // would leave a control surface that could only ever be empty - and the
@@ -796,6 +803,7 @@ public class AdminSurfaceTests
         "PlaybookProposalsController.ApproveAll",
         "IssuePlaybookController.PatchIssuePlaybook",
         "IssueWipLimitController.PatchIssueWipLimit",
+        "IssueBudgetController.PatchIssueBudget",
         "RunnersController.PatchRunner",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
@@ -936,6 +944,7 @@ public class AdminSurfaceTests
         "IssueCapabilitiesController.DeleteCapability",
         "IssueCapabilitiesController.GetCapabilities",
         "IssueCapabilitiesController.GetVerdicts",
+        "IssueBudgetController.GetIssueBudget",
         "IssueCapabilitiesController.PatchCapability",
         "IssueCapabilitiesController.PostCapability",
         "IssueCapabilitiesController.PostVerdict",

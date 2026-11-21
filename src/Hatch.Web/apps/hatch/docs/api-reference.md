@@ -843,8 +843,13 @@ on the project, naming the project's key and the Playbooks page.
 | GET | `/issues/{key}/capabilities/{id}/verdicts` | A capability's verdicts, newest first |
 | POST | `/issues/{key}/capabilities/{id}/verdicts` | Records a verdict on a capability |
 | GET | `/issues/{key}/passes` | An ambition's passes, with the verdicts and comments each gave |
+<<<<<<< HEAD
 | GET | `/issues/{key}/changes` | An ambition's changes, newest first, with their outcomes |
 | POST | `/issues/{key}/changes/{eventId}/outcomes` | Records one epic's outcome on one change |
+=======
+| GET | `/issues/{key}/budget` | An ambition's dollar budget, what it has spent, and whether that is spent |
+| PATCH | `/issues/{key}/budget` | **person** - sets, changes or clears the budget; answers the same body |
+>>>>>>> refs/remotes/origin/main
 
 A capability is one thing an ambition says has to be true, and a line saying
 how anyone would tell. Every route answers `400` on an issue that is not an
@@ -947,6 +952,7 @@ A verdict timed inside no row's window answers as a pass of its own, with no
 `RowId` or `SessionId`, dated at the verdict's own time - so nothing recorded
 is ever hidden.
 
+<<<<<<< HEAD
 A pass row that names a change (`changeEventId` on the work log entry) is left
 out here - it is a session answering that change, not a pass over the
 capabilities, and it shows up instead on `GET /issues/{key}/changes` below.
@@ -1010,6 +1016,23 @@ A write (new or replaced, never a no-op) writes one `change_outcome_recorded`
 event on the epic - not the ambition - payload `{ ambition, changeEventId,
 outcome, why }`, `ambition` the ambition's display key. See docs/hatch.md,
 "Issue event". It shows on the epic's own History.
+=======
+## Budget
+
+`GET /issues/{key}/budget` answers `IssueBudgetDto(BudgetUsd, SpentUsd, UnpricedSessions, Spent)` to a key and to a person alike.
+`BudgetUsd` is the budget, or null when none is set. `SpentUsd` is the summed cost of every work log row on the ambition and on
+everything beneath it, at any depth and in any project. `UnpricedSessions` counts the sessions that carried no price and so added nothing.
+`Spent` is true when there is a budget and `SpentUsd` has reached it, and is false for an ambition with no budget, whatever it has cost.
+The sum is worked out on each read and never stored, and it does not depend on who reads it: a person whose scope hides a project
+that holds one of the ambition's epics still reads the whole figure.
+
+`PATCH /issues/{key}/budget` takes `IssueBudgetRequest(Amount?)` and answers the same body. `Amount` is a positive number of dollars,
+to the cent, up to 1,000,000,000: `50` or `12.50`, not `$5`, `1e3`, `12.345`, `0` or a negative. Left out, it changes nothing; an empty string
+(or whitespace) clears the budget. Anything else is a `400` with a sentence. Both verbs answer `400` on an issue that is not an ambition,
+naming its type: `only an ambition takes a budget - AER-12 is a story`. The write is a person's alone: a key gets `403`, with the wall on
+or off, and no other route - the issue patch, the bulk edit - takes a budget field. A change writes a `budget_changed` event holding
+the old amount, the new one and who made it. Nothing stops at the budget yet; this route only holds and reads it.
+>>>>>>> refs/remotes/origin/main
 
 ## Serves
 
@@ -2169,6 +2192,7 @@ PUT    /statuses/{id}/merges-pull-request
 PUT    /statuses/{id}/runner-tags
 PUT    /wip
 PATCH  /issues/{key}/wip
+PATCH  /issues/{key}/budget
 PUT    /issues/{key}/assignee
 PUT    /issues/{key}/priority
 PUT    /issues/{key}/expedite
