@@ -7,6 +7,9 @@ export interface NavRow {
       "/" would also light on every other route. */
   end?: boolean;
   adminOnly?: boolean;
+  /** The bar draws this row as a glyph instead of its label; the phone menu
+      and the console never read it. */
+  icon?: 'search';
 }
 
 export interface NavGroup {
@@ -24,7 +27,7 @@ export type NavEntry = ({ kind: 'link' } & NavRow) | ({ kind: 'group' } & NavGro
  * for every place the old label was written.
  */
 export const NAV: NavEntry[] = [
-  { kind: 'link', to: '/search', label: 'Search' },
+  { kind: 'link', to: '/search', label: 'Search', icon: 'search' },
   { kind: 'link', to: '/ballot', label: 'Ballot' },
   { kind: 'link', to: '/ambitions', label: 'Ambitions' },
   {
