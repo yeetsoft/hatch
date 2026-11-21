@@ -854,6 +854,21 @@ unsigned commits is not affected, for any runner. The **Waiting on a runner** li
 names a ticket no live runner can take for this, as *no live runner signs its
 commits*.
 
+**What the CLI sends on a read.** A beat is not the only way the board hears. The
+CLI also puts its answer on every read a dispatch is judged on - `work/next`,
+`work/queue`, `work/KEY`, and a hop - as `signing=off`, `signing=works` or
+`signing=fails`, with `signingWhy=` beside `fails`, escaped. It is the same
+worst-of-the-checkouts answer a beat carries. Each of those commands asks git in
+its checkouts before its first read, so the answer is never missing for want of
+a beat: `go-to-work` and `do-my-work` at the start, `hatch work AER-12` (with or
+without `--dry-run`) before it reads the ticket, and `hatch queue` and `hatch
+next` in each checkout they run in. Where git is not set to sign that costs
+nothing; where it is, it costs one test signature per checkout. A machine with no
+checkout to ask sends no parameter, and the board reads that as having said
+nothing. So a ticket in a project that allows only signed commits is left for a
+runner that signs, a runner that cannot sign is not held up waiting for its own
+beat, and `hatch queue` shows what the board would hand this machine.
+
 ## The runner's name
 
 A runner's name is its key's. The board reads it from `GET /api/me`

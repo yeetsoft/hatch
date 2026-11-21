@@ -43,6 +43,14 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public Func<IReadOnlyList<string>> Models { get; set; } = () => [];
 
     /// <summary>
+    /// What this machine says about signing its commits - <c>off</c>,
+    /// <c>works</c> or <c>fails</c>, with a reason beside <c>fails</c> - read afresh
+    /// at each read, as <see cref="Models"/> is, since a probe may finish after
+    /// the board is built. Null is no answer, and then no parameter is sent.
+    /// </summary>
+    public Func<(string State, string? Why)?> Signing { get; set; } = () => null;
+
+    /// <summary>
     /// The agent this runner spawns, sent as <c>agent=</c> on every dispatch read
     /// so the board folds a move that runs on another one; null sends nothing.
     /// </summary>
@@ -380,6 +388,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         parts.AddRange(HasParts());
         parts.AddRange(ModelParts());
         parts.AddRange(DangerousParts());
+        parts.AddRange(SigningParts());
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/work/{key}{query}", ct));
@@ -397,6 +406,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     {
         var parts = DeclareParts(checkouts, clones);
         parts.AddRange(TagParts());
+        parts.AddRange(SigningParts());
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         var answer = await Client.Send(HttpMethod.Post, $"/api/work/{key}/hop{query}", null, ct);
 
@@ -543,6 +553,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
             .Concat(HasParts())
             .Concat(ModelParts())
             .Concat(DangerousParts())
+            .Concat(SigningParts())
             .Concat(ProjectParts())
             .ToList() is { Count: > 0 } parts
             ? $"&{string.Join('&', parts)}"
@@ -559,6 +570,14 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     }
 
     private IEnumerable<string> DangerousParts() => RefusesDangerous ? ["dangerous=false"] : [];
+
+    private IEnumerable<string> SigningParts()
+    {
+        if (Signing() is not { } answer) yield break;
+        yield return $"signing={Uri.EscapeDataString(answer.State)}";
+        if (answer.State == "fails" && !string.IsNullOrWhiteSpace(answer.Why))
+            yield return $"signingWhy={Uri.EscapeDataString(answer.Why)}";
+    }
 
     private IEnumerable<string> ProjectParts() => Projects.Select(p => $"project={Uri.EscapeDataString(p)}");
 

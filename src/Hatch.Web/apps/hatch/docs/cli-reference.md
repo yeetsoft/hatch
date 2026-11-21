@@ -506,8 +506,12 @@ ancestor key, the lines count only the issues the rows below show, and over
 an empty queue say nothing; unnarrowed, they match the panel. For example: `3 issues
 wait for a runner that offers fable`, `1 issue waits for a runner that has
 pwsh 7 or newer and playwright-browsers`, or, for a ticket that requires its
-local model, `1 issue waits: requires <id> locally - no live runner lists it`. A server too old to send the list
-prints nothing extra.
+local model, `1 issue waits: requires <id> locally - no live runner lists it`, or,
+for a project that allows only signed commits, `1 issue waits for a runner that
+signs its commits`. `queue` and `next` first ask git in each checkout they run
+in whether it can sign, and send the answer with the read
+([signing commits](the-runner#signing-commits)). A server too old to send the
+list prints nothing extra.
 Run inside a checkout of a bound repository, with neither `--mine` nor an
 ancestor key, `queue` then lists each open pull request there that no issue
 records and that the project's driver would pass over rather than file as an

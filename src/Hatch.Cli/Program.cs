@@ -447,6 +447,7 @@ try
         }.WithGit();
 
         board.Models = () => runtime.AdvertisedModels() ?? [];
+        board.Signing = () => runtime.SigningAnswer();
         board.Agent = adapter.Id;
 
         return command switch
@@ -487,6 +488,16 @@ try
         var narrowing = new ModelNarrowing();
         board.Models = () => Runtime.Advertised(settings, readAdapter, narrowing, TimeProvider.System.GetUtcNow()) ?? [];
         board.Agent = readAdapter.Id;
+    }
+
+    // They read it too, and signing needs no agent: each checkout is asked once,
+    // at once, and the worst answer rides on the read. A checkout git is not set
+    // to sign in costs nothing; one it is costs a trial signature.
+    if (command is "queue" or "next")
+    {
+        var checks = await Task.WhenAll(checkouts.Select(c => GitSigning.CheckAsync(c.Path, GitSigning.Limit, cancelling.Token)));
+        var answer = Runtime.Fold(checks);
+        board.Signing = () => answer;
     }
 
     var cli = new Cli(board, say, new Input(), settings, runnerName)

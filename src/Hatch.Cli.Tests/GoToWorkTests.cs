@@ -3894,6 +3894,23 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task The_queue_read_and_a_hop_carry_what_this_machine_signs()
+    {
+        using var h = new Harness();
+        h.CanSign = new SigningCheck(Signing.Fails, "no secret key");
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Approve) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("signing=fails&signingWhy=no%20secret%20key", c.Query));
+        Assert.Contains("signing=fails&signingWhy=no%20secret%20key", h.Wire.To("POST", "/api/work/AER-1/hop")[0].Query);
+    }
+
+    [Fact]
     public async Task A_pre_approved_hop_spawns_nothing_and_the_loop_reads_the_board_again()
     {
         using var h = new Harness();

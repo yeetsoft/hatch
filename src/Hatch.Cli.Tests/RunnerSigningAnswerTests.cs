@@ -113,6 +113,29 @@ public sealed class RunnerSigningAnswerTests
         Assert.Equal(("fails", "no agent"), runtime.SigningAnswer());
     }
 
+    // ---- Fold, which `queue` reads with when it has no runtime ----
+
+    [Fact]
+    public void Fold_reads_the_worst_of_the_checks_it_is_given_and_nothing_from_none()
+    {
+        Assert.Null(Runtime.Fold([]));
+        Assert.Equal(("works", null), Runtime.Fold([new SigningCheck(Signing.Works)]));
+        Assert.Equal(("off", null), Runtime.Fold([new SigningCheck(Signing.Works), new SigningCheck(Signing.Off)]));
+        Assert.Equal(
+            ("fails", "no key"),
+            Runtime.Fold([new SigningCheck(Signing.Off), new SigningCheck(Signing.Fails, "no key\nsecond line"), new SigningCheck(Signing.Works)]));
+    }
+
+    [Fact]
+    public void Fold_masks_and_cuts_a_reason_as_the_runners_own_answer_does()
+    {
+        var (_, masked) = Runtime.Fold([new SigningCheck(Signing.Fails, "key hatch_ak_0123456789abcdef is locked")])!.Value;
+        Assert.Equal($"key {Scrub.Marker} is locked", masked);
+
+        var (_, cut) = Runtime.Fold([new SigningCheck(Signing.Fails, new string('x', 500))])!.Value;
+        Assert.Equal(200, cut!.Length);
+    }
+
     [Fact]
     public void A_key_in_the_reason_is_masked()
     {
