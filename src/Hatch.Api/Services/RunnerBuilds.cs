@@ -4,7 +4,11 @@ using System.Security.Cryptography;
 namespace Hatch.Api.Services;
 
 /// <summary>One platform's binary, found on disk, with the sha256 of the exact bytes it will be served as.</summary>
-public sealed record RunnerBuild(string Rid, string Platform, string FileName, string Path, string Sha256);
+public sealed record RunnerBuild(string Rid, string Platform, string FileName, string Path, string Sha256)
+{
+    /// <summary>The route that serves this build - what the Runner page links to and a heartbeat reply names.</summary>
+    public string Url => $"/api/runner/download/{Rid}";
+}
 
 /// <summary>
 /// The one place that knows which builds are on disk, where, and their sha256

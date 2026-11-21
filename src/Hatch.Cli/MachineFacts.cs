@@ -7,13 +7,18 @@ using System.Text.RegularExpressions;
 namespace Hatch.Cli;
 
 /// <summary>
-/// Ten facts about the machine a process runs on, read once per process and
+/// Eleven facts about the machine a process runs on, read once per process and
 /// stamped on every beat. A fact that cannot be read is null rather than
 /// guessed.
 /// </summary>
+/// <param name="Rid">
+/// The platform this build was published for, by <see cref="RidOf"/> - the name
+/// the board's downloads go by, which <paramref name="Os"/> is not.
+/// </param>
 public sealed record MachineFacts(
     string? Os, string? Arch, string? AgentVersion, bool? Container, string? Username, DateTimeOffset? ProcessStartedAt,
-    string? Image, long? AcceleratorMemoryBytes, int? AcceleratorDeviceCount, string? AcceleratorBackend)
+    string? Image, long? AcceleratorMemoryBytes, int? AcceleratorDeviceCount, string? AcceleratorBackend,
+    string? Rid = null)
 {
     /// <summary>Every fact null - a process that never asked, or an adapter with no binary of its own.</summary>
     public static readonly MachineFacts None = new(null, null, null, null, null, null, null, null, null, null);
@@ -55,10 +60,27 @@ public sealed record MachineFacts(
             (acceleratorMemory, acceleratorDevices, acceleratorBackend) = await ReadAcceleratorAsync(appleSilicon, probe, ct);
         }
 
+        var rid = RidOf(OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(), OperatingSystem.IsLinux(), RuntimeInformation.OSArchitecture);
+
         return new MachineFacts(
             os, arch, agentVersion, container, username, startedAt, image,
-            acceleratorMemory, acceleratorDevices, acceleratorBackend);
+            acceleratorMemory, acceleratorDevices, acceleratorBackend, rid);
     }
+
+    /// <summary>
+    /// The runtime identifier of the build for this platform, one of the four
+    /// the board publishes - <c>win-x64</c>, <c>osx-arm64</c>, <c>osx-x64</c>,
+    /// <c>linux-x64</c> - else null: ARM Windows and ARM Linux have no build to
+    /// name, and null is what says so.
+    /// </summary>
+    public static string? RidOf(bool windows, bool mac, bool linux, Architecture arch) => (windows, mac, linux, arch) switch
+    {
+        (true, _, _, Architecture.X64) => "win-x64",
+        (_, true, _, Architecture.Arm64) => "osx-arm64",
+        (_, true, _, Architecture.X64) => "osx-x64",
+        (_, _, true, Architecture.X64) => "linux-x64",
+        _ => null,
+    };
 
     private static readonly Regex CardKey = new(@"^card\d+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
@@ -233,7 +255,7 @@ public sealed record MachineFacts(
         return line is null ? null : Truncate(line);
     }
 
-    /// <summary><paramref name="request"/> with these ten fields set and every other field left alone.</summary>
+    /// <summary><paramref name="request"/> with these eleven fields set and every other field left alone.</summary>
     public RunnerHeartbeatRequest Stamp(RunnerHeartbeatRequest request) => request with
     {
         Os = Os,
@@ -246,6 +268,7 @@ public sealed record MachineFacts(
         AcceleratorMemoryBytes = AcceleratorMemoryBytes,
         AcceleratorDeviceCount = AcceleratorDeviceCount,
         AcceleratorBackend = AcceleratorBackend,
+        Rid = Rid,
     };
 
     private static T Safe<T>(Func<T> read, T fallback)

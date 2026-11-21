@@ -1,9 +1,10 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace Hatch.Cli.Tests;
 
 /// <summary>
-/// The ten machine facts a beat carries: read once, each null where it
+/// The eleven machine facts a beat carries: read once, each null where it
 /// could not be read.
 /// </summary>
 public sealed class MachineFactsTests
@@ -45,6 +46,22 @@ public sealed class MachineFactsTests
         var token = new string('a', 200);
 
         Assert.Equal(token[..64], MachineFacts.ShortOs(token));
+    }
+
+    // ---- RidOf ------------------------------------------------------------
+
+    [Theory]
+    [InlineData(true, false, false, Architecture.X64, "win-x64")]
+    [InlineData(false, true, false, Architecture.Arm64, "osx-arm64")]
+    [InlineData(false, true, false, Architecture.X64, "osx-x64")]
+    [InlineData(false, false, true, Architecture.X64, "linux-x64")]
+    [InlineData(true, false, false, Architecture.Arm64, null)]
+    [InlineData(false, false, true, Architecture.Arm64, null)]
+    [InlineData(false, false, false, Architecture.X64, null)]
+    public void RidOf_names_the_build_for_this_platform_or_nothing(
+        bool windows, bool mac, bool linux, Architecture arch, string? expected)
+    {
+        Assert.Equal(expected, MachineFacts.RidOf(windows, mac, linux, arch));
     }
 
     // ---- InContainer ----------------------------------------------------
@@ -330,7 +347,7 @@ public sealed class MachineFactsTests
     // ---- shape ------------------------------------------------------------
 
     [Fact]
-    public void MachineFacts_has_exactly_the_ten_properties()
+    public void MachineFacts_has_exactly_the_eleven_properties()
     {
         var names = typeof(MachineFacts)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -338,15 +355,15 @@ public sealed class MachineFactsTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(["AcceleratorBackend", "AcceleratorDeviceCount", "AcceleratorMemoryBytes", "AgentVersion", "Arch", "Container", "Image", "Os", "ProcessStartedAt", "Username"], names);
+        Assert.Equal(["AcceleratorBackend", "AcceleratorDeviceCount", "AcceleratorMemoryBytes", "AgentVersion", "Arch", "Container", "Image", "Os", "ProcessStartedAt", "Rid", "Username"], names);
     }
 
     // ---- Stamp --------------------------------------------------------
 
     [Fact]
-    public void Stamp_fills_the_ten_and_leaves_everything_else_alone()
+    public void Stamp_fills_the_eleven_and_leaves_everything_else_alone()
     {
-        var facts = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch, "ghcr.io/o/r:1", 24L << 30, 2, "cuda");
+        var facts = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch, "ghcr.io/o/r:1", 24L << 30, 2, "cuda", "linux-x64");
         var request = new RunnerHeartbeatRequest(Kind: "loop", Line: "working");
 
         var stamped = facts.Stamp(request);
@@ -363,6 +380,7 @@ public sealed class MachineFactsTests
             AcceleratorMemoryBytes = 24L << 30,
             AcceleratorDeviceCount = 2,
             AcceleratorBackend = "cuda",
+            Rid = "linux-x64",
         };
         Assert.Equal(expected, stamped);
     }
