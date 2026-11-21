@@ -88,10 +88,11 @@ describe('proposalFieldRows', () => {
     'deniedTools',
     'isCheck',
     'answersQuestions',
+    'worksOutChanges',
     'projectId',
   ];
 
-  it('comes back as the exact thirteen rows, in order, unchanged for an empty changedFields', () => {
+  it('comes back as the exact fourteen rows, in order, unchanged for an empty changedFields', () => {
     expect(proposalFieldRows([]).map((r) => r.field)).toEqual(FIELDS);
     expect(proposalFieldRows([]).every((r) => r.changed === false)).toBe(true);
   });

@@ -27,6 +27,7 @@ const BASE: Playbook = {
   deniedTools: [],
   isCheck: false,
   answersQuestions: false,
+  worksOutChanges: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -118,25 +119,39 @@ function checkbox(html: string, label: string): string {
 }
 
 describe('PlaybookEditDialog flag boxes', () => {
-  it('opens a flagged row with Answers questions ticked and Is check disabled', () => {
+  it('opens a flagged row with Answers questions ticked and the other two disabled', () => {
     const html = render({ ...BASE, answersQuestions: true });
     expect(checkbox(html, 'Answers questions')).toContain('checked');
     expect(checkbox(html, 'Answers questions')).not.toContain('disabled');
     expect(checkbox(html, 'Is check')).toContain('disabled');
     expect(checkbox(html, 'Is check')).not.toContain('checked');
+    expect(checkbox(html, 'Works out changes')).toContain('disabled');
+    expect(checkbox(html, 'Works out changes')).not.toContain('checked');
   });
 
-  it('opens a check with Answers questions disabled and unticked', () => {
+  it('opens a check with the other two disabled and unticked', () => {
     const html = render({ ...BASE, isCheck: true });
     expect(checkbox(html, 'Is check')).toContain('checked');
     expect(checkbox(html, 'Is check')).not.toContain('disabled');
     expect(checkbox(html, 'Answers questions')).toContain('disabled');
     expect(checkbox(html, 'Answers questions')).not.toContain('checked');
+    expect(checkbox(html, 'Works out changes')).toContain('disabled');
+    expect(checkbox(html, 'Works out changes')).not.toContain('checked');
   });
 
-  it('opens a plain row and a new playbook with both boxes unticked and enabled', () => {
+  it('opens a works-out-changes row with the other two disabled and unticked', () => {
+    const html = render({ ...BASE, worksOutChanges: true });
+    expect(checkbox(html, 'Works out changes')).toContain('checked');
+    expect(checkbox(html, 'Works out changes')).not.toContain('disabled');
+    expect(checkbox(html, 'Is check')).toContain('disabled');
+    expect(checkbox(html, 'Is check')).not.toContain('checked');
+    expect(checkbox(html, 'Answers questions')).toContain('disabled');
+    expect(checkbox(html, 'Answers questions')).not.toContain('checked');
+  });
+
+  it('opens a plain row and a new playbook with all three boxes unticked and enabled', () => {
     for (const html of [render(BASE), render(null)]) {
-      for (const label of ['Is check', 'Answers questions']) {
+      for (const label of ['Is check', 'Answers questions', 'Works out changes']) {
         expect(checkbox(html, label)).not.toContain('checked');
         expect(checkbox(html, label)).not.toContain('disabled');
       }
@@ -145,7 +160,13 @@ describe('PlaybookEditDialog flag boxes', () => {
 
   it('says what the Answers questions box is for', () => {
     expect(render(null)).toContain(
-      'The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this or a check, not both.',
+      'The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this, a check or a row that works out changes - never more than one.',
+    );
+  });
+
+  it('says what the Works out changes box is for', () => {
+    expect(render(null)).toContain(
+      'The row a session runs on to work out what a change to an ambition does to its epics in flight. It edits nothing. A row is this, a check or a row that answers questions - never more than one.',
     );
   });
 });

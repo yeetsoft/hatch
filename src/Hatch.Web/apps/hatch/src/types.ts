@@ -1906,6 +1906,8 @@ export interface Playbook {
   isCheck: boolean;
   /** True for the row a session answers one ambition question on; it edits nothing. */
   answersQuestions: boolean;
+  /** True for the row a session works out what a change to an ambition does to its epics in flight on; it edits nothing. */
+  worksOutChanges: boolean;
   /** Seconds a claim under this row may go without a word, or null to inherit the server's lapse. */
   quietLimitSeconds: number | null;
   /** The server's sentence for a row the dispatcher can never pick; null when reachable. */
@@ -1974,6 +1976,7 @@ export interface PlaybookCreateRequest {
   deniedTools?: string[];
   isCheck?: boolean;
   answersQuestions?: boolean;
+  worksOutChanges?: boolean;
   projectId?: string;
 }
 
@@ -1998,6 +2001,7 @@ export interface PlaybookPatchRequest {
   deniedTools?: string[];
   isCheck?: boolean;
   answersQuestions?: boolean;
+  worksOutChanges?: boolean;
   projectId?: string;
 }
 
