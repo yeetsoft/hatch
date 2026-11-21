@@ -299,9 +299,10 @@ public static class Launcher
                     }
 
                     // A new build that ended before it was heard from, any way
-                    // but a restart or a clean end, is a build that does not work.
+                    // but a restart, a clean end or a loop that cannot sign (the machine's
+                    // answer, which no build changes), is a build that does not work.
                     // A signal's exit is not the build's fault.
-                    if (trial is not null && code is not (0 or GoToWorkCommand.RestartExitCode) && Volatile.Read(ref received) == 0)
+                    if (trial is not null && code is not (0 or GoToWorkCommand.RestartExitCode or GoToWorkCommand.CannotSignExitCode) && Volatile.Read(ref received) == 0)
                     {
                         if (aside is not null) RestoreState(directory, aside);
                         hold.Never(trial);

@@ -784,7 +784,24 @@ sets it in the project dialog.
   The next one in a row is flagged and waits, as any ticket that keeps coming
   back does. It is not an increment run, so it never counts toward the three
   failures in a row that end a night. `hatch work AER-12` refuses the same way
-  and exits non-zero.
+  and exits `78`.
+- **The machine cannot sign, and no project it serves allows unsigned commits.**
+  Every ticket would be let go again, so the loop says so and exits `78`
+  (`EX_CONFIG`) at the start, before its first heartbeat and with nothing
+  claimed. It reads the projects it was started for - its `--project` list, or
+  every project its key reaches - and the complaint names the first five of
+  them, what git said in each checkout where signing fails (or that git is not
+  set to sign), and the two ways out: fix signing on this machine, or have an
+  owner allow unsigned commits in the project's settings. It carries on as
+  usual where any checkout can sign or any of those projects allows unsigned
+  commits, and it fails open: a board that does not answer, or one too old to
+  list the setting, reads as "carry on", so it never exits `78` against an older
+  board. A machine that could sign at the start and cannot at a later ticket
+  gets the same answer there: the ticket is let go as above, the closing tally
+  prints, and the loop exits `78` holding no claim. A wrapper script, a
+  downloaded build's launcher and a runner set's host do not
+  run it again on `78`, since nothing a restart does changes what git says.
+  A set's host exits `78` only when every member did.
 - **Signing works.** Nothing is changed. The prompt says what to do if a commit
   still cannot be signed - see [the branch](what-a-session-is-told#the-branch).
 

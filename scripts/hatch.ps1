@@ -306,7 +306,8 @@ function Restart-Runner($Runner) {
 # runner. The totals travel in a file this names once per night, and an empty
 # one reads as a fresh night.
 #
-# Anything but 75 ends the night with that code. This function is not run again
+# Anything but 75 ends the night with that code - 78 included, which is a machine
+# that cannot sign where no project allows unsigned commits, and no rebuild helps. This function is not run again
 # from inside itself, so a loop that restarts every half hour has no depth to run
 # out of.
 function Invoke-GoToWork([string[]]$Rest) {

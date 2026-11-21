@@ -300,6 +300,15 @@ public sealed class RunnerSetTests
     }
 
     [Fact]
+    public void Fold_is_78_only_where_every_member_could_not_sign()
+    {
+        Assert.Equal(78, RunnerSet.Fold([78, 78], false));
+        Assert.Equal(0, RunnerSet.Fold([78, 0], false));
+        Assert.Equal(75, RunnerSet.Fold([78, 75], false));
+        Assert.Equal(1, RunnerSet.Fold([78, 1], false));
+    }
+
+    [Fact]
     public void Fold_with_a_restart_and_not_stopped_is_the_restart_code()
     {
         Assert.Equal(75, RunnerSet.Fold([0, 75, 0], false));

@@ -2496,8 +2496,9 @@ public sealed class GoToWorkTests
         // off it to find that out. The merge train starts before this check and
         // is no exception to it - merging an approved pull request needs no
         // Claude CLI - so its own independent read of review is not this
-        // invariant's concern.
-        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me"));
+        // invariant's concern, and neither is the start's one read of the
+        // projects, which asks whether signing could ever let it work any.
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me" && c.Path != "/api/projects"));
     }
 
     /// <summary>The StopWhy sentence names whichever agent was asked for, not always claude.</summary>
@@ -2513,7 +2514,7 @@ public sealed class GoToWorkTests
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_GROK_BIN is not there: {missing}", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("there is no grok CLI to spawn", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me"));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me" && c.Path != "/api/projects"));
     }
 
     /// <summary>Ollama spawns through the codex binary, so a missing one refuses the same way codex itself does.</summary>
@@ -2529,7 +2530,7 @@ public sealed class GoToWorkTests
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("there is no ollama CLI to spawn", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me"));
+        Assert.Empty(h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me" && c.Path != "/api/projects"));
     }
 
     [Fact]

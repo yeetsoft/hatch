@@ -142,6 +142,10 @@ exec_hatch() {
 # the claim, carrying the night's totals - stays in the runner, where
 # `make test-hatch` can assert them.
 #
+# Only 75 runs the loop again. Anything else, 78 included (git here cannot sign
+# and no project the runner serves allows unsigned commits, which no rebuild
+# changes), ends the night with that code.
+#
 # The same goes for a start. A binary built before the source it sits beside was
 # fixed cannot ask to be replaced - it takes its baseline at startup, so newer
 # source looks like no change, and one that dies at startup never gets as far as
