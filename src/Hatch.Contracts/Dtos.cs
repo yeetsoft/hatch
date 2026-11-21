@@ -1262,6 +1262,18 @@ public static class QuestionLevels
             rank = Math.Min(rank, Rank(level));
         return rank == int.MaxValue ? HoldName : ByStrictness[rank];
     }
+
+    /// <summary>
+    /// Whether a question asked on an issue of <paramref name="fromType"/> holds
+    /// the issue carrying it (<paramref name="isOwn"/> true), or the one asked
+    /// about. A question on anything other than an ambition reaches as it
+    /// always has. A question on an ambition holds only the ambition itself,
+    /// unless <paramref name="targetDangerous"/> - the issue, or an ancestor of
+    /// it, is flagged dangerous - in which case the question still reaches it,
+    /// the same as any other hold on dangerous work.
+    /// </summary>
+    public static bool Reaches(string fromType, bool isOwn, bool targetDangerous) =>
+        isOwn || fromType != "ambition" || targetDangerous;
 }
 
 /// <summary>

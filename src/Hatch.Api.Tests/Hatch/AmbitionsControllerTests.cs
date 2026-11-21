@@ -96,7 +96,7 @@ public class AmbitionsControllerTests
     }
 
     [Fact]
-    public async Task AHoldQuestionOnTheAmbition_FoldsEveryOpenEpicBeneathIt()
+    public async Task AHoldQuestionOnTheAmbition_FoldsOnlyItsOwnPass_AndLeavesEveryOpenEpicBeneathItFlying()
     {
         var h = await NewAsync();
         var ambition = await h.FileAsync("ambition", "a");
@@ -108,8 +108,8 @@ public class AmbitionsControllerTests
 
         var row = Assert.Single(await h.ReadAsync());
 
-        Assert.Equal((2, 0), (row.WaitsOnPerson, row.InFlight));
-        Assert.All(row.Open, e => Assert.True(e.WaitsOnPerson));
+        Assert.Equal((0, 2), (row.WaitsOnPerson, row.InFlight));
+        Assert.All(row.Open, e => Assert.False(e.WaitsOnPerson));
     }
 
     [Fact]
@@ -184,6 +184,21 @@ public class AmbitionsControllerTests
         await h.ServeAsync(epic, capability);
 
         Assert.Equal(1, Assert.Single(await h.ReadAsync()).InFlight);
+    }
+
+    [Fact]
+    public async Task ADangerousEpicUnderAnAmbitionWithAQuestionOnTheAmbition_IsWaitingOnAPerson()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var capability = await h.CapabilityAsync(ambition, 1);
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id, dangerous: "load test");
+        await h.ServeAsync(epic, capability);
+        await h.AskAsync(ambition, "ready?", level: QuestionLevels.HoldName);
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Equal((1, 0), (row.WaitsOnPerson, row.InFlight));
     }
 
     [Fact]
