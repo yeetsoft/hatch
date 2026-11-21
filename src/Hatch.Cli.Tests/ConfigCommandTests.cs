@@ -250,7 +250,7 @@ public sealed class ConfigCommandTests : IDisposable
 
         Assert.Contains("HATCH_KEY=", File.ReadAllLines(ConfigPath));
         Assert.Contains("hatch: no key - read commands work as the local person, but a loop needs one.", Complained);
-        Assert.Contains("an admin creates a runner on the Runners page, then run hatch config --key <key>", Complained);
+        Assert.Contains("create a runner on the Runners page, then run hatch config --key <key>", Complained);
     }
 
     [Fact]
@@ -479,7 +479,7 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_BASE=https://hatch.example", File.ReadAllLines(ConfigPath));
         Assert.Contains("HATCH_KEY=", File.ReadAllLines(ConfigPath));
         Assert.Contains("hatch: no key - read commands work as the local person, but a loop needs one.", Complained);
-        Assert.Contains("hatch: an admin creates a runner on the Runners page, then run hatch config --key <key>.", Complained);
+        Assert.Contains("hatch: create a runner on the Runners page, then run hatch config --key <key>.", Complained);
     }
 
     [Fact]
