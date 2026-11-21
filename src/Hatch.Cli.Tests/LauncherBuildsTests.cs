@@ -547,6 +547,17 @@ public sealed class LauncherBuildsTests : IDisposable
     }
 
     [Fact]
+    public async Task A_new_build_that_cannot_sign_before_it_is_heard_from_is_not_held_and_not_run_again()
+    {
+        var child = new Child { Lives = { Asks(Request(A), state: "carried"), Exits(78) } };
+
+        Assert.Equal(78, await Run(child, Builds(new Fetch(A))));
+
+        Assert.Equal(2, child.Starts.Count);
+        Assert.False(child.Starts[1].Env.ContainsKey(BuildHandoff.HoldVariable));
+    }
+
+    [Fact]
     public async Task A_new_build_ended_by_a_signal_is_not_blamed()
     {
         var ends = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);

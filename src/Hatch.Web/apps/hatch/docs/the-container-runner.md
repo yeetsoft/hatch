@@ -461,3 +461,12 @@ from **Agents → Runners** or by a bound it was given, and non-zero when
 something went wrong; `unless-stopped` would restart the container after a
 deliberate stop and undo the button that stopped it. A stop the board asked for
 stays stopped, and a crash is still recovered from.
+
+A container whose git cannot sign, serving only projects that allow signed
+commits, exits `78` and so is restarted by `on-failure` again and again, each
+time saying the same thing. The log line reads `hatch: git cannot sign commits
+here, and every project this runner serves allows only signed commits` followed
+by the project keys, what git said, and the two ways out. Fix the key the
+container signs with, or have an owner allow unsigned commits in those projects,
+and the next restart works. See [signing commits](the-runner#signing-commits)
+and [troubleshooting](troubleshooting#the-runner-exited-78).

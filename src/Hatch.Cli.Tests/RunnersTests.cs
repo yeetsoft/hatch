@@ -58,7 +58,9 @@ public sealed class RunnersTests
         // nobody has seen. The merge train reads review independently, on its
         // own background clock with no ordering promise relative to the
         // heartbeat, so its calls are not this invariant's concern.
-        var calls = h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me").ToList();
+        // Nor is the start's one read of the projects, which asks whether
+        // signing could ever let it work any.
+        var calls = h.Wire.Calls.Where(c => c.Path != Review && c.Path != "/api/me" && c.Path != "/api/projects").ToList();
         Assert.Equal(Beat, calls[0].Path);
         Assert.True(
             calls.TakeWhile(c => c.Path != "/api/issues/AER-1/claim").Any(c => c.Path == Beat),

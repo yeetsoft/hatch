@@ -1987,7 +1987,7 @@ public sealed class WorkCommandTests
 
         var code = await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default);
 
-        Assert.NotEqual(0, code);
+        Assert.Equal(78, code);
         Assert.Empty(h.Sessions.Spawned);
         Assert.Empty(h.Sessions.Attached);
         Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("enter", StringComparison.Ordinal));
@@ -2002,7 +2002,7 @@ public sealed class WorkCommandTests
         using var h = new Harness { CanSign = new SigningCheck(Signing.Off) };
         NamedTicket(h, allowsUnsigned: false);
 
-        Assert.NotEqual(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+        Assert.Equal(78, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
         Assert.Empty(h.Sessions.Spawned);
         Assert.Contains(h.Say.Complained, l => l.Contains("not set to sign", StringComparison.Ordinal));

@@ -657,7 +657,7 @@ public sealed class WorkCommand(Runtime runtime)
                     $"hatch: {work.Issue.Key} - this project allows only signed commits, and git here cannot sign"
                     + (signing.Why.Length > 0 ? $" ({signing.Why})" : " (it is not set to sign commits)")
                     + " - nothing was spawned");
-                return 1;
+                return GoToWorkCommand.CannotSignExitCode;
             }
 
             if (signing.Fails) runtime.Unsigned.Set(signing.OldGit);

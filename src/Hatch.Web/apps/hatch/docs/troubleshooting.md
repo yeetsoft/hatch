@@ -286,6 +286,26 @@ run](the-runner#when-it-will-not-run).
   told](what-a-session-is-told#the-branch) and [signing
   commits](the-runner#signing-commits).
 
+## The runner exited 78
+
+- **The log says git cannot sign commits here, and every project it serves
+  allows only signed commits.** The runner could never commit anything it is
+  allowed to work, so it stopped at once with nothing claimed. Exit code `78`
+  is that and nothing else. The log names the projects (the first five), what
+  git said in each checkout, and the two ways out.
+- **Fix signing on this machine.** Unlock the key, start the agent, or point
+  `gpg.program` at one that is there, then start the runner again. A container
+  that restarts on failure keeps restarting until this is fixed.
+- **Or have an owner allow unsigned commits.** It is a setting on each project.
+  Where any project the runner serves allows them, the runner starts and works
+  only that project's tickets.
+- **It exited 78 after working for a while.** Signing worked at the start and
+  stopped working, and the runner met a ticket it had to let go for that. The
+  closing tally says so and no claim is held. The same two ways out apply.
+- **It never runs again by itself.** A wrapper script and a downloaded build's
+  launcher pass `78` through. See [signing
+  commits](the-runner#signing-commits).
+
 ## The runner says the board has it paused
 
 - **Three tickets in a row ended in error without spending a token.** The
