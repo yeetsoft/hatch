@@ -71,8 +71,8 @@ the next heading of the same level and stop.
   - [Playbook proposal](#playbook-proposal) - What does a session propose
     changing about a playbook, before a person decides it?
   - [Verdict](#verdict) - What did a check session conclude about an issue?
-  - [Overnight seen](#overnight-seen) - When did a reader last read the
-    overnight page?
+  - [Overnight seen](#overnight-seen) - Which table does nothing read or
+    write now, and goes next?
 - [The wall, the roles, and API keys](#the-wall-the-roles-and-api-keys) - Who
   may reach Hatch, and how does an API key differ from a person?
 - [API surface](#api-surface) - Which routes exist under `/api`, and
@@ -91,8 +91,6 @@ the next heading of the same level and stop.
     does it say about it?
 - [Reports](#reports) - When did things happen on the board, which the board
   as it stands cannot say?
-- [The overnight](#the-overnight) - What did the loop actually land while
-  nobody was watching?
 - [The dispatcher](#the-dispatcher) - What should an agent do next, and how?
   - [Deadlocked](#deadlocked) - When will no pass ever clear a row on its
     own?
@@ -4049,14 +4047,9 @@ for the reason `EfHatchProjectMember.PersonId` is one: Hatch owns its own
 schema and migration history, and a constraint into `public.People` is the
 compile-time coupling `Modules/README.md` exists to prevent), `SeenAt`.
 
-One reader's own mark on [the overnight](#the-overnight) page — when they last
-read it, nothing more. Set only by `POST /api/overnight/seen`, a
-person's call and nothing else's: a program is refused the same way
-(`OvernightController.NotAPerson`). No body — a person has only their own
-mark to set — and a second call replaces the first rather than adding a row.
-
-**Strictly later than the mark, not later-or-equal, decides unseen** — a
-landing at exactly the mark is the mark, not after it.
+One reader's own mark on a page the web app no longer draws — when they last
+read it, nothing more. No route reads or writes the table now: the routes that
+did were removed, and the next story removes the table.
 
 ## The wall, the roles, and API keys
 
@@ -6426,57 +6419,6 @@ payload; the payload is read in a second query for only the rows listed, so a
 busy runner never drags every `jsonb` across. An index on
 `IssueEvents (Actor, At)` is what keeps the first query from reading the whole
 trail.
-
-## The overnight
-
-The leaderboard says what the nights cost. The overnight read says **what the
-loop actually landed** — the one read nothing else on the board collapses
-into: a card's own status, a trunk's own build, an open question each say one
-thing about one issue, and none of them say what came in together while
-nobody was watching.
-
-It is the newest night — epics, then bugs, then stories, then tasks; within a
-type, most descendants first, then newest first — behind one read and one
-write. The web app no longer draws it, and nothing in it calls either route:
-
-```
-GET  /api/overnight
-POST /api/overnight/seen
-```
-
-`GET` answers `OvernightDto`: `from`, `to`, `count`, the ordered `rows`, and
-`unseen` — this reader's own count of how many of those rows they have not
-looked at yet (see [Overnight seen](#overnight-seen)). `POST` sets that mark
-to now.
-
-**Lands** is the moment an issue reaches a terminal column
-(`EfHatchStatus.IsTerminal`) — read off the newest `status_changed`
-[event](#issue-event) on the issue. **A night** is `Overnight.QuietGap` —
-four hours, named as a constant so an operator who wants a different gap
-knows where to look — and the newest night is the run of landings nearest
-the newest one, split off by any gap bigger than that constant on either
-side (`Overnight.NewestNight`): two landings exactly four hours apart are one
-night; four hours and one tick apart, two. The fold is pure and synchronous,
-computed only from landing instants, with no reference to whether a loop was
-running — worth saying plainly, because this document already uses "night"
-several dozen times elsewhere for a different thing: one `go-to-work` run's
-own lifetime, start to whichever of its stop conditions fires (a bound, three
-failures, the board asking it to stop). The two usually coincide, because
-that lifetime is exactly what produces a run of landings with no four-hour
-gap in it, but they are not the same computation — a person moving cards by
-hand with no loop running at all still produces a night by this
-definition, and a loop idling on a quiet board for over four hours without
-landing anything splits what was one continuous process run into two nights
-by this one, even though nothing about the loop itself ended. Said once here,
-so a careful reader of this same document is not left reconciling the two
-senses of the word silently.
-
-**Not a session.** The leaderboard's session is one agent increment — one row
-in `hatch.work_log_entries`, written at the end of one spawn, carrying a
-cost. A night is coarser and carries no cost accounting of its own: several
-increments across several tickets, or zero (a hand-moved card lands too),
-over however long the loop kept landing something, with no tokens and no
-notional USD anywhere in `Overnight.Landing` or `OvernightDto`.
 
 ## The dispatcher
 
