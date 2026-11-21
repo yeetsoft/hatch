@@ -38,6 +38,13 @@ public sealed record SessionRequest(
 {
     public IReadOnlyList<string> AddDirs { get; init; } = AddDirs ?? [];
     public IReadOnlyList<string> DeniedTools { get; init; } = DeniedTools ?? [];
+
+    /// <summary>
+    /// The commits this session makes are to be unsigned, because the machine
+    /// cannot sign and the project allows it: the adapter sets <c>commit.gpgsign</c>
+    /// and <c>tag.gpgsign</c> false in the session's environment - see <see cref="Reach.Unsigned"/>.
+    /// </summary>
+    public bool Unsigned { get; init; }
 }
 
 /// <param name="Output">Everything the CLI wrote, on a quiet run. Empty on a streamed one, which was rendered as it arrived.</param>

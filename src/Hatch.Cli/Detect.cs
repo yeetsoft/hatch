@@ -469,7 +469,17 @@ public static class Detect
     /// will not start, or has not finished by <paramref name="timeout"/>, answers
     /// <c>Completed=false</c> with its whole process tree killed.
     /// </summary>
-    public static async Task<ProbeResult> RealProbe(string file, string[] args, TimeSpan timeout, CancellationToken ct)
+    public static Task<ProbeResult> RealProbe(string file, string[] args, TimeSpan timeout, CancellationToken ct) =>
+        ProbeIn(file, args, timeout, ct);
+
+    /// <summary>
+    /// <see cref="RealProbe"/> in a directory, with <paramref name="environment"/>
+    /// set over the inherited one - a null value removes the variable. The same
+    /// child, the same closed stdin, the same kill of the whole tree at the limit.
+    /// </summary>
+    public static async Task<ProbeResult> ProbeIn(
+        string file, string[] args, TimeSpan timeout, CancellationToken ct,
+        string? directory = null, IReadOnlyDictionary<string, string?>? environment = null)
     {
         var start = new ProcessStartInfo
         {
@@ -480,6 +490,14 @@ public static class Detect
             CreateNoWindow = true,
             UseShellExecute = false,
         };
+        if (directory is not null) start.WorkingDirectory = directory;
+        if (environment is not null)
+            foreach (var (name, value) in environment)
+            {
+                if (value is null) start.Environment.Remove(name);
+                else start.Environment[name] = value;
+            }
+
         foreach (var arg in args) start.ArgumentList.Add(arg);
 
         Process process;

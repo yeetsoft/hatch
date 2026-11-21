@@ -430,4 +430,16 @@ public sealed class GrokAdapterTests : IDisposable
     {
         Assert.Null(new GrokAdapter("/does/not/exist").Executable);
     }
+
+    [Fact]
+    public void The_unsigned_override_reaches_a_headless_and_an_attached_session()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true) { Unsigned = true };
+        var adapter = Adapter();
+
+        ReachTests.AssertUnsigned(adapter.BuildHeadless(request).Environment);
+        ReachTests.AssertUnsigned(adapter.BuildAttached(request).Environment);
+
+        adapter.Release(request);
+    }
 }

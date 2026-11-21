@@ -1676,4 +1676,24 @@ public sealed class TallyTests
         Assert.Equal(Tally.SignedOut, tally.AgentDownKind);
         Assert.Equal("still signed out", tally.AgentDownLine);
     }
+
+    [Fact]
+    public void A_ticket_refused_for_signing_is_listed_and_counts_as_no_run_and_no_failure()
+    {
+        var tally = new Tally(TimeProvider.System);
+        var refused = new IncrementReport
+        {
+            Key = "AER-1", From = "In Review", To = "In Review", Ended = "In Review", CannotSign = true, Stalled = true,
+            ReleaseOutcome = ClaimOutcomes.Dropped,
+        };
+
+        // Many more than the three that end a night.
+        for (var n = 0; n < 5; n++) tally.Refused(refused);
+
+        Assert.Equal(0, tally.Runs);
+        Assert.Equal(0, tally.Fails);
+        Assert.Equal(0m, tally.Spent);
+        Assert.False(tally.ShouldStop());
+        Assert.Contains("this runner cannot sign commits", refused.Outcome, StringComparison.Ordinal);
+    }
 }

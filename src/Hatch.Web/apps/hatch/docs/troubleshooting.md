@@ -263,6 +263,29 @@ run](the-runner#when-it-will-not-run).
 - **Want it sooner.** The same as the agent not starting: stop the loop and
   start it again by hand once signed in.
 
+## A session asked whether it may commit unsigned
+
+- **The machine could not sign, and the session was not told what to do.** The
+  runner asks git whether it can sign before each increment, and a session that
+  was started by a build older than that finds out at its first commit. Update
+  the runner: from then on the answer is in the prompt, and the session does
+  not ask.
+- **See what git says here.** The runner prints one line at the start for any
+  checkout where git is set to sign and cannot: what git said, and that commits
+  will be unsigned where a project allows it. Fix it by hand - unlock the key,
+  start the agent, point `gpg.program` at one that is there - and the check
+  passes again within thirty minutes, with no restart.
+- **A ticket was let go with a comment saying this runner cannot sign.** The
+  project allows only signed commits, so the runner will not make an unsigned
+  one. Fix the signing on this machine, or leave the ticket for a runner that
+  can; a second one in a row is flagged stalled and waits like any other.
+- **The session still asked.** The paragraph at the end of its branch section
+  tells it what to do in each case, and none of them is to ask. A session that
+  asked anyway is worth a note on the ticket, with the prompt it was given -
+  `hatch work AER-12 --dry-run` prints it. See [what a session is
+  told](what-a-session-is-told#the-branch) and [signing
+  commits](the-runner#signing-commits).
+
 ## The runner says the board has it paused
 
 - **Three tickets in a row ended in error without spending a token.** The
