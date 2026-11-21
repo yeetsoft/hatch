@@ -3953,7 +3953,7 @@ public sealed class GoToWorkTests
     /// <summary>A child that is this loop, run in this process: a launcher starts it and reads what it exits with.</summary>
     private sealed class InProcessChild(Func<string[], IReadOnlyDictionary<string, string>, Task<int>> run) : ILaunchedChild
     {
-        public ILaunchedProcess Start(string[] args, IReadOnlyDictionary<string, string> environment) =>
+        public ILaunchedProcess Start(string program, string[] args, IReadOnlyDictionary<string, string> environment) =>
             new Running(run(args, environment));
 
         private sealed class Running(Task<int> exited) : ILaunchedProcess

@@ -90,6 +90,20 @@ public static class Launcher
     /// Runs the child until it ends for any reason but a restart, and answers
     /// what it exited with.
     /// </summary>
+    /// <remarks>
+    /// <para>With <paramref name="builds"/>, the launcher also moves between
+    /// builds. A fresh start runs the build this board's record names, if it is
+    /// still kept, and otherwise its own file. When a child exits 75 having left
+    /// a request (<see cref="BuildHandoff"/>), the launcher fetches that build,
+    /// checks it, and starts the next child from it; once that child's first
+    /// beat is answered the build is recorded as current.</para>
+    ///
+    /// <para>Every way that can go wrong ends the same way: the next child runs
+    /// the build the launcher had, with the night's state as it was. Nothing
+    /// about a build is ever an exception here, and the launcher says nothing
+    /// to the console while a child runs - what it decided goes to the child as
+    /// one line, which says it.</para>
+    /// </remarks>
     /// <param name="args">The arguments this process was started with, whole, command word first.</param>
     /// <param name="starter">Starts the child.</param>
     /// <param name="ownPath">This file, handed to the child as <see cref="PathVariable"/>.</param>
@@ -98,9 +112,10 @@ public static class Launcher
     /// <param name="version">The version told to the child; a test passes an older one.</param>
     /// <param name="tempRoot">Where the state directory is made.</param>
     /// <param name="say">The one line the launcher says when it cannot start its child.</param>
+    /// <param name="builds">What changing build needs. Null: the launcher only ever runs its own file.</param>
     public static async Task<int> RunAsync(
         string[] args, ILaunchedChild starter, string ownPath, LaunchSignals signals, bool forwards,
-        int version, string tempRoot, Action<string> say)
+        int version, string tempRoot, Action<string> say, LauncherBuilds? builds = null)
     {
         var directory = Path.Combine(tempRoot, "hatch-night-" + Guid.NewGuid().ToString("N"));
 
@@ -129,6 +144,7 @@ public static class Launcher
             var first = PosixSignal.SIGTERM;
             ILaunchedProcess? running = null;
             var gate = new object();
+            using var cancelling = new CancellationTokenSource();
 
             void OnSignal(PosixSignal signal)
             {
@@ -143,6 +159,10 @@ public static class Launcher
                     target = running;
                 }
 
+                // A download in progress is the only thing this stops.
+                try { cancelling.Cancel(); }
+                catch (ObjectDisposedException) { }
+
                 if (target is null) return;
 
                 if (forwards) target.Forward(signal);
@@ -153,18 +173,81 @@ public static class Launcher
 
             try
             {
+                // The program the next child runs, and the sha it was kept
+                // under - null for this launcher's own file.
+                var program = ownPath;
+                string? programSha = null;
+
+                if (builds is not null
+                    && BoardOf(builds) is { } startBoard
+                    && builds.Store.Read(startBoard.Origin)?.Current is { } recorded
+                    && builds.Store.Find(recorded) is { } kept)
+                {
+                    program = kept;
+                    programSha = recorded;
+                }
+
+                // The last program that is known to have worked: where a build
+                // that did not goes back to. Where nothing is on trial, it is
+                // the program itself.
+                var confirmed = (Program: program, Sha: programSha);
+
+                // A build the board has not yet answered the first beat of,
+                // the board it is for, and the night's state as it stood
+                // before it, because a child that ends without restarting
+                // deletes it.
+                string? trial = null;
+                string? trialOrigin = null;
+                Dictionary<string, byte[]>? aside = null;
+
+                var hold = new BuildHold();
+                var failed = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                string? note = null;
+
                 while (true)
                 {
                     int code;
 
+                    var told = new Dictionary<string, string>(environment);
+                    if (builds is not null && hold.Format(builds.Clock.GetUtcNow()) is { } held)
+                        told[BuildHandoff.HoldVariable] = held;
+                    if (note is not null) told[BuildHandoff.NoteVariable] = note;
+                    note = null;
+
+                    BuildHandoff.Clear(directory);
+
                     ILaunchedProcess process;
                     try
                     {
-                        process = starter.Start(args, environment);
+                        process = starter.Start(program, args, told);
                     }
                     catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
                     {
-                        say($"hatch: could not start {ownPath}: {e.Message}");
+                        // A build that will not even start is as bad as one that
+                        // ends before it is heard from: go back, never ask again.
+                        if (builds is not null && program != ownPath)
+                        {
+                            if (trial is not null)
+                            {
+                                if (aside is not null) RestoreState(directory, aside);
+                                hold.Never(trial);
+                                note = $"hatch: build {Short(trial)} could not be started - {e.Message}; carrying on with the build it had";
+                                (program, programSha) = confirmed;
+                                trial = null;
+                                aside = null;
+                            }
+                            else
+                            {
+                                note = $"hatch: could not start {program} - {e.Message}; carrying on with the launcher's own build";
+                                program = ownPath;
+                                programSha = null;
+                                confirmed = (program, programSha);
+                            }
+
+                            continue;
+                        }
+
+                        say($"hatch: could not start {program}: {e.Message}");
                         return 1;
                     }
 
@@ -175,15 +258,127 @@ public static class Launcher
                         // A signal that arrived while there was nothing to pass it to.
                         if (Volatile.Read(ref received) > 0 && forwards) process.Forward(first);
 
-                        code = await process.Exited;
+                        var exited = process.Exited;
+
+                        // The build is current the moment its first beat is
+                        // answered, not when the child ends: a night may run
+                        // for hours, and a launcher that is stopped by hand
+                        // must not forget what it was heard on.
+                        bool Heard()
+                        {
+                            if (trial is null) return true;
+                            if (BuildHandoff.Answered(directory) != trial) return false;
+
+                            builds!.Store.Record(trialOrigin!, trial);
+                            confirmed = (program, programSha);
+                            trial = null;
+                            trialOrigin = null;
+                            aside = null;
+                            return true;
+                        }
+
+                        // Beside the child's life, look for that answer.
+                        while (trial is not null && builds is not null && !Heard())
+                        {
+                            using var tick = new CancellationTokenSource();
+                            var wait = Task.Delay(builds.Poll, tick.Token);
+                            if (await Task.WhenAny(exited, wait) == exited)
+                            {
+                                tick.Cancel();
+                                break;
+                            }
+                        }
+
+                        code = await exited;
 
                         lock (gate) running = null;
+
+                        // Once more after it ended: a child that answered and
+                        // exited between two looks has still answered.
+                        Heard();
+                    }
+
+                    // A new build that ended before it was heard from, any way
+                    // but a restart or a clean end, is a build that does not work.
+                    // A signal's exit is not the build's fault.
+                    if (trial is not null && code is not (0 or GoToWorkCommand.RestartExitCode) && Volatile.Read(ref received) == 0)
+                    {
+                        if (aside is not null) RestoreState(directory, aside);
+                        hold.Never(trial);
+                        note = $"hatch: build {Short(trial)} ended with exit {code} before the board answered it; carrying on with the build it had";
+                        (program, programSha) = confirmed;
+                        trial = null;
+                        aside = null;
+                        continue;
                     }
 
                     if (code != GoToWorkCommand.RestartExitCode) return code;
 
                     // A signal ends the night even where the child asked to come back.
                     if (Volatile.Read(ref received) > 0) return 0;
+
+                    if (builds is null || BuildHandoff.Take(directory) is not { } request) continue;
+
+                    // Not for this board, held off, or the one already running:
+                    // nothing to say, and nothing to do.
+                    if (BoardOf(builds) is not { } board
+                        || !SameOrigin(request.Origin, board.Origin)
+                        || hold.Holds(request.Revision, builds.Clock.GetUtcNow())
+                        || string.Equals(request.Revision, programSha, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    string? stored = null;
+                    string? why;
+
+                    try
+                    {
+                        Download? download = null;
+
+                        var result = await builds.Store.InstallAsync(
+                            request.Revision,
+                            async destination =>
+                            {
+                                download = await builds.Fetch.DownloadAsync(board, request.Download, destination, cancelling.Token);
+                                return download.Value.Failure;
+                            },
+                            async path =>
+                                BuildCheck.Header(download?.Revision, request.Revision)
+                                ?? BuildCheck.Sha(download?.Sha256 ?? "", request.Sha256)
+                                ?? await builds.Verify(path, request.Revision),
+                            cancelling.Token);
+
+                        stored = result.Path;
+                        why = result.Failure ?? (result.Path is null ? "it could not be kept" : null);
+                    }
+                    catch (OperationCanceledException) when (cancelling.IsCancellationRequested)
+                    {
+                        return 0;
+                    }
+                    catch (Exception e)
+                    {
+                        why = e.Message;
+                    }
+
+                    // A signal during the install ends the night, and no child starts.
+                    if (Volatile.Read(ref received) > 0) return 0;
+
+                    if (why is null && stored is not null)
+                    {
+                        if (trial is null) aside = SetAside(directory);
+
+                        program = stored;
+                        programSha = request.Revision;
+                        trial = request.Revision;
+                        trialOrigin = board.Origin;
+                        continue;
+                    }
+
+                    var times = failed[request.Revision] = failed.GetValueOrDefault(request.Revision) + 1;
+                    var backoff = BuildHold.Backoff(times);
+                    hold.Until(request.Revision, builds.Clock.GetUtcNow() + backoff);
+
+                    note = $"hatch: could not move to build {Short(request.Revision)} - {Sentence(why)}; "
+                        + $"carrying on with the build it has, asking again in {BuildHold.Words(backoff)}";
                 }
             }
             finally
@@ -198,23 +393,73 @@ public static class Launcher
         }
     }
 
+    /// <summary>The board this launcher is for just now. Never throws: a resolver that cannot say is no board.</summary>
+    private static LauncherBoard? BoardOf(LauncherBuilds builds)
+    {
+        try { return builds.Board(); }
+        catch (Exception e) when (e is not OutOfMemoryException) { return null; }
+    }
+
+    private static bool SameOrigin(string a, string b) =>
+        string.Equals(a.Trim().TrimEnd('/'), b.Trim().TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+
+    private static string Short(string sha) => sha.Length > 8 ? sha[..8] : sha;
+
+    /// <summary>A failure's own words, without the <c>hatch: </c> every one of them starts with, since the note brings its own.</summary>
+    private static string Sentence(string? failure)
+    {
+        var text = (failure ?? "").Trim();
+        return text.StartsWith("hatch: ", StringComparison.Ordinal) ? text["hatch: ".Length..] : text;
+    }
+
+    /// <summary>
+    /// The bytes of the night's state and of every member's beside it, held in
+    /// memory. Null where they cannot be read, which only means a failed build
+    /// cannot put them back.
+    /// </summary>
+    private static Dictionary<string, byte[]>? SetAside(string directory)
+    {
+        try
+        {
+            var kept = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            foreach (var file in Directory.GetFiles(directory, StateFileName + "*"))
+                kept[Path.GetFileName(file)] = File.ReadAllBytes(file);
+            return kept;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Puts the state back as <see cref="SetAside"/> found it, whatever the child that ended since did to it.</summary>
+    private static void RestoreState(string directory, Dictionary<string, byte[]> aside)
+    {
+        try
+        {
+            foreach (var file in Directory.GetFiles(directory, StateFileName + "*")) File.Delete(file);
+            foreach (var (name, bytes) in aside) File.WriteAllBytes(Path.Combine(directory, name), bytes);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
     /// <summary>The real launcher, over the real process and the real signals.</summary>
-    public static async Task<int> RunProcessAsync(string[] args, Action<string> say)
+    public static async Task<int> RunProcessAsync(string[] args, Action<string> say, Func<LauncherBoard?>? board = null)
     {
         var path = Environment.ProcessPath ?? throw new InvalidOperationException("the path of this program is unknown");
         using var signals = LaunchSignals.Register();
 
         return await RunAsync(
-            args, new ProcessLaunchedChild(path), path, signals, forwards: !OperatingSystem.IsWindows(), Version,
-            Path.GetTempPath(), say);
+            args, new ProcessLaunchedChild(), path, signals, forwards: !OperatingSystem.IsWindows(), Version,
+            Path.GetTempPath(), say, board is null ? null : LauncherBuilds.Real(board));
     }
 }
 
 /// <summary>What the launcher starts its child through, so a test can stand in for a process.</summary>
 public interface ILaunchedChild
 {
-    /// <summary>Starts the child with these arguments and, added to its own environment, these variables.</summary>
-    ILaunchedProcess Start(string[] args, IReadOnlyDictionary<string, string> environment);
+    /// <summary>Starts <paramref name="program"/> with these arguments and, added to its own environment, these variables.</summary>
+    ILaunchedProcess Start(string program, string[] args, IReadOnlyDictionary<string, string> environment);
 }
 
 /// <summary>One child, started.</summary>
@@ -274,10 +519,10 @@ public sealed class LaunchSignals : IDisposable
     }
 }
 
-/// <summary>This same file, started again with the terminal inherited.</summary>
-public sealed class ProcessLaunchedChild(string program) : ILaunchedChild
+/// <summary>A program, started with the terminal inherited.</summary>
+public sealed class ProcessLaunchedChild : ILaunchedChild
 {
-    public ILaunchedProcess Start(string[] args, IReadOnlyDictionary<string, string> environment)
+    public ILaunchedProcess Start(string program, string[] args, IReadOnlyDictionary<string, string> environment)
     {
         // Nothing redirected: the child's keys, footer, colour and width are the
         // terminal's, exactly as for a loop started by hand.

@@ -60,7 +60,24 @@ if (!Program.TryExtractProfile(rest, out var withoutProfile, out var profileArg,
 // as it came, and starts it again when it exits 75. See docs/hatch.md, "Where
 // the loop lives". Nothing stamped, nothing above it and no -h means no launcher.
 if (Launcher.Applies(command, withoutProfile, environment, Launcher.BuildLaunches(typeof(Program).Assembly)))
-    return await Launcher.RunProcessAsync(args, say.Complain);
+{
+    // Which board a build is moved for, asked again at every start and handoff
+    // because `hatch use` can move it. It reads settings the way the child will
+    // and prints nothing when it cannot: the child is the one that says so.
+    LauncherBoard? LauncherBoardNow()
+    {
+        if (!Settings.TryResolveProfile(profileArg, environment, out _, out var launcherProfile, out _)) return null;
+
+        var launcherRoot = Checkout.Find(environment.GetValueOrDefault("HATCH_ROOT"), Directory.GetCurrentDirectory());
+        var launcherEnv = launcherRoot is null ? null : Path.Combine(launcherRoot, "scripts", ".env");
+
+        return Settings.TryLoad(launcherEnv, environment, out var launcherSettings, out _, profileFile: launcherProfile)
+            ? new LauncherBoard(launcherSettings.Base, launcherSettings)
+            : null;
+    }
+
+    return await Launcher.RunProcessAsync(args, say.Complain, LauncherBoardNow);
+}
 
 rest = withoutProfile;
 
@@ -764,6 +781,8 @@ internal partial class Program
         "                     hatch's launcher, never by a person",
         "  HATCH_LAUNCHER_VERSION  which version of the launcher started this loop; the launcher sets it",
         "  HATCH_LAUNCHER_PATH     the launcher's own file; the launcher sets it, and a person never does",
+        "  HATCH_BUILD_HOLD        builds the launcher will not move to, sha=unix seconds or sha=never; the launcher sets it",
+        "  HATCH_BUILD_NOTE        one line the launcher has the child say at start; the launcher sets it",
         "  HATCH_RTK          off to keep RTK's Bash hook out of a session where rtk is on PATH",
         "                     (exported only: scripts/.env and `config` are not read for it)",
         "",

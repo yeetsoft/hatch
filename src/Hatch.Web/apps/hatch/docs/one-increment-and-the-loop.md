@@ -614,10 +614,12 @@ the log file.
 
 The launcher tells the child three things through its environment:
 `HATCH_NIGHT_STATE`, `HATCH_LAUNCHER_VERSION` and `HATCH_LAUNCHER_PATH`
-([Environment variables](environment-variables)). The version is one whole
-number, 1 so far, and it goes up when the launcher learns to do something a child
-or the board should know about. A child reads it before it relies on anything
-newer than version 1. Where the launcher is too old it carries on without that
+([Environment variables](environment-variables)), and two more only when it has
+something to say: `HATCH_BUILD_HOLD`, the builds it will not move to, and
+`HATCH_BUILD_NOTE`, one line for the child to say at the start. The version is
+one whole number, 2 so far, and it goes up when the launcher learns to do
+something a child or the board should know about. Version 2 is the launcher that
+changes build. A child reads it before it relies on anything newer than version 1. Where the launcher is too old it carries on without that
 thing and says so in one line; no pairing of launcher and child makes either one
 exit.
 

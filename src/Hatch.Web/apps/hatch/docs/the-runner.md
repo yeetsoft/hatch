@@ -43,6 +43,15 @@ PowerShell 5.1+. `make build-hatch` builds the binary once so every command
 after is fast, and `make publish-hatch` produces the four platform binaries
 the Runner page serves.
 
+A runner downloads once. A downloaded `hatch` running a loop can be moved to a
+newer build of the board it works for: it fetches the build with the runner's
+own key, checks it, and runs the loop's next restart from it, and on any failure
+carries on with the build it had. Builds are kept at `versions/<sha>/`, and each
+board's record of its current and previous build is in `boards/`, both in the
+per-user folder (the one `hatch config` writes to). Deleting `versions/` by
+hand is safe: the next start runs the downloaded file itself, and the board is
+asked again.
+
 That page carries a command reference beneath the download, so a person who
 has just downloaded `hatch` has it in front of them. The whole reference is
 the [CLI reference](cli-reference).
@@ -224,6 +233,10 @@ HATCH_LAUNCHER_VERSION  which version of the launcher started this loop; the
                      launcher sets it, and a person never does
 HATCH_LAUNCHER_PATH  the launcher's own file; the launcher sets it, and a person
                      never does
+HATCH_BUILD_HOLD     builds the launcher will not move to, sha=unix seconds or
+                     sha=never; the launcher sets it
+HATCH_BUILD_NOTE     one line the launcher has the child say at start; the
+                     launcher sets it
 HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
                      on PATH
 ```
