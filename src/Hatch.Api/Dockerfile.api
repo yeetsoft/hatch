@@ -112,7 +112,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
       -p:SourceRevisionId=$HATCH_REVISION \
-      -p:HatchSequence=$HATCH_SEQUENCE
+      -p:HatchSequence=$HATCH_SEQUENCE \
+      -p:HatchLauncher=true
 
 FROM cli-src AS cli-osx-arm64
 ARG HATCH_REVISION
@@ -125,7 +126,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
       -p:SourceRevisionId=$HATCH_REVISION \
-      -p:HatchSequence=$HATCH_SEQUENCE
+      -p:HatchSequence=$HATCH_SEQUENCE \
+      -p:HatchLauncher=true
 
 FROM cli-src AS cli-osx-x64
 ARG HATCH_REVISION
@@ -138,7 +140,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
       -p:SourceRevisionId=$HATCH_REVISION \
-      -p:HatchSequence=$HATCH_SEQUENCE
+      -p:HatchSequence=$HATCH_SEQUENCE \
+      -p:HatchLauncher=true
 
 FROM cli-src AS cli-linux-x64
 ARG HATCH_REVISION
@@ -151,7 +154,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
       -p:SourceRevisionId=$HATCH_REVISION \
-      -p:HatchSequence=$HATCH_SEQUENCE
+      -p:HatchSequence=$HATCH_SEQUENCE \
+      -p:HatchLauncher=true
 
 # Build runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
@@ -205,8 +209,8 @@ COPY --from=build-env /App/out .
 # wwwroot/apps at /apps, wwwroot/apps/hatch at the root and wwwroot/apps/auth
 # at /auth, and nothing else,
 # so this directory is reachable only through the controller - which is what
-# keeps the download behind the same [RequireAdmin] as the page that offers
-# it. See AERIE-935.
+# keeps the download behind RunnerController's own guard: a person at a
+# browser or a runner's own API key, and nobody else. See AERIE-935.
 COPY --from=cli-win-x64 /out ./wwwroot/hatch-runner/win-x64
 COPY --from=cli-osx-arm64 /out ./wwwroot/hatch-runner/osx-arm64
 COPY --from=cli-osx-x64 /out ./wwwroot/hatch-runner/osx-x64

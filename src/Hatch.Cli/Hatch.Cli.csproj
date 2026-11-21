@@ -94,4 +94,17 @@
     <AssemblyMetadata Include="HatchSequence" Value="$(HatchSequence)" />
   </ItemGroup>
 
+  <!--
+    A download. `-p:HatchLauncher=true` is what `make publish-hatch`, the four
+    cli-* stages of Dockerfile.api and CI's hatch-cli job pass, and nothing
+    else does: not `make build-hatch`, whose build sits in a checkout with
+    scripts/hatch.sh over it, and not the runner image's. Being stamped with a
+    sha is no test, since a checkout build is stamped too. A build with this
+    set supervises its own go-to-work (Launcher.cs); one without it never does,
+    so a publish route that forgot the flag fails safe, as the loop always was.
+  -->
+  <ItemGroup Condition="'$(HatchLauncher)' == 'true'">
+    <AssemblyMetadata Include="HatchLauncher" Value="true" />
+  </ItemGroup>
+
 </Project>
