@@ -1311,6 +1311,8 @@ public class IssuesController(
 
         if (SharedPullRequestRefusal(parent, parentKey, projectId, type) is { } shared) return (null, shared);
 
+        if (await AllHoldRefusalAsync(parent, parentKey, type, selfId, ct) is { } allHold) return (null, allHold);
+
         // Walk up from the proposed parent. Reaching the issue being parented
         // means the link would close a loop - which is not merely untidy: the
         // detail page follows parents, and a loop is a page that never finishes
@@ -1461,6 +1463,34 @@ public class IssuesController(
         && (parent.OnePullRequest ?? parent.Project!.OnePullRequest)
             ? $"{parentKey} shares one pull request across its tasks, so they stay in {parent.Project!.Key}"
             : null;
+
+    /// <summary>
+    /// The refusal for a key filing or moving an epic under an ambition whose
+    /// every capability's newest verdict is holds: nothing is left to carve.
+    /// A capability with no verdict yet, or an ambition with no capabilities
+    /// at all, is never refused, and a person never is. An epic that already
+    /// hangs under the ambition may re-send its own <paramref name="parentKey"/>
+    /// with no refusal, since nothing about its parent is changing.
+    /// </summary>
+    private async Task<string?> AllHoldRefusalAsync(
+        EfHatchIssue parent, string parentKey, string type, long? selfId, CancellationToken ct)
+    {
+        if (type != "epic" || parent.Type != "ambition") return null;
+        if (!await caller.IsProgramAsync(ct)) return null;
+
+        if (selfId is { } self)
+        {
+            var currentParentId = await db.Issues.Where(i => i.Id == self).Select(i => i.ParentId).FirstOrDefaultAsync(ct);
+            if (currentParentId == parent.Id) return null;
+        }
+
+        var ids = await db.Capabilities.Where(c => c.IssueId == parent.Id).Select(c => c.Id).ToListAsync(ct);
+        if (ids.Count == 0) return null;
+
+        var newest = await IssueCapabilitiesController.NewestVerdictsAsync(db, ids, ct);
+        var allHold = ids.All(id => newest.TryGetValue(id, out var v) && v.Verdict == EfHatchCapabilityVerdict.Holds);
+        return allHold ? $"every capability of {parentKey} holds, and nothing is left to carve" : null;
+    }
 
     // ---- The one narrowing ----
 
