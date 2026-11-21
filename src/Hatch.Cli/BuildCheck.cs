@@ -61,17 +61,42 @@ public static class BuildCheck
     /// </remarks>
     public static async Task<string?> RunVersionAsync(string binary, string revision, TimeSpan limit)
     {
-        var result = await TryRunAsync(binary, limit);
-        if (!result.Started)
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
-            result = await TryRunAsync(binary, limit);
-        }
+        var result = await ProbeAsync(binary, limit);
 
         if (!result.Started) return $"hatch: could not start {binary}";
         if (result.TimedOut) return $"hatch: {binary} did not answer \"version\" within {limit.TotalSeconds:0}s";
 
         return Verdict(result.Stdout, result.ExitCode, revision);
+    }
+
+    /// <summary>
+    /// What <c>&lt;binary&gt; version</c> answered, read, or null where it did not
+    /// start, did not answer in time, exited non-zero or said something that is
+    /// not a report. Never throws on any of those. The same run, with the same
+    /// environment and the same one retry, as <see cref="RunVersionAsync"/>.
+    /// </summary>
+    public static async Task<VersionReport?> ReadVersionAsync(string binary, TimeSpan limit)
+    {
+        var result = await ProbeAsync(binary, limit);
+        if (!result.Started || result.TimedOut || result.ExitCode != 0) return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize(result.Stdout.Trim(), HatchJson.Default.VersionReport);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<RunResult> ProbeAsync(string binary, TimeSpan limit)
+    {
+        var result = await TryRunAsync(binary, limit);
+        if (result.Started) return result;
+
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        return await TryRunAsync(binary, limit);
     }
 
     private readonly record struct RunResult(bool Started, bool TimedOut, string Stdout, int ExitCode);

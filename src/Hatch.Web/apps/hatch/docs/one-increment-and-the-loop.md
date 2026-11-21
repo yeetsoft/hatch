@@ -609,6 +609,21 @@ for its set, and for a change of build, and for nothing else: a change to Hatch'
 own source in a checkout it serves is ignored, and `--restart-after` is still
 accepted and does nothing.
 
+A launcher also replaces its own file with a newer build it has kept, so a person
+downloads it once. At every start of `go-to-work` or `do-my-work` as a launcher,
+before anything else, a kept build that a board's record names as current and
+whose sequence is higher than the launcher's becomes the file at the launcher's
+own path, and the launcher says one line. After a change of build on macOS and
+Linux the launcher also becomes the new build in place, with `execve`: the process
+id, the terminal, the arguments and the night's state file are the same, and the
+next loop starts as it would have, on the same build on trial, with the same holds
+and the same state to fall back to. On Windows the running file is renamed aside
+and the new build put at the path, the launcher carries on as it was, and the next
+start runs the new file; a start starts the new file once and waits for it. Only a
+build that passed the checks is copied, and it is run once more from beside the
+launcher's file before the old file is given up. Where this fails the night goes
+on with the build it has, with one line. See [Getting it](the-runner#getting-it).
+
 A **change of build** is the board being on another build than the loop. The
 board says so on the heartbeat reply, and the loop acts on it at the top of a
 pass, after the stop conditions and before it takes a ticket, so no claim is
@@ -639,9 +654,11 @@ The launcher tells the child three things through its environment:
 ([Environment variables](environment-variables)), and two more only when it has
 something to say: `HATCH_BUILD_HOLD`, the builds it will not move to, and
 `HATCH_BUILD_NOTE`, one line for the child to say at the start. The version is
-one whole number, 2 so far, and it goes up when the launcher learns to do
+one whole number, 3 so far, and it goes up when the launcher learns to do
 something a child or the board should know about. Version 2 is the launcher that
-changes build. A child reads it before it relies on anything newer than version 1. Where the launcher is too old it carries on without that
+changes build, and version 3 is the one that replaces its own file. Two more
+variables, `HATCH_LAUNCHER_HANDOFF` and `HATCH_LAUNCHER_RESUME`, pass between a
+launcher and the process that takes its place; the child never sees either. A child reads it before it relies on anything newer than version 1. Where the launcher is too old it carries on without that
 thing and says so in one line; no pairing of launcher and child makes either one
 exit.
 
