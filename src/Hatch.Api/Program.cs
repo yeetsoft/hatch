@@ -116,6 +116,7 @@ builder.Services.AddSingleton(sp =>
 // the process, the second holds one HttpClient and one short-lived cache.
 builder.Services.AddSingleton<IHatchRevision, HatchRevision>();
 builder.Services.AddSingleton<IFluxRevisionReader, FluxRevisionReader>();
+builder.Services.AddSingleton<IRunnerBuilds, RunnerBuilds>();
 
 builder.Services.AddSingleton<ISiteSettingsService, SiteSettingsService>();
 
@@ -439,7 +440,8 @@ if (Directory.Exists(appsPath))
 // reach wwwroot/hatch-runner/*, which Dockerfile.api places beside wwwroot/apps
 // rather than inside it precisely so that mounting "apps at /apps and nothing
 // else" (the comment there, now also true of the root) keeps those binaries
-// reachable only through RunnerController and its own [RequireAdmin].
+// reachable only through RunnerController, which a person at a browser or a
+// runner's own key may both call.
 var boardPath = Path.Combine(appsPath, "hatch");
 PhysicalFileProvider? board = null;
 if (Directory.Exists(boardPath))

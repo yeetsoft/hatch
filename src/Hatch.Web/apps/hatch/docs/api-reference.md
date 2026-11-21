@@ -1395,8 +1395,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | DELETE | `/runners/{name}/sessions/{id}/pause` | **person** | Lifts a `board-paused` pause on one session - clears `agentDownUntil`, `agentDownKind` and `agentDownLine`, and resets the failure streak that led to it; `409` for a pause the session set on itself (`not-starting` or `signed-out`), which is the runner's own to clear; `204` and no write for a session that is not paused, or whose pause has passed |
 | POST | `/runners/{name}/pause-all` | **person** | Pauses every live `loop` session under this key at once |
 | POST | `/runners/{name}/stop-all` | **person** | Stops every live `loop` session under this key at once |
-| GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
-| GET | `/runner/download/{rid}` | **person** | One platform's `hatch` binary |
+| GET | `/runner` | key | What platforms this image can hand out, the commit they and it were built from, and each build's `sha256` - lowercase hex of the exact bytes its download serves |
+| GET | `/runner/download/{rid}` | key | One platform's `hatch` binary |
 | GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name, and the site's default token caps (`defaultMaxTokens`, `defaultMaxTokensPerHour`) |
 | PUT | `/settings` | **person** | Edits them - the two default token caps only for an admin, or for anyone at the keyboard with the wall off |
 | GET | `/settings/credentials/{agent}` | key | One agent's credential, unprotected, for the container runner to start it with |
@@ -1674,10 +1674,11 @@ inheriting it, read at each runner's next beat. `/settings` is cached for up to
 30 seconds, a backstop for another replica, so a changed default can take that
 long to reach a beat answered there.
 
-`/runner` and `/runner/download/{rid}` take no key, unlike every
-other read on this page - the audience is a person at a browser
-setting up a machine, and nobody's dispatcher needs to download the program
-it is already running as.
+`/runner` and `/runner/download/{rid}` take a key as well as a person: a
+person at a browser setting up a machine may fetch both, and so may a
+runner's own key, which checks its build against the `sha256` the listing
+carries. Each build's hash is worked out once, from the bytes the image
+actually serves, and kept rather than recomputed per request.
 
 `/settings` is Hatch's own configuration, carrying nothing an agent reads:
 it is person-only on both verbs by design, beside `/runners/{name}` and
@@ -2087,8 +2088,6 @@ DELETE /attachments/{id}
 PATCH  /runners/{name}
 POST   /runners/{name}/order
 DELETE /runners/{name}/order
-GET    /runner
-GET    /runner/download/{rid}
 GET    /settings
 PUT    /settings
 POST   /overnight/seen
@@ -2100,9 +2099,9 @@ DELETE /playbooks/{id}
 ```
 
 Thirty-one belong to a project, a column, the WIP section, a ticket's own
-fields, or attachment upload and delete; the other thirteen are a runner's own record (now
-three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
-`/runner` pair, Hatch's settings on both verbs, marking the overnight seen, the home screen,
+fields, or attachment upload and delete; the other eleven are a runner's own record (now
+three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`),
+Hatch's settings on both verbs, marking the overnight seen, the home screen,
 running a backup, and the three playbook writes.
 
 Two writes that look like the same shape are deliberately **not** on this
