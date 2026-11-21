@@ -6,6 +6,7 @@ import {
   hasMore,
   isSearching,
   matchedWords,
+  previousTitlesShown,
   readSearch,
   scrubbedProjectId,
   searchPath,
@@ -213,8 +214,31 @@ describe('matchedWords', () => {
     expect(matchedWords(['work-log'])).toBe('work log');
   });
 
+  it('words previous-title as "previous title", between title and description', () => {
+    expect(matchedWords(['title', 'previous-title', 'description'])).toBe('title, previous title, description');
+  });
+
   it('is empty for no matches', () => {
     expect(matchedWords([])).toBe('');
+  });
+});
+
+describe('previousTitlesShown', () => {
+  it('returns the previous titles, in the given order, when matched includes previous-title', () => {
+    const titles = ['Second title', 'First title'];
+    expect(previousTitlesShown({ matched: ['previous-title'], previousTitles: titles })).toBe(titles);
+  });
+
+  it('is empty when the hit was retitled but matched on title alone', () => {
+    expect(previousTitlesShown({ matched: ['title'], previousTitles: ['Old title'] })).toEqual([]);
+  });
+
+  it('is empty when matched is empty, even with previous titles present', () => {
+    expect(previousTitlesShown({ matched: [], previousTitles: ['Old title'] })).toEqual([]);
+  });
+
+  it('is empty when matched includes previous-title but there are no previous titles', () => {
+    expect(previousTitlesShown({ matched: ['previous-title'], previousTitles: [] })).toEqual([]);
   });
 });
 

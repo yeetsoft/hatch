@@ -1635,16 +1635,19 @@ export interface IssueSearch {
   text?: string | null;
 }
 
-/** Which parts of an issue held the words searched for - mirrors SearchHitDto.
-    Matched at SearchController.cs:247-251, in this order and no other. */
-export type SearchMatch = 'title' | 'description' | 'comment' | 'work-log';
+/** Which parts of an issue held the words searched for - mirrors SearchHitDto
+    (src/Hatch.Contracts/Dtos.cs), in this order and no other. */
+export type SearchMatch = 'title' | 'previous-title' | 'description' | 'comment' | 'work-log';
 
-/** One hit from GET /api/search - mirrors SearchHitDto field for field. */
+/** One hit from GET /api/search - mirrors SearchHitDto field for field.
+    `previousTitles` is newest first, and is sent whenever the issue was ever
+    retitled - whether or not a previous title matched the search. */
 export interface SearchHit {
   card: IssueCard;
   createdAt: string;
   closedAt: string | null;
   matched: SearchMatch[];
+  previousTitles: string[];
 }
 
 /** A page of search results - mirrors SearchDto. */
