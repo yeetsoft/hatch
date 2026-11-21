@@ -52,6 +52,17 @@ per-user folder (the one `hatch config` writes to). Deleting `versions/` by
 hand is safe: the next start runs the downloaded file itself, and the board is
 asked again.
 
+A machine keeps only the builds it can still need. After a change of build
+succeeds, and at each start, the launcher removes from `versions/` every build
+that is not the current or previous build of a board this machine has run a loop
+against in the last thirty days, and that nothing is running. "Running" covers
+another loop on the same machine, each member of a `--runners` set, a session's
+`hatch` calls and its hooks, and a plain command in flight. A download that was
+never finished is removed once it is a day old. Nothing outside `versions/` is
+ever removed, and the launcher's own file never is. A build that cannot be removed
+is left, tried again at the next change of build and the next start, and costs the
+night nothing; the launcher says so in one line, once.
+
 A plain command runs on that build too. `hatch board`, `hatch show`, `hatch
 work` and every other command except the loop's own, typed outside a loop, is
 handed on to the build recorded as current for the board the call is aimed at

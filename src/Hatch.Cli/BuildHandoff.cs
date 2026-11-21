@@ -224,13 +224,14 @@ public sealed class HatchBuildFetch : IBuildFetch
 /// <param name="Verify">Runs a stored build's <c>version</c> and answers null or a failure sentence: binary, then revision.</param>
 /// <param name="Clock">What a hold is measured against.</param>
 /// <param name="Poll">How often the launcher looks for the child's first answered beat.</param>
+/// <param name="Running">The files processes on this machine are running, so a sweep leaves those builds. Null: none. May throw; the sweep then removes no build.</param>
 public sealed record LauncherBuilds(
     Func<LauncherBoard?> Board, BuildStore Store, IBuildFetch Fetch, Func<string, string, Task<string?>> Verify,
-    TimeProvider Clock, TimeSpan Poll)
+    TimeProvider Clock, TimeSpan Poll, Func<IReadOnlyCollection<string>>? Running = null)
 {
     /// <summary>The real ones: the per-user folder, the board's own client, and a minute for a build to say what it is.</summary>
     public static LauncherBuilds Real(Func<LauncherBoard?> board) =>
         new(board, new BuildStore(Settings.UserFolder()), new HatchBuildFetch(),
             (binary, revision) => BuildCheck.RunVersionAsync(binary, revision, TimeSpan.FromSeconds(60)),
-            TimeProvider.System, TimeSpan.FromSeconds(2));
+            TimeProvider.System, TimeSpan.FromSeconds(2), RunningBuilds.Paths);
 }
