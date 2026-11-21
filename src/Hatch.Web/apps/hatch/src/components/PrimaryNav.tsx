@@ -28,8 +28,8 @@ function NavLinkEntry({ entry }: { entry: Extract<NavEntry, { kind: 'link' }> })
 }
 
 /**
- * The app's nav: Search as the magnifying glass, Ballot and Ambitions as
- * words, Track, Agents and Manage as menus. The board is the logo's, and
+ * The app's nav: Search as the magnifying glass, Ambitions as a word,
+ * Track, Agents and Manage as menus. The board is the logo's, and
  * Docs the settings menu's. `lib/nav.ts` is the one place to change what it
  * shows or where a page lives; this component only draws whatever that file
  * returns.
