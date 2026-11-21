@@ -275,7 +275,7 @@ public sealed class LauncherBuildsTests : IDisposable
 
         var env = Assert.Single(child.Starts).Env;
         Assert.Equal(3, env.Count);
-        Assert.Equal("2", env[Launcher.VersionVariable]);
+        Assert.Equal(Launcher.Version.ToString(), env[Launcher.VersionVariable]);
     }
 
     // ---- A fresh start ----

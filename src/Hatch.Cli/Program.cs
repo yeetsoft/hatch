@@ -825,6 +825,8 @@ internal partial class Program
         "  HATCH_LAUNCHER_PATH     the launcher's own file; the launcher sets it, and a person never does",
         "  HATCH_BUILD_HOLD        builds the launcher will not move to, sha=unix seconds or sha=never; the launcher sets it",
         "  HATCH_BUILD_NOTE        one line the launcher has the child say at start; the launcher sets it",
+        "  HATCH_LAUNCHER_HANDOFF  1 on the process a launcher started in its own place, so it does not look again; the launcher sets it",
+        "  HATCH_LAUNCHER_RESUME   the night's directory, for a launcher that took over from another; the launcher sets it",
         "  HATCH_RTK          off to keep RTK's Bash hook out of a session where rtk is on PATH",
         "                     (exported only: scripts/.env and `config` are not read for it)",
         "",

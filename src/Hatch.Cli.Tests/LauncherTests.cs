@@ -195,16 +195,16 @@ public sealed class LauncherTests : IDisposable
 
         var env = Assert.Single(child.Starts).Env;
         Assert.Equal(3, env.Count);
-        Assert.Equal("2", env[Launcher.VersionVariable]);
+        Assert.Equal(Launcher.Version.ToString(), env[Launcher.VersionVariable]);
         Assert.Equal(Own, env[Launcher.PathVariable]);
         Assert.Equal(Launcher.StateFileName, Path.GetFileName(env[Launcher.StateVariable]));
         Assert.StartsWith(temp, env[Launcher.StateVariable], StringComparison.Ordinal);
     }
 
     [Fact]
-    public void The_version_is_one_whole_number_and_is_two_since_the_launcher_changes_build()
+    public void The_version_is_one_whole_number_and_is_three_since_the_launcher_replaces_itself()
     {
-        Assert.Equal(2, Launcher.Version);
+        Assert.Equal(3, Launcher.Version);
     }
 
     [Theory]

@@ -80,6 +80,37 @@ public sealed partial class BuildStore(string root)
     }
 
     /// <summary>
+    /// The sha every board's record names as current, once each, in order. A
+    /// record that cannot be read is left out. Reads only, and never throws on
+    /// an IO error.
+    /// </summary>
+    public IReadOnlyList<string> Currents()
+    {
+        try
+        {
+            if (!Directory.Exists(BoardsDirectory)) return [];
+
+            var shas = new SortedSet<string>(StringComparer.Ordinal);
+
+            foreach (var file in Directory.EnumerateFiles(BoardsDirectory, "*.json"))
+            {
+                try
+                {
+                    var record = JsonSerializer.Deserialize(File.ReadAllText(file), HatchJson.Default.BoardRecord);
+                    if (record?.Current is { } sha && ShaPattern().IsMatch(sha)) shas.Add(sha);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { }
+            }
+
+            return [.. shas];
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
     /// Already there, or fetched, checked and moved into place - the move is
     /// what makes the result atomic: nothing ever sees a directory under
     /// <c>versions/&lt;sha&gt;</c> that was not fetched and checked whole.

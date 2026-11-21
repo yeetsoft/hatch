@@ -10657,6 +10657,29 @@ and **Rebuild**. The version rises only when the launcher learns something, so a
 deploy alone never lights it; a child that finds its launcher older than its own
 build says so once on its first start of the night.
 
+A launcher also replaces its own file, so the `hatch` on a `PATH` is downloaded
+once ([`LauncherSelf.cs`](../src/Hatch.Cli/LauncherSelf.cs)). At every start,
+before the state directory is made, it sweeps what an earlier start left aside and
+looks at the build every `boards/` record names as current: the one with the
+highest sequence, read by running its `version`, replaces the file at the launcher's
+own path when that sequence is higher than the launcher's. Newer means a higher
+sequence, so a board that rolls back moves the child and leaves the launcher. The
+copy is written beside the old file, run from there and asked for its revision,
+then swapped in. A file that is a link is followed and the file it points at
+replaced. On Linux and macOS the swap is a rename and the process then calls
+`execve` on its own path with the same arguments and
+`HATCH_LAUNCHER_HANDOFF=1`; a change of build in the middle of a night first writes
+`resume` and the state to put back into the night's directory and passes it
+as `HATCH_LAUNCHER_RESUME`, so the next child starts on the same trial, holds and
+fallback. On Windows the running file is renamed aside as `<file>.old-<pid>-<id>`
+and the new one put at the path; between children the launcher carries on as it
+was, and at a start it starts the new file once with the handoff variable and
+waits for it, so there is never a chain. Either variable is read once and removed.
+Nothing here ends a night: a failure is one line, once per start. A build nobody
+stamped, a development build, `scripts/hatch.sh`, `scripts/hatch.ps1`,
+`HATCH_RUNNER_BIN` (all set `HATCH_NIGHT_STATE`) and the container image's build
+never do it. The launcher version is 3 for it.
+
 A launcher also changes build. When the child hears from its board that the
 board is on another build, it writes `build.json` beside the night's state (the
 board's origin, the revision, where to download it and its sha256) and exits 75;
