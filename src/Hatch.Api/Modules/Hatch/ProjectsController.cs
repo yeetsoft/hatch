@@ -1001,6 +1001,42 @@ public class ProjectsController(
     }
 
     /// <summary>
+    /// Whether <see cref="EfHatchProject.AllowsUnsignedCommits"/> is on - the
+    /// project accepts commits that are not signed, and every dispatch for it
+    /// says so. Only an owner may call this, and never a key. Writing the value
+    /// a project already has changes nothing, the audit columns included. This
+    /// route is the only way to write the flag; <c>PATCH</c> and <c>POST</c> do
+    /// not reach it.
+    /// </summary>
+    [HttpPut("{id:int}/allows-unsigned-commits")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutAllowsUnsignedCommits(int id, ProjectAllowsUnsignedCommitsWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change whether it allows unsigned commits") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (request.AllowsUnsignedCommits != project.AllowsUnsignedCommits)
+        {
+            project.AllowsUnsignedCommits = request.AllowsUnsignedCommits;
+            project.AllowsUnsignedCommitsBy = await caller.ActorNameAsync(ct);
+            project.AllowsUnsignedCommitsAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} allows unsigned commits set to {AllowsUnsignedCommits} by {Actor}", project.Key, project.AllowsUnsignedCommits, project.AllowsUnsignedCommitsBy);
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
+    /// <summary>
     /// Whether <see cref="EfHatchProject.NoCodeCloses"/> is on - a no-code
     /// declaration on an issue closes it outright, rather than leaving it for
     /// a person. Only an owner may call this. It is accepted whatever the
@@ -1221,7 +1257,8 @@ public class ProjectsController(
             project.RunnersWorkContributions, project.RunnersWorkContributionsBy, project.RunnersWorkContributionsAt,
             project.OnePullRequestPolicy, project.OnePullRequestPolicyBy, project.OnePullRequestPolicyAt,
             project.Priority, project.PriorityBy, project.PriorityAt,
-            project.FilesContributions, project.FilesContributionsBy, project.FilesContributionsAt);
+            project.FilesContributions, project.FilesContributionsBy, project.FilesContributionsAt,
+            project.AllowsUnsignedCommits, project.AllowsUnsignedCommitsBy, project.AllowsUnsignedCommitsAt);
 
     /// <summary>
     /// Whether a project already holds <paramref name="key"/>, hidden ones included. A key is unique

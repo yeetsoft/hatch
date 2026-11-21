@@ -465,6 +465,7 @@ public class HatchContext : DbContext, IModuleContext
             e.Property(p => p.NoCodeCloses).HasDefaultValue(false);
             e.Property(p => p.RunnersWorkContributions).HasDefaultValue(false);
             e.Property(p => p.FilesContributions).HasDefaultValue(false);
+            e.Property(p => p.AllowsUnsignedCommits).HasDefaultValue(true);
 
             e.Property(p => p.AutoHealBugEnabled).HasDefaultValue(false);
             e.Property(p => p.AutoHealBugPriority).HasDefaultValue(global::Hatch.Contracts.PriorityLevels.Emergency);

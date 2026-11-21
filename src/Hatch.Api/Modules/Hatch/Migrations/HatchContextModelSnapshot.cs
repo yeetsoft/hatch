@@ -1694,6 +1694,18 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("AllowsUnsignedCommits")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTimeOffset?>("AllowsUnsignedCommitsAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AllowsUnsignedCommitsBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<bool>("AutoHealBugEnabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")

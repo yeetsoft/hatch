@@ -1763,7 +1763,8 @@ public class WorkController(
             sessionModelFellBack,
             buildPast.Count == 0 ? null : buildPast,
             ambition,
-            answering is null ? null : AnswerQuestions.ToDto(answering));
+            answering is null ? null : AnswerQuestions.ToDto(answering),
+            issue.Project!.AllowsUnsignedCommits);
     }
 
     /// <summary>

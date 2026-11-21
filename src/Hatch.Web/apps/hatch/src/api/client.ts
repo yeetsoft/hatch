@@ -85,6 +85,7 @@ import type {
   ProjectNoCodeClosesWriteRequest,
   ProjectRunnersWorkContributionsWriteRequest,
   ProjectFilesContributionsWriteRequest,
+  ProjectAllowsUnsignedCommitsWriteRequest,
   ProjectOnePrPolicyWriteRequest,
   ProjectPriorityWriteRequest,
   ProjectRepoSourcedWriteRequest,
@@ -209,6 +210,9 @@ export const putProjectRunnersWorkContributions = (id: number, request: ProjectR
 /** Sets whether outside pull requests are filed as contributions. */
 export const putProjectFilesContributions = (id: number, request: ProjectFilesContributionsWriteRequest) =>
   fetchJson<Project>(`/api/projects/${id}/files-contributions`, { method: 'PUT', ...asJson(request) });
+/** Sets whether a project allows unsigned commits. */
+export const putProjectAllowsUnsignedCommits = (id: number, request: ProjectAllowsUnsignedCommitsWriteRequest) =>
+  fetchJson<Project>(`/api/projects/${id}/allows-unsigned-commits`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a ticket's work must land in one pull request. */
 export const putProjectOnePrPolicy = (id: number, request: ProjectOnePrPolicyWriteRequest) =>
   fetchJson<Project>(`/api/projects/${id}/one-pr-policy`, { method: 'PUT', ...asJson(request) });

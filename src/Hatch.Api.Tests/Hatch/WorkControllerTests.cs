@@ -54,6 +54,31 @@ public class WorkControllerTests
         Assert.False(work.ChecksRequired);
     }
 
+    [Fact]
+    public async Task Work_OnAFreshProject_AllowsUnsignedCommits()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "a story", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.True(work.AllowsUnsignedCommits);
+    }
+
+    [Fact]
+    public async Task Work_OnAProjectThatAllowsOnlySignedCommits_SaysSo()
+    {
+        var h = await NewAsync();
+        var project = await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId);
+        project.AllowsUnsignedCommits = false;
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "a story", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.False(work.AllowsUnsignedCommits);
+    }
+
     // ---- Picking ----
 
     [Fact]

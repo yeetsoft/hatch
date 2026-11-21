@@ -17,6 +17,7 @@ import type {
   ProjectNoCodeClosesWriteRequest,
   ProjectRunnersWorkContributionsWriteRequest,
   ProjectFilesContributionsWriteRequest,
+  ProjectAllowsUnsignedCommitsWriteRequest,
   ProjectOnePrPolicyWriteRequest,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
@@ -49,6 +50,7 @@ export interface ProjectDraft {
     noCodeCloses: boolean;
     runnersWorkContributions: boolean;
     filesContributions: boolean;
+    allowsUnsignedCommits: boolean;
     onePullRequestPolicy: OnePullRequestPolicy;
     runnerTags: string[];
     reflectionCadenceDays: number | null;
@@ -72,6 +74,7 @@ export interface ProjectDraft {
   noCodeCloses: boolean;
   runnersWorkContributions: boolean;
   filesContributions: boolean;
+  allowsUnsignedCommits: boolean;
   onePullRequestPolicy: OnePullRequestPolicy;
   runnerTags: string;
   /** Held as text, so a blank box reads as off rather than as 0. */
@@ -121,6 +124,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       noCodeCloses: project.noCodeCloses,
       runnersWorkContributions: project.runnersWorkContributions,
       filesContributions: project.filesContributions,
+      allowsUnsignedCommits: project.allowsUnsignedCommits,
       onePullRequestPolicy: project.onePullRequestPolicy,
       runnerTags,
       reflectionCadenceDays: project.reflectionCadenceDays,
@@ -144,6 +148,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     noCodeCloses: project.noCodeCloses,
     runnersWorkContributions: project.runnersWorkContributions,
     filesContributions: project.filesContributions,
+    allowsUnsignedCommits: project.allowsUnsignedCommits,
     onePullRequestPolicy: project.onePullRequestPolicy,
     runnerTags: runnerTagsDraft(runnerTags),
     reflectionCadenceDays: project.reflectionCadenceDays === null ? '' : String(project.reflectionCadenceDays),
@@ -227,6 +232,13 @@ export function projectRunnersWorkContributionsDiff(draft: ProjectDraft): Projec
 export function projectFilesContributionsDiff(draft: ProjectDraft): ProjectFilesContributionsWriteRequest | null {
   return draft.filesContributions !== draft.known.filesContributions
     ? { filesContributions: draft.filesContributions }
+    : null;
+}
+
+/** Whether the project allows unsigned commits, or null when it was not changed. */
+export function projectAllowsUnsignedCommitsDiff(draft: ProjectDraft): ProjectAllowsUnsignedCommitsWriteRequest | null {
+  return draft.allowsUnsignedCommits !== draft.known.allowsUnsignedCommits
+    ? { allowsUnsignedCommits: draft.allowsUnsignedCommits }
     : null;
 }
 

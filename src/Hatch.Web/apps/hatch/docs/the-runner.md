@@ -761,7 +761,8 @@ since the merge of the trunk into that branch is the first commit. A checkout
 that answered `fails` is not asked again for thirty minutes.
 
 **What the project allows.** The dispatch says whether the project allows
-unsigned commits (`AllowsUnsignedCommits`, true when the board does not say).
+unsigned commits (`AllowsUnsignedCommits`, true when the board does not say). An owner
+sets it in the project dialog.
 
 - **Signing fails, and unsigned commits are allowed.** For that increment the
   loop sets `commit.gpgsign` and `tag.gpgsign` to false through

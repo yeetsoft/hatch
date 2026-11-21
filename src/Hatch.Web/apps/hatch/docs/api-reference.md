@@ -67,6 +67,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/no-code-closes` | **person** | Sets `noCodeCloses` |
 | PUT | `/projects/{id}/runners-work-contributions` | **person** | Sets `runnersWorkContributions` |
 | PUT | `/projects/{id}/files-contributions` | **person** | Sets `filesContributions` |
+| PUT | `/projects/{id}/allows-unsigned-commits` | **person** | Sets `allowsUnsignedCommits` |
 | PUT | `/projects/{id}/one-pr-policy` | **person** | Sets `onePullRequestPolicy`, returning overrides nothing has started under to inherit on a tightening |
 | PUT | `/projects/{id}/priority` | **person** | Sets `priority` to `paused`, `normal` or `expedited` |
 
@@ -105,7 +106,11 @@ resending the value a project already holds writes nothing, the audit fields inc
 (`runnersWorkContributionsBy`, `runnersWorkContributionsAt` on the `ProjectDto`). The files-contributions PUT body is
 `ProjectFilesContributionsWriteRequest(FilesContributions)`; nothing reads the flag yet, and
 resending the value a project already holds writes nothing, the audit fields included
-(`filesContributionsBy`, `filesContributionsAt` on the `ProjectDto`). The one-pr-policy PUT body is
+(`filesContributionsBy`, `filesContributionsAt` on the `ProjectDto`). The allows-unsigned-commits PUT body is
+`ProjectAllowsUnsignedCommitsWriteRequest(AllowsUnsignedCommits)`; a project allows unsigned commits (`true`) until an
+owner says otherwise, every dispatch carries the value in `WorkDto.AllowsUnsignedCommits`, and resending the value a
+project already holds writes nothing, the audit fields included (`allowsUnsignedCommitsBy`, `allowsUnsignedCommitsAt`
+on the `ProjectDto`). The one-pr-policy PUT body is
 `ProjectOnePrPolicyWriteRequest(Policy)`, `optional` or `enforced` and nothing else (a `400` names
 the bad value), owner only, and resending the value a project already holds writes nothing, the audit
 fields included. The priority PUT body is
@@ -132,7 +137,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The runners-work-contributions PUT 403s if the caller is not an owner. The files-contributions PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`. The priority PUT 403s if the caller is not an owner, and 400s on anything but `paused`, `normal` or `expedited`.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The runners-work-contributions PUT 403s if the caller is not an owner. The files-contributions PUT 403s if the caller is not an owner. The allows-unsigned-commits PUT 403s if the caller is not an owner, a key included. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`. The priority PUT 403s if the caller is not an owner, and 400s on anything but `paused`, `normal` or `expedited`.
 
 ## Scopes
 
@@ -2174,6 +2179,7 @@ PUT    /projects/{id}/check-approves-merge
 PUT    /projects/{id}/no-code-closes
 PUT    /projects/{id}/runners-work-contributions
 PUT    /projects/{id}/files-contributions
+PUT    /projects/{id}/allows-unsigned-commits
 PUT    /projects/{id}/one-pr-policy
 PUT    /projects/{id}/priority
 PUT    /projects/{id}/reflection
