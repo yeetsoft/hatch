@@ -13,6 +13,23 @@ public sealed class ReachTests
             ? new Dictionary<string, string?>(StringComparer.Ordinal)
             : new Dictionary<string, string?>(StringComparer.Ordinal) { ["PATH"] = path };
 
+    /// <summary>
+    /// A build kept under <c>versions/&lt;sha&gt;/hatch</c> is the binary running, so the
+    /// folder a session finds first on <c>PATH</c> and the path its hooks run are
+    /// that build's own, and a change of build needs nothing from either.
+    /// </summary>
+    [Fact]
+    public void A_kept_build_puts_its_own_folder_first_and_its_own_path_in_the_hooks()
+    {
+        var kept = Path("root", "versions", new string('a', 40), "hatch");
+        var environment = Env("/usr/bin");
+
+        Reach.OnPath(environment, Reach.OwnDirectory(kept));
+
+        Assert.Equal(Path("root", "versions", new string('a', 40)) + System.IO.Path.PathSeparator + "/usr/bin", environment["PATH"]);
+        Assert.Equal(kept, SessionHooks.Binary(kept));
+    }
+
     [Fact]
     public void A_binary_called_hatch_offers_the_directory_it_sits_in()
     {

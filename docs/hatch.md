@@ -10632,6 +10632,16 @@ and **Rebuild**. The version rises only when the launcher learns something, so a
 deploy alone never lights it; a child that finds its launcher older than its own
 build says so once on its first start of the night.
 
+A launcher also changes build. When the child hears from its board that the
+board is on another build, it writes `build.json` beside the night's state (the
+board's origin, the revision, where to download it and its sha256) and exits 75;
+the launcher fetches the build, checks it, keeps it under
+`versions/<sha>/` and starts the next child from it, and records it as the
+board's build once that child's first beat is answered. The child decides at the
+top of a pass, after the stop conditions and before the order and paused
+branches, so it holds no claim; `behind` is followed at once and any other word
+after ten unbroken minutes. See [Restarts](#what-it-stops-for) below.
+
 So: a console program in the solution, compiled against
 `src/Hatch.Contracts` — the same records the API serves, so a fixture that
 goes stale does not quietly deserialise into a dispatch with empty fields, it
@@ -10841,9 +10851,12 @@ same change. And it will not restart at all under `--once`, under
 somebody is standing over it, and a runner with nobody to run it again is the
 loop it started as.
 
-Under a launcher the loop restarts for `hatch use` and for its set, and for
-nothing that needs source: a change in a checkout it serves is not read, and
-`--restart-after` does nothing. It tells the loop who it is through
+Under a launcher the loop restarts for `hatch use`, for its set and for a change
+of build, and for nothing that needs source: a change in a checkout it serves is
+not read, and `--restart-after` does nothing. A change of build needs a launcher
+at version 2 and a loop that restarts at all, so it never happens under
+`--no-restart`, `--once`, `hatch.sh`, `hatch.ps1`, an unstamped build or the
+image; a launcher at version 1 gets one line and the loop carries on. It tells the loop who it is through
 `HATCH_LAUNCHER_VERSION`, a whole number that starts at 1, and `HATCH_LAUNCHER_PATH`;
 a child reads the version before relying on anything newer than 1, and where the
 launcher is too old it carries on without that thing and says so in one line. No
@@ -10988,9 +11001,12 @@ name a build; the board keeps nothing of it. `download` and `sha256` are what
 the Runner page lists for that platform, read from the same code, and both
 are null where the platform is unknown, unsent, or has nothing published -
 the part is still sent. Every beat is answered this way: the named route and
-the session route, `loop` and `once`. Nothing acts on it yet: the **Behind**
-badge and `boardDrift` read the stored row as they always did, and the loop
-ignores the part.
+the session route, `loop` and `once`. The **Behind** badge and `boardDrift` read
+the stored row as they always did. A downloaded loop reads the part: `behind`
+sends it to its launcher for that build at the top of the next pass, and any
+other word does so only when every beat for ten minutes has named the same
+revision (`BoardBuildWatch`). A loop with no launcher, or one run with
+`--no-restart` or `--once`, never acts on it.
 
 **Refused models are a key's alone, and a key may write its own.** `PUT
 /api/runners/{name}/refused-models` holds the list of models this

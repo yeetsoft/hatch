@@ -604,10 +604,32 @@ so a child under a launcher ignores a repeat of a signal it caught within two
 seconds, and a person pressing it again later still ends it. On Windows the
 console reaches the child itself and the launcher only waits.
 
-A launcher has no source to rebuild, so a loop under one restarts for `hatch use`
-and for its set, and for nothing else: a change to Hatch's own source in a
-checkout it serves is ignored, and `--restart-after` is still accepted and does
-nothing. `--no-restart` and `--once` keep their meaning and the loop never
+A launcher has no source to rebuild, so a loop under one restarts for `hatch use`,
+for its set, and for a change of build, and for nothing else: a change to Hatch's
+own source in a checkout it serves is ignored, and `--restart-after` is still
+accepted and does nothing.
+
+A **change of build** is the board being on another build than the loop. The
+board says so on the heartbeat reply, and the loop acts on it at the top of a
+pass, after the stop conditions and before it takes a ticket, so no claim is
+held and no ticket is started on the build it is leaving. A paused loop follows
+its board too. It writes its request beside the night's state, exits `75`, and
+the launcher fetches the build from the board, checks its hash and what it says
+it is, keeps it, and starts the next child from it. When the board calls the
+loop's build **behind**, it goes at once. For any other word (**ahead**,
+**diverged**, or one a newer board invents) the board must have named the same
+build on every beat for ten minutes first, so a rollback or two deploys in turn
+does not make a loop bounce. A person's order, which the board clears when it is
+read, is worked first and the change waits one pass.
+
+Where the change cannot be made, the loop stays on the build it has and says one
+line: the board names no download for this platform, the launcher is too old to
+change build (it needs version 2), the request could not be written, or the
+fetch or the check failed. A build that fails is not asked for again for a minute,
+then two, doubling to an hour, and a build that ends before the board has
+answered it is dropped for good. Under `--no-restart` and `--once`, from a
+checkout's wrapper script, from a build nobody stamped and from the container
+image, a loop never changes build. `--no-restart` and `--once` keep their meaning and the loop never
 restarts. The night's totals carry across a restart exactly as under a wrapper
 script: runs, spend, tokens, the hour's window, `--until`, the failure streak and
 the log file.

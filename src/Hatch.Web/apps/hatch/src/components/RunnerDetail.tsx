@@ -272,7 +272,8 @@ export function RunnerDetail() {
   const live = isRetired(runner) ? [] : liveSessions(runner, now);
 
   // Three badges, three fixes: Behind is a binary older than the board's
-  // (restart it against a newer deploy), Rebuild one older than its own
+  // (a downloaded loop follows its board by itself, so one that stays Behind
+  // could not update or was run with --no-restart or --once), Rebuild one older than its own
   // checkout's source (make build-hatch there), and Launcher behind a
   // launcher older than the board's build knows (download hatch again). The
   // board makes the last comparison; this only reads its answer.

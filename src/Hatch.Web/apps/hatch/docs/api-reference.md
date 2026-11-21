@@ -1572,8 +1572,10 @@ lists for the platform the beat names in `rid`, from the same code; both are
 `null` for a beat that names no platform, one the board does not publish, or
 an image that published nothing, and the part is still sent. A matching
 revision, an unstamped side (`dev`, or no count) and a beat with no revision
-all get no part, and so does an older board. Nothing acts on it yet. `rid` is
-never stored.
+all get no part, and so does an older board. A downloaded loop acts on it: on
+`behind` it asks its launcher for the build at the top of its next pass, and on
+any other word only once every beat for ten minutes has named the same revision.
+A loop with no launcher only reads it. `rid` is never stored.
 
 `throttledUntil` is a fact the runner reports about its own
 `--max-tokens-per-hour`, never a person's to set: it is the instant the loop

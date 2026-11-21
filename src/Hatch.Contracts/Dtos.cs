@@ -6042,7 +6042,9 @@ public record RunnerUsageWindowDto(
 /// Present exactly when this beat sent a stamped <c>Revision</c> and
 /// <c>Sequence</c>, the board is stamped, and the two revisions differ - null
 /// otherwise, and null from a Hatch too old to answer it, which a runner reads
-/// as nothing to do. Informational: nothing acts on it yet.
+/// as nothing to do. A downloaded loop that finds itself behind asks its
+/// launcher for this build at the top of its next pass, and one told something
+/// else holds for ten minutes first; a loop with no launcher only reads it.
 /// </param>
 public record RunnerInstructionDto(
     string State,
