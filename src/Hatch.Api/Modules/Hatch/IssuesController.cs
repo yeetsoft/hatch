@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
@@ -1312,6 +1313,7 @@ public class IssuesController(
         if (SharedPullRequestRefusal(parent, parentKey, projectId, type) is { } shared) return (null, shared);
 
         if (await AllHoldRefusalAsync(parent, parentKey, type, selfId, ct) is { } allHold) return (null, allHold);
+        if (await SpentBudgetRefusalAsync(parent, parentKey, type, selfId, ct) is { } spent) return (null, spent);
 
         // Walk up from the proposed parent. Reaching the issue being parented
         // means the link would close a loop - which is not merely untidy: the
@@ -1465,6 +1467,27 @@ public class IssuesController(
             : null;
 
     /// <summary>
+    /// Whether this is a program carving a new epic under an ambition: the type
+    /// is an epic, the parent is an ambition, the caller is a key, and the epic
+    /// is not already under that parent. An epic that already hangs under the
+    /// ambition may re-send its own parent key, since nothing about its parent
+    /// is changing. The guards the two refusals for an ambition share.
+    /// </summary>
+    private async Task<bool> IsProgramCarvingAsync(EfHatchIssue parent, string type, long? selfId, CancellationToken ct)
+    {
+        if (type != "epic" || parent.Type != "ambition") return false;
+        if (!await caller.IsProgramAsync(ct)) return false;
+
+        if (selfId is { } self)
+        {
+            var currentParentId = await db.Issues.Where(i => i.Id == self).Select(i => i.ParentId).FirstOrDefaultAsync(ct);
+            if (currentParentId == parent.Id) return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// The refusal for a key filing or moving an epic under an ambition whose
     /// every capability's newest verdict is holds: nothing is left to carve.
     /// A capability with no verdict yet, or an ambition with no capabilities
@@ -1475,14 +1498,7 @@ public class IssuesController(
     private async Task<string?> AllHoldRefusalAsync(
         EfHatchIssue parent, string parentKey, string type, long? selfId, CancellationToken ct)
     {
-        if (type != "epic" || parent.Type != "ambition") return null;
-        if (!await caller.IsProgramAsync(ct)) return null;
-
-        if (selfId is { } self)
-        {
-            var currentParentId = await db.Issues.Where(i => i.Id == self).Select(i => i.ParentId).FirstOrDefaultAsync(ct);
-            if (currentParentId == parent.Id) return null;
-        }
+        if (!await IsProgramCarvingAsync(parent, type, selfId, ct)) return null;
 
         var ids = await db.Capabilities.Where(c => c.IssueId == parent.Id).Select(c => c.Id).ToListAsync(ct);
         if (ids.Count == 0) return null;
@@ -1490,6 +1506,28 @@ public class IssuesController(
         var newest = await IssueCapabilitiesController.NewestVerdictsAsync(db, ids, ct);
         var allHold = ids.All(id => newest.TryGetValue(id, out var v) && v.Verdict == EfHatchCapabilityVerdict.Holds);
         return allHold ? $"every capability of {parentKey} holds, and nothing is left to carve" : null;
+    }
+
+    /// <summary>
+    /// The refusal for a key filing or moving an epic under an ambition whose
+    /// budget is spent: the second way an ambition stops carving. An ambition
+    /// with no budget is never refused, whatever it has cost, and a person never
+    /// is. The sum is <see cref="AmbitionBudget.ReadAsync"/>'s, the one the
+    /// budget route reads. Work already in flight is untouched: only a new epic
+    /// is refused, and one already under the ambition may re-send its parent.
+    /// </summary>
+    private async Task<string?> SpentBudgetRefusalAsync(
+        EfHatchIssue parent, string parentKey, string type, long? selfId, CancellationToken ct)
+    {
+        if (!await IsProgramCarvingAsync(parent, type, selfId, ct)) return null;
+        if (parent.BudgetUsd is not { } budget) return null;
+
+        var read = await AmbitionBudget.ReadAsync(db, parent, ct);
+        if (!read.Spent) return null;
+
+        return $"the budget of {parentKey} is spent - "
+            + $"${read.SpentUsd.ToString("F2", CultureInfo.InvariantCulture)} of ${budget.ToString("F2", CultureInfo.InvariantCulture)}"
+            + " - so no epic is filed under it until a person raises it";
     }
 
     // ---- The one narrowing ----

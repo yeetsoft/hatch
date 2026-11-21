@@ -148,7 +148,23 @@ the new one and who made it.
 **How spent is read.** `GET /issues/{key}/budget` adds the work log up on each read; nothing stores the figure, and the issue itself
 carries neither the budget nor the spend, because the issue is read once for every card on the board. The sum is the same whoever reads it,
 including a person whose scope hides a project that holds one of the ambition's epics. A session reads it with `hatch api GET`;
-there is no `hatch` command for it. Nothing stops at the budget yet: today it is stored and read, and no more.
+there is no `hatch` command for it.
+
+**What happens when it is spent.** Once the budget is spent, a key that files an epic under the ambition, or moves one under it, is
+refused. The sentence says the budget is spent and names both amounts: `the budget of AER-12 is spent - $52.00 of $50.00 - so no epic is
+filed under it until a person raises it`. A person is never refused, and an ambition with no budget is never refused, whatever it has cost.
+An epic already under the ambition may re-send its own parent with no refusal.
+
+The ambition's pass reads the budget before it carves. With the budget spent it carves nothing, asks one question on the ambition and
+comments the pass. The question names the budget and the amount spent, and offers two answers: raise the budget, or stop here. The
+ambition's pass waits in the queue until a person answers. Answering "raise the budget" raises nothing: the person sets the higher amount
+on the ambition, and that change is what lets the next pass carve. Where an answered question already says to stop at this amount, the
+pass does not ask again; it still carves nothing and still records its verdicts, so the page shows what holds once the last work lands.
+A pass still runs when an epic under the ambition closes, and after "stop here" it files nothing.
+
+**Work in flight finishes.** Only a new epic is refused. An epic already open under the ambition, and the stories and tasks beneath it,
+are worked as before. The budget on its own does not fold the pass: one pass has to run to ask the question. A change to the budget opens
+room for the next pass, the way a change to Epics at once does.
 
 ## The Ambitions page
 
