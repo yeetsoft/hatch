@@ -620,27 +620,6 @@ public class EfHatchPersonHome
 }
 
 /// <summary>
-/// The last instant one reader read the Overnight page - one row per person,
-/// never a browser's cookie, so a badge cleared on a phone is cleared on the
-/// desktop too.
-/// </summary>
-[Table("OvernightSeen")]
-[Index(nameof(PersonId), IsUnique = true)]
-public class EfHatchOvernightSeen
-{
-    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public int Id { get; set; }
-
-    /// <summary>
-    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
-    /// <see cref="EfHatchProjectMember.PersonId"/> is one.
-    /// </summary>
-    public Guid PersonId { get; set; }
-
-    public required DateTimeOffset SeenAt { get; set; }
-}
-
-/// <summary>
 /// One project's logo, stored as bytes in Postgres rather than as a path into a
 /// volume.
 ///
@@ -4622,7 +4601,7 @@ public class EfHatchRunnerConfig
     /// navigation and no foreign key, because <c>EfApiKey</c> lives in the core
     /// schema and a module never references another module's entities
     /// (Modules/README.md) - the same shape as
-    /// <see cref="EfHatchOvernightSeen.PersonId"/>. Never generated: the id is
+    /// <see cref="EfHatchProjectMember.PersonId"/>. Never generated: the id is
     /// the key's, not this row's.
     /// </summary>
     [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]

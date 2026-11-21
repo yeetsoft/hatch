@@ -57,7 +57,6 @@ public class HatchContext : DbContext, IModuleContext
     public DbSet<EfHatchPersonScope> PersonScopes => Set<EfHatchPersonScope>();
     public DbSet<EfHatchPersonScopeProject> PersonScopeProjects => Set<EfHatchPersonScopeProject>();
     public DbSet<EfHatchPersonHome> PersonHomes => Set<EfHatchPersonHome>();
-    public DbSet<EfHatchOvernightSeen> OvernightSeen => Set<EfHatchOvernightSeen>();
     public DbSet<EfHatchProjectLogo> ProjectLogos => Set<EfHatchProjectLogo>();
     public DbSet<EfHatchAttachment> Attachments => Set<EfHatchAttachment>();
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
@@ -748,8 +747,8 @@ public class HatchContext : DbContext, IModuleContext
         // navigation: the rule should read the same whichever way EF composes
         // it.
         //
-        // Deliberately unfiltered: Statuses, WipLimits, OvernightSeen,
-        // PersonHomes, the runner tables, PersonScopes and PersonScopeProjects
+        // Deliberately unfiltered: Statuses, WipLimits, PersonHomes,
+        // the runner tables, PersonScopes and PersonScopeProjects
         // (the resolver reads them), and the core schema.
         modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
         modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));

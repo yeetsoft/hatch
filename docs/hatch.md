@@ -71,8 +71,6 @@ the next heading of the same level and stop.
   - [Playbook proposal](#playbook-proposal) - What does a session propose
     changing about a playbook, before a person decides it?
   - [Verdict](#verdict) - What did a check session conclude about an issue?
-  - [Overnight seen](#overnight-seen) - Which table does nothing read or
-    write now, and goes next?
 - [The wall, the roles, and API keys](#the-wall-the-roles-and-api-keys) - Who
   may reach Hatch, and how does an API key differ from a person?
 - [API surface](#api-surface) - Which routes exist under `/api`, and
@@ -781,9 +779,9 @@ caller with everything reads exactly what it did before.
 - Through a repository: `TrunkBuilds`, `PlaybookFiles`, `DependencyFiles` and
   `ChangelogFiles`, visible when any visible project binds that `Canonical`.
 
-**What does not.** `Statuses`, `WipLimits`, `OvernightSeen`, the runner tables,
-`PersonScopes` and `PersonScopeProjects` (the resolver reads them), and
-everything in the core schema.
+**What does not.** `Statuses`, `WipLimits`, the runner tables, `PersonScopes` and
+`PersonScopeProjects` (the resolver reads them), and everything in the core
+schema.
 
 **Required navigations.** A row whose required navigation points at a hidden
 row is dropped from an `Include` rather than returned with a hole in it: a
@@ -4069,17 +4067,6 @@ and the claim is gone.
 else — not by a replace, which leaves it alone. A verdict with it set is not
 looked at again: a retried apply under the same claim finds no unapplied row and
 answers `404`. Written by `POST /issues/{key}/verdicts`; no route reads it back.
-
-### Overnight seen
-
-`EfHatchOvernightSeen` — `PersonId` (a bare `Guid` rather than a foreign key,
-for the reason `EfHatchProjectMember.PersonId` is one: Hatch owns its own
-schema and migration history, and a constraint into `public.People` is the
-compile-time coupling `Modules/README.md` exists to prevent), `SeenAt`.
-
-One reader's own mark on a page the web app no longer draws — when they last
-read it, nothing more. No route reads or writes the table now: the routes that
-did were removed, and the next story removes the table.
 
 ## The wall, the roles, and API keys
 
