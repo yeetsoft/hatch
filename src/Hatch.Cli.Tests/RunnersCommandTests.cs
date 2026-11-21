@@ -20,7 +20,8 @@ public sealed class RunnersCommandTests
         DateTimeOffset? agentDownUntil = null, string? agentDownKind = null, string? agentDownLine = null,
         IReadOnlyList<string>? refusedModels = null, long? acceleratorMemoryBytes = null,
         int? acceleratorDeviceCount = null, string? acceleratorBackend = null,
-        string statusMode = RunnerStatusMode.All, IReadOnlyList<int>? statusIds = null) =>
+        string statusMode = RunnerStatusMode.All, IReadOnlyList<int>? statusIds = null,
+        string? signing = null, string? signingWhy = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
@@ -32,7 +33,7 @@ public sealed class RunnersCommandTests
             Image: image, AgentDownUntil: agentDownUntil, AgentDownKind: agentDownKind, AgentDownLine: agentDownLine,
             RefusedModels: refusedModels ?? [], AcceleratorMemoryBytes: acceleratorMemoryBytes,
             AcceleratorDeviceCount: acceleratorDeviceCount, AcceleratorBackend: acceleratorBackend,
-            StatusMode: statusMode, StatusIds: statusIds ?? []);
+            StatusMode: statusMode, StatusIds: statusIds ?? [], Signing: signing, SigningWhy: signingWhy);
 
     private static RunnerSessionDto ASession(
         string where = "Fry:/code/hatch", string? agent = "claude", string? os = "Darwin 23.6.0",
@@ -219,6 +220,35 @@ public sealed class RunnersCommandTests
         Assert.DoesNotContain("accelerator", Row("none"));
         Assert.DoesNotContain("accelerator", Row("silent"));
         Assert.EndsWith("  has pwsh  accelerator cuda 24GB x2  projects HA", Row("all"));
+    }
+
+    [Fact]
+    public async Task A_row_prints_the_three_signing_readings_after_the_accelerator_and_one_that_never_said_prints_nothing()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(name: "signs", signing: "works"),
+            ARunner(name: "unsigned", signing: "off"),
+            ARunner(name: "locked", signing: "fails", signingWhy: "gpg failed to sign the data"),
+            ARunner(name: "unexplained", signing: "fails"),
+            ARunner(name: "unknown", signing: "maybe"),
+            ARunner(name: "silent"),
+            ARunner(name: "all", projects: ["HA"], acceleratorBackend: "cuda", signing: "works"),
+        });
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        string Row(string name) => lines.Single(l => l.StartsWith(name, StringComparison.Ordinal));
+        Assert.EndsWith("  signs its commits", Row("signs"));
+        Assert.EndsWith("  does not sign its commits", Row("unsigned"));
+        Assert.EndsWith("  signing fails: gpg failed to sign the data", Row("locked"));
+        Assert.EndsWith("  signing fails", Row("unexplained"));
+        Assert.DoesNotContain("sign", Row("unknown"));
+        Assert.DoesNotContain("sign", Row("silent"));
+        Assert.EndsWith("  accelerator cuda  signs its commits  projects HA", Row("all"));
     }
 
     [Fact]

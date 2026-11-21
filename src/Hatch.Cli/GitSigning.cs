@@ -122,8 +122,9 @@ public static class GitSigning
 
 /// <summary>
 /// The checkouts that answered <see cref="Signing.Fails"/> and have not been
-/// asked again yet. A reference on <see cref="Runtime"/>, so a copy of it with
-/// a field changed still shares what was learned.
+/// asked again yet, and the latest answer of any kind for every checkout asked.
+/// A reference on <see cref="Runtime"/>, so a copy of it with a field changed
+/// still shares what was learned.
 /// </summary>
 public sealed class SigningCache
 {
@@ -132,6 +133,24 @@ public sealed class SigningCache
 
     private readonly ConcurrentDictionary<string, (DateTimeOffset Until, SigningCheck Check)> _failed =
         new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
+    private readonly ConcurrentDictionary<string, SigningCheck> _latest =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
+    /// <summary>
+    /// The latest answer for <paramref name="root"/>, whatever it was and however
+    /// long ago - null for a checkout not asked yet. Unlike <see cref="Failed"/> it
+    /// does not expire: it is what the loop tells the board it signs.
+    /// </summary>
+    public SigningCheck? Latest(string root) => _latest.TryGetValue(Key(root), out var check) ? check : null;
+
+    /// <summary>The latest answer for every checkout under <paramref name="directory"/> that has been asked, such as a clone made after start.</summary>
+    public IReadOnlyList<SigningCheck> LatestUnder(string directory)
+    {
+        var prefix = Key(directory) + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return [.. _latest.Where(p => p.Key.StartsWith(prefix, comparison)).Select(p => p.Value)];
+    }
 
     /// <summary>The failure remembered for <paramref name="root"/>, until it is thirty minutes old.</summary>
     public SigningCheck? Failed(string root, DateTimeOffset now)
@@ -144,9 +163,10 @@ public sealed class SigningCache
         return null;
     }
 
-    /// <summary>Remembers a failure, and forgets the path on any other answer.</summary>
+    /// <summary>Remembers the answer, and a failure for thirty minutes; any other answer forgets the failure.</summary>
     public void Record(string root, SigningCheck check, DateTimeOffset now)
     {
+        _latest[Key(root)] = check;
         if (check.Fails) _failed[Key(root)] = (now + Keep, check);
         else _failed.TryRemove(Key(root), out _);
     }

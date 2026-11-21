@@ -4163,6 +4163,12 @@ public class EfHatchRunner
     /// <summary>Room for what the agent said, on the terms a claim's chatter has.</summary>
     public const int MaxAgentDownLineLength = 200;
 
+    /// <summary>Room for <see cref="RunnerSigning.Off"/>, <see cref="RunnerSigning.Works"/> and <see cref="RunnerSigning.Fails"/>, the longest of the three being <c>works</c> or <c>fails</c>.</summary>
+    public const int MaxSigningLength = 8;
+
+    /// <summary>Room for what git said where signing fails: one line, on the terms <see cref="MaxAgentDownLineLength"/> has.</summary>
+    public const int MaxSigningWhyLength = RunnerSigning.MaxWhyLength;
+
     /// <summary>Room for a registry image reference with its tag, such as <c>ghcr.io/owner/repo/hatch-runner:abc123</c>.</summary>
     public const int MaxImageLength = 256;
 
@@ -4855,6 +4861,17 @@ public class EfHatchRunnerSession
     /// <summary>The accelerator backend this session reports, as <see cref="EfHatchRunner.AcceleratorBackend"/>.</summary>
     [MaxLength(EfHatchRunner.MaxAcceleratorBackendLength)]
     public string? AcceleratorBackend { get; set; }
+
+    /// <summary>
+    /// Whether this session's commits are signed, one of <see cref="RunnerSigning.Words"/>, as its
+    /// last beat said. Null where it never said, or said a word the board does not know.
+    /// </summary>
+    [MaxLength(EfHatchRunner.MaxSigningLength)]
+    public string? Signing { get; set; }
+
+    /// <summary>What git said, where <see cref="Signing"/> is <c>fails</c>; null otherwise.</summary>
+    [MaxLength(EfHatchRunner.MaxSigningWhyLength)]
+    public string? SigningWhy { get; set; }
 
     /// <summary>
     /// The project keys this session's last heartbeat was answered with as the

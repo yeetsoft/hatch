@@ -215,4 +215,31 @@ public sealed class GoToWorkSigningTests
         Assert.DoesNotContain(h.Say.Complained, l => l.Contains("sign", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("cannot sign", StringComparison.OrdinalIgnoreCase));
     }
+
+    // ---- What the board is told about signing (HA-2655) ----
+
+    [Fact]
+    public async Task The_beat_after_a_changed_check_carries_the_new_answer()
+    {
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Works) };
+        Ticket(h, allowsUnsigned: true, key: "AER-1");
+        Ticket(h, allowsUnsigned: true, key: "AER-2");
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") });
+        h.Wire.Json("POST", "/api/runners/sessions", new RunnerInstructionDto("running", null, 2, null, null));
+
+        // The machine's key gets locked while the first session runs.
+        var inner = h.Sessions.Behaviour;
+        h.Sessions.Behaviour = (request, onLine, ct) =>
+        {
+            h.CanSign = Locked;
+            return inner(request, onLine, ct);
+        };
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default);
+
+        var beats = h.Wire.To("POST", "/api/runners/sessions").Select(c => c.Read<RunnerHeartbeatRequest>()).ToList();
+        Assert.Equal(RunnerSigning.Works, beats[0].Signing);
+        Assert.Equal(RunnerSigning.Fails, beats[^1].Signing);
+        Assert.Equal(Locked.Why, beats[^1].SigningWhy);
+    }
 }

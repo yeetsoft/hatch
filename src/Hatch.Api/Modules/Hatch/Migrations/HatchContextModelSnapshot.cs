@@ -2425,6 +2425,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("Sequence")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Signing")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("SigningWhy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("SourceRevision")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");

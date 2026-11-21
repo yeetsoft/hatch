@@ -2268,6 +2268,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             ? runtime.SourceRevision().Newest(["src/Hatch.Cli", "src/Hatch.Contracts"])
             : null;
 
+        // Asked of the cache on every beat, since a later check can change it
+        // and the next beat must say so. A once beat shares the loop's row and
+        // sends none, so it cannot blank or overwrite what the loop said.
+        var signing = once ? null : runtime.SigningAnswer();
+
         var request = runtime.Machine.Stamp(new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Fresh: !once && tally.Fresh ? true : null,
@@ -2325,7 +2330,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Usage: usage.UsageReadAt is null ? null : usage.UsageWindows.ToDtos(),
                 UsageReadAt: usage.UsageReadAt,
                 UsageSource: usage.UsageReadAt is null ? null : usage.UsageSource,
-                UsageProbeOff: usage.UsageProbeOff));
+                UsageProbeOff: usage.UsageProbeOff,
+                Signing: signing?.State,
+                SigningWhy: signing?.Why));
 
         var beat = await runtime.Runners().BeatAsync(request, ct);
 

@@ -7202,6 +7202,172 @@ public class RunnersControllerTests
         Assert.False(Guard(nameof(RunnersController.StopAll))!.AcceptKey);
     }
 
+    // ---- Signing ----
+
+    private const string OtherRunner = "here:/checkouts/two";
+
+    /// <summary>The key the session beats are made under, written to the core database so the runner is keyed.</summary>
+    private static async Task KeyTheCallerAsync(Harness h)
+    {
+        h.CoreDb.ApiKeys.Add(new EfApiKey
+        {
+            Id = h.Caller.Key!.Id, Name = h.Caller.Key.Name, Hash = h.Caller.Key.Hash, Prefix = h.Caller.Key.Prefix, CreatedAt = Now,
+        });
+        await h.CoreDb.SaveChangesAsync();
+    }
+
+    [SkippableTheory]
+    [InlineData("works", "works", null)]
+    [InlineData("off", "off", null)]
+    [InlineData("fails", "fails", "no secret key")]
+    [InlineData(" WORKS ", "works", null)]
+    public async Task SessionHeartbeat_ASigningWord_IsStoredAndCarriedOnTheRunner(string sent, string stored, string? why)
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: sent, SigningWhy: why));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(stored, row.Signing);
+        Assert.Equal(why, row.SigningWhy);
+        var runner = await h.OneAsync();
+        Assert.Equal(stored, runner.Signing);
+        Assert.Equal(why, runner.SigningWhy);
+    }
+
+    [SkippableTheory]
+    [InlineData("works")]
+    [InlineData("off")]
+    public async Task SessionHeartbeat_AReasonBesideAnyWordButFails_IsDropped(string word)
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: word, SigningWhy: "stale"));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(word, row.Signing);
+        Assert.Null(row.SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnUnknownSigningWord_IsStoredAsNoAnswerAndTheBeatIsAccepted()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        var seeded = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "maybe", SigningWhy: "x"));
+        Assert.IsType<RunnerInstructionDto>(seeded.Value);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Signing);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "works"));
+        var touched = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "perhaps", SigningWhy: "x"));
+
+        Assert.IsType<RunnerInstructionDto>(touched.Value);
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Null(row.Signing);
+        Assert.Null(row.SigningWhy);
+        Assert.Null((await h.OneAsync()).Signing);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ABeatWithNoSigning_LeavesTheStoredAnswerAlone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "fails", SigningWhy: "no agent"));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: Runner));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("fails", row.Signing);
+        Assert.Equal("no agent", row.SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ALaterBeat_ChangesTheAnswerAndDropsAnOldReason()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "fails", SigningWhy: "no agent"));
+        Assert.Equal("no agent", (await h.OneAsync()).SigningWhy);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "works"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal("works", runner.Signing);
+        Assert.Null(runner.SigningWhy);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AReasonPastTwoHundredCharacters_IsCutAndKeptToOneLine()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Signing: "fails", SigningWhy: new string('x', 500) + "\nsecond line"));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(new string('x', 200), row.SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task ARunnerServingTwoLiveSessions_ReadsAsTheWorstOfThem()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "works"));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: OtherRunner, Signing: "off"));
+        Assert.Equal("off", (await h.OneAsync()).Signing);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "fails", SigningWhy: "no agent"));
+        var runner = await h.OneAsync();
+        Assert.Equal("fails", runner.Signing);
+        Assert.Equal("no agent", runner.SigningWhy);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "works"));
+        Assert.Equal("off", (await h.OneAsync()).Signing);
+    }
+
+    [SkippableFact]
+    public async Task ARunnerThatNeverSaid_CarriesNoSigning()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.Signing);
+        Assert.Null(runner.SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task AKeyWithAConfigRow_StillCarriesTheSigningItsSessionSaid()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, MaxRuns = 5, UpdatedAt = Now });
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "fails", SigningWhy: "no agent"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal("fails", runner.Signing);
+        Assert.Equal("no agent", runner.SigningWhy);
+    }
+
     private static async Task<string> ConnectAsync()
     {
         Skip.IfNot(

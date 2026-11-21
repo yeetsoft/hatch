@@ -23,6 +23,8 @@ import {
   liveSessions,
   runnerActionable,
   sessionsByStart,
+  signingFails,
+  signingWords,
 } from '../lib/runners';
 import { saveRunner, saveRunnerSettings } from '../lib/saveRunner';
 import { sessionActions } from '../lib/sessionActions';
@@ -219,6 +221,7 @@ export function IdentityCard({
   refusal?: string | null;
   ownerEditable?: boolean;
 }) {
+  const signing = signingWords(runner);
   return (
     <Card>
       <h2 className="hatch-section-title">Identity and key</h2>
@@ -233,6 +236,12 @@ export function IdentityCard({
       {runner.rotatedAt != null && <Text tone="muted">Rotated {new Date(runner.rotatedAt).toLocaleString()}</Text>}
       {runner.revokedAt != null && <Text tone="muted">Revoked {new Date(runner.revokedAt).toLocaleString()}</Text>}
       {!ownerEditable && <Text tone="muted">{runner.for ? `for ${runner.for}` : 'no owner'}</Text>}
+      {signing !== null &&
+        (signingFails(runner) ? (
+          <p className="text-danger hatch-runner-signing">{signing}</p>
+        ) : (
+          <Text tone="muted">{signing}</Text>
+        ))}
       {refusal && <p className="text-danger">{refusal}</p>}
       {actions}
     </Card>
