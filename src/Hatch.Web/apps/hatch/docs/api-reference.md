@@ -299,7 +299,10 @@ moving an epic under an ambition whose every capability's newest verdict is
 holds 400s, naming the ambition and saying nothing is left to carve; one
 already hanging under that ambition may re-send its own `parentKey` with no
 refusal, and an ambition with no capabilities, or with a capability still
-without a verdict, is never refused this way. A patch that retypes an issue to
+without a verdict, is never refused this way. A key filing or moving an
+epic under an ambition whose budget is spent 400s the same way, saying the budget
+is spent and naming both amounts; an ambition with no budget is never refused
+this way, and neither is a person. A patch that retypes an issue to
 `ambition` 400s while the issue has a parent (unless the same patch clears
 `ParentKey`) or a child that is not an epic, naming the first such child by key;
 one that retypes an ambition 400s while a child could not hang under the new
@@ -843,13 +846,10 @@ on the project, naming the project's key and the Playbooks page.
 | GET | `/issues/{key}/capabilities/{id}/verdicts` | A capability's verdicts, newest first |
 | POST | `/issues/{key}/capabilities/{id}/verdicts` | Records a verdict on a capability |
 | GET | `/issues/{key}/passes` | An ambition's passes, with the verdicts and comments each gave |
-<<<<<<< HEAD
 | GET | `/issues/{key}/changes` | An ambition's changes, newest first, with their outcomes |
 | POST | `/issues/{key}/changes/{eventId}/outcomes` | Records one epic's outcome on one change |
-=======
 | GET | `/issues/{key}/budget` | An ambition's dollar budget, what it has spent, and whether that is spent |
 | PATCH | `/issues/{key}/budget` | **person** - sets, changes or clears the budget; answers the same body |
->>>>>>> refs/remotes/origin/main
 
 A capability is one thing an ambition says has to be true, and a line saying
 how anyone would tell. Every route answers `400` on an issue that is not an
@@ -952,7 +952,6 @@ A verdict timed inside no row's window answers as a pass of its own, with no
 `RowId` or `SessionId`, dated at the verdict's own time - so nothing recorded
 is ever hidden.
 
-<<<<<<< HEAD
 A pass row that names a change (`changeEventId` on the work log entry) is left
 out here - it is a session answering that change, not a pass over the
 capabilities, and it shows up instead on `GET /issues/{key}/changes` below.
@@ -1016,7 +1015,7 @@ A write (new or replaced, never a no-op) writes one `change_outcome_recorded`
 event on the epic - not the ambition - payload `{ ambition, changeEventId,
 outcome, why }`, `ambition` the ambition's display key. See docs/hatch.md,
 "Issue event". It shows on the epic's own History.
-=======
+
 ## Budget
 
 `GET /issues/{key}/budget` answers `IssueBudgetDto(BudgetUsd, SpentUsd, UnpricedSessions, Spent)` to a key and to a person alike.
@@ -1031,8 +1030,7 @@ to the cent, up to 1,000,000,000: `50` or `12.50`, not `$5`, `1e3`, `12.345`, `0
 (or whitespace) clears the budget. Anything else is a `400` with a sentence. Both verbs answer `400` on an issue that is not an ambition,
 naming its type: `only an ambition takes a budget - AER-12 is a story`. The write is a person's alone: a key gets `403`, with the wall on
 or off, and no other route - the issue patch, the bulk edit - takes a budget field. A change writes a `budget_changed` event holding
-the old amount, the new one and who made it. Nothing stops at the budget yet; this route only holds and reads it.
->>>>>>> refs/remotes/origin/main
+the old amount, the new one and who made it. A spent budget stops a key filing an epic under the ambition, and the sum that refusal reads is the one this route returns; the route itself only holds and reads it.
 
 ## Serves
 

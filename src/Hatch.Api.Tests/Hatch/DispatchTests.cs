@@ -2879,6 +2879,7 @@ public class DispatchTests
     [InlineData("child-deferred")]
     [InlineData("limit")]
     [InlineData("moved")]
+    [InlineData(EfHatchIssueEvent.BudgetChanged)]
     [InlineData(EfHatchIssueEvent.CapabilityAdded)]
     [InlineData(EfHatchIssueEvent.CapabilityEdited)]
     [InlineData(EfHatchIssueEvent.CapabilityRemoved)]
@@ -3271,6 +3272,58 @@ public class DispatchTests
     {
         var (h, ambition, epic, story) = await AnswerAsync();
         await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await QuestionAsync(h, ambition, QuestionLevels.HoldName);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.DoesNotContain("unanswered question", RowFor(scan, epic).Blocked ?? "");
+        Assert.DoesNotContain("unanswered question", RowFor(scan, story).Blocked ?? "");
+    }
+
+    // ---- A spent budget and the question it asks (HA-2630) ----
+
+    /// <summary>The ambition's budget set, and a priced session on it that has spent all of it.</summary>
+    private static async Task SpendBudgetAsync(Harness h, EfHatchIssue ambition)
+    {
+        ambition.BudgetUsd = 5m;
+        h.Db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = ambition.Id, SessionId = Guid.NewGuid().ToString("N"), StartedAt = Now.AddHours(-3), EndedAt = Now.AddHours(-3),
+            DurationMs = 0, CreatedAt = Now.AddHours(-3), CostUsd = 6m,
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ScanAsync_ASpentBudgetWithItsQuestionOpen_FoldsTheAmbitionsPassUntilAPersonAnswers()
+    {
+        var (h, ambition, _, _) = await AnswerAsync();
+        await SpendBudgetAsync(h, ambition);
+        await QuestionAsync(h, ambition, QuestionLevels.HoldName);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Equal("1 unanswered question - it is waiting on a person, not on an agent", row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ASpentBudgetWithNoQuestion_DoesNotFoldThePass()
+    {
+        var (h, ambition, _, _) = await AnswerAsync();
+        await SpendBudgetAsync(h, ambition);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Null(row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ASpentBudgetWithItsQuestionOpen_StillDispatchesAnEpicAndAStoryBeneathIt()
+    {
+        var (h, ambition, epic, story) = await AnswerAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await SpendBudgetAsync(h, ambition);
         await QuestionAsync(h, ambition, QuestionLevels.HoldName);
 
         var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
