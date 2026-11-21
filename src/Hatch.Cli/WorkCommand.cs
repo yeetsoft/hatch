@@ -225,6 +225,9 @@ public sealed class WorkCommand(Runtime runtime)
     {
         var clones = runtime.Settings.Workspace is not null;
 
+        // Asked before the first read, so the board is told what this machine signs.
+        await runtime.AskSigningAsync(ct);
+
         WorkDto? work;
         try
         {
