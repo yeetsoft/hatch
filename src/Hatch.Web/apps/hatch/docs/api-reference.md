@@ -643,7 +643,7 @@ not, writes nothing and answers the issue unchanged - no error either way.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/search` | Full-text search across title, description, comments and work log, paged |
+| GET | `/search` | Full-text search across title, previous titles, description, comments and work log, paged |
 | GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
 | GET | `/ambitions` | Every ambition with its capabilities counted four ways and the epics open under it; takes a repeatable `projectId` |
@@ -652,7 +652,11 @@ not, writes nothing and answers the issue unchanged - no error either way.
 All five a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
 `createdFrom`/`createdTo`, `closedFrom`/`closedTo`, `limit` (1-200, default
 50) and `offset`; with `q`, best match first and closed-ahead-of-open among
-equals, without it newest first (closed, else created). `/plan` takes an
+equals, without it newest first (closed, else created). Each hit's `matched`
+lists which of `title`, `previous-title`, `description`, `comment`,
+`work-log` found it, in that order; the hit also carries `previousTitles`,
+the issue's own previous titles newest first, whether or not
+`previous-title` matched - empty on an issue never retitled. `/plan` takes an
 optional, repeatable `projectId`; with none, an epic under an epic of another
 project is nested under it, and with one, an epic whose parent is outside the
 answer is a root, its card carrying `parentKey` or `parentBeyondScope`, and
