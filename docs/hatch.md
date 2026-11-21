@@ -10652,6 +10652,25 @@ Windows refuses to open a running file for writing. A build is renamed to
 and an unfinished `.tmp-*` download goes at a day old. The macOS scan has never
 been run by hand.
 
+A launcher also hands on a plain command. Any command but `go-to-work`,
+`do-my-work`, `version` and `inbox`, on a stamped build with no
+`HATCH_LAUNCHER_VERSION` above it, works out its board the way it always has,
+reads that board's record under `boards/`, and runs the same arguments through
+the build recorded as current, or through the newest kept build (the binary
+written last) where no build is recorded or the call names no board. The child
+is told it has a launcher with `HATCH_LAUNCHER_VERSION` and
+`HATCH_LAUNCHER_PATH` and no `HATCH_NIGHT_STATE`, so it never hands on again and
+nothing takes it for a night. Nothing is redirected: the exit code, the streams
+and the terminal are the child's, and the launcher passes the first signal on
+and waits. A child a signal ended on Linux or macOS is answered as 128 plus the
+signal. The decision only reads: no network, no download, no `Record`. Nothing
+kept, a chosen build that is the launcher's own, a recorded build that is not
+kept, or one that will not start, all leave the launcher to answer the command
+itself, with one line on standard error for the last two. `hatch work` is such a
+command, so its increment and its session's `PATH` and hooks name that build.
+`hatch standby install` writes the launcher's path, never one under
+`versions/`. The cost is one more process start.
+
 So: a console program in the solution, compiled against
 `src/Hatch.Contracts` — the same records the API serves, so a fixture that
 goes stale does not quietly deserialise into a dispatch with empty fields, it

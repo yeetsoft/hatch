@@ -28,22 +28,22 @@ public sealed record StandbyItem(
     /// <param name="root">The checkout.</param>
     /// <param name="runner">Its runner's name, for the description only.</param>
     /// <param name="profile">The profile to start under, or null for the default.</param>
+    /// <param name="launcherPath">The launcher this process was started by, or null for none. A login item starts the launcher and never the build under it, so removing an old build cannot break it.</param>
     /// <param name="processPath">The running program, <c>Environment.ProcessPath</c>.</param>
     /// <param name="windows">Whether the item is for Windows, <c>OperatingSystem.IsWindows()</c>.</param>
     /// <param name="folder">The per-user hatch folder, which holds the log and the wrapper.</param>
     /// <returns>The item, or null - in which case <paramref name="refusal"/> says why.</returns>
     public static StandbyItem? For(
-        string root, string runner, string? profile, string? processPath, bool windows, string folder,
-        out string refusal)
+        string root, string runner, string? profile, string? launcherPath, string? processPath, bool windows,
+        string folder, out string refusal)
     {
         refusal = "";
 
         var full = Path.GetFullPath(root);
-        var program = Program(full, processPath, windows);
+        var program = Program(full, launcherPath, processPath, windows, folder, out var why);
         if (program is null)
         {
-            refusal = "hatch: there is no hatch program to start at login under the dotnet host; "
-                + "run this from a published hatch, or from a Hatch checkout";
+            refusal = why;
             return null;
         }
 
@@ -71,10 +71,15 @@ public sealed record StandbyItem(
     /// <summary>
     /// What starts hatch: the checkout's own script when this is a Hatch
     /// checkout, else the published binary that is running. Null where there is
-    /// neither - the dotnet host, which is not a program anyone can start.
+    /// neither - the dotnet host, which is not a program anyone can start - or
+    /// where the only program there is is a kept build under <c>versions/</c>,
+    /// which a person removes. <paramref name="why"/> says which.
     /// </summary>
-    private static string[]? Program(string root, string? processPath, bool windows)
+    private static string[]? Program(
+        string root, string? launcherPath, string? processPath, bool windows, string folder, out string why)
     {
+        why = "";
+
         var script = Path.Combine(root, "scripts", "hatch.sh");
         if (File.Exists(script) && Directory.Exists(Path.Combine(root, "src", "Hatch.Cli")))
         {
@@ -84,13 +89,35 @@ public sealed record StandbyItem(
                 : ["bash", script];
         }
 
-        if (string.IsNullOrEmpty(processPath)
-            || string.Equals(Path.GetFileNameWithoutExtension(processPath), "dotnet", StringComparison.OrdinalIgnoreCase))
+        // The launcher that started this build, where there is one and it is still
+        // there; else the running program.
+        var program = !string.IsNullOrEmpty(launcherPath) && File.Exists(launcherPath) ? launcherPath : processPath;
+
+        if (string.IsNullOrEmpty(program)
+            || string.Equals(Path.GetFileNameWithoutExtension(program), "dotnet", StringComparison.OrdinalIgnoreCase))
         {
+            why = "hatch: there is no hatch program to start at login under the dotnet host; "
+                + "run this from a published hatch, or from a Hatch checkout";
             return null;
         }
 
-        return [processPath];
+        if (IsUnder(program, Path.Combine(folder, "versions")))
+        {
+            why = "hatch: run `hatch standby install` from the hatch you downloaded, not from a kept build - "
+                + "a kept build goes when it is replaced, and the login item would go with it";
+            return null;
+        }
+
+        return [program];
+    }
+
+    /// <summary>Whether <paramref name="path"/> is inside <paramref name="directory"/>, by full path.</summary>
+    private static bool IsUnder(string path, string directory)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var prefix = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        return Path.GetFullPath(path).StartsWith(prefix, comparison);
     }
 
     /// <summary>Where launchd looks for a user's agents.</summary>

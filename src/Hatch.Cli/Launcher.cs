@@ -87,6 +87,167 @@ public static class Launcher
     }
 
     /// <summary>
+    /// Whether this process hands its command on to a stored build: any command
+    /// but the loop's, <c>version</c> and <c>inbox</c>, on a stamped build, with
+    /// no launcher above it. That last check is what stops a child handing on
+    /// again, whichever launcher started it - the loop's or this one - and what
+    /// leaves a session's own calls, which already run their loop's build, alone.
+    /// The bare <c>hatch</c> and usage never reach here: they are answered first.
+    /// </summary>
+    public static bool HandsOn(string command, IReadOnlyDictionary<string, string?> environment, bool builtAsLauncher)
+    {
+        if (!builtAsLauncher) return false;
+        if (command is "go-to-work" or "do-my-work" or "version" or "inbox") return false;
+        return LauncherLink.From(environment) is null;
+    }
+
+    /// <summary>
+    /// The stored build a plain command runs on: the one recorded as current for
+    /// <paramref name="board"/>, else the newest stored, else null - where the
+    /// launcher answers the command itself. Null too where the build chosen is
+    /// this launcher's own.
+    /// </summary>
+    /// <remarks>
+    /// Only reads. It never records a build, never installs one and never reaches
+    /// the board, so deciding changes nothing on this machine.
+    /// <paramref name="note"/> is the one line to say when a build is recorded but
+    /// no longer kept; it is null in every other case.
+    /// </remarks>
+    /// <param name="board">The board the call is aimed at, or null for none.</param>
+    /// <param name="store">Where builds are kept.</param>
+    /// <param name="ownRevision">The sha this launcher was built from.</param>
+    /// <param name="ownPath">This launcher's own file.</param>
+    /// <param name="note">What to say on standard error, or null.</param>
+    public static string? ChooseBuild(
+        LauncherBoard? board, BuildStore store, string ownRevision, string ownPath, out string? note)
+    {
+        note = null;
+
+        string? chosen;
+
+        if (board is not null && store.Read(board.Origin)?.Current is { } recorded)
+        {
+            chosen = store.Find(recorded);
+            if (chosen is null)
+            {
+                note = $"hatch: the build recorded for this board ({Short(recorded)}) is not kept; running this build instead";
+                return null;
+            }
+        }
+        else
+        {
+            chosen = store.Newest();
+        }
+
+        if (chosen is null) return null;
+
+        var sha = Path.GetFileName(Path.GetDirectoryName(chosen)) ?? "";
+        if (string.Equals(sha, ownRevision, StringComparison.OrdinalIgnoreCase)) return null;
+
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return string.Equals(Path.GetFullPath(chosen), Path.GetFullPath(ownPath), comparison) ? null : chosen;
+    }
+
+    /// <summary>
+    /// Runs one command on <paramref name="program"/>, with the terminal, the
+    /// streams and the first signal all the child's, and answers its exit code
+    /// unchanged. Answers null where the child could not be started: the caller
+    /// answers the command itself, after the one line this said.
+    /// </summary>
+    /// <remarks>
+    /// <para>Nothing is redirected, read or written while the child runs, so a
+    /// prompt, a pipe and a footer behave as without a launcher. The child is told
+    /// it has a launcher the way the loop's child is - <see cref="VersionVariable"/>
+    /// and <see cref="PathVariable"/> - but gets no state file, so nothing takes it
+    /// for a night, and it never hands a call on again.</para>
+    ///
+    /// <para>The launcher never exits before the child: a signal is passed on once
+    /// (a second is not, since a terminal's Ctrl-C reaches both), and then waited
+    /// for. On Windows the console reaches the child itself, so nothing is passed.
+    /// A child a signal ended on Linux or macOS answers 128 plus the signal, the
+    /// one thing here that is not passed through exactly.</para>
+    /// </remarks>
+    public static async Task<int?> HandOnAsync(
+        string[] args, string program, string ownPath, LaunchSignals signals, bool forwards, int version,
+        ILaunchedChild starter, Action<string> say)
+    {
+        var environment = new Dictionary<string, string>
+        {
+            [VersionVariable] = version.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [PathVariable] = ownPath,
+        };
+
+        var received = 0;
+        var first = PosixSignal.SIGTERM;
+        ILaunchedProcess? running = null;
+        var gate = new object();
+
+        void OnSignal(PosixSignal signal)
+        {
+            ILaunchedProcess? target;
+            lock (gate)
+            {
+                if (Interlocked.Increment(ref received) > 1) return;
+                first = signal;
+                target = running;
+            }
+
+            if (target is null) return;
+
+            if (forwards) target.Forward(signal);
+            else if (signal == PosixSignal.SIGHUP) target.WaitForExit(TimeSpan.FromSeconds(4));
+        }
+
+        signals.Caught += OnSignal;
+
+        try
+        {
+            ILaunchedProcess process;
+            try
+            {
+                process = starter.Start(program, args, environment);
+            }
+            catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+            {
+                say($"hatch: could not start {program} - {e.Message}; running this build instead");
+                return null;
+            }
+
+            using (process)
+            {
+                lock (gate) running = process;
+
+                // A signal that arrived while there was nothing to pass it to.
+                if (Volatile.Read(ref received) > 0 && forwards) process.Forward(first);
+
+                var code = await process.Exited;
+
+                lock (gate) running = null;
+                return code;
+            }
+        }
+        finally
+        {
+            signals.Caught -= OnSignal;
+        }
+    }
+
+    /// <summary>The real hand-off, over the real process and the real signals.</summary>
+    public static async Task<int?> HandOnProcessAsync(string[] args, string program, Action<string> say)
+    {
+        // Not knowing where this file is, there is no launcher to name to the child.
+        if (Environment.ProcessPath is not { } path) return null;
+
+        // Disposed on the way out, so a command the launcher answers itself has
+        // its own Ctrl-C back.
+        using var signals = LaunchSignals.Register();
+
+        return await HandOnAsync(
+            args, program, path, signals, forwards: !OperatingSystem.IsWindows(), Version,
+            new ProcessLaunchedChild(), say);
+    }
+
+    /// <summary>
     /// Runs the child until it ends for any reason but a restart, and answers
     /// what it exited with.
     /// </summary>

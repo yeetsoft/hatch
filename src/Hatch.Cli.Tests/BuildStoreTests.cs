@@ -196,4 +196,69 @@ public sealed class BuildStoreTests : IDisposable
 
         Assert.Empty(Directory.GetDirectories(versions));
     }
+
+    // ---- Newest ----
+
+    private string Keep(string name, bool binary = true, DateTime? written = null)
+    {
+        var directory = Path.Combine(_root, "versions", name);
+        Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, BuildStore.BinaryName);
+        if (binary)
+        {
+            File.WriteAllText(file, name);
+            if (written is { } at) File.SetLastWriteTimeUtc(file, at);
+        }
+
+        return file;
+    }
+
+    [Fact]
+    public void Newest_is_null_where_nothing_is_kept_or_there_is_no_versions_folder()
+    {
+        Assert.Null(Store().Newest());
+
+        Directory.CreateDirectory(Path.Combine(_root, "versions"));
+        Assert.Null(Store().Newest());
+    }
+
+    [Fact]
+    public void Newest_is_the_only_build_kept()
+    {
+        var kept = Keep(_sha);
+
+        Assert.Equal(kept, Store().Newest());
+    }
+
+    [Fact]
+    public void Newest_is_the_build_whose_binary_was_written_last_whatever_its_name()
+    {
+        var early = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        Keep(_otherSha, written: early);
+        var later = Keep(_sha, written: early.AddDays(3));
+
+        Assert.Equal(later, Store().Newest());
+    }
+
+    [Fact]
+    public void A_tie_goes_to_the_lower_sha()
+    {
+        var at = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        var lower = Keep(_sha, written: at);
+        Keep(_otherSha, written: at);
+
+        Assert.Equal(lower, Store().Newest());
+    }
+
+    [Fact]
+    public void A_folder_with_no_binary_and_a_folder_that_is_not_a_sha_are_not_builds()
+    {
+        var at = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        var kept = Keep(_sha, written: at);
+        Keep(_otherSha, binary: false);
+        Keep("not-a-sha", written: at.AddDays(9));
+        Keep(".tmp-" + Guid.NewGuid(), written: at.AddDays(9));
+
+        Assert.Equal(kept, Store().Newest());
+    }
 }

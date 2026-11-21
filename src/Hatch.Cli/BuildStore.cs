@@ -45,6 +45,41 @@ public sealed partial class BuildStore(string root)
     }
 
     /// <summary>
+    /// The kept build whose binary was written last, or null where none is kept.
+    /// Ties go to the lower sha, so the answer never depends on the order a
+    /// directory is listed in. Reads only, and never throws on an IO error.
+    /// </summary>
+    public string? Newest()
+    {
+        try
+        {
+            if (!Directory.Exists(VersionsDirectory)) return null;
+
+            string? best = null;
+            var bestAt = DateTime.MinValue;
+
+            foreach (var directory in Directory.EnumerateDirectories(VersionsDirectory))
+            {
+                var sha = Path.GetFileName(directory);
+                if (Find(sha) is not { } binary) continue;
+
+                var at = File.GetLastWriteTimeUtc(binary);
+                if (best is null || at > bestAt || (at == bestAt && string.CompareOrdinal(sha, best) < 0))
+                {
+                    best = sha;
+                    bestAt = at;
+                }
+            }
+
+            return best is null ? null : Find(best);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Already there, or fetched, checked and moved into place - the move is
     /// what makes the result atomic: nothing ever sees a directory under
     /// <c>versions/&lt;sha&gt;</c> that was not fetched and checked whole.
