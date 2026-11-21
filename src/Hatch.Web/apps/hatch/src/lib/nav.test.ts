@@ -74,6 +74,14 @@ describe('the bar', () => {
     }
   });
 
+  it('marks Search with the icon the bar draws, and carries it on no other row', () => {
+    const search = NAV.find((entry) => entry.kind === 'link' && entry.to === '/search');
+    expect(search).toMatchObject({ icon: 'search' });
+    for (const row of navRows(false)) {
+      expect(row).not.toHaveProperty('icon');
+    }
+  });
+
   it('has no Board and no Docs entry: the logo is home and the gear holds Docs', () => {
     const tos = tosInNav();
     expect(tos).not.toContain('/');
