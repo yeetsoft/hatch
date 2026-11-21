@@ -1377,8 +1377,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 |---|---|---|---|
 | GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil` |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts; `usageSource` and `usageProbeOff` say where the usage reading came from and why its probe is off, and travel together: a beat that names a `usageSource` sets both (a null `usageProbeOff` clears a stored reason), and a beat without one leaves both as they were, with or without a reading |
-| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way, and takes `usageSource`/`usageProbeOff` on the same pairing rule; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts; `usageSource` and `usageProbeOff` say where the usage reading came from and why its probe is off, and travel together: a beat that names a `usageSource` sets both (a null `usageProbeOff` clears a stored reason), and a beat without one leaves both as they were, with or without a reading; `rid` names the platform the build was published for (`win-x64`, `osx-arm64`, `osx-x64` or `linux-x64`) and is never stored; the answer's `boardBuild` names the board's own build when it differs from the beat's `revision`, and is absent otherwise |
+| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way, and takes `usageSource`/`usageProbeOff` on the same pairing rule; takes `rid` and answers `boardBuild` exactly as `POST /runners/{name}` does; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause |
 | POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
@@ -1461,6 +1461,22 @@ a single increment first. `standby` is read on that beat alone: without
 fresh beat without it leaves the state as it was. There is no
 `DELETE` on the row itself: it ages out of `GET /runners` on its own once
 nothing has heard from it in a while.
+
+`boardBuild` is the board telling a runner that its build is not the board's,
+and where to get the board's. It is on the answer exactly when the beat sent a
+stamped `revision` and `sequence`, the board is stamped, and the two revisions
+differ - on `POST /runners/{name}` and `POST /runners/sessions` alike, for a
+`loop` beat and a `once` beat. It holds the board's `revision` and `sequence`,
+`compare`, `download` and `sha256`. `compare` is `behind`, `ahead` or
+`diverged` (two commits at the same count), and the board decides it; the
+runner compares nothing. It is a string, so a word an older runner has never
+seen does not fail its parse. `download` and `sha256` are what `GET /runner`
+lists for the platform the beat names in `rid`, from the same code; both are
+`null` for a beat that names no platform, one the board does not publish, or
+an image that published nothing, and the part is still sent. A matching
+revision, an unstamped side (`dev`, or no count) and a beat with no revision
+all get no part, and so does an older board. Nothing acts on it yet. `rid` is
+never stored.
 
 `throttledUntil` is a fact the runner reports about its own
 `--max-tokens-per-hour`, never a person's to set: it is the instant the loop

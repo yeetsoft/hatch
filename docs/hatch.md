@@ -10881,6 +10881,26 @@ runner that has none. `hatch work`'s own one-off heartbeat carries none of
 this, and an older CLI never sends it at all, so either leaves a
 previously-reported row's tags in place rather than blanking them.
 
+**The reply names the board's build.** A runner on a different build than
+its board is told so on the beat itself: the reply carries a `boardBuild`
+part - the board's revision and sequence, `compare`, `download` and `sha256`.
+The part is there exactly when the beat sent a stamped revision and sequence,
+the board is stamped, and the two revisions differ. `compare` is `behind`,
+`ahead` or `diverged` - two different commits at the same count, which no
+ordering resolves - and the board decides it with the same rule the **Behind**
+badge reads; the runner compares nothing. A matching revision, an unstamped
+side (`dev`, or no count), a beat with no revision, and an older board all
+leave no part, which a runner reads as nothing to do. The beat says its
+platform in `rid` - `win-x64`, `osx-arm64`, `osx-x64` or `linux-x64`, null
+for any other machine - because `os` is a shortened description and cannot
+name a build; the board keeps nothing of it. `download` and `sha256` are what
+the Runner page lists for that platform, read from the same code, and both
+are null where the platform is unknown, unsent, or has nothing published -
+the part is still sent. Every beat is answered this way: the named route and
+the session route, `loop` and `once`. Nothing acts on it yet: the **Behind**
+badge and `boardDrift` read the stored row as they always did, and the loop
+ignores the part.
+
 **Refused models are a key's alone, and a key may write its own.** `PUT
 /api/runners/{name}/refused-models` holds the list of models this
 runner's key will not be told to run — replaced whole, never a delta, and
