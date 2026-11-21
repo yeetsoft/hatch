@@ -369,6 +369,8 @@ public class ScopeRouteMatrixTests
         ("IssueReleaseNoteController.PutIssueReleaseNote", Lookup(t => Put($"/api/issues/{t.Key}/release-note", new { note = "" }))),
         ("IssuePlaybookController.PatchIssuePlaybook", Lookup(t => Patch($"/api/issues/{t.Key}/playbook", new { model = (string?)null, effort = (string?)null }))),
         ("IssueWipLimitController.PatchIssueWipLimit", Lookup(t => Patch($"/api/issues/{t.Key}/wip", new { limit = (string?)null }))),
+        ("IssueBudgetController.PatchIssueBudget", Lookup(t => Patch($"/api/issues/{t.Key}/budget", new { amount = (string?)null }))),
+        ("IssueBudgetController.GetIssueBudget", Lookup(t => Get($"/api/issues/{t.Key}/budget"))),
         // No role at all, so open to a key: a dispatcher is who leaves this mark.
         ("IssueStallController.PutStall", Lookup(t => Put($"/api/issues/{t.Key}/stall", new { why = "x" }))),
         ("IssueStallController.PutHold", Lookup(t => Put($"/api/issues/{t.Key}/hold", new { held = false }))),

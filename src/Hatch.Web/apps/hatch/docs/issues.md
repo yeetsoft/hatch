@@ -132,6 +132,24 @@ works that out when it reads, and nothing is stored for it. Every entry's own
 comments follow, rendered the way the Comments section renders a body. The
 verdict lines sit in a grid on a desktop and stack one per line on a phone.
 
+## Budget
+
+An ambition can carry a dollar budget: how much it may cost. It is optional. An ambition has none until a person sets one, and nothing asks for one.
+
+**What it counts.** Spent is the summed cost of every session logged on the ambition and on everything beneath it, at any depth and in
+any project, since the ambition began. A session that carried no price adds nothing; the read says how many there were. The budget is
+spent when that sum reaches it. An ambition with no budget is never spent, whatever it has cost.
+
+**Who sets it.** Only a person. A key can read the budget but not write it, and no other route, the edit or the bulk edit, takes one.
+`PATCH /issues/{key}/budget` sets, changes or clears it: a positive number of dollars to the cent, or an empty string to clear. Only an
+ambition takes one; any other type is refused with a sentence naming its type. Each change is on the ambition's trail with the old amount,
+the new one and who made it.
+
+**How spent is read.** `GET /issues/{key}/budget` adds the work log up on each read; nothing stores the figure, and the issue itself
+carries neither the budget nor the spend, because the issue is read once for every card on the board. The sum is the same whoever reads it,
+including a person whose scope hides a project that holds one of the ambition's epics. A session reads it with `hatch api GET`;
+there is no `hatch` command for it. Nothing stops at the budget yet: today it is stored and read, and no more.
+
 ## The Ambitions page
 
 The Ambitions page, at `/ambitions`, is a top-level link after the magnifying
