@@ -40,6 +40,8 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
 
     public const string AttentionSelector = ".hatch-attention-control";
 
+    public const string ScopeSelector = "header.hatch-topbar .hatch-scope-control";
+
     public const string GearSelector = "header.hatch-topbar button[aria-label=\"Settings and theme\"]";
 
     /// <summary>What the board says when the module migrations did not run (BoardPage.tsx).</summary>
@@ -76,6 +78,40 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             phoneQueryMatches: window.matchMedia('(max-width: 40rem)').matches,
             coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
             primaryNavDrawn: document.querySelector('.hatch-primary-nav') !== null,
+            controls: selectors.map(([name, selector]) => [name, box(selector)]),
+          };
+        }
+        """;
+
+    /// <summary>
+    /// Runs in the page and reads the desk bar's nav: one box per direct child
+    /// of the primary nav's menu bar, each with its own <c>scrollWidth</c>
+    /// against <c>clientWidth</c>, and the named controls beside it.
+    /// </summary>
+    private const string MeasureNavScript = """
+        (selectors) => {
+          const plain = (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+          const box = (selector) => {
+            const element = document.querySelector(selector);
+            return element === null ? null : plain(element.getBoundingClientRect());
+          };
+          const root = document.scrollingElement;
+          const bar = document.querySelector('.hatch-primary-nav .hatch-menu-bar');
+          return {
+            innerWidth: window.innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            entries: bar === null ? [] : [...bar.children].map((element) => {
+              // A dropdown entry is a wrapper holding its trigger and its closed
+              // panel, so what can clip is the trigger, and its text is the name.
+              const trigger = element.matches('a, button') ? element : element.querySelector('a, button');
+              return {
+                name: trigger.textContent.trim(),
+                box: plain(element.getBoundingClientRect()),
+                scrollWidth: trigger.scrollWidth,
+                clientWidth: trigger.clientWidth,
+              };
+            }),
             controls: selectors.map(([name, selector]) => [name, box(selector)]),
           };
         }
@@ -512,6 +548,38 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             read.GetProperty("phoneQueryMatches").GetBoolean(),
             read.GetProperty("coarsePointerMatches").GetBoolean(),
             read.GetProperty("primaryNavDrawn").GetBoolean(),
+            read.GetProperty("controls").EnumerateArray().ToDictionary(
+                pair => pair[0].GetString()!,
+                pair => pair[1].ValueKind == JsonValueKind.Null ? null : ReadBox(pair[1])));
+    }
+
+    /// <summary>The desk bar's nav entries and the controls beside them as the page stands; the primary nav must be drawn.</summary>
+    public async Task<NavMeasurement> MeasureNavAsync(Deadline deadline)
+    {
+        (string Name, string Selector)[] controls =
+        [
+            ("scope", ScopeSelector),
+            ("brand", BrandSelector),
+            ("battery", BatterySelector),
+            ("overnight", OvernightSelector),
+            ("attention", AttentionSelector),
+            ("gear", GearSelector),
+        ];
+
+        var read = await deadline.BoundAsync("measuring the nav", () =>
+            page!.EvaluateAsync<JsonElement>(MeasureNavScript, controls.Select(c => new[] { c.Name, c.Selector }).ToArray()));
+
+        return new NavMeasurement(
+            read.GetProperty("innerWidth").GetInt32(),
+            read.GetProperty("scrollWidth").GetInt32(),
+            read.GetProperty("clientWidth").GetInt32(),
+            read.GetProperty("entries").EnumerateArray()
+                .Select(e => new NavEntry(
+                    e.GetProperty("name").GetString()!,
+                    ReadBox(e.GetProperty("box")),
+                    e.GetProperty("scrollWidth").GetInt32(),
+                    e.GetProperty("clientWidth").GetInt32()))
+                .ToList(),
             read.GetProperty("controls").EnumerateArray().ToDictionary(
                 pair => pair[0].GetString()!,
                 pair => pair[1].ValueKind == JsonValueKind.Null ? null : ReadBox(pair[1])));

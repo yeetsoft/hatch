@@ -106,3 +106,34 @@ describe('the bar outside phone width', () => {
     expect(declarationsOutsideMedia('.hatch-topbar__side')['gap']).toBe('var(--sp-3)');
   });
 });
+
+/* HA-2447: between the phone breakpoint and about 1000px the nav, the scope
+   control and the trailing controls do not fit one row, so the bar wraps
+   instead of painting the nav over them. The box measurements are
+   BarFitsDeskTests in Hatch.Api.Tests/E2e; this is the rules that make them
+   hold. */
+describe('the bar wraps rather than overlap', () => {
+  it('lets the bar break onto a second row, with air between and around the rows', () => {
+    const inner = declarationsOutsideMedia('.hatch-topbar__inner');
+    expect(inner['flex-wrap']).toBe('wrap');
+    expect(inner['row-gap']).toBe('var(--sp-1)');
+    expect(inner['padding-block']).toBe('var(--sp-1)');
+  });
+
+  it('keeps the row gap where the menu bar\'s own gap would otherwise reset it', () => {
+    expect(declarationsOutsideMedia('.hatch-topbar__inner.hatch-menu-bar')['row-gap']).toBe('var(--sp-1)');
+  });
+
+  it('lets the leading side break among its own items', () => {
+    expect(declarationsOutsideMedia('.hatch-topbar__side')['flex-wrap']).toBe('wrap');
+  });
+
+  it('keeps the trailing side at the right edge when it drops to the second row', () => {
+    expect(declarationsOutsideMedia('.hatch-topbar__side--end')['margin-left']).toBe('auto');
+  });
+
+  it('leaves the phone block without a wrap of its own', () => {
+    expect(declarationsWithin('max-width: 40rem', '.hatch-topbar__inner')['flex-wrap']).toBeUndefined();
+    expect(declarationsWithin('max-width: 40rem', '.hatch-topbar__side')['flex-wrap']).toBeUndefined();
+  });
+});
