@@ -35,8 +35,8 @@ describe('PrimaryNav', () => {
     expect(searchLink(renderAt('/ballot'))).not.toContain('hatch-menu__trigger--active');
   });
 
-  it('still shows Ballot in words', () => {
+  it('no longer shows Ballot', () => {
     const html = renderAt('/ballot');
-    expect(html).toContain('>Ballot<');
+    expect(html).not.toContain('>Ballot<');
   });
 });

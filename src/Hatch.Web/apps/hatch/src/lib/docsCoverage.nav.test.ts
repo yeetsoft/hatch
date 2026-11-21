@@ -9,7 +9,6 @@ const SCREENS: Record<string, string> = {
   '/reports': 'flow-wip-and-the-battery',
   '/': 'the-board-and-its-columns',
   '/search': 'getting-started',
-  '/ballot': 'questions-and-decisions',
   '/ambitions': 'issues',
   '/runners': 'watching-the-loop',
   '/leaderboard': 'watching-the-loop',
