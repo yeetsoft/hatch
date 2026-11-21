@@ -421,6 +421,10 @@ public class HatchContext : DbContext, IModuleContext
             // EfHatchWorkLogEntry.ModelUsage.
             e.Property(w => w.ModelUsage).HasColumnType("jsonb");
             e.Property(w => w.Reads).HasColumnType("jsonb");
+
+            // Read by the dispatcher for the rows that name a question; no foreign key,
+            // so a deleted comment never breaks the log.
+            e.HasIndex(w => w.QuestionId);
         });
 
         // Matches AddProjectLanding's own defaultValue, for the same reason as

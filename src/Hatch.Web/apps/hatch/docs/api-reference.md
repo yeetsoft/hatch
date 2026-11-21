@@ -1014,6 +1014,14 @@ The `WorkDto` also carries `buildPast`, the open questions on the issue and the
 issues above it that the session may build past: each is at `build` or `merge`
 and has a recommended option. It is a second list beside `questions`, which
 stays the ticket's own, and is null where there are none.
+The `WorkDto` also carries `answering`, null on every dispatch but one: an
+ambition aimed at its answering row, whose `kind` is then `answer`. It names the
+question the session is to answer - `issueKey`, `issueTitle`, `questionId`,
+`body`, `options`, `level` (`build` or `merge`), `askedBy` and `askedAt` - and
+`playbook` is the row marked *answers questions*. Which question, and when none
+qualifies, is in [what a session may answer](questions-and-decisions#what-a-session-may-answer).
+Each row of `GET /work/queue` carries `answering` too, as one sentence naming the
+issue and the question, and null on every other row.
 
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus
@@ -1788,7 +1796,9 @@ model's digest as the local server listed it before the session, null
 otherwise); the `POST` accepts the same three, stores any other placement as
 null and keeps a digest only on a `local` row. Each entry also carries `outcome` and `reason`,
 stamped by the claim release that named this session's id - null on a row never stamped, including
-every row written before this shipped. `/work-log/history` buckets by `hour` or `day`, chosen from the
+every row written before this shipped. It also carries `questionId`, the question
+a session answered, which the `POST` accepts and is null on every other row; a `worked` row
+naming a question is what keeps the board from sending a second session to it. `/work-log/history` buckets by `hour` or `day`, chosen from the
 range's length unless named, and answers the bucket size it actually used;
 `/work-log/sessions` ranks by `tokens` (the default), `cost`, `ended`,
 `requests` or `peakContext`, each descending. All three take an optional

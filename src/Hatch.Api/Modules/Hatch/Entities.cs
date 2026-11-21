@@ -3911,6 +3911,14 @@ public class EfHatchWorkLogEntry
     [MaxLength(MaxModelDigestLength)] public string? ModelDigest { get; set; }
 
     /// <summary>
+    /// The question an answering session answered, set only on that session's
+    /// row. A <c>worked</c> row naming a question is what keeps the board from
+    /// aiming another session at it. Indexed, and no foreign key, so a comment
+    /// that is deleted never breaks the log.
+    /// </summary>
+    public long? QuestionId { get; set; }
+
+    /// <summary>
     /// Notional API list price, in dollars, as the CLI reported it. Eight
     /// places because a short session costs a fraction of a cent and rounding
     /// it to two would make a night of them add up to nothing. Null means the

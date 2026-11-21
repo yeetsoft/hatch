@@ -3336,6 +3336,12 @@ public record DreamRemandResultDto(
 /// where no ambition stands above it, and on an ambition's own dispatch - an
 /// ambition is not its own ambition.
 /// </param>
+/// <param name="Answering">
+/// The question this dispatch is for, set only where <see cref="Kind"/> is
+/// <see cref="WorkKinds.Answer"/>: an ambition aimed at its answering row
+/// because an open <c>build</c> or <c>merge</c> question stands beneath it.
+/// Null on every other dispatch.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3371,7 +3377,30 @@ public record WorkDto(
     bool ModelIsLocal = false,
     bool ModelFellBack = false,
     IReadOnlyList<QuestionDto>? BuildPast = null,
-    WorkAmbitionDto? Ambition = null);
+    WorkAmbitionDto? Ambition = null,
+    WorkQuestionDto? Answering = null);
+
+/// <summary>
+/// The question an answering dispatch is for: where it stands, what it says,
+/// the options it offered, its level, and who asked it and when.
+/// </summary>
+/// <param name="IssueKey">The key of the issue the question is on, which sits beneath the dispatched ambition.</param>
+/// <param name="IssueTitle">That issue's title.</param>
+/// <param name="QuestionId">The question's comment id, which the work log row names once the session has answered.</param>
+/// <param name="Body">The question as it was asked.</param>
+/// <param name="Options">The choices it offered, or null for a question asked in prose.</param>
+/// <param name="Level">Where the question stands: <c>build</c> or <c>merge</c>. Never <c>hold</c>.</param>
+/// <param name="AskedBy">Who asked it.</param>
+/// <param name="AskedAt">When it was asked.</param>
+public record WorkQuestionDto(
+    string IssueKey,
+    string IssueTitle,
+    long QuestionId,
+    string Body,
+    IReadOnlyList<QuestionOptionDto>? Options,
+    string Level,
+    string AskedBy,
+    DateTimeOffset AskedAt);
 
 /// <summary>
 /// The ambition standing above a dispatched issue: its key and title, and the
@@ -3429,6 +3458,9 @@ public static class WorkKinds
 
     /// <summary>A trunk-landing issue in review whose landing is on the trunk and whose trunk build passes - the board carries it to Done.</summary>
     public const string Land = "land";
+
+    /// <summary>An ambition aimed at its answering row: a session answers one open question beneath it, then the person looks it over on the Ballot.</summary>
+    public const string Answer = "answer";
 }
 
 /// <summary>Which of the seven reasons carried a hop - see WorkDto.HopKind.</summary>
@@ -3599,6 +3631,10 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// <see cref="ProjectPriorities.All"/>. The dispatcher works an expedited
 /// project's clear rows first and never picks up a paused project's.
 /// </param>
+/// <param name="Answering">
+/// One short sentence naming the issue and the question, set only where
+/// <paramref name="Kind"/> is <see cref="WorkKinds.Answer"/>. Null on every other row.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3616,7 +3652,8 @@ public record QueueEntryDto(
     IReadOnlyList<string>? Takers = null,
     IReadOnlyList<RunnerReasonDto>? Untaken = null,
     string? TrainNote = null,
-    string? ProjectPriority = null);
+    string? ProjectPriority = null,
+    string? Answering = null);
 
 /// <summary>
 /// One live runner that cannot take a queue row right now, and why - see
@@ -4006,6 +4043,7 @@ public record WorkLogReadDto(string Path, int Count);
 /// <param name="ModelPlacement">Where that model ran: <c>local</c>, <c>fallback</c> (a preferred local model was wanted and the ordinary model ran instead) or <c>cloud</c>. Null from a CLI built before this shipped, and for any other value; never guessed by the server.</param>
 /// <param name="ModelDigest">The digest of a local model as the local server's model list reported it before the session started. Null unless the model ran locally.</param>
 /// <param name="Reads">The files the session read, heaviest first. Capped and clipped by the endpoint rather than refused. Null from a CLI built before this shipped.</param>
+/// <param name="QuestionId">The question this session answered, set only by an answering session. Once a <c>worked</c> row names a question, the board does not aim another session at it.</param>
 public record WorkLogEntryRequest(
     string SessionId,
     DateTimeOffset StartedAt,
@@ -4034,7 +4072,8 @@ public record WorkLogEntryRequest(
     IReadOnlyList<WorkLogReadDto>? Reads = null,
     string? DispatchModel = null,
     string? ModelPlacement = null,
-    string? ModelDigest = null);
+    string? ModelDigest = null,
+    long? QuestionId = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -4062,6 +4101,7 @@ public record WorkLogEntryRequest(
 /// <param name="Reads">The files the session read, heaviest first. Empty for a row posted without any, including every row written before this shipped.</param>
 /// <param name="Outcome">Whether the increment moved its ticket: a claim outcome such as <c>worked</c> or <c>dropped</c>, stamped by the claim release. Null for a row never stamped, including every row written before this shipped.</param>
 /// <param name="Reason">Why the runner let go: <c>quiet</c>, <c>run-time</c> or <c>error</c>, stamped beside the outcome. Null where the release named none.</param>
+/// <param name="QuestionId">The question an answering session answered. Null on every other row.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -4099,7 +4139,8 @@ public record WorkLogEntryDto(
     string? ModelDigest,
     IReadOnlyList<WorkLogReadDto> Reads,
     string? Outcome,
-    string? Reason);
+    string? Reason,
+    long? QuestionId = null);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for
