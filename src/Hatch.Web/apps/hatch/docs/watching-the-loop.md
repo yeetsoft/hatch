@@ -552,7 +552,8 @@ failed, in a project that has not turned on **Runners work contributions**:
 the key links to the issue, the pull request opens on the forge, and a
 contribution mirrored from another instance names where it came from.
 **Waiting on a runner** lists every issue whose next move no live runner can
-take for want of a model, a tool, or a dependency its project declares - and links to the Runners page, where each runner shows what it offers
+take for want of a model, a tool, a dependency its project declares, or - where
+the project allows only signed commits - a runner that signs them, and links to the Runners page, where each runner shows what it offers
 ([the runner](the-runner#what-a-runner-advertises) covers what that is); like
 **Backups**, it lights the control and adds no pill to the bar.
 **Waiting on another project's approver** lists each issue that a level or a
@@ -587,8 +588,10 @@ loop](one-increment-and-the-loop#stalls) covers what a stall is.
 
 Each row under **Waiting on a runner** is the issue's key, a link, its title,
 and `in <column> - <the gap>`. The gap reads `no live runner offers fable`, or
-`no live runner has pwsh 7 or newer and playwright-browsers`; a move that
-needs both joins them with `; `. A pinned id reads `pinned to <id> - no live
+`no live runner has pwsh 7 or newer and playwright-browsers`, or `no live
+runner signs its commits` (a live runner that has not said whether it signs
+counts as not signing, here); a move that needs more than one joins them with
+`; `. A pinned id reads `pinned to <id> - no live
 runner's agent is <agent>`. A board with no live runner at all lists nothing -
 that is the *no runner* condition, not this one - and neither does a split
 fleet, one runner lacking the model and another the tool, since no single

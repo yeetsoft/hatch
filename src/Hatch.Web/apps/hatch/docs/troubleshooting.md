@@ -279,6 +279,23 @@ run](the-runner#when-it-will-not-run).
   project allows only signed commits, so the runner will not make an unsigned
   one. Fix the signing on this machine, or leave the ticket for a runner that
   can; a second one in a row is flagged stalled and waits like any other.
+- **A ticket reads "allows only signed commits" in the queue, and the runner
+  passes over it.** The project allows only signed commits, and the board
+  folds the move for any runner that has not said its signing works. The
+  sentence says which of three it is:
+  - *"... build-box does not sign its commits"* - git is not set to sign on
+    that machine. Set up signing there, or leave the ticket for a runner that
+    signs.
+  - *"... signing fails on build-box (gpg: signing failed: No pinentry)"* -
+    git is set to sign and could not; the reason is what git said. Unlock the
+    key, start the agent or point `gpg.program` at one that is there. The check
+    passes again within thirty minutes, with no restart.
+  - *"... build-box has not said whether it signs"* - the runner has not
+    reported an answer, usually because it is an older build. Update it. A
+    runner that is only heartbeating by hand never says.
+  If **Waiting on a runner** lists the ticket as *no live runner signs its commits*,
+  no runner anywhere can take it: fix one, or an owner can allow unsigned
+  commits in the project dialog.
 - **The session still asked.** The paragraph at the end of its branch section
   tells it what to do in each case, and none of them is to ask. A session that
   asked anyway is worth a note on the ticket, with the prompt it was given -

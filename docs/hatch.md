@@ -5130,7 +5130,7 @@ board remembered.
 
 `waitingOnARunner` lists every issue whose next move is clear, but that no live
 runner can take: every live runner's own declaration folds it on the
-[model fold, the refusal fold and the dependency fold](#what-a-pass-skipped), and on nothing
+[model fold, the refusal fold, the dependency fold and the signing fold](#what-a-pass-skipped), and on nothing
 else. A runner is live when it is being heard from, running, and not out of
 usage - the same test a peer is held to when one runner's let-go ticket is left
 for another. Each entry is `key`, `title`, `type`, `move` (the column the move
@@ -5140,8 +5140,8 @@ The list is empty when no runner is live - the existing "no runner" condition
 says that - and when every gap is met by some live runner. A runner that never
 declared models or what it has is never counted as lacking them: one that
 declared neither, and refuses nothing, empties the list, and a check is skipped where no live runner
-declared that capability. `missing` takes one of two shapes, joined with `; `
-when a move needs both:
+declared that capability. `missing` takes one of three shapes, joined with `; `
+when a move needs more than one:
 
 - `no live runner offers fable` - the move runs on a model alias no live
   runner offers; or `pinned to <id> - no live runner's agent is <agent>` for a
@@ -5154,6 +5154,12 @@ when a move needs both:
   project's bound repositories declare dependencies no live runner's `has`
   satisfies; an
   invalid dependencies file is named as it is.
+- `no live runner signs its commits` - the ticket's project allows only signed
+  commits, and no live runner's signing is `works`. Unlike the two above, a
+  live runner that never said whether it signs counts as not signing, on
+  purpose: a project that wants signed commits wants a runner known to sign,
+  so an unprofiled fleet is spared the scans only where no project allows
+  only signed commits.
 
 A split fleet lists nothing, deliberately: where one runner lacks the model
 and another lacks the tool, no single sentence is true of all of them, and the
@@ -6509,7 +6515,7 @@ caller that declared what it can spawn (the model item below). Nothing else in
 the refusals consults one: an issue with no playbook for its next move is
 refused in the same sentence whether it names a model or not.
 
-**Seventeen refusals**, and two of them are rules of the whole loop rather than
+**Twenty refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -6654,7 +6660,29 @@ missing configuration:
     Review"*, or *"… it works every column except In Progress, Testing"*, the
     columns named in board order; an `only` rule with nothing listed reads
     *"it works no column"*. Kind `other`. Waits on nobody. Said after the
-    refusal item and before the toolchain item.
+    refusal item and before the signing item.
+12c. The ticket's project **allows only signed commits** — the project's
+    *Allow unsigned commits* setting is off — and the asking runner has not
+    said that it signs them: its signing is `off`, `fails`, or no answer, and
+    only `works` clears. Gated as the refusal item is — every move a session
+    is spawned for, never a hop, never an idle review self-move — and kind
+    `other`, waiting on nobody. *"HA-12 allows only signed commits -
+    build-box does not sign its commits"*, *"… signing fails on build-box
+    (gpg: signing failed: No pinentry)"* (no parentheses where the runner gave
+    no reason), or *"… build-box has not said whether it signs"*; a runner
+    with no name reads *this runner*. Whose answer is read is the one thing
+    that differs from the items above: `?signing=` where the caller sent one
+    of `off`, `works` or `fails` (a `?signingWhy=` rides beside `fails`; any
+    other word counts as not sent), else, for a caller holding a key, the
+    worst answer of the live loop sessions of the runner `?runner=` names or
+    the calling key's own - none, so no answer, where no such runner is live.
+    A caller with no key and no `?signing=` is the board's own scan and is
+    not judged. `?asRunner=` and every peer scan read that runner's own
+    sessions and ignore `?signing=`, so `takers` and `untaken` print the
+    sentence word for word and a peer that cannot sign is no peer that
+    could take a ticket another runner let go of. A project that allows
+    unsigned commits is never folded, for any caller. Said after the column
+    item and before the toolchain item.
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
@@ -8203,7 +8231,8 @@ relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
 runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, a model it cannot
-spawn or refuses, or a
+spawn or refuses, a column it does not work, a project that allows only signed
+commits when it has not said it signs them, or a
 clean, checked review row a passing check would carry into the merge column
 but no check playbook covers the move for, among them: no new kind.
 
@@ -8251,7 +8280,8 @@ terminal, a live [claim](#claim), a [pause](#expedite), a ready date, an
 assignee, an unanswered question, a repository this runner lacks, a runner tag the
 project asks for and this runner lacks, a ticket omitted for this runner, a flagged-dangerous issue a runner that
 refuses dangerous work was asked about, a model the runner cannot spawn, a model the
-runner refuses, an unmet dependency, an open child, a
+runner refuses, a column it does not work, a project that allows only signed
+commits it has not said it signs, an unmet dependency, an open child, a
 full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
 — for an issue in review — the verdict on its branch, then [the hop](#the-hop),
 and last the missing playbook — last because it is only worth saying about an
@@ -11180,8 +11210,9 @@ as `Models`, `Has` and `Pulling` are), so a keyed runner and its `RunnerDto`
 carry it with no legacy row; the legacy `POST /runners/{name}` route ignores
 both fields. The Runners page and `hatch runners` word it as *Signs its
 commits*, *Does not sign its commits* and *Signing fails*, and the list marks
-only a runner whose signing fails. Refusing work on what a runner said is a
-separate ticket, not this one.
+only a runner whose signing fails. The board refuses work on what a
+runner said: a project that allows only signed commits is folded for a runner
+that has not said `works`, see [the dispatcher](#the-dispatcher), item 12c.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:

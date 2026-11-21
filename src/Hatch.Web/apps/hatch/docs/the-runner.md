@@ -775,7 +775,11 @@ sets it in the project dialog.
   those variables: there the loop passes `-c commit.gpgsign=false` on its own
   calls, and the prompt tells the session to do the same.
 - **The machine cannot sign (`off` or `fails`), and only signed commits are
-  allowed.** The loop does not turn signing off and spawns nothing. It lets the
+  allowed.** The board does not hand such a runner a move on that project: the
+  ticket reads as blocked for it, with a sentence saying the project allows
+  only signed commits and that this runner does not sign, or has not said
+  whether it does. If one reaches the loop anyway, the loop does not turn
+  signing off and spawns nothing. It lets the
   ticket go with one comment saying this runner cannot sign, and what git said.
   The next one in a row is flagged and waits, as any ticket that keeps coming
   back does. It is not an increment run, so it never counts toward the three
@@ -798,8 +802,15 @@ The **Runners** page reads it on the runner's own page as *Signs its commits*,
 *Does not sign its commits* or *Signing fails* with what git said, and marks a
 runner whose signing fails with a **signing fails** badge in the list. `hatch
 runners` prints the same on the runner's line
-([`runners`](cli-reference#runners)). It only reports: the board does not yet
-refuse work to a runner for what it said.
+([`runners`](cli-reference#runners)).
+
+The board also acts on it. Where a project allows only signed commits, a runner
+whose signing is `off` or `fails`, or that has said nothing, is not handed a
+move on it: `hatch queue` shows the ticket blocked with the reason, and the
+loop passes over it in silence. Only `works` clears it. A project that allows
+unsigned commits is not affected, for any runner. The **Waiting on a runner** list
+names a ticket no live runner can take for this, as *no live runner signs its
+commits*.
 
 ## The runner's name
 

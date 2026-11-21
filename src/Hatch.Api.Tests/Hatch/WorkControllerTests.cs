@@ -6724,6 +6724,261 @@ public class WorkControllerTests
         Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
     }
 
+    // ---- Signed commits: a runner that has not said it signs is never handed a move on a signed-only project ----
+
+    private static string SigningSentence(EfHatchIssue issue, string tail) =>
+        $"{Key(issue)} allows only signed commits - {tail}";
+
+    private static async Task<(Harness H, EfHatchIssue Issue)> SignedOnlyBoardAsync()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "signed only", h.Todo);
+        await h.RequireSignedCommitsAsync();
+
+        // The harness's caller is a key by default; these tests are keyless
+        // unless one says otherwise, the way the board's own scan is.
+        h.Caller.Key = null;
+        return (h, issue);
+    }
+
+    [Fact]
+    public async Task Queue_SigningOff_FoldsASignedOnlyTicket_OnTheSentence()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var runner = RunnerName();
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, runner: runner, signing: "off"));
+
+        Assert.Equal(SigningSentence(issue, $"{runner} does not sign its commits"), entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_SigningFails_NamesTheReason_AndWorksIsClear()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var runner = RunnerName();
+
+        Assert.Equal(
+            SigningSentence(issue, $"signing fails on {runner} (gpg: signing failed: No pinentry)"),
+            Only(await h.Work.GetQueue(0, null, default, runner: runner, signing: "fails", signingWhy: "gpg: signing failed: No pinentry")).Blocked);
+        Assert.Equal(
+            SigningSentence(issue, $"signing fails on {runner}"),
+            Only(await h.Work.GetQueue(0, null, default, runner: runner, signing: "fails")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: runner, signing: "works")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AKeyedCallerNamingNoRunner_ReadsAsNotHavingSaid()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        h.Caller.Key = new EfApiKey { Name = "no-such-runner", Prefix = "hatch_ak_", Hash = [], CreatedAt = Now };
+
+        Assert.Equal(
+            SigningSentence(issue, "no-such-runner has not said whether it signs"),
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ASigningWordOffTheList_CountsAsNotSent()
+    {
+        var (h, _) = await SignedOnlyBoardAsync();
+
+        // Keyless, so not sent means not judged.
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), signing: "perhaps")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AKeyedCallerThatNeverSaid_IsFolded_AndAKeylessOneIsNot()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one");
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+
+        h.Caller.Key = key;
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} has not said whether it signs"),
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AKeyedCaller_IsJudgedOnItsLiveSessions_TheWorstAnswerWinning()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", signing: "works");
+        h.Caller.Key = key;
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+
+        await h.AddSessionAsync(key, "here:/two", signing: "off");
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} does not sign its commits"),
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ASentSigningWord_BeatsTheRow()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", signing: "works");
+        h.Caller.Key = key;
+
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} does not sign its commits"),
+            Only(await h.Work.GetQueue(0, null, default, signing: "off")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_TheRunnerParameter_NamesWhoseSessionsAnswer()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var asker = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(asker, "here:/one", signing: "works");
+        var named = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(named, "here:/two", signing: "off");
+        h.Caller.Key = asker;
+
+        Assert.Equal(
+            SigningSentence(issue, $"{named.Name} does not sign its commits"),
+            Only(await h.Work.GetQueue(0, null, default, runner: named.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_ReadsTheRunnersOwnRow_AndIgnoresTheSentWord()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", standing: true, signing: "off");
+
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} does not sign its commits"),
+            Only(await h.Work.GetQueue(asRunner: key.Name, signing: "works")).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_SkipsASignedOnlyTicketInSilence_AndTakesAnAllowingProjectsTicket()
+    {
+        var (h, signedOnly) = await SignedOnlyBoardAsync();
+        var otherId = await h.AddProjectAsync("OTH");
+        var allowed = await h.FileAsync("task", "unsigned is fine", h.Todo, rank: 2048, projectId: otherId);
+        var runner = RunnerName();
+
+        var work = Value(await h.Work.GetNextWork(0, null, null, default, runner: runner, signing: "off"));
+
+        Assert.NotEqual(Key(signedOnly), work.Issue.Key);
+        Assert.Equal(allowed.Id, (await h.Db.Issues.SingleAsync(i => i.Project!.Key == "OTH" && i.Number == allowed.Number)).Id);
+
+        Assert.Equal(
+            Key(signedOnly),
+            Value(await h.Work.GetNextWork(0, null, null, default, runner: runner, signing: "works")).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Next_ASignedOnlyTicketAlone_IsNoContentToARunnerThatDoesNotSign()
+    {
+        var (h, _) = await SignedOnlyBoardAsync();
+
+        Assert.IsType<NoContentResult>(
+            (await h.Work.GetNextWork(0, null, null, default, runner: RunnerName(), signing: "off")).Result);
+    }
+
+    [Fact]
+    public async Task Work_ANamedSignedOnlyTicket_IsRefused_AndFallsBackToTheCallingKey()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        h.Caller.Key = key;
+
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} has not said whether it signs"),
+            Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+
+        await h.AddSessionAsync(key, "here:/one", signing: "works");
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} does not sign its commits"),
+            Value(await h.Work.GetWork(Key(issue), null, default, signing: "off")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AnExpressHop_IsNeverFoldedOnSigning()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        await h.RequireSignedCommitsAsync();
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), signing: "off"));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Queue_AnIdleReviewSelfMove_KeepsItsOwnSentenceRatherThanTheSigningOne()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "up for review, clean", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean);
+        await h.RequireSignedCommitsAsync();
+
+        var blocked = Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), signing: "off")).Blocked;
+
+        Assert.NotNull(blocked);
+        Assert.DoesNotContain("allows only signed commits", blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AProjectThatAllowsUnsignedCommits_ChangesNothingForAnyCaller()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "unsigned is fine", h.Todo);
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", signing: "off");
+        h.Caller.Key = key;
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, signing: "off")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, signing: "fails", signingWhy: "no")).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatCannotSign_IsNotAPeerThatCouldTakeASignedOnlyTicket()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        var b = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(b, "here:/one", standing: true, signing: "off");
+
+        // The asker is keyless, so it is not itself judged on signing; its only
+        // peer cannot take the ticket, so there is nobody to leave it for.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatSigns_StillTakesASignedOnlyLetGoTicket()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        var b = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(b, "here:/one", standing: true, signing: "works");
+
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
     // ---- Refused columns: a runner never handed a move out of a column it does not work ----
 
     /// <summary>A key with a config row carrying the column rule <paramref name="mode"/> over <paramref name="ids"/>.</summary>
@@ -16440,6 +16695,14 @@ public class WorkControllerTests
             await Db.SaveChangesAsync();
         }
 
+        /// <summary>The project allows only signed commits, written straight onto the row.</summary>
+        public async Task RequireSignedCommitsAsync(int? projectId = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
+            project.AllowsUnsignedCommits = false;
+            await Db.SaveChangesAsync();
+        }
+
         /// <summary>A second project on the same board, for a test about a playbook that names one project and not the other.</summary>
         public async Task<int> AddProjectAsync(string key)
         {
@@ -17198,7 +17461,8 @@ public class WorkControllerTests
         public async Task<EfHatchRunnerSession> AddSessionAsync(
             EfApiKey key, string? where = null, IReadOnlyList<string>? projects = null, bool? refusesDangerous = null,
             string? remotes = null, bool? mine = null, string? under = null, string? agent = null, DateTimeOffset? at = null,
-            bool? standing = null, string? models = null, string? has = null, string? drivesTold = null)
+            bool? standing = null, string? models = null, string? has = null, string? drivesTold = null,
+            string? signing = null, string? signingWhy = null)
         {
             var session = new EfHatchRunnerSession
             {
@@ -17218,6 +17482,8 @@ public class WorkControllerTests
                 Models = models,
                 Has = has,
                 DrivesTold = drivesTold,
+                Signing = signing,
+                SigningWhy = signingWhy,
             };
             Db.RunnerSessions.Add(session);
             await Db.SaveChangesAsync();

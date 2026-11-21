@@ -252,8 +252,8 @@ public class RunnersController(
         // Whether this runner signs its commits is a fact about each loop's
         // own checkouts, so the runner reads as the worst of its live loops.
         if (dto.Signing is null &&
-            RunnerSigning.Worst(loop.Select(s => (s.Signing, s.SigningWhy))) is { } signing)
-            dto = dto with { Signing = signing.State, SigningWhy = signing.Why };
+            RunnerDeclaration.SigningOf(runner.Name, loop) is { State: { } signingState } signing)
+            dto = dto with { Signing = signingState, SigningWhy = signing.Why };
 
         // A keyed runner with no legacy row has no row-level accelerator fact
         // at all, so the newest live loop session's own carries it - the same
@@ -2263,14 +2263,14 @@ public class RunnersController(
     /// <see cref="RunnerSigning.Words"/> - anything else is no answer, and the
     /// heartbeat that sent it is still accepted.
     /// </summary>
-    private static string? NormaliseSigning(string? word)
+    internal static string? NormaliseSigning(string? word)
     {
         var normal = word?.Trim().ToLowerInvariant();
         return normal is not null && Array.IndexOf(RunnerSigning.Words, normal) >= 0 ? normal : null;
     }
 
     /// <summary>What git said, kept only beside <see cref="RunnerSigning.Fails"/> and cut to one line that fits.</summary>
-    private static string? SigningWhy(string? word, string? why) =>
+    internal static string? SigningWhy(string? word, string? why) =>
         NormaliseSigning(word) == RunnerSigning.Fails
             ? Fits(why?.Split('\n', 2)[0], EfHatchRunner.MaxSigningWhyLength)
             : null;

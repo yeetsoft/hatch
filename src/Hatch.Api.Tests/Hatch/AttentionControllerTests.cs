@@ -1760,6 +1760,92 @@ public class AttentionControllerTests : IDisposable
         Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
     }
 
+    // ---- ... and one that signs its commits, where the project allows only signed ones ----
+
+    private static async Task SignedOnlyAsync(Harness h)
+    {
+        foreach (var project in await h.Db.Projects.ToListAsync())
+            project.AllowsUnsignedCommits = false;
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ASignedOnlyProjectNoLiveRunnerSignsFor_SaysSo_UntilOneDoes()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        await SignedOnlyAsync(h);
+        var issue = await h.FileAsync("task", "signed only", h.Todo);
+        await h.RunnerAsync("host:/one", null, models: ["sonnet"], agent: "claude");
+        var off = await h.AddKeyAsync("signs-nothing");
+        await h.AddSessionAsync(off, "host:/two", signing: "off");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(
+            new WaitingOnARunnerDto(Key(issue), "signed only", "task", "todo", "no live runner signs its commits"), row);
+
+        var works = await h.AddKeyAsync("signs-fine");
+        await h.AddSessionAsync(works, "host:/three", signing: "works");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ARunnerThatNeverSaid_CountsAsNotSigning_EvenWhenItDeclaredNothingElse()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        await SignedOnlyAsync(h);
+        await h.FileAsync("task", "signed only", h.Todo);
+
+        // An unprofiled fleet is spared the scans, but not where a project asks for signing.
+        await h.RunnerAsync("host:/unprofiled", null);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal("no live runner signs its commits", row.Missing);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ASigningGapJoinsAModelGap_WithASemicolon()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        await SignedOnlyAsync(h);
+        await h.FileAsync("task", "needs fable and a signature", h.Todo);
+        await h.RunnerAsync("host:/one", null, models: ["sonnet"], agent: "claude");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal("no live runner offers fable; no live runner signs its commits", row.Missing);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ASplitFleetOnSigningAndModelListsNothing()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        await SignedOnlyAsync(h);
+        await h.FileAsync("task", "needs both", h.Todo);
+
+        // One runner signs but lacks the model, the other has the model but does not sign.
+        var signs = await h.AddKeyAsync("signs");
+        await h.AddSessionAsync(signs, "host:/signs", agent: "claude", signing: "works");
+        await h.RunnerAsync("host:/model", null, models: ["fable"], agent: "claude");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_AProjectThatAllowsUnsignedCommits_NeverNamesSigning()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        await h.FileAsync("task", "needs fable", h.Todo);
+        await h.RunnerAsync("host:/one", null, models: ["sonnet"], agent: "claude");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal("no live runner offers fable", row.Missing);
+    }
+
     [Fact]
     public async Task WaitingOnARunner_AnEmptyFleetAnswersEmpty_AndSoDoesABoardWhereEveryGapIsMet()
     {
@@ -3245,7 +3331,8 @@ public class AttentionControllerTests : IDisposable
         }
 
         /// <summary>A live loop session for a key, placed directly - the session-carrying counterpart to <see cref="RunnerAsync"/>.</summary>
-        public async Task AddSessionAsync(EfApiKey key, string? where = null, string? agent = null, bool standing = true)
+        public async Task AddSessionAsync(
+            EfApiKey key, string? where = null, string? agent = null, bool standing = true, string? signing = null)
         {
             Db.RunnerSessions.Add(new EfHatchRunnerSession
             {
@@ -3257,6 +3344,7 @@ public class AttentionControllerTests : IDisposable
                 Where = where,
                 Standing = standing,
                 Agent = agent,
+                Signing = signing,
             });
             await Db.SaveChangesAsync();
         }
