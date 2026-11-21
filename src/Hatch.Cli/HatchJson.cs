@@ -115,6 +115,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(SessionRecord))]
 [JsonSerializable(typeof(VersionReport))]
 [JsonSerializable(typeof(BoardRecord))]
+[JsonSerializable(typeof(BuildRequest))]
 [JsonSerializable(typeof(UsageProbeVerdict))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
 [JsonSerializable(typeof(PlaybookFileRequest))]

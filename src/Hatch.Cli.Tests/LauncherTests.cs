@@ -127,7 +127,7 @@ public sealed class LauncherTests : IDisposable
 
     private sealed class FakeChild : ILaunchedChild
     {
-        public List<(string[] Args, IReadOnlyDictionary<string, string> Env)> Starts { get; } = [];
+        public List<(string Program, string[] Args, IReadOnlyDictionary<string, string> Env)> Starts { get; } = [];
 
         public List<FakeProcess> Processes { get; } = [];
 
@@ -136,9 +136,9 @@ public sealed class LauncherTests : IDisposable
 
         public Action<string[], IReadOnlyDictionary<string, string>>? OnStart { get; set; }
 
-        public ILaunchedProcess Start(string[] args, IReadOnlyDictionary<string, string> environment)
+        public ILaunchedProcess Start(string program, string[] args, IReadOnlyDictionary<string, string> environment)
         {
-            Starts.Add((args, new Dictionary<string, string>(environment)));
+            Starts.Add((program, args, new Dictionary<string, string>(environment)));
             OnStart?.Invoke(args, environment);
 
             var life = Lives[Math.Min(Starts.Count - 1, Lives.Count - 1)];
@@ -194,16 +194,16 @@ public sealed class LauncherTests : IDisposable
 
         var env = Assert.Single(child.Starts).Env;
         Assert.Equal(3, env.Count);
-        Assert.Equal("1", env[Launcher.VersionVariable]);
+        Assert.Equal("2", env[Launcher.VersionVariable]);
         Assert.Equal(Own, env[Launcher.PathVariable]);
         Assert.Equal(Launcher.StateFileName, Path.GetFileName(env[Launcher.StateVariable]));
         Assert.StartsWith(temp, env[Launcher.StateVariable], StringComparison.Ordinal);
     }
 
     [Fact]
-    public void The_version_is_one_whole_number_and_starts_at_one()
+    public void The_version_is_one_whole_number_and_is_two_since_the_launcher_changes_build()
     {
-        Assert.Equal(1, Launcher.Version);
+        Assert.Equal(2, Launcher.Version);
     }
 
     [Theory]

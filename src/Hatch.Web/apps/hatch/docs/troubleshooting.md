@@ -378,6 +378,46 @@ run](the-runner#when-it-will-not-run).
   yourself with `make publish-hatch` from the repository root, or rebuild the
   image.
 
+## The runner says it could not move to a build
+
+A downloaded `hatch` running a loop can be moved to a newer build. When it
+cannot, it carries on with the build it has, says one line at the start of the
+next restart, and asks again later: a minute, then two, doubling to an hour. Each
+line reads `hatch: could not move to build <sha> - <why>; carrying on with the
+build it has, asking again in <time>`. The night is never lost over it.
+
+- **`the board answered from another build (mid-deploy?)`** The board was being
+  upgraded while the build was fetched. Nothing to do: the next ask finds it done.
+- **`the download's sha256 is not the one the board gave`** The bytes were damaged
+  on the way, or a proxy changed them. It asks again on its own. If it keeps
+  happening, look at what stands between this machine and the board.
+- **`the new build did not report revision`** The fetched file did not say it is the
+  build it was meant to be, or would not run on this machine. Check that the
+  platform matches, and that nothing (antivirus, a read-only mount) is stopping it
+  from starting.
+- **`could not start` or `did not answer "version" within 60s`** The same, seen
+  from the other side: the file arrived whole but would not run here.
+- **`403 downloading`, `401 downloading`, a timeout, or a connection message** The
+  board could not be reached with this runner's key. See [a 401 or a
+  403](#a-401-or-a-403).
+- **`installing <sha> - <message>`** The disk, not the board: it is full, or the
+  per-user folder is not writable. Free space or fix the folder's permissions; the
+  builds live in `versions/` there.
+
+## The runner went back to the build it had
+
+When a new build ends before the board has answered its first beat, the launcher
+puts the night's totals back as they were, starts the build it had, and never asks
+for that build again until the launcher itself is started again. The line reads
+`hatch: build <sha> ended with exit <code> before the board answered it; carrying
+on with the build it had` (or `could not be started`). A build that ended after the
+board answered it is a normal end, and ends the loop as it always has.
+
+- Read the log for what the new build said as it ended. It is a build that does not
+  work, and an upgrade is the way out: the board's next build is asked for as usual.
+- Deleting `versions/` in the per-user folder is safe at any time. The next start
+  runs the downloaded file itself.
+
 ## A psql shell
 
 For looking at the database by hand:

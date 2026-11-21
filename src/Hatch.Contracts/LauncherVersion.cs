@@ -12,5 +12,5 @@ public static class LauncherVersion
     /// do something a child or the board should know about, and never when it
     /// merely changes inside.
     /// </summary>
-    public const int Current = 1;
+    public const int Current = 2;
 }
