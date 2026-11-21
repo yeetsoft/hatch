@@ -2691,6 +2691,19 @@ button.hatch-card-stories:focus-visible {
   color: inherit;
 }
 
+/* The previous titles under a search result's current one: the "Previously"
+   label, then one title per line, in type small enough that neither reads
+   as the current title. */
+.hatch-search-previous {
+  font-size: var(--t-label);
+}
+
+.hatch-search-previous ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 @media (max-width: 40rem) {
   .hatch-search-filters > * {
     width: 100%;

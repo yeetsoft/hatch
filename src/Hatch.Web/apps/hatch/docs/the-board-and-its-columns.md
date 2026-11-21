@@ -264,6 +264,10 @@ projects, reads **All in scope**, and is not drawn for a one-project scope;
 with none chosen the results are those of every project in scope. A
 `?projectId=` outside the scope is dropped from the address.
 
+**Search** also finds an issue by a title it used to have, not only its
+current one. A result found that way lists the old titles under the current
+one, newest first, and reads "previous title" under Matched.
+
 **Track → Dreams** follows the scope too. Its list holds the dreams of the
 projects in scope and every dream that leans toward no project, which always
 shows. Its one **Project** picker, above the composer, lists only the scope's
@@ -281,7 +285,9 @@ Press `/` on any page and a prompt opens over it. Type an issue's key
 (`HA-3`, `ha-3` or `ha3`), its number (`3`), or words from its title, and the
 list narrows as you type. **↑↓** move, **↵** opens the highlighted row and
 **esc** puts it away. The last row, **Search everything**, carries what you
-typed to the Search page. It is not a shortcut while you are typing:
+typed to the Search page - the way to find an issue by a title it used to
+have, since the console itself matches current titles only. It is not a
+shortcut while you are typing:
 `/` in a text box, a description editor, or the board's own search box is a
 slash.
 
