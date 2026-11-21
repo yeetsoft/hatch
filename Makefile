@@ -111,7 +111,8 @@ publish-hatch:
 			-p:SelfContained=true \
 			-p:PublishTrimmed=true \
 			-p:SourceRevisionId=$(shell git rev-parse HEAD 2>/dev/null) \
-			-p:HatchSequence=$(shell git rev-list --count HEAD 2>/dev/null) || exit 1; \
+			-p:HatchSequence=$(shell git rev-list --count HEAD 2>/dev/null) \
+			-p:HatchLauncher=true || exit 1; \
 	done
 
 # The same suite with the claim's tests turned on. They need a real Postgres and

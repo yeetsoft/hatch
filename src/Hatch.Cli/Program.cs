@@ -44,11 +44,20 @@ var environment = Environment.GetEnvironmentVariables()
     .Cast<System.Collections.DictionaryEntry>()
     .ToDictionary(e => (string)e.Key, e => e.Value as string);
 
-if (!Program.TryExtractProfile(rest, out rest, out var profileArg, out var extractRefusal))
+if (!Program.TryExtractProfile(rest, out var withoutProfile, out var profileArg, out var extractRefusal))
 {
     say.Complain(extractRefusal);
     return 1;
 }
+
+// A download supervises its own loop: before any setting is read or any board is
+// called, it runs this same file as the child, hands it the whole argument list
+// as it came, and starts it again when it exits 75. See docs/hatch.md, "Where
+// the loop lives". Nothing stamped, nothing above it and no -h means no launcher.
+if (Launcher.Applies(command, withoutProfile, environment, Launcher.BuildLaunches(typeof(Program).Assembly)))
+    return await Launcher.RunProcessAsync(args, say.Complain);
+
+rest = withoutProfile;
 
 string? profileFile = null;
 string? profileName = null;
@@ -174,6 +183,8 @@ if (memberSlot is { } slot)
 // it twice means now.
 using var cancelling = new CancellationTokenSource();
 var caught = 0;
+long caughtAt = 0;
+var launchedBy = LauncherLink.From(environment);
 
 using var interrupt = Handle(PosixSignal.SIGINT);
 using var terminate = Handle(PosixSignal.SIGTERM);
@@ -372,6 +383,7 @@ try
             ProfileName = profileName,
             ActiveProfilePath = Settings.Pinned(profileArg, environment) ? null : Settings.ActiveProfilePath(),
             NightStatePath = nightStatePath,
+            Launcher = LauncherLink.From(environment),
             LogPath = log?.Path,
             SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Slot = memberSlot,
@@ -504,8 +516,18 @@ PosixSignalRegistration? Handle(PosixSignal signal)
     {
         return PosixSignalRegistration.Create(signal, context =>
         {
-            if (Interlocked.Increment(ref caught) > 1) return;
+            if (Interlocked.Increment(ref caught) > 1)
+            {
+                // Under a launcher a terminal's Ctrl-C arrives twice, once from the
+                // terminal and once passed on by the launcher, and the second must
+                // not end a loop that is letting go of a claim.
+                if (Launcher.IsRepeat(launchedBy, Interlocked.Read(ref caughtAt), Environment.TickCount64))
+                    context.Cancel = true;
 
+                return;
+            }
+
+            Interlocked.Exchange(ref caughtAt, Environment.TickCount64);
             context.Cancel = true;
             say.Complain("");
             say.Complain("hatch: stopping - letting go of the ticket first");
@@ -692,9 +714,9 @@ internal partial class Program
         "  hatch go-to-work --max-tokens 2M",
         "  hatch go-to-work --max-tokens-per-hour 200k   ...wait, not stop, while the last hour is over it",
         "  hatch go-to-work --stop-file /tmp/stop",
-        "  hatch go-to-work --restart-after 60   ...coming back as a newer build that often",
+        "  hatch go-to-work --restart-after 60   ...a checkout's loop coming back as a newer build that often",
         "  hatch go-to-work --restart-after 0    ...only when its own source changed",
-        "  hatch go-to-work --no-restart         ...never coming back as a newer one",
+        "  hatch go-to-work --no-restart         ...never coming back, for any reason",
         "  hatch go-to-work --repo /path/to/a/checkout    ...also serve that checkout, repeatable",
         "  hatch go-to-work --workspace /clones           ...clone what the board binds, into /clones",
         "  hatch go-to-work --mine      ...take only your own tickets, the whole night through",
@@ -731,12 +753,18 @@ internal partial class Program
         "                     detection cannot see; adds to what detection finds, never removes",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
-        "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",
+        "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into;",
+        "                     set by scripts/hatch.sh and scripts/hatch.ps1, and by a downloaded",
+        "                     hatch's launcher, never by a person",
+        "  HATCH_LAUNCHER_VERSION  which version of the launcher started this loop; the launcher sets it",
+        "  HATCH_LAUNCHER_PATH     the launcher's own file; the launcher sets it, and a person never does",
         "  HATCH_RTK          off to keep RTK's Bash hook out of a session where rtk is on PATH",
         "                     (exported only: scripts/.env and `config` are not read for it)",
         "",
-        "A go-to-work whose own source changes under it asks to be restarted as the new",
-        "build, and something outside it has to rebuild and run it again. A hatch started",
-        "with nobody standing over it does not ask: it is the loop it started as.",
+        "A go-to-work is restarted by whatever stands over it: a checkout's scripts/hatch.sh",
+        "or scripts/hatch.ps1 rebuild its source and run it again when that changes, and a",
+        "downloaded hatch launches itself and runs it again when `hatch use` moves the",
+        "profile it follows. A hatch started with nothing standing over it restarts nothing:",
+        "it is the loop it started as.",
     ];
 }
