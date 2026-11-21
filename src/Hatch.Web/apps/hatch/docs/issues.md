@@ -191,6 +191,14 @@ A pass still runs when an epic under the ambition closes, and after "stop here" 
 are worked as before. The budget on its own does not fold the pass: one pass has to run to ask the question. A change to the budget opens
 room for the next pass, the way a change to Epics at once does.
 
+**On the ambition's page.** An ambition's page has a Budget card, after Capabilities and before Epics in flight, and no other type draws
+it. With a budget set it draws a bar, then a bold line such as "41% spent, for 1 of 6 capabilities", the dollars spent and the budget, and
+a sentence that at 100% the ambition stops carving and asks, and that work already in flight finishes. The capabilities that hold come from
+the Capabilities read the page already makes. Once the budget is spent the card says so in words as well as by the bar's colour. With no
+budget it shows the dollars spent so far and says no budget is set; it does not warn. Where some sessions carried no price, it says how
+many, so the figure reads as at least that much. A person sets, changes and clears the budget from the same card, and a refusal from the
+API is shown beside the field as its own sentence. If the budget cannot be read, the card says so and the rest of the page is untouched.
+
 ## The Ambitions page
 
 The Ambitions page, at `/ambitions`, is a top-level link after the magnifying

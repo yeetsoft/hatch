@@ -11,6 +11,7 @@ import {
   getComments,
   getDreams,
   getEvents,
+  getIssueBudget,
   getIssueCapabilities,
   getIssueDreams,
   getIssuePasses,
@@ -102,9 +103,11 @@ import { mayRefresh } from '../lib/refresh';
 import { waitingChild } from '../lib/next';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { fromComment, openQuestions } from '../lib/questions';
+import { barFraction, budgetDraft, budgetRequest, holdsLine, percentSpent, unpricedLine, writeBudget } from '../lib/budget';
 import { writeNoCode } from '../lib/noCode';
 import { writeReleaseNote } from '../lib/releaseNote';
 import { newestFirst } from '../lib/thread';
+import { moneyPhrase } from '../lib/workLog';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useRemand } from '../lib/useRemand';
 import { remandOffer } from '../lib/remand';
@@ -125,6 +128,7 @@ import type {
   AssigneeRequest,
   Board,
   Capability,
+  IssueBudget,
   ChildRollup,
   Comment,
   Dream,
@@ -172,6 +176,8 @@ export function IssuePage() {
   const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
   const [passes, setPasses] = useState<AmbitionPass[] | null>(null);
   const [passesError, setPassesError] = useState<string | null>(null);
+  const [budget, setBudget] = useState<IssueBudget | null>(null);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
   const [serves, setServes] = useState<ServedCapability[] | null>(null);
   /* The speed bump in front of taking a ticket off a runner, and whether the
      clear is in flight. Two flags rather than one, because the dialog stays up
@@ -200,6 +206,10 @@ export function IssuePage() {
   const [dangerousBusy, setDangerousBusy] = useState(false);
   const [noCodeBusy, setNoCodeBusy] = useState(false);
   const [noCodeError, setNoCodeError] = useState<string | null>(null);
+  /* A budget save is out, and the API's own refusal of the last one - drawn in
+     the Budget card beside its field, never in the page's `error`. */
+  const [budgetBusy, setBudgetBusy] = useState(false);
+  const [budgetWriteError, setBudgetWriteError] = useState<string | null>(null);
   /* The runner whose lift is out, or null - OmittedRunners' own busy flag. */
   const [omissionLifting, setOmissionLifting] = useState<string | null>(null);
   /* Every live runner's name, null while unread - OmittedRunners uses this to
@@ -268,6 +278,14 @@ export function IssuePage() {
       (err: unknown) => ({ loaded: null, failure: message(err) }),
     );
 
+    /* And the budget, on the same tolerant terms as the capabilities - sent for
+       every type, and a non-ambition's 400 is caught here and left for `Budget`
+       to never draw, since that card gates on `issue.type` first. */
+    const budgeting = getIssueBudget(key).then(
+      (loaded) => ({ loaded, failure: null as string | null }),
+      (err: unknown) => ({ loaded: null, failure: message(err) }),
+    );
+
     /* And the tenth: what this issue serves. On the same terms as `whom` - a
        200 for every type, so a failure is dropped rather than given its own
        line; `Serves` draws nothing until this arrives either way. */
@@ -327,6 +345,10 @@ export function IssuePage() {
     const capped = await capping;
     setCapabilities(capped.loaded);
     setCapabilitiesError(capped.failure);
+
+    const budgeted = await budgeting;
+    setBudget(budgeted.loaded);
+    setBudgetError(budgeted.failure);
 
     setServes(await serving);
 
@@ -564,6 +586,28 @@ export function IssuePage() {
         return true;
       } finally {
         setNoCodeBusy(false);
+      }
+    },
+    [key, load],
+  );
+
+  /* Saves the budget through the sibling lib call, which never throws - its
+     refusal goes to `budgetWriteError`, beside the field, not the page's own
+     `error`. */
+  const saveBudget = useCallback(
+    async (draft: string): Promise<boolean> => {
+      setBudgetWriteError(null);
+      setBudgetBusy(true);
+      try {
+        const refusal = await writeBudget(key, draft);
+        if (refusal !== null) {
+          setBudgetWriteError(refusal);
+          return false;
+        }
+        await load();
+        return true;
+      } finally {
+        setBudgetBusy(false);
       }
     },
     [key, load],
@@ -1133,6 +1177,16 @@ export function IssuePage() {
           "what is it waiting on". */}
       <Capabilities issue={issue} board={board} capabilities={capabilities} error={capabilitiesError} />
 
+      <Budget
+        issue={issue}
+        budget={budget}
+        error={budgetError}
+        capabilities={capabilities}
+        busy={budgetBusy}
+        writeError={budgetWriteError}
+        onSave={saveBudget}
+      />
+
       <EpicsInFlight
         issue={issue}
         rollup={rollup}
@@ -1560,6 +1614,121 @@ export function Capabilities({
           ))}
         </ul>
       )}
+    </IssueSection>
+  );
+}
+
+/**
+ * What an ambition has cost and how much of its budget that is, with the
+ * budget itself set, changed and cleared from the same card.
+ *
+ * The dollars come from the budget read, unsummed here. How many capabilities
+ * hold comes from the capabilities the page already holds - no second read -
+ * and is left off the line while those are still loading. A spent budget says
+ * so in words, not by the bar's colour alone; with no budget there is no
+ * warning at all, only what has been spent. Omitted entirely off any type but
+ * an ambition.
+ */
+export function Budget({
+  issue,
+  budget,
+  error,
+  capabilities,
+  busy,
+  writeError,
+  onSave,
+}: {
+  issue: Issue;
+  budget: IssueBudget | null;
+  error: string | null;
+  capabilities: Capability[] | null;
+  busy: boolean;
+  writeError: string | null;
+  onSave: (draft: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState(budgetDraft(budget?.budgetUsd ?? null));
+  const [known, setKnown] = useState(budget?.budgetUsd ?? null);
+
+  // Re-syncs when the budget changes underneath - see WipLimitField.
+  const current = budget?.budgetUsd ?? null;
+  if (current !== known) {
+    setKnown(current);
+    setDraft(budgetDraft(current));
+  }
+
+  if (issue.type !== 'ambition') return null;
+
+  const percent = budget ? percentSpent(budget) : null;
+  const holds = capabilities?.filter((c) => c.state === 'holds').length ?? 0;
+  const unpriced = budget ? unpricedLine(budget.unpricedSessions) : null;
+  const amount = budgetRequest(draft);
+
+  return (
+    <IssueSection id="budget" title="Budget">
+      {error && <p className="text-danger">{error}</p>}
+      {!budget && !error && <p className="text-muted">Loading…</p>}
+
+      {budget && percent !== null && (
+        <>
+          <div className="hatch-budget-bar">
+            <span
+              className={`hatch-budget-fill${budget.spent ? ' hatch-budget-spent' : ''}`}
+              style={{ width: `${barFraction(budget)}%` }}
+            />
+          </div>
+          <p>
+            <strong>
+              {capabilities
+                ? holdsLine(percent, holds, capabilities.length)
+                : `${percent}% spent`}
+            </strong>
+          </p>
+          <p className="text-muted">
+            {moneyPhrase(budget.spentUsd)} of {moneyPhrase(budget.budgetUsd ?? 0)}
+          </p>
+          <p className="text-muted">
+            At 100% the ambition stops carving and asks. Work already in flight finishes.
+          </p>
+          {budget.spent && (
+            <p>
+              <strong>The budget is spent.</strong> This ambition has stopped carving and is asking.
+            </p>
+          )}
+        </>
+      )}
+
+      {budget && percent === null && (
+        <p className="text-muted">
+          {moneyPhrase(budget.spentUsd)} spent so far. No budget is set.
+        </p>
+      )}
+
+      {unpriced && <p className="text-muted">{unpriced}</p>}
+
+      <Field
+        label="Budget in dollars"
+        as="div"
+        hint="What this ambition may cost, to the cent. Leave it blank for no budget."
+        error={writeError ?? undefined}
+      >
+        <input
+          type="text"
+          inputMode="decimal"
+          value={draft}
+          disabled={busy}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <div className="hatch-section-actions">
+          <Button disabled={busy || amount === budgetDraft(current)} onClick={() => void onSave(draft)}>
+            Save
+          </Button>
+          {current !== null && (
+            <Button disabled={busy} onClick={() => void onSave('')}>
+              Clear
+            </Button>
+          )}
+        </div>
+      </Field>
     </IssueSection>
   );
 }
