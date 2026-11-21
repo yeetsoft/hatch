@@ -13,6 +13,63 @@ public sealed class ReachTests
             ? new Dictionary<string, string?>(StringComparer.Ordinal)
             : new Dictionary<string, string?>(StringComparer.Ordinal) { ["PATH"] = path };
 
+    /// <summary>What a session's environment holds once <see cref="Reach.Unsigned"/> has run over a clean one.</summary>
+    internal static void AssertUnsigned(IDictionary<string, string?> environment)
+    {
+        var count = int.Parse(environment["GIT_CONFIG_COUNT"]!, System.Globalization.CultureInfo.InvariantCulture);
+        var pairs = Enumerable.Range(0, count).ToDictionary(n => environment[$"GIT_CONFIG_KEY_{n}"]!, n => environment[$"GIT_CONFIG_VALUE_{n}"]);
+
+        Assert.Equal("false", pairs["commit.gpgsign"]);
+        Assert.Equal("false", pairs["tag.gpgsign"]);
+    }
+
+    [Fact]
+    public void Unsigned_sets_both_signing_settings_to_false_through_the_environment()
+    {
+        var environment = Env(null);
+
+        Reach.Unsigned(environment);
+
+        Assert.Equal("2", environment["GIT_CONFIG_COUNT"]);
+        Assert.Equal("commit.gpgsign", environment["GIT_CONFIG_KEY_0"]);
+        Assert.Equal("false", environment["GIT_CONFIG_VALUE_0"]);
+        Assert.Equal("tag.gpgsign", environment["GIT_CONFIG_KEY_1"]);
+        Assert.Equal("false", environment["GIT_CONFIG_VALUE_1"]);
+    }
+
+    [Fact]
+    public void Unsigned_goes_after_the_pairs_the_environment_already_holds()
+    {
+        var environment = Env(null);
+        environment["GIT_CONFIG_COUNT"] = "1";
+        environment["GIT_CONFIG_KEY_0"] = "core.editor";
+        environment["GIT_CONFIG_VALUE_0"] = "true";
+
+        Reach.Unsigned(environment);
+
+        Assert.Equal("3", environment["GIT_CONFIG_COUNT"]);
+        Assert.Equal("core.editor", environment["GIT_CONFIG_KEY_0"]);
+        Assert.Equal("true", environment["GIT_CONFIG_VALUE_0"]);
+        Assert.Equal("commit.gpgsign", environment["GIT_CONFIG_KEY_1"]);
+        Assert.Equal("tag.gpgsign", environment["GIT_CONFIG_KEY_2"]);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("many")]
+    [InlineData("-3")]
+    [InlineData("1.5")]
+    public void Unsigned_reads_a_count_that_is_not_a_whole_number_as_none(string held)
+    {
+        var environment = Env(null);
+        environment["GIT_CONFIG_COUNT"] = held;
+
+        Reach.Unsigned(environment);
+
+        Assert.Equal("2", environment["GIT_CONFIG_COUNT"]);
+        Assert.Equal("commit.gpgsign", environment["GIT_CONFIG_KEY_0"]);
+    }
+
     /// <summary>
     /// A build kept under <c>versions/&lt;sha&gt;/hatch</c> is the binary running, so the
     /// folder a session finds first on <c>PATH</c> and the path its hooks run are

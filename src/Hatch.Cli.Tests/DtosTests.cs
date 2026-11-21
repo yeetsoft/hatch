@@ -107,4 +107,21 @@ public sealed class DtosTests
 
         Assert.Contains("\"authorLogin\":\"octocat\"", json, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void WorkDto_reads_an_absent_AllowsUnsignedCommits_as_true_and_carries_a_false()
+    {
+        var json = JsonSerializer.Serialize(Fixtures.Work("AER-1"), HatchClient.Json);
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+        node.Remove("allowsUnsignedCommits");
+
+        var older = JsonSerializer.Deserialize<WorkDto>(node.ToJsonString(), HatchClient.Json);
+        Assert.NotNull(older);
+        Assert.True(older.AllowsUnsignedCommits);
+
+        var strict = JsonSerializer.Deserialize<WorkDto>(
+            JsonSerializer.Serialize(Fixtures.Work("AER-1", allowsUnsignedCommits: false), HatchClient.Json), HatchClient.Json);
+        Assert.NotNull(strict);
+        Assert.False(strict.AllowsUnsignedCommits);
+    }
 }

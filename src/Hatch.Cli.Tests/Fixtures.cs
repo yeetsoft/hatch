@@ -102,7 +102,8 @@ public static class Fixtures
         string? localModel = null,
         IReadOnlyList<QuestionDto>? buildPast = null,
         WorkAmbitionDto? ambition = null,
-        WorkQuestionDto? answering = null) =>
+        WorkQuestionDto? answering = null,
+        bool allowsUnsignedCommits = true) =>
         new(
             Issue: issue ?? Issue(key, localModel: localModel),
             FromStatus: Status(3, from),
@@ -134,7 +135,8 @@ public static class Fixtures
             ModelIsLocal: modelIsLocal,
             BuildPast: buildPast,
             Ambition: ambition,
-            Answering: answering);
+            Answering: answering,
+            AllowsUnsignedCommits: allowsUnsignedCommits);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(

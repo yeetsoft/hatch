@@ -434,4 +434,17 @@ public sealed class ClaudeAdapterTests : IDisposable
     {
         Assert.Null(new ClaudeAdapter("/does/not/exist").Executable);
     }
+
+    [Fact]
+    public void The_unsigned_override_reaches_a_headless_and_an_attached_session_and_only_when_asked()
+    {
+        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true);
+
+        foreach (var start in new[] { Adapter().BuildHeadless(request with { Unsigned = true }), Adapter().BuildAttached(request with { Unsigned = true }) })
+            ReachTests.AssertUnsigned(start.Environment);
+
+        // Left as the environment had it where nobody asked.
+        var plain = Adapter().BuildHeadless(request).Environment;
+        Assert.Equal(Environment.GetEnvironmentVariable("GIT_CONFIG_COUNT"), plain.TryGetValue("GIT_CONFIG_COUNT", out var held) ? held : null);
+    }
 }

@@ -217,9 +217,13 @@ public sealed record LimitPushed(LimitPush Outcome, string? Branch, string? Sha,
 /// The same seam as <paramref name="git"/>, for the raw-byte read - a test that
 /// wants fixed bytes back with no process. Null, which is every runner, spawns.
 /// </param>
+/// <param name="unsigned">
+/// Whether this increment's commits are to be unsigned, read at each call - see
+/// <see cref="UnsignedCommits"/>. Null is never, which is every command but the loop's.
+/// </param>
 public sealed partial class Workspace(
     string root, string? configuredBase, Action<string> say, Action<string> complain, Workspace.GitRunner? git = null,
-    Workspace.GitBytesRunner? gitBytes = null)
+    Workspace.GitBytesRunner? gitBytes = null, UnsignedCommits? unsigned = null)
     : IWorkspace
 {
     /// <summary>Git in a directory: its exit code, standard output and standard error.</summary>
@@ -489,10 +493,30 @@ public sealed partial class Workspace(
         public string Because => Why.Length > 0 ? $" - {Why}" : "";
     }
 
+    /// <summary>
+    /// The arguments git is started with, and the environment it is started in,
+    /// when this increment's commits are to be unsigned: the settings travel in
+    /// the environment, which no settings file sees, and a git too old to read
+    /// them is given the same two as <c>-c</c> instead.
+    /// </summary>
+    private string[] Signed(string[] args, ProcessStartInfo? start)
+    {
+        if (unsigned is not { On: true }) return args;
+
+        if (!unsigned.OldGit)
+        {
+            if (start is not null) Reach.Unsigned(start.Environment);
+            return args;
+        }
+
+        return ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", .. args];
+    }
+
     private Ran Git(params string[] args)
     {
         if (git is not null)
         {
+            args = Signed(args, null);
             var (code, stdout, stderr) = git(root, args);
             return new Ran(code, stdout, stderr);
         }
@@ -505,7 +529,7 @@ public sealed partial class Workspace(
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in args) start.ArgumentList.Add(arg);
+        foreach (var arg in Signed(args, start)) start.ArgumentList.Add(arg);
 
         try
         {
@@ -535,7 +559,7 @@ public sealed partial class Workspace(
     /// </summary>
     private (int Code, byte[] Out, string Err) GitBytes(params string[] args)
     {
-        if (gitBytes is not null) return gitBytes(root, args);
+        if (gitBytes is not null) return gitBytes(root, Signed(args, null));
 
         var start = new ProcessStartInfo
         {
@@ -545,7 +569,7 @@ public sealed partial class Workspace(
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var arg in args) start.ArgumentList.Add(arg);
+        foreach (var arg in Signed(args, start)) start.ArgumentList.Add(arg);
 
         try
         {

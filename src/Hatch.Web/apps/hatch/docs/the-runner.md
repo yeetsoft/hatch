@@ -728,6 +728,61 @@ work a column can still carry a ticket across it. It also leaves an idle review
 self-move to the review judge's own sentence. A runner that is wrong on both
 the tags and the columns hears about the tags first.
 
+## Signing commits
+
+A machine may be set to sign every commit, with a key that is locked, a program
+that is not there, or an agent that is not running. A session on it would find
+that out at its first commit, with nobody there to say what to do. So the loop
+asks git first, in each checkout it serves, and acts on the answer.
+
+**The check.** It asks git itself, so it reads the machine's own key, program
+and format. The answer is one of three:
+
+- `off` - git is not set to sign commits here. Nothing more is done.
+- `works` - git is set to sign, and signed a test object.
+- `fails` - git is set to sign, and signing failed or did not answer within
+  twenty seconds. It carries the first line of what git complained of.
+
+The test object is one commit made with `git commit-tree -S` and left
+unreachable. It moves no ref and touches neither the index nor the working
+tree. It cannot prompt, since its input is closed, and it ends the signing
+program, and everything that program started, when the time is up. It sets no
+identity of its own, because git's default signing key comes from the one the
+checkout already has.
+
+**At the start.** `go-to-work`, `do-my-work` and `work` run the check in each
+checkout they serve. For one that answers `fails` they print one line: what git
+said, and that commits will be unsigned where a project allows it. `off` and
+`works` print nothing.
+
+**Before each increment.** The loop runs it again in the checkout the session
+will run in - after the workspace reset, before the issue's branch is prepared,
+since the merge of the trunk into that branch is the first commit. A checkout
+that answered `fails` is not asked again for thirty minutes.
+
+**What the project allows.** The dispatch says whether the project allows
+unsigned commits (`AllowsUnsignedCommits`, true when the board does not say).
+
+- **Signing fails, and unsigned commits are allowed.** For that increment the
+  loop sets `commit.gpgsign` and `tag.gpgsign` to false through
+  `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, after
+  any pairs the environment already holds. It does so for every git call of its
+  own - the merge of the trunk into the branch, the commit that saves work when
+  an account runs out of usage - and for the session it spawns, whichever agent
+  it is and attached or not. Nothing is written to a git settings file, and the
+  next increment starts without the override. Git older than 2.31 does not read
+  those variables: there the loop passes `-c commit.gpgsign=false` on its own
+  calls, and the prompt tells the session to do the same.
+- **The machine cannot sign (`off` or `fails`), and only signed commits are
+  allowed.** The loop does not turn signing off and spawns nothing. It lets the
+  ticket go with one comment saying this runner cannot sign, and what git said.
+  The next one in a row is flagged and waits, as any ticket that keeps coming
+  back does. It is not an increment run, so it never counts toward the three
+  failures in a row that end a night. `hatch work AER-12` refuses the same way
+  and exits non-zero.
+- **Signing works.** Nothing is changed. The prompt says what to do if a commit
+  still cannot be signed - see [the branch](what-a-session-is-told#the-branch).
+
 ## The runner's name
 
 A runner's name is its key's. The board reads it from `GET /api/me`
