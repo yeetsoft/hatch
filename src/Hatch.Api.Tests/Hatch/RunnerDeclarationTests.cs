@@ -141,6 +141,23 @@ public class RunnerDeclarationTests
     }
 
     [Fact]
+    public async Task BeatPlusConfig_ReadsThePreferredFlag_OnBothOverloads()
+    {
+        var actors = new StubActorDirectory();
+        var key = Key();
+        var beat = Beat(key.Name);
+        var config = new EfHatchRunnerConfig { ApiKeyId = key.Id, Preferred = true, UpdatedAt = Now };
+        var runner = new Runner(key, config, beat);
+
+        Assert.True((await RunnerDeclaration.OfAsync(runner, [], actors, default)).Preferred);
+        Assert.True((await RunnerDeclaration.OfAsync(runner, [Session(key.Id)], actors, default)).Preferred);
+        Assert.True((await RunnerDeclaration.OfAsync(beat, actors, default, config)).Preferred);
+
+        Assert.False((await RunnerDeclaration.OfAsync(new Runner(key, null, beat), [], actors, default)).Preferred);
+        Assert.False((await RunnerDeclaration.OfAsync(Beat("unclaimed"), actors, default)).Preferred);
+    }
+
+    [Fact]
     public async Task AKeylessRow_RefusesNothing()
     {
         var actors = new StubActorDirectory();

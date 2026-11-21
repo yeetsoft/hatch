@@ -204,6 +204,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 RefusedModels = RunnerTagColumn.Read(tagged.RefusedModels).Order(StringComparer.Ordinal).ToArray(),
                 StatusMode = tagged.StatusMode,
                 StatusIds = RunnerStatusIdsColumn.Read(tagged.StatusIds),
+                Preferred = tagged.Preferred,
             };
         }
 
