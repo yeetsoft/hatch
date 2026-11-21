@@ -463,6 +463,12 @@ build it has, asking again in <time>`. The night is never lost over it.
 - **`installing <sha> - <message>`** The disk, not the board: it is full, or the
   per-user folder is not writable. Free space or fix the folder's permissions; the
   builds live in `versions/` there.
+- **`kept <n> old build(s) it could not remove; tried again at the next change of
+  build`** The launcher removes the builds it no longer needs, and this one was in
+  use, held open by a scanner or another process, or on a disk that refused. It
+  says so once and tries again by itself; nothing is lost and no night is delayed.
+  If it never clears, delete the folders under `versions/` that no process is
+  running by hand.
 
 ## The runner went back to the build it had
 

@@ -311,6 +311,47 @@ public static class Launcher
         // directory is that one's now, and is not removed.
         var handedOver = false;
 
+        // The builds this launcher says it runs, and the sweeps that may be
+        // running beside it; both are let go of in the outer finally.
+        var leases = new List<IDisposable>();
+        var sweeps = new List<Task>();
+        var sweepGate = new object();
+        string? sweepNote = null;
+        var sweepNoted = false;
+
+        void Sweep()
+        {
+            if (builds is null) return;
+
+            var now = builds.Clock.GetUtcNow();
+
+            sweeps.Add(Task.Run(() =>
+            {
+                try
+                {
+                    // One at a time: two renaming the same folder would each count the other as a failure.
+                    lock (sweepGate)
+                    {
+                        IReadOnlyCollection<string>? running = [];
+                        try { running = builds.Running?.Invoke() ?? []; }
+                        catch (Exception e) when (e is not OutOfMemoryException) { running = null; }
+
+                        var result = builds.Store.Sweep(now, running, ownPath);
+                        if (result.Failed == 0 || sweepNoted) return;
+
+                        sweepNoted = true;
+                        Volatile.Write(
+                            ref sweepNote,
+                            $"hatch: kept {result.Failed} old build{(result.Failed == 1 ? "" : "s")} it could not remove; tried again at the next change of build");
+                    }
+                }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    // Housekeeping never ends or delays a night.
+                }
+            }));
+        }
+
         try
         {
             try
@@ -395,6 +436,7 @@ public static class Launcher
                 var hold = new BuildHold();
                 var failed = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 string? note = null;
+                var firstChild = true;
 
                 // A launcher that replaced itself in the middle of a night left
                 // all of the above behind: the next child starts as it would have.
@@ -416,9 +458,34 @@ public static class Launcher
                 {
                     int code;
 
+                    if (builds is not null)
+                    {
+                        // The builds this pass runs or falls back to are said to be in
+                        // use before what was said last pass is let go of, so there is
+                        // never a moment another launcher's sweep could take one.
+                        var next = new List<IDisposable>();
+                        foreach (var sha in new[] { programSha, confirmed.Sha }.OfType<string>().Distinct())
+                            next.Add(builds.Store.Hold(sha));
+
+                        var before = leases.ToArray();
+                        leases.Clear();
+                        leases.AddRange(next);
+                        foreach (var lease in before) lease.Dispose();
+
+                        if (BoardOf(builds) is { } touched) builds.Store.Touch(touched.Origin, builds.Clock.GetUtcNow());
+
+                        if (firstChild) Sweep();
+                        firstChild = false;
+                    }
+
                     var told = new Dictionary<string, string>(environment);
                     if (builds is not null && hold.Format(builds.Clock.GetUtcNow()) is { } held)
                         told[BuildHandoff.HoldVariable] = held;
+                    if (note is null && Volatile.Read(ref sweepNote) is { } sweepSaid)
+                    {
+                        note = sweepSaid;
+                        Volatile.Write(ref sweepNote, null);
+                    }
                     if (note is not null) told[BuildHandoff.NoteVariable] = note;
                     note = null;
 
@@ -482,6 +549,9 @@ public static class Launcher
                             trial = null;
                             trialOrigin = null;
                             aside = null;
+
+                            // The change of build is what leaves an old one behind.
+                            Sweep();
                             return true;
                         }
 
@@ -538,6 +608,11 @@ public static class Launcher
 
                     string? stored = null;
                     string? why;
+
+                    // Said before the download starts, since the build is in use by this
+                    // launcher from the moment it is in place. Let go of with the rest at
+                    // the next pass.
+                    leases.Add(builds.Store.Hold(request.Revision));
 
                     try
                     {
@@ -636,6 +711,20 @@ public static class Launcher
         }
         finally
         {
+            // Housekeeping is given a moment to finish and no longer.
+            try
+            {
+                if (sweeps.Count > 0)
+                {
+                    using var patience = new CancellationTokenSource();
+                    await Task.WhenAny(Task.WhenAll(sweeps), Task.Delay(TimeSpan.FromSeconds(5), patience.Token));
+                    patience.Cancel();
+                }
+            }
+            catch (Exception e) when (e is not OutOfMemoryException) { }
+
+            foreach (var lease in leases) lease.Dispose();
+
             if (!handedOver)
             {
                 try { Directory.Delete(directory, recursive: true); }

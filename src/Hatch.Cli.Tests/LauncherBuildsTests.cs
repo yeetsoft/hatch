@@ -17,6 +17,7 @@ public sealed class LauncherBuildsTests : IDisposable
 
     private static readonly string A = new('a', 40);
     private static readonly string B = new('b', 40);
+    private static readonly string C = new('c', 40);
     private static readonly byte[] Bytes = "a build"u8.ToArray();
 
     private readonly string temp = Directory.CreateTempSubdirectory("hatch-launcher-builds-").FullName;
@@ -109,9 +110,9 @@ public sealed class LauncherBuildsTests : IDisposable
 
     private LauncherBuilds Builds(
         Fetch fetch, BuildStore? store = null, Func<string, string, Task<string?>>? verify = null,
-        string origin = Origin) =>
+        string origin = Origin, Func<IReadOnlyCollection<string>>? running = null) =>
         new(() => new LauncherBoard(origin, null!), store ?? new BuildStore(root), fetch,
-            verify ?? ((_, _) => Task.FromResult<string?>(null)), clock, TimeSpan.FromMilliseconds(10));
+            verify ?? ((_, _) => Task.FromResult<string?>(null)), clock, TimeSpan.FromMilliseconds(10), running);
 
     private Task<int> Run(Child child, LauncherBuilds builds, LaunchSignals? signals = null) =>
         Launcher.RunAsync(
@@ -184,6 +185,7 @@ public sealed class LauncherBuildsTests : IDisposable
     public async Task A_build_already_kept_is_never_fetched()
     {
         await Keep(A);
+        using var lease = new BuildStore(root).Hold(A);
         var fetch = new Fetch(A);
         var child = new Child { Lives = { Asks(Request(A)), Exits(0) } };
 
@@ -770,5 +772,125 @@ public sealed class LauncherBuildsTests : IDisposable
     public void A_hold_reads_in_minutes_and_hours(int minutes, string words)
     {
         Assert.Equal(words, BuildHold.Words(TimeSpan.FromMinutes(minutes)));
+    }
+
+    // ---- Old builds are removed ----
+
+    private static string Numbered(int n) => n.ToString("x").PadLeft(40, '0');
+
+    /// <summary>
+    /// A night of <paramref name="changes"/> changes of build on one board: each child is heard
+    /// from, then asks for the next build, and the last one ends the night.
+    /// </summary>
+    private (Child Child, Fetch Fetch) Changes(int changes)
+    {
+        string wanted = Numbered(1);
+        var fetch = new Fetch(wanted) { Serve = (destination, ct) => Good(wanted)(destination, ct) };
+        var child = new Child();
+
+        child.Lives.Add(began =>
+        {
+            wanted = Numbered(1);
+            BuildHandoff.Write(began.Dir, Request(wanted));
+            return Task.FromResult(75);
+        });
+
+        for (var i = 1; i <= changes; i++)
+        {
+            var number = i;
+            child.Lives.Add(began =>
+            {
+                BuildHandoff.MarkAnswered(began.Dir, Numbered(number));
+                if (number == changes) return Task.FromResult(0);
+
+                wanted = Numbered(number + 1);
+                BuildHandoff.Write(began.Dir, Request(wanted));
+                return Task.FromResult(75);
+            });
+        }
+
+        return (child, fetch);
+    }
+
+    private string[] StoredBuilds() =>
+        Directory.Exists(Path.Combine(root, "versions"))
+            ? Directory.GetDirectories(Path.Combine(root, "versions")).Select(d => Path.GetFileName(d)!).Order().ToArray()
+            : [];
+
+    [Fact]
+    public async Task Twenty_changes_of_build_leave_the_current_build_and_the_previous_one()
+    {
+        var (child, fetch) = Changes(20);
+
+        var code = await Run(child, Builds(fetch));
+
+        Assert.Equal(0, code);
+        Assert.Equal(21, child.Starts.Count);
+        Assert.Equal([Numbered(19), Numbered(20)], StoredBuilds());
+        Assert.Empty(Directory.GetFiles(Path.Combine(root, "versions")));
+    }
+
+    [Fact]
+    public async Task A_build_another_launcher_has_leased_is_kept_through_the_changes()
+    {
+        await Keep(C);
+        using var lease = new BuildStore(root).Hold(C);
+        var (child, fetch) = Changes(8);
+
+        await Run(child, Builds(fetch));
+
+        Assert.Equal([Numbered(7), Numbered(8), C], StoredBuilds());
+    }
+
+    [Fact]
+    public async Task A_scan_that_throws_ends_no_night_removes_no_build_and_says_so_once()
+    {
+        await Keep(A);
+        await Keep(B);
+        var (child, fetch) = Changes(4);
+
+        var code = await Run(child, Builds(fetch, running: () => throw new InvalidOperationException("no scan")));
+
+        Assert.Equal(0, code);
+        Assert.Equal(5, child.Starts.Count);
+        Assert.Contains(A, StoredBuilds());
+        Assert.Contains(B, StoredBuilds());
+
+        var notes = child.Starts
+            .Select(s => s.Env.GetValueOrDefault(BuildHandoff.NoteVariable))
+            .Where(n => n is not null && n.StartsWith("hatch: kept", StringComparison.Ordinal))
+            .ToList();
+        Assert.True(notes.Count <= 1, string.Join("; ", notes));
+        Assert.All(notes, n => Assert.Contains("could not remove", n, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_child_start_touches_the_boards_record()
+    {
+        await Keep(A, current: true);
+        var record = Directory.GetFiles(Path.Combine(root, "boards")).Single();
+        File.SetLastWriteTimeUtc(record, clock.GetUtcNow().UtcDateTime - TimeSpan.FromDays(40));
+        var child = new Child { Lives = { Exits(0) } };
+
+        await Run(child, Builds(new Fetch(A)));
+
+        Assert.True(
+            Math.Abs((File.GetLastWriteTimeUtc(record) - clock.GetUtcNow().UtcDateTime).TotalSeconds) < 2,
+            "the record is as old as it was");
+        Assert.Contains(A, StoredBuilds());
+    }
+
+    [Fact]
+    public async Task A_board_no_loop_has_run_against_for_a_month_loses_its_builds()
+    {
+        await Keep(A, origin: "https://old.example", current: true);
+        var record = Directory.GetFiles(Path.Combine(root, "boards")).Single();
+        File.SetLastWriteTimeUtc(record, clock.GetUtcNow().UtcDateTime - TimeSpan.FromDays(31));
+        await Keep(B, current: true);
+        var child = new Child { Lives = { Exits(0) } };
+
+        await Run(child, Builds(new Fetch(B)));
+
+        Assert.Equal([B], StoredBuilds());
     }
 }
