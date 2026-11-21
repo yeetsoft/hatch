@@ -35,7 +35,10 @@ Users**: `pending`, `user` or `admin`.
 
 - **`pending`** reaches nothing behind the wall. They see the sign-in screen,
   which tells them "An administrator has to approve your account before you can
-  see the board."
+  see the board." A key whose owner is `pending` is refused too, on every route
+  that takes a key, with `403 pending_approval`. The key is not revoked and
+  nothing about it changes, so it works again when the owner is `user` or
+  `admin`.
 - **`user`** reaches every route on the board.
 - **`admin`** reaches what a user does and adds the operator's own controls:
   people, sessions, runner keys and the core settings. With the wall up, an
@@ -57,6 +60,12 @@ An admin lets someone in two ways, both on **Manage → Users**:
 The last `admin` cannot be demoted or deleted. The refusal is a `409`, and the
 **Role** select and **Delete** button on that row are disabled. Make someone
 else an `admin` first.
+
+Deleting a person revokes every key they own, in the same press. Each key stops
+at the moment of the delete, and a key that was already revoked keeps the time
+it had. The keys stay listed on **Runners** as revoked, with no owner, so an old
+event still has a name to point to. A delete that is refused, such as the last
+`admin`, revokes nothing.
 
 ## Owners and approvers
 
@@ -213,6 +222,10 @@ name, that HA-1937 retires.
   shown again. A name already held, by a key revoked or not, is refused. An
   admin can change the owner later, on the runner's Identity card, which
   carries the same hint under the select.
+- **A key stops with its owner.** Deleting the owner revokes the key. Setting
+  the owner to `pending` refuses the key with `403 pending_approval` until the
+  owner is `user` or `admin` again, and revokes nothing. A key an admin made
+  with no owner is neither: it has no owner to lose.
 - **Inside its owner's scope.** A key reads through its owner's
   [scope](#scope): its `next`, `queue`, `review`, hops, verdicts, merges,
   landings and closes touch only the projects that person can see, and an
@@ -275,15 +288,15 @@ navigation to the board on a walled Hatch does not meet either: it is sent
 to sign-in instead.
 
 - **A `401` is the wall.** Either a key was sent and refused — never minted,
-  mistyped, or revoked — or no key was sent to a Hatch that has its wall on.
+  mistyped, revoked, or its owner was deleted — or no key was sent to a Hatch that has its wall on.
   The CLI tells the two apart:
   - No key sent: ``hatch: 401 - no key was sent and this Hatch has its wall on. Run `hatch config`.``
   - Key sent: `hatch: 401 - the key was not accepted. Minted, not revoked, copied whole?`
 - **A `403` is a gate.** The wall let the caller in and a rule behind it said
   no. There are two kinds.
   - **The role gate** answers `{ "error": "<code>" }`, with one of:
-    - `pending_approval` — the person has not been let in yet, and is refused
-      at every level.
+    - `pending_approval` — the person, or the owner of the key, has not been
+      let in yet, and is refused at every level.
     - `not_admin` — the person's role is below what the route asks for.
     - `no_person` — an enrolled device nobody has claimed.
     - `key_not_accepted` — a key reached a route that takes no key.

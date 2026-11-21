@@ -4142,7 +4142,8 @@ first that applies winning:
 3. **A person reads their own row**, and no row is `all`.
 4. **A key reads its live owner's row**, through `IActorDirectory.PrincipalAsync`
    (the owner resolved live, as it is for a key's other questions). A key with
-   no live owner — none was set, or the owner was deleted — is unbounded.
+   no live owner — none was set — is unbounded. Deleting an owner revokes the
+   key, so a key never outlives its owner into that state.
 
 `none` is the empty set. `some` is the rows that remain after any cascade. The
 answer is read once per request. A wall that is up with no person and no key
