@@ -980,6 +980,9 @@ public class RunnersController(
         if ((request.StatusMode is not null || request.StatusIds is not null) && aggregate.Key is null)
             return BadRequest($"{runner} has no key - its column rule has nowhere to live");
 
+        if (request.Preferred is not null && aggregate.Key is null)
+            return BadRequest($"{runner} has no key - its preferred flag has nowhere to live");
+
         if (RunnerStatusMode.Normalise(request.StatusMode, out var normalisedStatusMode) is { } statusModeRefusal)
             return BadRequest(statusModeRefusal);
 
@@ -1025,7 +1028,7 @@ public class RunnersController(
             // the same thing. A key with no config row yet gets one here.
             var bounded = request.Under is not null || request.MaxRuns is not null || request.MaxSpend is not null
                 || request.MaxTokens is not null || request.MaxTokensPerHour is not null || request.UntilAt is not null
-                || request.Tags is not null || request.StatusMode is not null;
+                || request.Tags is not null || request.StatusMode is not null || request.Preferred is not null;
 
             if (bounded)
             {
@@ -1045,6 +1048,7 @@ public class RunnersController(
                     config.StatusMode = normalisedStatusMode;
                     config.StatusIds = RunnerStatusIdsColumn.Write(normalisedStatusIds);
                 }
+                if (request.Preferred is { } preferred) config.Preferred = preferred;
 
                 config.UpdatedAt = now;
             }

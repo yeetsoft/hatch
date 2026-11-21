@@ -4638,6 +4638,14 @@ public class EfHatchRunnerConfig
     /// </summary>
     public string StatusIds { get; set; } = "[]";
 
+    /// <summary>
+    /// Whether this runner is marked to take work before unmarked runners.
+    /// Only a person writes it: unlike a refused model, which only narrows what
+    /// a runner is handed, this widens its share, so no route lets a key set
+    /// its own. Nothing reads it for dispatch yet.
+    /// </summary>
+    public bool Preferred { get; set; }
+
     /// <summary>The epic to stay inside, or null for the whole board, as <see cref="EfHatchRunner.Under"/>.</summary>
     [MaxLength(EfHatchRunner.MaxUnderLength)]
     public string? Under { get; set; }

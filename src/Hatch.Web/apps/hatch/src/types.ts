@@ -3439,6 +3439,10 @@ export interface Runner {
   /** The column ids `statusMode` reads against - empty under `'all'`. Ids of
       columns since deleted are dropped on read. Mirrors RunnerDto.StatusIds. */
   statusIds?: number[];
+  /** Whether this runner is marked to take work before unmarked runners. Optional so a stub
+      that predates it still compiles; absent reads as false. Only a person sets it,
+      never the key. Mirrors RunnerDto.Preferred. */
+  preferred?: boolean;
   /** The Ollama ids this runner is asked to hold: the local-models table's rows
       that fit its machine, computed on read. Empty, never null - and empty for
       a runner that reports no accelerator memory. Mirrors RunnerDto.Hold. */
