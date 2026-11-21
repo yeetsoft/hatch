@@ -928,6 +928,26 @@ nothing. So a ticket in a project that allows only signed commits is left for a
 runner that signs, a runner that cannot sign is not held up waiting for its own
 beat, and `hatch queue` shows what the board would hand this machine.
 
+## Preferred
+
+A key can also be marked **preferred**, which says its runner takes work before
+the others. While a marked runner is live and idle, the board leaves a clear row
+for it: a runner that is not marked, asking for that row, is told it is left for
+the marked one. It is set on the Runners page alone - not `hatch config` and not
+a `HATCH_*` variable - and it lives on the key's config row beside the refused
+models.
+
+The board reads it on every dispatch read, so a change binds on the runner's
+next dispatch with no restart. `hatch queue`, run as another runner, says why in
+one sentence: *HA-12 in In Progress is left for build-box, which is preferred and
+free*. A marked runner is never told this. The mark is not a refusal and takes
+nothing away from anyone: with no marked runner free, the row is clear as it
+always was.
+
+`hatch runners` closes a marked runner's row with `  preferred`, after the
+column rule, and `--json` carries `preferred` on every row
+([`hatch runners`](cli-reference#runners)).
+
 ## The runner's name
 
 A runner's name is its key's. The board reads it from `GET /api/me`

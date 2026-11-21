@@ -25,8 +25,9 @@ public sealed class RunnersCommand(Cli cli)
         "  heard from first: its name, what it is doing, the ticket it holds (or",
         "  none), and how long ago it last heartbeat. A row closes with the projects",
         "  it is bound to, the models it advertises and, where it refuses any, the",
-        "  models it refuses. The row is followed by one indented line per live",
-        "  session beneath it: where, agent, OS, state. A caller with nothing to see",
+        "  models it refuses and, where it is marked to take work first, the word",
+        "  preferred. The row is followed by one indented line per live session",
+        "  beneath it: where, agent, OS, state. A caller with nothing to see",
         "  prints one sentence saying so.",
         "",
         "  --json           the endpoint's own answer, and nothing else",
@@ -170,7 +171,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, IReadOnlyList<StatusDto> statuses, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Signing(r) + Bound(r) + Models(r) + Refuses(r) + ColumnRule(r, statuses))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Signing(r) + Bound(r) + Models(r) + Refuses(r) + ColumnRule(r, statuses) + Preferred(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -314,6 +315,13 @@ public sealed class RunnersCommand(Cli cli)
         var word = row.StatusMode == RunnerStatusMode.Only ? "only" : "skips";
         return $"  {word} {string.Join(", ", named)}";
     }
+
+    /// <summary>
+    /// The word a runner marked to take work first closes its row with, after
+    /// the column rule - the last thing on the row; nothing where it is not
+    /// marked, so a row without the mark reads as it always has.
+    /// </summary>
+    private static string Preferred(RunnerDto row) => row.Preferred ? "  preferred" : "";
 
     /// <summary>
     /// The state word, in the order <c>runnerActivity</c> reads it - silence
