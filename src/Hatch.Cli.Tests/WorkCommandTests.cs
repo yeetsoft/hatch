@@ -1968,4 +1968,82 @@ public sealed class WorkCommandTests
         var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
+
+    // ---- Signing (HA-2653) ----
+
+    private static void NamedTicket(Harness h, bool allowsUnsigned)
+    {
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", allowsUnsignedCommits: allowsUnsigned));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+    }
+
+    [Fact]
+    public async Task A_named_ticket_is_refused_where_only_signed_commits_are_allowed_and_git_cannot_sign()
+    {
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Fails, "error: gpg failed to sign the data: no secret key") };
+        NamedTicket(h, allowsUnsigned: false);
+
+        var code = await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default);
+
+        Assert.NotEqual(0, code);
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(h.Sessions.Attached);
+        Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("enter", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Complained, l =>
+            l.Contains("only signed commits", StringComparison.Ordinal) && l.Contains("no secret key", StringComparison.Ordinal));
+        Assert.False(h.Runtime.Unsigned.On);
+    }
+
+    [Fact]
+    public async Task A_named_ticket_is_refused_the_same_way_where_git_is_not_set_to_sign()
+    {
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Off) };
+        NamedTicket(h, allowsUnsigned: false);
+
+        Assert.NotEqual(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Complained, l => l.Contains("not set to sign", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_named_ticket_goes_ahead_unsigned_where_the_project_allows_it()
+    {
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Fails, "locked") };
+        NamedTicket(h, allowsUnsigned: true);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var spawned = Assert.Single(h.Sessions.Spawned);
+        Assert.True(spawned.Unsigned);
+        Assert.Contains("Commits here are unsigned", spawned.Prompt, StringComparison.Ordinal);
+        Assert.False(h.Runtime.Unsigned.On);
+        Assert.Contains(h.Say.Complained, l => l.Contains("git cannot sign commits here (locked)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_dry_run_prints_the_signing_paragraph_the_session_would_be_given()
+    {
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Fails, "locked") };
+        h.Wire.Json("GET", "/api/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("Commits here are unsigned", StringComparison.Ordinal));
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.SigningAsked, a => a.Path == h.Runtime.Root);
+    }
+
+    [Fact]
+    public async Task A_dry_run_where_git_is_not_set_to_sign_prints_nothing_about_it()
+    {
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Off) };
+        h.Wire.Json("GET", "/api/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("unsigned", StringComparison.OrdinalIgnoreCase));
+    }
 }

@@ -131,4 +131,30 @@ public static class Reach
         if (settings.Key.Length > 0) environment["HATCH_KEY"] = settings.Key;
         else environment.Remove("HATCH_KEY");
     }
+
+    /// <summary>
+    /// <c>commit.gpgsign</c> and <c>tag.gpgsign</c> set to false for a git started
+    /// with this environment, through <c>GIT_CONFIG_COUNT</c> and its numbered
+    /// pairs - after any the environment already holds, whose count is read (a
+    /// count that is not a whole number is none) and raised. Environment
+    /// settings outrank every settings file, so nothing is written to one and
+    /// the machine's own are as they were the moment the process ends. Git
+    /// older than 2.31 does not read them; see <see cref="GitSigning"/>.
+    /// </summary>
+    public static void Unsigned(IDictionary<string, string?> environment)
+    {
+        var count = 0;
+        if (environment.TryGetValue("GIT_CONFIG_COUNT", out var held)
+            && int.TryParse(held, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var already))
+            count = already;
+
+        foreach (var key in new[] { "commit.gpgsign", "tag.gpgsign" })
+        {
+            environment[$"GIT_CONFIG_KEY_{count}"] = key;
+            environment[$"GIT_CONFIG_VALUE_{count}"] = "false";
+            count++;
+        }
+
+        environment["GIT_CONFIG_COUNT"] = count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
 }

@@ -1048,6 +1048,11 @@ public sealed class Harness : IDisposable
             MakeClone = Clone.Factory,
             Clock = Clock,
             Machine = machine ?? MachineFacts.None,
+            SigningProbe = (path, _) =>
+            {
+                SigningAsked.Add((path, Workspace.Calls.ToList()));
+                return Task.FromResult(CanSign);
+            },
         };
 
         Runtime.Board.Models = () => Runtime.AdvertisedModels() ?? [];
@@ -1072,6 +1077,12 @@ public sealed class Harness : IDisposable
 
     /// <summary>The tree, as the pass finds it. Ready unless a test says otherwise.</summary>
     public FakeWorkspace Workspace { get; } = new();
+
+    /// <summary>What git answers when asked whether it can sign here: not set to, unless a test says otherwise.</summary>
+    public SigningCheck CanSign { get; set; } = new(Signing.Off);
+
+    /// <summary>Every checkout git was asked about, with what the tree had been asked to do by then.</summary>
+    public List<(string Path, List<string> Calls)> SigningAsked { get; } = [];
 
     /// <summary>Where the build on a tip is read from. Silent - it cannot answer, and says nothing - unless a test says what a build came to.</summary>
     public FakeForge Forge { get; } = new();

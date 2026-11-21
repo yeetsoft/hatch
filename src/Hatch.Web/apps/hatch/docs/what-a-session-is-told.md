@@ -114,6 +114,29 @@ repository, in whichever of these states the tree is in:
 What the runner does to a checkout, and why, is
 [one increment and the loop](one-increment-and-the-loop#what-it-does-to-your-checkout).
 
+The section may end with **one short paragraph about signing a commit**. The
+runner has asked git whether it can sign in this checkout (see [signing
+commits](the-runner#signing-commits)), and the paragraph says what to do about
+the answer. Every row ends in something to do and none in a question, since
+nobody is there to answer one:
+
+- **Git cannot sign here, and the project allows unsigned commits.** Commits
+  here are unsigned. Commit as usual, say "committed unsigned" in the closing
+  comment, and do not ask. Where git is older than 2.31 it takes no override
+  from the environment, so the paragraph gives the session the two settings to
+  pass itself, as `git -c commit.gpgsign=false -c tag.gpgsign=false commit`.
+- **Git signs here, and the project allows unsigned commits.** If a commit
+  still cannot be signed, make it with `--no-gpg-sign`, say so in the closing
+  comment, and do not ask.
+- **The project allows only signed commits.** Never commit unsigned. If a
+  commit cannot be signed, leave the work uncommitted, say so in a comment on
+  the ticket, and stop. Do not ask.
+- **Git is not set to sign, and the project allows unsigned commits.** Nothing
+  is added.
+
+A row whose playbook denies git writes makes no commit and gets no paragraph.
+`work --dry-run` prints it too.
+
 ### Changed since this brief
 
 Only when it has something to say, and only for an increment that moves the
@@ -334,6 +357,11 @@ The prompt is one half of it; the other is how the agent CLI is started. For
 - `hatch` is first on its `PATH`, is the same binary that spawned it, and
   inherits `HATCH_BASE` and `HATCH_KEY` from it - already
   pointed at the same board, with the key it holds.
+- Where git cannot sign on this machine and the project allows unsigned
+  commits, its environment carries `commit.gpgsign` and `tag.gpgsign` set to
+  false, through `GIT_CONFIG_COUNT` and its numbered pairs, added after any the
+  environment already held. For that increment only, and written to no
+  settings file. See [signing commits](the-runner#signing-commits).
 
 The playbook's **budget** is never in the prompt. A session that crosses it is
 told once, mid-run, to wrap up.

@@ -20,7 +20,8 @@ public static class Prompt
         IReadOnlyList<BranchEntry>? branches = null,
         Rechecked? conflict = null,
         BuildFound? build = null,
-        IReadOnlyList<RepoSince>? since = null)
+        IReadOnlyList<RepoSince>? since = null,
+        CommitSigning? signing = null)
     {
         var issue = work.Issue;
         var key = issue.Key;
@@ -89,7 +90,7 @@ public static class Prompt
 
         var sharedStory = Branches.IsShared(work) ? work.BranchKey : null;
         var deniesGitWrites = DeniesGitWrites(work.Playbook?.DeniedTools) || work.Kind == WorkKinds.Answer;
-        if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory, deniesGitWrites));
+        if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory, deniesGitWrites, signing));
 
         // After the branch, which says where the work goes, and before the
         // children: a brief can go stale while it waits, and this is what
@@ -584,7 +585,8 @@ public static class Prompt
     /// it does give - that it overrides the playbook - is there because a stock
     /// playbook still tells a session to cut a branch from the trunk.
     /// </summary>
-    private static IEnumerable<string> Branch(IReadOnlyList<BranchEntry> entries, string? sharedStory, bool deniesGitWrites)
+    private static IEnumerable<string> Branch(
+        IReadOnlyList<BranchEntry> entries, string? sharedStory, bool deniesGitWrites, CommitSigning? signing = null)
     {
         yield return "## The branch";
         yield return "";
@@ -673,7 +675,58 @@ public static class Prompt
             }
         }
 
+        // Not for a row that writes no git, which makes no commit to sign.
+        if (!deniesGitWrites && signing is { } how && Signing(how) is { Length: > 0 } rule)
+        {
+            yield return "";
+            foreach (var line in rule) yield return line;
+        }
+
         yield return "";
+    }
+
+    /// <summary>
+    /// What a session is to do about a commit it cannot sign, once the runner has
+    /// asked git. A session cannot unlock a key and nobody is reading, so every
+    /// row ends in a thing to do and none in a question.
+    /// </summary>
+    private static string[] Signing(CommitSigning how)
+    {
+        // The project's rule wins over the machine's: a project that wants only
+        // signed commits is never told it may make an unsigned one.
+        if (!how.Allows)
+            return
+            [
+                "This project allows only signed commits. Never commit unsigned. If a commit cannot be signed,",
+                "leave the work uncommitted, say so in a comment on the ticket, and stop. Do not ask.",
+            ];
+
+        switch (how.State)
+        {
+            case Hatch.Cli.Signing.Fails:
+                return how.OldGit
+                    ?
+                    [
+                        "Git on this machine cannot sign commits, and this project allows unsigned ones. This git is older",
+                        "than 2.31, so it takes no override from the environment: commit with `git -c commit.gpgsign=false -c tag.gpgsign=false commit ...`.",
+                        "Say \"committed unsigned\" in your closing comment. Do not ask.",
+                    ]
+                    :
+                    [
+                        "Commits here are unsigned: git on this machine cannot sign them, and this project allows it. Commit as",
+                        "usual, say \"committed unsigned\" in your closing comment, and do not ask.",
+                    ];
+
+            case Hatch.Cli.Signing.Works:
+                return
+                [
+                    "Git on this machine signs commits, and this project allows unsigned ones. If a commit still cannot be",
+                    "signed, make it with `--no-gpg-sign`, say so in your closing comment, and do not ask.",
+                ];
+
+            default:
+                return [];
+        }
     }
 
     private static IEnumerable<string> Merge(BranchEntry entry)

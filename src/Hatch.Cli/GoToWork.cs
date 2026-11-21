@@ -521,6 +521,16 @@ public sealed class Tally
         if (tokens is not null) PeakHour = Math.Max(PeakHour, WindowTotal(now));
     }
 
+    /// <summary>
+    /// A ticket the runner let go without spawning, because it cannot sign and
+    /// the project allows only signed commits. Listed as interrupted and
+    /// counted nowhere else: it is not a run, so it spends nothing, and it never
+    /// reaches the failure streak that ends a night - a machine that cannot sign
+    /// is the machine's to fix, not three broken increments.
+    /// </summary>
+    public void Refused(IncrementReport report) =>
+        _interrupted.Add($"hatch:   cannot sign  {report.Key}  {report.Outcome}");
+
     /// <summary>One increment, added to the run's account.</summary>
     public void Record(IncrementReport report)
     {
@@ -1295,6 +1305,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             // After the block above, which replaces the board and with it anything set earlier.
             runtime.Board.Projects = projects;
+
+            // Said once, here, and not on every increment: a locked key is a
+            // thing to know about before the night, and the board's projects
+            // decide per ticket whether it matters.
+            await runtime.SayCannotSignAsync(ct);
 
             // The lock is ours, so no live loop holds these checkouts: whatever
             // session a dead one left running in them is nobody's, and the claim
@@ -2914,6 +2929,32 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
             }
 
+            // Asked of the checkout the session will run in, after the reset and
+            // before its branch is prepared - the merge of the trunk into that
+            // branch is a commit, and is the first thing a signer can stop.
+            var signing = await runtime.CanSignAsync(chosen.Root, ct);
+            if (signing.State != Signing.Works && !work.AllowsUnsignedCommits)
+            {
+                // A project that allows only signed commits is never given an
+                // unsigned one, and a session that could not sign would have
+                // nothing to do but stop at its first commit. Nothing is spawned
+                // and nothing is counted as a run: the ticket goes back to the
+                // board, free for a runner that can sign.
+                var refused = await runtime.Increment().CannotSignAsync(work, signing, runtime.RunnerName, ct);
+                tally.Refused(refused);
+                releaseOutcome = refused.ReleaseOutcome;
+                line.Line = $"{refused.Key} needs a runner that can sign commits";
+
+                // Straight on to the next ticket only where the board took the
+                // let-go: the one that comes back is then flagged, and waits. A
+                // flag that could not be written would be offered again at once,
+                // each time costing a claim, so that one waits for the interval.
+                return refused.Flag is "let go" or "flagged" or "waiting on a question" ? Pass.Cleared : Pass.Waited;
+            }
+
+            if (signing.Fails) runtime.Unsigned.Set(signing.OldGit);
+            var commitSigning = new CommitSigning(signing.State, work.AllowsUnsignedCommits, signing.OldGit);
+
             var entering = await lifecycle.EnterAsync(work, chosen, ct);
             if (entering.Asked)
             {
@@ -2955,7 +2996,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
                     built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
                     work.Playbook?.IsCheck == true ? ct2 => lifecycle.TreeUnchangedAsync(chosen, entering.Entries, ct2) : (Func<CancellationToken, Task<bool>>?)null,
-                    runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1, since: since);
+                    runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1, since: since, signing: commitSigning);
             }
             finally
             {
@@ -3087,6 +3128,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         }
         finally
         {
+            // The next increment starts without the override: it is asked about
+            // its own checkout, and a key unlocked in between is signing again.
+            runtime.Unsigned.Clear();
+
             // The lease covers the bookkeeping too, and this is the door every
             // path out of a pass goes through.
             if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId);
