@@ -381,6 +381,7 @@ describe('coverage', () => {
       ...fileRow(r),
       id: 7,
       answersQuestions: false,
+      worksOutChanges: false,
       defaultPrompt: null,
       updatedAt: '2026-01-01T00:00:00Z',
       projectId: 9,

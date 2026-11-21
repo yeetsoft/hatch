@@ -27,6 +27,7 @@ const BASE: Playbook = {
   deniedTools: [],
   isCheck: false,
   answersQuestions: false,
+  worksOutChanges: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -367,6 +368,16 @@ describe('PlaybookRow', () => {
     expect(show({ ...BASE, answersQuestions: true })).toContain('answers questions');
     expect(show(BASE)).not.toContain('answers questions');
     expect(show({ ...BASE, isCheck: true, deniedTools: ['Bash'] })).not.toContain('answers questions');
+  });
+
+  it('shows the works-out-changes badge on a flagged row only', () => {
+    const show = (playbook: Playbook) =>
+      renderToStaticMarkup(
+        <PlaybookRow playbook={playbook} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+      );
+    expect(show({ ...BASE, worksOutChanges: true })).toContain('works out changes');
+    expect(show(BASE)).not.toContain('works out changes');
+    expect(show({ ...BASE, isCheck: true, deniedTools: ['Bash'] })).not.toContain('works out changes');
   });
 
   it('shows the note badge only when passed a note', () => {
