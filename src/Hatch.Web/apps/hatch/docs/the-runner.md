@@ -22,7 +22,9 @@ platforms are built: `win-x64`, `osx-arm64`, `osx-x64` and `linux-x64`.
 On a Hatch with the wall up, an admin makes the runner's key from **Agents →
 Runners → Create runner**. The secret is shown once, with the `hatch config
 --origin` and `hatch config --key` commands that take it (see [Runners and their
-keys](people-roles-and-keys#runners-and-their-keys)).
+keys](people-roles-and-keys#runners-and-their-keys)). That key can also fetch
+its own platform's build straight from `/api/runner/download/<rid>`, and check
+it against the `sha256` `/api/runner` lists beside it.
 
 Put the file on your `PATH` as `hatch` (`hatch.exe` on Windows). On macOS and
 Linux it needs marking executable first:

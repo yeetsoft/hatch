@@ -734,12 +734,12 @@ public class AdminSurfaceTests
         "SettingsController.GetCredential",
         "SettingsController.GetClaudeToken",
 
-        // The runner the image hands out, cut the same way as the settings
-        // above it: plain [RequireAdmin], no AcceptKey. Not because a binary
-        // is a credential - it is the same program anybody may build from this
-        // repository - but because the audience is a person at a browser
-        // setting a machine up, and nobody's dispatcher has a reason to
-        // download the program it is already running as. See RunnerController.
+        // The runner the image hands out. Not because a binary is a
+        // credential - it is the same program anybody may build from this
+        // repository - but because a Pending person must still be refused it,
+        // the same as every other guarded route. The audience is wider than
+        // it was: a person at a browser setting a machine up, and now also a
+        // runner's own key, checking its build's sha256. See RunnerController.
         "RunnerController.Get",
         "RunnerController.Download",
     ];
@@ -775,9 +775,9 @@ public class AdminSurfaceTests
 
     /// <summary>
     /// The routes under Modules/Hatch that accept no key, so a key is refused
-    /// them: a playbook, an override, a runner bound, an assignee, a priority,
-    /// the settings and the runner binary each choose what the next agent may
-    /// do or spend. Each still asks for User - a person, not an Admin.
+    /// them: a playbook, an override, a runner bound, an assignee, a priority
+    /// and the settings each choose what the next agent may do or spend. Each
+    /// still asks for User - a person, not an Admin.
     /// </summary>
     private static readonly string[] PersonOnly =
     [
@@ -889,8 +889,6 @@ public class AdminSurfaceTests
         "AttachmentsController.DeleteAttachment",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
-        "RunnerController.Get",
-        "RunnerController.Download",
     ];
 
     /// <summary>
@@ -999,6 +997,8 @@ public class AdminSurfaceTests
         "ReportsController.GetCumulativeFlow",
         "ReportsController.GetFlow",
         "ReportsController.GetTimeline",
+        "RunnerController.Download",
+        "RunnerController.Get",
         "RunnersController.GetRunner",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",

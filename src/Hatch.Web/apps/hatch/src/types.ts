@@ -2833,6 +2833,8 @@ export interface RunnerDownload {
   fileName: string;
   /** Where to get it. Named by the server, so the page never builds a path of its own. */
   url: string;
+  /** Lowercase hex sha256 of the exact bytes `url` serves. */
+  sha256: string;
 }
 
 /** What the Runner page draws. Mirrors RunnerDownloadsDto.
