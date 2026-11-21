@@ -10,6 +10,45 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class DtosTests
 {
+    private const string Told = """{"state":"running","under":null,"maxRuns":null,"maxSpend":null,"untilAt":null""";
+
+    [Fact]
+    public void RunnerInstructionDto_parses_a_boardBuild()
+    {
+        var json = Told + """
+            ,"boardBuild":{"revision":"abc","sequence":12,"compare":"behind","download":"/api/runner/download/linux-x64","sha256":"ff"}}
+            """;
+
+        var told = JsonSerializer.Deserialize<RunnerInstructionDto>(json, HatchClient.Json);
+
+        Assert.NotNull(told?.BoardBuild);
+        Assert.Equal(("abc", 12, RunnerBuildComparisons.Behind), (told.BoardBuild.Revision, told.BoardBuild.Sequence, told.BoardBuild.Compare));
+        Assert.Equal("/api/runner/download/linux-x64", told.BoardBuild.Download);
+        Assert.Equal("ff", told.BoardBuild.Sha256);
+    }
+
+    [Fact]
+    public void RunnerInstructionDto_parses_an_older_boards_reply_as_no_boardBuild()
+    {
+        var told = JsonSerializer.Deserialize<RunnerInstructionDto>(Told + "}", HatchClient.Json);
+
+        Assert.NotNull(told);
+        Assert.Null(told.BoardBuild);
+    }
+
+    [Fact]
+    public void RunnerInstructionDto_parses_a_boardBuild_with_a_member_and_a_word_it_has_never_seen()
+    {
+        var json = Told + """
+            ,"boardBuild":{"revision":"abc","sequence":12,"compare":"sideways","download":null,"sha256":null,"size":9},"later":1}
+            """;
+
+        var told = JsonSerializer.Deserialize<RunnerInstructionDto>(json, HatchClient.Json);
+
+        Assert.Equal("sideways", told?.BoardBuild?.Compare);
+        Assert.Null(told.BoardBuild.Download);
+    }
+
     [Fact]
     public void PlaybookDto_round_trips_through_HatchClient_Json_with_its_source()
     {

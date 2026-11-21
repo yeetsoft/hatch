@@ -3,6 +3,8 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
+using Hatch.Api.Models.HatchRevision;
+using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Settings;
 using Hatch.Contracts;
@@ -43,7 +45,8 @@ namespace Hatch.Api.Modules.Hatch;
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
     TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,
-    RunnerSessions sessions, Dispatch dispatch, ILogger<RunnersController> logger) : ControllerBase
+    RunnerSessions sessions, Dispatch dispatch, IHatchRevision revision, IRunnerBuilds builds,
+    ILogger<RunnersController> logger) : ControllerBase
 {
     /// <summary>
     /// Every runner this Hatch knows of: one entry per visible key - revoked
@@ -428,7 +431,22 @@ public class RunnersController(
         var localModels = await LocalModelsAsync(ct);
 
         return RunnerSessions.Instruct(
-            session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour, localModels, now);
+            session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour, localModels, now)
+            with { BoardBuild = await BoardBuildAsync(request, ct) };
+    }
+
+    /// <summary>
+    /// <see cref="Runners.BoardBuild"/> for this beat, with the build its platform
+    /// names. The lookup is made only once the part is known to exist, since the
+    /// first one hashes the file.
+    /// </summary>
+    private async Task<RunnerBoardBuildDto?> BoardBuildAsync(RunnerHeartbeatRequest request, CancellationToken ct)
+    {
+        if (Runners.BoardBuild(revision.Revision, revision.Sequence, request, null) is null) return null;
+
+        ct.ThrowIfCancellationRequested();
+        var build = request.Rid is { } rid ? await builds.FindAsync(rid) : null;
+        return Runners.BoardBuild(revision.Revision, revision.Sequence, request, build);
     }
 
     /// <summary>
@@ -546,7 +564,8 @@ public class RunnersController(
                 var refusedModels = await RefusedFromKeyAsync(ct);
                 return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), null,
                     defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
-                    with { RefusedModels = refusedModels, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refusedModels) };
+                    with { RefusedModels = refusedModels, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refusedModels),
+                        BoardBuild = await BoardBuildAsync(request, ct) };
             }
             catch (DbUpdateException)
             {
@@ -583,7 +602,8 @@ public class RunnersController(
         var refused = await RefusedFromKeyAsync(ct);
         return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), order,
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
-            with { RefusedModels = refused, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refused) };
+            with { RefusedModels = refused, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refused),
+                BoardBuild = await BoardBuildAsync(request, ct) };
     }
 
     /// <summary>
