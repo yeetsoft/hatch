@@ -435,6 +435,12 @@ public class AdminSurfaceTests
         // rest of the module. See IssuePassesController.
         "IssuePassesController.GetPasses",
 
+        // An ambition's changes and their outcomes. Key-accepting like the
+        // module around it, never gated on the column - see
+        // IssueChangesController.
+        "IssueChangesController.GetChanges",
+        "IssueChangesController.PostOutcome",
+
         // Shelving a tree into a dream. Key-accepting like the module around
         // it - see IssueRemandController.
         "IssueRemandController.Remand",
@@ -934,6 +940,8 @@ public class AdminSurfaceTests
         "IssueCapabilitiesController.PostCapability",
         "IssueCapabilitiesController.PostVerdict",
         "IssueCapabilitiesController.PutOrder",
+        "IssueChangesController.GetChanges",
+        "IssueChangesController.PostOutcome",
         "IssueClaimController.Heartbeat",
         "IssueClaimController.ReleaseClaim",
         "IssueClaimController.TakeClaim",

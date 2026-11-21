@@ -843,6 +843,8 @@ on the project, naming the project's key and the Playbooks page.
 | GET | `/issues/{key}/capabilities/{id}/verdicts` | A capability's verdicts, newest first |
 | POST | `/issues/{key}/capabilities/{id}/verdicts` | Records a verdict on a capability |
 | GET | `/issues/{key}/passes` | An ambition's passes, with the verdicts and comments each gave |
+| GET | `/issues/{key}/changes` | An ambition's changes, newest first, with their outcomes |
+| POST | `/issues/{key}/changes/{eventId}/outcomes` | Records one epic's outcome on one change |
 
 A capability is one thing an ambition says has to be true, and a line saying
 how anyone would tell. Every route answers `400` on an issue that is not an
@@ -944,6 +946,70 @@ oldest first.
 A verdict timed inside no row's window answers as a pass of its own, with no
 `RowId` or `SessionId`, dated at the verdict's own time - so nothing recorded
 is ever hidden.
+
+A pass row that names a change (`changeEventId` on the work log entry) is left
+out here - it is a session answering that change, not a pass over the
+capabilities, and it shows up instead on `GET /issues/{key}/changes` below.
+
+### An ambition's changes
+
+A change is read, never stored: it is every `capability_added`,
+`capability_edited` and `capability_removed` event on one ambition, grouped
+by the work log rows that worked them out. `capability_moved` is never part
+of one. See docs/hatch.md, "ChangeOutcome".
+
+GET `/issues/{key}/changes` answers the ambition's changes, newest first, as
+`ChangeDto[]`. `400` on an issue that is not an ambition, naming its type,
+with the sentence `only an ambition has changes - AER-12 is a story`; `404`
+on an unknown key. Open to a key and a person, reading with the same scope
+`GET /issues/{key}/capabilities` does. An ambition never changed answers an
+empty list.
+
+Each is a `ChangeDto(Id, SavedAt, WorkedOut, WorkedOutAt, Entries, Outcomes)`.
+`Id` is the id of the change's newest event. `WorkedOut` is true where a work
+log row with outcome `worked` names this change's id in `changeEventId`;
+`WorkedOutAt` is when, or null. A change not yet worked out is the first in
+the list.
+
+`Entries` is one `ChangeEntryDto(EventId, Kind, CapabilityId, Position,
+StatementBefore, HowToTellBefore, StatementAfter, HowToTellAfter, Actor, At)`
+per event, oldest first. `Kind` is `added`, `changed` or `removed`. The
+before and after lines are null on the side that does not apply - an add has
+no before, a removal no after - and both are null where the payload will not
+parse, a tolerant read rather than a failed one.
+
+`Outcomes` is one `ChangeOutcomeDto(ChangeEventId, EpicKey, EpicTitle,
+EpicColumn, Outcome, Why, RecordedBy, RecordedAt, Decision)` per epic that has
+one. `EpicColumn` is the epic's column now, by name - an outcome is a record;
+the column stays the board's. `Decision` is a `ChangeDecisionDto(Decision,
+DecidedBy, DecidedAt)` or null - nothing writes it yet.
+
+POST `/issues/{key}/changes/{eventId}/outcomes` takes
+`ChangeOutcomeRequest(EpicKey, Outcome, Why)` and answers the
+`ChangeOutcomeDto`: `201` for a new row, `200` for a replace. `key` is the
+ambition; it accepts a key in any column, as `POST .../verdicts` does -
+recording what a change did to an epic is a judgment about the work, not a
+change to what the ambition asks for. These are all `400`, in order, and
+each leaves the table as it was:
+
+- the issue is not an ambition;
+- `eventId` is not an added, edited or removed event of it;
+- `epicKey` does not parse, names no issue, or is not an epic directly under
+  the ambition (not merely beneath it, the way `serves` reads);
+- `Outcome` is not `carries_on`, `not_touched` or `serves_nothing`, naming
+  the three;
+- `Why` is blank after trimming, or over 300 characters.
+
+Recording again for the same epic in the same change replaces the row's
+`Outcome`, `Why`, `RecordedBy` and `RecordedAt`. A row a person has already
+decided is refused with `409`, naming the epic, and nothing is written. A
+recording identical to the one already stored writes nothing and answers
+`200` with the row as it stands.
+
+A write (new or replaced, never a no-op) writes one `change_outcome_recorded`
+event on the epic - not the ambition - payload `{ ambition, changeEventId,
+outcome, why }`, `ambition` the ambition's display key. See docs/hatch.md,
+"Issue event". It shows on the epic's own History.
 
 ## Serves
 
@@ -1825,7 +1891,10 @@ null and keeps a digest only on a `local` row. Each entry also carries `outcome`
 stamped by the claim release that named this session's id - null on a row never stamped, including
 every row written before this shipped. It also carries `questionId`, the question
 a session answered, which the `POST` accepts and is null on every other row; a `worked` row
-naming a question is what keeps the board from sending a second session to it. `/work-log/history` buckets by `hour` or `day`, chosen from the
+naming a question is what keeps the board from sending a second session to it. It likewise
+carries `changeEventId`, the id of the change a session recorded outcomes on, which the `POST`
+accepts and is null on every other row - see "An ambition's changes" above; a row naming a
+change is left out of `GET /issues/{key}/passes`. `/work-log/history` buckets by `hour` or `day`, chosen from the
 range's length unless named, and answers the bucket size it actually used;
 `/work-log/sessions` ranks by `tokens` (the default), `cost`, `ended`,
 `requests` or `peakContext`, each descending. All three take an optional

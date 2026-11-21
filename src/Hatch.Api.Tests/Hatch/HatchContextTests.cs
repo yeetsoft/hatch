@@ -30,12 +30,12 @@ public class HatchContextTests
     }
 
     [Fact]
-    public void TheModuleOwnsFortyTwoTables()
+    public void TheModuleOwnsFortyThreeTables()
     {
         using var db = NewContext();
 
         Assert.Equal(
-            ["Attachments", "BuildChecks", "Capabilities", "CapabilityLinks", "CapabilityVerdicts", "ChangelogFiles", "ChangelogTasks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "GooseFindings", "GooseRuns", "GooseSightings", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "LocalModels", "MergeChecks", "OvernightSeen", "PersonHomes", "PersonScopeProjects", "PersonScopes", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
+            ["Attachments", "BuildChecks", "Capabilities", "CapabilityLinks", "CapabilityVerdicts", "ChangeOutcomes", "ChangelogFiles", "ChangelogTasks", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "GooseFindings", "GooseRuns", "GooseSightings", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "LocalModels", "MergeChecks", "OvernightSeen", "PersonHomes", "PersonScopeProjects", "PersonScopes", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerSessions", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 
@@ -295,6 +295,22 @@ public class HatchContextTests
         Assert.Equal(
             DeleteBehavior.Cascade,
             ForeignKeyOn(db, typeof(EfHatchCapabilityVerdict), nameof(EfHatchCapabilityVerdict.CapabilityId)).DeleteBehavior);
+    }
+
+    /// <summary>
+    /// An outcome has no meaning without the ambition it changed or the epic
+    /// it is about, so deleting either takes it. Pinned as model metadata, as
+    /// <see cref="ACapability_CascadesWithItsIssue"/> is, since the in-memory
+    /// provider's cascade is not Postgres's.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(EfHatchChangeOutcome.IssueId))]
+    [InlineData(nameof(EfHatchChangeOutcome.EpicId))]
+    public void AChangeOutcome_CascadesWithEitherIssue(string foreignKey)
+    {
+        using var db = NewContext();
+
+        Assert.Equal(DeleteBehavior.Cascade, ForeignKeyOn(db, typeof(EfHatchChangeOutcome), foreignKey).DeleteBehavior);
     }
 
     /// <summary>

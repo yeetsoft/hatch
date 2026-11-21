@@ -3159,6 +3159,47 @@ public record AmbitionPassVerdictDto(
     long Id, long CapabilityId, int Position, string Statement,
     string Verdict, string LookedAt, string Sha, string Author, DateTimeOffset At, bool Changed);
 
+/// <summary>
+/// One change to an ambition's capabilities: every added, edited or removed
+/// event newer than the last change worked out, up to and including the
+/// event that named it - see <c>GET /issues/{key}/changes</c>.
+/// </summary>
+/// <param name="Id">The id of the change's newest event - what a session names in <c>changeEventId</c> to work it out.</param>
+/// <param name="SavedAt">When the newest event was saved.</param>
+/// <param name="WorkedOut">Whether a work log row with outcome <c>worked</c> names this change.</param>
+/// <param name="WorkedOutAt">When it was, or null where it was not.</param>
+/// <param name="Entries">What changed, one per event, oldest first.</param>
+/// <param name="Outcomes">The outcomes recorded so far, one per epic that has one.</param>
+public record ChangeDto(
+    long Id, DateTimeOffset SavedAt, bool WorkedOut, DateTimeOffset? WorkedOutAt,
+    IReadOnlyList<ChangeEntryDto> Entries, IReadOnlyList<ChangeOutcomeDto> Outcomes);
+
+/// <summary>
+/// One event within a change - see <see cref="ChangeDto"/>. <paramref name="Kind"/>
+/// is one of <c>added</c>, <c>changed</c> or <c>removed</c>. The before and
+/// after lines are null on the side that does not apply - an add has no
+/// before, a removal no after - and both are null where the payload will not
+/// parse, a tolerant read rather than a failed one.
+/// </summary>
+public record ChangeEntryDto(
+    long EventId, string Kind, long? CapabilityId, int? Position,
+    string? StatementBefore, string? HowToTellBefore, string? StatementAfter, string? HowToTellAfter,
+    string Actor, DateTimeOffset At);
+
+/// <summary>One epic's outcome on one change - see <see cref="ChangeDto"/>.</summary>
+/// <param name="EpicColumn">The epic's column now, by name - a change's outcome is a record; the column stays the board's.</param>
+/// <param name="Decision">A person's decision on this outcome, or null where none has been made - see <see cref="ChangeDecisionDto"/>.</param>
+public record ChangeOutcomeDto(
+    long ChangeEventId, string EpicKey, string EpicTitle, string EpicColumn,
+    string Outcome, string Why, string RecordedBy, DateTimeOffset RecordedAt, ChangeDecisionDto? Decision);
+
+/// <summary>A person's decision on a recorded outcome - see <see cref="ChangeOutcomeDto"/>. Nothing writes this yet.</summary>
+public record ChangeDecisionDto(string Decision, string DecidedBy, DateTimeOffset DecidedAt);
+
+/// <summary>Records one epic's outcome on one change - see <c>POST /issues/{key}/changes/{eventId}/outcomes</c>.</summary>
+/// <param name="Outcome">One of <c>carries_on</c>, <c>not_touched</c> or <c>serves_nothing</c>.</param>
+public record ChangeOutcomeRequest(string EpicKey, string Outcome, string Why);
+
 /// <summary>Replaces the set of capabilities an epic serves, with the capability ids it should now carry.</summary>
 public record IssueServesWriteRequest(IReadOnlyList<long> CapabilityIds);
 
@@ -4081,6 +4122,7 @@ public record WorkLogReadDto(string Path, int Count);
 /// <param name="ModelDigest">The digest of a local model as the local server's model list reported it before the session started. Null unless the model ran locally.</param>
 /// <param name="Reads">The files the session read, heaviest first. Capped and clipped by the endpoint rather than refused. Null from a CLI built before this shipped.</param>
 /// <param name="QuestionId">The question this session answered, set only by an answering session. Once a <c>worked</c> row names a question, the board does not aim another session at it.</param>
+/// <param name="ChangeEventId">The id of the change this session recorded outcomes on, set only by such a session.</param>
 public record WorkLogEntryRequest(
     string SessionId,
     DateTimeOffset StartedAt,
@@ -4110,7 +4152,8 @@ public record WorkLogEntryRequest(
     string? DispatchModel = null,
     string? ModelPlacement = null,
     string? ModelDigest = null,
-    long? QuestionId = null);
+    long? QuestionId = null,
+    long? ChangeEventId = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -4139,6 +4182,7 @@ public record WorkLogEntryRequest(
 /// <param name="Outcome">Whether the increment moved its ticket: a claim outcome such as <c>worked</c> or <c>dropped</c>, stamped by the claim release. Null for a row never stamped, including every row written before this shipped.</param>
 /// <param name="Reason">Why the runner let go: <c>quiet</c>, <c>run-time</c> or <c>error</c>, stamped beside the outcome. Null where the release named none.</param>
 /// <param name="QuestionId">The question an answering session answered. Null on every other row.</param>
+/// <param name="ChangeEventId">The change this session recorded outcomes on. Null on every other row.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -4177,7 +4221,8 @@ public record WorkLogEntryDto(
     IReadOnlyList<WorkLogReadDto> Reads,
     string? Outcome,
     string? Reason,
-    long? QuestionId = null);
+    long? QuestionId = null,
+    long? ChangeEventId = null);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for

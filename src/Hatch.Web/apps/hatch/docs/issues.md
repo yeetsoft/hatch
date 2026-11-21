@@ -132,6 +132,31 @@ works that out when it reads, and nothing is stored for it. Every entry's own
 comments follow, rendered the way the Comments section renders a body. The
 verdict lines sit in a grid on a desktop and stack one per line on a phone.
 
+## Changing an ambition
+
+A change is what happened to an ambition's capabilities since the last change
+was worked out: every capability added, edited or removed, read as a group
+rather than stored on its own. Reordering is never part of a change - it does
+not say what anything has to be, only what order the rows sit in.
+
+An epic beneath the ambition can carry an outcome on a change: carries on (the
+epic's work still stands), not touched (the change did not reach what this
+epic serves) or serves nothing (the change means this epic no longer serves
+anything, usually because what it served was removed). Each comes with a line
+saying why. An outcome is a record of a session's judgment, not a move - the
+epic's own column stays the board's to change, same as a capability's verdict
+is a record and never a move either.
+
+This is a different thing from the word outcome on a work log row, which says
+whether a session's increment moved its ticket (worked, dropped and the rest) -
+the two are never the same thing, the way a capability's verdict and a check
+session's are not.
+
+Recording again for the same epic on the same change replaces the outcome and
+the why; once a person has decided one, it cannot be recorded over. Each
+recording shows on the epic's own History, naming the ambition, the outcome
+and the why - not on the ambition's, since the judgment is about the epic.
+
 ## The Ambitions page
 
 The Ambitions page, at `/ambitions`, is a top-level link after the magnifying

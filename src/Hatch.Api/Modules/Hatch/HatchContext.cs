@@ -77,6 +77,7 @@ public class HatchContext : DbContext, IModuleContext
     public DbSet<EfHatchCapability> Capabilities => Set<EfHatchCapability>();
     public DbSet<EfHatchCapabilityLink> CapabilityLinks => Set<EfHatchCapabilityLink>();
     public DbSet<EfHatchCapabilityVerdict> CapabilityVerdicts => Set<EfHatchCapabilityVerdict>();
+    public DbSet<EfHatchChangeOutcome> ChangeOutcomes => Set<EfHatchChangeOutcome>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
@@ -429,6 +430,10 @@ public class HatchContext : DbContext, IModuleContext
             // Read by the dispatcher for the rows that name a question; no foreign key,
             // so a deleted comment never breaks the log.
             e.HasIndex(w => w.QuestionId);
+
+            // Read by AmbitionChanges for the rows that name a change; no
+            // foreign key, for the same reason.
+            e.HasIndex(w => w.ChangeEventId);
         });
 
         // Matches AddProjectLanding's own defaultValue, for the same reason as
@@ -695,6 +700,26 @@ public class HatchContext : DbContext, IModuleContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // Cascade both ways, as EfHatchCapabilityLink's FKs are: an outcome
+        // means nothing without the ambition it changed or the epic it is
+        // about. Unlike that link, this row keeps its own Id - two outcomes
+        // can share an ambition and an epic across different changes - so the
+        // pair is a unique index, not the primary key.
+        modelBuilder.Entity<EfHatchChangeOutcome>(e =>
+        {
+            e.HasOne(o => o.Issue)
+                .WithMany()
+                .HasForeignKey(o => o.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(o => o.Epic)
+                .WithMany()
+                .HasForeignKey(o => o.EpicId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(o => new { o.IssueId, o.ChangeEventId, o.EpicId }).IsUnique();
+        });
+
         modelBuilder.Entity<EfHatchPlaybookFile>(e =>
         {
             e.Property(f => f.Rows).HasColumnType("jsonb");
@@ -752,6 +777,7 @@ public class HatchContext : DbContext, IModuleContext
         modelBuilder.Entity<EfHatchCapabilityVerdict>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Capability!.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchDreamRemand>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchChangelogTask>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchChangeOutcome>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
 
         // Unlike EfHatchPlaybook/EfHatchDream/EfHatchAttachment above, a
         // finding or a sighting with no project is nobody's - a check that

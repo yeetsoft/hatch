@@ -135,6 +135,7 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         entry.ModelPlacement = placement is not null && EfHatchWorkLogEntry.ModelPlacements.Contains(placement) ? placement : null;
         entry.ModelDigest = entry.ModelPlacement == "local" ? Clip(request.ModelDigest, EfHatchWorkLogEntry.MaxModelDigestLength) : null;
         entry.QuestionId = request.QuestionId;
+        entry.ChangeEventId = request.ChangeEventId;
         entry.Reads = WorkLogRollup.WriteReads(request.Reads ?? []);
 
         await db.SaveChangesAsync(ct);
@@ -245,7 +246,8 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
         WorkLogRollup.ReadReads(w.Reads),
         w.Outcome,
         w.Reason,
-        w.QuestionId);
+        w.QuestionId,
+        w.ChangeEventId);
 
     /// <summary>What goes in the column, or null when the run reported no models at all.</summary>
     private static string? WriteModels(IReadOnlyList<WorkLogModelUseDto> models) =>
