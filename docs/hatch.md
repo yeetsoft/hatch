@@ -3596,11 +3596,21 @@ dispatch as `WorkDto.Messages`.
 
 **Three stored, weighted `tsvector` columns, each computed by Postgres, never
 assigned in code, each GIN-indexed:** `EfHatchIssue.SearchVector` (`Title`
-weight A, `Description` weight B), `EfHatchComment.SearchVector` (`Body`,
-weight C, every kind of comment — note, question, answer, message, verdict),
-`EfHatchWorkLogEntry.SearchVector` (`Title` and `Summary`, both weight D).
-See [`SearchQuery.cs`](../src/Hatch.Api/Modules/Hatch/SearchQuery.cs) and
+weight A, `Description` weight B, `PreviousTitles` also weight B),
+`EfHatchComment.SearchVector` (`Body`, weight C, every kind of comment —
+note, question, answer, message, verdict), `EfHatchWorkLogEntry.SearchVector`
+(`Title` and `Summary`, both weight D). See
+[`SearchQuery.cs`](../src/Hatch.Api/Modules/Hatch/SearchQuery.cs) and
 [`SearchController.cs`](../src/Hatch.Api/Modules/Hatch/SearchController.cs).
+
+**An issue is found by words from a title it used to have, not only its
+current one.** `EfHatchIssue.PreviousTitles` holds every title this issue was
+retitled away from, oldest-replaced first, one per line, never the current
+title and never the same title twice: `EfHatchIssue.Retitle`, the one place
+`Title` changes, drops a line equal to the new title and appends the old one
+unless it is already there, so retitling A to B and back to A leaves only B.
+A migration backfills it from each issue's own `retitled` events, replaying
+the same rule. `PreviousTitlesNewestFirst()` reads it the other way round.
 
 **A hit is counted once per issue**, however many of its comments or work-log
 rows matched — the match is an `EXISTS`, not a join.
@@ -3612,12 +3622,18 @@ Ties: closed ahead of open, then newest-closed, then newest-created. Without
 returns null — the list is newest first by closed, or created where open, so
 a column's issues come most-recently-closed first.
 
-**`matched` on a hit** lists which of `title`, `description`, `comment`,
-`work-log` found it, in that order.
+**`matched` on a hit** lists which of `title`, `previous-title`,
+`description`, `comment`, `work-log` found it, in that order. A hit also
+carries `previousTitles`, the issue's own previous titles newest first,
+whether or not `previous-title` is among what matched - empty on an issue
+never retitled.
 
 **Event payloads are deliberately not indexed**: they are superseded copies
-of text already indexed elsewhere, and indexing the JSON would surface a
-retitle's old wording as a match on the issue it no longer describes.
+of text already indexed elsewhere, and indexing the JSON wholesale would
+surface every previous description, and every retitle's wording twice over,
+as a match on an issue that no longer reads that way. Previous titles are
+the one exception, each held once, outside the payload, in
+`PreviousTitles` above; a previous description is not searched at all.
 
 **Done issues are in the result by default**; `statusId` narrows to one
 column, and none of the board's done-horizon folding applies.

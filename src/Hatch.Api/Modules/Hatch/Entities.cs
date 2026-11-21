@@ -1037,9 +1037,19 @@ public class EfHatchIssue
     public DateTimeOffset? ClosedAt { get; set; }
 
     /// <summary>
-    /// <see cref="Title"/> weighted A, <see cref="Description"/> weighted B -
-    /// see <see cref="SearchQuery"/>. Never assigned in code: Postgres computes
-    /// it from the two columns above the moment either one is written.
+    /// Titles this issue once had and no longer does, oldest first, one per
+    /// line - see <see cref="Retitle"/>. Weighted B in <see cref="SearchVector"/>
+    /// beside <see cref="Description"/>, so a search for words from a title
+    /// this issue used to have still finds it. Never holds the current
+    /// <see cref="Title"/>, and never the same title twice.
+    /// </summary>
+    public string PreviousTitles { get; set; } = "";
+
+    /// <summary>
+    /// <see cref="Title"/> weighted A, <see cref="Description"/> and
+    /// <see cref="PreviousTitles"/> both weighted B - see
+    /// <see cref="SearchQuery"/>. Never assigned in code: Postgres computes
+    /// it from the columns above the moment any of them is written.
     /// </summary>
     public NpgsqlTsVector SearchVector { get; private set; } = null!;
 
@@ -1671,6 +1681,34 @@ public class EfHatchIssue
     public ICollection<EfHatchIssueRunnerOmission> RunnerOmissions { get; set; } = [];
 
     public static bool IsValidType(string? type) => type is not null && Types.Contains(type);
+
+    /// <summary>
+    /// The only place <see cref="Title"/> changes. Moves the old title onto
+    /// <see cref="PreviousTitles"/>, unless it is already there or equal to
+    /// the new one - so the list holds each title once and never the current
+    /// one, and retitling A to B and back to A leaves only B on it. A line
+    /// break in either title is folded to a space first, so a title is
+    /// always one line.
+    /// </summary>
+    public void Retitle(string to)
+    {
+        var fromLine = OneLine(Title);
+        var toLine = OneLine(to);
+
+        var kept = PreviousTitlesNewestFirst().Where(t => t != toLine).Reverse().ToList();
+        if (fromLine != toLine && !kept.Contains(fromLine)) kept.Add(fromLine);
+
+        Title = to;
+        PreviousTitles = string.Join('\n', kept);
+    }
+
+    /// <summary>This issue's previous titles, newest first - the reverse of how <see cref="PreviousTitles"/> stores them.</summary>
+    public IReadOnlyList<string> PreviousTitlesNewestFirst() =>
+        PreviousTitles.Length == 0
+            ? []
+            : PreviousTitles.Split('\n').Reverse().ToList();
+
+    private static string OneLine(string title) => Regex.Replace(title, "[\r\n]+", " ");
 }
 
 /// <summary>

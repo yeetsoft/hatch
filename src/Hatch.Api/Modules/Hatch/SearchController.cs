@@ -161,12 +161,14 @@ public class SearchController(
                 i.ClosedAt,
                 i.NoCode,
                 i.CreatedBy,
+                i.PreviousTitles,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
                     i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
                 i.CreatedAt,
                 TitleMatched = false,
+                PreviousTitleMatched = false,
                 DescriptionMatched = false,
                 CommentMatched = false,
                 WorkLogMatched = false,
@@ -201,12 +203,15 @@ public class SearchController(
                 i.ClosedAt,
                 i.NoCode,
                 i.CreatedBy,
+                i.PreviousTitles,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
                     i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
                 i.CreatedAt,
                 TitleMatched = EF.Functions.ToTsVector(SearchQuery.Config, i.Title)
+                    .Matches(EF.Functions.ToTsQuery(SearchQuery.Config, tsquery)),
+                PreviousTitleMatched = EF.Functions.ToTsVector(SearchQuery.Config, i.PreviousTitles)
                     .Matches(EF.Functions.ToTsQuery(SearchQuery.Config, tsquery)),
                 DescriptionMatched = EF.Functions.ToTsVector(SearchQuery.Config, i.Description)
                     .Matches(EF.Functions.ToTsQuery(SearchQuery.Config, tsquery)),
@@ -291,13 +296,18 @@ public class SearchController(
                 ChildBeyondScope: disclosed.ChildBeyondScope,
                 FromBeyondScope: disclosed.FromBeyondScope);
 
-            var matched = new List<string>(4);
+            var matched = new List<string>(5);
             if (i.TitleMatched) matched.Add("title");
+            if (i.PreviousTitleMatched) matched.Add("previous-title");
             if (i.DescriptionMatched) matched.Add("description");
             if (i.CommentMatched) matched.Add("comment");
             if (i.WorkLogMatched) matched.Add("work-log");
 
-            hits.Add(new SearchHitDto(card, i.CreatedAt, i.ClosedAt, matched));
+            IReadOnlyList<string> previousTitles = i.PreviousTitles.Length == 0
+                ? []
+                : i.PreviousTitles.Split('\n').Reverse().ToList();
+
+            hits.Add(new SearchHitDto(card, i.CreatedAt, i.ClosedAt, matched, previousTitles));
         }
 
         return new SearchDto(total, hits);

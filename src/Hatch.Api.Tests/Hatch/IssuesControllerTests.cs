@@ -1010,6 +1010,63 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task ARetitle_AddsTheOldTitleToPreviousTitles()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the gasket");
+
+        await h.Issues.PatchIssue("AER-1", Patch(title: "the sprocket"), default);
+
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Number == 1);
+        Assert.Equal("the sprocket", issue.Title);
+        Assert.Equal(["the gasket"], issue.PreviousTitlesNewestFirst());
+    }
+
+    [Fact]
+    public async Task RetitlingBackToAnEarlierTitle_LeavesOnlyTheOneInBetween()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "A");
+
+        await h.Issues.PatchIssue("AER-1", Patch(title: "B"), default);
+        await h.Issues.PatchIssue("AER-1", Patch(title: "A"), default);
+
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Number == 1);
+        Assert.Equal("A", issue.Title);
+        Assert.Equal(["B"], issue.PreviousTitlesNewestFirst());
+    }
+
+    [Fact]
+    public async Task ABulkEdit_NeverTouchesTitleOrPreviousTitles()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the gasket");
+        await h.Issues.PatchIssue("AER-1", Patch(title: "the sprocket"), default);
+
+        await h.Issues.BulkEdit(Bulk(["AER-1"], statusId: h.Done), default);
+
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Number == 1);
+        Assert.Equal("the sprocket", issue.Title);
+        Assert.Equal(["the gasket"], issue.PreviousTitlesNewestFirst());
+    }
+
+    [Fact]
+    public async Task AnUnchangedTitle_WritesNoEventAndLeavesPreviousTitlesAlone()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the gasket");
+        await h.Issues.PatchIssue("AER-1", Patch(title: "the sprocket"), default);
+
+        await h.Issues.PatchIssue("AER-1", Patch(title: "the sprocket"), default);
+
+        var events = await h.EventsAsync("AER-1");
+        Assert.Equal([EfHatchIssueEvent.Retitled, EfHatchIssueEvent.Created], events.Select(e => e.Kind));
+
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Number == 1);
+        Assert.Equal(["the gasket"], issue.PreviousTitlesNewestFirst());
+    }
+
+    [Fact]
     public async Task AnEpic_IsRetypeableToAReflectionAndBack()
     {
         var h = await NewAsync();
