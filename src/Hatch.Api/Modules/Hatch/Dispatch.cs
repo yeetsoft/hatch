@@ -111,11 +111,12 @@ public sealed class Dispatch(
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
         TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
         bool foldLetGo = true, ModelDeclaration? models = null, HasDeclaration? has = null,
-        RunnerRefusal? refusal = null, VisibleProjects? within = null)
+        RunnerRefusal? refusal = null, VisibleProjects? within = null, SigningDeclaration? signing = null)
     {
         tags ??= TagDeclaration.Unjudged;
         models ??= ModelDeclaration.Unjudged;
         has ??= HasDeclaration.Unjudged;
+        signing ??= SigningDeclaration.Unjudged;
         refusal ??= await RefusedByAsync(asking?.Name, ct);
 
         // Judged here, on the one entry every caller shares - the same place
@@ -450,10 +451,12 @@ public sealed class Dispatch(
                         trainSlots.GetValueOrDefault(issue.Id),
                         drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
-                        has: has, requirement: requirement, refusal: refusal, leftFor: leftFor, answering: answering is not null);
+                        has: has, requirement: requirement, refusal: refusal, leftFor: leftFor, answering: answering is not null,
+                        signing: signing);
                     if (!hop && (ModelFold(issue, status, playbook, models, localLevel, leftFor) is not null
                                   || RefusalFold(issue, status, playbook, refusal, localLevel, models) is not null
-                                  || ColumnFold(issue, status, refusal, statuses) is not null))
+                                  || ColumnFold(issue, status, refusal, statuses) is not null
+                                  || SigningFold(issue, signing) is not null))
                         modelFolded = true;
                     if (requirement is not null && rowTo is not null
                         && CodeGated(issue, status, rowTo, hop, implementation, merged, built)
@@ -571,7 +574,7 @@ public sealed class Dispatch(
                     rows[i] = rows[i] with { Deadlocked = true, Blocked = $"deadlocked - {rows[i].Blocked}" };
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags, models, refusal);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags, models, refusal, signing);
     }
 
     /// <summary>
@@ -773,7 +776,7 @@ public sealed class Dispatch(
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
             has: declared.Has, refusal: declared.ToRefusal(),
-            within: await PeerWithinAsync(peer, ct));
+            within: await PeerWithinAsync(peer, ct), signing: declared.Signing);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -784,7 +787,8 @@ public sealed class Dispatch(
 
     /// <summary>
     /// <see cref="TakeableByAsync"/> with the peer's models and dependencies left
-    /// unjudged: what it would take if it never folded on either. Every other
+    /// unjudged, and its signing with them: what it would take if it never folded
+    /// on any of the three. Every other
     /// field stays the peer's own, its column rule included - a row stuck on
     /// columns is not stuck on a toolchain.
     /// </summary>
@@ -799,7 +803,7 @@ public sealed class Dispatch(
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: ModelDeclaration.Unjudged,
             has: HasDeclaration.Unjudged,
             refusal: new RunnerRefusal(peer.Name, [], declared.StatusMode, declared.StatusIds),
-            within: await PeerWithinAsync(peer, ct));
+            within: await PeerWithinAsync(peer, ct), signing: SigningDeclaration.Unjudged);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -825,7 +829,12 @@ public sealed class Dispatch(
 
         // A fleet that judges neither can never fold on a toolchain, so no
         // issue is stuck on one - and an unprofiled fleet is spared the scans.
-        if (declared.Any(d => !d.Models.Judged && !d.Has.Judged && d.Refused.Count == 0)) return [];
+        // Signing is a third thing a row can be stuck on, but only where some
+        // project allows only signed commits, so an install that never uses
+        // the setting reads nothing more than it did.
+        var signedOnly = await db.Projects.AnyAsync(p => !p.AllowsUnsignedCommits, ct);
+        if (declared.Any(d => !d.Models.Judged && !d.Has.Judged && d.Refused.Count == 0
+                              && (!signedOnly || d.Signing.State == RunnerSigning.Works))) return [];
 
         HashSet<long>? stuck = null;
         foreach (var peer in fleet)
@@ -897,7 +906,7 @@ public sealed class Dispatch(
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
             has: declared.Has, refusal: declared.ToRefusal(),
-            within: await PeerWithinAsync(peer, ct));
+            within: await PeerWithinAsync(peer, ct), signing: declared.Signing);
     }
 
     private readonly Dictionary<Guid, VisibleProjects> peerScopes = [];
@@ -1190,7 +1199,8 @@ public sealed class Dispatch(
 
     /// <summary>
     /// What no live runner has, for one row: the model it runs on, and the
-    /// development dependencies its project's repositories ask for. Each check
+    /// development dependencies its project's repositories ask for, and a runner
+    /// that signs its commits where the project allows only signed ones. Each check
     /// reads only the declarations that judged that capability, and is skipped
     /// where none did. Null where one runner is short on one thing and another on
     /// another - a split fleet - since neither sentence is true of all of them.
@@ -1240,6 +1250,11 @@ public sealed class Dispatch(
                 if (needed.Count > 0) parts.Add($"no live runner has {Listed(needed)}");
             }
         }
+
+        // Here a live runner that never said counts as not signing, on purpose:
+        // a project that allows only signed commits wants a runner known to sign.
+        if (!row.Issue.Project!.AllowsUnsignedCommits && !declared.Any(d => d.Signing.State == RunnerSigning.Works))
+            parts.Add("no live runner signs its commits");
 
         return parts.Count == 0 ? null : string.Join("; ", parts);
     }
@@ -1935,6 +1950,30 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// Why the asking runner will not take a move on a project that allows only
+    /// signed commits: it does not sign, signing fails on it, or it has not said.
+    /// Null for a caller that is not judged, for a project that allows unsigned
+    /// commits, and for a runner whose signing <c>works</c>. A word that is not
+    /// one of <see cref="RunnerSigning.Words"/> reads as no answer.
+    /// </summary>
+    internal static string? SigningFold(EfHatchIssue issue, SigningDeclaration? signing)
+    {
+        if (signing is null || !signing.Judged || issue.Project!.AllowsUnsignedCommits) return null;
+        if (signing.State == RunnerSigning.Works) return null;
+
+        var key = IssueKey.Format(issue.Project.Key, issue.Number);
+        var runner = string.IsNullOrWhiteSpace(signing.Runner) ? "this runner" : signing.Runner;
+        var head = $"{key} allows only signed commits - ";
+        return signing.State switch
+        {
+            RunnerSigning.Off => $"{head}{runner} does not sign its commits",
+            RunnerSigning.Fails => $"{head}signing fails on {runner}" +
+                (string.IsNullOrWhiteSpace(signing.Why) ? "" : $" ({signing.Why})"),
+            _ => $"{head}{runner} has not said whether it signs",
+        };
+    }
+
+    /// <summary>
     /// The models the key named <paramref name="name"/> refuses, read once for a
     /// pass. Null for no name, no key store, and a name no key answers to - a
     /// board-wide scan or an unknown runner refuses nothing.
@@ -2482,11 +2521,12 @@ public sealed class Dispatch(
         DependencyRequirement? requirement = null,
         RunnerRefusal? refusal = null,
         (string Runner, string Model)? leftFor = null,
-        bool answering = false) =>
+        bool answering = false,
+        SigningDeclaration? signing = null) =>
         BlockedWithKind(
             issue, from, to, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
-            repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor, answering).Sentence;
+            repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor, answering, signing).Sentence;
 
     /// <summary>
     /// The hold for a child whose parent is in progress in another project but may not pull
@@ -2565,7 +2605,8 @@ public sealed class Dispatch(
         DependencyRequirement? requirement = null,
         RunnerRefusal? refusal = null,
         (string Runner, string Model)? leftFor = null,
-        bool answering = false)
+        bool answering = false,
+        SigningDeclaration? signing = null)
     {
         var hop = hopKind is not null;
 
@@ -2793,6 +2834,12 @@ public sealed class Dispatch(
         // work the column is never dispatched a move out of it, from any door.
         if (!hop && !reviewIdle && ColumnFold(issue, from, refusal, statuses) is { } columnBlock)
             return new Blocking(columnBlock, BlockedKinds.Other);
+
+        // Beside the column fold, and gated as it is: a project that allows
+        // only signed commits is not worked by a runner that has not said it
+        // signs them, from any door.
+        if (!hop && !reviewIdle && SigningFold(issue, signing) is { } signingBlock)
+            return new Blocking(signingBlock, BlockedKinds.Other);
 
         // After the model and refusal folds, before the dependencies: a runner that cannot
         // build the ticket's code is not asked to wait on what blocks it. The
@@ -3588,7 +3635,8 @@ public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
     IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null,
-    TagDeclaration? Tags = null, ModelDeclaration? Models = null, RunnerRefusal? Refusal = null)
+    TagDeclaration? Tags = null, ModelDeclaration? Models = null, RunnerRefusal? Refusal = null,
+    SigningDeclaration? Signing = null)
 {
     public static Scan Refused(string why) =>
         new(
@@ -3740,6 +3788,17 @@ public sealed record TagDeclaration(IReadOnlyList<string> Has, bool Judged, bool
         declaration = Of(refusal is null ? normalised : [], dangerous == false);
         return refusal;
     }
+}
+
+/// <summary>
+/// Whether the asking runner signs its commits, as <see cref="Dispatch.SigningFold"/> judges it.
+/// Only a <see cref="Judged"/> declaration folds anything: the board's own scan, which
+/// asks as no runner, is <see cref="Unjudged"/>. <see cref="State"/> is one of
+/// <see cref="RunnerSigning.Words"/>, or null for a runner that has not said.
+/// </summary>
+public sealed record SigningDeclaration(string Runner, string? State, string? Why, bool Judged)
+{
+    public static readonly SigningDeclaration Unjudged = new("", null, null, false);
 }
 
 /// <summary>

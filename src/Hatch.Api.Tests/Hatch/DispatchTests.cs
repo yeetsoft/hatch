@@ -3881,6 +3881,66 @@ public class DispatchTests
             ColumnFoldFrom(1, RunnerStatusMode.Only, 99));
     }
 
+    // ---- Signing: a project that allows only signed commits is not worked by a runner that has not said it signs ----
+
+    private static EfHatchIssue SignedOnlyIssue(bool allowsUnsigned = false)
+    {
+        var issue = ModelIssue();
+        issue.Project!.AllowsUnsignedCommits = allowsUnsigned;
+        return issue;
+    }
+
+    private static string? SigningFoldFor(string? state, string? why = null, string runner = "build-box", bool allowsUnsigned = false) =>
+        Dispatch.SigningFold(SignedOnlyIssue(allowsUnsigned), new SigningDeclaration(runner, state, why, true));
+
+    [Fact]
+    public void SigningFold_Off_SaysTheRunnerDoesNotSign() =>
+        Assert.Equal("AER-7 allows only signed commits - build-box does not sign its commits", SigningFoldFor(RunnerSigning.Off));
+
+    [Fact]
+    public void SigningFold_Fails_SaysWhyInParentheses()
+    {
+        Assert.Equal(
+            "AER-7 allows only signed commits - signing fails on build-box (gpg: signing failed: No pinentry)",
+            SigningFoldFor(RunnerSigning.Fails, "gpg: signing failed: No pinentry"));
+    }
+
+    [Fact]
+    public void SigningFold_FailsWithNoReason_HasNoParentheses()
+    {
+        Assert.Equal("AER-7 allows only signed commits - signing fails on build-box", SigningFoldFor(RunnerSigning.Fails));
+        Assert.Equal("AER-7 allows only signed commits - signing fails on build-box", SigningFoldFor(RunnerSigning.Fails, "  "));
+    }
+
+    [Fact]
+    public void SigningFold_NoAnswer_SaysTheRunnerHasNotSaid()
+    {
+        Assert.Equal("AER-7 allows only signed commits - build-box has not said whether it signs", SigningFoldFor(null));
+        Assert.Equal("AER-7 allows only signed commits - build-box has not said whether it signs", SigningFoldFor("maybe"));
+    }
+
+    [Fact]
+    public void SigningFold_ARunnerWithNoName_IsThisRunner() =>
+        Assert.Equal("AER-7 allows only signed commits - this runner does not sign its commits", SigningFoldFor(RunnerSigning.Off, runner: ""));
+
+    [Fact]
+    public void SigningFold_Works_FoldsNothing() => Assert.Null(SigningFoldFor(RunnerSigning.Works));
+
+    [Fact]
+    public void SigningFold_AProjectThatAllowsUnsignedCommits_FoldsNothing()
+    {
+        Assert.Null(SigningFoldFor(RunnerSigning.Off, allowsUnsigned: true));
+        Assert.Null(SigningFoldFor(RunnerSigning.Fails, "no", allowsUnsigned: true));
+        Assert.Null(SigningFoldFor(null, allowsUnsigned: true));
+    }
+
+    [Fact]
+    public void SigningFold_AnUnjudgedOrAbsentDeclaration_FoldsNothing()
+    {
+        Assert.Null(Dispatch.SigningFold(SignedOnlyIssue(), SigningDeclaration.Unjudged));
+        Assert.Null(Dispatch.SigningFold(SignedOnlyIssue(), null));
+    }
+
     // ---- A preferred local model: the asker that can run it gets it, and the rest are left for a free one ----
 
     private static readonly EfHatchStatus TodoColumn = new() { Name = "todo", SortOrder = 20 };
