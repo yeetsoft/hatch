@@ -24,6 +24,7 @@ const BEFORE: Playbook = {
   deniedTools: [],
   isCheck: false,
   answersQuestions: false,
+  worksOutChanges: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -95,6 +96,18 @@ describe('PlaybookProposalCard', () => {
     );
     const rows = html.match(/<tr>.*?<\/tr>/gs) ?? [];
     const flagRow = rows.find((r) => r.includes('>Answers questions<'))!;
+    expect(flagRow).toContain('>no<');
+    expect(flagRow).toContain('>yes<');
+    expect(flagRow.match(/hatch-playbook-proposal-cell--changed/g)).toHaveLength(2);
+  });
+
+  it('shows the works-out-changes flag before and after as no and yes', () => {
+    const after: Playbook = { ...BEFORE, worksOutChanges: true };
+    const html = renderToStaticMarkup(
+      <PlaybookProposalCard change={change({ after, changedFields: ['worksOutChanges'] })} statuses={STATUSES} />,
+    );
+    const rows = html.match(/<tr>.*?<\/tr>/gs) ?? [];
+    const flagRow = rows.find((r) => r.includes('>Works out changes<'))!;
     expect(flagRow).toContain('>no<');
     expect(flagRow).toContain('>yes<');
     expect(flagRow.match(/hatch-playbook-proposal-cell--changed/g)).toHaveLength(2);
