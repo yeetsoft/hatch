@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Text.RegularExpressions;
 
 namespace Hatch.Cli;
 
@@ -109,6 +111,19 @@ public sealed class HatchException(string message, HttpStatusCode? status = null
 public readonly record struct RawJson(string Value);
 
 /// <summary>
+/// What a binary download answered with: the status Hatch gave, the revision
+/// it reported (the literal <c>Hatch-Revision</c> header -
+/// <c>HatchRevisionMiddleware.HeaderName</c> on the server side), the sha256 of
+/// the bytes actually written to disk, how many of them there were, and a
+/// one-line failure where any of that did not happen.
+/// </summary>
+/// <param name="Sha256">Lowercase hex of what was actually streamed to disk - computed here, never trusted from a header.</param>
+public readonly record struct Download(HttpStatusCode? Status, string? Revision, string? Sha256, long Bytes, string? Failure)
+{
+    public bool Ok => Failure is null;
+}
+
+/// <summary>
 /// The one place that talks to Hatch, and the one place that decides what a
 /// failure means.
 /// </summary>
@@ -121,7 +136,7 @@ public readonly record struct RawJson(string Value);
 /// error, and a loop that ended because a ticket was busy would be the opposite
 /// of what the claim is for.
 /// </remarks>
-public sealed class HatchClient : IDisposable
+public sealed partial class HatchClient : IDisposable
 {
     /// <summary>
     /// Hatch speaks camelCase, and reads it tolerantly.
@@ -329,6 +344,87 @@ public sealed class HatchClient : IDisposable
             }
 
             await Task.Delay(delay, _clock, ct);
+        }
+    }
+
+    /// <summary>The runner download route, and one plain segment after it - never a host, a scheme or a slash of its own.</summary>
+    [GeneratedRegex(@"^/api/runner/download/[A-Za-z0-9._-]+$")]
+    private static partial Regex DownloadPath();
+
+    /// <summary>
+    /// A keyed binary download: streamed straight to <paramref name="destination"/>
+    /// while hashing, and never retried.
+    /// </summary>
+    /// <remarks>
+    /// <para><paramref name="path"/> comes from the board's own reply
+    /// (<c>RunnerDownloadDto.Url</c>), not from a person, but an absolute URL
+    /// there would still send this call's bearer key to whatever host it
+    /// named - so it is checked against <see cref="DownloadPath"/> before
+    /// anything is sent, and the literal segments <c>.</c> and <c>..</c> are
+    /// refused too, since a single one of either passes that pattern but
+    /// would still resolve up a directory once joined against the base
+    /// address.</para>
+    ///
+    /// <para>The shared <see cref="_http"/> is used - the key is already on
+    /// it - with <see cref="HttpCompletionOption.ResponseHeadersRead"/>, so
+    /// its two-minute <c>Timeout</c> covers only the headers; the body copy
+    /// is bound by its own ten-minute token, linked to <paramref
+    /// name="ct"/>. Only <paramref name="ct"/> itself throws - a trip of the
+    /// ten-minute bound, like every other failure here, comes back as
+    /// <see cref="Download.Failure"/> text instead.</para>
+    /// </remarks>
+    public async Task<Download> DownloadAsync(string path, string destination, CancellationToken ct)
+    {
+        var afterPrefix = path.Length > "/api/runner/download/".Length ? path["/api/runner/download/".Length..] : "";
+        if (!DownloadPath().IsMatch(path) || afterPrefix is "." or "..")
+            return new Download(null, null, null, 0, $"""hatch: refused to download "{path}" - not a runner download path""");
+
+        using var bound = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, path.TrimStart('/'));
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+
+            if (!response.IsSuccessStatusCode)
+                return new Download(response.StatusCode, null, null, 0, $"hatch: {(int)response.StatusCode} downloading {path}");
+
+            var revision = response.Headers.TryGetValues("Hatch-Revision", out var values) ? values.FirstOrDefault() : null;
+
+            bound.CancelAfter(TimeSpan.FromMinutes(10));
+
+            long bytes = 0;
+            using var sha = SHA256.Create();
+            await using var body = await response.Content.ReadAsStreamAsync(bound.Token);
+            await using var file = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
+
+            var buffer = new byte[81920];
+            int read;
+            while ((read = await body.ReadAsync(buffer, bound.Token)) > 0)
+            {
+                sha.TransformBlock(buffer, 0, read, null, 0);
+                await file.WriteAsync(buffer.AsMemory(0, read), bound.Token);
+                bytes += read;
+            }
+
+            sha.TransformFinalBlock([], 0, 0);
+            return new Download(response.StatusCode, revision, Convert.ToHexStringLower(sha.Hash!), bytes, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new Download(null, null, null, 0, $"hatch: timed out downloading {path}");
+        }
+        catch (HttpRequestException e)
+        {
+            return new Download(null, null, null, 0, $"hatch: {e.Message}");
+        }
+        catch (IOException e)
+        {
+            return new Download(null, null, null, 0, $"hatch: {e.Message}");
+        }
+        catch (UnauthorizedAccessException e)
+        {
+            return new Download(null, null, null, 0, $"hatch: {e.Message}");
         }
     }
 

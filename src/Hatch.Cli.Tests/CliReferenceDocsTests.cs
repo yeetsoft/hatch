@@ -18,6 +18,7 @@ public sealed class CliReferenceDocsTests
         ["config"] = ConfigCommand.ConfigUsage,
         ["use"] = UseCommand.UseUsage,
         ["image"] = ImageCommand.ImageUsage,
+        ["version"] = VersionCommand.VersionUsage,
         ["standby"] = StandbyCommand.StandbyUsage,
         ["board"] = BoardCommands.BoardUsage,
         ["next"] = BoardCommands.NextUsage,
