@@ -37,6 +37,7 @@ public sealed class CliReferenceDocsTests
         ["depends"] = DependsCommand.DependsUsage,
         ["capability"] = CapabilityCommands.CapabilityUsage,
         ["serves"] = CapabilityCommands.ServesUsage,
+        ["change"] = ChangeCommands.ChangeUsage,
         ["one-pr"] = OnePrCommand.OnePrUsage,
         ["dangerous"] = DangerousCommand.DangerousUsage,
         ["omit"] = OmitCommand.OmitUsage,

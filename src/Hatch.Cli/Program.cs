@@ -485,6 +485,7 @@ try
         "depends" => await new DependsCommand(cli).RunAsync(rest, cancelling.Token),
         "capability" => await new CapabilityCommands(cli).CapabilityAsync(rest, cancelling.Token),
         "serves" => await new CapabilityCommands(cli).ServesAsync(rest, cancelling.Token),
+        "change" => await new ChangeCommands(cli).ChangeAsync(rest, cancelling.Token),
         "one-pr" => await new OnePrCommand(cli).RunAsync(rest, cancelling.Token),
         "dangerous" => await new DangerousCommand(cli).RunAsync(rest, cancelling.Token),
         "omit" => await new OmitCommand(cli).RunAsync(rest, cancelling.Token),
@@ -599,7 +600,7 @@ internal partial class Program
     public static readonly string[] Commands =
     [
         "config", "use", "image", "version", "standby", "board", "next", "queue", "changelog", "activity", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
-        "verdict", "depends", "capability", "serves", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
+        "verdict", "depends", "capability", "serves", "change", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
 
@@ -686,6 +687,8 @@ internal partial class Program
         "  hatch capability judge AER-1 <id> holds|does_not_hold|cannot_tell --looked-at \"...\"  record a verdict",
         "  hatch serves AER-5           the capabilities an epic serves",
         "  hatch serves AER-5 7 9       ...replace the set; --none clears it",
+        "  hatch change list AER-1      an ambition's newest change, and its outcomes",
+        "  hatch change outcome AER-1 AER-5 carries_on \"...\" --change 412  record one",
         "  hatch one-pr AER-5           whether the story's tasks share its branch and one PR",
         "  hatch one-pr AER-5 on        ...turn it on for this story (or off, or inherit)",
         "  hatch dangerous AER-12 \"why\"  flag it: running its work could destabilise a machine",

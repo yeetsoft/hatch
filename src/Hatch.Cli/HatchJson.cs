@@ -78,6 +78,9 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<CapabilityDto>))]
 [JsonSerializable(typeof(CapabilityVerdictDto))]
 [JsonSerializable(typeof(List<ServedCapabilityDto>))]
+[JsonSerializable(typeof(ChangeDto))]
+[JsonSerializable(typeof(List<ChangeDto>))]
+[JsonSerializable(typeof(ChangeOutcomeDto))]
 
 // What is written.
 [JsonSerializable(typeof(IssueCreateRequest))]
@@ -126,6 +129,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(CapabilityOrderRequest))]
 [JsonSerializable(typeof(CapabilityVerdictRequest))]
 [JsonSerializable(typeof(IssueServesWriteRequest))]
+[JsonSerializable(typeof(ChangeOutcomeRequest))]
 
 // What a hook prints for the session that ran it.
 [JsonSerializable(typeof(PostToolUseOutput))]
