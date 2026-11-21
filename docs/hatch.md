@@ -10550,6 +10550,16 @@ works through it — it finds or builds the binary and hands over. What is left 
 it is the two things that are genuinely its own: that door, and the restart
 supervisor below, which a process cannot be for itself.
 
+A downloaded `hatch` has no `hatch.sh` beside it, so it supervises itself: a
+build published with `-p:HatchLauncher=true` (`make publish-hatch`, the image's
+four `cli-*` stages, CI's `hatch-cli` job) and started as `go-to-work` or
+`do-my-work` with nothing above it becomes a **launcher**, in
+[`src/Hatch.Cli/Launcher.cs`](../src/Hatch.Cli/Launcher.cs). It runs its own
+file again as the child, with `HATCH_NIGHT_STATE` pointing into a directory of
+its own, and starts it again when it exits 75. It rebuilds nothing, since a
+download has no source beside it. A build nobody stamped, a loop that already has
+a `HATCH_NIGHT_STATE`, and the container image's build never become one.
+
 So: a console program in the solution, compiled against
 `src/Hatch.Contracts` — the same records the API serves, so a fixture that
 goes stale does not quietly deserialise into a dispatch with empty fields, it
@@ -10754,9 +10764,18 @@ spawned on that pass. It will not restart-loop on a build that failed: the
 supervisor says so and runs the version that is there, and that incarnation took
 its baseline from the source already on disk, so it does not ask again for the
 same change. And it will not restart at all under `--once`, under
-`--no-restart`, or when started by hand rather than through `hatch.sh` or `hatch.ps1` — the
-state path is what tells the runner somebody is standing over it, and a runner
-with nobody to rebuild it is the loop it started as.
+`--no-restart`, or when started by hand rather than through `hatch.sh`,
+`hatch.ps1` or a download's launcher — the state path is what tells the runner
+somebody is standing over it, and a runner with nobody to run it again is the
+loop it started as.
+
+Under a launcher the loop restarts for `hatch use` and for its set, and for
+nothing that needs source: a change in a checkout it serves is not read, and
+`--restart-after` does nothing. It tells the loop who it is through
+`HATCH_LAUNCHER_VERSION`, a whole number that starts at 1, and `HATCH_LAUNCHER_PATH`;
+a child reads the version before relying on anything newer than 1, and where the
+launcher is too old it carries on without that thing and says so in one line. No
+pairing of launcher and child makes either one exit.
 
 Three things that look like reasons to stop are not. **A lost lease** is the
 loop working correctly on a busy board — the ticket went to a runner already
