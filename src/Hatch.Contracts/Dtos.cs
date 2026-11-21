@@ -1891,11 +1891,17 @@ public record ActivityPageDto(IReadOnlyList<ActivityEventDto> Events, bool HasMo
 /// </param>
 /// <param name="Matched">
 /// Which parts of the issue held the words searched for, in this order and no other:
-/// <c>title</c>, <c>description</c>, <c>comment</c>, <c>work-log</c>. Empty when the search
-/// named no words, because then nothing was matched against.
+/// <c>title</c>, <c>previous-title</c>, <c>description</c>, <c>comment</c>, <c>work-log</c>.
+/// Empty when the search named no words, because then nothing was matched against.
+/// </param>
+/// <param name="PreviousTitles">
+/// This issue's own previous titles, newest first - see
+/// <see cref="EfHatchIssue.PreviousTitlesNewestFirst"/>. Empty on an issue never
+/// retitled, whether or not <paramref name="Matched"/> names <c>previous-title</c>.
 /// </param>
 public record SearchHitDto(
-    IssueCardDto Card, DateTimeOffset CreatedAt, DateTimeOffset? ClosedAt, IReadOnlyList<string> Matched);
+    IssueCardDto Card, DateTimeOffset CreatedAt, DateTimeOffset? ClosedAt, IReadOnlyList<string> Matched,
+    IReadOnlyList<string> PreviousTitles);
 
 /// <summary>
 /// A page of search results.
@@ -5809,6 +5815,14 @@ public enum RunnerBoardDrift
 /// True while the loop is pulling a model, written on every loop beat; null
 /// or false clears it. A <c>once</c> beat leaves it alone.
 /// </param>
+/// <param name="Rid">
+/// The platform this build was published for - <c>win-x64</c>, <c>osx-arm64</c>,
+/// <c>osx-x64</c> or <c>linux-x64</c> - on the terms <see cref="Os"/> has, except
+/// that it is never stored: the board reads it on the beat that sent it, to
+/// answer <see cref="RunnerBoardBuildDto.Download"/>, and keeps nothing.
+/// <see cref="Os"/> is a shortened description and cannot name a build. Null for
+/// a machine whose platform is not one of the four, and for an older runner.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -5862,7 +5876,8 @@ public record RunnerHeartbeatRequest(
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
-    bool? Pulling = null);
+    bool? Pulling = null,
+    string? Rid = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -5926,6 +5941,12 @@ public record RunnerUsageWindowDto(
 /// Hatch too old to answer it, the same way <see cref="RefusedModels"/> tells
 /// "unanswered" from "empty".
 /// </param>
+/// <param name="BoardBuild">
+/// Present exactly when this beat sent a stamped <c>Revision</c> and
+/// <c>Sequence</c>, the board is stamped, and the two revisions differ - null
+/// otherwise, and null from a Hatch too old to answer it, which a runner reads
+/// as nothing to do. Informational: nothing acts on it yet.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -5941,7 +5962,47 @@ public record RunnerInstructionDto(
     string? RunnerName = null,
     int? SessionId = null,
     IReadOnlyList<string>? RefusedModels = null,
-    IReadOnlyList<string>? Hold = null);
+    IReadOnlyList<string>? Hold = null,
+    RunnerBoardBuildDto? BoardBuild = null);
+
+/// <summary>
+/// The board's own build, as a runner running a different one is told of it
+/// on its heartbeat reply - the board's side of the comparison, and where to get it.
+/// </summary>
+/// <param name="Revision">The board's full git sha.</param>
+/// <param name="Sequence">The board's commit count, beside <paramref name="Revision"/>.</param>
+/// <param name="Compare">
+/// Where the runner's build sits against the board's: one of
+/// <see cref="RunnerBuildComparisons"/>. A string, not an enum, so a word an
+/// older runner has never seen does not fail its parse. The board decides it;
+/// the runner compares nothing.
+/// </param>
+/// <param name="Download">
+/// The route, on this board, that serves the build for the platform the beat
+/// named - what <c>GET /api/runner</c> lists as that platform's download. Null
+/// for a beat that named no platform, one the board does not publish, or an
+/// image that published nothing.
+/// </param>
+/// <param name="Sha256">The sha256 of the bytes <paramref name="Download"/> serves, null exactly when it is.</param>
+public record RunnerBoardBuildDto(
+    string Revision,
+    int Sequence,
+    string Compare,
+    string? Download,
+    string? Sha256);
+
+/// <summary>The words <see cref="RunnerBoardBuildDto.Compare"/> takes, beside <see cref="RunnerStates"/>.</summary>
+public static class RunnerBuildComparisons
+{
+    /// <summary>The runner's build is older than the board's.</summary>
+    public const string Behind = "behind";
+
+    /// <summary>The runner's build is newer than the board's.</summary>
+    public const string Ahead = "ahead";
+
+    /// <summary>Two different commits with the same count: two branches at one depth, not an ordering.</summary>
+    public const string Diverged = "diverged";
+}
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds

@@ -48,7 +48,7 @@ public class RunnerController(IHatchRevision revision, IRunnerBuilds builds) : C
         return new RunnerDownloadsDto(
             revision.Revision,
             builtList
-                .Select(b => new RunnerDownloadDto(b.Rid, b.Platform, b.FileName, $"/api/runner/download/{b.Rid}", b.Sha256))
+                .Select(b => new RunnerDownloadDto(b.Rid, b.Platform, b.FileName, b.Url, b.Sha256))
                 .ToArray());
     }
 

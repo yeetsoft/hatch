@@ -3596,11 +3596,21 @@ dispatch as `WorkDto.Messages`.
 
 **Three stored, weighted `tsvector` columns, each computed by Postgres, never
 assigned in code, each GIN-indexed:** `EfHatchIssue.SearchVector` (`Title`
-weight A, `Description` weight B), `EfHatchComment.SearchVector` (`Body`,
-weight C, every kind of comment — note, question, answer, message, verdict),
-`EfHatchWorkLogEntry.SearchVector` (`Title` and `Summary`, both weight D).
-See [`SearchQuery.cs`](../src/Hatch.Api/Modules/Hatch/SearchQuery.cs) and
+weight A, `Description` weight B, `PreviousTitles` also weight B),
+`EfHatchComment.SearchVector` (`Body`, weight C, every kind of comment —
+note, question, answer, message, verdict), `EfHatchWorkLogEntry.SearchVector`
+(`Title` and `Summary`, both weight D). See
+[`SearchQuery.cs`](../src/Hatch.Api/Modules/Hatch/SearchQuery.cs) and
 [`SearchController.cs`](../src/Hatch.Api/Modules/Hatch/SearchController.cs).
+
+**An issue is found by words from a title it used to have, not only its
+current one.** `EfHatchIssue.PreviousTitles` holds every title this issue was
+retitled away from, oldest-replaced first, one per line, never the current
+title and never the same title twice: `EfHatchIssue.Retitle`, the one place
+`Title` changes, drops a line equal to the new title and appends the old one
+unless it is already there, so retitling A to B and back to A leaves only B.
+A migration backfills it from each issue's own `retitled` events, replaying
+the same rule. `PreviousTitlesNewestFirst()` reads it the other way round.
 
 **A hit is counted once per issue**, however many of its comments or work-log
 rows matched — the match is an `EXISTS`, not a join.
@@ -3612,12 +3622,18 @@ Ties: closed ahead of open, then newest-closed, then newest-created. Without
 returns null — the list is newest first by closed, or created where open, so
 a column's issues come most-recently-closed first.
 
-**`matched` on a hit** lists which of `title`, `description`, `comment`,
-`work-log` found it, in that order.
+**`matched` on a hit** lists which of `title`, `previous-title`,
+`description`, `comment`, `work-log` found it, in that order. A hit also
+carries `previousTitles`, the issue's own previous titles newest first,
+whether or not `previous-title` is among what matched - empty on an issue
+never retitled.
 
 **Event payloads are deliberately not indexed**: they are superseded copies
-of text already indexed elsewhere, and indexing the JSON would surface a
-retitle's old wording as a match on the issue it no longer describes.
+of text already indexed elsewhere, and indexing the JSON wholesale would
+surface every previous description, and every retitle's wording twice over,
+as a match on an issue that no longer reads that way. Previous titles are
+the one exception, each held once, outside the payload, in
+`PreviousTitles` above; a previous description is not searched at all.
 
 **Done issues are in the result by default**; `statusId` narrows to one
 column, and none of the board's done-horizon folding applies.
@@ -10899,6 +10915,26 @@ Runners page draws them beside the repositories line, drawing nothing for a
 runner that has none. `hatch work`'s own one-off heartbeat carries none of
 this, and an older CLI never sends it at all, so either leaves a
 previously-reported row's tags in place rather than blanking them.
+
+**The reply names the board's build.** A runner on a different build than
+its board is told so on the beat itself: the reply carries a `boardBuild`
+part - the board's revision and sequence, `compare`, `download` and `sha256`.
+The part is there exactly when the beat sent a stamped revision and sequence,
+the board is stamped, and the two revisions differ. `compare` is `behind`,
+`ahead` or `diverged` - two different commits at the same count, which no
+ordering resolves - and the board decides it with the same rule the **Behind**
+badge reads; the runner compares nothing. A matching revision, an unstamped
+side (`dev`, or no count), a beat with no revision, and an older board all
+leave no part, which a runner reads as nothing to do. The beat says its
+platform in `rid` - `win-x64`, `osx-arm64`, `osx-x64` or `linux-x64`, null
+for any other machine - because `os` is a shortened description and cannot
+name a build; the board keeps nothing of it. `download` and `sha256` are what
+the Runner page lists for that platform, read from the same code, and both
+are null where the platform is unknown, unsent, or has nothing published -
+the part is still sent. Every beat is answered this way: the named route and
+the session route, `loop` and `once`. Nothing acts on it yet: the **Behind**
+badge and `boardDrift` read the stored row as they always did, and the loop
+ignores the part.
 
 **Refused models are a key's alone, and a key may write its own.** `PUT
 /api/runners/{name}/refused-models` holds the list of models this

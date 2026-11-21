@@ -808,7 +808,7 @@ public class HatchContext : DbContext, IModuleContext
             modelBuilder.Entity<EfHatchIssue>()
                 .Property(i => i.SearchVector)
                 .HasComputedColumnSql(
-                    """setweight(to_tsvector('english', "Title"), 'A') || setweight(to_tsvector('english', "Description"), 'B')""",
+                    """setweight(to_tsvector('english', "Title"), 'A') || setweight(to_tsvector('english', "Description"), 'B') || setweight(to_tsvector('english', "PreviousTitles"), 'B')""",
                     stored: true);
             modelBuilder.Entity<EfHatchIssue>()
                 .HasIndex(i => i.SearchVector)
