@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Button, Field, Modal } from '@hatch/ui';
-import { createRunner, getAuthMe, getPeople, setRunnerOwner, suggestRunnerName } from '../api/client';
+import { Button, Field, Modal, Text } from '@hatch/ui';
+import { OwnerSelect } from './OwnerSelect';
+import { createRunner, getAuthMe, setRunnerOwner, suggestRunnerName } from '../api/client';
 import { OWNER_SCOPE_HINT, createProblem, createRunnerKey } from '../lib/runnerKey';
-import { useLoaded } from '../lib/useLoaded';
 import type { RunnerSecret } from '../lib/runnerKey';
 
 /**
  * "Create" in docs/runners-page-design.md: name and owner, nothing else -
  * tags are set on the detail afterwards.
+ *
+ * `chooseOwner` is the admin's: an Owner select, with "nobody". Without it
+ * (a user) the runner is the caller's, so the dialog says so, reads neither
+ * `getPeople` nor `getAuthMe`, and sends no owner at all.
  *
  * The owner is held as `string | null`: null until `getAuthMe` answers, so
  * Create stays disabled rather than risk a press that sends "nobody" before
@@ -17,12 +21,13 @@ export function CreateRunnerDialog({
   open,
   onClose,
   onCreated,
+  chooseOwner,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (secret: RunnerSecret) => void;
+  chooseOwner: boolean;
 }) {
-  const { data: people } = useLoaded(getPeople);
   const [name, setName] = useState('');
   const [owner, setOwner] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -34,18 +39,22 @@ export function CreateRunnerDialog({
     if (!open) return;
     suggest();
     setRefusal(null);
+    if (!chooseOwner) return;
     getAuthMe()
       .then((authMe) => setOwner((current) => current ?? authMe?.personId ?? ''))
       .catch(() => setOwner((current) => current ?? ''));
-  }, [open]);
+  }, [open, chooseOwner]);
 
   const problem = createProblem(name);
 
   async function create() {
-    if (owner === null) return;
+    if (chooseOwner && owner === null) return;
     setCreating(true);
     try {
-      const result = await createRunnerKey({ createRunner, setRunnerOwner }, { name, ownerPersonId: owner });
+      const result = await createRunnerKey(
+        { createRunner, setRunnerOwner },
+        { name, ownerPersonId: chooseOwner ? (owner ?? undefined) : undefined },
+      );
       if ('refusal' in result) {
         setRefusal(result.refusal);
       } else {
@@ -69,7 +78,7 @@ export function CreateRunnerDialog({
           <Button
             variant="primary"
             loading={creating}
-            disabled={problem !== null || owner === null}
+            disabled={problem !== null || (chooseOwner && owner === null)}
             onClick={() => void create()}
           >
             Create
@@ -86,16 +95,13 @@ export function CreateRunnerDialog({
         </Field>
         <Button onClick={suggest}>Suggest another</Button>
       </div>
-      <Field label="Owner" hint={OWNER_SCOPE_HINT}>
-        <select value={owner ?? ''} onChange={(e) => setOwner(e.target.value)}>
-          <option value="">nobody</option>
-          {(people ?? []).map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {chooseOwner ? (
+        <Field label="Owner" hint={OWNER_SCOPE_HINT}>
+          <OwnerSelect value={owner ?? ''} onChange={setOwner} />
+        </Field>
+      ) : (
+        <Text tone="muted">The runner will be yours. {OWNER_SCOPE_HINT}</Text>
+      )}
       {refusal && <p className="text-danger">{refusal}</p>}
     </Modal>
   );

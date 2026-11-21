@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Button, Modal, Text } from '@hatch/ui';
-import { getPeople, revokeRunner, rotateRunner, setRunnerOwner } from '../api/client';
+import { revokeRunner, rotateRunner, setRunnerOwner } from '../api/client';
 import { OWNER_SCOPE_HINT, changeOwner, revokeRunnerKey, rotateRunnerKey } from '../lib/runnerKey';
-import { useLoaded } from '../lib/useLoaded';
+import { OwnerSelect } from './OwnerSelect';
 import type { RunnerSecret } from '../lib/runnerKey';
 import type { Runner } from '../types';
 
@@ -38,19 +38,22 @@ export function RevokeRunnerBody({ refusal }: { refusal: string | null }) {
 
 /**
  * The Identity card's owner select, Rotate and Revoke - "Who sees what":
- * only an admin, on a runner that is neither revoked nor retired, reaches
- * `RunnerDetail` with this in its `actions` slot at all.
+ * only an admin, or the owner on their own runner, and on a runner that is
+ * neither revoked nor retired, reaches `RunnerDetail` with this in its
+ * `actions` slot at all. `ownerEditable` is the admin's alone: an owner who
+ * is not an admin gets Rotate and Revoke and reads the owner as text.
  */
 export function RunnerKeyActions({
   runner,
   onSecret,
   reload,
+  ownerEditable,
 }: {
   runner: Runner;
   onSecret: (secret: RunnerSecret) => void;
   reload: () => Promise<void>;
+  ownerEditable: boolean;
 }) {
-  const { data: people } = useLoaded(getPeople);
   const [savingOwner, setSavingOwner] = useState(false);
   const [ownerRefusal, setOwnerRefusal] = useState<string | null>(null);
 
@@ -101,26 +104,21 @@ export function RunnerKeyActions({
   return (
     <>
       <div className="hatch-form-actions">
-        <select
-          aria-label={`Owner of ${runner.name}`}
-          value={runner.ownerPersonId ?? ''}
-          disabled={savingOwner}
-          onChange={(e) => void saveOwner(e.target.value)}
-        >
-          <option value="">nobody</option>
-          {(people ?? []).map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </select>
+        {ownerEditable && (
+          <OwnerSelect
+            label={`Owner of ${runner.name}`}
+            value={runner.ownerPersonId ?? ''}
+            disabled={savingOwner}
+            onChange={(personId) => void saveOwner(personId)}
+          />
+        )}
         <Button onClick={() => setRotating(true)}>Rotate key</Button>
         <Button variant="danger" onClick={() => setRevoking(true)}>
           Revoke
         </Button>
       </div>
-      {ownerRefusal && <p className="text-danger">{ownerRefusal}</p>}
-      <Text tone="muted">{OWNER_SCOPE_HINT}</Text>
+      {ownerEditable && ownerRefusal && <p className="text-danger">{ownerRefusal}</p>}
+      {ownerEditable && <Text tone="muted">{OWNER_SCOPE_HINT}</Text>}
 
       <Modal
         open={rotating}

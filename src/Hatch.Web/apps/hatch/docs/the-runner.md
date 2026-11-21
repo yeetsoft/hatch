@@ -19,8 +19,8 @@ are not sitting at, and prints the revision it was built from. That is the same
 build as the page serving it, so the two are never a version apart. Four
 platforms are built: `win-x64`, `osx-arm64`, `osx-x64` and `linux-x64`.
 
-On a Hatch with the wall up, an admin makes the runner's key from **Agents →
-Runners → Create runner**. The secret is shown once, with the `hatch config
+On a Hatch with the wall up, a signed-in person makes the runner's key from **Agents →
+Runners → Create runner** - a user for themselves, an admin for anyone. The secret is shown once, with the `hatch config
 --origin` and `hatch config --key` commands that take it (see [Runners and their
 keys](people-roles-and-keys#runners-and-their-keys)). That key can also fetch
 its own platform's build straight from `/api/runner/download/<rid>`, and check
@@ -162,7 +162,7 @@ board it offers `Create a runner on this board? [Y/n]`, then a suggested
 `Runner name`, and mints a fresh key under that name - written here as this
 checkout's key, with no owner until an admin sets one; a name already taken
 refuses and writes nothing. Against a wall that is on, the probe is refused
-outright and `hatch config` says there is no key - an admin creates the
+outright and `hatch config` says there is no key - a signed-in person creates the
 runner on the Runners page, then `hatch config --key <key>` picks it up. A
 key that does not start `hatch_ak_` prints a warning but is carried on
 anyway, since the call that follows is the one that actually knows whether

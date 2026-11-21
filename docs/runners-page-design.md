@@ -6,7 +6,8 @@ The Runners page is the master-detail replacement for the Runners and API keys
 pages — **a runner is a key, with its sessions beneath it** (epic HA-1934). The
 list of runners is on the left, the selected runner's sessions and settings are
 on the right. It serves three people: **admins** who create and revoke runners,
-**owners** who steer the runners they control, and **viewers** who watch.
+**owners** who steer the runners they control and make and revoke their own, and
+**viewers** who watch.
 
 It is built from **`@hatch/ui` components and `tokens.css` tokens only**. A
 colour, radius, size or space value written as a literal for this page is a bug,
@@ -91,18 +92,25 @@ Three variants, picked by one rule, stated once:
 | Variant | Who | Sees |
 | --- | --- | --- |
 | Admin | `useMe().isAdmin` | Everything: Create runner, owner select, rotate, revoke. |
-| Owner | `runner.canControl`, not admin | Edits tags, `under` and bounds; pause, resume, stop, orders, pause all, stop all. |
+| Owner | `runner.canControl`, not admin | Edits tags, `under` and bounds; pause, resume, stop, orders, pause all, stop all. Creates a runner of their own, and rotates or revokes one that is theirs (`runner.yours`); no owner select. |
 | Viewer | `runner.canControl` false | Everything read-only. |
 
-- **Admin** sees every control on the page, and is the only variant that creates
-  a runner, picks its owner, rotates its secret or revokes it. The Owner field on
+- **Admin** sees every control on the page, and is the only variant that picks
+  an owner: on Create runner, and on any runner's Identity card. An admin rotates
+  or revokes any runner. The Owner field on
   Create runner carries a hint, and the Identity card carries the same sentence
   under the owner select: the key reads through its owner's scope, so it sees only
   the projects its owner sees, and `nobody` means it sees every project. The text
   is `OWNER_SCOPE_HINT` in
   [`runnerKey.ts`](../src/Hatch.Web/apps/hatch/src/lib/runnerKey.ts).
-- **Owner** reads identity facts as text: there is no owner select, rotate,
-  revoke or create.
+- **Owner** (a signed-in `user`) sees **Create runner**, and the dialog has no
+  Owner field: it says "The runner will be yours." with the same scope hint, and
+  sends no owner, so the server makes the caller the owner. On a runner that is
+  theirs (`runner.yours`) the Identity card has **Rotate key** and **Revoke**,
+  and reads the owner as text, with no owner select. On a runner that is not
+  theirs, or one with no owner, neither button is drawn. The rule is
+  `canCreateRunner` and `canManageKey` in
+  [`runnerKey.ts`](../src/Hatch.Web/apps/hatch/src/lib/runnerKey.ts).
 - **Viewer** sees values drawn as `Text`, never as disabled inputs, which read
   as bugs. Where controls would be, one line at the top of Live sessions says
   `{runner.for ?? 'its owner'}'s to control` — the existing phrase from
@@ -110,8 +118,9 @@ Three variants, picked by one rule, stated once:
   `Text tone="muted"`.
 - **Wall off** means `useMe().me.kind` is `local` or `none` (role null), so
   nobody is admin and `canControl` is true: it draws the owner variant. Create,
-  rotate, revoke and owner select do not appear, because the admin routes are
-  dormant there and `hatch config` bootstraps the runner. This is also the
+  rotate, revoke and owner select do not appear, even where `runner.yours` is
+  true, because those routes are dormant there and `hatch config` bootstraps the
+  runner. This is also the
   signal the empty states below read.
 - **A revoked runner has no actions for anyone**, and its config draws as
   read-only values.
@@ -125,8 +134,8 @@ All are `EmptyState` unless noted. Loading, failed and empty are three kinds of
 
 - **List, no runners, admin** — "No runners yet. A runner is a key: create one,
   then hand its secret to a checkout." with Create runner as the `action`.
-- **List, no runners, not admin** — "No runners yet. Ask an admin to create
-  one."
+- **List, no runners, user** — the same words and the same Create runner
+  action as the admin's.
 - **List, no runners, wall off** — "No runners yet. Run `hatch config` in a
   checkout and it makes its own."
 - **Loading** (`runners === null`) draws nothing.
@@ -239,8 +248,8 @@ flush>`. It carries `aria-current="page"` when selected (see
 ### Create runner
 
 - **It sits in `PageHeader`'s `actions` slot on the list header**, as `Button
-  variant="primary"`. It is admin only, and absent for everyone else (see [Who
-  sees what](#who-sees-what)).
+  variant="primary"`. It is drawn for an admin or a signed-in user, and absent
+  with the wall off (see [Who sees what](#who-sees-what)).
 - **On the phone `actions` wraps under the title.** `PageHeader.css` today is
   `display: flex` with no wrap and `actions` at `flex: none`, so nothing wraps.
   The requirement: below `PHONE_QUERY` the header wraps and the actions drop
@@ -275,10 +284,11 @@ header line beside the name carries `Behind`** when any live session's
   change and disabled while saving —
   [`ApiKeysPage.tsx`](../src/Hatch.Web/apps/hatch/src/pages/ApiKeysPage.tsx)'s
   `changeOwner`/`setApiKeyOwner` pattern, becoming `PUT
-  /api/runners/{name}/owner` (HA-1936). Everyone else reads it as text:
-  `for`, or "no owner".
+  /api/runners/{name}/owner` (HA-1936). Everyone else, a user on their own
+  runner included, reads it as text: `for`, or "no owner".
 - **`Rotate key`** (`Button`, default `secondary`) and **`Revoke`**
-  (`variant="danger"`) are admin only and absent on a revoked runner.
+  (`variant="danger"`) are for an admin on any runner and for a user on their
+  own, and absent on a revoked runner.
   Confirmations belong to HA-1982 ("Creating, rotating and revoking"); this
   section only places the buttons.
 - **A failed save draws `text-danger` inside this `Card`**, never at the
@@ -379,7 +389,7 @@ press them by [Who sees what](#who-sees-what).
 ### Create
 
 `Create runner` opens a `Modal` at its default width, the actions in its
-`footer`. The form has two fields and no more.
+`footer`. An admin's form has two fields and no more; a user's has one.
 
 - **`Field` Name** is prefilled from `GET /api/runners/suggest-name`, with
   the hint "A name from the cast list; yours to change. It is the runner's
@@ -388,7 +398,10 @@ press them by [Who sees what](#who-sees-what).
 - **`Field` Owner** is a `<select>` of people and "nobody", defaulting to the
   caller's own person, as
   [`ApiKeysPage.tsx`](../src/Hatch.Web/apps/hatch/src/pages/ApiKeysPage.tsx)
-  does with `getAuthMe().personId`.
+  does with `getAuthMe().personId`. An admin's only. A user's dialog has no
+  Owner field and reads neither the people nor `getAuthMe`: one muted line says
+  "The runner will be yours." followed by the same hint, and Create sends no
+  `ownerPersonId`, so the runner is the caller's.
 - **There are no tags here.** They are set on the detail afterwards (see [What
   it may work](#what-it-may-work)).
 - **The footer is Cancel and Create.** Create is `variant="primary"` with
@@ -542,7 +555,7 @@ The order HA-1942 follows. Each step leaves the build and the tests green.
   usage.
 - **`RunnerGlyph` names each state in its `aria-label`.**
 - **The list:** its sort, the three empty states, and the three role variants
-  (admin, owner, viewer; wall-off draws owner).
+  (admin, owner, viewer; wall-off draws owner), and who gets Create runner.
 - **The create flow** shows the secret once with both commands in order, and
   drops it on Done.
 - **A revoked runner has no actions.**

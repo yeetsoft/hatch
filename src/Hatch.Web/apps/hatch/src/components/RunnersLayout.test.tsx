@@ -91,6 +91,7 @@ const state = vi.hoisted(() => ({
   read: { runners: null as Runner[] | null, error: null as string | null },
   phone: false,
   isAdmin: true,
+  kind: 'person' as 'person' | 'local',
   attention: null as Attention | null,
 }));
 vi.mock('../lib/useRunners', () => ({ useRunners: () => state.read }));
@@ -99,7 +100,10 @@ vi.mock('../lib/useAttentionContext', () => ({
   useAttentionContext: () => ({ attention: state.attention, reload: () => Promise.resolve() }),
 }));
 vi.mock('../lib/useMe', () => ({
-  useMe: () => ({ me: { kind: 'person', name: 'a', role: state.isAdmin ? 'admin' : 'user' }, isAdmin: state.isAdmin }),
+  useMe: () => ({
+    me: { kind: state.kind, name: 'a', role: state.kind === 'local' ? null : state.isAdmin ? 'admin' : 'user' },
+    isAdmin: state.isAdmin,
+  }),
 }));
 
 // Copied from pages/DocsPage.test.tsx's own helper, nested the same way App.tsx nests the runners routes.
@@ -192,6 +196,7 @@ describe('RunnersLayout', () => {
 describe('RunnersLayout: Create runner', () => {
   beforeEach(() => {
     state.isAdmin = true;
+    state.kind = 'person';
   });
 
   it('an admin sees Create runner in the desk list header', () => {
@@ -209,10 +214,24 @@ describe('RunnersLayout: Create runner', () => {
     expect(renderAt('/runners/Quill', true)).not.toContain('Create runner');
   });
 
-  it('a non-admin sees no Create runner button', () => {
+  it('a user sees Create runner in the desk list header', () => {
     state.isAdmin = false;
     state.read = { runners: [QUILL], error: null };
+    expect(renderAt('/runners')).toContain('>Create runner</button>');
+  });
+
+  it('a user sees Create runner in the phone list header', () => {
+    state.isAdmin = false;
+    state.read = { runners: [QUILL], error: null };
+    expect(renderAt('/runners', true)).toContain('>Create runner</button>');
+  });
+
+  it('the wall-off reader sees no Create runner button', () => {
+    state.isAdmin = false;
+    state.kind = 'local';
+    state.read = { runners: [QUILL], error: null };
     expect(renderAt('/runners')).not.toContain('Create runner');
+    expect(renderAt('/runners', true)).not.toContain('Create runner');
   });
 });
 
