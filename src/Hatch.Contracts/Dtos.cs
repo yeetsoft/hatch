@@ -5829,7 +5829,6 @@ public enum RunnerBoardDrift
 /// True while the loop is pulling a model, written on every loop beat; null
 /// or false clears it. A <c>once</c> beat leaves it alone.
 /// </param>
-<<<<<<< HEAD
 /// <param name="LauncherVersion">
 /// The version of the launcher that started this loop, from the child's own
 /// <c>HATCH_LAUNCHER_VERSION</c>. Absent for a loop with no launcher and for a
@@ -5837,7 +5836,7 @@ public enum RunnerBoardDrift
 /// Absent leaves a stored value alone, except on a fresh <c>loop</c> beat, where
 /// it clears it. The board compares it with its own build's launcher version;
 /// the sender never says whether it is behind.
-=======
+/// </param>
 /// <param name="Rid">
 /// The platform this build was published for - <c>win-x64</c>, <c>osx-arm64</c>,
 /// <c>osx-x64</c> or <c>linux-x64</c> - on the terms <see cref="Os"/> has, except
@@ -5845,7 +5844,6 @@ public enum RunnerBoardDrift
 /// answer <see cref="RunnerBoardBuildDto.Download"/>, and keeps nothing.
 /// <see cref="Os"/> is a shortened description and cannot name a build. Null for
 /// a machine whose platform is not one of the four, and for an older runner.
->>>>>>> refs/remotes/origin/main
 /// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
@@ -5901,11 +5899,8 @@ public record RunnerHeartbeatRequest(
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
     bool? Pulling = null,
-<<<<<<< HEAD
-    int? LauncherVersion = null);
-=======
+    int? LauncherVersion = null,
     string? Rid = null);
->>>>>>> refs/remotes/origin/main
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

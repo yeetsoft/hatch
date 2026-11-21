@@ -1316,7 +1316,6 @@ public class RunnersControllerTests
         Assert.Equal(RunnerBoardDrift.Unknown, runner.SourceDrift);
     }
 
-<<<<<<< HEAD
     // ---- Launcher behind ----
 
     [Fact]
@@ -1407,7 +1406,8 @@ public class RunnersControllerTests
         Assert.Equal(3, runner.MaxRuns);
         Assert.Equal(0, runner.LauncherVersion);
         Assert.True(runner.LauncherBehind);
-=======
+    }
+
     // ---- The board's build, on the reply ----
 
     private const string BoardSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -1553,7 +1553,6 @@ public class RunnersControllerTests
         Assert.Equal(LinuxBuild.Url, reply.BoardBuild?.Download);
         Assert.Equal(LinuxBuild.Sha256, reply.BoardBuild?.Sha256);
         Assert.Null(current.BoardBuild);
->>>>>>> refs/remotes/origin/main
     }
 
     // ---- What it is working ----
