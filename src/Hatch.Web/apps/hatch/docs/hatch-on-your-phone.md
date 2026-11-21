@@ -8,8 +8,8 @@ summary: Installing Hatch as an app on a phone, and what it can and cannot do th
 **Android, Chrome.** Open `<your-hatch-origin>/`, sign in if the
 wall is up ([the wall, off, on and required](the-wall-off-on-and-required)), then
 menu (⋮) → **Install app**. An icon named Hatch lands on the home screen;
-opening it shows a splash screen, then the board, full-screen, with no
-address bar.
+opening it shows a splash screen, then your home screen - the board,
+unless you chose Ambitions in Settings - full-screen, with no address bar.
 
 **iPhone, Safari.** Open the same address, then Share → **Add to Home
 Screen**. From iOS 26 every home-screen site opens as a standalone app, with
