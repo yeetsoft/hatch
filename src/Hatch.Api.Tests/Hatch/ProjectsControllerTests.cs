@@ -2033,6 +2033,126 @@ public class ProjectsControllerTests
         Assert.Equal(Now, read.FilesContributionsAt);
     }
 
+    // ---- Allows unsigned commits ----
+
+    [Fact]
+    public async Task AKey_Is403OnPutAllowsUnsignedCommits()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutAllowsUnsignedCommits(h.ProjectId, new ProjectAllowsUnsignedCommitsWriteRequest(false), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.True((await h.Db.Projects.FindAsync(h.ProjectId))!.AllowsUnsignedCommits);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutAllowsUnsignedCommitsNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutAllowsUnsignedCommits(created.Id, new ProjectAllowsUnsignedCommitsWriteRequest(false), default);
+
+        Assert.Contains("403", Reason(result.Result));
+        Assert.Contains("only an owner of TST may change whether it allows unsigned commits", Reason(result.Result));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.True(row.AllowsUnsignedCommits);
+        Assert.Null(row.AllowsUnsignedCommitsBy);
+        Assert.Null(row.AllowsUnsignedCommitsAt);
+    }
+
+    [Fact]
+    public async Task PutAllowsUnsignedCommits_OnAnUnknownProject_IsNotFound()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PutAllowsUnsignedCommits(h.ProjectId + 1000, new ProjectAllowsUnsignedCommitsWriteRequest(false), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AnOwnerTurningUnsignedCommitsOff_StampsWhoAndWhen()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var written = Value(await h.Projects.PutAllowsUnsignedCommits(created.Id, new ProjectAllowsUnsignedCommitsWriteRequest(false), default));
+
+        Assert.False(written.AllowsUnsignedCommits);
+        Assert.Equal(h.Nathan.Name, written.AllowsUnsignedCommitsBy);
+        Assert.Equal(Now, written.AllowsUnsignedCommitsAt);
+    }
+
+    [Fact]
+    public async Task AnOwnerTurningUnsignedCommitsBackOn_RestampsWhoAndWhen()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutAllowsUnsignedCommits(created.Id, new ProjectAllowsUnsignedCommitsWriteRequest(false), default);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.AllowsUnsignedCommitsBy = "someone earlier";
+        row.AllowsUnsignedCommitsAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var written = Value(await h.Projects.PutAllowsUnsignedCommits(created.Id, new ProjectAllowsUnsignedCommitsWriteRequest(true), default));
+
+        Assert.True(written.AllowsUnsignedCommits);
+        Assert.Equal(h.Nathan.Name, written.AllowsUnsignedCommitsBy);
+        Assert.Equal(Now, written.AllowsUnsignedCommitsAt);
+    }
+
+    [Fact]
+    public async Task ResendingTheUnsignedCommitsSettingAProjectAlreadyHolds_WritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        // The default is on, so sending on is the held value and stamps nothing.
+        var fresh = Value(await h.Projects.PutAllowsUnsignedCommits(created.Id, new ProjectAllowsUnsignedCommitsWriteRequest(true), default));
+        Assert.True(fresh.AllowsUnsignedCommits);
+        Assert.Null(fresh.AllowsUnsignedCommitsBy);
+        Assert.Null(fresh.AllowsUnsignedCommitsAt);
+
+        await h.Projects.PutAllowsUnsignedCommits(created.Id, new ProjectAllowsUnsignedCommitsWriteRequest(false), default);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.AllowsUnsignedCommitsBy = "someone earlier";
+        row.AllowsUnsignedCommitsAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var result = Value(await h.Projects.PutAllowsUnsignedCommits(created.Id, new ProjectAllowsUnsignedCommitsWriteRequest(false), default));
+
+        Assert.False(result.AllowsUnsignedCommits);
+        Assert.Equal("someone earlier", result.AllowsUnsignedCommitsBy);
+        Assert.Equal(Now.AddDays(-1), result.AllowsUnsignedCommitsAt);
+    }
+
+    [Fact]
+    public async Task ProjectDto_RoundTripsAllowsUnsignedCommitsFieldsThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.True(created.AllowsUnsignedCommits);
+        Assert.Null(created.AllowsUnsignedCommitsBy);
+        Assert.Null(created.AllowsUnsignedCommitsAt);
+        var fresh = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.True(fresh.AllowsUnsignedCommits);
+        Assert.Null(fresh.AllowsUnsignedCommitsBy);
+        Assert.Null(fresh.AllowsUnsignedCommitsAt);
+
+        await h.Projects.PutAllowsUnsignedCommits(created.Id, new ProjectAllowsUnsignedCommitsWriteRequest(false), default);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.False(read.AllowsUnsignedCommits);
+        Assert.Equal(h.Nathan.Name, read.AllowsUnsignedCommitsBy);
+        Assert.Equal(Now, read.AllowsUnsignedCommitsAt);
+    }
+
     // ---- Reflection ----
 
     [Fact]

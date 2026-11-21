@@ -17,6 +17,7 @@ import {
   putProjectNoCodeCloses,
   putProjectRunnersWorkContributions,
   putProjectFilesContributions,
+  putProjectAllowsUnsignedCommits,
   putProjectOnePrPolicy,
   putProjectStoriesOnEpics,
   putProjectLanding,
@@ -40,6 +41,7 @@ import {
   projectNoCodeClosesDiff,
   projectRunnersWorkContributionsDiff,
   projectFilesContributionsDiff,
+  projectAllowsUnsignedCommitsDiff,
   projectOnePrPolicyDiff,
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
@@ -235,6 +237,7 @@ export function ProjectEditDialog({
     const noCodeClosesDiff = projectNoCodeClosesDiff(draft!);
     const runnersWorkContributionsDiff = projectRunnersWorkContributionsDiff(draft!);
     const filesContributionsDiff = projectFilesContributionsDiff(draft!);
+    const allowsUnsignedCommitsDiff = projectAllowsUnsignedCommitsDiff(draft!);
     const onePrPolicyDiff = projectOnePrPolicyDiff(draft!);
     const storiesOnEpicsDiff = projectStoriesOnEpicsDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
@@ -251,6 +254,7 @@ export function ProjectEditDialog({
       noCodeClosesDiff === null &&
       runnersWorkContributionsDiff === null &&
       filesContributionsDiff === null &&
+      allowsUnsignedCommitsDiff === null &&
       onePrPolicyDiff === null &&
       storiesOnEpicsDiff === null &&
       reflectionDiff === null &&
@@ -277,6 +281,8 @@ export function ProjectEditDialog({
       if (runnersWorkContributionsDiff !== null)
         await putProjectRunnersWorkContributions(project!.id, runnersWorkContributionsDiff);
       if (filesContributionsDiff !== null) await putProjectFilesContributions(project!.id, filesContributionsDiff);
+      if (allowsUnsignedCommitsDiff !== null)
+        await putProjectAllowsUnsignedCommits(project!.id, allowsUnsignedCommitsDiff);
       if (storiesOnEpicsDiff !== null) await putProjectStoriesOnEpics(project!.id, storiesOnEpicsDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
@@ -710,6 +716,23 @@ export function ProjectEditDialog({
             <label>
               <input
                 type="checkbox"
+                checked={draft.allowsUnsignedCommits}
+                onChange={(e) => setDraft((d) => d && { ...d, allowsUnsignedCommits: e.target.checked })}
+              />
+              Allow unsigned commits
+            </label>
+            <p className="hatch-section-hint text-muted">
+              Off, only runners that sign their commits will work this project.
+            </p>
+            {(project.allowsUnsignedCommitsBy || project.allowsUnsignedCommitsAt) && (
+              <p className="hatch-section-hint text-muted">
+                set by {project.allowsUnsignedCommitsBy} on{' '}
+                {project.allowsUnsignedCommitsAt ? new Date(project.allowsUnsignedCommitsAt).toLocaleDateString() : ''}
+              </p>
+            )}
+            <label>
+              <input
+                type="checkbox"
                 checked={draft.bindsTracker}
                 disabled={list.length === 0}
                 onChange={(e) => setDraft((d) => d && { ...d, bindsTracker: e.target.checked })}
@@ -780,6 +803,15 @@ export function ProjectEditDialog({
                 : ''}
               .
             </p>
+            {!project.allowsUnsignedCommits && (
+              <p>
+                Allows only signed commits
+                {project.allowsUnsignedCommitsBy || project.allowsUnsignedCommitsAt
+                  ? `, set by ${project.allowsUnsignedCommitsBy ?? 'unknown'} on ${project.allowsUnsignedCommitsAt ? new Date(project.allowsUnsignedCommitsAt).toLocaleDateString() : 'an unknown date'}`
+                  : ''}
+                .
+              </p>
+            )}
             {project.bindsTracker && (
               <p>
                 Binds the tracker's own repository

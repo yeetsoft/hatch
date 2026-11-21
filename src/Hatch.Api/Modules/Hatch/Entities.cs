@@ -377,6 +377,28 @@ public class EfHatchProject
     public DateTimeOffset? FilesContributionsAt { get; set; }
 
     /// <summary>
+    /// Whether this project allows commits that are not signed. On by default:
+    /// a project that has never set it allows them. The dispatch carries it as
+    /// <c>WorkDto.AllowsUnsignedCommits</c>, and a runner honours it.
+    /// Written only by <see cref="ProjectsController.PutAllowsUnsignedCommits"/>.
+    /// </summary>
+    public bool AllowsUnsignedCommits { get; set; } = true;
+
+    /// <summary>
+    /// Who last changed <see cref="AllowsUnsignedCommits"/>, as a name rather
+    /// than a foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null
+    /// until the first change. Written only by <see cref="ProjectsController.PutAllowsUnsignedCommits"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? AllowsUnsignedCommitsBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="AllowsUnsignedCommits"/> was last changed. Null until the
+    /// first change. Written only by <see cref="ProjectsController.PutAllowsUnsignedCommits"/>.
+    /// </summary>
+    public DateTimeOffset? AllowsUnsignedCommitsAt { get; set; }
+
+    /// <summary>
     /// Whether this project binds the tracker's own repository - the project a
     /// session standing in some other project's repository reads to find the
     /// tracker's. At most one project on a board has it on, which the filtered

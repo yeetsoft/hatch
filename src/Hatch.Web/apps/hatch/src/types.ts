@@ -119,6 +119,12 @@ export interface Project {
   filesContributionsBy: string | null;
   /** When filesContributions was last changed on this project, or null until the first write. */
   filesContributionsAt: string | null;
+  /** Whether this project allows commits that are not signed. On until an owner says otherwise. See ProjectDto.AllowsUnsignedCommits. */
+  allowsUnsignedCommits: boolean;
+  /** Who last changed allowsUnsignedCommits, or null until the first write. */
+  allowsUnsignedCommitsBy: string | null;
+  /** When allowsUnsignedCommits was last changed on this project, or null until the first write. */
+  allowsUnsignedCommitsAt: string | null;
   /** Whether a ticket's work must land in one pull request, or may land in several. See ProjectDto.OnePullRequestPolicy. */
   onePullRequestPolicy: OnePullRequestPolicy;
   /** Who last changed onePullRequestPolicy, or null until the first write. See ProjectDto.OnePullRequestPolicyBy. */
@@ -1457,6 +1463,11 @@ export interface ProjectRunnersWorkContributionsWriteRequest {
 /** A write to whether outside pull requests are filed as contributions. See ProjectFilesContributionsWriteRequest (Hatch.Contracts). */
 export interface ProjectFilesContributionsWriteRequest {
   filesContributions: boolean;
+}
+
+/** A write to whether a project allows unsigned commits. See ProjectAllowsUnsignedCommitsWriteRequest (Hatch.Contracts). */
+export interface ProjectAllowsUnsignedCommitsWriteRequest {
+  allowsUnsignedCommits: boolean;
 }
 
 /** A write to the one-pull-request policy. See ProjectOnePrPolicyWriteRequest (Hatch.Contracts). */

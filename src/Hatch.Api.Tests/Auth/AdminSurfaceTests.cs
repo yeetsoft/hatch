@@ -705,6 +705,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutNoCodeCloses",
         "ProjectsController.PutRunnersWorkContributions",
         "ProjectsController.PutFilesContributions",
+        "ProjectsController.PutAllowsUnsignedCommits",
         "ProjectsController.PutOnePrPolicy",
         "ProjectsController.PutPriority",
 
@@ -879,6 +880,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutNoCodeCloses",
         "ProjectsController.PutRunnersWorkContributions",
         "ProjectsController.PutFilesContributions",
+        "ProjectsController.PutAllowsUnsignedCommits",
         "ProjectsController.PutOnePrPolicy",
         "ProjectsController.PutPriority",
 
