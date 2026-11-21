@@ -77,6 +77,10 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
     public static string LeftForLocal(string key, string column, string runner, string model) =>
         $"{key} in {column} is left for {runner}, which is free to run it on {model}";
 
+    /// <summary>The sentence a board or runner prints when <paramref name="key"/> is left for <paramref name="runner"/>, a runner marked preferred that is live, idle and able to take it.</summary>
+    public static string LeftForPreferred(string key, string column, string runner) =>
+        $"{key} in {column} is left for {runner}, which is preferred and free";
+
     /// <summary>The sentence a board or runner prints when <paramref name="key"/>'s <paramref name="column"/> runs on a <paramref name="model"/> that <paramref name="runner"/> refuses.</summary>
     public static string Refused(string key, string column, string model, string runner) =>
         $"{key} in {column} runs on {model} - {runner} refuses it";

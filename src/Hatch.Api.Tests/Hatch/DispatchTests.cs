@@ -3986,6 +3986,25 @@ public class DispatchTests
             LocalModelLevels.Prefer));
 
     [Fact]
+    public void LeftForPreferred_NamesTheRowItsColumnAndThePeer() =>
+        Assert.Equal(
+            "HA-12 in In Progress is left for build-box, which is preferred and free",
+            ModelFamilies.LeftForPreferred("HA-12", "In Progress", "build-box"));
+
+    [Fact]
+    public async Task ScanAsync_AnAskerAndNoRunnerStore_FoldsNothingForAPreferredRunner()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet");
+        var issue = await h.FileAsync("task", "nobody to leave it for", h.Todo);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: new RunnerAsking("someone", Now));
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
     public void ModelFold_FreeRunner_IsReadOnlyAtPrefer_AndNeverAgainstAnOverride()
     {
         var cloud = ModelDeclaration.Of(["haiku", "sonnet"], "claude");
