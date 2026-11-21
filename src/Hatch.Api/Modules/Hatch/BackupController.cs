@@ -11,7 +11,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// and the one way a person can run a capped backup on demand.
 /// </summary>
 /// <remarks>
-/// No class-level attribute - the same split <see cref="OvernightController"/>
+/// No class-level attribute - the same split <see cref="ProjectsController"/>
 /// draws, for the same reason: <see cref="GetBackup"/> is a read, open to a
 /// person and to a key alike, but <see cref="PostBackupRun"/>
 /// is a person's own act and nothing else's.
