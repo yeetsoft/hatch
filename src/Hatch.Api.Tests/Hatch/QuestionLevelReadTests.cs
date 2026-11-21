@@ -75,7 +75,10 @@ public class QuestionLevelReadTests
     // ---- EffectiveQuestion ----
 
     // 1 EPIC-1 is the epic, 2 EPIC-2 a story under it, 3 EPIC-3 a task under that.
-    private static PriorityTree Tree(Dictionary<long, (string Level, int Count)> questions)
+    private static PriorityTree Tree(
+        Dictionary<long, (string Level, int Count)> questions,
+        Dictionary<long, string>? types = null,
+        Dictionary<long, string?>? dangerous = null)
     {
         var rows = new Dictionary<long, (long?, string, int, int)>
         {
@@ -84,7 +87,9 @@ public class QuestionLevelReadTests
             [3] = (2, "EPIC-3", PriorityLevels.Normal, PreApprovalLevels.None),
         };
 
-        return new PriorityTree(rows, questions: questions);
+        var onePr = types?.ToDictionary(kv => kv.Key, kv => (kv.Value, (bool?)null, false, 0, false, false));
+
+        return new PriorityTree(rows, onePr: onePr, dangerous: dangerous, questions: questions);
     }
 
     [Fact]
@@ -131,6 +136,43 @@ public class QuestionLevelReadTests
         });
 
         Assert.Equal((QuestionLevels.BuildName, 1, (string?)"EPIC-2"), tree.EffectiveQuestion(3));
+    }
+
+    [Fact]
+    public void EffectiveQuestion_AnAmbitionAncestorsQuestion_IsSkipped()
+    {
+        var tree = Tree(new() { [1] = (QuestionLevels.HoldName, 1) }, types: new() { [1] = "ambition" });
+
+        Assert.Null(tree.EffectiveQuestion(3));
+    }
+
+    [Fact]
+    public void EffectiveQuestion_AnAmbitionsOwnQuestion_IsStillRead()
+    {
+        var tree = Tree(new() { [1] = (QuestionLevels.HoldName, 1) }, types: new() { [1] = "ambition" });
+
+        Assert.Equal((QuestionLevels.HoldName, 1, (string?)null), tree.EffectiveQuestion(1));
+    }
+
+    [Fact]
+    public void EffectiveQuestion_AnAmbitionSkippedButAnEpicsQuestionBetween_IsStillRead()
+    {
+        var tree = Tree(
+            new() { [1] = (QuestionLevels.HoldName, 1), [2] = (QuestionLevels.BuildName, 1) },
+            types: new() { [1] = "ambition" });
+
+        Assert.Equal((QuestionLevels.BuildName, 1, (string?)"EPIC-2"), tree.EffectiveQuestion(3));
+    }
+
+    [Fact]
+    public void EffectiveQuestion_ADangerousIssue_StillReadsTheAmbitionsQuestion()
+    {
+        var tree = Tree(
+            new() { [1] = (QuestionLevels.HoldName, 1) },
+            types: new() { [1] = "ambition" },
+            dangerous: new() { [3] = "load-tests the API" });
+
+        Assert.Equal((QuestionLevels.HoldName, 1, (string?)"EPIC-1"), tree.EffectiveQuestion(3));
     }
 
     // ---- fixtures ----

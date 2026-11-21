@@ -3250,6 +3250,85 @@ public class DispatchTests
         Assert.Equal(WorkKinds.Answer, RowFor(scan, other).Kind);
     }
 
+    // ---- An ambition's question holds only the ambition itself (HA-2629) ----
+
+    [Fact]
+    public async Task ScanAsync_AHoldQuestionOnAnAmbition_FoldsOnlyItsOwnPass()
+    {
+        var (h, ambition, _, _) = await AnswerAsync();
+        await QuestionAsync(h, ambition, QuestionLevels.HoldName);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Equal("1 unanswered question - it is waiting on a person, not on an agent", row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+        Assert.Null(row.Answering);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AHoldQuestionOnAnAmbition_DispatchesTheEpicAndStoryBeneathItAsUsual()
+    {
+        var (h, ambition, epic, story) = await AnswerAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await QuestionAsync(h, ambition, QuestionLevels.HoldName);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.DoesNotContain("unanswered question", RowFor(scan, epic).Blocked ?? "");
+        Assert.DoesNotContain("unanswered question", RowFor(scan, story).Blocked ?? "");
+    }
+
+    [Fact]
+    public async Task ScanAsync_AHoldQuestionOnAnEpic_StillFoldsTheStoryBeneathItNamingTheEpic()
+    {
+        var (h, _, epic, story) = await AnswerAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await QuestionAsync(h, epic, QuestionLevels.HoldName);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
+
+        Assert.Equal(
+            $"1 unanswered question on {IssueKey.Format(h.ProjectKey, epic.Number)} - it is waiting on a person, not on an agent",
+            row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AQuestionOnAnAmbitionWithADangerousDescendant_StillFoldsItNamingTheAmbition()
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await FlagAsync(h, story);
+        await QuestionAsync(h, ambition, QuestionLevels.HoldName);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
+
+        Assert.Equal(
+            $"1 unanswered question on {IssueKey.Format(h.ProjectKey, ambition.Number)}, and it is flagged dangerous (load-tests the API) - a person answers before any of it moves",
+            row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ABuildQuestionOnAnAmbition_DoesNotFoldAStorysMoveIntoTheMergeColumn()
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+        await h.Db.SaveChangesAsync();
+        await h.PreApprovedAsync(story);
+        story.StatusId = h.Review;
+        story.PullRequestUrl = "https://example.com/o/r/pull/1";
+        await h.Db.SaveChangesAsync();
+        await h.AddMergeCheckAsync(story, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(story, BuildVerdicts.Passed);
+        await QuestionAsync(h, ambition, QuestionLevels.BuildName);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
+
+        Assert.Equal(HopKinds.Approve, row.HopKind);
+        Assert.Null(row.Blocked);
+    }
+
     [Fact]
     public async Task MatchAnswering_KeepsOnlyTheFlaggedRow_AndMatchKeepsOnlyTheOther()
     {
