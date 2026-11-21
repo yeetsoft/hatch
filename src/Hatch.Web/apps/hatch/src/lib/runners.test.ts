@@ -439,6 +439,12 @@ describe('runnerStrip', () => {
     expect(runnerStrip([], NOW)).toEqual([]);
   });
 
+  it('carries the preferred mark on a marked runner only', () => {
+    const rows = runnerStrip([runner({ name: 'alfa', preferred: true }), runner({ name: 'bravo' })], NOW);
+
+    expect(rows.map((row) => row.preferred)).toEqual([true, false]);
+  });
+
   it('keeps the order given, not sorted', () => {
     const a = runner({ name: 'alfa' });
     const b = runner({ name: 'bravo' });
@@ -1494,6 +1500,7 @@ describe('the runner detail\'s two forms', () => {
       refusedModels: '',
       statusMode: 'all',
       statusIds: [],
+      preferred: false,
     });
     expect(settingsOf(runner())).toEqual({
       tags: '',
@@ -1501,6 +1508,7 @@ describe('the runner detail\'s two forms', () => {
       refusedModels: '',
       statusMode: 'all',
       statusIds: [],
+      preferred: false,
     });
     expect(settingsOf(runner({ refusedModels: ['fable', 'haiku'] })).refusedModels).toBe('fable\nhaiku');
   });
@@ -1601,6 +1609,26 @@ describe('the runner detail\'s two forms', () => {
     expect(settingsChanged({ ...settingsOf(r), statusIds: [2] }, r)).toBe(true);
     expect(settingsChanged({ ...settingsOf(r), statusIds: [3, 2] }, r)).toBe(false);
     expect(settingsChanged({ ...settingsOf(runner()), statusMode: 'only' }, runner())).toBe(true);
+  });
+
+  it('notices the preferred mark changing, and reads an absent one as off', () => {
+    const r = runner({ preferred: true });
+    expect(settingsOf(r).preferred).toBe(true);
+    expect(settingsOf(runner()).preferred).toBe(false);
+    expect(settingsChanged(settingsOf(r), r)).toBe(false);
+    expect(settingsChanged({ ...settingsOf(r), preferred: false }, r)).toBe(true);
+    expect(settingsChanged({ ...settingsOf(runner()), preferred: true }, runner())).toBe(true);
+  });
+
+  it('sends the preferred mark only where it changed', () => {
+    const off = runner();
+    expect(settingsRequest(settingsOf(off), off).patch).not.toHaveProperty('preferred');
+    expect(settingsRequest({ ...settingsOf(off), tags: 'gpu' }, off).patch).not.toHaveProperty('preferred');
+    expect(settingsRequest({ ...settingsOf(off), preferred: true }, off).patch).toMatchObject({ preferred: true });
+
+    const on = runner({ preferred: true });
+    expect(settingsRequest(settingsOf(on), on).patch).not.toHaveProperty('preferred');
+    expect(settingsRequest({ ...settingsOf(on), preferred: false }, on).patch).toMatchObject({ preferred: false });
   });
 
   it('ignores the ticked ids under all', () => {

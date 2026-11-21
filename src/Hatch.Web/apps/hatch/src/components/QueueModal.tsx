@@ -102,6 +102,7 @@ export function QueueModal({
           {runnerStrip(runners, now).map((row) => (
             <li key={row.name} className={'hatch-queue-runner' + (row.gone ? ' hatch-queue-runner--gone' : '')}>
               <strong className="hatch-queue-runner-name">{row.name}</strong>
+              {row.preferred && <Badge tone="primary">preferred</Badge>}
               {row.where && <Text tone="muted">{row.where}</Text>}
               <Badge tone={row.tone}>{row.words}</Badge>
               {row.claimKey && (

@@ -500,6 +500,15 @@ describe('QueueModal runner strip', () => {
     expect(html).not.toContain('href="/issues/');
   });
 
+  it('badges the marked runner on the strip, and no other', () => {
+    const html = strip([runner({ name: 'Jeff Winger', preferred: true }), runner({ name: 'Britta Perry' })]);
+
+    expect(html.match(/>preferred<\/span>/g)).toHaveLength(1);
+    const rows = html.split('<li ').slice(1);
+    expect(rows[0]).toContain('>preferred</span>');
+    expect(rows[1]).not.toContain('preferred');
+  });
+
   it("keeps the array's order", () => {
     const html = strip([runner({ name: 'Jeff Winger' }), runner({ name: 'Britta Perry' })]);
 

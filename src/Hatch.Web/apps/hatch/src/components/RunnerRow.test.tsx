@@ -128,6 +128,12 @@ describe('RunnerRow', () => {
     expect(one).not.toMatch(/>x\d+</);
   });
 
+  it('badges a preferred runner, and only that one', () => {
+    expect(draw(runner({ preferred: true, sessions: [session()] }))).toContain('>preferred</span>');
+    expect(draw(runner({ sessions: [session()] }))).not.toContain('preferred');
+    expect(draw(runner({ preferred: false, sessions: [session()] }))).not.toContain('preferred');
+  });
+
   it('badges a revoked runner, and only that one', () => {
     expect(draw(runner({ revokedAt: at(-1000), sessions: [session()] }))).toContain('>revoked</span>');
     expect(draw(runner({ sessions: [session()] }))).not.toContain('revoked');
