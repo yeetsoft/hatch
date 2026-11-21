@@ -6429,16 +6429,15 @@ trail.
 
 ## The overnight
 
-The leaderboard says what the nights cost. The overnight page says **what the
+The leaderboard says what the nights cost. The overnight read says **what the
 loop actually landed** — the one read nothing else on the board collapses
 into: a card's own status, a trunk's own build, an open question each say one
 thing about one issue, and none of them say what came in together while
 nobody was watching.
 
-The page is at `/overnight` in the Hatch app, under **Agents** in the primary
-nav, beside the Leaderboard. It holds one table, the newest night in it —
-epics, then bugs, then stories, then tasks; within a type, most descendants
-first, then newest first — behind one read and one write:
+It is the newest night — epics, then bugs, then stories, then tasks; within a
+type, most descendants first, then newest first — behind one read and one
+write. The web app no longer draws it, and nothing in it calls either route:
 
 ```
 GET  /api/overnight
@@ -6448,10 +6447,7 @@ POST /api/overnight/seen
 `GET` answers `OvernightDto`: `from`, `to`, `count`, the ordered `rows`, and
 `unseen` — this reader's own count of how many of those rows they have not
 looked at yet (see [Overnight seen](#overnight-seen)). `POST` sets that mark
-to now; the page fires it the moment it is opened, independent of whether the
-row data itself has loaded, so reading the page is what counts as reading it,
-and it reloads the nav control below rather than waiting on a page reload.
-With nothing ever landed, the page draws an empty state rather than a table.
+to now.
 
 **Lands** is the moment an issue reaches a terminal column
 (`EfHatchStatus.IsTerminal`) — read off the newest `status_changed`
@@ -6468,7 +6464,7 @@ own lifetime, start to whichever of its stop conditions fires (a bound, three
 failures, the board asking it to stop). The two usually coincide, because
 that lifetime is exactly what produces a run of landings with no four-hour
 gap in it, but they are not the same computation — a person moving cards by
-hand with no loop running at all still produces a night by this page's
+hand with no loop running at all still produces a night by this
 definition, and a loop idling on a quiet board for over four hours without
 landing anything splits what was one continuous process run into two nights
 by this one, even though nothing about the loop itself ended. Said once here,
@@ -6481,10 +6477,6 @@ cost. A night is coarser and carries no cost accounting of its own: several
 increments across several tickets, or zero (a hand-moved card lands too),
 over however long the loop kept landing something, with no tokens and no
 notional USD anywhere in `Overnight.Landing` or `OvernightDto`.
-
-**Agents → Overnight**'s own nav control carries `unseen` beside the page:
-quiet while it is `0`, a lit mark and the count otherwise — and opening the
-page is what clears it, the same `POST` above.
 
 ## The dispatcher
 

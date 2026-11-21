@@ -9,13 +9,12 @@ namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
 /// HA-1047's acceptance, measured: the top bar in its widest state - a battery
-/// drawing a three-figure percentage, an unseen count on the overnight egg,
-/// and all four attention pills with two-digit counts - fits an iPhone 14 Pro
-/// viewport on the board, the plan page and an issue page, and so does the bar
-/// at rest.
+/// drawing a three-figure percentage beside all four attention pills with
+/// two-digit counts - fits an iPhone 14 Pro viewport on the board, the plan
+/// page and an issue page, and so does the bar at rest.
 ///
 /// <para>A scratch database draws the narrowest bar, so the widest state is
-/// reached by fulfilling the bar's three session reads with
+/// reached by fulfilling the bar's two session reads with
 /// <c>page.RouteAsync</c> - serialised from the real
 /// records, so a renamed field breaks this build rather than the bar - and
 /// leaving every other route, and the bundle, real. The same context is then
@@ -67,7 +66,7 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
 
             var violations = new List<string>();
 
-            // The widest state: the three session reads are ours, everything else is real.
+            // The widest state: the two session reads are ours, everything else is real.
             await harness.OpenAsync(deadline, baseUrl, "/", StubTheSessionReads);
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForFirstColumnAsync(deadline);
@@ -126,13 +125,11 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
         if (widest)
         {
             await harness.WaitForVisibleAsync(deadline, ".hatch-battery");
-            await harness.WaitForVisibleAsync(deadline, ".hatch-overnight-control.hatch-overnight-asking");
             await harness.WaitForVisibleAsync(deadline, ".hatch-attention-control.hatch-attention-asking");
         }
         else
         {
             await harness.WaitForVisibleAsync(deadline, E2eHarness.AttentionSelector);
-            await harness.WaitForVisibleAsync(deadline, E2eHarness.OvernightSelector);
         }
 
         var bar = await harness.MeasureBarAsync(deadline);
@@ -140,7 +137,7 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
         violations.AddRange(Check(route, state, widest, bar));
     }
 
-    /// <summary>AC1, AC2 and AC4 against one measurement. Names the route, the state and the two controls, with their boxes.</summary>
+    /// <summary>AC1, AC2 and AC4 against one measurement. Names the route, the state and the controls, with their boxes.</summary>
     private static List<string> Check(string route, string state, bool widest, BarMeasurement bar)
     {
         var where = $"{route}, {state}";
@@ -206,8 +203,8 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// The widest each read can draw: <c>100%</c> in the battery, two digits
-    /// unseen on the egg, and two digits in each of the four attention pills.
+    /// The widest each read can draw: <c>100%</c> in the battery and two digits
+    /// in each of the four attention pills.
     /// <c>ExhaustedRunners</c> stays null: its dot adds no width.
     /// </summary>
     private static async Task StubTheSessionReads(IBrowserContext context)
@@ -217,8 +214,6 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
 
         var utilization = new UtilizationReading(
             UtilizationStates.Ok, now, now, [new UtilizationLimit("session", "Session", 100, now.AddHours(1))], []);
-
-        var overnight = new OvernightDto(null, null, 0, [], Unseen: 99);
 
         var attention = new AttentionDto(
             Reviews: rows.Select(i => new ReviewDto($"E2E-{i}", "A review", "task", "https://example.invalid/pull/" + i)).ToList(),
@@ -230,7 +225,6 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
             Deadlocked: rows.Select(i => new DeadlockedDto($"E2E-{i}", "A deadlock", "task", "Waits on itself.")).ToList());
 
         await FulfilAsync(context, "**/api/utilization", utilization);
-        await FulfilAsync(context, "**/api/overnight", overnight);
         await FulfilAsync(context, "**/api/attention", attention);
     }
 

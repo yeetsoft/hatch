@@ -12,7 +12,6 @@ const SCREENS: Record<string, string> = {
   '/ambitions': 'issues',
   '/runners': 'watching-the-loop',
   '/leaderboard': 'watching-the-loop',
-  '/overnight': 'watching-the-loop',
   '/goose': 'the-goose',
   '/history': 'watching-the-loop',
   '/playbooks': 'playbooks',

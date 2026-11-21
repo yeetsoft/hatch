@@ -126,3 +126,9 @@ export function quietGapWords(
 
 /** The page's empty state - one wording, like changelog.ts's own. */
 export const changelogReportEmptyWords = (): string => 'Nothing landed in this window.';
+
+/** `none beneath`, `1 beneath`, `4 beneath` - a phrase, not a bare number,
+    matching WorkLog.tsx's ownPhrase idiom for a descendant count. */
+export function beneathLabel(descendantCount: number): string {
+  return descendantCount === 0 ? 'none beneath' : `${descendantCount} beneath`;
+}

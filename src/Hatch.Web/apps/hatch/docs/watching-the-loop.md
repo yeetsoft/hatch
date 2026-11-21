@@ -327,20 +327,6 @@ goes. If that session beats again while the new loop waits, it is a real second
 loop in the checkout, and the new one is refused with the usual "is already the
 runner" sentence and exits 1.
 
-## Overnight
-
-**Agents → Overnight** is the newest night: the run of landings nearest the
-most recent one, split off by any gap over four hours - a landing is any
-issue reaching a terminal column, by a person's hand or by a hop, not only
-what a loop did. Epics, bugs, stories and tasks are listed in that order, and
-within a type the ones with the most beneath them come first; each row shows
-the issue, its type, its title and how much is beneath it.
-
-The egg-shaped control beside **Overnight** in the nav bar carries a count of
-landings this reader has not seen. It is rechecked about once a minute and
-whenever the tab comes back into focus, and it goes quiet the moment this
-reader opens the Overnight page - for that reader alone, not board-wide.
-
 ## Leaderboard
 
 **Agents → Leaderboard** is every session's work-log row, board-wide unless
