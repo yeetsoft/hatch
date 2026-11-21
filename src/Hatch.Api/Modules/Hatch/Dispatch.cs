@@ -4505,9 +4505,14 @@ public sealed class PriorityTree
     /// number of questions at that level, and the key it was found on, which is
     /// null for the issue's own. A tie in level keeps the nearer issue. Like
     /// <see cref="EffectiveDangerous"/> the walk does not stop at a project line.
+    /// A question asked on an ambition holds only the ambition itself -
+    /// <see cref="QuestionLevels.Reaches"/> - unless this issue is dangerous, its
+    /// own flag or an ancestor's, in which case the ambition's question still
+    /// reaches it.
     /// </summary>
     public (string Level, int Count, string? FromKey)? EffectiveQuestion(long issueId)
     {
+        var dangerous = EffectiveDangerous(issueId).Reason is not null;
         var seen = new HashSet<long>();
         long? at = issueId;
         (string Level, int Count, string? FromKey)? best = null;
@@ -4515,6 +4520,7 @@ public sealed class PriorityTree
         while (at is { } id && seen.Add(id))
         {
             if (_questions.TryGetValue(id, out var q) && TryGet(id, out var row)
+                && QuestionLevels.Reaches(_onePr.TryGetValue(id, out var onePrRow) ? onePrRow.Type : "", id == issueId, dangerous)
                 && (best is null || QuestionLevels.Rank(q.Level) < QuestionLevels.Rank(best.Value.Level)))
                 best = (q.Level, q.Count, id == issueId ? null : row.Key);
 

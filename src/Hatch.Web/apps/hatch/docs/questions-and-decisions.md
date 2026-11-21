@@ -41,6 +41,13 @@ levels](#the-three-levels)). The ticket's strictest open question counts, and so
 does the strictest one on any ticket above it, so a question on an epic reaches
 every story and task beneath it.
 
+An ambition is the one exception: a question asked on an ambition holds only
+the ambition's own pass, at any level, and does not travel down to the epics
+and stories under it - they are dispatched as if it were not there. The stock
+pass prompt still tells a session never to ask one there regardless. A ticket
+flagged dangerous is still held by the ambition's question, the same as by any
+other ancestor's.
+
 - At `hold`, every move of the ticket is folded with *"N unanswered question(s) -
   it is waiting on a person, not on an agent"*. Where the question is an
   ancestor's the sentence names that ticket: *"... on HA-12 - ..."*. That is the

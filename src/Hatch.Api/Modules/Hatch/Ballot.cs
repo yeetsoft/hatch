@@ -125,14 +125,52 @@ public static class Ballot
             .Distinct()
             .ToDictionary(id => id, id => tree.DescendantIds(id));
 
-        var wanted = below.Keys.Concat(below.Values.SelectMany(ids => ids)).Distinct().ToList();
-        var statusOf = await db.Issues.AsNoTracking()
-            .Where(i => wanted.Contains(i.Id))
-            .Select(i => new { i.Id, i.StatusId })
-            .ToDictionaryAsync(i => i.Id, i => i.StatusId, ct);
+        // One projection of every issue, not just the ones below a question: a
+        // dangerous flag reaches past the ambition it is asked on and up to the
+        // root the same way PriorityTree.EffectiveDangerous reads it, so the
+        // walk needs every parent on the way, not only the ones already named.
+        var all = await db.Issues.AsNoTracking()
+            .Select(i => new { i.Id, i.ParentId, i.Type, i.Dangerous, i.StatusId })
+            .ToListAsync(ct);
+        var byId = all.ToDictionary(i => i.Id);
 
-        bool Open(long id) => statusOf.TryGetValue(id, out var status) && !closed.Contains(status);
-        var holds = below.ToDictionary(kv => kv.Key, kv => (Open(kv.Key) ? 1 : 0) + kv.Value.Count(Open));
+        bool Open(long id) => byId.TryGetValue(id, out var row) && !closed.Contains(row.StatusId);
+
+        var dangerousCache = new Dictionary<long, bool>();
+        bool EffectivelyDangerous(long id)
+        {
+            if (dangerousCache.TryGetValue(id, out var known)) return known;
+
+            var seen = new HashSet<long>();
+            long? at = id;
+            var result = false;
+
+            while (at is { } cur && seen.Add(cur) && byId.TryGetValue(cur, out var row))
+            {
+                if (!string.IsNullOrEmpty(row.Dangerous)) { result = true; break; }
+                at = row.ParentId;
+            }
+
+            return dangerousCache[id] = result;
+        }
+
+        // A question on an ambition holds the ambition itself, not the work
+        // beneath it - QuestionLevels.Reaches - unless a descendant is flagged
+        // dangerous, in which case it is still held, the same as any other hold
+        // on dangerous work. A question on anything else counts as it always has.
+        int HoldsFor(long questionId)
+        {
+            var fromType = byId.TryGetValue(questionId, out var row) ? row.Type : "";
+            var count = Open(questionId) ? 1 : 0;
+
+            foreach (var id in below[questionId])
+                if (Open(id) && QuestionLevels.Reaches(fromType, false, EffectivelyDangerous(id)))
+                    count++;
+
+            return count;
+        }
+
+        var holds = below.Keys.ToDictionary(id => id, HoldsFor);
 
         var lookBackIds = questions.Where(q => q.LookBack).Select(q => idByKey[q.IssueKey]).Distinct().ToList();
         var standing = await LookBackStandingAsync(db, lookBackIds, ct);

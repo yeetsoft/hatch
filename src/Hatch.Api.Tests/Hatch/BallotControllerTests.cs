@@ -257,6 +257,53 @@ public class BallotControllerTests
     }
 
     [Fact]
+    public async Task AHoldQuestionOnAnAmbition_HoldsOnlyItself()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id);
+        await h.FileAsync("task", "t1", parentId: epic.Id);
+        await h.FileAsync("task", "t2", parentId: epic.Id);
+        await h.AskAsync(ambition, "?", level: QuestionLevels.HoldName);
+
+        var entry = Assert.Single(Value(await h.Ballot.GetBallot(null, default)).Questions);
+
+        Assert.Equal(1, entry.Holds);
+    }
+
+    [Fact]
+    public async Task AHoldQuestionOnAnAmbitionWithADangerousTaskBeneath_HoldsTheDangerousOneToo()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id);
+        await h.FileAsync("task", "t1", parentId: epic.Id);
+        var dangerous = await h.FileAsync("task", "t2", parentId: epic.Id);
+        dangerous.Dangerous = "load test";
+        await h.Db.SaveChangesAsync();
+        await h.AskAsync(ambition, "?", level: QuestionLevels.HoldName);
+
+        var entry = Assert.Single(Value(await h.Ballot.GetBallot(null, default)).Questions);
+
+        Assert.Equal(2, entry.Holds);
+    }
+
+    [Fact]
+    public async Task AQuestionOnAnEpicOverTheSameShape_StillHoldsTheFullCount()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id);
+        await h.FileAsync("task", "t1", parentId: epic.Id);
+        await h.FileAsync("task", "t2", parentId: epic.Id);
+        await h.AskAsync(epic, "?");
+
+        var entry = Assert.Single(Value(await h.Ballot.GetBallot(null, default)).Questions);
+
+        Assert.Equal(3, entry.Holds);
+    }
+
+    [Fact]
     public async Task AHoldAndABuildQuestionHoldingTheSame_ComeHoldFirst()
     {
         var h = await NewAsync();
