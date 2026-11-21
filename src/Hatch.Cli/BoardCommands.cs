@@ -389,6 +389,7 @@ public sealed class BoardCommands(Cli cli)
             {
                 var words = q.Blocked is { Length: > 0 } why
                     ? why
+                    : q.Kind == WorkKinds.Answer && q.Answering is { Length: > 0 } answering ? answering
                     : q.ClearNote is { Length: > 0 } note
                     ? $"clear for {q.FromStatus.Name} -> {q.ToStatus?.Name ?? "?"} - {note}"
                     : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue)

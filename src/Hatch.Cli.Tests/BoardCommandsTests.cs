@@ -874,6 +874,18 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public void The_queue_draws_an_answering_row_as_the_sentence_naming_the_issue_and_the_question()
+    {
+        var row = Fixtures.Row("AER-1", selfMove: true) with
+        {
+            Kind = WorkKinds.Answer,
+            Answering = "answers the question on AER-7: Which way should it go?",
+        };
+
+        Assert.EndsWith("In Progress  answers the question on AER-7: Which way should it go?", BoardCommands.Draw([row]).Single());
+    }
+
+    [Fact]
     public void The_queue_draws_a_pass_as_a_move_to_its_own_column()
     {
         var lines = BoardCommands.Draw([Fixtures.Row("AER-1", selfMove: true)]);

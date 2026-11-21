@@ -409,7 +409,8 @@ public class WorkController(
             taken?.GetValueOrDefault(r.Issue.Id)?.Takers,
             taken?.GetValueOrDefault(r.Issue.Id)?.Untaken,
             notes.GetValueOrDefault(r.Issue.Id),
-            r.ProjectLevel)).ToList();
+            r.ProjectLevel,
+            r.Answering?.Sentence())).ToList();
     }
 
     /// <summary>
@@ -1614,6 +1615,20 @@ public class WorkController(
         var match = route.Match;
         var playbook = match?.Playbook;
 
+        // An ambition with a qualifying question beneath it is aimed at its answering
+        // row instead of its pass - the same rule the scan applies, from the same
+        // finder, so the queue never promises what this does not hand out. A board
+        // with no such row leaves the pass as it was.
+        AnswerQuestions.Candidate? answering = null;
+        if (Dispatch.PassStands(issue, from, Columns.Implementation(statuses))
+            && (await AnswerQuestions.ForAsync(db, gate, [issue.Id], ct)).TryGetValue(issue.Id, out var asked)
+            && await _dispatch.MatchAnsweringAsync(from.Id, issue.Type, children.Count > 0, issue.ProjectId, ct) is { Playbook: not null } answeringMatch)
+        {
+            answering = asked;
+            match = answeringMatch;
+            playbook = answeringMatch.Playbook;
+        }
+
         // Both halves in one read: the open ones decide whether an agent is
         // dispatched at all, and the answered ones are what it is dispatched
         // knowing.
@@ -1665,9 +1680,9 @@ public class WorkController(
             issue, from, rowTo, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
-            has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor);
+            has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor, answering: answering is not null);
         var hopped = hop && blocked is null;
-        var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing, Dispatch.IsPass(issue, from, rowTo, implementationStatus));
+        var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing, Dispatch.IsPass(issue, from, rowTo, implementationStatus), answering is not null);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
             && rowTo is not null && rowTo.Id == review?.Id;
         var releaseNoteFor = await ReleaseNoteForAsync(issue.Id, ct);
@@ -1747,7 +1762,8 @@ public class WorkController(
             sessionModelIsLocal,
             sessionModelFellBack,
             buildPast.Count == 0 ? null : buildPast,
-            ambition);
+            ambition,
+            answering is null ? null : AnswerQuestions.ToDto(answering));
     }
 
     /// <summary>

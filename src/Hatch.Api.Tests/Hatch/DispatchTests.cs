@@ -2785,13 +2785,14 @@ public class DispatchTests
     /// <summary>A pass's work log row, written straight to the table: the ambition's playbook from the implementation column to itself.</summary>
     private static async Task PassRowAsync(
         Harness h, EfHatchIssue ambition, string? outcome = ClaimOutcomes.Worked, TimeSpan? ago = null,
-        string type = "ambition", int? from = null, int? to = null)
+        string type = "ambition", int? from = null, int? to = null, long? questionId = null)
     {
         var ended = Now - (ago ?? TimeSpan.FromHours(2));
         h.Db.WorkLog.Add(new EfHatchWorkLogEntry
         {
             IssueId = ambition.Id, SessionId = Guid.NewGuid().ToString("N"), StartedAt = ended.AddMinutes(-10), EndedAt = ended, DurationMs = 600_000, CreatedAt = ended,
             IssueType = type, PlaybookFromStatusId = from ?? h.InProgress, PlaybookToStatusId = to ?? h.InProgress, Outcome = outcome,
+            QuestionId = questionId,
         });
         await h.Db.SaveChangesAsync();
     }
@@ -2965,6 +2966,263 @@ public class DispatchTests
 
         Assert.Equal("its only child is not done - an epic is verified once its stories are", RowFor(scan, epic).Blocked);
         Assert.NotEqual(RowFor(scan, epic).From.Id, RowFor(scan, epic).To?.Id);
+    }
+
+    // ---- An ambition aimed at a question ----
+
+    /// <summary>
+    /// An ambition with room standing in the implementation column, the board's flagged
+    /// row, and an epic with a story beneath it, in a ladder the questions are put on.
+    /// </summary>
+    private static async Task<(Harness H, EfHatchIssue Ambition, EfHatchIssue Epic, EfHatchIssue Story)> AnswerAsync(bool flaggedRow = true)
+    {
+        var (h, ambition) = await PassAsync(5, 0);
+        if (flaggedRow) await h.AddPlaybookAsync(h.InProgress, h.InProgress, types: "ambition", answers: true);
+        var epic = await h.FileAsync("epic", "E", h.Todo, parentId: ambition.Id);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+        return (h, ambition, epic, story);
+    }
+
+    /// <summary>A question, written straight to the table, and optionally answered by a person.</summary>
+    private static async Task<EfHatchComment> QuestionAsync(
+        Harness h, EfHatchIssue issue, string? level, bool answered = false, TimeSpan? ago = null, string body = "Which way should it go?\nThe second line.")
+    {
+        var question = new EfHatchComment
+        {
+            IssueId = issue.Id, Author = "agent", Body = body, Kind = EfHatchComment.Question,
+            Level = level, CreatedAt = Now - (ago ?? TimeSpan.FromHours(1)),
+        };
+        h.Db.Comments.Add(question);
+        await h.Db.SaveChangesAsync();
+
+        if (answered)
+        {
+            h.Db.Comments.Add(new EfHatchComment
+            {
+                IssueId = issue.Id, Author = "person", Body = "That way", Kind = EfHatchComment.Answer,
+                AnswersId = question.Id, CreatedAt = Now,
+            });
+            await h.Db.SaveChangesAsync();
+        }
+
+        return question;
+    }
+
+    private static void AssertReadsAsToday(ScanRow row)
+    {
+        Assert.Null(row.Answering);
+        Assert.Equal(WorkKinds.Advance, row.Kind);
+        Assert.Null(row.Blocked);
+    }
+
+    [Theory]
+    [InlineData(QuestionLevels.BuildName)]
+    [InlineData(QuestionLevels.MergeName)]
+    public async Task ScanAsync_AnAmbitionWithAnOpenBuildOrMergeQuestionBeneathIt_IsAimedAtIt(string level)
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        var question = await QuestionAsync(h, story, level);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Null(row.Blocked);
+        Assert.Equal(WorkKinds.Answer, row.Kind);
+        Assert.Equal(row.From.Id, row.To!.Id);
+        Assert.False(row.Hop);
+        var answering = row.Answering!;
+        Assert.Equal(question.Id, answering.QuestionId);
+        Assert.Equal(story.Id, answering.IssueId);
+        Assert.Equal($"{h.ProjectKey}-{story.Number}", answering.IssueKey);
+        Assert.Equal("S", answering.IssueTitle);
+        Assert.Equal(level, answering.Level);
+        Assert.Equal("agent", answering.AskedBy);
+        Assert.Equal(question.CreatedAt, answering.AskedAt);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AQuestionAtHold_IsNeverAimedAt_AndTheAmbitionReadsAsToday()
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        await QuestionAsync(h, story, QuestionLevels.HoldName);
+        await QuestionAsync(h, story, null);
+
+        AssertReadsAsToday(await PassRowForAsync(h, ambition));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnAnsweredQuestion_IsNotAimedAt()
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        await QuestionAsync(h, story, QuestionLevels.BuildName, answered: true);
+
+        AssertReadsAsToday(await PassRowForAsync(h, ambition));
+    }
+
+    [Theory]
+    [InlineData("issue")]
+    [InlineData("between")]
+    [InlineData("ambition")]
+    public async Task ScanAsync_ADangerousFlagOnTheIssueTheEpicOrTheAmbition_MeansItIsNeverAimedAt(string where)
+    {
+        var (h, ambition, epic, story) = await AnswerAsync();
+        await QuestionAsync(h, story, QuestionLevels.BuildName);
+        await FlagAsync(h, where switch { "issue" => story, "between" => epic, _ => ambition });
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Null(row.Answering);
+        Assert.Equal(WorkKinds.Advance, row.Kind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AWorkedRowNamingTheQuestion_MeansItIsNotAimedAtAgain_AndTheAmbitionReadsAsToday()
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        var question = await QuestionAsync(h, story, QuestionLevels.BuildName);
+        await PassRowAsync(h, ambition, questionId: question.Id);
+
+        AssertReadsAsToday(await PassRowForAsync(h, ambition));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnAnsweringSessionsWorkedRow_IsNotAPass_SoItDoesNotSettleTheNextOne()
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        var question = await QuestionAsync(h, story, QuestionLevels.BuildName);
+        await PassRowAsync(h, ambition, questionId: question.Id);
+
+        // Room is open and no pass has run, so the ambition is dispatched to its pass.
+        Assert.Null((await PassRowForAsync(h, ambition)).Blocked);
+
+        await PassRowAsync(h, ambition);
+
+        Assert.Equal(Settled, (await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Theory]
+    [InlineData(ClaimOutcomes.Dropped)]
+    [InlineData(null)]
+    public async Task ScanAsync_ARowNamingTheQuestionWithAnyOtherOutcome_LeavesItAimedAt(string? outcome)
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        var question = await QuestionAsync(h, story, QuestionLevels.BuildName);
+        await PassRowAsync(h, ambition, outcome, questionId: question.Id);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Equal(WorkKinds.Answer, row.Kind);
+        Assert.Equal(question.Id, row.Answering!.QuestionId);
+    }
+
+    [Fact]
+    public async Task ScanAsync_TwoQualifyingQuestions_AimAtTheNewerOne()
+    {
+        var (h, ambition, epic, story) = await AnswerAsync();
+        await QuestionAsync(h, story, QuestionLevels.BuildName, ago: TimeSpan.FromHours(5));
+        var newer = await QuestionAsync(h, epic, QuestionLevels.MergeName, ago: TimeSpan.FromHours(1));
+
+        Assert.Equal(newer.Id, (await PassRowForAsync(h, ambition)).Answering!.QuestionId);
+    }
+
+    [Fact]
+    public async Task ScanAsync_WhenTheNewerQuestionWasWorked_TheOlderOneIsAimedAt()
+    {
+        var (h, ambition, epic, story) = await AnswerAsync();
+        var older = await QuestionAsync(h, story, QuestionLevels.BuildName, ago: TimeSpan.FromHours(5));
+        var newer = await QuestionAsync(h, epic, QuestionLevels.MergeName, ago: TimeSpan.FromHours(1));
+        await PassRowAsync(h, ambition, questionId: newer.Id);
+
+        Assert.Equal(older.Id, (await PassRowForAsync(h, ambition)).Answering!.QuestionId);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AQuestionOnTheAmbitionItself_IsNotAimedAt()
+    {
+        var (h, ambition, _, _) = await AnswerAsync();
+        await QuestionAsync(h, ambition, QuestionLevels.BuildName);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Null(row.Answering);
+        Assert.NotEqual(WorkKinds.Answer, row.Kind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AQuestionOnAnIssueOnAClosedColumn_IsNotAimedAt()
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        await QuestionAsync(h, story, QuestionLevels.MergeName);
+        var done = await h.Db.Statuses.SingleAsync(s => s.Id == h.Done);
+        done.IsTerminal = true;
+        story.StatusId = h.Done;
+        await h.Db.SaveChangesAsync();
+
+        AssertReadsAsToday(await PassRowForAsync(h, ambition));
+    }
+
+    [Fact]
+    public async Task ScanAsync_ABoardWithNoFlaggedRow_RunsThePassAsToday()
+    {
+        var (h, ambition, _, story) = await AnswerAsync(flaggedRow: false);
+        await QuestionAsync(h, story, QuestionLevels.BuildName);
+
+        AssertReadsAsToday(await PassRowForAsync(h, ambition));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnAmbitionAtItsLimitOrAlreadySettled_StillAnswersItsQuestion()
+    {
+        var (h, ambition, _, story) = await AnswerAsync();
+        ambition.WipLimit = 1;
+        await h.Db.SaveChangesAsync();
+        await PassRowAsync(h, ambition);
+        var question = await QuestionAsync(h, story, QuestionLevels.BuildName);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Null(row.Blocked);
+        Assert.Equal(WorkKinds.Answer, row.Kind);
+        Assert.Equal(question.Id, row.Answering!.QuestionId);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AQuestionOnAnIssueBeneathAnotherAmbition_IsNotAimedAtThisOne()
+    {
+        var (h, ambition, _, _) = await AnswerAsync();
+        var other = await h.FileAsync("ambition", "B", h.InProgress);
+        var otherEpic = await h.FileAsync("epic", "F", h.Todo, parentId: other.Id);
+        await QuestionAsync(h, otherEpic, QuestionLevels.BuildName);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(RowFor(scan, ambition).Answering);
+        Assert.Equal(WorkKinds.Answer, RowFor(scan, other).Kind);
+    }
+
+    [Fact]
+    public async Task MatchAnswering_KeepsOnlyTheFlaggedRow_AndMatchKeepsOnlyTheOther()
+    {
+        var rows = new List<EfHatchPlaybook> { AnsweringRow(1, "ambition", answers: false), AnsweringRow(2, "ambition", answers: true) };
+
+        Assert.Equal(2, Dispatch.MatchAnswering(rows, 30, "ambition", isParent: false, projectId: 1)!.Id);
+        Assert.Equal(1, Dispatch.Match(rows, 30, 30, "ambition", isParent: false, projectId: 1)!.Id);
+        Assert.Null(Dispatch.MatchAnswering(rows, 30, "story", isParent: false, projectId: 1));
+        Assert.Null(Dispatch.MatchAnswering([AnsweringRow(3, "ambition", answers: false)], 30, "ambition", isParent: false, projectId: 1));
+    }
+
+    [Theory]
+    [InlineData("Which way should it go?", "answers the question on HA-12: Which way should it go?")]
+    [InlineData("\n\n  Second line wins  \nthird", "answers the question on HA-12: Second line wins")]
+    public void Sentence_NamesTheIssueAndTheFirstLineOfTheQuestion(string body, string expected) =>
+        Assert.Equal(expected, new AnswerQuestions.Candidate(1, "HA-12", "T", 5, body, null, "build", "agent", Now).Sentence());
+
+    [Fact]
+    public void Sentence_ClipsALongFirstLine()
+    {
+        var sentence = new AnswerQuestions.Candidate(1, "HA-12", "T", 5, new string('x', 200), null, "build", "agent", Now).Sentence();
+
+        Assert.Equal("answers the question on HA-12: ".Length + AnswerQuestions.MaxLineLength, sentence.Length);
+        Assert.EndsWith("...", sentence);
     }
 
     // ---- Helpers ----
@@ -3208,7 +3466,7 @@ public class DispatchTests
 
         public async Task AddPlaybookAsync(
             int from, int to, string types = "", string model = "sonnet", string shape = "any",
-            int? briefLimit = null, int? projectId = null, bool isCheck = false)
+            int? briefLimit = null, int? projectId = null, bool isCheck = false, bool answers = false)
         {
             Db.Playbooks.Add(new EfHatchPlaybook
             {
@@ -3222,6 +3480,7 @@ public class DispatchTests
                 BriefLimit = briefLimit,
                 ProjectId = projectId,
                 IsCheck = isCheck,
+                AnswersQuestions = answers,
                 CreatedAt = Now,
                 UpdatedAt = Now,
             });

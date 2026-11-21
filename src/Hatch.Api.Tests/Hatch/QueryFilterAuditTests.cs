@@ -31,6 +31,12 @@ public class QueryFilterAuditTests
             + "project the caller cannot see still holds the work beneath it, so a read that left it out would "
             + "honour no question there. What leaves is a level and a count, which the dispatcher folds into a "
             + "sentence naming the ancestor's key, as it does for a dangerous reason."),
+        ["AnswerQuestions.ForAsync"] = (2,
+            "The open question an ambition is aimed at, and the work log rows that name a question already "
+            + "answered. A question on an issue in a project the caller cannot see still stands beneath the "
+            + "ambition, and a session that answered it still counts, so a read that left either out would aim "
+            + "two callers at different questions or at one twice. What leaves is the question's key, title and "
+            + "body, and only to the caller who is dispatched the ambition above it."),
         ["OnePrLock.CrossProjectTaskCountAsync"] = (1,
             "How many tasks of a story stand in another project. A task in a project the caller cannot see still "
             + "keeps its story from sharing one pull request, so a count that left it out would let a scoped caller "

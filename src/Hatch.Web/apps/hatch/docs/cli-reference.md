@@ -448,6 +448,11 @@ runner.
   key's `--mine` reaches is set by an admin on the Runners page, never by the
   key ([People, roles and keys](people-roles-and-keys)).
 
+An ambition that would be sent to answer a question shows it as
+`answers the question on HA-12: <first line of the question>`, naming the issue
+the question is on, in place of the usual arrow
+([what a session may answer](questions-and-decisions#what-a-session-may-answer)).
+
 A row's marker says where the pass puts it:
 
 - `!!` is emergency and `! ` is expedited. Every emergency row is considered
