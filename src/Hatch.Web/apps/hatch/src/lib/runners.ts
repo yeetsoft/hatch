@@ -256,6 +256,8 @@ export interface RunnerStripRow {
   line: string | null;
   ago: string;
   gone: boolean;
+  /** Whether the runner carries the preferred mark. */
+  preferred: boolean;
 }
 
 /**
@@ -282,6 +284,7 @@ export function runnerStrip(runners: readonly Runner[], now: Date): RunnerStripR
       line: activity === 'working' ? runner.line : null,
       ago: agoPhrase(runner.lastSeenAt, now),
       gone: activity === 'gone',
+      preferred: runner.preferred ?? false,
     };
   });
 }
@@ -803,6 +806,8 @@ export interface RunnerSettings {
       `only` to `except` and back loses no ticks; `all` ignores them. */
   statusMode: RunnerStatusMode;
   statusIds: number[];
+  /** The preferred mark. */
+  preferred: boolean;
 }
 
 /** What a row's tags and under look like in the form that edits them. */
@@ -813,6 +818,7 @@ export function settingsOf(runner: Runner): RunnerSettings {
     refusedModels: refusedModelsDraft(runner.refusedModels),
     statusMode: runner.statusMode ?? 'all',
     statusIds: runner.statusIds ?? [],
+    preferred: runner.preferred ?? false,
   };
 }
 
@@ -830,7 +836,8 @@ export function settingsChanged(draft: RunnerSettings, runner: Runner): boolean 
     draft.under.trim() !== (runner.under ?? '').trim() ||
     !sameTags(runnerTagsRequest(draft.tags), runner.tags) ||
     !sameTags(refusedModelsRequest(draft.refusedModels), runner.refusedModels) ||
-    ruleChanged(draft, runner)
+    ruleChanged(draft, runner) ||
+    draft.preferred !== (runner.preferred ?? false)
   );
 }
 
@@ -847,14 +854,16 @@ export interface RunnerSettingsRequest {
  * The settings form as its requests. The column rule rides the `PATCH` only
  * where it changed, and then as a pair - the server refuses one without the
  * other, and refuses either on a runner with no key, so a save of tags alone
- * must not carry it. Under `all` the list sent is empty.
+ * must not carry it. Under `all` the list sent is empty. The preferred mark is
+ * a key-config field the same way, so it rides only where it changed.
  */
 export function settingsRequest(draft: RunnerSettings, runner: Runner): RunnerSettingsRequest {
   const rule: RunnerPatchRequest = ruleChanged(draft, runner)
     ? { statusMode: draft.statusMode, statusIds: draft.statusMode === 'all' ? [] : draft.statusIds }
     : {};
+  const mark: RunnerPatchRequest = draft.preferred !== (runner.preferred ?? false) ? { preferred: draft.preferred } : {};
   return {
-    patch: { tags: runnerTagsRequest(draft.tags), under: draft.under.trim(), ...rule },
+    patch: { tags: runnerTagsRequest(draft.tags), under: draft.under.trim(), ...rule, ...mark },
     refusedModels: refusedModelsRequest(draft.refusedModels),
   };
 }

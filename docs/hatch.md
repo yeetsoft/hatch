@@ -11122,8 +11122,8 @@ are taken together, never one without the other, and `all` keeps the ids
 the same as tags and refused models, so a name with no key is refused it
 outright - there is nowhere for it to live. A column deleted after the rule
 was written is dropped from `statusIds` on the next read rather than carried
-as a ghost id. Nothing reads this rule for dispatch yet, and the Runners page
-draws nothing for it - both come with a later ticket.
+as a ghost id. Nothing reads this rule for dispatch yet. The Runners page sets
+it under **What it may work** and shows it to a reader as a `Columns:` line.
 
 **It can also be marked preferred.** `preferred` on `PATCH /api/runners/{name}`
 says this runner takes work before unmarked runners; absent leaves it as it
@@ -11135,8 +11135,10 @@ runner's share rather than narrowing it, as a refused model does. It reads
 `false` for a key that has never run and for a heartbeat row with no key, and
 a peer's declaration carries it. Dispatch reads it one way: a runner that is not
 marked is told a clear row is [left for a preferred runner](#the-dispatcher)
-while a marked one is live, idle and able to take it. The Runners page draws
-nothing for it yet.
+while a marked one is live, idle and able to take it. The Runners page sets it
+with a **Preferred** checkbox under **What it may work** (a reader sees `Preferred:
+yes` or `no`), draws a `preferred` badge on a marked runner in its list, and the
+work queue's runner list draws the same badge beside the name.
 
 **It also says whether it refuses dangerous work, and which projects it is
 bound to, on every beat.** `refusesDangerous` and `projects` ride every
