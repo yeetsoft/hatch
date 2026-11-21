@@ -3,6 +3,7 @@ import {
   BUCKET,
   LEVEL,
   LOOSE,
+  beneathLabel,
   bucketLabel,
   changelogReportEmptyWords,
   hasQuietGap,
@@ -143,5 +144,16 @@ describe('hasQuietGap / quietGapWords', () => {
 describe('changelogReportEmptyWords', () => {
   it('says nothing landed', () => {
     expect(changelogReportEmptyWords()).toBe('Nothing landed in this window.');
+  });
+});
+
+describe('beneathLabel', () => {
+  it('says none at zero', () => {
+    expect(beneathLabel(0)).toBe('none beneath');
+  });
+
+  it('says the count otherwise', () => {
+    expect(beneathLabel(1)).toBe('1 beneath');
+    expect(beneathLabel(4)).toBe('4 beneath');
   });
 });

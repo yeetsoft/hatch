@@ -49,7 +49,6 @@ import type {
   IssueSearch,
   Me,
   AuthMe,
-  OvernightDto,
   ParsedEpic,
   PastedPlan,
   AmbitionRow,
@@ -1129,10 +1128,6 @@ export interface WorkLogByPlaybookQuery {
   outcome?: string | null;
 }
 
-// ---- Overnight ----
-
-export const getOvernight = () => fetchJson<OvernightDto>('/api/overnight');
-export const markOvernightSeen = () => fetchJson<void>('/api/overnight/seen', { method: 'POST' });
 /** A person's own home screen; a key is refused. Answers the fresh `/api/me`. */
 export const putMyHome = (home: 'board' | 'ambitions') =>
   fetchJson<Me>('/api/me/home', { method: 'PUT', ...asJson({ home }) });

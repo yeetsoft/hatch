@@ -56,9 +56,9 @@
 }
 
 /* The bar's padding and each side's gap step down one token at phone width,
-   which is what lets the trailing cluster - battery, overnight, attention,
-   gear - sit beside the brand link on a 393px viewport. The fit is measured,
-   in the bar's widest state and at rest, by BarFitsPhoneTests in
+   which is what lets the trailing cluster - battery, attention, gear - sit
+   beside the brand link on a 393px viewport. The fit is measured, in the
+   bar's widest state and at rest, by BarFitsPhoneTests in
    Hatch.Api.Tests/E2e (HA-1228). */
 @media (max-width: 40rem) {
   .hatch-topbar__inner {

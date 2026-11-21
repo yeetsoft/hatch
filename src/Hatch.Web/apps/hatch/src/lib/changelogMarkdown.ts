@@ -9,8 +9,7 @@
 
 import type { ChangelogReport, ChangelogReportEntry, ChangelogReportGroup } from '../types';
 import { fixLine } from './changelog';
-import { changelogReportEmptyWords } from './changelogReport';
-import { beneathLabel } from './overnight';
+import { beneathLabel, changelogReportEmptyWords } from './changelogReport';
 
 export interface ChangelogMarkdownOptions {
   bucketLabel: (startIso: string) => string;

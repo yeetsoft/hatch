@@ -14,7 +14,7 @@ import { Robot } from './Robot';
  * widget that grew when something arrived would shove the battery leftwards
  * and move the bar out from under the cursor. A phone has the width for
  * neither: four pills with two-digit counts are wider than the row can hold
- * beside the battery and the overnight control, so there (App.css) they fold
+ * beside the battery, so there (App.css) they fold
  * into the one total drawn after them, which the desk hides.
  *
  * Never returns null. Unlike the battery - which draws nothing on an install

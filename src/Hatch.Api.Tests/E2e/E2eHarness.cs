@@ -33,12 +33,10 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>A column of the board, <c>apps/hatch/src/pages/BoardPage.tsx</c>.</summary>
     public const string Column = ".hatch-column";
 
-    /// <summary>The bar's controls, named by <see cref="BarMeasurement.Controls"/> and in bar order: <c>TopBar.tsx</c>, <c>UtilizationBattery.tsx</c>, <c>NavOvernight.tsx</c>, <c>NavAttention.tsx</c>, and the gear <c>Menu</c> trigger.</summary>
+    /// <summary>The bar's controls, named by <see cref="BarMeasurement.Controls"/> and in bar order: <c>TopBar.tsx</c>, <c>UtilizationBattery.tsx</c>, <c>NavAttention.tsx</c>, and the gear <c>Menu</c> trigger.</summary>
     public const string BrandSelector = ".hatch-topbar__brand";
 
     public const string BatterySelector = ".hatch-battery";
-
-    public const string OvernightSelector = ".hatch-overnight-control";
 
     public const string AttentionSelector = ".hatch-attention-control";
 
@@ -500,7 +498,6 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         [
             ("brand", BrandSelector),
             ("battery", BatterySelector),
-            ("overnight", OvernightSelector),
             ("attention", AttentionSelector),
             ("gear", GearSelector),
         ];
