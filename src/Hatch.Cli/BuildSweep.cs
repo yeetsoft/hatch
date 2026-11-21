@@ -113,6 +113,7 @@ public sealed partial class BuildStore
     /// <param name="runningPaths">The files processes on this machine are running, or null where that could not be found out - then no build is removed, only counted as left.</param>
     /// <param name="ownPath">The launcher's own file, whose folder is never removed if it is in here.</param>
     /// <param name="remove">Deletes a folder; a test passes one that fails.</param>
+    /// <param name="beforeRemoval">Called with a build's sha just before it is looked at one last time, so a test can change the world at the worst moment.</param>
     /// <remarks>
     /// A build goes by being renamed to <c>.old-&lt;guid&gt;</c> first, which is
     /// atomic - <see cref="Find"/> answers null at once - and then deleted.
@@ -123,7 +124,7 @@ public sealed partial class BuildStore
     /// </remarks>
     public SweepResult Sweep(
         DateTimeOffset now, IReadOnlyCollection<string>? runningPaths, string? ownPath = null,
-        Action<string>? remove = null)
+        Action<string>? remove = null, Action<string>? beforeRemoval = null)
     {
         var removed = 0;
         var failed = 0;
@@ -180,6 +181,11 @@ public sealed partial class BuildStore
                         continue;
                     }
 
+                    // The keep set was made some time ago, and a change of build
+                    // lands between looks: ask again, right before the rename.
+                    beforeRemoval?.Invoke(name);
+                    if (IsProtected(name, now)) continue;
+
                     // Windows lets a folder be renamed under a running file, but then
                     // the next call to it finds nothing: ask the files themselves.
                     if (OperatingSystem.IsWindows() && IsOpen(folder))
@@ -216,6 +222,48 @@ public sealed partial class BuildStore
         }
 
         return new SweepResult(removed, failed);
+    }
+
+    /// <summary>
+    /// Whether a lease or a board record names <paramref name="sha"/> right now.
+    /// Leases come first and records second, since a launcher writes the record
+    /// before it drops the lease that covered the build; a second look at the
+    /// leases closes the moment a swap overlaps the first. A record or a folder
+    /// that cannot be read protects the build.
+    /// </summary>
+    private bool IsProtected(string sha, DateTimeOffset now)
+    {
+        try
+        {
+            if (LeaseHeld(sha)) return true;
+
+            var boards = ReadAll();
+            if (boards is null) return true;
+
+            foreach (var board in boards)
+            {
+                if (now - board.WrittenAt >= BoardIdle) continue;
+                if (board.Record is null) return true;
+                if (board.Record.Current == sha || board.Record.Previous == sha) return true;
+            }
+
+            return LeaseHeld(sha);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    private bool LeaseHeld(string sha)
+    {
+        foreach (var file in Directory.EnumerateFiles(VersionsDirectory, $"{sha}.in-use-*"))
+        {
+            var info = new FileInfo(file);
+            if (LeasePattern().IsMatch(info.Name) && !IsLink(info) && IsHeld(file)) return true;
+        }
+
+        return false;
     }
 
     private static bool IsLink(FileSystemInfo entry) =>

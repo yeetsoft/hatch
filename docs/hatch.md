@@ -10685,7 +10685,9 @@ build and at each start it sweeps `versions/`, keeping the current and previous
 build of each board a loop ran against in the last thirty days and any build in
 use: a launcher says which builds it runs with a locked `<sha>.in-use-<guid>`
 file, macOS and Linux are scanned for processes running from `versions/`, and
-Windows refuses to open a running file for writing. A build is renamed to
+Windows refuses to open a running file for writing. A build is looked at
+again for a lease or a record just before it is removed, since a change of
+build can land while the sweep runs. A build is renamed to
 `.old-<guid>` and then deleted, a delete that fails is left for the next sweep,
 and an unfinished `.tmp-*` download goes at a day old. The macOS scan has never
 been run by hand.

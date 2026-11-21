@@ -181,6 +181,36 @@ public sealed class BuildSweepTests : IDisposable
     }
 
     [Fact]
+    public void A_lease_taken_after_the_first_look_still_keeps_its_build()
+    {
+        Make(A);
+        IDisposable? lease = null;
+
+        try
+        {
+            var result = Store().Sweep(now, [], beforeRemoval: sha => lease = Store().Hold(sha));
+
+            Assert.True(Has(A));
+            Assert.Equal(new SweepResult(0, 0), result);
+        }
+        finally
+        {
+            lease?.Dispose();
+        }
+    }
+
+    [Fact]
+    public void A_record_written_after_the_first_look_still_keeps_its_build()
+    {
+        Make(A);
+
+        var result = Store().Sweep(now, [], beforeRemoval: sha => RecordOf(One, sha));
+
+        Assert.True(Has(A));
+        Assert.Equal(new SweepResult(0, 0), result);
+    }
+
+    [Fact]
     public void A_lease_with_no_holder_is_deleted_and_protects_nothing()
     {
         Make(A);
