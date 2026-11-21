@@ -2834,6 +2834,23 @@ public record IssuePlaybookRequest(string? Model, string? Effort);
 public record IssueWipLimitRequest(string? Limit);
 
 /// <summary>
+/// An ambition's budget, in dollars. Null leaves it alone, and <c>""</c> clears
+/// it to no budget - the same rule <see cref="IssueWipLimitRequest"/> follows.
+/// Text rather than a number so that a blank can mean clear.
+/// </summary>
+public record IssueBudgetRequest(string? Amount);
+
+/// <summary>
+/// What an ambition may cost and what it has cost. Spent is worked out on each
+/// read from the work log across the whole tree beneath the ambition.
+/// </summary>
+/// <param name="BudgetUsd">The budget, or null when a person has set none.</param>
+/// <param name="SpentUsd">The summed cost of every priced session on the ambition and beneath it.</param>
+/// <param name="UnpricedSessions">How many sessions carried no price, and so added nothing to <paramref name="SpentUsd"/>.</param>
+/// <param name="Spent">True when there is a budget and <paramref name="SpentUsd"/> has reached it.</param>
+public record IssueBudgetDto(decimal? BudgetUsd, decimal SpentUsd, int UnpricedSessions, bool Spent);
+
+/// <summary>
 /// Who an issue is to belong to. Both fields null is the unassign; exactly one
 /// of them is refused with a sentence, because a kind with no id is a request
 /// that meant something and did not say what.
