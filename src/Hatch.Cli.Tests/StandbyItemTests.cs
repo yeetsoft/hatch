@@ -39,7 +39,7 @@ public sealed class StandbyItemTests : IDisposable
 
     private StandbyItem Item(string root, string? profile = null, string? processPath = "/opt/hatch/hatch", bool windows = false)
     {
-        var item = StandbyItem.For(root, "Alder", profile, processPath, windows, Path.Combine(_temp, "home"), out var refusal);
+        var item = StandbyItem.For(root, "Alder", profile, null, processPath, windows, Path.Combine(_temp, "home"), out var refusal);
         Assert.Equal("", refusal);
         return Assert.IsType<StandbyItem>(item);
     }
@@ -84,7 +84,7 @@ public sealed class StandbyItemTests : IDisposable
     {
         var tree = Tree("one", hatch: false);
         var named = Item(tree);
-        var renamed = StandbyItem.For(tree, "Birch", null, "/opt/hatch/hatch", false, Path.Combine(_temp, "home"), out _)!;
+        var renamed = StandbyItem.For(tree, "Birch", null, null, "/opt/hatch/hatch", false, Path.Combine(_temp, "home"), out _)!;
 
         Assert.Equal("Hatch standby for Alder", named.Description);
         Assert.Equal("Hatch standby for Birch", renamed.Description);
@@ -152,7 +152,7 @@ public sealed class StandbyItemTests : IDisposable
     [InlineData("")]
     public void Under_the_dotnet_host_there_is_nothing_to_start(string? processPath)
     {
-        var item = StandbyItem.For(Tree("foreign", hatch: false), "Alder", null, processPath, false, _temp, out var refusal);
+        var item = StandbyItem.For(Tree("foreign", hatch: false), "Alder", null, null, processPath, false, _temp, out var refusal);
 
         Assert.Null(item);
         Assert.Contains(Refusal, refusal, StringComparison.Ordinal);
@@ -161,7 +161,7 @@ public sealed class StandbyItemTests : IDisposable
     [Fact]
     public void The_dotnet_host_does_not_matter_inside_a_hatch_checkout()
     {
-        var item = StandbyItem.For(Tree("own", hatch: true), "Alder", null, "/usr/share/dotnet/dotnet", false, _temp, out var refusal);
+        var item = StandbyItem.For(Tree("own", hatch: true), "Alder", null, null, "/usr/share/dotnet/dotnet", false, _temp, out var refusal);
 
         Assert.NotNull(item);
         Assert.Equal("", refusal);
@@ -379,5 +379,78 @@ public sealed class StandbyItemTests : IDisposable
         ];
 
         Assert.All(outputs, text => Assert.DoesNotContain(profile, text, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // --- the launcher, not the build under it ------------------------------------
+
+    private string LauncherFile(string name)
+    {
+        var path = Path.Combine(_temp, name);
+        File.WriteAllText(path, "");
+        return path;
+    }
+
+    [Fact]
+    public void The_launcher_is_what_the_login_item_starts_when_one_started_this_build()
+    {
+        var launcher = LauncherFile("hatch-launcher");
+        var kept = Path.Combine(_temp, "home", "versions", new string('a', 40), "hatch");
+
+        var item = StandbyItem.For(Tree("foreign", hatch: false), "Alder", null, launcher, kept, false, Path.Combine(_temp, "home"), out var refusal);
+
+        Assert.Equal("", refusal);
+        Assert.Equal([launcher, "go-to-work", "--standby"], item!.Command);
+    }
+
+    [Fact]
+    public void A_kept_build_with_no_launcher_named_is_refused_in_one_sentence()
+    {
+        var home = Path.Combine(_temp, "home");
+        var kept = Path.Combine(home, "versions", new string('a', 40), "hatch");
+
+        var item = StandbyItem.For(Tree("foreign", hatch: false), "Alder", null, null, kept, false, home, out var refusal);
+
+        Assert.Null(item);
+        Assert.Contains("not from a kept build", refusal, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n", refusal);
+    }
+
+    [Fact]
+    public void A_launcher_that_is_gone_falls_back_to_the_running_program()
+    {
+        var item = StandbyItem.For(
+            Tree("foreign", hatch: false), "Alder", null, Path.Combine(_temp, "gone"), "/opt/hatch/hatch", false,
+            Path.Combine(_temp, "home"), out var refusal);
+
+        Assert.Equal("", refusal);
+        Assert.Equal("/opt/hatch/hatch", item!.Command[0]);
+    }
+
+    [Fact]
+    public void A_launcher_inside_the_kept_builds_is_refused_too()
+    {
+        var home = Path.Combine(_temp, "home");
+        var inside = Path.Combine(home, "versions", new string('b', 40));
+        Directory.CreateDirectory(inside);
+        var launcher = Path.Combine(inside, "hatch");
+        File.WriteAllText(launcher, "");
+
+        var item = StandbyItem.For(Tree("foreign", hatch: false), "Alder", null, launcher, "/opt/hatch/hatch", false, home, out var refusal);
+
+        Assert.Null(item);
+        Assert.NotEqual("", refusal);
+    }
+
+    [Fact]
+    public void An_item_an_older_build_wrote_is_the_same_item_whichever_program_it_runs()
+    {
+        var tree = Tree("foreign", hatch: false);
+        var older = Item(tree, processPath: "/opt/old/hatch");
+        var newer = Item(tree, processPath: "/opt/new/hatch");
+
+        // `standby show` finds an item by its id, never by its command.
+        Assert.Equal(older.Id, newer.Id);
+        Assert.Equal(older.Wrapper, newer.Wrapper);
+        Assert.NotEqual(older.Command, newer.Command);
     }
 }

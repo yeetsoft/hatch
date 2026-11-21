@@ -27,6 +27,12 @@ public sealed class StandbyCommand(Cli cli, string? profile, IStandbyHost host)
     /// <summary>Where the loop's lock lives. Named so a test can put it somewhere that is not the machine's own.</summary>
     public string TempDirectory { get; init; } = Path.GetTempPath();
 
+    /// <summary>
+    /// The launcher this process was handed on by, or null where there is none. The login
+    /// item names it rather than the running build, which is one kept under <c>versions/</c>.
+    /// </summary>
+    public string? LauncherPath { get; init; }
+
     public Task<int> RunAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Task.FromResult(Usage.Print(cli.Say, StandbyUsage));
@@ -40,7 +46,7 @@ public sealed class StandbyCommand(Cli cli, string? profile, IStandbyHost host)
 
         var folder = Path.GetDirectoryName(Settings.UserConfigPath())!;
         var item = StandbyItem.For(
-            root, cli.RunnerName, profile, Environment.ProcessPath, OperatingSystem.IsWindows(), folder,
+            root, cli.RunnerName, profile, LauncherPath, Environment.ProcessPath, OperatingSystem.IsWindows(), folder,
             out var refusal);
         if (item is null)
         {

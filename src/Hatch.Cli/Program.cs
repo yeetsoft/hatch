@@ -55,28 +55,57 @@ if (!Program.TryExtractProfile(rest, out var withoutProfile, out var profileArg,
     return 1;
 }
 
+// Which board a call is aimed at, asked again wherever it matters because `hatch
+// use` can move it. It reads settings the way the command will and prints nothing
+// when it cannot: the command is the one that says so. Null where nothing names a
+// board.
+LauncherBoard? LauncherBoardNow()
+{
+    if (!Settings.TryResolveProfile(profileArg, environment, out _, out var launcherProfile, out _)) return null;
+
+    var launcherRoot = Checkout.Find(environment.GetValueOrDefault("HATCH_ROOT"), Directory.GetCurrentDirectory());
+    var launcherEnv = launcherRoot is null ? null : Path.Combine(launcherRoot, "scripts", ".env");
+
+    return Settings.TryLoad(launcherEnv, environment, out var launcherSettings, out _, profileFile: launcherProfile)
+        ? new LauncherBoard(launcherSettings.Base, launcherSettings)
+        : null;
+}
+
+var builtAsLauncher = Launcher.BuildLaunches(typeof(Program).Assembly);
+
 // A download supervises its own loop: before any setting is read or any board is
 // called, it runs this same file as the child, hands it the whole argument list
 // as it came, and starts it again when it exits 75. See docs/hatch.md, "Where
 // the loop lives". Nothing stamped, nothing above it and no -h means no launcher.
-if (Launcher.Applies(command, withoutProfile, environment, Launcher.BuildLaunches(typeof(Program).Assembly)))
+if (Launcher.Applies(command, withoutProfile, environment, builtAsLauncher))
+    return await Launcher.RunProcessAsync(args, say.Complain, LauncherBoardNow);
+
+// Every other command runs on the build this board was last on, so a person
+// typing `hatch` outside a loop gets the build the loop is running. Nothing is
+// downloaded, recorded or asked of the network to decide; where there is no
+// build to hand on to, or it will not start, this build answers the command.
+if (Launcher.HandsOn(command, environment, builtAsLauncher))
 {
-    // Which board a build is moved for, asked again at every start and handoff
-    // because `hatch use` can move it. It reads settings the way the child will
-    // and prints nothing when it cannot: the child is the one that says so.
-    LauncherBoard? LauncherBoardNow()
+    string? chosen = null;
+
+    if (Environment.ProcessPath is { } ownFile)
     {
-        if (!Settings.TryResolveProfile(profileArg, environment, out _, out var launcherProfile, out _)) return null;
-
-        var launcherRoot = Checkout.Find(environment.GetValueOrDefault("HATCH_ROOT"), Directory.GetCurrentDirectory());
-        var launcherEnv = launcherRoot is null ? null : Path.Combine(launcherRoot, "scripts", ".env");
-
-        return Settings.TryLoad(launcherEnv, environment, out var launcherSettings, out _, profileFile: launcherProfile)
-            ? new LauncherBoard(launcherSettings.Base, launcherSettings)
-            : null;
+        try
+        {
+            chosen = Launcher.ChooseBuild(
+                LauncherBoardNow(), new BuildStore(Settings.UserFolder()), new CliRevision().Revision, ownFile,
+                out var chooseNote);
+            if (chooseNote is not null) say.Complain(chooseNote);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // Not being able to look is not a reason to refuse the command.
+            chosen = null;
+        }
     }
 
-    return await Launcher.RunProcessAsync(args, say.Complain, LauncherBoardNow);
+    if (chosen is not null && await Launcher.HandOnProcessAsync(args, chosen, say.Complain) is { } handedCode)
+        return handedCode;
 }
 
 rest = withoutProfile;
@@ -475,7 +504,7 @@ try
         "changelog" => await new ChangelogCommand(cli).RunAsync(rest, cancelling.Token),
         "activity" => await new ActivityCommand(cli).RunAsync(rest, cancelling.Token),
         "runners" => await new RunnersCommand(cli).RunAsync(rest, cancelling.Token),
-        "standby" => await new StandbyCommand(cli, profileArg, StandbyHosts.ForThisMachine(StandbyHosts.RunProcess)).RunAsync(rest, cancelling.Token),
+        "standby" => await new StandbyCommand(cli, profileArg, StandbyHosts.ForThisMachine(StandbyHosts.RunProcess)) { LauncherPath = launchedBy?.Path }.RunAsync(rest, cancelling.Token),
         "show" => await new IssueCommands(cli).ShowAsync(rest, cancelling.Token),
         "comments" => await new IssueCommands(cli).CommentsAsync(rest, cancelling.Token),
         "start" => await new IssueCommands(cli).StartAsync(rest, cancelling.Token),
