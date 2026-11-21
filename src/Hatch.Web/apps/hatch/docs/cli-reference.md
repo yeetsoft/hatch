@@ -456,7 +456,7 @@ at says so in a sentence. Runner tags are judged on the calling key's own tags
 from the Runners page, the same ones its loop carries, so a tagged project is
 not reported as "advertises none" to a key that has them.
 It reads as this checkout's runner, so a row can say a ticket is left for another
-runner.
+runner, or for a [preferred runner](the-runner) that is free.
 
 - `<ancestor key>` narrows it to one epic's tree.
 - `--mine` shows what a `--mine` pass would take and folds past everything

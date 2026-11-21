@@ -484,6 +484,17 @@ model and the work answer says `modelFellBack`. A runner that is working,
 paused or omitted on the ticket is not free. See [the local
 model](playbooks#the-local-model).
 
+**A preferred runner.** A runner an admin marks preferred on the Runners page
+is given work first. A runner that is not marked, asking while a marked one is
+live, idle and able to take a clear row, is told the row is left for it, *"HA-12
+in In Progress is left for build-box, which is preferred and free"*, and
+`hatch queue` prints the same line. Idle means no live claim and no model being
+pulled; able means the marked runner's own tags, omissions, refused models and
+column rule let the row through. A marked runner is never told this, a move that
+needs no session is never held back by it, and with no marked runner free the
+row is clear as it always was. The local-model level of the same name is a
+different rule.
+
 ### Has
 
 A machine can declare what it has that detection cannot see. `HATCH_HAS` is a
