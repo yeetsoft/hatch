@@ -13,7 +13,7 @@ public enum RoleOutcome
     /// <summary>The caller's device belongs to a person whose <see cref="EfPerson.Role"/> reaches the level asked for.</summary>
     Person,
 
-    /// <summary>An API key on a route that accepts one. Not a person, and never an administrator.</summary>
+    /// <summary>An API key on a route that accepts one, whose owner is not pending. Not a person, and never an administrator.</summary>
     Key,
 
     /// <summary>Refused. What that looks like is the caller's choice: a 404 for the board, a 403 for the API.</summary>
@@ -33,7 +33,7 @@ public record RoleDecision(RoleOutcome Outcome, EfPerson? Person, string? Reason
     /// <summary>An enrolled device nobody has claimed - the hallway tablet, or a phone whose owner was never linked on the Sessions page.</summary>
     public const string NoPerson = "no_person";
 
-    /// <summary>A device belonging to a person who has not been let in yet. Refused at every level, whatever was asked for.</summary>
+    /// <summary>A device, or an API key, belonging to a person who has not been let in yet. Refused at every level, whatever was asked for.</summary>
     public const string PendingApproval = "pending_approval";
 
     /// <summary>A device belonging to a person whose role is below the level this route asks for.</summary>
@@ -143,9 +143,17 @@ public class RoleGate(
         // same machine would have got.
         if (await caller.ApiKeyAsync(ct) is { } key)
         {
-            return acceptKey
-                ? RoleDecision.AllowKey(key)
-                : Refuse(RoleDecision.KeyNotAccepted, method, path, clientIp, null);
+            if (!acceptKey) return Refuse(RoleDecision.KeyNotAccepted, method, path, clientIp, null);
+
+            // A key follows its owner's standing. A pending owner is waiting to
+            // be let in, so what they made waits too: refused with the same
+            // reason the person gets, the key itself untouched. It works again
+            // the moment the owner is a user or an admin. The owner arrives
+            // with the key (VerifyApiKeyAsync includes it), so this is no query.
+            if (key.Owner is { Role: PersonRole.Pending } owner)
+                return Refuse(RoleDecision.PendingApproval, method, path, clientIp, null, owner.Role);
+
+            return RoleDecision.AllowKey(key);
         }
 
         var grant = await caller.GrantAsync(ct);

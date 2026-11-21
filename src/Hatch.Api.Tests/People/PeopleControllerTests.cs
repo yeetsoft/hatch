@@ -388,6 +388,55 @@ public class PeopleControllerTests
     }
 
     [Fact]
+    public async Task DeletingAPersonRevokesTheirLiveKeysAtTheMomentOfTheDelete()
+    {
+        var (controller, db, time) = NewController();
+        var id = await Create(controller, "Ada");
+        var other = await Create(controller, "Grace");
+        db.ApiKeys.Add(NewKey("ada-runner", id, null));
+        db.ApiKeys.Add(NewKey("grace-runner", other, null));
+        db.ApiKeys.Add(NewKey("nobody-runner", null, null));
+        await db.SaveChangesAsync();
+        time.Advance(TimeSpan.FromHours(3));
+
+        Assert.IsType<NoContentResult>(await controller.Delete(id, CancellationToken.None));
+
+        var keys = await db.ApiKeys.AsNoTracking().ToDictionaryAsync(k => k.Name);
+        Assert.Equal(Now.AddHours(3), keys["ada-runner"].RevokedAt);
+        Assert.Null(keys["grace-runner"].RevokedAt);
+        Assert.Null(keys["nobody-runner"].RevokedAt);
+    }
+
+    [Fact]
+    public async Task DeletingAPersonLeavesAnAlreadyRevokedKeyWithItsOwnTime()
+    {
+        var (controller, db, time) = NewController();
+        var id = await Create(controller, "Ada");
+        var earlier = Now.AddDays(-2);
+        db.ApiKeys.Add(NewKey("old-runner", id, earlier));
+        await db.SaveChangesAsync();
+        time.Advance(TimeSpan.FromHours(3));
+
+        await controller.Delete(id, CancellationToken.None);
+
+        Assert.Equal(earlier, (await db.ApiKeys.AsNoTracking().SingleAsync()).RevokedAt);
+    }
+
+    [Fact]
+    public async Task ARefusedDeleteRevokesNoKey()
+    {
+        var (controller, db, time) = NewController();
+        var id = await Create(controller, "Ada", "admin");
+        db.ApiKeys.Add(NewKey("ada-runner", id, null));
+        await db.SaveChangesAsync();
+        time.Advance(TimeSpan.FromHours(3));
+
+        Assert.IsType<ConflictObjectResult>(await controller.Delete(id, CancellationToken.None));
+
+        Assert.Null((await db.ApiKeys.AsNoTracking().SingleAsync()).RevokedAt);
+    }
+
+    [Fact]
     public async Task LetsTheLastAdminBeRenamedAndASecondAdminDemoteThemselves()
     {
         var (controller, db, _) = NewController();
@@ -555,6 +604,17 @@ public class PeopleControllerTests
         PersonId = personId,
         CreatedAt = lastSignInAt,
         LastSignInAt = lastSignInAt,
+    };
+
+    private static EfApiKey NewKey(string name, Guid? ownerId, DateTimeOffset? revokedAt) => new()
+    {
+        Id = Guid.NewGuid(),
+        Name = name,
+        Prefix = "hatch_ak_abc",
+        Hash = Guid.NewGuid().ToByteArray().Concat(Guid.NewGuid().ToByteArray()).ToArray(),
+        OwnerPersonId = ownerId,
+        CreatedAt = Now,
+        RevokedAt = revokedAt,
     };
 
     private static EfAuthGrant NewGrant(string label, Guid? personId, DateTimeOffset? createdAt = null) => new()

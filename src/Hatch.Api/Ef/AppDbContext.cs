@@ -43,11 +43,11 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
         modelBuilder.Entity<EfAuthInvite>();
 
         // A key now has exactly one relationship: who it belongs to, for a
-        // --mine pass to read. SetNull rather than Cascade, unlike a grant -
-        // a key is a program the operator handed a credential to, and
-        // deleting its owner does not mean the program stops running; it
-        // means the program no longer has anybody's tickets to claim, which
-        // is precisely "owned by nobody".
+        // --mine pass to read, and for the role gate to hold it to. Deleting an
+        // owner revokes their live keys in the same save (PeopleController.Delete),
+        // because a key with no owner sees every project. SetNull rather than
+        // Cascade, unlike a grant: the revoked row, and the events that name it,
+        // outlive the person, so an old event still has a name to point to.
         modelBuilder.Entity<EfApiKey>()
             .HasOne(k => k.Owner)
             .WithMany()
