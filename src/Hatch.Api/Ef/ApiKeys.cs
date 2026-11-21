@@ -70,7 +70,9 @@ public class EfApiKey
     /// assignee (<see cref="Hatch.Api.Services.Auth.IActorDirectory"/>):
     /// both <c>ApiKeys</c> and <c>People</c> live in the core <c>public</c>
     /// schema, so the constraint never crosses the boundary Modules/README.md
-    /// forbids a module pointing across. Only an admin ever writes this - see
+    /// forbids a module pointing across. A person writes this, never a key: an
+    /// admin for anyone, a user only for themselves when they create a runner
+    /// (<c>RunnersController.CreateRunner</c>). See
     /// <c>RunnersController.SetRunnerOwner</c> for why a key may not set its own.
     /// </summary>
     public Guid? OwnerPersonId { get; set; }
