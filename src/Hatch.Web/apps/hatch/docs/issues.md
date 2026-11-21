@@ -104,6 +104,14 @@ each epic saying which capabilities it serves, and leaves the ambition
 standing where it is — an ambition is never carried on by a pass, only by the
 operator.
 
+Carving stops on its own once every capability's newest verdict is holds: a
+key filing or moving an epic under that ambition is refused, with a sentence
+saying every capability holds and nothing is left to carve. A person is never
+refused this way, and an ambition with no capabilities yet is never refused
+either. The pass still runs and judges again each time, since only a pass
+finds out that the trunk has stopped holding — it carves nothing and comments
+on the ambition that nothing was carved and why.
+
 An ambition's issue page has a Passes section, after Epics in flight, reading
 `GET /issues/{key}/passes` on the same tolerant terms as Capabilities: a
 failure is a sentence in the section, not the page's error. Every pass is an
@@ -126,8 +134,8 @@ verdict lines sit in a grid on a desktop and stack one per line on a phone.
 
 ## The Ambitions page
 
-The Ambitions page, at `/ambitions`, is a top-level link after **Ballot** on
-the nav bar and in the phone menu. It lists every ambition across every
+The Ambitions page, at `/ambitions`, is a top-level link after the magnifying
+glass on the nav bar, and in the phone menu. It lists every ambition across every
 project, in one read, each with where it stands. It follows the tab's
 project scope the same way Plan and Ballot do, and nothing is stored for it.
 

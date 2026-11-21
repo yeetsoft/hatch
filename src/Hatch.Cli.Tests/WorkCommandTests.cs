@@ -1386,6 +1386,32 @@ public sealed class WorkCommandTests
         Assert.Null(beat.SourceSequence);
     }
 
+    [Theory]
+    [InlineData(2, 2)]
+    [InlineData(null, null)]
+    public async Task The_heartbeat_carries_the_launchers_version_only_under_a_launcher(int? launcher, int? sent)
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+        var runtime = launcher is { } version
+            ? h.Runtime with
+            {
+                Launcher = LauncherLink.From(new Dictionary<string, string?>
+                {
+                    [Launcher.VersionVariable] = version.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                }),
+            }
+            : h.Runtime;
+
+        Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
+
+        var beat = h.Wire.To("POST", "/api/runners/sessions")[0].Read<RunnerHeartbeatRequest>();
+        Assert.Equal(sent, beat.LauncherVersion);
+    }
+
     [Fact]
     public async Task A_jammed_board_counts_the_reasons_and_names_the_questions_waiting()
     {

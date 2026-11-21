@@ -261,6 +261,7 @@ public class PlaybookProposalsController(
             row.DeniedTools = next.DeniedTools;
             row.IsCheck = next.IsCheck;
             row.AnswersQuestions = next.AnswersQuestions;
+            row.WorksOutChanges = next.WorksOutChanges;
             row.ProjectId = next.ProjectId;
             row.UpdatedAt = now;
         }

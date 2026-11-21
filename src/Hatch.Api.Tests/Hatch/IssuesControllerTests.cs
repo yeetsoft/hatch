@@ -348,6 +348,168 @@ public class IssuesControllerTests
         Assert.Contains("already below", Reason(cycle.Result));
     }
 
+    // ---- An ambition whose every capability holds ----
+
+    [Fact]
+    public async Task AKeyFilingAnEpic_UnderAnAmbitionWhoseEveryCapabilityHolds_IsRefused()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        var capability = await h.AddCapabilityAsync("AER-1");
+        await h.AddVerdictAsync(capability, EfHatchCapabilityVerdict.Holds);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "one more cut", null, "AER-1", null, null), default);
+
+        Assert.Contains("every capability of AER-1 holds", Reason(result.Result));
+        Assert.Contains("nothing is left to carve", Reason(result.Result));
+    }
+
+    [Fact]
+    public async Task AKeyMovingAnEpic_UnderThatAmbition_IsRefused_ThroughPatchAndBulkEdit()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        await h.CreateAsync("epic", "elsewhere");
+        var capability = await h.AddCapabilityAsync("AER-1");
+        await h.AddVerdictAsync(capability, EfHatchCapabilityVerdict.Holds);
+        h.Caller.Key = AProgram();
+
+        var patched = await h.Issues.PatchIssue("AER-2", Patch(parentKey: "AER-1"), default);
+        Assert.Contains("nothing is left to carve", Reason(patched.Result));
+
+        var bulk = Value(await h.Issues.BulkEdit(Bulk(["AER-2"], parentKey: "AER-1"), default));
+        var failure = Assert.Single(bulk.Failures);
+        Assert.Equal("AER-2", failure.Key);
+        Assert.Contains("nothing is left to carve", failure.Reason);
+    }
+
+    [Theory]
+    [InlineData(EfHatchCapabilityVerdict.DoesNotHold)]
+    [InlineData(EfHatchCapabilityVerdict.CannotTell)]
+    public async Task AnEpic_IsAccepted_WhenACapabilitysNewestVerdictIsNotHolds(string verdict)
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        var capability = await h.AddCapabilityAsync("AER-1");
+        await h.AddVerdictAsync(capability, verdict);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "one more cut", null, "AER-1", null, null), default);
+
+        Assert.Equal("AER-1", Created(result).ParentKey);
+    }
+
+    [Fact]
+    public async Task AnEpic_IsAccepted_WhenTheNewestVerdictWinsOverAnOlderOne()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        var capability = await h.AddCapabilityAsync("AER-1");
+        await h.AddVerdictAsync(capability, EfHatchCapabilityVerdict.Holds);
+        await h.AddVerdictAsync(capability, EfHatchCapabilityVerdict.DoesNotHold);
+        h.Caller.Key = AProgram();
+
+        // An older holds under a newer does-not-hold: the newest verdict
+        // is what counts, so this is accepted.
+        var accepted = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "the first cut", null, "AER-1", null, null), default);
+        Assert.Equal("AER-1", Created(accepted).ParentKey);
+
+        await h.AddVerdictAsync(capability, EfHatchCapabilityVerdict.Holds);
+
+        // The reverse - a newer holds on top - refuses.
+        var refused = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "the second cut", null, "AER-1", null, null), default);
+        Assert.Contains("nothing is left to carve", Reason(refused.Result));
+    }
+
+    [Fact]
+    public async Task AnEpic_IsAccepted_WhenOneCapabilityHasNoVerdictYet()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        var holding = await h.AddCapabilityAsync("AER-1", position: 0);
+        await h.AddVerdictAsync(holding, EfHatchCapabilityVerdict.Holds);
+        await h.AddCapabilityAsync("AER-1", position: 1);
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "one more cut", null, "AER-1", null, null), default);
+
+        Assert.Equal("AER-1", Created(result).ParentKey);
+    }
+
+    [Fact]
+    public async Task AnAmbitionWithNoCapabilities_IsNotRefused()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        h.Caller.Key = AProgram();
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "the first cut", null, "AER-1", null, null), default);
+
+        Assert.Equal("AER-1", Created(result).ParentKey);
+    }
+
+    [Fact]
+    public async Task APerson_IsNeverRefused_WithTheWallOnOrOff()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        var capability = await h.AddCapabilityAsync("AER-1");
+        await h.AddVerdictAsync(capability, EfHatchCapabilityVerdict.Holds);
+
+        var wallOn = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "the first cut", null, "AER-1", null, null), default);
+        Assert.Equal("AER-1", Created(wallOn).ParentKey);
+
+        h.Caller.Person = null;
+        h.Caller.Local = new Actor(ActorKind.Person, Guid.NewGuid(), "x");
+
+        var wallOff = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "the second cut", null, "AER-1", null, null), default);
+        Assert.Equal("AER-1", Created(wallOff).ParentKey);
+    }
+
+    [Fact]
+    public async Task AKeylessRunnerWithTheWallOff_IsRefusedTheSameAsAKeyWithTheWallOn()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        var capability = await h.AddCapabilityAsync("AER-1");
+        await h.AddVerdictAsync(capability, EfHatchCapabilityVerdict.Holds);
+        h.Caller.Person = null;
+        h.Caller.Local = new Actor(ActorKind.Key, Guid.NewGuid(), "x");
+
+        var result = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "epic", "one more cut", null, "AER-1", null, null), default);
+
+        Assert.Contains("nothing is left to carve", Reason(result.Result));
+    }
+
+    [Fact]
+    public async Task AnEpicAlreadyUnderTheAmbition_CanStillBeEditedByAKey_ByPatchAndByBulkEdit()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("ambition", "ship it");
+        await h.CreateAsync("epic", "the first cut", parentKey: "AER-1");
+        await h.CreateAsync("epic", "the second cut", parentKey: "AER-1");
+        var capability = await h.AddCapabilityAsync("AER-1");
+        await h.AddVerdictAsync(capability, EfHatchCapabilityVerdict.Holds);
+        h.Caller.Key = AProgram();
+
+        var patched = Value(await h.Issues.PatchIssue("AER-2", Patch(title: "the first cut, retitled", parentKey: "AER-1"), default));
+        Assert.Equal("AER-1", patched.ParentKey);
+
+        var bulk = Value(await h.Issues.BulkEdit(Bulk(["AER-3"], parentKey: "AER-1"), default));
+        Assert.Empty(bulk.Failures);
+        Assert.Equal("AER-1", Value(await h.Issues.GetIssue("AER-3", default)).ParentKey);
+    }
+
     [Fact]
     public async Task AnEpicMoved_LeavesAChildInAnotherProjectLinkedWithItsOldKey_AndCarriesTheRest()
     {
@@ -1007,6 +1169,63 @@ public class IssuesControllerTests
 
         var events = await h.EventsAsync("AER-2");
         Assert.Equal([kind, EfHatchIssueEvent.Created], events.Select(e => e.Kind));
+    }
+
+    [Fact]
+    public async Task ARetitle_AddsTheOldTitleToPreviousTitles()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the gasket");
+
+        await h.Issues.PatchIssue("AER-1", Patch(title: "the sprocket"), default);
+
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Number == 1);
+        Assert.Equal("the sprocket", issue.Title);
+        Assert.Equal(["the gasket"], issue.PreviousTitlesNewestFirst());
+    }
+
+    [Fact]
+    public async Task RetitlingBackToAnEarlierTitle_LeavesOnlyTheOneInBetween()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "A");
+
+        await h.Issues.PatchIssue("AER-1", Patch(title: "B"), default);
+        await h.Issues.PatchIssue("AER-1", Patch(title: "A"), default);
+
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Number == 1);
+        Assert.Equal("A", issue.Title);
+        Assert.Equal(["B"], issue.PreviousTitlesNewestFirst());
+    }
+
+    [Fact]
+    public async Task ABulkEdit_NeverTouchesTitleOrPreviousTitles()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the gasket");
+        await h.Issues.PatchIssue("AER-1", Patch(title: "the sprocket"), default);
+
+        await h.Issues.BulkEdit(Bulk(["AER-1"], statusId: h.Done), default);
+
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Number == 1);
+        Assert.Equal("the sprocket", issue.Title);
+        Assert.Equal(["the gasket"], issue.PreviousTitlesNewestFirst());
+    }
+
+    [Fact]
+    public async Task AnUnchangedTitle_WritesNoEventAndLeavesPreviousTitlesAlone()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("story", "the gasket");
+        await h.Issues.PatchIssue("AER-1", Patch(title: "the sprocket"), default);
+
+        await h.Issues.PatchIssue("AER-1", Patch(title: "the sprocket"), default);
+
+        var events = await h.EventsAsync("AER-1");
+        Assert.Equal([EfHatchIssueEvent.Retitled, EfHatchIssueEvent.Created], events.Select(e => e.Kind));
+
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Number == 1);
+        Assert.Equal(["the gasket"], issue.PreviousTitlesNewestFirst());
     }
 
     [Fact]
@@ -4952,6 +5171,45 @@ public class IssuesControllerTests
             Db.Projects.Add(lab);
             await Db.SaveChangesAsync();
             return lab.Id;
+        }
+
+        /// <summary>A capability of the ambition named by <paramref name="key"/>, with no verdict yet.</summary>
+        public async Task<long> AddCapabilityAsync(string key, int position = 0)
+        {
+            IssueKey.TryParse(key, out var projectKey, out var number);
+            var ambition = await Db.Issues.WithKey(projectKey, number).FirstAsync();
+            var capability = new EfHatchCapability
+            {
+                IssueId = ambition.Id,
+                Position = position,
+                Statement = $"capability {position}",
+                HowToTell = "look",
+                CreatedBy = "operator",
+                CreatedAt = Now,
+                UpdatedAt = Now,
+            };
+            Db.Capabilities.Add(capability);
+            await Db.SaveChangesAsync();
+            return capability.Id;
+        }
+
+        /// <summary>
+        /// A verdict row of its own, one <see cref="HatchContext.SaveChangesAsync"/>
+        /// so its <c>Id</c> orders it after whatever came before - what
+        /// <see cref="IssueCapabilitiesController.NewestVerdictsAsync"/> reads newest by.
+        /// </summary>
+        public async Task AddVerdictAsync(long capabilityId, string verdict)
+        {
+            Db.CapabilityVerdicts.Add(new EfHatchCapabilityVerdict
+            {
+                CapabilityId = capabilityId,
+                Verdict = verdict,
+                LookedAt = "the trunk",
+                Sha = "abc1234",
+                Author = "hatch",
+                CreatedAt = Now,
+            });
+            await Db.SaveChangesAsync();
         }
 
         public async Task<IssueDto> CreateAsync(

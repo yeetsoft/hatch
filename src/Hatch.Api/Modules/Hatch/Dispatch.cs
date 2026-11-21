@@ -260,6 +260,16 @@ public sealed class Dispatch(
 
         var implementation = Columns.Implementation(statuses);
 
+        // The open question each ambition standing in the implementation column is
+        // aimed at, if one qualifies - read once for the whole pass, and only for
+        // the ambitions that could use it. See AnswerQuestions.
+        var answerings = await AnswerQuestions.ForAsync(
+            db, gate,
+            implementation is null
+                ? []
+                : candidates.Where(i => i.Type == "ambition" && i.StatusId == implementation.Id).Select(i => i.Id).ToList(),
+            ct);
+
         // The whole walk, once per tier, each tier right to left: first every
         // emergency candidate in a project that is not paused; then, for an
         // expedited project and then for every other unpaused one, its
@@ -390,6 +400,18 @@ public sealed class Dispatch(
                     var playbook = checkRow is { IsCheck: true }
                         ? checkRow
                         : Match(candidatePlaybooks, status.Id, rowTarget.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
+
+                    // An ambition with a question beneath it that qualifies is aimed at
+                    // its answering row, before the pass. A board with no such row
+                    // runs the pass as it always has.
+                    AnswerQuestions.Candidate? answering = null;
+                    if (PassStands(issue, status, implementation) && answerings.TryGetValue(issue.Id, out var asked)
+                        && MatchAnswering(candidatePlaybooks, status.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId) is { } answeringRow)
+                    {
+                        answering = asked;
+                        playbook = answeringRow;
+                    }
+
                     var parent = family.ParentOf(issue.Id);
                     var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
                     var hopKind = HopKind(issue, status, rowTarget, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
@@ -428,7 +450,7 @@ public sealed class Dispatch(
                         trainSlots.GetValueOrDefault(issue.Id),
                         drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
-                        has: has, requirement: requirement, refusal: refusal, leftFor: leftFor);
+                        has: has, requirement: requirement, refusal: refusal, leftFor: leftFor, answering: answering is not null);
                     if (!hop && (ModelFold(issue, status, playbook, models, localLevel, leftFor) is not null
                                   || RefusalFold(issue, status, playbook, refusal, localLevel, models) is not null
                                   || ColumnFold(issue, status, refusal, statuses) is not null))
@@ -488,7 +510,7 @@ public sealed class Dispatch(
 
                     rows.Add(new ScanRow(
                         issue, status, rowTo, sentence, kind,
-                        KindOf(issue, status, rowTo, merged, built, claimed.Now, landing, IsPass(issue, status, rowTo, implementation)),
+                        KindOf(issue, status, rowTo, merged, built, claimed.Now, landing, IsPass(issue, status, rowTo, implementation), answering is not null),
                         hop && sentence is null,
                         sentence is null ? hopKind : null,
                         sentence is null ? hopUnder : null,
@@ -507,7 +529,8 @@ public sealed class Dispatch(
                         AnyOf: blocking.AnyOf,
                         ProjectLevel: gate.ProjectLevel(issue.Id),
                         ModelIsLocal: ResolveModel(issue, playbook, localLevel, models).Local,
-                        Across: blocking.Across));
+                        Across: blocking.Across,
+                        Answering: answering));
                 }
             }
 
@@ -2155,8 +2178,10 @@ public sealed class Dispatch(
     public static string KindOf(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to,
         IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now,
-        MergeWork.Judgement? landing = null, bool pass = false) =>
-        from.MergesPullRequest
+        MergeWork.Judgement? landing = null, bool pass = false, bool answering = false) =>
+        pass && answering
+            ? WorkKinds.Answer
+            : from.MergesPullRequest
             ? MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 merges, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now,
@@ -2456,11 +2481,12 @@ public sealed class Dispatch(
         HasDeclaration? has = null,
         DependencyRequirement? requirement = null,
         RunnerRefusal? refusal = null,
-        (string Runner, string Model)? leftFor = null) =>
+        (string Runner, string Model)? leftFor = null,
+        bool answering = false) =>
         BlockedWithKind(
             issue, from, to, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
-            repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor).Sentence;
+            repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor, answering).Sentence;
 
     /// <summary>
     /// The hold for a child whose parent is in progress in another project but may not pull
@@ -2538,7 +2564,8 @@ public sealed class Dispatch(
         HasDeclaration? has = null,
         DependencyRequirement? requirement = null,
         RunnerRefusal? refusal = null,
-        (string Runner, string Model)? leftFor = null)
+        (string Runner, string Model)? leftFor = null,
+        bool answering = false)
     {
         var hop = hopKind is not null;
 
@@ -2809,9 +2836,13 @@ public sealed class Dispatch(
         // gives way to the room rule - clear while fewer epics are open than it
         // allows, folded with that count otherwise. It reads the ambition's own
         // limit, which does not depend on the WIP section.
+        //
+        // An ambition aimed at a question skips that rule: answering opens no
+        // epic and starts no work beside the others, so a full room or a settled
+        // pass must not hold a question that is waiting to be looked at.
         if (pass)
         {
-            if (family.PassFold(issue.Id, issue.WipLimit, statuses, claimed.Now) is { } passBlock)
+            if (!answering && family.PassFold(issue.Id, issue.WipLimit, statuses, claimed.Now) is { } passBlock)
                 return Blocking.Waiting(passBlock.Sentence, BlockedKinds.Family, passBlock.Open);
         }
         else if (IssueTypeKinds.RunsChildren(issue.Type) && !conflicts && wip is not null
@@ -3263,6 +3294,29 @@ public sealed class Dispatch(
     /// </remarks>
     public async Task<PlaybookMatch?> MatchAsync(int from, int to, string type, bool isParent, int projectId, CancellationToken ct)
     {
+        var (rows, file) = await ReadRowsAsync(from, to, projectId, ct);
+        var playbook = Match(rows, from, to, type, isParent, projectId);
+        return new PlaybookMatch(playbook, SourceOf(playbook), file);
+    }
+
+    /// <summary>
+    /// <see cref="MatchAsync"/>'s read for the answering row: the flagged row on
+    /// the edge from a column to itself, which is the only edge it is seeded on.
+    /// Null where nothing flagged covers the type.
+    /// </summary>
+    public async Task<PlaybookMatch?> MatchAnsweringAsync(int column, string type, bool isParent, int projectId, CancellationToken ct)
+    {
+        var (rows, file) = await ReadRowsAsync(column, column, projectId, ct);
+        var playbook = MatchAnswering(rows, column, type, isParent, projectId);
+        return new PlaybookMatch(playbook, SourceOf(playbook), file);
+    }
+
+    /// <summary>
+    /// The rows <see cref="MatchAsync"/> and <see cref="MatchAnsweringAsync"/>
+    /// choose among: the project's file rows, then the table's rows for the edge.
+    /// </summary>
+    private async Task<(List<EfHatchPlaybook> Rows, PlaybookFileReference? File)> ReadRowsAsync(int from, int to, int projectId, CancellationToken ct)
+    {
         var project = await db.Projects.AsNoTracking()
             .Include(p => p.Repositories)
             .FirstOrDefaultAsync(p => p.Id == projectId, ct);
@@ -3281,8 +3335,7 @@ public sealed class Dispatch(
 
         var tableRows = await query.ToListAsync(ct);
 
-        var playbook = Match(fileRows.Concat(tableRows).ToList(), from, to, type, isParent, projectId);
-        return new PlaybookMatch(playbook, SourceOf(playbook), file);
+        return (fileRows.Concat(tableRows).ToList(), file);
     }
 
     /// <summary>
@@ -3346,7 +3399,23 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? Match(List<EfHatchPlaybook> playbooks, int from, int to, string type, bool isParent, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions && p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges && p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
+                        && (p.ProjectId == null || p.ProjectId == projectId))
+            .OrderByDescending(p => p.ProjectId is not null)
+            .ThenByDescending(p => p.Specificity)
+            .ThenBy(p => p.Id)
+            .FirstOrDefault();
+
+    /// <summary>
+    /// The mirror of <see cref="Match"/> for the row an ambition's question is
+    /// answered by: only rows that <see cref="EfHatchPlaybook.AnswersQuestions"/>,
+    /// on the edge from <paramref name="column"/> to itself, with the same
+    /// tie-break. Null where the board has none, and the ambition runs its pass
+    /// as it always has.
+    /// </summary>
+    public static EfHatchPlaybook? MatchAnswering(List<EfHatchPlaybook> playbooks, int column, string type, bool isParent, int projectId) =>
+        playbooks
+            .Where(p => p.AnswersQuestions && p.FromStatusId == column && p.ToStatusId == column && p.Covers(type, isParent)
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderByDescending(p => p.ProjectId is not null)
             .ThenByDescending(p => p.Specificity)
@@ -3363,7 +3432,7 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? MatchReflection(List<EfHatchPlaybook> playbooks, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges
                         && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("reflection"))
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderByDescending(p => p.ProjectId is not null)
@@ -3382,7 +3451,7 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? MatchWeave(List<EfHatchPlaybook> playbooks, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges
                         && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("epic"))
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderBy(p => p.FromStatus!.SortOrder)
@@ -3483,7 +3552,8 @@ public sealed record ScanRow(
     int EffectivePriority = PriorityLevels.Normal, string? EffectiveFrom = null,
     string? Model = null, IReadOnlyList<string>? DeniedTools = null,
     IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false,
-    string? ProjectLevel = null, bool ModelIsLocal = false, AcrossLine? Across = null);
+    string? ProjectLevel = null, bool ModelIsLocal = false, AcrossLine? Across = null,
+    AnswerQuestions.Candidate? Answering = null);
 
 /// <summary>A row <see cref="Dispatch.HeldAtProjectLineAsync"/> lists, and the line it stands at.</summary>
 public sealed record AcrossHold(ScanRow Row, AcrossLine Line);
@@ -4412,13 +4482,37 @@ public sealed class PriorityTree
     }
 
     /// <summary>
+    /// The nearest ambition strictly above this issue, at any depth, or null where
+    /// none stands above it - an ambition is not its own ambition. The walk does
+    /// not stop at a project line, as <see cref="EffectiveDangerous"/> does not.
+    /// </summary>
+    public long? AmbitionAbove(long issueId)
+    {
+        var seen = new HashSet<long> { issueId };
+        var at = TryGet(issueId, out var own) ? own.ParentId : null;
+
+        while (at is { } id && seen.Add(id))
+        {
+            if (_onePr.TryGetValue(id, out var row) && row.Type == "ambition") return id;
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The strictest open question on this issue or any ancestor: its level, the
     /// number of questions at that level, and the key it was found on, which is
     /// null for the issue's own. A tie in level keeps the nearer issue. Like
     /// <see cref="EffectiveDangerous"/> the walk does not stop at a project line.
+    /// A question asked on an ambition holds only the ambition itself -
+    /// <see cref="QuestionLevels.Reaches"/> - unless this issue is dangerous, its
+    /// own flag or an ancestor's, in which case the ambition's question still
+    /// reaches it.
     /// </summary>
     public (string Level, int Count, string? FromKey)? EffectiveQuestion(long issueId)
     {
+        var dangerous = EffectiveDangerous(issueId).Reason is not null;
         var seen = new HashSet<long>();
         long? at = issueId;
         (string Level, int Count, string? FromKey)? best = null;
@@ -4426,6 +4520,7 @@ public sealed class PriorityTree
         while (at is { } id && seen.Add(id))
         {
             if (_questions.TryGetValue(id, out var q) && TryGet(id, out var row)
+                && QuestionLevels.Reaches(_onePr.TryGetValue(id, out var onePrRow) ? onePrRow.Type : "", id == issueId, dangerous)
                 && (best is null || QuestionLevels.Rank(q.Level) < QuestionLevels.Rank(best.Value.Level)))
                 best = (q.Level, q.Count, id == issueId ? null : row.Key);
 
@@ -4693,6 +4788,7 @@ public sealed class DependencyGate
 
     /// <summary>The dangerous reason live on this issue - see <see cref="PriorityTree.EffectiveDangerous"/>.</summary>
     public (string? Reason, string? FromKey) EffectiveDangerous(long issueId) => _tree.EffectiveDangerous(issueId);
+    public long? AmbitionAbove(long issueId) => _tree.AmbitionAbove(issueId);
 
     /// <summary>The strictest open question on this issue or an ancestor - see <see cref="PriorityTree.EffectiveQuestion"/>.</summary>
     public (string Level, int Count, string? FromKey)? EffectiveQuestion(long issueId) => _tree.EffectiveQuestion(issueId);
@@ -4841,7 +4937,9 @@ public sealed class FamilyGate
     /// opened room since, with when that pass ended - read once for the board.
     /// A pass is a work log row that ran from the implementation column to
     /// itself for an ambition and was released <c>worked</c>; a <c>dropped</c>
-    /// one failed and is retried by the stall path, so it never counts. Room
+    /// one failed and is retried by the stall path, so it never counts. A row
+    /// that names a question is a session that answered it, not a pass, so it
+    /// never counts either. Room
     /// opens when a direct child epic moves into a terminal or deferred column,
     /// and when the ambition's own limit, column or capabilities change. A
     /// pass's own writes - a verdict on a capability, a comment, a claim, a
@@ -4855,7 +4953,7 @@ public sealed class FamilyGate
         if (Columns.Implementation(statuses) is not { } implementation) return settled;
 
         var passes = (await db.WorkLog.IgnoreQueryFilters().AsNoTracking()
-                .Where(w => w.IssueType == "ambition" && w.Outcome == ClaimOutcomes.Worked
+                .Where(w => w.IssueType == "ambition" && w.Outcome == ClaimOutcomes.Worked && w.QuestionId == null
                     && w.PlaybookFromStatusId == implementation.Id && w.PlaybookToStatusId == implementation.Id)
                 .GroupBy(w => w.IssueId)
                 .Select(g => new { IssueId = g.Key, EndedAt = g.Max(w => w.EndedAt) })

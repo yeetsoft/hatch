@@ -1635,16 +1635,19 @@ export interface IssueSearch {
   text?: string | null;
 }
 
-/** Which parts of an issue held the words searched for - mirrors SearchHitDto.
-    Matched at SearchController.cs:247-251, in this order and no other. */
-export type SearchMatch = 'title' | 'description' | 'comment' | 'work-log';
+/** Which parts of an issue held the words searched for - mirrors SearchHitDto
+    (src/Hatch.Contracts/Dtos.cs), in this order and no other. */
+export type SearchMatch = 'title' | 'previous-title' | 'description' | 'comment' | 'work-log';
 
-/** One hit from GET /api/search - mirrors SearchHitDto field for field. */
+/** One hit from GET /api/search - mirrors SearchHitDto field for field.
+    `previousTitles` is newest first, and is sent whenever the issue was ever
+    retitled - whether or not a previous title matched the search. */
 export interface SearchHit {
   card: IssueCard;
   createdAt: string;
   closedAt: string | null;
   matched: SearchMatch[];
+  previousTitles: string[];
 }
 
 /** A page of search results - mirrors SearchDto. */
@@ -1906,6 +1909,8 @@ export interface Playbook {
   isCheck: boolean;
   /** True for the row a session answers one ambition question on; it edits nothing. */
   answersQuestions: boolean;
+  /** True for the row a session works out what a change to an ambition does to its epics in flight on; it edits nothing. */
+  worksOutChanges: boolean;
   /** Seconds a claim under this row may go without a word, or null to inherit the server's lapse. */
   quietLimitSeconds: number | null;
   /** The server's sentence for a row the dispatcher can never pick; null when reachable. */
@@ -1974,6 +1979,7 @@ export interface PlaybookCreateRequest {
   deniedTools?: string[];
   isCheck?: boolean;
   answersQuestions?: boolean;
+  worksOutChanges?: boolean;
   projectId?: string;
 }
 
@@ -1998,6 +2004,7 @@ export interface PlaybookPatchRequest {
   deniedTools?: string[];
   isCheck?: boolean;
   answersQuestions?: boolean;
+  worksOutChanges?: boolean;
   projectId?: string;
 }
 
@@ -2833,6 +2840,8 @@ export interface RunnerDownload {
   fileName: string;
   /** Where to get it. Named by the server, so the page never builds a path of its own. */
   url: string;
+  /** Lowercase hex sha256 of the exact bytes `url` serves. */
+  sha256: string;
 }
 
 /** What the Runner page draws. Mirrors RunnerDownloadsDto.
@@ -3379,6 +3388,13 @@ export interface Runner {
   /** Where this runner's own build sits against its own reported source - the
       checkout's history, not the API. Mirrors RunnerDto's SourceDrift. */
   sourceDrift: RevisionDrift;
+  /** Whether the launcher that started this runner is older than the board's own
+      build's launcher. The board compares; the page reads. Mirrors RunnerDto's
+      LauncherBehind. False where no launcher version was reported. */
+  launcherBehind: boolean;
+  /** The version of the launcher that started this runner, or null for a loop
+      with no launcher. Mirrors RunnerDto's LauncherVersion. */
+  launcherVersion?: number | null;
   /** The api key this entry is minted as, or null for a heartbeat no key claims. */
   apiKeyId?: string | null;
   /** The leading characters of the key's own secret, for display only, or null with no key. */

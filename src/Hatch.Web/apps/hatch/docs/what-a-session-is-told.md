@@ -38,6 +38,20 @@ title and saying every session working under it holds to these principles, and
 then lists one bullet per principle, as the ambition's own description wrote
 them under its `## Principles` heading.
 
+### The question to answer
+
+Only when the dispatch is an answering one: an ambition sent to answer an open
+`build` or `merge` question beneath it
+([what a session may answer](questions-and-decisions#what-a-session-may-answer)).
+It comes straight after the principles, ahead of the repositories. It names the
+question's issue by key and title, as a link where the ambition's own link can
+be used to make one and as the bare key where it cannot, and says who asked the
+question and when. Then it gives the question as it was asked and every option
+it offered, numbered, with the recommended one marked and each one's detail
+under it. It ends with the level in one sentence: at `build`, the work built
+past the question is built but not merged until the question is answered; at
+`merge`, it is merged, and a person looks over the answer after.
+
 ### Repositories
 
 When the dispatch has any. A line for each repository the ticket's project
@@ -275,6 +289,19 @@ found it is recorded as having done nothing. No playbook edits: the API
 refuses them on purpose, and the refusal is deliberate. A wrong playbook is
 proposed instead, with `hatch api POST /api/playbook-proposals`, said
 on the ticket, and left for a person to apply on the Playbooks page.
+
+An answering dispatch ends differently, because it moves nothing. It says to
+answer only if the ambition's description, its answered questions or the
+repository settles the question, and gives the call with the question's own
+issue key and id filled in: `hatch answer <key> <id> "<text>"`, the first line
+the decision and the lines after it where it was found. Otherwise it says to
+write `hatch comment <key> "..."` that the context does not settle it, and
+stop. The key in both is the issue the question is on, not the ambition. It
+moves nothing, cuts no branch and opens no pull request, so there is no
+[Opening a pull request](#opening-a-pull-request) section, whatever the
+playbook row denies, and the sentence about claiming being the marker of
+starting is left out. A session that ends normally is released as worked,
+whether it answered or declined, and its work-log row names the question.
 
 The prompt then ends with two things that are plain paragraphs, not sections,
 not with a heading of their own: a ticket moving into review may be asked for

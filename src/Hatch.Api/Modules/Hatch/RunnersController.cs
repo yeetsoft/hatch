@@ -3,6 +3,8 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
+using Hatch.Api.Models.HatchRevision;
+using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Settings;
 using Hatch.Contracts;
@@ -43,7 +45,8 @@ namespace Hatch.Api.Modules.Hatch;
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
     TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,
-    RunnerSessions sessions, Dispatch dispatch, ILogger<RunnersController> logger) : ControllerBase
+    RunnerSessions sessions, Dispatch dispatch, IHatchRevision revision, IRunnerBuilds builds,
+    ILogger<RunnersController> logger) : ControllerBase
 {
     /// <summary>
     /// Every runner this Hatch knows of: one entry per visible key - revoked
@@ -428,7 +431,22 @@ public class RunnersController(
         var localModels = await LocalModelsAsync(ct);
 
         return RunnerSessions.Instruct(
-            session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour, localModels, now);
+            session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour, localModels, now)
+            with { BoardBuild = await BoardBuildAsync(request, ct) };
+    }
+
+    /// <summary>
+    /// <see cref="Runners.BoardBuild"/> for this beat, with the build its platform
+    /// names. The lookup is made only once the part is known to exist, since the
+    /// first one hashes the file.
+    /// </summary>
+    private async Task<RunnerBoardBuildDto?> BoardBuildAsync(RunnerHeartbeatRequest request, CancellationToken ct)
+    {
+        if (Runners.BoardBuild(revision.Revision, revision.Sequence, request, null) is null) return null;
+
+        ct.ThrowIfCancellationRequested();
+        var build = request.Rid is { } rid ? await builds.FindAsync(rid) : null;
+        return Runners.BoardBuild(revision.Revision, revision.Sequence, request, build);
     }
 
     /// <summary>
@@ -546,7 +564,8 @@ public class RunnersController(
                 var refusedModels = await RefusedFromKeyAsync(ct);
                 return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), null,
                     defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
-                    with { RefusedModels = refusedModels, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refusedModels) };
+                    with { RefusedModels = refusedModels, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refusedModels),
+                        BoardBuild = await BoardBuildAsync(request, ct) };
             }
             catch (DbUpdateException)
             {
@@ -583,7 +602,8 @@ public class RunnersController(
         var refused = await RefusedFromKeyAsync(ct);
         return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), order,
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
-            with { RefusedModels = refused, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refused) };
+            with { RefusedModels = refused, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refused),
+                BoardBuild = await BoardBuildAsync(request, ct) };
     }
 
     /// <summary>
@@ -1709,6 +1729,7 @@ public class RunnersController(
             Sequence = request.Sequence,
             SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength),
             SourceSequence = request.SourceSequence,
+            LauncherVersion = request.LauncherVersion,
             BuiltAt = request.BuiltAt,
             Models = models,
             Has = has,
@@ -1789,6 +1810,7 @@ public class RunnersController(
         if (request.Sequence is not null) row.Sequence = request.Sequence;
         if (request.SourceRevision is not null) row.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
         if (request.SourceSequence is not null) row.SourceSequence = request.SourceSequence;
+        if (request.LauncherVersion is not null) row.LauncherVersion = request.LauncherVersion;
         if (request.BuiltAt is not null) row.BuiltAt = request.BuiltAt;
 
         // An empty list clears it: Joined answers null for one.
@@ -1869,6 +1891,11 @@ public class RunnersController(
             // profile (its Ollama moved off the box) must not keep the
             // previous process's.
             row.Image = Fits(request.Image, EfHatchRunner.MaxImageLength);
+
+            // The launcher goes the same way: a loop restarted by a script, or
+            // by a newer launcher, must not keep the old launcher's number and
+            // the badge that comes with it.
+            row.LauncherVersion = request.LauncherVersion;
             row.AcceleratorMemoryBytes = request.AcceleratorMemoryBytes;
             row.AcceleratorDeviceCount = request.AcceleratorDeviceCount;
             row.AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength);
@@ -1948,6 +1975,7 @@ public class RunnersController(
             Sequence = request.Sequence,
             SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength),
             SourceSequence = request.SourceSequence,
+            LauncherVersion = request.LauncherVersion,
             BuiltAt = request.BuiltAt,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
@@ -2024,6 +2052,7 @@ public class RunnersController(
         if (request.Sequence is not null) session.Sequence = request.Sequence;
         if (request.SourceRevision is not null) session.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
         if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
+        if (request.LauncherVersion is not null) session.LauncherVersion = request.LauncherVersion;
         if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
 
         if (request.Os is not null) session.Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength);

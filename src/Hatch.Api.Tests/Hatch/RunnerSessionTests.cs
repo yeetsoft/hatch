@@ -58,6 +58,7 @@ public class RunnerSessionTests
             BuiltAt = Now.AddDays(-1),
             SourceRevision = "cafef00d",
             SourceSequence = 41,
+            LauncherVersion = 1,
             Projects = "HA",
             RefusesDangerous = true,
             OrderKind = "work",
@@ -108,6 +109,7 @@ public class RunnerSessionTests
         Assert.Equal(Now.AddDays(-1), row.BuiltAt);
         Assert.Equal("cafef00d", row.SourceRevision);
         Assert.Equal(41, row.SourceSequence);
+        Assert.Equal(1, row.LauncherVersion);
         Assert.Equal("HA", row.Projects);
         Assert.True(row.RefusesDangerous);
         Assert.Equal("work", row.OrderKind);
@@ -168,6 +170,7 @@ public class RunnerSessionTests
         Assert.Null(row.BuiltAt);
         Assert.Null(row.SourceRevision);
         Assert.Null(row.SourceSequence);
+        Assert.Null(row.LauncherVersion);
         Assert.Null(row.Projects);
         Assert.Null(row.RefusesDangerous);
         Assert.Null(row.OrderKind);

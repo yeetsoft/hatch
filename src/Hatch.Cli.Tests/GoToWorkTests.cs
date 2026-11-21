@@ -923,6 +923,36 @@ public sealed class GoToWorkTests
         Assert.Null(beat.SourceSequence);
     }
 
+    [Fact]
+    public async Task Under_a_launcher_every_heartbeat_carries_its_version()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime with { Launcher = Launched(3) }).RunAsync(["--once"], default);
+
+        var beats = h.Wire.Calls
+            .Where(c => c.Path == "/api/runners/sessions")
+            .Select(c => c.Read<RunnerHeartbeatRequest>())
+            .ToList();
+        Assert.NotEmpty(beats);
+        Assert.All(beats, b => Assert.Equal(3, b.LauncherVersion));
+    }
+
+    [Fact]
+    public async Task With_no_launcher_the_heartbeat_sends_no_version()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == "/api/runners/sessions")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Null(beat.LauncherVersion);
+    }
+
 
     [Theory]
     [InlineData(false)]
@@ -3913,6 +3943,278 @@ public sealed class GoToWorkTests
         // flagged, and carried in its own list.
         Assert.Empty(carried.Stalled);
         Assert.Single(carried.LetGo);
+    }
+
+    // ---- Under a downloaded build's launcher ----
+
+    private static LauncherLink Launched(int version = 1) =>
+        LauncherLink.From(new Dictionary<string, string?> { [Launcher.VersionVariable] = version.ToString(CultureInfo.InvariantCulture) })!;
+
+    /// <summary>A child that is this loop, run in this process: a launcher starts it and reads what it exits with.</summary>
+    private sealed class InProcessChild(Func<string[], IReadOnlyDictionary<string, string>, Task<int>> run) : ILaunchedChild
+    {
+        public ILaunchedProcess Start(string[] args, IReadOnlyDictionary<string, string> environment) =>
+            new Running(run(args, environment));
+
+        private sealed class Running(Task<int> exited) : ILaunchedProcess
+        {
+            public Task<int> Exited => exited;
+
+            public void Forward(System.Runtime.InteropServices.PosixSignal signal) { }
+
+            public void WaitForExit(TimeSpan limit) { }
+
+            public void Dispose() { }
+        }
+    }
+
+    [Fact]
+    public async Task A_loop_restarted_through_a_launcher_carries_the_night_to_the_far_side()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Replace(
+            "POST", "/api/issues/AER-1/work-log", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(Fixtures.WorkLogRow(tokens: 250_000), Fixtures.Json));
+
+        var (following, pointer) = Following(h);
+        var log = Path.Combine(h.Temp, "night.log");
+
+        // The first increment fails, so the streak is 1 when the pointer moves.
+        var sessions = 0;
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(++sessions == 1 ? 1 : 0, ""));
+        };
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        var until = DateTime.Now.AddHours(3).ToString("HH:mm", CultureInfo.InvariantCulture);
+        string[] args = ["go-to-work", "--max-runs", "2", "--until", until];
+
+        var starts = 0;
+        NightState? farSide = null;
+        var child = new InProcessChild((given, env) =>
+        {
+            starts++;
+            var state = env[Launcher.StateVariable];
+            var link = LauncherLink.From(env.ToDictionary(e => e.Key, e => (string?)e.Value));
+
+            // What the first incarnation left is what the second one reads - the
+            // file the launcher named, read before the second incarnation starts.
+            if (starts == 2) farSide = NightState.Read(state);
+
+            var runtime = following with
+            {
+                NightStatePath = state,
+                Launcher = link,
+                LogPath = starts == 1 ? log : farSide?.LogPath,
+                ProfileName = starts == 1 ? "day" : "night",
+            };
+
+            return new GoToWorkCommand(runtime).RunAsync(given[1..], default);
+        });
+
+        var code = await Launcher.RunAsync(
+            args, child, "/somewhere/hatch", new LaunchSignals(), forwards: true, Launcher.Version, h.Temp, _ => { });
+
+        Assert.Equal(0, code);
+        Assert.Equal(2, starts);
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+
+        Assert.NotNull(farSide);
+        Assert.Equal(1, farSide.Runs);
+        Assert.True(farSide.Spent > 0);
+        Assert.Equal(250_000, farSide.Tokens);
+        Assert.Single(farSide.Window);
+        Assert.Equal(250_000, farSide.Window[0].Tokens);
+        Assert.NotNull(farSide.UntilAt);
+        Assert.Equal(1, farSide.Fails);
+        Assert.Equal(log, farSide.LogPath);
+        Assert.Equal(1, farSide.Restarts);
+
+        // The night ended once, and its tally counts the restart.
+        Assert.Contains(h.Say.Said, l => l.Contains("1 restart(s)", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("no supervisor", StringComparison.Ordinal));
+
+        // And the launcher took its state away with it.
+        Assert.Empty(Directory.GetDirectories(h.Temp, "hatch-night-*"));
+    }
+
+    [Fact]
+    public async Task A_loop_under_a_launcher_restarts_onto_the_board_the_pointer_moved_to()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (following, pointer) = Following(h);
+        var runtime = following with { NightStatePath = h.NightState, Launcher = Launched() };
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(runtime).RunAsync([], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("changed from day to night", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("cannot restart onto it", StringComparison.Ordinal));
+        Assert.Equal(1, NightState.Read(h.NightState)?.Restarts);
+    }
+
+    [Fact]
+    public async Task A_loop_under_a_launcher_does_not_restart_for_a_changed_source_or_for_age()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        // The source changes inside the reset, where a checkout's loop would see
+        // it, and the clock runs past the thirty minutes a checkout's loop gives up at.
+        h.Workspace.Watching = () => h.Self.Print = FakeSelf.Of(("src/Hatch.Cli/GoToWork.cs", "after"));
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 2, 0, 0, TimeSpan.Zero))
+        {
+            AutoAdvanceAmount = TimeSpan.FromMinutes(40),
+        };
+
+        var runtime = h.Supervised with { Clock = clock, Launcher = Launched() };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("the loop's own source changed", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("has been running", StringComparison.Ordinal));
+
+        // The source was never read, since there is none beside a download.
+        Assert.Equal(0, h.Self.Taken);
+    }
+
+    [Fact]
+    public async Task A_loop_under_a_launcher_never_reads_its_source_even_when_that_would_fail()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var runtime = h.Supervised with
+        {
+            Launcher = Launched(),
+            Self = () => throw new InvalidOperationException("there is no source beside a download"),
+        };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1", "--restart-after", "5"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_loop_in_a_checkout_still_restarts_on_age_as_it_always_did()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 2, 0, 0, TimeSpan.Zero))
+        {
+            AutoAdvanceAmount = TimeSpan.FromMinutes(40),
+        };
+
+        // No launcher: the wrapper script is what stands over it.
+        Assert.Equal(
+            GoToWorkCommand.RestartExitCode,
+            await new GoToWorkCommand(h.Supervised with { Clock = clock }).RunAsync([], default));
+    }
+
+    [Theory]
+    [InlineData("--no-restart")]
+    [InlineData("--once")]
+    public async Task A_loop_told_not_to_restart_never_does_under_a_launcher(string flag)
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (following, pointer) = Following(h);
+        var runtime = following with { NightStatePath = h.NightState, Launcher = Launched() };
+        AfterTheFirstSession(h, () => File.WriteAllText(pointer, "night"));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync([flag], default));
+
+        Assert.False(File.Exists(h.NightState));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("restarting", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_line_about_no_supervisor_is_said_where_it_is_true_and_not_under_a_launcher()
+    {
+        using var byHand = new Harness();
+        OneTicket(byHand);
+        await new GoToWorkCommand(byHand.Runtime).RunAsync(["--max-runs", "1"], default);
+        Assert.Contains(byHand.Say.Said, l => l.Contains("this run has no supervisor", StringComparison.Ordinal));
+
+        using var launched = new Harness();
+        OneTicket(launched);
+        await new GoToWorkCommand(launched.Supervised with { Launcher = Launched() }).RunAsync(["--max-runs", "1"], default);
+        Assert.DoesNotContain(launched.Say.Said, l => l.Contains("no supervisor", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_first_start_under_a_launcher_older_than_its_own_build_says_so_once_naming_the_launcher()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var link = LauncherLink.From(new Dictionary<string, string?>
+        {
+            [Launcher.VersionVariable] = "1",
+            [Launcher.PathVariable] = "/opt/somewhere/hatch",
+        })!;
+
+        await new GoToWorkCommand(h.Supervised with { Launcher = link, BuildLauncherVersion = 2 })
+            .RunAsync(["--max-runs", "1"], default);
+
+        var line = Assert.Single(h.Say.Said, l => l.Contains("the launcher at", StringComparison.Ordinal));
+        Assert.Contains("/opt/somewhere/hatch", line, StringComparison.Ordinal);
+        Assert.Contains("version 1", line, StringComparison.Ordinal);
+        Assert.Contains("download hatch again", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_restart_in_the_same_night_does_not_say_the_launcher_is_old_again()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1 });
+
+        await new GoToWorkCommand(h.Supervised with { Launcher = Launched(1), BuildLauncherVersion = 2 })
+            .RunAsync(["--max-runs", "1"], default);
+
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("the launcher at", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_launcher_level_with_its_build_or_no_launcher_says_nothing()
+    {
+        using var level = new Harness();
+        OneTicket(level);
+        await new GoToWorkCommand(level.Supervised with { Launcher = Launched(2), BuildLauncherVersion = 2 })
+            .RunAsync(["--max-runs", "1"], default);
+        Assert.DoesNotContain(level.Say.Said, l => l.Contains("the launcher at", StringComparison.Ordinal));
+
+        using var none = new Harness();
+        OneTicket(none);
+        await new GoToWorkCommand(none.Supervised with { BuildLauncherVersion = 2 })
+            .RunAsync(["--max-runs", "1"], default);
+        Assert.DoesNotContain(none.Say.Said, l => l.Contains("the launcher at", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_stop_that_lands_as_the_loop_asks_to_restart_ends_the_night_and_prints_the_tally()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var (following, pointer) = Following(h);
+        using var cts = new CancellationTokenSource();
+        var runtime = following with { NightStatePath = h.NightState, Launcher = Launched() };
+
+        // The pointer moves and a stop arrives in the same instant.
+        AfterTheFirstSession(h, () =>
+        {
+            File.WriteAllText(pointer, "night");
+            cts.Cancel();
+        });
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync([], cts.Token));
+
+        Assert.False(File.Exists(h.NightState));
+        Assert.Contains(h.Say.Said, l => l.Contains("interrupted", StringComparison.Ordinal));
     }
 
     // ---- Following the active profile ----

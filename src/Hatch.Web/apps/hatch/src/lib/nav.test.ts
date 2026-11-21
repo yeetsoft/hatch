@@ -12,6 +12,7 @@ import type { NavEntry } from './nav';
 // unknown-route fallback) are not pages a menu lists. :name is /runners'
 // nested detail route - the regex below captures a nested <Route>'s path
 // literally, with no parent prefix - reached from a RunnerRow, never the nav.
+// /ballot is reached from the attention panel, the Ambitions strip and the console, never the nav.
 // /design/:slug is reached from the gallery's own rail, and /design itself
 // only redirects to its first slug - neither is a bar entry; /design alone
 // (below, in NAV) is the row that opens it.
@@ -25,6 +26,7 @@ const EXCLUDED_ROUTES = new Set([
   '/reports/consumption',
   '/reports/activity',
   '/changelog',
+  '/ballot',
   '/docs/*',
   '/settings',
   '/design/:slug',
@@ -68,9 +70,25 @@ describe('NAV', () => {
 });
 
 describe('the bar', () => {
-  it('shows Search, Ballot, Ambitions, Track, Agents and Manage and nothing else, for anybody', () => {
+  it('shows Search, Ambitions, Track, Agents and Manage and nothing else, for anybody', () => {
     for (const isAdmin of [false, true]) {
-      expect(navFor(isAdmin).map((entry) => entry.label)).toEqual(['Search', 'Ballot', 'Ambitions', 'Track', 'Agents', 'Manage']);
+      expect(navFor(isAdmin).map((entry) => entry.label)).toEqual(['Search', 'Ambitions', 'Track', 'Agents', 'Manage']);
+    }
+  });
+
+  it('has no Ballot entry in the bar or the phone rows, for anybody', () => {
+    for (const isAdmin of [false, true]) {
+      const tos = navFor(isAdmin).flatMap((entry) => (entry.kind === 'link' ? [entry.to] : entry.rows.map((row) => row.to)));
+      expect(tos).not.toContain('/ballot');
+      expect(navRows(isAdmin).map((row) => row.to)).not.toContain('/ballot');
+    }
+  });
+
+  it('marks Search with the icon the bar draws, and carries it on no other row', () => {
+    const search = NAV.find((entry) => entry.kind === 'link' && entry.to === '/search');
+    expect(search).toMatchObject({ icon: 'search' });
+    for (const row of navRows(false)) {
+      expect(row).not.toHaveProperty('icon');
     }
   });
 
@@ -180,11 +198,10 @@ describe('navRows', () => {
     return entries.reduce((sum, entry) => sum + (entry.kind === 'link' ? 1 : entry.rows.length), 0);
   }
 
-  it('puts Search, Ballot and Ambitions first, all with no group label, then Track under its heading', () => {
-    const rows = navRows(false).slice(0, 7);
+  it('puts Search and Ambitions first, both with no group label, then Track under its heading', () => {
+    const rows = navRows(false).slice(0, 6);
     expect(rows).toEqual([
       { to: '/search', label: 'Search', end: undefined, groupLabel: null },
-      { to: '/ballot', label: 'Ballot', end: undefined, groupLabel: null },
       { to: '/ambitions', label: 'Ambitions', end: undefined, groupLabel: null },
       { to: '/dreams', label: 'Dreams', groupLabel: 'Track' },
       { to: '/plan', label: 'Plan', groupLabel: 'Track' },

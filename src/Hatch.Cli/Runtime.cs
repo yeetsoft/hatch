@@ -87,6 +87,21 @@ public sealed record Runtime(
     /// </summary>
     public string? NightStatePath { get; init; }
 
+    /// <summary>
+    /// The launcher above this process, when a downloaded build started it - from
+    /// <c>HATCH_LAUNCHER_VERSION</c>. Null under <c>scripts/hatch.sh</c>, which
+    /// rebuilds from source, and for a loop started by hand. A loop with a
+    /// launcher restarts for <c>hatch use</c> and nothing that needs source.
+    /// </summary>
+    public LauncherLink? Launcher { get; init; }
+
+    /// <summary>
+    /// The launcher version of this build - what a launcher must be at least for
+    /// this child to count it current. A test sets it higher to make the child
+    /// newer than its launcher, which <c>Launcher.Version</c> cannot be made.
+    /// </summary>
+    public int BuildLauncherVersion { get; init; } = Hatch.Contracts.LauncherVersion.Current;
+
     /// <summary>The file this run's log is being written to, or null where there is none - handed to the next incarnation in the night's state, so a restart appends to it.</summary>
     public string? LogPath { get; init; }
 

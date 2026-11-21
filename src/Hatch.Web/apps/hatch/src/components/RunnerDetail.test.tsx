@@ -61,6 +61,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   builtAt: null,
   boardDrift: 'Unknown',
   sourceDrift: 'Unknown',
+  launcherBehind: false,
   apiKeyId: 'k1',
   prefix: 'hatch_ak_abc',
   createdAt: at(-7_200_000),
@@ -159,11 +160,35 @@ describe('RunnerDetail', () => {
     expect(renderAt('/runners/Quill')).not.toContain('Rebuild');
   });
 
-  it('draws neither badge when both drifts are Unknown', () => {
+  it('draws Launcher behind only when launcherBehind is true', () => {
+    state.read = { runners: [runner({ name: 'Quill', launcherBehind: true, launcherVersion: 0 })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).toContain('Launcher behind');
+    // The two older badges stay out: this one is its own answer.
+    expect(html).not.toContain('Behind');
+    expect(html).not.toContain('Rebuild');
+
+    state.read = { runners: [runner({ name: 'Quill', launcherBehind: false, launcherVersion: 1 })], error: null };
+    expect(renderAt('/runners/Quill')).not.toContain('Launcher behind');
+  });
+
+  it('draws all three badges at once when all three are behind', () => {
+    state.read = {
+      runners: [runner({ name: 'Quill', boardDrift: 'Behind', sourceDrift: 'Behind', launcherBehind: true })],
+      error: null,
+    };
+    const html = renderAt('/runners/Quill');
+    expect(html).toContain('>Behind<');
+    expect(html).toContain('>Rebuild<');
+    expect(html).toContain('>Launcher behind<');
+  });
+
+  it('draws no badge when both drifts are Unknown and the launcher is level', () => {
     state.read = { runners: [runner({ name: 'Quill' })], error: null };
     const html = renderAt('/runners/Quill');
     expect(html).not.toContain('Behind');
     expect(html).not.toContain('Rebuild');
+    expect(html).not.toContain('Launcher behind');
   });
 
   it('draws the owner as text for an owner or a viewer: for {name}, or no owner', () => {

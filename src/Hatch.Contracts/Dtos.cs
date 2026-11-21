@@ -1262,6 +1262,18 @@ public static class QuestionLevels
             rank = Math.Min(rank, Rank(level));
         return rank == int.MaxValue ? HoldName : ByStrictness[rank];
     }
+
+    /// <summary>
+    /// Whether a question asked on an issue of <paramref name="fromType"/> holds
+    /// the issue carrying it (<paramref name="isOwn"/> true), or the one asked
+    /// about. A question on anything other than an ambition reaches as it
+    /// always has. A question on an ambition holds only the ambition itself,
+    /// unless <paramref name="targetDangerous"/> - the issue, or an ancestor of
+    /// it, is flagged dangerous - in which case the question still reaches it,
+    /// the same as any other hold on dangerous work.
+    /// </summary>
+    public static bool Reaches(string fromType, bool isOwn, bool targetDangerous) =>
+        isOwn || fromType != "ambition" || targetDangerous;
 }
 
 /// <summary>
@@ -1891,11 +1903,17 @@ public record ActivityPageDto(IReadOnlyList<ActivityEventDto> Events, bool HasMo
 /// </param>
 /// <param name="Matched">
 /// Which parts of the issue held the words searched for, in this order and no other:
-/// <c>title</c>, <c>description</c>, <c>comment</c>, <c>work-log</c>. Empty when the search
-/// named no words, because then nothing was matched against.
+/// <c>title</c>, <c>previous-title</c>, <c>description</c>, <c>comment</c>, <c>work-log</c>.
+/// Empty when the search named no words, because then nothing was matched against.
+/// </param>
+/// <param name="PreviousTitles">
+/// This issue's own previous titles, newest first - see
+/// <see cref="EfHatchIssue.PreviousTitlesNewestFirst"/>. Empty on an issue never
+/// retitled, whether or not <paramref name="Matched"/> names <c>previous-title</c>.
 /// </param>
 public record SearchHitDto(
-    IssueCardDto Card, DateTimeOffset CreatedAt, DateTimeOffset? ClosedAt, IReadOnlyList<string> Matched);
+    IssueCardDto Card, DateTimeOffset CreatedAt, DateTimeOffset? ClosedAt, IReadOnlyList<string> Matched,
+    IReadOnlyList<string> PreviousTitles);
 
 /// <summary>
 /// A page of search results.
@@ -2515,6 +2533,10 @@ public static class ClaudeTools
 /// <param name="AnswersQuestions">
 /// A row a session runs on to answer one question. The ordinary match never returns it, and it is never also a check.
 /// </param>
+/// <param name="WorksOutChanges">
+/// A row a session runs on to work out what a change to an ambition does to its epics in flight. The ordinary
+/// match never returns it, and it is never also a check or a row that answers questions.
+/// </param>
 /// <param name="Source">
 /// Which layer the row that matched came from: <c>"board"</c>, <c>"project"</c>
 /// (today's own-project-row case) or <c>"file"</c>, a row read off a repo-sourced
@@ -2545,7 +2567,8 @@ public record PlaybookDto(
     string? UnreachableReason = null,
     int? MaxRunSeconds = null,
     string? LocalModel = null,
-    bool AnswersQuestions = false);
+    bool AnswersQuestions = false,
+    bool WorksOutChanges = false);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
@@ -2603,7 +2626,12 @@ public record LocalModelCreateRequest(
 /// </param>
 /// <param name="IsCheck">Null means false (on create) or leaves it alone (on patch).</param>
 /// <param name="AnswersQuestions">
-/// Null means false (on create) or leaves it alone (on patch). A row is a check or answers questions, not both.
+/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions or works out
+/// changes - never more than one.
+/// </param>
+/// <param name="WorksOutChanges">
+/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions or works out
+/// changes - never more than one.
 /// </param>
 /// <param name="MaxRunSeconds">
 /// The seconds a session under this row may run before it is cut off. Null
@@ -2632,7 +2660,8 @@ public record PlaybookCreateRequest(
     string? QuietLimitSeconds = null,
     string? MaxRunSeconds = null,
     string? LocalModel = null,
-    bool? AnswersQuestions = null);
+    bool? AnswersQuestions = null,
+    bool? WorksOutChanges = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="Prompt">
@@ -2660,7 +2689,12 @@ public record PlaybookCreateRequest(
 /// names a project - the same three states <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="IsCheck">Null leaves it alone.</param>
-/// <param name="AnswersQuestions">Null leaves it alone. A row is a check or answers questions, not both.</param>
+/// <param name="AnswersQuestions">
+/// Null leaves it alone. A row is a check, answers questions or works out changes - never more than one.
+/// </param>
+/// <param name="WorksOutChanges">
+/// Null leaves it alone. A row is a check, answers questions or works out changes - never more than one.
+/// </param>
 /// <param name="MaxRunSeconds">
 /// The seconds a session under this row may run before it is cut off. Null
 /// leaves it alone; <c>""</c> or whitespace clears it; a parsed positive
@@ -2687,7 +2721,8 @@ public record PlaybookPatchRequest(
     string? QuietLimitSeconds = null,
     string? MaxRunSeconds = null,
     string? LocalModel = null,
-    bool? AnswersQuestions = null);
+    bool? AnswersQuestions = null,
+    bool? WorksOutChanges = null);
 
 /// <summary>
 /// One change in a proposal submission: the playbook, then every field
@@ -2708,7 +2743,8 @@ public record PlaybookProposalChangeRequest(
     string? ProjectId = null,
     bool? IsCheck = null,
     string? LocalModel = null,
-    bool? AnswersQuestions = null)
+    bool? AnswersQuestions = null,
+    bool? WorksOutChanges = null)
 {
     /// <summary>The fields alone, in <see cref="PlaybookPatchRequest"/>'s own shape.</summary>
     public PlaybookPatchRequest ToPatch() => new(
@@ -2725,14 +2761,15 @@ public record PlaybookProposalChangeRequest(
         ProjectId: ProjectId,
         IsCheck: IsCheck,
         LocalModel: LocalModel,
-        AnswersQuestions: AnswersQuestions);
+        AnswersQuestions: AnswersQuestions,
+        WorksOutChanges: WorksOutChanges);
 
-    /// <summary>Whether any of the fourteen patch fields is present - <c>""</c> and an empty list count.</summary>
+    /// <summary>Whether any of the fifteen patch fields is present - <c>""</c> and an empty list count.</summary>
     public bool NamesAField =>
         FromStatusId is not null || ToStatusId is not null || Types is not null || Prompt is not null ||
         Model is not null || Effort is not null || Budget is not null || BriefLimit is not null ||
         Shape is not null || DeniedTools is not null || ProjectId is not null || IsCheck is not null ||
-        LocalModel is not null || AnswersQuestions is not null;
+        LocalModel is not null || AnswersQuestions is not null || WorksOutChanges is not null;
 }
 
 /// <summary>A session's proposal: why, the ticket it was working, and the changes.</summary>
@@ -2745,7 +2782,7 @@ public record PlaybookProposalRequest(
 /// <param name="ChangedFields">
 /// Which fields differ between <paramref name="Before"/> and <paramref name="After"/>, from a fixed vocabulary
 /// in this order: <c>fromStatusId, toStatusId, types, shape, prompt, model, localModel, effort, budget, briefLimit,
-/// deniedTools, isCheck, answersQuestions, projectId</c>.
+/// deniedTools, isCheck, answersQuestions, worksOutChanges, projectId</c>.
 /// </param>
 /// <param name="OutOfDate">Whether the playbook has changed since the proposal was made.</param>
 public record PlaybookProposalChangeDto(
@@ -3336,6 +3373,12 @@ public record DreamRemandResultDto(
 /// where no ambition stands above it, and on an ambition's own dispatch - an
 /// ambition is not its own ambition.
 /// </param>
+/// <param name="Answering">
+/// The question this dispatch is for, set only where <see cref="Kind"/> is
+/// <see cref="WorkKinds.Answer"/>: an ambition aimed at its answering row
+/// because an open <c>build</c> or <c>merge</c> question stands beneath it.
+/// Null on every other dispatch.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3371,7 +3414,30 @@ public record WorkDto(
     bool ModelIsLocal = false,
     bool ModelFellBack = false,
     IReadOnlyList<QuestionDto>? BuildPast = null,
-    WorkAmbitionDto? Ambition = null);
+    WorkAmbitionDto? Ambition = null,
+    WorkQuestionDto? Answering = null);
+
+/// <summary>
+/// The question an answering dispatch is for: where it stands, what it says,
+/// the options it offered, its level, and who asked it and when.
+/// </summary>
+/// <param name="IssueKey">The key of the issue the question is on, which sits beneath the dispatched ambition.</param>
+/// <param name="IssueTitle">That issue's title.</param>
+/// <param name="QuestionId">The question's comment id, which the work log row names once the session has answered.</param>
+/// <param name="Body">The question as it was asked.</param>
+/// <param name="Options">The choices it offered, or null for a question asked in prose.</param>
+/// <param name="Level">Where the question stands: <c>build</c> or <c>merge</c>. Never <c>hold</c>.</param>
+/// <param name="AskedBy">Who asked it.</param>
+/// <param name="AskedAt">When it was asked.</param>
+public record WorkQuestionDto(
+    string IssueKey,
+    string IssueTitle,
+    long QuestionId,
+    string Body,
+    IReadOnlyList<QuestionOptionDto>? Options,
+    string Level,
+    string AskedBy,
+    DateTimeOffset AskedAt);
 
 /// <summary>
 /// The ambition standing above a dispatched issue: its key and title, and the
@@ -3429,6 +3495,9 @@ public static class WorkKinds
 
     /// <summary>A trunk-landing issue in review whose landing is on the trunk and whose trunk build passes - the board carries it to Done.</summary>
     public const string Land = "land";
+
+    /// <summary>An ambition aimed at its answering row: a session answers one open question beneath it, then the person looks it over on the Ballot.</summary>
+    public const string Answer = "answer";
 }
 
 /// <summary>Which of the seven reasons carried a hop - see WorkDto.HopKind.</summary>
@@ -3599,6 +3668,10 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// <see cref="ProjectPriorities.All"/>. The dispatcher works an expedited
 /// project's clear rows first and never picks up a paused project's.
 /// </param>
+/// <param name="Answering">
+/// One short sentence naming the issue and the question, set only where
+/// <paramref name="Kind"/> is <see cref="WorkKinds.Answer"/>. Null on every other row.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3616,7 +3689,8 @@ public record QueueEntryDto(
     IReadOnlyList<string>? Takers = null,
     IReadOnlyList<RunnerReasonDto>? Untaken = null,
     string? TrainNote = null,
-    string? ProjectPriority = null);
+    string? ProjectPriority = null,
+    string? Answering = null);
 
 /// <summary>
 /// One live runner that cannot take a queue row right now, and why - see
@@ -4006,6 +4080,7 @@ public record WorkLogReadDto(string Path, int Count);
 /// <param name="ModelPlacement">Where that model ran: <c>local</c>, <c>fallback</c> (a preferred local model was wanted and the ordinary model ran instead) or <c>cloud</c>. Null from a CLI built before this shipped, and for any other value; never guessed by the server.</param>
 /// <param name="ModelDigest">The digest of a local model as the local server's model list reported it before the session started. Null unless the model ran locally.</param>
 /// <param name="Reads">The files the session read, heaviest first. Capped and clipped by the endpoint rather than refused. Null from a CLI built before this shipped.</param>
+/// <param name="QuestionId">The question this session answered, set only by an answering session. Once a <c>worked</c> row names a question, the board does not aim another session at it.</param>
 public record WorkLogEntryRequest(
     string SessionId,
     DateTimeOffset StartedAt,
@@ -4034,7 +4109,8 @@ public record WorkLogEntryRequest(
     IReadOnlyList<WorkLogReadDto>? Reads = null,
     string? DispatchModel = null,
     string? ModelPlacement = null,
-    string? ModelDigest = null);
+    string? ModelDigest = null,
+    long? QuestionId = null);
 
 /// <summary>
 /// One row of the work log, as the issue page draws it.
@@ -4062,6 +4138,7 @@ public record WorkLogEntryRequest(
 /// <param name="Reads">The files the session read, heaviest first. Empty for a row posted without any, including every row written before this shipped.</param>
 /// <param name="Outcome">Whether the increment moved its ticket: a claim outcome such as <c>worked</c> or <c>dropped</c>, stamped by the claim release. Null for a row never stamped, including every row written before this shipped.</param>
 /// <param name="Reason">Why the runner let go: <c>quiet</c>, <c>run-time</c> or <c>error</c>, stamped beside the outcome. Null where the release named none.</param>
+/// <param name="QuestionId">The question an answering session answered. Null on every other row.</param>
 public record WorkLogEntryDto(
     long Id,
     string SessionId,
@@ -4099,7 +4176,8 @@ public record WorkLogEntryDto(
     string? ModelDigest,
     IReadOnlyList<WorkLogReadDto> Reads,
     string? Outcome,
-    string? Reason);
+    string? Reason,
+    long? QuestionId = null);
 
 /// <summary>
 /// What a set of sessions cost, added up. See <see cref="WorkLogRollup"/> for
@@ -5384,6 +5462,17 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// memory. Never null.
 /// </param>
 /// <param name="Pulling">Whether this runner's loop is pulling a model, on the terms <see cref="RunnerHeartbeatRequest.Pulling"/> has.</param>
+/// <param name="LauncherVersion">
+/// The version of the launcher that started this runner's loop, as its last
+/// beat said. Null for a loop with no launcher, and for a runner built before
+/// the field existed.
+/// </param>
+/// <param name="LauncherBehind">
+/// Whether <paramref name="LauncherVersion"/> is lower than the launcher
+/// version of the board's own build (<see cref="Hatch.Contracts.LauncherVersion.Current"/>).
+/// The board makes the comparison; the page only reads it. False where no
+/// version was reported.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -5453,7 +5542,9 @@ public record RunnerDto(
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
     IReadOnlyList<string> Hold = null!,
-    bool Pulling = false)
+    bool Pulling = false,
+    int? LauncherVersion = null,
+    bool LauncherBehind = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -5532,7 +5623,8 @@ public record RunnerSessionDto(
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
-    bool Pulling = false)
+    bool Pulling = false,
+    int? LauncherVersion = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -5749,6 +5841,22 @@ public enum RunnerBoardDrift
 /// True while the loop is pulling a model, written on every loop beat; null
 /// or false clears it. A <c>once</c> beat leaves it alone.
 /// </param>
+/// <param name="LauncherVersion">
+/// The version of the launcher that started this loop, from the child's own
+/// <c>HATCH_LAUNCHER_VERSION</c>. Absent for a loop with no launcher and for a
+/// runner built before the field existed; a board built before it ignores it.
+/// Absent leaves a stored value alone, except on a fresh <c>loop</c> beat, where
+/// it clears it. The board compares it with its own build's launcher version;
+/// the sender never says whether it is behind.
+/// </param>
+/// <param name="Rid">
+/// The platform this build was published for - <c>win-x64</c>, <c>osx-arm64</c>,
+/// <c>osx-x64</c> or <c>linux-x64</c> - on the terms <see cref="Os"/> has, except
+/// that it is never stored: the board reads it on the beat that sent it, to
+/// answer <see cref="RunnerBoardBuildDto.Download"/>, and keeps nothing.
+/// <see cref="Os"/> is a shortened description and cannot name a build. Null for
+/// a machine whose platform is not one of the four, and for an older runner.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -5802,7 +5910,9 @@ public record RunnerHeartbeatRequest(
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
-    bool? Pulling = null);
+    bool? Pulling = null,
+    int? LauncherVersion = null,
+    string? Rid = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -5866,6 +5976,12 @@ public record RunnerUsageWindowDto(
 /// Hatch too old to answer it, the same way <see cref="RefusedModels"/> tells
 /// "unanswered" from "empty".
 /// </param>
+/// <param name="BoardBuild">
+/// Present exactly when this beat sent a stamped <c>Revision</c> and
+/// <c>Sequence</c>, the board is stamped, and the two revisions differ - null
+/// otherwise, and null from a Hatch too old to answer it, which a runner reads
+/// as nothing to do. Informational: nothing acts on it yet.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -5881,7 +5997,47 @@ public record RunnerInstructionDto(
     string? RunnerName = null,
     int? SessionId = null,
     IReadOnlyList<string>? RefusedModels = null,
-    IReadOnlyList<string>? Hold = null);
+    IReadOnlyList<string>? Hold = null,
+    RunnerBoardBuildDto? BoardBuild = null);
+
+/// <summary>
+/// The board's own build, as a runner running a different one is told of it
+/// on its heartbeat reply - the board's side of the comparison, and where to get it.
+/// </summary>
+/// <param name="Revision">The board's full git sha.</param>
+/// <param name="Sequence">The board's commit count, beside <paramref name="Revision"/>.</param>
+/// <param name="Compare">
+/// Where the runner's build sits against the board's: one of
+/// <see cref="RunnerBuildComparisons"/>. A string, not an enum, so a word an
+/// older runner has never seen does not fail its parse. The board decides it;
+/// the runner compares nothing.
+/// </param>
+/// <param name="Download">
+/// The route, on this board, that serves the build for the platform the beat
+/// named - what <c>GET /api/runner</c> lists as that platform's download. Null
+/// for a beat that named no platform, one the board does not publish, or an
+/// image that published nothing.
+/// </param>
+/// <param name="Sha256">The sha256 of the bytes <paramref name="Download"/> serves, null exactly when it is.</param>
+public record RunnerBoardBuildDto(
+    string Revision,
+    int Sequence,
+    string Compare,
+    string? Download,
+    string? Sha256);
+
+/// <summary>The words <see cref="RunnerBoardBuildDto.Compare"/> takes, beside <see cref="RunnerStates"/>.</summary>
+public static class RunnerBuildComparisons
+{
+    /// <summary>The runner's build is older than the board's.</summary>
+    public const string Behind = "behind";
+
+    /// <summary>The runner's build is newer than the board's.</summary>
+    public const string Ahead = "ahead";
+
+    /// <summary>Two different commits with the same count: two branches at one depth, not an ordering.</summary>
+    public const string Diverged = "diverged";
+}
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds

@@ -34,4 +34,23 @@ public sealed class QuestionLevelsTests
     [Fact]
     public void Strictest_OfNothing_IsHold() =>
         Assert.Equal("hold", QuestionLevels.Strictest([]));
+
+    [Fact]
+    public void Reaches_TheIssuesOwnQuestion_AlwaysReaches() =>
+        Assert.True(QuestionLevels.Reaches("ambition", isOwn: true, targetDangerous: false));
+
+    [Fact]
+    public void Reaches_AQuestionOnAnythingOtherThanAnAmbition_Reaches()
+    {
+        Assert.True(QuestionLevels.Reaches("epic", isOwn: false, targetDangerous: false));
+        Assert.True(QuestionLevels.Reaches("story", isOwn: false, targetDangerous: false));
+    }
+
+    [Fact]
+    public void Reaches_AQuestionOnAnAmbition_DoesNotReachADescendant() =>
+        Assert.False(QuestionLevels.Reaches("ambition", isOwn: false, targetDangerous: false));
+
+    [Fact]
+    public void Reaches_AQuestionOnAnAmbition_StillReachesADangerousDescendant() =>
+        Assert.True(QuestionLevels.Reaches("ambition", isOwn: false, targetDangerous: true));
 }

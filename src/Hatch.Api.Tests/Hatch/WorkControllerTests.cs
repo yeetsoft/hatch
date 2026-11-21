@@ -610,6 +610,119 @@ public class WorkControllerTests
         if (!roomOpened) Assert.Equal(BlockedKinds.Family, queue.BlockedKind);
     }
 
+    // ---- An ambition aimed at a question ----
+
+    /// <summary>
+    /// An ambition with room, its pass row and a flagged row that differ in their
+    /// prompt, an epic, and a story under the epic carrying an open question at
+    /// <paramref name="level"/> with options.
+    /// </summary>
+    private static async Task<(Harness H, EfHatchIssue Ambition, EfHatchIssue Story, EfHatchComment Question, EfHatchPlaybook Flagged)> AskedAsync(
+        string level = QuestionLevels.BuildName)
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var flagged = Playbook(h.InProgress, h.InProgress, "ambition", "opus");
+        flagged.Prompt = "answer the question";
+        flagged.AnswersQuestions = true;
+        h.Db.Playbooks.Add(Playbook(h.InProgress, h.InProgress, "ambition", "sonnet"));
+        h.Db.Playbooks.Add(flagged);
+        await h.Db.SaveChangesAsync();
+        var ambition = await h.FileAsync("ambition", "A", h.InProgress);
+        await h.SetEpicLimitAsync(ambition, 5);
+        var epic = await h.FileAsync("epic", "the epic", h.Todo, parentId: ambition.Id);
+        var story = await h.FileAsync("story", "under it", h.Todo, parentId: epic.Id);
+        var question = await AskAtAsync(h, story, level, RecommendedOption);
+        return (h, ambition, story, question, flagged);
+    }
+
+    [Theory]
+    [InlineData(QuestionLevels.BuildName)]
+    [InlineData(QuestionLevels.MergeName)]
+    public async Task Work_AnAmbitionWithAnOpenQuestionBeneathIt_ReadsAsAnswerWithTheQuestionAndTheFlaggedRow(string level)
+    {
+        var (h, ambition, story, question, flagged) = await AskedAsync(level);
+
+        var named = Value(await h.Work.GetWork(Key(ambition), null, default));
+
+        Assert.Null(named.Blocked);
+        Assert.Equal(WorkKinds.Answer, named.Kind);
+        Assert.False(named.Hop);
+        Assert.Equal(h.InProgress, named.ToStatus!.Id);
+        var answering = named.Answering!;
+        Assert.Equal(question.Id, answering.QuestionId);
+        Assert.Equal(Key(story), answering.IssueKey);
+        Assert.Equal("under it", answering.IssueTitle);
+        Assert.Equal("per-node or global?", answering.Body);
+        Assert.Equal(level, answering.Level);
+        Assert.Equal(question.Author, answering.AskedBy);
+        Assert.Equal(question.CreatedAt, answering.AskedAt);
+        Assert.Equal("per-node", answering.Options!.Single(o => o.Recommended).Label);
+        Assert.Equal(flagged.Id, named.Playbook!.Id);
+        Assert.Equal("answer the question", named.Playbook.Prompt);
+        Assert.Equal("opus", named.Model);
+    }
+
+    [Fact]
+    public async Task Queue_NamesTheIssueAndTheQuestion_AndAgreesWithTheDispatch()
+    {
+        var (h, ambition, story, _, _) = await AskedAsync();
+
+        var queue = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(ambition));
+        var named = Value(await h.Work.GetWork(Key(ambition), null, default));
+
+        Assert.Equal(WorkKinds.Answer, queue.Kind);
+        Assert.Equal($"answers the question on {Key(story)}: per-node or global?", queue.Answering);
+        Assert.Equal(named.Kind, queue.Kind);
+    }
+
+    [Fact]
+    public async Task Work_OnTheDispatchOfAnythingElse_CarriesNoAnswering()
+    {
+        var (h, _, story, _, _) = await AskedAsync();
+        h.Db.Playbooks.Add(Playbook(h.Todo, h.InProgress, "story", "sonnet"));
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+        var queue = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Null(work.Answering);
+        Assert.Null(queue.Answering);
+        Assert.NotEqual(WorkKinds.Answer, work.Kind);
+    }
+
+    [Fact]
+    public async Task Work_OnceAWorkedRowNamesTheQuestion_TheAmbitionReadsAsItsPassAgain()
+    {
+        var (h, ambition, _, question, _) = await AskedAsync();
+        h.Db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = ambition.Id, SessionId = "answer", StartedAt = Now.AddHours(-2).AddMinutes(-10), EndedAt = Now.AddHours(-2), DurationMs = 600_000, CreatedAt = Now.AddHours(-2),
+            IssueType = "ambition", PlaybookFromStatusId = h.InProgress, PlaybookToStatusId = h.InProgress, Outcome = ClaimOutcomes.Worked,
+            QuestionId = question.Id,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var named = Value(await h.Work.GetWork(Key(ambition), null, default));
+
+        Assert.Null(named.Answering);
+        Assert.Equal(WorkKinds.Advance, named.Kind);
+        Assert.Equal("sonnet", named.Playbook!.Model);
+    }
+
+    [Fact]
+    public async Task Work_OnABoardWithNoFlaggedRow_ReadsAsThePassEvenWithAQuestionBeneath()
+    {
+        var (h, ambition, _, _, flagged) = await AskedAsync();
+        h.Db.Playbooks.Remove(flagged);
+        await h.Db.SaveChangesAsync();
+
+        var named = Value(await h.Work.GetWork(Key(ambition), null, default));
+
+        Assert.Null(named.Answering);
+        Assert.Equal(WorkKinds.Advance, named.Kind);
+    }
+
     // ---- What it waits on ----
     //
     // A dependency gates one move: the one into the column an agent writes the

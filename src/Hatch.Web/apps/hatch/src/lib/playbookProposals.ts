@@ -40,6 +40,7 @@ const PROPOSAL_FIELDS: { field: string; label: string }[] = [
   { field: 'deniedTools', label: 'Denied tools' },
   { field: 'isCheck', label: 'Is check' },
   { field: 'answersQuestions', label: 'Answers questions' },
+  { field: 'worksOutChanges', label: 'Works out changes' },
   { field: 'projectId', label: 'Project' },
 ];
 

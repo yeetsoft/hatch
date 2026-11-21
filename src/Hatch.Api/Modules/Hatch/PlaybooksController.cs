@@ -82,7 +82,10 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         if (await PlaybookPatches.Refusal(db, request.FromStatusId, request.ToStatusId, types, shape, projectId, id: null, ct) is { } error)
             return BadRequest(error);
 
-        if ((request.IsCheck ?? false) && (request.AnswersQuestions ?? false))
+        var isCheck = request.IsCheck ?? false;
+        var answersQuestions = request.AnswersQuestions ?? false;
+        var worksOutChanges = request.WorksOutChanges ?? false;
+        if ((isCheck && answersQuestions) || (isCheck && worksOutChanges) || (answersQuestions && worksOutChanges))
             return BadRequest(PlaybookPatches.CheckAndAnswersRefusal);
 
         var prompt = request.Prompt?.Trim() ?? "";
@@ -153,6 +156,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
             DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
             IsCheck = request.IsCheck ?? false,
             AnswersQuestions = request.AnswersQuestions ?? false,
+            WorksOutChanges = request.WorksOutChanges ?? false,
             ProjectId = projectId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -193,6 +197,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         playbook.DeniedTools = next.DeniedTools;
         playbook.IsCheck = next.IsCheck;
         playbook.AnswersQuestions = next.AnswersQuestions;
+        playbook.WorksOutChanges = next.WorksOutChanges;
         playbook.ProjectId = next.ProjectId;
         playbook.UpdatedAt = time.GetUtcNow();
 
@@ -273,5 +278,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         unreachableReason,
         state.MaxRunSeconds,
         state.LocalModel,
-        state.AnswersQuestions);
+        state.AnswersQuestions,
+        state.WorksOutChanges);
 }

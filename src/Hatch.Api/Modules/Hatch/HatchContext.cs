@@ -269,6 +269,10 @@ public class HatchContext : DbContext, IModuleContext
             // same reason as IsCheck above.
             e.Property(p => p.AnswersQuestions).HasDefaultValue(false);
 
+            // Matches AddPlaybookWorksOutChanges' own defaultValue, for the
+            // same reason as AnswersQuestions above.
+            e.Property(p => p.WorksOutChanges).HasDefaultValue(false);
+
             // jsonb rather than text, the same reason EfHatchComment.Options is:
             // the stored shape is a list, not a scalar, and the day somebody
             // asks "which rows deny Bash" that is a query against this column
@@ -421,6 +425,10 @@ public class HatchContext : DbContext, IModuleContext
             // EfHatchWorkLogEntry.ModelUsage.
             e.Property(w => w.ModelUsage).HasColumnType("jsonb");
             e.Property(w => w.Reads).HasColumnType("jsonb");
+
+            // Read by the dispatcher for the rows that name a question; no foreign key,
+            // so a deleted comment never breaks the log.
+            e.HasIndex(w => w.QuestionId);
         });
 
         // Matches AddProjectLanding's own defaultValue, for the same reason as
@@ -800,7 +808,7 @@ public class HatchContext : DbContext, IModuleContext
             modelBuilder.Entity<EfHatchIssue>()
                 .Property(i => i.SearchVector)
                 .HasComputedColumnSql(
-                    """setweight(to_tsvector('english', "Title"), 'A') || setweight(to_tsvector('english', "Description"), 'B')""",
+                    """setweight(to_tsvector('english', "Title"), 'A') || setweight(to_tsvector('english', "Description"), 'B') || setweight(to_tsvector('english', "PreviousTitles"), 'B')""",
                     stored: true);
             modelBuilder.Entity<EfHatchIssue>()
                 .HasIndex(i => i.SearchVector)

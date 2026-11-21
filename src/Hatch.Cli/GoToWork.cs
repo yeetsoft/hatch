@@ -955,22 +955,25 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "  A run also ends on three failed increments in a row, on a workspace that",
         "  cannot be reset, and when the board's Runners page asks this runner to stop.",
         "",
-        "  A loop whose own source changed on the trunk asks to be restarted as the",
-        "  new build, which needs something standing over the process to rebuild and",
-        "  run it again. A hatch started by hand has no such supervisor, and these",
-        "  three do nothing there:",
+        "  A loop restarts when something standing over it starts it again: a checkout's",
+        "  scripts/hatch.sh or scripts/hatch.ps1, which rebuild the source first, or a",
+        "  downloaded hatch, which launches itself and restarts it only for `hatch use`.",
+        "  A loop whose own source changed in a checkout it serves asks to come back as",
+        "  the new build. A hatch started by hand has nothing standing over it, and",
+        "  restarts nothing. The first two flags below are for a checkout's loop and do",
+        "  nothing under a download's launcher, which has no source to rebuild:",
         "",
         "  --restart-after   come back as a newer build at least this often (default 30)",
         "  --restart-after 0 ...only when its own source actually changed",
-        "  --no-restart      ...never",
+        "  --no-restart      ...never, for any reason, `hatch use` included",
         "",
         "  --abort-merge     abort any merge in progress in a served checkout, the",
         "                    loop's or not, and carry on - uncommitted edits in that",
         "                    merge are discarded",
         "",
         "  Exits 0 when the run ended; 1 on a refusal, which includes a workspace",
-        "  that cannot be reset; 75 asking a supervisor to rebuild and run it",
-        "  again; 130 on an interrupt.",
+        "  that cannot be reset; 75 asking whatever stands over it to run it again;",
+        "  130 on an interrupt.",
     ];
 
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
@@ -1299,6 +1302,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // What the incarnation before a restart handed over, if this is one.
             var carried = NightState.Read(runtime.NightStatePath);
 
+            // A restart always carries state in, so no carried state is exactly the
+            // first start of the night: the one time to say the launcher is old.
+            if (carried is null && runtime.Launcher?.StaleLine(runtime.BuildLauncherVersion) is { } stale)
+                runtime.Say.Line(stale);
+
             var tally = new Tally(runtime.Clock, carried, log: runtime.Say.Line)
             {
                 MaxRuns = maxRuns,
@@ -1350,6 +1358,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
             {
                 restarting = await LoopAsync(under, quiet, mine, once, abortMerge, interval, mergeInterval, tally, restart, ct);
                 refused |= tally.Fatal;
+
+                // A stop that landed as the loop asked to come back ends the
+                // night: a supervisor that restarted it would start a loop
+                // nobody told to stop, and the tally would never be printed.
+                if (restarting && ct.IsCancellationRequested)
+                {
+                    restarting = false;
+                    tally.StopWhy ??= "interrupted";
+                }
 
                 // A restart that could not hand the night's totals over would be
                 // a fresh night: the budget back to nothing, the streak cleared,
@@ -1420,7 +1437,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// the new source as <em>its</em> baseline, and will not ask again for the
     /// same change.
     /// </remarks>
-    private sealed record Restarts(bool On, TimeSpan? After, SelfPrint Baseline, DateTimeOffset Born, string? SetDir)
+    private sealed record Restarts(bool On, TimeSpan? After, SelfPrint Baseline, DateTimeOffset Born, string? SetDir, bool Source = true)
     {
         public static Restarts Armed(Runtime runtime, bool noRestart, bool once, int afterMinutes)
         {
@@ -1429,12 +1446,20 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // simply end the night. A runner started by hand is today's loop.
             var on = !noRestart && !once && runtime.NightStatePath is { Length: > 0 };
 
+            // Under a launcher - a downloaded build - there is no source beside
+            // the binary to rebuild, so neither a change to it nor the clock
+            // that backstops one means anything. The loop still restarts for
+            // `hatch use`, and with the set it belongs to; --restart-after is
+            // accepted and does nothing.
+            var source = on && runtime.Launcher is null;
+
             return new Restarts(
                 On: on,
-                After: afterMinutes > 0 ? TimeSpan.FromMinutes(afterMinutes) : null,
-                Baseline: on ? runtime.Self().Take() : SelfPrint.Nothing,
+                After: source && afterMinutes > 0 ? TimeSpan.FromMinutes(afterMinutes) : null,
+                Baseline: source ? runtime.Self().Take() : SelfPrint.Nothing,
                 Born: runtime.Clock.GetUtcNow(),
-                SetDir: runtime.SetDir);
+                SetDir: runtime.SetDir,
+                Source: source);
         }
 
         /// <summary>Whether another runner in this one's set has asked the set to restart.</summary>
@@ -2075,7 +2100,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         if (now - checkedSelfAt < StillNothing) return false;
 
         checkedSelfAt = now;
-        runtime.Workspace(runtime.Root, runtime.Settings.BaseBranch).Prepare();
+
+        // Making the checkout current is only for reading its source afresh,
+        // and a launcher's loop reads none.
+        if (restart.Source) runtime.Workspace(runtime.Root, runtime.Settings.BaseBranch).Prepare();
 
         if (Changed(restart) is not { Count: > 0 } changed) return false;
 
@@ -2193,6 +2221,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 BuiltAt: runtime.CliRevision.BuiltAt,
                 SourceRevision: source?.Sha,
                 SourceSequence: source?.Sequence,
+                // The launcher's own number, on every beat, once ones too: absent
+                // for a loop with no launcher. The board decides whether it is behind.
+                LauncherVersion: runtime.Launcher?.Version,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
                 // Null on a once beat - the API has no kind guard on this one,
@@ -2994,6 +3025,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     private IReadOnlyList<string> Changed(Restarts restart) =>
         !restart.On ? [] :
         restart.SetRestarting ? ["(another runner in this set is restarting)"] :
+        !restart.Source ? [] :
         runtime.Self().Take().ChangedFrom(restart.Baseline);
 
     /// <summary>

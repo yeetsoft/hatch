@@ -91,6 +91,14 @@ public static class RevisionComparison
         return RevisionDrift.Unknown;
     }
 
-    private static bool IsUnstamped(string revision, int sequence) =>
+    /// <summary>
+    /// Whether a build has an identity and a position at all - the opposite of
+    /// <c>dev</c>, no revision, or no count. <see cref="Compare"/> answers
+    /// <see cref="RevisionDrift.Unknown"/> both for an unstamped side and for
+    /// two commits at one depth; this is what tells those two apart.
+    /// </summary>
+    public static bool IsStamped(string? revision, int sequence) => !IsUnstamped(revision, sequence);
+
+    private static bool IsUnstamped(string? revision, int sequence) =>
         sequence <= 0 || string.IsNullOrEmpty(revision) || revision == "dev";
 }

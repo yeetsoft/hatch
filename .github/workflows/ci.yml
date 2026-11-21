@@ -158,7 +158,8 @@ jobs:
             --output artifacts/hatch/${{ matrix.rid }} \
             -p:PublishSingleFile=true \
             -p:SelfContained=true \
-            -p:PublishTrimmed=true
+            -p:PublishTrimmed=true \
+            -p:HatchLauncher=true
 
       # A publish that produced no binary, or produced one under the old
       # `hatch-runner` name, is a green step and a broken artifact otherwise.

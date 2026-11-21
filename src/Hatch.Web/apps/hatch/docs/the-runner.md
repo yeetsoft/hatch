@@ -22,7 +22,9 @@ platforms are built: `win-x64`, `osx-arm64`, `osx-x64` and `linux-x64`.
 On a Hatch with the wall up, an admin makes the runner's key from **Agents →
 Runners → Create runner**. The secret is shown once, with the `hatch config
 --origin` and `hatch config --key` commands that take it (see [Runners and their
-keys](people-roles-and-keys#runners-and-their-keys)).
+keys](people-roles-and-keys#runners-and-their-keys)). That key can also fetch
+its own platform's build straight from `/api/runner/download/<rid>`, and check
+it against the `sha256` `/api/runner` lists beside it.
 
 Put the file on your `PATH` as `hatch` (`hatch.exe` on Windows). On macOS and
 Linux it needs marking executable first:
@@ -171,10 +173,12 @@ comments skipped, one layer of matching quotes stripped off the value. An
 empty value never wins over a layer beneath it that is set, and a name not on
 the allowed list is ignored with a line saying so, rather than silently.
 
-Six settings are read from the environment only: `HATCH_HEARTBEAT`,
-`HATCH_RETRY_SECONDS`, `HATCH_ROOT`, `HATCH_NIGHT_STATE`, `HATCH_RTK` and
-`HATCH_PROFILE`. A file line naming one of them is ignored, with a warning
-that says so.
+Eight settings are read from the environment only: `HATCH_HEARTBEAT`,
+`HATCH_RETRY_SECONDS`, `HATCH_ROOT`, `HATCH_NIGHT_STATE`, `HATCH_LAUNCHER_VERSION`,
+`HATCH_LAUNCHER_PATH`, `HATCH_RTK` and `HATCH_PROFILE`. A file line naming one of
+them is ignored, with a warning that says so. `HATCH_NIGHT_STATE` and the two
+launcher variables are set by whatever stands over a loop (`scripts/hatch.sh`,
+`scripts/hatch.ps1`, or a downloaded build's launcher) and never by a person.
 `HATCH_BASE_BRANCH` has no `config` flag: export it, or put it in
 `scripts/.env`.
 
@@ -214,7 +218,12 @@ HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
 HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch (default: 90; 0 for
                      one try)
 HATCH_NIGHT_STATE    where a night's totals are handed to the loop that
-                     restarts into
+                     restarts into; set by the wrapper scripts and by a
+                     download's launcher, never by a person
+HATCH_LAUNCHER_VERSION  which version of the launcher started this loop; the
+                     launcher sets it, and a person never does
+HATCH_LAUNCHER_PATH  the launcher's own file; the launcher sets it, and a person
+                     never does
 HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
                      on PATH
 ```
@@ -1206,7 +1215,9 @@ profile's board, with the night's totals carried forward. A member pinned with
 `--profile` or `HATCH_PROFILE` never looks.
 
 Unsupervised, or run with `--no-restart`, there is nothing to bring the set
-back, so it stops instead and says why. [Restarts](one-increment-and-the-loop#restarts)
+back, so it stops instead and says why. A downloaded `hatch` is its own
+supervisor: its launcher starts the set's host again, and the set restarts
+together ([Restarts](one-increment-and-the-loop#restarts)). [Restarts](one-increment-and-the-loop#restarts)
 has the rule in full, including a pointer that names a profile with no file.
 
 ## Starting it at login

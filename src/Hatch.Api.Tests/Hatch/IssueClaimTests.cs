@@ -3888,7 +3888,8 @@ public class IssueClaimTests
                 var dispatch = new Dispatch(db, Actors, Rule, Time);
                 return new RunnersController(
                     db, RunnersRule, Rule, Caller, Actors, Time, Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()),
-                    new StubSiteSettings(), Keys, new RunnerSessions(RunnersRule), dispatch, NullLogger<RunnersController>.Instance);
+                    new StubSiteSettings(), Keys, new RunnerSessions(RunnersRule), dispatch, new StubHatchRevision(), new StubRunnerBuilds(),
+                    NullLogger<RunnersController>.Instance);
             }
         }
 

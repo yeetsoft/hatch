@@ -1,3 +1,4 @@
+using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
@@ -244,11 +245,31 @@ internal sealed class WalledHost : IAsyncDisposable
     }
 
     /// <summary>A client that sends the key as a bearer secret, as a runner does.</summary>
-    public async Task<HttpClient> AsKeyAsync(WalledKey key)
+    public async Task<HttpClient> AsKeyAsync(WalledKey key) => await AsBearerAsync(key.Secret);
+
+    /// <summary>A client that sends an arbitrary bearer secret - a key no row answers to, for instance.</summary>
+    public async Task<HttpClient> AsBearerAsync(string secret)
     {
         var client = await NewClientAsync();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {key.Secret}");
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {secret}");
         return client;
+    }
+
+    /// <summary>Revokes a minted key, the way the API Keys page does, so a client still holding its secret is refused.</summary>
+    public async Task RevokeAsync(WalledKey key)
+    {
+        await EnsureStartedAsync();
+
+        await deadline.BoundAsync($"revoking key {key.Name}", async () =>
+        {
+            using var scope = factory.Services.CreateScope();
+            var auth = scope.ServiceProvider.GetRequiredService<IAuthService>();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var hash = AuthTokens.Hash(key.Secret);
+            var row = await db.ApiKeys.AsNoTracking().SingleAsync(k => k.Hash == hash);
+            Assert.True(await auth.RevokeApiKeyAsync(row.Id, CancellationToken.None));
+        });
     }
 
     /// <summary>

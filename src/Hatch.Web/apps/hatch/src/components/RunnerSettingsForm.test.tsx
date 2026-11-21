@@ -60,6 +60,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   builtAt: null,
   boardDrift: 'Unknown',
   sourceDrift: 'Unknown',
+  launcherBehind: false,
   apiKeyId: 'k1',
   prefix: 'hatch_ak_abc',
   createdAt: at(-7_200_000),

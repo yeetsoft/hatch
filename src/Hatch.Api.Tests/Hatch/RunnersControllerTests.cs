@@ -1316,6 +1316,245 @@ public class RunnersControllerTests
         Assert.Equal(RunnerBoardDrift.Unknown, runner.SourceDrift);
     }
 
+    // ---- Launcher behind ----
+
+    [Fact]
+    public async Task LauncherBehind_IsTrueWhenTheLauncherTrailsTheBoardsBuild()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(LauncherVersion: 0));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(0, runner.LauncherVersion);
+        Assert.True(runner.LauncherBehind);
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(LauncherVersion.Current, false)]
+    [InlineData(LauncherVersion.Current + 1, false)]
+    public async Task LauncherBehind_IsTheBoardsOwnComparison(int version, bool behind)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(LauncherVersion: version));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(version, runner.LauncherVersion);
+        Assert.Equal(behind, runner.LauncherBehind);
+    }
+
+    [Fact]
+    public async Task LauncherBehind_IsFalseForABeatThatNamesNoLauncher()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.LauncherVersion);
+        Assert.False(runner.LauncherBehind);
+    }
+
+    [Fact]
+    public async Task ALauncherVersion_IsStoredOnTheRow()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(LauncherVersion: 0));
+
+        Assert.Equal(0, (await h.RowAsync()).LauncherVersion);
+    }
+
+    [Fact]
+    public async Task ALaterBeatWithNoLauncher_LeavesThePriorVersionAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", LauncherVersion: 0));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(0, runner.LauncherVersion);
+        Assert.True(runner.LauncherBehind);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeatNamingNoLauncher_ClearsAPreviouslyReportedOne()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", LauncherVersion: 0));
+
+        // A restart by a script, or by a launcher that no longer says: the new
+        // process never heard of the old launcher, and must not keep its badge.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.LauncherVersion);
+        Assert.False(runner.LauncherBehind);
+    }
+
+    [Fact]
+    public async Task ALaterBeatUnderAConfigRow_StillProjectsTheLauncher()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, LauncherVersion: 0));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "3"));
+
+        // A config row makes the projection a hand-built copy of the beat's
+        // row; a field that copy misses would read as never reported.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(3, runner.MaxRuns);
+        Assert.Equal(0, runner.LauncherVersion);
+        Assert.True(runner.LauncherBehind);
+    }
+
+    // ---- The board's build, on the reply ----
+
+    private const string BoardSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    private static readonly RunnerBuild LinuxBuild =
+        new("linux-x64", "Linux", "hatch", "/unused/hatch", new string('a', 64));
+
+    private static RunnerHeartbeatRequest BeatOf(string? revision, int? sequence, string? rid = "linux-x64") =>
+        new(Kind: "loop", Revision: revision, Sequence: sequence, Rid: rid);
+
+    [Theory]
+    [InlineData("old-sha", 5, "linux-x64", RunnerBuildComparisons.Behind, true)]
+    [InlineData("new-sha", 15, "linux-x64", RunnerBuildComparisons.Ahead, true)]
+    [InlineData("other-sha", 10, "linux-x64", RunnerBuildComparisons.Diverged, true)]
+    [InlineData("old-sha", 5, null, RunnerBuildComparisons.Behind, false)]
+    [InlineData("old-sha", 5, "freebsd-x64", RunnerBuildComparisons.Behind, false)]
+    public void BoardBuild_NamesTheBoardsBuild_WhenTheRevisionsDiffer(
+        string revision, int sequence, string? rid, string compare, bool published)
+    {
+        var part = global::Hatch.Api.Modules.Hatch.Runners.BoardBuild(
+            BoardSha, 10, BeatOf(revision, sequence, rid), published ? LinuxBuild : null);
+
+        Assert.NotNull(part);
+        Assert.Equal(BoardSha, part.Revision);
+        Assert.Equal(10, part.Sequence);
+        Assert.Equal(compare, part.Compare);
+        Assert.Equal(published ? "/api/runner/download/linux-x64" : null, part.Download);
+        Assert.Equal(published ? LinuxBuild.Sha256 : null, part.Sha256);
+    }
+
+    [Fact]
+    public void BoardBuild_IsNull_WhenTheRevisionsMatch()
+    {
+        Assert.Null(global::Hatch.Api.Modules.Hatch.Runners.BoardBuild(BoardSha, 10, BeatOf(BoardSha, 10), LinuxBuild));
+    }
+
+    [Fact]
+    public void BoardBuild_IsNull_WhenTheRunnerIsUnstamped()
+    {
+        Assert.Null(global::Hatch.Api.Modules.Hatch.Runners.BoardBuild(BoardSha, 10, BeatOf("dev", 5), LinuxBuild));
+        Assert.Null(global::Hatch.Api.Modules.Hatch.Runners.BoardBuild(BoardSha, 10, BeatOf("old-sha", 0), LinuxBuild));
+        Assert.Null(global::Hatch.Api.Modules.Hatch.Runners.BoardBuild(BoardSha, 10, BeatOf("old-sha", null), LinuxBuild));
+    }
+
+    [Fact]
+    public void BoardBuild_IsNull_WhenTheBeatSentNoRevision()
+    {
+        Assert.Null(global::Hatch.Api.Modules.Hatch.Runners.BoardBuild(BoardSha, 10, BeatOf(null, null), LinuxBuild));
+        Assert.Null(global::Hatch.Api.Modules.Hatch.Runners.BoardBuild(BoardSha, 10, BeatOf(null, 5), LinuxBuild));
+    }
+
+    [Fact]
+    public void BoardBuild_IsNull_WhenTheBoardIsUnstamped()
+    {
+        Assert.Null(global::Hatch.Api.Modules.Hatch.Runners.BoardBuild("dev", 0, BeatOf("old-sha", 5), LinuxBuild));
+        Assert.Null(global::Hatch.Api.Modules.Hatch.Runners.BoardBuild(BoardSha, 0, BeatOf("old-sha", 5), LinuxBuild));
+    }
+
+    [Fact]
+    public async Task ANamedBeat_OnAnOlderBuild_IsToldTheBoardsBuildAndWhereToGetIt()
+    {
+        var builds = new StubRunnerBuilds(LinuxBuild);
+        var h = await NewAsync(revision: new StubRevision(BoardSha, 10), builds: builds);
+
+        var first = await h.BeatAsync(Runner, BeatOf("old-sha", 5));
+        var second = await h.BeatAsync(Runner, BeatOf("old-sha", 5));
+
+        foreach (var reply in new[] { first, second })
+        {
+            Assert.NotNull(reply.BoardBuild);
+            Assert.Equal(RunnerBuildComparisons.Behind, reply.BoardBuild.Compare);
+            Assert.Equal(BoardSha, reply.BoardBuild.Revision);
+            Assert.Equal(10, reply.BoardBuild.Sequence);
+            Assert.Equal(LinuxBuild.Url, reply.BoardBuild.Download);
+            Assert.Equal(LinuxBuild.Sha256, reply.BoardBuild.Sha256);
+        }
+    }
+
+    [Fact]
+    public async Task AOnceBeat_OnAnOlderBuild_IsToldToo()
+    {
+        var h = await NewAsync(revision: new StubRevision(BoardSha, 10), builds: new StubRunnerBuilds(LinuxBuild));
+
+        var reply = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Revision: "old-sha", Sequence: 5, Rid: "linux-x64"));
+
+        Assert.Equal(RunnerBuildComparisons.Behind, reply.BoardBuild?.Compare);
+    }
+
+    [Fact]
+    public async Task ANamedBeat_OnTheBoardsOwnBuild_IsToldNothing_AndNothingIsLookedUp()
+    {
+        var builds = new StubRunnerBuilds(LinuxBuild);
+        var h = await NewAsync(revision: new StubRevision(BoardSha, 10), builds: builds);
+
+        var reply = await h.BeatAsync(Runner, BeatOf(BoardSha, 10));
+
+        Assert.Null(reply.BoardBuild);
+        Assert.Equal(0, builds.Lookups);
+    }
+
+    [Fact]
+    public async Task ANamedBeat_WithNoPlatform_IsToldTheBuildWithNoDownload()
+    {
+        var h = await NewAsync(revision: new StubRevision(BoardSha, 10), builds: new StubRunnerBuilds(LinuxBuild));
+
+        var reply = await h.BeatAsync(Runner, BeatOf("old-sha", 5, rid: null));
+
+        Assert.NotNull(reply.BoardBuild);
+        Assert.Null(reply.BoardBuild.Download);
+        Assert.Null(reply.BoardBuild.Sha256);
+    }
+
+    [Fact]
+    public async Task TheDownloadAHeartbeatNames_IsTheOneTheRunnerPageLists()
+    {
+        var builds = new StubRunnerBuilds(LinuxBuild);
+        var revision = new StubRevision(BoardSha, 10);
+        var h = await NewAsync(revision: revision, builds: builds);
+
+        var reply = await h.BeatAsync(Runner, BeatOf("old-sha", 5));
+        var listed = (await new RunnerController(revision, builds).Get()).Downloads.Single(d => d.Rid == "linux-x64");
+
+        Assert.Equal(listed.Url, reply.BoardBuild?.Download);
+        Assert.Equal(listed.Sha256, reply.BoardBuild?.Sha256);
+    }
+
+    // Needs Postgres: HeartbeatSessionAsync's MarkGoneAsync runs a conditional
+    // UPDATE the in-memory provider refuses - see SkippableFact's own.
+    [SkippableFact]
+    public async Task ASessionBeat_OnAnOlderBuild_IsToldTheBoardsBuild()
+    {
+        var builds = new StubRunnerBuilds(LinuxBuild);
+        var h = await NewAsync(
+            program: true, wall: true, connectionString: await ConnectAsync(),
+            revision: new StubRevision(BoardSha, 10), builds: builds);
+        var key = await h.AddKeyAsync(h.Caller.Key!.Name);
+        h.Caller.Key = key;
+
+        var reply = Value(await h.SessionBeatAsync(BeatOf("old-sha", 5) with { Where = "host:/one" }));
+        var current = Value(await h.SessionBeatAsync(BeatOf(BoardSha, 10) with { Where = "host:/one" }));
+
+        Assert.Equal(RunnerBuildComparisons.Behind, reply.BoardBuild?.Compare);
+        Assert.Equal(LinuxBuild.Url, reply.BoardBuild?.Download);
+        Assert.Equal(LinuxBuild.Sha256, reply.BoardBuild?.Sha256);
+        Assert.Null(current.BoardBuild);
+    }
+
     // ---- What it is working ----
 
     [Fact]
@@ -5991,6 +6230,27 @@ public class RunnersControllerTests
     }
 
     [SkippableFact]
+    public async Task SessionHeartbeat_NamingALauncher_StoresAndProjectsIt()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.CoreDb.ApiKeys.Add(new EfApiKey
+        {
+            Id = h.Caller.Key!.Id, Name = h.Caller.Key.Name, Hash = h.Caller.Key.Hash, Prefix = h.Caller.Key.Prefix, CreatedAt = Now,
+        });
+        await h.CoreDb.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, LauncherVersion: 0));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(0, row.LauncherVersion);
+
+        // The session carries the raw number; only the runner answers behind.
+        var session = Assert.Single((await h.OneAsync()).Sessions);
+        Assert.Equal(0, session.LauncherVersion);
+    }
+
+    [SkippableFact]
     public async Task SessionHeartbeat_AFreshBeatOnANewSessionWithNoImage_StoresNone()
     {
         var connectionString = await ConnectAsync();
@@ -7089,7 +7349,8 @@ public class RunnersControllerTests
         bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null,
         PersonRole? keyOwner = null, bool nobody = false, IHatchRevision? revision = null,
         long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null, ISiteSettingsService? siteSettings = null,
-        string? connectionString = null, int? trainStallMinutes = null, int? runnerGoneAfterSeconds = null)
+        string? connectionString = null, int? trainStallMinutes = null, int? runnerGoneAfterSeconds = null,
+        StubRunnerBuilds? builds = null)
     {
         var options = connectionString is null
             ? new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options
@@ -7140,7 +7401,8 @@ public class RunnersControllerTests
         RunnersController BuildRunners(HatchContext context) =>
             new(context, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
                 siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys,
-                sessions, new Dispatch(context, actors, claims, time), NullLogger<RunnersController>.Instance);
+                sessions, new Dispatch(context, actors, claims, time), revision ?? new StubRevision("dev", 0), builds ?? new StubRunnerBuilds(),
+                NullLogger<RunnersController>.Instance);
 
         ProjectsController BuildProjects(HatchContext context) =>
             new(context, time, caller, actors, new ProjectAccess(context, actors), NullLogger<ProjectsController>.Instance, new RankService(context), claims)

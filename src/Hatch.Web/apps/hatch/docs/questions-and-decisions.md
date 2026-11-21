@@ -41,6 +41,13 @@ levels](#the-three-levels)). The ticket's strictest open question counts, and so
 does the strictest one on any ticket above it, so a question on an epic reaches
 every story and task beneath it.
 
+An ambition is the one exception: a question asked on an ambition holds only
+the ambition's own pass, at any level, and does not travel down to the epics
+and stories under it - they are dispatched as if it were not there. The stock
+pass prompt still tells a session never to ask one there regardless. A ticket
+flagged dangerous is still held by the ambition's question, the same as by any
+other ancestor's.
+
 - At `hold`, every move of the ticket is folded with *"N unanswered question(s) -
   it is waiting on a person, not on an agent"*. Where the question is an
   ancestor's the sentence names that ticket: *"... on HA-12 - ..."*. That is the
@@ -113,14 +120,52 @@ session would have nothing to build on. A person may always lower an open questi
 back to `hold`, and an answered question's level cannot be changed at all. A change is on the
 ticket's trail as `question_level_changed`, with both levels and the person's name.
 
+## What a session may answer
+
+An ambition standing in the implementation column can be sent to answer one open
+question beneath it, instead of running its pass. The board decides, and only
+when all of this holds:
+
+- The question is at `build` or `merge`. A `hold` question is never answered by a
+  session, whatever the context says: it waits for a person
+  ([the three levels](#the-three-levels)).
+- It has no answer yet, and its issue has not closed.
+- It is on an issue beneath the ambition, at any depth. A question on the
+  ambition itself is never answered this way.
+- Nothing from the question's issue up to the ambition is flagged dangerous, and
+  the ambition is not either.
+- No finished session has answered it already. A question is dispatched once: a
+  session that ended `worked` and named the question takes it off the list, and
+  one that was dropped does not.
+
+Where two questions qualify, the newer one goes first. This comes before the
+ambition's pass, so with both available the question is answered first. A board
+with no playbook row marked *answers questions* runs the pass as it always has.
+
+The work is dispatched on the ambition, not on the issue the question is on, and
+`hatch queue` names both, as `answers the question on HA-12: <first line>`. The
+dispatch carries the question itself as `answering`; see
+[the API reference](api-reference#work-what-a-runner-asks-the-board-for).
+
+The session reads the question in its prompt and records its answer with
+`hatch answer <key> <id> "<text>"`, on the question's own issue, or comments
+that the context does not settle it and stops
+([the question to answer](what-a-session-is-told#the-question-to-answer)).
+Either way it ends as worked, so a question it declined is not aimed at it again.
+
+The answer is a session's own, so it reads as a look back: the person looks it
+over on the Ballot afterwards and keeps or overturns it
+([looking back](#looking-back)).
+
 ## How the operator answers
 
 An unanswered question shows in four places, and a hold-level one on an
 ambition's tree in a fifth:
 
-- The **Ballot**, at `/ballot`, the first place a question shows. It is a link
-  beside **Search** in the nav bar, a row straight after Search in the phone
-  menu, and **Go to Ballot** in the console. It shows one question at a time,
+- The **Ballot**, at `/ballot`. It has no place in the nav bar or the phone
+  menu. You reach it from the attention panel's **Answer on the Ballot** row,
+  from the waiting strip on the Ambitions page, and with **Go to Ballot** in
+  the console. It shows one question at a time,
   the one holding the most work first, as a card: the issue it is on, what it
   holds and its level, its options with the recommended one first, and **Say
   something else** for the rest. A question the loop decided without you is

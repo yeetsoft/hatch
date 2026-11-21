@@ -73,7 +73,8 @@ describe('commandList', () => {
   it('opens on Board, then the nav rows, then Settings, then New issue, then the queue, then the themes', () => {
     const list = names(commandList(admin));
     expect(list[0]).toBe('Go to Board');
-    expect(list[1]).toBe('Go to Search');
+    expect(list[1]).toBe('Go to Ballot');
+    expect(list[2]).toBe('Go to Search');
     expect(list.slice(-6)).toEqual([
       'Go to Settings',
       'New issue',
@@ -87,7 +88,7 @@ describe('commandList', () => {
   it('has a Go to for every row the nav lists, in its order', () => {
     for (const ctx of [admin, person]) {
       const list = commandList(ctx);
-      const goes = list.filter((c) => c.id.startsWith('go:') && c.id !== 'go:/' && c.id !== 'go:/settings');
+      const goes = list.filter((c) => c.id.startsWith('go:') && c.id !== 'go:/' && c.id !== 'go:/ballot' && c.id !== 'go:/settings');
       expect(goes.map((c) => c.id)).toEqual(navRows(ctx.isAdmin).map((r) => `go:${r.to}`));
       expect(goes.map((c) => c.name)).toEqual(navRows(ctx.isAdmin).map((r) => `Go to ${r.label}`));
     }
@@ -96,6 +97,14 @@ describe('commandList', () => {
   it('offers Go to Users to an admin and to nobody else', () => {
     expect(names(commandList(admin))).toContain('Go to Users');
     expect(names(commandList(person))).not.toContain('Go to Users');
+  });
+
+  it('offers Go to Ballot to everybody, though the nav has no Ballot row, and goes to /ballot', () => {
+    for (const ctx of [admin, person]) {
+      const { fake, went } = env();
+      find(commandList(ctx), 'Go to Ballot').run(fake);
+      expect(went).toEqual(['/ballot']);
+    }
   });
 
   it('runs a go row with its path', () => {
@@ -194,8 +203,8 @@ describe('commandRows', () => {
     expect(total).toBe(all.length);
     expect(names(rows)).toEqual([
       'Go to Board',
-      'Go to Search',
       'Go to Ballot',
+      'Go to Search',
       'Go to Ambitions',
       'Go to Dreams',
       'Go to Plan',

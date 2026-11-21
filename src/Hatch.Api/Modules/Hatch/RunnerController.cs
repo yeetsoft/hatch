@@ -1,5 +1,5 @@
-using Hatch.Api.Ef;
 using Hatch.Api.Common;
+using Hatch.Api.Ef;
 using Hatch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,36 +15,18 @@ namespace Hatch.Api.Modules.Hatch;
 /// therefore the commit the downloaded `hatch` was built from too, rather than
 /// two versions that happen to be near each other.
 ///
-/// Plain <c>[RequireAdmin]</c> with no <c>AcceptKey</c>, matching
-/// <see cref="SettingsController"/> beside it rather than the key-accepting
-/// reads elsewhere in the module: the audience is a person at a browser
-/// setting up a machine, and nobody's dispatcher needs to download the program
-/// it is already running as. Wherever the wall is off - every local install -
+/// <c>AcceptKey = true</c>, matching <see cref="RunnersController"/> beside
+/// it: a person at a browser setting a machine up may fetch both routes, and
+/// so may a runner's own key, which is what hands the same sha256 on to
+/// HA-2610's heartbeat reply. Wherever the wall is off - every local install -
 /// the guard is dormant and this answers anyone, exactly like the rest of
 /// the root.
 /// </summary>
 [ApiController]
 [Route("api/runner")]
-[RequireRole(PersonRole.User)]
-public class RunnerController(IHatchRevision revision, IWebHostEnvironment env) : ControllerBase
+[RequireRole(PersonRole.User, AcceptKey = true)]
+public class RunnerController(IHatchRevision revision, IRunnerBuilds builds) : ControllerBase
 {
-    /// <summary>
-    /// The platforms the image publishes, in the order the page lists them.
-    /// The same RIDs as the Makefile's <c>HATCH_RIDS</c> and Dockerfile.api's
-    /// loop; a RID added to those without being added here is simply not
-    /// offered, which is a missing download rather than a broken page.
-    /// </summary>
-    private static readonly (string Rid, string Platform, string FileName)[] Platforms =
-    [
-        ("win-x64", "Windows", "hatch.exe"),
-        ("osx-arm64", "macOS (Apple Silicon)", "hatch"),
-        ("osx-x64", "macOS (Intel)", "hatch"),
-        ("linux-x64", "Linux", "hatch"),
-    ];
-
-    /// <summary>Where the image put them. Not under wwwroot/apps, so no static handler serves them around this controller.</summary>
-    private const string RunnerDirectory = "hatch-runner";
-
     /// <summary>
     /// What the Runner page draws, in one call.
     /// </summary>
@@ -60,38 +42,35 @@ public class RunnerController(IHatchRevision revision, IWebHostEnvironment env) 
     /// 404.
     /// </remarks>
     [HttpGet]
-    public RunnerDownloadsDto Get() => new(
-        revision.Revision,
-        Platforms
-            .Where(p => System.IO.File.Exists(PathFor(p)))
-            .Select(p => new RunnerDownloadDto(p.Rid, p.Platform, p.FileName, $"/api/runner/download/{p.Rid}"))
-            .ToArray());
+    public async Task<RunnerDownloadsDto> Get()
+    {
+        var builtList = await builds.ListAsync();
+        return new RunnerDownloadsDto(
+            revision.Revision,
+            builtList
+                .Select(b => new RunnerDownloadDto(b.Rid, b.Platform, b.FileName, b.Url, b.Sha256))
+                .ToArray());
+    }
 
     /// <summary>
     /// One binary, as an attachment.
     /// </summary>
     /// <remarks>
-    /// The RID is looked up against the fixed list above and the path is built
-    /// from what that lookup returned, so an unrecognised - or traversing -
-    /// argument never reaches <see cref="Path.Combine"/> at all. The check is
-    /// the lookup, not a sanitiser.
+    /// The RID is looked up against <see cref="IRunnerBuilds"/>'s own fixed
+    /// list, and the path is built from what that lookup returned, so an
+    /// unrecognised - or traversing - argument never reaches a file open at
+    /// all. The check is the lookup, not a sanitiser.
     /// </remarks>
     [HttpGet("download/{rid}")]
-    public ActionResult Download(string rid)
+    public async Task<ActionResult> Download(string rid)
     {
-        var platform = Platforms.FirstOrDefault(p => p.Rid == rid);
-        if (platform.Rid is null) return NotFound();
-
-        var path = PathFor(platform);
-        if (!System.IO.File.Exists(path)) return NotFound();
+        var build = await builds.FindAsync(rid);
+        if (build is null) return NotFound();
 
         // application/octet-stream with the file name: a browser that decided
         // for itself what `hatch` was would be a browser that rendered it.
-        return PhysicalFile(path, "application/octet-stream", platform.FileName);
+        return PhysicalFile(build.Path, "application/octet-stream", build.FileName);
     }
-
-    private string PathFor((string Rid, string Platform, string FileName) platform) =>
-        Path.Combine(env.WebRootPath, RunnerDirectory, platform.Rid, platform.FileName);
 }
 
 /// <summary>
@@ -115,4 +94,5 @@ public record RunnerDownloadsDto(string Revision, RunnerDownloadDto[] Downloads)
 /// <param name="Platform">What to call it to a person.</param>
 /// <param name="FileName">What it lands on disk as - `hatch.exe` on Windows, `hatch` everywhere else.</param>
 /// <param name="Url">Where to get it. Named by the server so the page never builds a path of its own.</param>
-public record RunnerDownloadDto(string Rid, string Platform, string FileName, string Url);
+/// <param name="Sha256">Lowercase hex, of the exact bytes <see cref="RunnerController.Download"/> serves for this RID.</param>
+public record RunnerDownloadDto(string Rid, string Platform, string FileName, string Url, string Sha256);

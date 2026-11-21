@@ -172,7 +172,10 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             AcceleratorMemoryBytes: runner.AcceleratorMemoryBytes,
             AcceleratorDeviceCount: runner.AcceleratorDeviceCount,
             AcceleratorBackend: runner.AcceleratorBackend,
-            Pulling: runner.Pulling);
+            Pulling: runner.Pulling,
+            LauncherVersion: runner.LauncherVersion,
+            // The board makes the comparison; the page only reads the answer.
+            LauncherBehind: runner.LauncherVersion is { } launcher && launcher < LauncherVersion.Current);
     }
 
     /// <summary>
@@ -267,6 +270,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         BuiltAt = beat.BuiltAt,
         SourceRevision = beat.SourceRevision,
         SourceSequence = beat.SourceSequence,
+        LauncherVersion = beat.LauncherVersion,
         Tags = beat.Tags,
         Models = beat.Models,
         Has = beat.Has,
@@ -319,6 +323,43 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order,
             Effective(runner.MaxTokens, defaultMaxTokens).Cap,
             Effective(runner.MaxTokensPerHour, defaultMaxTokensPerHour).Cap);
+
+    /// <summary>
+    /// The board's own build, for a beat from a runner on a different one - or
+    /// null, which is nothing to say. Present exactly when the beat sent a
+    /// stamped revision and count, the board is stamped, and the two
+    /// revisions differ. The board's side of the comparison is decided here,
+    /// by <see cref="RevisionComparison"/>; the runner compares nothing.
+    /// </summary>
+    /// <remarks>
+    /// Compared against the beat's own revision and count rather than a stored
+    /// row, so the answer is the beat's. <see cref="RevisionComparison.Compare"/>
+    /// answers <see cref="RevisionDrift.Unknown"/> for two commits at one depth
+    /// as well as for an unstamped side; with both sides stamped, as they are by
+    /// the time it is read, that can only be the first, and it is
+    /// <see cref="RunnerBuildComparisons.Diverged"/>. <paramref name="build"/> is
+    /// the one the beat's platform names, if the board has it: where it is null
+    /// the part still stands and names no download.
+    /// </remarks>
+    public static RunnerBoardBuildDto? BoardBuild(
+        string boardRevision, int boardSequence, RunnerHeartbeatRequest request, RunnerBuild? build)
+    {
+        if (!RevisionComparison.IsStamped(boardRevision, boardSequence)
+            || !RevisionComparison.IsStamped(request.Revision, request.Sequence ?? 0))
+            return null;
+
+        var compare = RevisionComparison.Compare(boardRevision, boardSequence, request.Revision!, request.Sequence!.Value) switch
+        {
+            RevisionDrift.Current => null,
+            RevisionDrift.Behind => RunnerBuildComparisons.Behind,
+            RevisionDrift.Ahead => RunnerBuildComparisons.Ahead,
+            _ => RunnerBuildComparisons.Diverged,
+        };
+
+        return compare is null
+            ? null
+            : new RunnerBoardBuildDto(boardRevision, boardSequence, compare, build?.Url, build?.Sha256);
+    }
 
     /// <summary>
     /// A token cap as the row's own value, else the site default, else none,

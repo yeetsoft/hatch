@@ -896,6 +896,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<Guid?>("PreApprovalSetBy")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("PreviousTitles")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
 
@@ -956,7 +960,7 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("tsvector")
-                        .HasComputedColumnSql("setweight(to_tsvector('english', \"Title\"), 'A') || setweight(to_tsvector('english', \"Description\"), 'B')", true);
+                        .HasComputedColumnSql("setweight(to_tsvector('english', \"Title\"), 'A') || setweight(to_tsvector('english', \"Description\"), 'B') || setweight(to_tsvector('english', \"PreviousTitles\"), 'B')", true);
 
                     b.Property<DateTimeOffset?>("StalledAt")
                         .HasColumnType("timestamp with time zone");
@@ -1449,6 +1453,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("WorksOutChanges")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.HasKey("Id");
 
@@ -1998,6 +2007,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("LauncherVersion")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Line")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
@@ -2271,6 +2283,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<DateTimeOffset>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("LauncherVersion")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Line")
                         .HasMaxLength(512)
@@ -2730,6 +2745,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("PromptChars")
                         .HasColumnType("integer");
 
+                    b.Property<long?>("QuestionId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Reads")
                         .HasColumnType("jsonb");
 
@@ -2766,6 +2784,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("QuestionId");
 
                     b.HasIndex("SearchVector");
 

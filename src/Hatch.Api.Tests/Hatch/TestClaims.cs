@@ -66,6 +66,23 @@ internal static class TestClaims
     }
 }
 
+/// <summary>
+/// An <see cref="IRunnerBuilds"/> holding exactly the builds it is handed, with no disk and no hash - and a count
+/// of how often it was asked, since a lookup is what hashes the real file.
+/// </summary>
+internal sealed class StubRunnerBuilds(params RunnerBuild[] builds) : IRunnerBuilds
+{
+    public int Lookups { get; private set; }
+
+    public Task<IReadOnlyList<RunnerBuild>> ListAsync() => Task.FromResult<IReadOnlyList<RunnerBuild>>(builds);
+
+    public Task<RunnerBuild?> FindAsync(string rid)
+    {
+        Lookups++;
+        return Task.FromResult(builds.FirstOrDefault(b => b.Rid == rid));
+    }
+}
+
 /// <summary>An <see cref="IHatchRevision"/> for a harness with nothing to say about build drift - unstamped, so every <see cref="RunnerBoardDrift"/> it computes reads <see cref="RunnerBoardDrift.Unknown"/>.</summary>
 internal sealed class StubHatchRevision : IHatchRevision
 {

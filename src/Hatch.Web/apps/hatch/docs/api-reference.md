@@ -294,7 +294,12 @@ date or pull-request-URL shape, and on an illegal parent - a
 cycle, or a type pairing the issue hierarchy refuses - or a task filed or retyped
 under a story or bug in another project whose tasks share one pull request (the
 sentence names the story). An ambition takes no parent (*an ambition takes no
-parent*), and only an epic hangs under one. A patch that retypes an issue to
+parent*), and only an epic hangs under one. A key - never a person - filing or
+moving an epic under an ambition whose every capability's newest verdict is
+holds 400s, naming the ambition and saying nothing is left to carve; one
+already hanging under that ambition may re-send its own `parentKey` with no
+refusal, and an ambition with no capabilities, or with a capability still
+without a verdict, is never refused this way. A patch that retypes an issue to
 `ambition` 400s while the issue has a parent (unless the same patch clears
 `ParentKey`) or a child that is not an epic, naming the first such child by key;
 one that retypes an ambition 400s while a child could not hang under the new
@@ -643,7 +648,7 @@ not, writes nothing and answers the issue unchanged - no error either way.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/search` | Full-text search across title, description, comments and work log, paged |
+| GET | `/search` | Full-text search across title, previous titles, description, comments and work log, paged |
 | GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
 | GET | `/ambitions` | Every ambition with its capabilities counted four ways and the epics open under it; takes a repeatable `projectId` |
@@ -652,7 +657,11 @@ not, writes nothing and answers the issue unchanged - no error either way.
 All five a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
 `createdFrom`/`createdTo`, `closedFrom`/`closedTo`, `limit` (1-200, default
 50) and `offset`; with `q`, best match first and closed-ahead-of-open among
-equals, without it newest first (closed, else created). `/plan` takes an
+equals, without it newest first (closed, else created). Each hit's `matched`
+lists which of `title`, `previous-title`, `description`, `comment`,
+`work-log` found it, in that order; the hit also carries `previousTitles`,
+the issue's own previous titles newest first, whether or not
+`previous-title` matched - empty on an issue never retitled. `/plan` takes an
 optional, repeatable `projectId`; with none, an epic under an epic of another
 project is nested under it, and with one, an epic whose parent is outside the
 answer is a root, its card carrying `parentKey` or `parentBeyondScope`, and
@@ -1014,6 +1023,14 @@ The `WorkDto` also carries `buildPast`, the open questions on the issue and the
 issues above it that the session may build past: each is at `build` or `merge`
 and has a recommended option. It is a second list beside `questions`, which
 stays the ticket's own, and is null where there are none.
+The `WorkDto` also carries `answering`, null on every dispatch but one: an
+ambition aimed at its answering row, whose `kind` is then `answer`. It names the
+question the session is to answer - `issueKey`, `issueTitle`, `questionId`,
+`body`, `options`, `level` (`build` or `merge`), `askedBy` and `askedAt` - and
+`playbook` is the row marked *answers questions*. Which question, and when none
+qualifies, is in [what a session may answer](questions-and-decisions#what-a-session-may-answer).
+Each row of `GET /work/queue` carries `answering` too, as one sentence naming the
+issue and the question, and null on every other row.
 
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus
@@ -1229,7 +1246,8 @@ beside the row's own `DefaultPrompt`, `Model`, `LocalModel` (the Ollama id a mov
 (millions of tokens), `BriefLimit` (characters), `QuietLimitSeconds` (seconds a
 claim may go without a word; null inherits the server's quiet lapse) and
 `MaxRunSeconds` (seconds a session may run before it is cut off; null means no
-limit - stored, not yet read), `DeniedTools`, `IsCheck`, `AnswersQuestions` (a row a session runs on to answer one question; the match never returns it, and a row is never also a check - a `POST` or `PATCH` that would make it both is a `400`),
+limit - stored, not yet read), `DeniedTools`, `IsCheck`, `AnswersQuestions` (a row a session runs on to answer one question; the match never returns it, and a row is never also a check or a row that works out changes - a `POST` or `PATCH` that would make it more than one is a `400`),
+`WorksOutChanges` (a row a session runs on to work out what a change to an ambition does to its epics in flight; the match never returns it, and a row is never also a check or a row that answers questions - a `POST` or `PATCH` that would make it more than one is a `400`),
 `Source` - `"board"` or `"project"`, by whether `ProjectId` names one - and
 `UnreachableReason`.
 `UnreachableReason` is read-only and null wherever the dispatcher could pick
@@ -1361,16 +1379,16 @@ file files none.
 | POST | `/playbook-proposals/reject-all` | **person, at the browser** | Marks every row named in `{ proposalIds }` rejected, naming an issue's events; `409` naming the reload where that set is not exactly what is pending |
 | POST | `/playbook-proposals/approve-all` | **person, at the browser** | Applies every row named in `{ proposalIds }` in one transaction; `409` naming the reload, the out-of-date change, or the live-board refusal, applying nothing |
 
-A session that found a playbook's prompt, model, effort or shape wrong can propose a fix without being handed the write a key is refused on `/playbooks` - the body is `{ reason, issueKey?, changes: [{ playbookId, ...PATCH's fields }] }`, each change naming a playbook and at least one field `PATCH /playbooks/{id}` takes - and the change sits for a person to decide on the Playbooks page, not anything live. Each `PlaybookProposalChangeDto` carries `before` and `after` as full `PlaybookDto`s, `changedFields` (the fixed vocabulary `fromStatusId, toStatusId, types, shape, prompt, model, localModel, effort, budget, briefLimit, deniedTools, isCheck, projectId` - `quietLimitSeconds` and `maxRunSeconds` are not in it), and `outOfDate`/`outOfDateReason` for whether the playbook has since been edited or deleted. `POST` 400s a blank reason, an empty `changes` list, a change naming no field, the same sentences `PATCH /playbooks/{id}` gives against the live board, and a change naming a project that reads its playbooks from its own repository rather than from rows here at all; a playbook already named by a pending proposal refuses a second, naming it - one pending change per row at a time. An `issueKey` naming no issue is `404`. A named issue gets a `playbook_proposed` event.
+A session that found a playbook's prompt, model, effort or shape wrong can propose a fix without being handed the write a key is refused on `/playbooks` - the body is `{ reason, issueKey?, changes: [{ playbookId, ...PATCH's fields }] }`, each change naming a playbook and at least one field `PATCH /playbooks/{id}` takes - and the change sits for a person to decide on the Playbooks page, not anything live. Each `PlaybookProposalChangeDto` carries `before` and `after` as full `PlaybookDto`s, `changedFields` (the fixed vocabulary `fromStatusId, toStatusId, types, shape, prompt, model, localModel, effort, budget, briefLimit, deniedTools, isCheck, answersQuestions, worksOutChanges, projectId` - `quietLimitSeconds` and `maxRunSeconds` are not in it), and `outOfDate`/`outOfDateReason` for whether the playbook has since been edited or deleted. `POST` 400s a blank reason, an empty `changes` list, a change naming no field, the same sentences `PATCH /playbooks/{id}` gives against the live board, and a change naming a project that reads its playbooks from its own repository rather than from rows here at all; a playbook already named by a pending proposal refuses a second, naming it - one pending change per row at a time. An `issueKey` naming no issue is `404`. A named issue gets a `playbook_proposed` event.
 
 ### Runners and settings
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil` |
+| GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil`; carries `launcherVersion`, the version of the launcher that started the loop (absent for a loop with no launcher), and `launcherBehind`, true when that version is lower than the launcher version of the board's own build - the board makes the comparison, and a session carries the raw `launcherVersion` only |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts; `usageSource` and `usageProbeOff` say where the usage reading came from and why its probe is off, and travel together: a beat that names a `usageSource` sets both (a null `usageProbeOff` clears a stored reason), and a beat without one leaves both as they were, with or without a reading |
-| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way, and takes `usageSource`/`usageProbeOff` on the same pairing rule; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts; `usageSource` and `usageProbeOff` say where the usage reading came from and why its probe is off, and travel together: a beat that names a `usageSource` sets both (a null `usageProbeOff` clears a stored reason), and a beat without one leaves both as they were, with or without a reading; `rid` names the platform the build was published for (`win-x64`, `osx-arm64`, `osx-x64` or `linux-x64`) and is never stored; the answer's `boardBuild` names the board's own build when it differs from the beat's `revision`, and is absent otherwise |
+| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way, and takes `usageSource`/`usageProbeOff` on the same pairing rule; takes `rid` and answers `boardBuild` exactly as `POST /runners/{name}` does; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause; takes `launcherVersion`, the version of the launcher the loop was started by, on every beat of a loop under one and none otherwise - a beat that omits it leaves the stored value alone, a fresh `loop` beat that omits it clears it, and a board built before the field ignores it |
 | POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
@@ -1387,8 +1405,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | DELETE | `/runners/{name}/sessions/{id}/pause` | **person** | Lifts a `board-paused` pause on one session - clears `agentDownUntil`, `agentDownKind` and `agentDownLine`, and resets the failure streak that led to it; `409` for a pause the session set on itself (`not-starting` or `signed-out`), which is the runner's own to clear; `204` and no write for a session that is not paused, or whose pause has passed |
 | POST | `/runners/{name}/pause-all` | **person** | Pauses every live `loop` session under this key at once |
 | POST | `/runners/{name}/stop-all` | **person** | Stops every live `loop` session under this key at once |
-| GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
-| GET | `/runner/download/{rid}` | **person** | One platform's `hatch` binary |
+| GET | `/runner` | key | What platforms this image can hand out, the commit they and it were built from, and each build's `sha256` - lowercase hex of the exact bytes its download serves |
+| GET | `/runner/download/{rid}` | key | One platform's `hatch` binary |
 | GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name, and the site's default token caps (`defaultMaxTokens`, `defaultMaxTokensPerHour`) |
 | PUT | `/settings` | **person** | Edits them - the two default token caps only for an admin, or for anyone at the keyboard with the wall off |
 | GET | `/settings/credentials/{agent}` | key | One agent's credential, unprotected, for the container runner to start it with |
@@ -1453,6 +1471,22 @@ a single increment first. `standby` is read on that beat alone: without
 fresh beat without it leaves the state as it was. There is no
 `DELETE` on the row itself: it ages out of `GET /runners` on its own once
 nothing has heard from it in a while.
+
+`boardBuild` is the board telling a runner that its build is not the board's,
+and where to get the board's. It is on the answer exactly when the beat sent a
+stamped `revision` and `sequence`, the board is stamped, and the two revisions
+differ - on `POST /runners/{name}` and `POST /runners/sessions` alike, for a
+`loop` beat and a `once` beat. It holds the board's `revision` and `sequence`,
+`compare`, `download` and `sha256`. `compare` is `behind`, `ahead` or
+`diverged` (two commits at the same count), and the board decides it; the
+runner compares nothing. It is a string, so a word an older runner has never
+seen does not fail its parse. `download` and `sha256` are what `GET /runner`
+lists for the platform the beat names in `rid`, from the same code; both are
+`null` for a beat that names no platform, one the board does not publish, or
+an image that published nothing, and the part is still sent. A matching
+revision, an unstamped side (`dev`, or no count) and a beat with no revision
+all get no part, and so does an older board. Nothing acts on it yet. `rid` is
+never stored.
 
 `throttledUntil` is a fact the runner reports about its own
 `--max-tokens-per-hour`, never a person's to set: it is the instant the loop
@@ -1666,10 +1700,11 @@ inheriting it, read at each runner's next beat. `/settings` is cached for up to
 30 seconds, a backstop for another replica, so a changed default can take that
 long to reach a beat answered there.
 
-`/runner` and `/runner/download/{rid}` take no key, unlike every
-other read on this page - the audience is a person at a browser
-setting up a machine, and nobody's dispatcher needs to download the program
-it is already running as.
+`/runner` and `/runner/download/{rid}` take a key as well as a person: a
+person at a browser setting up a machine may fetch both, and so may a
+runner's own key, which checks its build against the `sha256` the listing
+carries. Each build's hash is worked out once, from the bytes the image
+actually serves, and kept rather than recomputed per request.
 
 `/settings` is Hatch's own configuration, carrying nothing an agent reads:
 it is person-only on both verbs by design, beside `/runners/{name}` and
@@ -1788,7 +1823,9 @@ model's digest as the local server listed it before the session, null
 otherwise); the `POST` accepts the same three, stores any other placement as
 null and keeps a digest only on a `local` row. Each entry also carries `outcome` and `reason`,
 stamped by the claim release that named this session's id - null on a row never stamped, including
-every row written before this shipped. `/work-log/history` buckets by `hour` or `day`, chosen from the
+every row written before this shipped. It also carries `questionId`, the question
+a session answered, which the `POST` accepts and is null on every other row; a `worked` row
+naming a question is what keeps the board from sending a second session to it. `/work-log/history` buckets by `hour` or `day`, chosen from the
 range's length unless named, and answers the bucket size it actually used;
 `/work-log/sessions` ranks by `tokens` (the default), `cost`, `ended`,
 `requests` or `peakContext`, each descending. All three take an optional
@@ -2077,8 +2114,6 @@ DELETE /attachments/{id}
 PATCH  /runners/{name}
 POST   /runners/{name}/order
 DELETE /runners/{name}/order
-GET    /runner
-GET    /runner/download/{rid}
 GET    /settings
 PUT    /settings
 POST   /overnight/seen
@@ -2090,9 +2125,9 @@ DELETE /playbooks/{id}
 ```
 
 Thirty-one belong to a project, a column, the WIP section, a ticket's own
-fields, or attachment upload and delete; the other thirteen are a runner's own record (now
-three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
-`/runner` pair, Hatch's settings on both verbs, marking the overnight seen, the home screen,
+fields, or attachment upload and delete; the other eleven are a runner's own record (now
+three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`),
+Hatch's settings on both verbs, marking the overnight seen, the home screen,
 running a backup, and the three playbook writes.
 
 Two writes that look like the same shape are deliberately **not** on this

@@ -265,6 +265,21 @@ public class IssueWorkLogControllerTests
         Assert.Equal(expectedDigest, row.ModelDigest);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(4711L)]
+    public async Task TheQuestionASessionAnswered_IsStoredAndReadBack_AndAbsentOtherwise(long? questionId)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var entry = await h.PostAsync(issue.Key, Reported() with { QuestionId = questionId });
+
+        Assert.Equal(questionId, entry.QuestionId);
+        Assert.Equal(questionId, Assert.Single(await h.RowsAsync(issue.Key)).QuestionId);
+        Assert.Equal(questionId, Assert.Single((await h.ReadAsync(issue.Key)).Entries).QuestionId);
+    }
+
     [Fact]
     public async Task AnOverLongModelOrDigest_IsClippedNotRefused()
     {
