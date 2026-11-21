@@ -2791,6 +2791,184 @@ public class WorkControllerTests
         Assert.Null(Only(await h.Work.GetQueue(runner: a.Name)).Blocked);
     }
 
+    // ---- A row left for a runner marked preferred, while it is free ----
+
+    private const string MarkedWhere = "build-box:/work/marked";
+
+    /// <summary>A keyed runner with a live beat and, where <paramref name="preferred"/>, a config row marking it preferred.</summary>
+    private static async Task<EfApiKey> KeyedRunnerAsync(
+        Harness h, bool preferred, Action<EfHatchRunner>? tweak = null, Action<EfHatchRunnerConfig>? configure = null, bool beat = true)
+    {
+        var key = await h.AddKeyAsync(RunnerName());
+        if (preferred || configure is not null)
+        {
+            var config = new EfHatchRunnerConfig { ApiKeyId = key.Id, Preferred = preferred, UpdatedAt = Now };
+            configure?.Invoke(config);
+            h.Db.RunnerConfigs.Add(config);
+            await h.Db.SaveChangesAsync();
+        }
+
+        if (beat) await AddLoopRunnerAsync(h, key.Name, row => { row.Where = preferred ? MarkedWhere : "plain-box:/work/plain"; tweak?.Invoke(row); });
+        return key;
+    }
+
+    private static string LeftForPreferred(EfHatchIssue issue, string runner) =>
+        ModelFamilies.LeftForPreferred(Key(issue), "todo", runner);
+
+    [Fact]
+    public async Task Preferred_AnUnmarkedRunner_IsToldTheRowIsLeftForTheMarkedOne_FromEveryDoor()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "left for the build box", h.Todo);
+        var marked = await KeyedRunnerAsync(h, preferred: true);
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+        var sentence = LeftForPreferred(issue, marked.Name);
+
+        Assert.Equal($"{Key(issue)} in todo is left for {marked.Name}, which is preferred and free", sentence);
+
+        foreach (var queue in new[] { await h.Work.GetQueue(runner: plain.Name), await h.Work.GetQueue(asRunner: plain.Name) })
+        {
+            var entry = Only(queue);
+            Assert.Equal(sentence, entry.Blocked);
+            Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+        }
+
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(issue), runner: plain.Name)).Blocked);
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(runner: plain.Name)).Result);
+
+        // The marked runner reads the row clear, and takes it.
+        Assert.Null(Only(await h.Work.GetQueue(runner: marked.Name)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(asRunner: marked.Name)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: marked.Name)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(runner: marked.Name)).Issue.Key);
+
+        // A caller that names no runner is nobody's asker, and is never folded.
+        Assert.Null(Only(await h.Work.GetQueue()).Blocked);
+    }
+
+    public enum MarkedPeer { Claim, Paused, Exhausted, AgentDown, Until, OutOfRuns, Stale, Pulling, Gone }
+
+    [Theory]
+    [InlineData(MarkedPeer.Claim)]
+    [InlineData(MarkedPeer.Paused)]
+    [InlineData(MarkedPeer.Exhausted)]
+    [InlineData(MarkedPeer.AgentDown)]
+    [InlineData(MarkedPeer.Until)]
+    [InlineData(MarkedPeer.OutOfRuns)]
+    [InlineData(MarkedPeer.Stale)]
+    [InlineData(MarkedPeer.Pulling)]
+    [InlineData(MarkedPeer.Gone)]
+    public async Task Preferred_AMarkedRunnerThatIsNotFree_LeavesTheRowToTheUnmarkedOne(MarkedPeer state)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "the marked runner is busy", h.Todo);
+        var other = await h.FileAsync("task", "what the marked runner is holding", h.InProgress);
+        var marked = await KeyedRunnerAsync(h, preferred: true, beat: state != MarkedPeer.Gone, tweak: row =>
+        {
+            switch (state)
+            {
+                case MarkedPeer.Paused: row.State = EfHatchRunner.Paused; break;
+                case MarkedPeer.Exhausted: row.ExhaustedUntil = Now.AddHours(1); break;
+                case MarkedPeer.AgentDown: row.AgentDownUntil = Now.AddHours(1); break;
+                case MarkedPeer.Until: row.UntilAt = Now.AddMinutes(-1); break;
+                case MarkedPeer.OutOfRuns: row.MaxRuns = 3; row.Runs = 3; break;
+                case MarkedPeer.Stale: row.LastSeenAt = Now.AddDays(-1); break;
+                case MarkedPeer.Pulling: row.Pulling = true; break;
+            }
+        });
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+        if (state == MarkedPeer.Claim) await h.ClaimAsync(other, by: marked.Name, runner: MarkedWhere);
+
+        Assert.Null(Entry(await h.Work.GetQueue(runner: plain.Name), issue).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: plain.Name)).Blocked);
+    }
+
+    public enum MarkedRule { Tag, Omitted, RefusedModel, ColumnRule }
+
+    [Theory]
+    [InlineData(MarkedRule.Tag)]
+    [InlineData(MarkedRule.Omitted)]
+    [InlineData(MarkedRule.RefusedModel)]
+    [InlineData(MarkedRule.ColumnRule)]
+    public async Task Preferred_AMarkedRunnerThatCannotTakeTheRow_LeavesItToTheUnmarkedOne(MarkedRule rule)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "not the marked runner's", h.Todo);
+        if (rule == MarkedRule.Tag) await h.RequireTagsAsync("macos");
+        if (rule == MarkedRule.RefusedModel) await h.OverrideAsync(issue, model: "fable");
+
+        var marked = await KeyedRunnerAsync(h, preferred: true, configure: config =>
+        {
+            if (rule == MarkedRule.RefusedModel) config.RefusedModels = RunnerTagColumn.Write(["fable"]);
+            if (rule == MarkedRule.ColumnRule)
+            {
+                config.StatusMode = RunnerStatusMode.Except;
+                config.StatusIds = RunnerStatusIdsColumn.Write([h.Todo]);
+            }
+        });
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+        if (rule == MarkedRule.Omitted) await OmitAsync(h, issue, marked.Name, by: "operator");
+
+        // The unmarked asker says it advertises the tag; the marked runner's own config does not.
+        List<string>? tag = rule == MarkedRule.Tag ? ["macos"] : null;
+        Assert.Null(Only(await h.Work.GetQueue(runner: plain.Name, tag: tag)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: plain.Name, tag: tag)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(runner: plain.Name, tag: tag)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Preferred_ThePreferenceIsNeverAppliedToAHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await KeyedRunnerAsync(h, preferred: true);
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+
+        var entry = Only(await h.Work.GetQueue(runner: plain.Name));
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: plain.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Preferred_TheAskersOwnReason_IsSaidBeforeIt()
+    {
+        var h = await NewAsync();
+        var letGo = await h.FileAsync("task", "the unmarked runner let this go", h.Todo);
+        var omitted = await h.FileAsync("task", "the unmarked runner is omitted", h.Todo);
+        var marked = await KeyedRunnerAsync(h, preferred: true);
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+        await Released(h, letGo, Now.AddMinutes(-7), ClaimOutcomes.Dropped, plain.Name);
+        await OmitAsync(h, omitted, plain.Name, by: "operator");
+
+        var queue = await h.Work.GetQueue(runner: plain.Name);
+
+        Assert.Equal(DeferralSentence(plain.Name, 7), Entry(queue, letGo).Blocked);
+        var reason = Entry(queue, omitted).Blocked;
+        Assert.StartsWith($"{Key(omitted)} is not worked by {plain.Name} - operator omitted it", reason);
+        Assert.DoesNotContain("preferred", reason);
+        Assert.DoesNotContain("preferred", Value(await h.Work.GetWork(Key(omitted), runner: plain.Name)).Blocked);
+
+        // The marked runner reads the let-go row clear.
+        Assert.Null(Entry(await h.Work.GetQueue(runner: marked.Name), letGo).Blocked);
+    }
+
+    [Fact]
+    public async Task Preferred_APeersOwnScanDoesNotApplyIt_SoTwoMarkedRunnersEachReadTheRowClear()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "two build boxes", h.Todo);
+        var first = await KeyedRunnerAsync(h, preferred: true);
+        var second = await KeyedRunnerAsync(h, preferred: true);
+
+        Assert.Null(Only(await h.Work.GetQueue(runner: first.Name)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(runner: second.Name)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: first.Name)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: second.Name)).Blocked);
+    }
+
     // ---- Omitted runners on a named dispatch and a hop ----
 
     private static async Task OmitAsync(Harness h, EfHatchIssue issue, string runner, string by, string? reason = null)

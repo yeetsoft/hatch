@@ -119,6 +119,10 @@ public sealed class Dispatch(
         signing ??= SigningDeclaration.Unjudged;
         refusal ??= await RefusedByAsync(asking?.Name, ct);
 
+        // A runner marked preferred is never told a row is left for another
+        // one. Peer scans pass foldLetGo false, so they pay no query.
+        var askerPreferred = foldLetGo && asking is not null && await IsPreferredAsync(asking.Name, ct);
+
         // Judged here, on the one entry every caller shares - the same place
         // ancestorKey's own unknown key is refused - so a refused scan never
         // reaches the walk below.
@@ -480,6 +484,20 @@ public sealed class Dispatch(
                         }
                     }
 
+                    // A row left for a runner marked preferred that is live,
+                    // idle and able to take it. Said last, so every fold that is
+                    // the asker's own comes first; never on a hop, and never to
+                    // a preferred asker. A peer's own scan asks nobody.
+                    if (blocked is null && !hop && foldLetGo && asking is not null && !askerPreferred)
+                    {
+                        peers ??= new PeerScans(this, asking, now, offsetMinutes);
+                        if (await peers.PreferredFreeAsync(issue.Id, ct) is { } preferredRunner)
+                        {
+                            blocked = ModelFamilies.LeftForPreferred(IssueKey.Format(issue.Project!.Key, issue.Number), status.Name, preferredRunner);
+                            kind = BlockedKinds.Other;
+                        }
+                    }
+
                     var sentence = blocked;
 
                     // Nothing at a lower tier is picked up while a strictly
@@ -660,6 +678,30 @@ public sealed class Dispatch(
             foreach (var peer in _peers)
             {
                 if (!RunsLocally(peer.Declaration.Models, localModel) || peer.Pulling || _holding.Contains((peer.Name, peer.Where))) continue;
+                if ((await TakeableAsync(peer, ct)).Contains(issueId)) return peer.Name;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// The name of the first peer marked preferred that is free to take
+        /// <paramref name="issueId"/>, or null: live (the peer filter drops a
+        /// paused, exhausted, agent-down, out-of-bounds or gone one), not
+        /// pulling a model, holding no live claim at its checkout, and finding
+        /// the ticket takeable on its own declaration, so every rule of its own
+        /// folds it with no second copy. With no runner store, none is free.
+        /// </summary>
+        public async Task<string?> PreferredFreeAsync(long issueId, CancellationToken ct)
+        {
+            if (!dispatch.HasRunnerStore) return null;
+
+            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct);
+            _holding ??= await dispatch.HoldingAsync(now, ct);
+
+            foreach (var peer in _peers)
+            {
+                if (!peer.Declaration.Preferred || peer.Pulling || _holding.Contains((peer.Name, peer.Where))) continue;
                 if ((await TakeableAsync(peer, ct)).Contains(issueId)) return peer.Name;
             }
 
@@ -1833,6 +1875,19 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// The name of a runner marked preferred that is free to take
+    /// <paramref name="issue"/>, for a caller that has no scan of its own - a
+    /// named dispatch. Null where <paramref name="asking"/> is itself marked
+    /// preferred, or where no such runner is free.
+    /// </summary>
+    public async Task<string?> LeftForPreferredAsync(EfHatchIssue issue, RunnerAsking asking, CancellationToken ct)
+    {
+        if (await IsPreferredAsync(asking.Name, ct)) return null;
+
+        return await new PeerScans(this, asking, time.GetUtcNow(), 0).PreferredFreeAsync(issue.Id, ct);
+    }
+
+    /// <summary>
     /// True where a preferring ticket's move runs on the row's ordinary model
     /// though the row names a local one: the level is
     /// <see cref="LocalModelLevels.Prefer"/>, the row names a local model, the
@@ -1989,6 +2044,22 @@ public sealed class Dispatch(
         return config is null
             ? new RunnerRefusal(name, [])
             : new RunnerRefusal(name, RunnerTagColumn.Read(config.RefusedModels), config.StatusMode, RunnerStatusIdsColumn.Read(config.StatusIds));
+    }
+
+    /// <summary>
+    /// True when the key named <paramref name="name"/> is marked preferred.
+    /// False for no name, no key store, a name no key answers to, and a key
+    /// with no config row.
+    /// </summary>
+    internal async Task<bool> IsPreferredAsync(string? name, CancellationToken ct)
+    {
+        if (name is null || keys is null) return false;
+
+        var key = (await keys.ListApiKeysAsync(ct)).FirstOrDefault(k => string.Equals(k.Name, name, StringComparison.Ordinal));
+        if (key is null) return false;
+
+        var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+        return config?.Preferred ?? false;
     }
 
     /// <summary>

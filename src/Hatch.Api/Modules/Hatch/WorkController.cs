@@ -1693,6 +1693,13 @@ public class WorkController(
             repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
             has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor, answering: answering is not null,
             signing: signing);
+
+        // The same deferral the scan makes, asked here for a named dispatch: a
+        // row left for a runner marked preferred that is free to take it.
+        if (blocked is null && askPeers && !hop && asking is not null
+            && await _dispatch.LeftForPreferredAsync(issue, asking, ct) is { } first)
+            blocked = ModelFamilies.LeftForPreferred(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, first);
+
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing, Dispatch.IsPass(issue, from, rowTo, implementationStatus), answering is not null);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
