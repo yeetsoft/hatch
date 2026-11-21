@@ -406,6 +406,8 @@ try
             ActiveProfilePath = Settings.Pinned(profileArg, environment) ? null : Settings.ActiveProfilePath(),
             NightStatePath = nightStatePath,
             Launcher = LauncherLink.From(environment),
+            BuildHold = BuildHold.Parse(environment.GetValueOrDefault(BuildHandoff.HoldVariable)),
+            BuildNote = environment.GetValueOrDefault(BuildHandoff.NoteVariable),
             LogPath = log?.Path,
             SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Slot = memberSlot,

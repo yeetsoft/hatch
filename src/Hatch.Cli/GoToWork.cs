@@ -862,6 +862,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// <summary>The session this loop's own beats are answered from, once one has been; see <see cref="EndSessionAsync"/>.</summary>
     private int? _sessionId;
 
+    /// <summary>Whether this process has told its launcher the board answered its build.</summary>
+    private bool answeredMarked;
+
     /// <summary>How long to wait between reminders that nothing has changed.</summary>
     private static readonly TimeSpan StillNothing = TimeSpan.FromMinutes(10);
 
@@ -979,6 +982,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(runtime.Say, GoToWorkUsage);
+
+        // What the launcher decided about the last change of build, said the
+        // once, so it reaches the log of the build that carries on.
+        if (runtime.BuildNote is { Length: > 0 } buildNote) runtime.Say.Line(buildNote);
 
         string? key = null, under = null, until = null, stopFile = null, agent = null;
         var interval = 60;
@@ -1515,6 +1522,56 @@ public sealed class GoToWorkCommand(Runtime runtime)
         return true;
     }
 
+    /// <summary>
+    /// Answers whether the loop is asking its launcher for the board's build.
+    /// Never for a loop that cannot come back - one with no launcher (a script,
+    /// an unstamped build, the image), or one that is not restarting
+    /// (<c>--no-restart</c>, <c>--once</c>) - and never while a claim is held,
+    /// which is why it is asked at the top of a pass.
+    /// </summary>
+    /// <remarks>
+    /// The watch is judged on every pass it applies to, ordered or not, so its
+    /// ten minutes are counted from the beats that began them. A switch due on
+    /// a pass that carries an order waits for the next one.
+    /// </remarks>
+    private bool BuildChange(BoardBuildWatch watch, RunnerInstructionDto? told, Restarts restart, Tally tally, bool ordered)
+    {
+        if (!restart.On || runtime.Launcher is not { } launcher || runtime.NightStatePath is not { Length: > 0 } statePath)
+            return false;
+
+        var now = runtime.Clock.GetUtcNow();
+        if (watch.Judge(told?.BoardBuild, told is not null, now) != BuildVerdict.Switch || ordered) return false;
+
+        var build = told!.BoardBuild!;
+
+        // A launcher from before this one cannot take a request, so there is
+        // nothing to write and nothing to restart for. It says so once.
+        if (!launcher.Needs(2, "changing build", runtime.Say.Line)) return false;
+
+        var request = new BuildRequest(
+            runtime.Settings.Base, build.Revision, build.Sequence, build.Download!, build.Sha256!,
+            runtime.Machine.Rid ?? MachineFacts.RidOf(
+                OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(), OperatingSystem.IsLinux(),
+                System.Runtime.InteropServices.RuntimeInformation.OSArchitecture) ?? "");
+
+        try
+        {
+            BuildHandoff.Write(Path.GetDirectoryName(statePath)!, request);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            runtime.Say.Complain(
+                $"hatch: the board is on build {BoardBuildWatch.Short(build.Revision)} but the request for it could not be written - {e.Message}; staying on this build");
+            return false;
+        }
+
+        runtime.Say.Line("");
+        runtime.Say.Line(
+            $"hatch: the board is on build {BoardBuildWatch.Short(build.Revision)} ({build.Sequence}) - restarting to come back as it");
+        runtime.Say.Line($"hatch:   {tally.SoFar()}");
+        return true;
+    }
+
     /// <summary>Answers whether the loop is asking to come back as a newer version of itself.</summary>
     private async Task<bool> LoopAsync(
         string? under, bool quiet, bool mine, bool once, bool abortMerge, int interval, int mergeInterval, Tally tally,
@@ -1528,6 +1585,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var agentDown = new SaidOnce();
         var printed = new Printed { At = runtime.Clock.GetUtcNow() };
         var poll = new Poll();
+        var watch = new BoardBuildWatch(runtime.BuildHold, runtime.Say.Line);
 
         // Its own clock, independent of --interval - the three halves it
         // drives are cheap enough, and worth running often enough, to deserve
@@ -1701,6 +1759,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 await SayStoppedAsync(line, under, mine, tally, once, ct);
                 return false;
             }
+
+            // The board is on another build, and this one was downloaded: ask the
+            // launcher for it, now, while no claim is held. After the stop
+            // conditions, so a night that is ending does not switch; before the
+            // paused branch, so a paused runner follows its board too and no
+            // ticket is taken on the build it is leaving. An order is the one
+            // thing that waits a pass: the beat that read it has cleared it on
+            // the board, so a switch here would drop a person's request.
+            if (BuildChange(watch, told, restart, tally, ordered: told?.Order is not null)) return true;
 
             // A person's order, acted on once: the beat that read it has
             // already cleared it on the board, so a loop that was paused reads
@@ -2252,6 +2319,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // whether that session beats again before calling it a second loop.
         if (beat.Held is not null && !once && tally.Fresh)
             beat = await WaitOutHeldAsync(request, beat, ct);
+
+        // The board answered this build, a refusal included: what failed, if
+        // anything, is not the build. The launcher is watching for exactly
+        // this before it keeps a new build. Written once per process.
+        if (!answeredMarked && (beat.Instruction is not null || beat.Refusal is not null)
+            && runtime.Launcher is not null && runtime.NightStatePath is { Length: > 0 } answeredPath)
+        {
+            answeredMarked = BuildHandoff.MarkAnswered(Path.GetDirectoryName(answeredPath)!, runtime.CliRevision.Revision);
+        }
 
         // The one heartbeat answer that ends a run: this name is already the
         // live runner somewhere else, so nothing here is claimed.

@@ -96,6 +96,16 @@ public sealed record Runtime(
     public LauncherLink? Launcher { get; init; }
 
     /// <summary>
+    /// The builds the launcher will not take just now, from <c>HATCH_BUILD_HOLD</c>.
+    /// Empty when there are none, which is every loop but one that has just
+    /// been through a failed change of build.
+    /// </summary>
+    public BuildHold BuildHold { get; init; } = new();
+
+    /// <summary>One line from the launcher about what it decided at the last change of build, from <c>HATCH_BUILD_NOTE</c>; said once at the start.</summary>
+    public string? BuildNote { get; init; }
+
+    /// <summary>
     /// The launcher version of this build - what a launcher must be at least for
     /// this child to count it current. A test sets it higher to make the child
     /// newer than its launcher, which <c>Launcher.Version</c> cannot be made.
