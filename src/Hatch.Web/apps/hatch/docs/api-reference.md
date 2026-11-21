@@ -294,7 +294,12 @@ date or pull-request-URL shape, and on an illegal parent - a
 cycle, or a type pairing the issue hierarchy refuses - or a task filed or retyped
 under a story or bug in another project whose tasks share one pull request (the
 sentence names the story). An ambition takes no parent (*an ambition takes no
-parent*), and only an epic hangs under one. A patch that retypes an issue to
+parent*), and only an epic hangs under one. A key - never a person - filing or
+moving an epic under an ambition whose every capability's newest verdict is
+holds 400s, naming the ambition and saying nothing is left to carve; one
+already hanging under that ambition may re-send its own `parentKey` with no
+refusal, and an ambition with no capabilities, or with a capability still
+without a verdict, is never refused this way. A patch that retypes an issue to
 `ambition` 400s while the issue has a parent (unless the same patch clears
 `ParentKey`) or a child that is not an epic, naming the first such child by key;
 one that retypes an ambition 400s while a child could not hang under the new
