@@ -92,8 +92,8 @@ a Hatch with its wall off, `hatch config` offers `Create a runner on this
 board? [Y/n]`, asks `Runner name [<suggestion>]`, creates the runner, writes
 its secret as the key and prints `created runner <name>`; a taken name is
 refused and nothing is written, and the runner has no owner until an admin sets
-one. Against a Hatch with its wall on, it says there is no key, and an admin
-creates the runner on the Runners page; then `hatch config --key <key>`. A loop
+one. Against a Hatch with its wall on, it says there is no key, and you
+create the runner on the Runners page; then `hatch config --key <key>`. A loop
 needs a key either way. Never put it in a repository.
 
 - `--show` says what is set and which layer each value came from, including an
