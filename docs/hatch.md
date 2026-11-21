@@ -10576,6 +10576,15 @@ its own, and starts it again when it exits 75. It rebuilds nothing, since a
 download has no source beside it. A build nobody stamped, a loop that already has
 a `HATCH_NIGHT_STATE`, and the container image's build never become one.
 
+The launcher's version rides the child's beat as `launcherVersion`, and the board
+compares it with the launcher version of its own build
+([`LauncherVersion.Current`](../src/Hatch.Contracts/LauncherVersion.cs), the one
+number the launcher's own constant is set from) and answers `launcherBehind`.
+The page only reads that answer, as a **Launcher behind** badge beside **Behind**
+and **Rebuild**. The version rises only when the launcher learns something, so a
+deploy alone never lights it; a child that finds its launcher older than its own
+build says so once on its first start of the night.
+
 So: a console program in the solution, compiled against
 `src/Hatch.Contracts` — the same records the API serves, so a fixture that
 goes stale does not quietly deserialise into a dispatch with empty fields, it

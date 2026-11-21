@@ -1316,6 +1316,98 @@ public class RunnersControllerTests
         Assert.Equal(RunnerBoardDrift.Unknown, runner.SourceDrift);
     }
 
+    // ---- Launcher behind ----
+
+    [Fact]
+    public async Task LauncherBehind_IsTrueWhenTheLauncherTrailsTheBoardsBuild()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(LauncherVersion: 0));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(0, runner.LauncherVersion);
+        Assert.True(runner.LauncherBehind);
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(LauncherVersion.Current, false)]
+    [InlineData(LauncherVersion.Current + 1, false)]
+    public async Task LauncherBehind_IsTheBoardsOwnComparison(int version, bool behind)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(LauncherVersion: version));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(version, runner.LauncherVersion);
+        Assert.Equal(behind, runner.LauncherBehind);
+    }
+
+    [Fact]
+    public async Task LauncherBehind_IsFalseForABeatThatNamesNoLauncher()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.LauncherVersion);
+        Assert.False(runner.LauncherBehind);
+    }
+
+    [Fact]
+    public async Task ALauncherVersion_IsStoredOnTheRow()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(LauncherVersion: 0));
+
+        Assert.Equal(0, (await h.RowAsync()).LauncherVersion);
+    }
+
+    [Fact]
+    public async Task ALaterBeatWithNoLauncher_LeavesThePriorVersionAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", LauncherVersion: 0));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(0, runner.LauncherVersion);
+        Assert.True(runner.LauncherBehind);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeatNamingNoLauncher_ClearsAPreviouslyReportedOne()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", LauncherVersion: 0));
+
+        // A restart by a script, or by a launcher that no longer says: the new
+        // process never heard of the old launcher, and must not keep its badge.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.LauncherVersion);
+        Assert.False(runner.LauncherBehind);
+    }
+
+    [Fact]
+    public async Task ALaterBeatUnderAConfigRow_StillProjectsTheLauncher()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, LauncherVersion: 0));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "3"));
+
+        // A config row makes the projection a hand-built copy of the beat's
+        // row; a field that copy misses would read as never reported.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(3, runner.MaxRuns);
+        Assert.Equal(0, runner.LauncherVersion);
+        Assert.True(runner.LauncherBehind);
+    }
+
     // ---- The board's build, on the reply ----
 
     private const string BoardSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -6135,6 +6227,27 @@ public class RunnersControllerTests
 
         var session = Assert.Single((await h.OneAsync()).Sessions);
         Assert.Equal("ghcr.io/o/r/hatch-runner:abc123", session.Image);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_NamingALauncher_StoresAndProjectsIt()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.CoreDb.ApiKeys.Add(new EfApiKey
+        {
+            Id = h.Caller.Key!.Id, Name = h.Caller.Key.Name, Hash = h.Caller.Key.Hash, Prefix = h.Caller.Key.Prefix, CreatedAt = Now,
+        });
+        await h.CoreDb.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, LauncherVersion: 0));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(0, row.LauncherVersion);
+
+        // The session carries the raw number; only the runner answers behind.
+        var session = Assert.Single((await h.OneAsync()).Sessions);
+        Assert.Equal(0, session.LauncherVersion);
     }
 
     [SkippableFact]

@@ -207,6 +207,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   builtAt: null,
   boardDrift: 'Unknown',
   sourceDrift: 'Unknown',
+  launcherBehind: false,
   ...over,
 });
 

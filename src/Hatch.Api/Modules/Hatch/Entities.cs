@@ -4267,6 +4267,15 @@ public class EfHatchRunner
     public int? SourceSequence { get; set; }
 
     /// <summary>
+    /// The version of the launcher that started this runner's loop, from its beat.
+    /// A fact about the running process: written when a beat names one, and
+    /// cleared by a fresh loop beat that names none. Null for a loop with no
+    /// launcher, or a runner built before the field existed. Whether it is behind
+    /// is never stored: the board compares it with its own build's on every read.
+    /// </summary>
+    public int? LauncherVersion { get; set; }
+
+    /// <summary>
     /// The tags this runner carries, newline-joined - a fact about the
     /// running process, overwritten on every heartbeat that names any, the
     /// same as <see cref="Remotes"/>.
@@ -4713,6 +4722,9 @@ public class EfHatchRunnerSession
 
     /// <summary>The commit count of <see cref="SourceRevision"/>, as <see cref="EfHatchRunner.SourceSequence"/>.</summary>
     public int? SourceSequence { get; set; }
+
+    /// <summary>The launcher version this session was started under, as <see cref="EfHatchRunner.LauncherVersion"/>.</summary>
+    public int? LauncherVersion { get; set; }
 
     /// <summary>The project keys this session was bound to, as <see cref="EfHatchRunner.Projects"/>.</summary>
     public string? Projects { get; set; }

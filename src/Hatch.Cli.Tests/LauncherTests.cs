@@ -388,6 +388,45 @@ public sealed class LauncherTests : IDisposable
     }
 
     [Fact]
+    public void A_launcher_older_than_the_build_gets_one_line_naming_its_path_and_the_fix()
+    {
+        var link = LauncherLink.From(Env((Launcher.VersionVariable, "1"), (Launcher.PathVariable, "/opt/hatch")))!;
+
+        var line = link.StaleLine(2);
+
+        Assert.NotNull(line);
+        Assert.DoesNotContain("\n", line, StringComparison.Ordinal);
+        Assert.Contains("/opt/hatch", line, StringComparison.Ordinal);
+        Assert.Contains("version 1", line, StringComparison.Ordinal);
+        Assert.Contains("2", line, StringComparison.Ordinal);
+        Assert.Contains("download hatch again", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_launcher_that_gave_no_path_is_still_named_as_unknown()
+    {
+        var link = LauncherLink.From(Env((Launcher.VersionVariable, "1")))!;
+
+        Assert.Contains("(path unknown)", link.StaleLine(2), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("2", 2)]
+    [InlineData("3", 2)]
+    public void A_launcher_level_with_or_ahead_of_the_build_has_nothing_to_say(string version, int own)
+    {
+        var link = LauncherLink.From(Env((Launcher.VersionVariable, version), (Launcher.PathVariable, "/opt/hatch")))!;
+
+        Assert.Null(link.StaleLine(own));
+    }
+
+    [Fact]
+    public void The_launchers_version_is_the_one_number_the_board_compares_against()
+    {
+        Assert.Equal(Hatch.Contracts.LauncherVersion.Current, Launcher.Version);
+    }
+
+    [Fact]
     public void A_launcher_at_the_version_a_thing_needs_is_enough()
     {
         var said = new List<string>();

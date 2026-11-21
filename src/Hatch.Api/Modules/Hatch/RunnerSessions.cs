@@ -219,6 +219,7 @@ public sealed class RunnerSessions(Runners runners)
             BuiltAt: session.BuiltAt,
             SourceRevision: session.SourceRevision,
             SourceSequence: session.SourceSequence,
+            LauncherVersion: session.LauncherVersion,
             Projects: session.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
             RefusesDangerous: session.RefusesDangerous,
             OrderKind: session.OrderKind,

@@ -2007,6 +2007,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("LauncherVersion")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Line")
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
@@ -2280,6 +2283,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<DateTimeOffset>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("LauncherVersion")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Line")
                         .HasMaxLength(512)

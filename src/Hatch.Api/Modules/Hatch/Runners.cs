@@ -172,7 +172,10 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             AcceleratorMemoryBytes: runner.AcceleratorMemoryBytes,
             AcceleratorDeviceCount: runner.AcceleratorDeviceCount,
             AcceleratorBackend: runner.AcceleratorBackend,
-            Pulling: runner.Pulling);
+            Pulling: runner.Pulling,
+            LauncherVersion: runner.LauncherVersion,
+            // The board makes the comparison; the page only reads the answer.
+            LauncherBehind: runner.LauncherVersion is { } launcher && launcher < LauncherVersion.Current);
     }
 
     /// <summary>
@@ -267,6 +270,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         BuiltAt = beat.BuiltAt,
         SourceRevision = beat.SourceRevision,
         SourceSequence = beat.SourceSequence,
+        LauncherVersion = beat.LauncherVersion,
         Tags = beat.Tags,
         Models = beat.Models,
         Has = beat.Has,
