@@ -5448,6 +5448,183 @@ public class RunnersControllerTests
         Assert.Equal(Runner, rotated.Runner.Name);
     }
 
+    // ---- A user's own runner ----
+
+    [Fact]
+    public async Task Rotate_AUserOnTheirOwnRunner_Succeeds_NoStore_AndTheNewSecretVerifies()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var key = await h.AddKeyAsync(Runner, h.PersonId);
+        var hashBefore = key.Hash.ToArray();
+
+        var rotated = Value(await h.RotateAsync(Runner));
+
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.NotEqual(hashBefore, after.Hash);
+        Assert.NotNull(after.RotatedAt);
+        var verified = await h.Keys.VerifyApiKeyAsync(rotated.Secret, default);
+        Assert.Equal(key.Id, verified?.Id);
+    }
+
+    [Fact]
+    public async Task Rotate_AUserOnSomeoneElsesRunner_Is403NamingTheOwner_AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        var hashBefore = key.Hash.ToArray();
+
+        var refused = await h.RotateAsync(Runner);
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Contains("Alice", Reason(refused.Result), StringComparison.Ordinal);
+        Assert.Contains(Runner, Reason(refused.Result), StringComparison.Ordinal);
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(hashBefore, after.Hash);
+        Assert.Null(after.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_AUserOnARunnerThatBelongsToNobody_Is403_AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var key = await h.AddKeyAsync(Runner);
+        var hashBefore = key.Hash.ToArray();
+
+        var refused = await h.RotateAsync(Runner);
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(hashBefore, after.Hash);
+        Assert.Null(after.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_AnAdmin_MayRotateSomeoneElsesAndAnOwnerlessRunner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+        await h.AddKeyAsync("other:/ownerless");
+
+        Value(await h.RotateAsync(Runner));
+        Value(await h.RotateAsync("other:/ownerless"));
+    }
+
+    [Fact]
+    public async Task Rotate_WithTheWallOff_MayRotateAnOwnerlessAndSomeoneElsesRunner()
+    {
+        var h = await NewAsync(wall: false);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+        await h.AddKeyAsync("other:/ownerless");
+
+        Value(await h.RotateAsync(Runner));
+        Value(await h.RotateAsync("other:/ownerless"));
+    }
+
+    [Fact]
+    public async Task Rotate_AnOwnerOfARevokedKey_Is409_AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var key = await h.AddKeyAsync(Runner, h.PersonId);
+        await h.RevokeKeyAsync(key.Id);
+        var hashBefore = (await h.Keys.ListApiKeysAsync(default)).Single().Hash.ToArray();
+
+        var refused = await h.RotateAsync(Runner);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(hashBefore, after.Hash);
+        Assert.Null(after.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_AStrangerOnARevokedKey_Is403_NotTheKeysState()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        await h.RevokeKeyAsync(key.Id);
+
+        var refused = await h.RotateAsync(Runner);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsAssignableFrom<ObjectResult>(refused.Result).StatusCode);
+    }
+
+    [Fact]
+    public async Task Revoke_AUserOnTheirOwnRunner_Succeeds_TheRunnerStaysListed_AndASecondRevokeChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        Assert.IsType<NoContentResult>(await h.RevokeAsync(Runner));
+
+        var first = Assert.Single(await h.Keys.ListApiKeysAsync(default)).RevokedAt;
+        Assert.NotNull(first);
+        Assert.Equal(Runner, Assert.Single(await h.ListAllAsync()).Name);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        await h.RevokeAsync(Runner);
+
+        Assert.Equal(first, Assert.Single(await h.Keys.ListApiKeysAsync(default)).RevokedAt);
+    }
+
+    [Fact]
+    public async Task Revoke_AUserOnSomeoneElsesRunner_Is403NamingTheOwner_AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var refused = await h.RevokeAsync(Runner);
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Contains("Alice", Reason(refused), StringComparison.Ordinal);
+        Assert.Contains(Runner, Reason(refused), StringComparison.Ordinal);
+        Assert.Null(Assert.Single(await h.Keys.ListApiKeysAsync(default)).RevokedAt);
+    }
+
+    [Fact]
+    public async Task Revoke_AUserOnARunnerThatBelongsToNobody_Is403_AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner);
+
+        var refused = await h.RevokeAsync(Runner);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsAssignableFrom<ObjectResult>(refused).StatusCode);
+        Assert.Null(Assert.Single(await h.Keys.ListApiKeysAsync(default)).RevokedAt);
+    }
+
+    [Fact]
+    public async Task Revoke_AnAdmin_MayRevokeSomeoneElsesAndAnOwnerlessRunner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+        await h.AddKeyAsync("other:/ownerless");
+
+        Assert.IsType<NoContentResult>(await h.RevokeAsync(Runner));
+        Assert.IsType<NoContentResult>(await h.RevokeAsync("other:/ownerless"));
+    }
+
+    [Fact]
+    public async Task Revoke_WithTheWallOff_MayRevokeAnOwnerlessAndSomeoneElsesRunner()
+    {
+        var h = await NewAsync(wall: false);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+        await h.AddKeyAsync("other:/ownerless");
+
+        Assert.IsType<NoContentResult>(await h.RevokeAsync(Runner));
+        Assert.IsType<NoContentResult>(await h.RevokeAsync("other:/ownerless"));
+    }
+
     [Fact]
     public async Task SetOwner_SetsAndClearsTheKeysOwner()
     {

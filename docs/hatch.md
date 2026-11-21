@@ -4339,10 +4339,12 @@ reads the same way, whichever repository it binds.
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
 key's `OwnerPersonId` to decide whose tickets it may take, so a key that could
 set its own owner could simply say it is whoever holds the tickets it wants.
-`RunnersController`'s minting, revoking and re-owning routes are each
-`[RequireAdmin]` with no `AcceptKey` — not one route carved out for a key —
-so no key can mint a runner, revoke one, or change whose it is; a person does
-that, at the Runners page, on purpose.
+`RunnersController`'s minting and re-owning routes are each `[RequireAdmin]`
+with no `AcceptKey`; its rotating and revoking routes ask for the runner's
+owner or an admin (`RequireRole(User)` and an ownership check, not
+`CanControl`, which passes for a runner that belongs to nobody) and take no key
+either — not one route carved out for a key — so no key can mint a runner,
+revoke one, rotate one, or change whose it is; a person does that, on purpose.
 
 **And so is the WIP section and its limits.** Which columns are work in
 progress, and how much of each slice of the board may sit across them at once,
@@ -11858,7 +11860,7 @@ so the trail says who did what without anybody being asked to record it.
   If work should be parked, say so on the ticket.
 - **Edit a playbook.** The API refuses it, and the refusal is deliberate; if a
   playbook is wrong, say so on the ticket and stop.
-- **Mint and revoke keys**, and everything else behind a plain `[RequireAdmin]`.
+- **Mint keys**, and everything else behind a plain `[RequireAdmin]`.
 - **Answer a question**, which is the next section.
 
 ### When a decision is not the implementer's
