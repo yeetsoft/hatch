@@ -51,8 +51,16 @@ public sealed record RunnerDeclaration(
     Guid? OwnerPersonId = null,
     string StatusMode = RunnerStatusMode.All,
     IReadOnlyList<int>? StatusIds = null,
-    bool Preferred = false)
+    bool Preferred = false,
+    SigningDeclaration? SigningAnswer = null)
 {
+    /// <summary>
+    /// Whether the runner signs its commits, as <see cref="Dispatch.SigningFold"/> judges it. A
+    /// declaration is always judged: a runner that never said reads as having
+    /// no answer, and is held off a project that allows only signed commits.
+    /// </summary>
+    public SigningDeclaration Signing => SigningAnswer ?? new SigningDeclaration(Name, null, null, true);
+
     /// <summary>What this runner refuses - models and columns - as a pass judges it.</summary>
     public RunnerRefusal ToRefusal() => new(Name, Refused, StatusMode, StatusIds);
 
@@ -161,7 +169,20 @@ public sealed record RunnerDeclaration(
             runner.OwnerPersonId,
             config?.StatusMode ?? RunnerStatusMode.All,
             config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds),
-            config?.Preferred ?? false);
+            config?.Preferred ?? false,
+            SigningOf(runner.Name, live));
+    }
+
+    /// <summary>
+    /// What a runner's live loop sessions say about signing its commits: the worst of
+    /// their answers, see <see cref="RunnerSigning.Worst"/>. Always judged - no answer is
+    /// an answer, that the runner has not said. Shared by this declaration and
+    /// <see cref="RunnersController"/>'s page, so the two cannot drift apart.
+    /// </summary>
+    internal static SigningDeclaration SigningOf(string runner, IEnumerable<EfHatchRunnerSession> live)
+    {
+        var worst = RunnerSigning.Worst(live.Where(s => s.Kind == EfHatchRunner.LoopKind).Select(s => (s.Signing, s.SigningWhy)));
+        return new SigningDeclaration(runner, worst?.State, worst?.Why, true);
     }
 
     /// <summary>
