@@ -3205,28 +3205,6 @@ export interface WorkLogByPlaybook {
   rows: WorkLogByPlaybookRow[];
 }
 
-// ---- Overnight ----
-
-/** The newest night the loop ran, and what landed in it - `OvernightController`'s
-    whole read, already ordered biggest deliveries first. */
-export interface OvernightDto {
-  from: string | null;
-  to: string | null;
-  count: number;
-  rows: OvernightRowDto[];
-  unseen: number;
-}
-
-/** One issue that landed that night, with how many issues sit beneath it. */
-export interface OvernightRowDto {
-  key: string;
-  type: IssueType;
-  title: string;
-  projectKey: string;
-  landedAt: string;
-  descendantCount: number;
-}
-
 // ---- Changelog ----
 
 /** The newest window of days that shipped something - `GET /api/changelog`'s whole read. */

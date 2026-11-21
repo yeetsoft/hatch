@@ -275,6 +275,6 @@ public sealed class ChangelogCommand(Cli cli)
         return string.IsNullOrEmpty(note) ? null : note.Split('\n')[0].Trim();
     }
 
-    /// <summary>`none beneath`, `1 beneath`, `4 beneath` - <c>beneathLabel</c>'s own wording, <c>apps/hatch/src/lib/overnight.ts:28</c>.</summary>
+    /// <summary>`none beneath`, `1 beneath`, `4 beneath` - <c>beneathLabel</c>'s own wording, <c>apps/hatch/src/lib/changelogReport.ts:132</c>.</summary>
     private static string BeneathLabel(int descendantCount) => descendantCount == 0 ? "none beneath" : $"{descendantCount} beneath";
 }

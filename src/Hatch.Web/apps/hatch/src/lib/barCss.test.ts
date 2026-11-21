@@ -1,7 +1,7 @@
-/* The phone-width bar: the battery beside an attention and an overnight
-   control that carry no min-width at phone width, all three 44px on a coarse
-   pointer, the attention control's two states still measuring the same, and
-   its four pills folded into one total.
+/* The phone-width bar: the battery beside an attention control that carries
+   no min-width at phone width, both 44px on a coarse pointer, the attention
+   control's two states still measuring the same, and its four pills folded
+   into one total.
    Read as text, the way touchCss.test.ts, wipCss.test.ts and
    confirmationsCss.test.ts read App.css - there is no DOM in this runner to
    lay anything out in. */
@@ -72,7 +72,7 @@ function declarationsWithin(mediaQuery: string, selector: string, required = tru
     block's text removed first (same depth-counting walk as declarationsWithin,
     discarding the block instead of reading it) - copied from
     statusStepCss.test.ts (and topBarCss.test.ts). Needed once the phone query
-    sets `.hatch-attention-control` and `.hatch-overnight-control` too:
+    sets `.hatch-attention-control` too:
     declarationsOf would merge the phone block's `min-width: auto` straight
     over the desk's `136px`, since both rules name the same selector and the
     phone block comes later in the file. */
@@ -111,15 +111,13 @@ function declarationsOutsideMedia(selector: string): Record<string, string> {
   return props;
 }
 
-describe('the attention and overnight controls at phone width', () => {
+describe('the attention control at phone width', () => {
   it('reset to min-width: auto inside the phone query', () => {
     expect(declarationsWithin('max-width: 40rem', '.hatch-attention-control')['min-width']).toBe('auto');
-    expect(declarationsWithin('max-width: 40rem', '.hatch-overnight-control')['min-width']).toBe('auto');
   });
 
   it('still set min-width: 136px outside it', () => {
     expect(declarationsOutsideMedia('.hatch-attention-control')['min-width']).toBe('136px');
-    expect(declarationsOutsideMedia('.hatch-overnight-control')['min-width']).toBe('136px');
   });
 
   it('still measures the same resting as asking - neither state sets its own width', () => {
@@ -149,10 +147,9 @@ describe('the attention pills at phone width', () => {
   });
 });
 
-describe('the battery, the attention control and the overnight control on a coarse pointer', () => {
-  it('are all at least 44px tall, at every viewport width', () => {
+describe('the battery and the attention control on a coarse pointer', () => {
+  it('are both at least 44px tall, at every viewport width', () => {
     expect(declarationsOf('.hatch-battery')['min-height']).toBe('44px');
     expect(declarationsOf('.hatch-attention-control')['min-height']).toBe('44px');
-    expect(declarationsOf('.hatch-overnight-control')['min-height']).toBe('44px');
   });
 });

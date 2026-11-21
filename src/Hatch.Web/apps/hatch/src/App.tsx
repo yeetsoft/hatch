@@ -8,10 +8,8 @@ import { ConsoleProvider } from './components/ConsoleProvider';
 import { NavAttention } from './components/NavAttention';
 import { NavBuild } from './components/NavBuild';
 import { NavLocalPerson } from './components/NavLocalPerson';
-import { NavOvernight } from './components/NavOvernight';
 import { NavSetupPrompt } from './components/NavSetupPrompt';
 import { NavUtilization } from './components/NavUtilization';
-import { OvernightProvider } from './components/OvernightProvider';
 import { PrimaryNav } from './components/PrimaryNav';
 import { PullToRefresh } from './components/PullToRefresh';
 import { ScopeControl } from './components/ScopeControl';
@@ -41,7 +39,6 @@ import { ImportPage } from './pages/ImportPage';
 import { DocsPage } from './pages/DocsPage';
 import { RunnerPage } from './pages/RunnerPage';
 import { GoosePage } from './pages/GoosePage';
-import { OvernightPage } from './pages/OvernightPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
@@ -57,11 +54,9 @@ export function App() {
   return (
     <MeProvider>
       <AttentionProvider>
-        <OvernightProvider>
-          <ScopeProvider>
-            <AppShell />
-          </ScopeProvider>
-        </OvernightProvider>
+        <ScopeProvider>
+          <AppShell />
+        </ScopeProvider>
       </AttentionProvider>
     </MeProvider>
   );
@@ -120,10 +115,6 @@ function AppShell() {
                     reading - a fresh install, and anybody who has never run
                     one, are both in that state. */}
                 <NavUtilization />
-                {/* What the loop landed overnight, this reader's own unread
-                    mark - a thing to go and look at, not to do, which is why it
-                    sits beside the attention control rather than inside it. */}
-                <NavOvernight />
                 {/* Last, at the right end of the bar: whether the loop is
                     waiting on a person. Unlike the one above it this always draws
                     something - "nothing is waiting" is an answer, and it is the
@@ -211,7 +202,6 @@ function AppShell() {
                 <Route index element={<RunnersIndex />} />
                 <Route path=":name" element={<RunnerDetail />} />
               </Route>
-              <Route path="/overnight" element={<OvernightPage />} />
               <Route path="/goose" element={<GoosePage />} />
               <Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />
               <Route path="/history" element={<HistoryPage />} />
