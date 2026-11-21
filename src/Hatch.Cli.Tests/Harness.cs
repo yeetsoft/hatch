@@ -1043,6 +1043,7 @@ public sealed class Harness : IDisposable
                 Has = settings.Has,
                 Tags = tags ?? [],
                 Models = () => Runtime.AdvertisedModels() ?? [],
+                Signing = () => Runtime.SigningAnswer(),
                 Agent = Runtime.Adapter.Id,
             },
             MakeClone = Clone.Factory,
@@ -1056,6 +1057,7 @@ public sealed class Harness : IDisposable
         };
 
         Runtime.Board.Models = () => Runtime.AdvertisedModels() ?? [];
+        Runtime.Board.Signing = () => Runtime.SigningAnswer();
         Runtime.Board.Agent = Runtime.Adapter.Id;
     }
 

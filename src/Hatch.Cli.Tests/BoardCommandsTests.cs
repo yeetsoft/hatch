@@ -352,6 +352,61 @@ public sealed class BoardCommandsTests
     private static AttentionDto Attention(IReadOnlyList<WaitingOnARunnerDto>? waiting = null) =>
         new([], 0, [], [], WaitingOnARunner: waiting);
 
+    [Theory]
+    [InlineData("works", null, "signing=works")]
+    [InlineData("off", null, "signing=off")]
+    [InlineData("fails", "no key & more", "signing=fails&signingWhy=no%20key%20%26%20more")]
+    public async Task The_queue_read_carries_the_signing_answer(string state, string? why, string expected)
+    {
+        using var h = new CliHarness();
+        h.Board.Signing = () => (state, why);
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/attention", Attention([]));
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        var query = h.Wire.To("GET", "/api/work/queue")[0].Query;
+        Assert.Contains(expected, query);
+        if (state != "fails") Assert.DoesNotContain("signingWhy=", query);
+    }
+
+    [Fact]
+    public async Task The_queue_read_with_no_signing_answer_carries_no_parameter()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/attention", Attention([]));
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.DoesNotContain("signing", h.Wire.To("GET", "/api/work/queue")[0].Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_issue_waiting_for_a_runner_that_signs_reads_as_a_sentence()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), null),
+        });
+        h.Wire.Json("GET", "/api/attention", Attention(
+        [
+            new WaitingOnARunnerDto("AER-2", "AER-2's title", "task", "In Progress", "no live runner signs its commits"),
+        ]));
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            1 issue waits for a runner that signs its commits
+            AER-1  [task]  In Progress  -> In Review
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
     /// <summary>
     /// The leading lines count and group the same way <see cref="Digest.Of"/> does,
     /// over <see cref="WaitingOnARunnerDto.Missing"/> rather than a fold reason -

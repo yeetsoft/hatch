@@ -84,7 +84,18 @@ public sealed record Runtime(
             ? SigningCache.LatestUnder(workspace)
             : [];
 
-        var answer = RunnerSigning.Worst(served.Concat(cloned).Select(c => (
+        return Fold(served.Concat(cloned));
+    }
+
+    /// <summary>
+    /// The worst of some signing checks, as the board is told: <c>fails</c>, then
+    /// <c>off</c>, then <c>works</c>. Null with no check. The reason, beside
+    /// <c>fails</c> only, is one line, masked and at most
+    /// <see cref="RunnerSigning.MaxWhyLength"/> characters.
+    /// </summary>
+    public static (string State, string? Why)? Fold(IEnumerable<SigningCheck> checks)
+    {
+        var answer = RunnerSigning.Worst(checks.Select(c => (
             (string?)(c.State switch { Signing.Works => RunnerSigning.Works, Signing.Fails => RunnerSigning.Fails, _ => RunnerSigning.Off }),
             (string?)c.Why)));
         if (answer is not { } worst) return null;
@@ -224,6 +235,14 @@ public sealed record Runtime(
     }
 
     /// <summary>
+    /// Asks every checkout this run serves whether git can sign there, at once and
+    /// afresh, so <see cref="SigningAnswer"/> has something to say before the first
+    /// read a dispatch is judged on.
+    /// </summary>
+    public async Task<IReadOnlyList<(string Path, SigningCheck Check)>> AskSigningAsync(CancellationToken ct) =>
+        await Task.WhenAll(Checkouts.Select(async c => (c.Path, Check: await CanSignAsync(c.Path, ct, fresh: true))));
+
+    /// <summary>
     /// One line for each checkout this run serves where git cannot sign, said at
     /// the start: what git said, and that commits there will be unsigned where a
     /// project allows it. A checkout git can sign in, or is not set to sign in,
@@ -233,7 +252,7 @@ public sealed record Runtime(
     /// </summary>
     public async Task<IReadOnlyList<(string Path, SigningCheck Check)>> SayCannotSignAsync(CancellationToken ct)
     {
-        var asked = await Task.WhenAll(Checkouts.Select(async c => (c.Path, Check: await CanSignAsync(c.Path, ct, fresh: true))));
+        var asked = await AskSigningAsync(ct);
         foreach (var (path, check) in asked.Where(a => a.Check.Fails))
             Say.Complain($"hatch: {path} - git cannot sign commits here ({check.Why}), so commits will be unsigned where a project allows it");
 
@@ -312,6 +331,7 @@ public sealed record Runtime(
         {
             Has = Has,
             Models = () => AdvertisedModels() ?? [],
+            Signing = () => SigningAnswer(),
             Agent = Adapter.Id,
         },
         MakeClone = (remote, path) => new GitClone(remote, path),

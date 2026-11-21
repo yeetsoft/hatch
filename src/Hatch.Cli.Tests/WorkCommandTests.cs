@@ -186,6 +186,53 @@ public sealed class WorkCommandTests
     }
 
     [Theory]
+    [InlineData(Signing.Works, null, "signing=works")]
+    [InlineData(Signing.Off, null, "signing=off")]
+    [InlineData(Signing.Fails, "no secret key & more", "signing=fails&signingWhy=no%20secret%20key%20%26%20more")]
+    public async Task The_named_read_carries_what_this_machine_signs_asked_before_the_read(Signing state, string? why, string expected)
+    {
+        using var h = new Harness();
+        h.CanSign = new SigningCheck(state, why);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        // The board reads the answer afresh at each read, so it is there only if the probe came first.
+        var call = h.Wire.To("GET", "/api/work/AER-1")[0];
+        Assert.Contains(expected, call.Query);
+        if (state != Signing.Fails) Assert.DoesNotContain("signingWhy=", call.Query);
+    }
+
+    [Fact]
+    public async Task A_named_dry_run_asks_before_it_reads()
+    {
+        using var h = new Harness();
+        h.CanSign = new SigningCheck(Signing.Works);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--dry-run"], default));
+
+        Assert.NotEmpty(h.SigningAsked);
+        Assert.Contains("signing=works", h.Wire.To("GET", "/api/work/AER-1")[0].Query);
+    }
+
+    [Fact]
+    public async Task An_unnamed_dry_run_asks_before_it_reads_the_next_issue()
+    {
+        using var h = new Harness();
+        h.CanSign = new SigningCheck(Signing.Fails, "no agent");
+        h.Wire.Json("GET", "/api/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        Assert.NotEmpty(h.SigningAsked);
+        Assert.Contains("signing=fails&signingWhy=no%20agent", h.Wire.To("GET", "/api/work/next")[0].Query);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task The_next_read_carries_the_dangerous_refusal(bool refuses)
