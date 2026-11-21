@@ -150,8 +150,9 @@ An unanswered question shows in four places, and a hold-level one on an
 ambition's tree in a fifth:
 
 - The **Ballot**, at `/ballot`, the first place a question shows. It is a link
-  beside **Search** in the nav bar, a row straight after Search in the phone
-  menu, and **Go to Ballot** in the console. It shows one question at a time,
+  beside the magnifying glass that opens **Search** in the nav bar, a row
+  straight after Search in the phone menu, and **Go to Ballot** in the
+  console. It shows one question at a time,
   the one holding the most work first, as a card: the issue it is on, what it
   holds and its level, its options with the recommended one first, and **Say
   something else** for the rest. A question the loop decided without you is

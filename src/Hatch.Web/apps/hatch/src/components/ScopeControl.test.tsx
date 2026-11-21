@@ -37,6 +37,13 @@ describe('ScopeControl', () => {
     expect(html).toContain('hatch-menu__trigger--accent');
     expect(html).not.toContain('hatch-scope-control__chip');
     expect(html).toContain('hatch-menu__caret');
+    expect(html.match(/<button[^>]*>/)?.[0] ?? '').toContain('hatch-scope-control--unscoped');
+  });
+
+  it('keeps the pill off the scoped trigger, which wears its chips', () => {
+    const button = trigger(render(three, ['AER'])).match(/<button[^>]*>/)?.[0] ?? '';
+    expect(button).toContain('hatch-scope-control--scoped');
+    expect(button).not.toContain('hatch-scope-control--unscoped');
   });
 
   it('shows one chip for the scoped project and none for the rest', () => {
