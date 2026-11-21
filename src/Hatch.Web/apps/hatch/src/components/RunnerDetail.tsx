@@ -271,15 +271,19 @@ export function RunnerDetail() {
   // so, and a replaced key's sessions are not this screen's to show as live.
   const live = isRetired(runner) ? [] : liveSessions(runner, now);
 
-  // Two badges, two fixes: Behind is a binary older than the board's
+  // Three badges, three fixes: Behind is a binary older than the board's
   // (restart it against a newer deploy), Rebuild one older than its own
-  // checkout's source (make build-hatch there).
+  // checkout's source (make build-hatch there), and Launcher behind a
+  // launcher older than the board's build knows (download hatch again). The
+  // board makes the last comparison; this only reads its answer.
   const behind = runner.boardDrift === 'Behind';
   const rebuild = runner.sourceDrift === 'Behind';
-  const badges = (behind || rebuild) && (
+  const launcherBehind = runner.launcherBehind === true;
+  const badges = (behind || rebuild || launcherBehind) && (
     <>
       {behind && <Badge tone="danger">Behind</Badge>}
       {rebuild && <Badge tone="danger">Rebuild</Badge>}
+      {launcherBehind && <Badge tone="danger">Launcher behind</Badge>}
     </>
   );
 

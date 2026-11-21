@@ -1709,6 +1709,7 @@ public class RunnersController(
             Sequence = request.Sequence,
             SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength),
             SourceSequence = request.SourceSequence,
+            LauncherVersion = request.LauncherVersion,
             BuiltAt = request.BuiltAt,
             Models = models,
             Has = has,
@@ -1789,6 +1790,7 @@ public class RunnersController(
         if (request.Sequence is not null) row.Sequence = request.Sequence;
         if (request.SourceRevision is not null) row.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
         if (request.SourceSequence is not null) row.SourceSequence = request.SourceSequence;
+        if (request.LauncherVersion is not null) row.LauncherVersion = request.LauncherVersion;
         if (request.BuiltAt is not null) row.BuiltAt = request.BuiltAt;
 
         // An empty list clears it: Joined answers null for one.
@@ -1869,6 +1871,11 @@ public class RunnersController(
             // profile (its Ollama moved off the box) must not keep the
             // previous process's.
             row.Image = Fits(request.Image, EfHatchRunner.MaxImageLength);
+
+            // The launcher goes the same way: a loop restarted by a script, or
+            // by a newer launcher, must not keep the old launcher's number and
+            // the badge that comes with it.
+            row.LauncherVersion = request.LauncherVersion;
             row.AcceleratorMemoryBytes = request.AcceleratorMemoryBytes;
             row.AcceleratorDeviceCount = request.AcceleratorDeviceCount;
             row.AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength);
@@ -1948,6 +1955,7 @@ public class RunnersController(
             Sequence = request.Sequence,
             SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength),
             SourceSequence = request.SourceSequence,
+            LauncherVersion = request.LauncherVersion,
             BuiltAt = request.BuiltAt,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
@@ -2024,6 +2032,7 @@ public class RunnersController(
         if (request.Sequence is not null) session.Sequence = request.Sequence;
         if (request.SourceRevision is not null) session.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
         if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
+        if (request.LauncherVersion is not null) session.LauncherVersion = request.LauncherVersion;
         if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
 
         if (request.Os is not null) session.Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength);

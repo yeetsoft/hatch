@@ -3381,6 +3381,13 @@ export interface Runner {
   /** Where this runner's own build sits against its own reported source - the
       checkout's history, not the API. Mirrors RunnerDto's SourceDrift. */
   sourceDrift: RevisionDrift;
+  /** Whether the launcher that started this runner is older than the board's own
+      build's launcher. The board compares; the page reads. Mirrors RunnerDto's
+      LauncherBehind. False where no launcher version was reported. */
+  launcherBehind: boolean;
+  /** The version of the launcher that started this runner, or null for a loop
+      with no launcher. Mirrors RunnerDto's LauncherVersion. */
+  launcherVersion?: number | null;
   /** The api key this entry is minted as, or null for a heartbeat no key claims. */
   apiKeyId?: string | null;
   /** The leading characters of the key's own secret, for display only, or null with no key. */

@@ -343,7 +343,8 @@ public sealed class WorkCommand(Runtime runtime)
                 Sequence: runtime.CliRevision.Sequence,
                 BuiltAt: runtime.CliRevision.BuiltAt,
                 SourceRevision: source?.Sha,
-                SourceSequence: source?.Sequence)),
+                SourceSequence: source?.Sequence,
+                LauncherVersion: runtime.Launcher?.Version)),
             ct);
 
         if (beat.Refusal is { Length: > 0 } refusal)

@@ -923,6 +923,36 @@ public sealed class GoToWorkTests
         Assert.Null(beat.SourceSequence);
     }
 
+    [Fact]
+    public async Task Under_a_launcher_every_heartbeat_carries_its_version()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime with { Launcher = Launched(3) }).RunAsync(["--once"], default);
+
+        var beats = h.Wire.Calls
+            .Where(c => c.Path == "/api/runners/sessions")
+            .Select(c => c.Read<RunnerHeartbeatRequest>())
+            .ToList();
+        Assert.NotEmpty(beats);
+        Assert.All(beats, b => Assert.Equal(3, b.LauncherVersion));
+    }
+
+    [Fact]
+    public async Task With_no_launcher_the_heartbeat_sends_no_version()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == "/api/runners/sessions")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Null(beat.LauncherVersion);
+    }
+
 
     [Theory]
     [InlineData(false)]
@@ -4083,6 +4113,55 @@ public sealed class GoToWorkTests
         OneTicket(launched);
         await new GoToWorkCommand(launched.Supervised with { Launcher = Launched() }).RunAsync(["--max-runs", "1"], default);
         Assert.DoesNotContain(launched.Say.Said, l => l.Contains("no supervisor", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_first_start_under_a_launcher_older_than_its_own_build_says_so_once_naming_the_launcher()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var link = LauncherLink.From(new Dictionary<string, string?>
+        {
+            [Launcher.VersionVariable] = "1",
+            [Launcher.PathVariable] = "/opt/somewhere/hatch",
+        })!;
+
+        await new GoToWorkCommand(h.Supervised with { Launcher = link, BuildLauncherVersion = 2 })
+            .RunAsync(["--max-runs", "1"], default);
+
+        var line = Assert.Single(h.Say.Said, l => l.Contains("the launcher at", StringComparison.Ordinal));
+        Assert.Contains("/opt/somewhere/hatch", line, StringComparison.Ordinal);
+        Assert.Contains("version 1", line, StringComparison.Ordinal);
+        Assert.Contains("download hatch again", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_restart_in_the_same_night_does_not_say_the_launcher_is_old_again()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1 });
+
+        await new GoToWorkCommand(h.Supervised with { Launcher = Launched(1), BuildLauncherVersion = 2 })
+            .RunAsync(["--max-runs", "1"], default);
+
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("the launcher at", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_launcher_level_with_its_build_or_no_launcher_says_nothing()
+    {
+        using var level = new Harness();
+        OneTicket(level);
+        await new GoToWorkCommand(level.Supervised with { Launcher = Launched(2), BuildLauncherVersion = 2 })
+            .RunAsync(["--max-runs", "1"], default);
+        Assert.DoesNotContain(level.Say.Said, l => l.Contains("the launcher at", StringComparison.Ordinal));
+
+        using var none = new Harness();
+        OneTicket(none);
+        await new GoToWorkCommand(none.Supervised with { BuildLauncherVersion = 2 })
+            .RunAsync(["--max-runs", "1"], default);
+        Assert.DoesNotContain(none.Say.Said, l => l.Contains("the launcher at", StringComparison.Ordinal));
     }
 
     [Fact]

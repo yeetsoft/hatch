@@ -1302,6 +1302,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // What the incarnation before a restart handed over, if this is one.
             var carried = NightState.Read(runtime.NightStatePath);
 
+            // A restart always carries state in, so no carried state is exactly the
+            // first start of the night: the one time to say the launcher is old.
+            if (carried is null && runtime.Launcher?.StaleLine(runtime.BuildLauncherVersion) is { } stale)
+                runtime.Say.Line(stale);
+
             var tally = new Tally(runtime.Clock, carried, log: runtime.Say.Line)
             {
                 MaxRuns = maxRuns,
@@ -2216,6 +2221,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 BuiltAt: runtime.CliRevision.BuiltAt,
                 SourceRevision: source?.Sha,
                 SourceSequence: source?.Sequence,
+                // The launcher's own number, on every beat, once ones too: absent
+                // for a loop with no launcher. The board decides whether it is behind.
+                LauncherVersion: runtime.Launcher?.Version,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
                 // Null on a once beat - the API has no kind guard on this one,

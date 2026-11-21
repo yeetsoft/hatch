@@ -5431,6 +5431,17 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// memory. Never null.
 /// </param>
 /// <param name="Pulling">Whether this runner's loop is pulling a model, on the terms <see cref="RunnerHeartbeatRequest.Pulling"/> has.</param>
+/// <param name="LauncherVersion">
+/// The version of the launcher that started this runner's loop, as its last
+/// beat said. Null for a loop with no launcher, and for a runner built before
+/// the field existed.
+/// </param>
+/// <param name="LauncherBehind">
+/// Whether <paramref name="LauncherVersion"/> is lower than the launcher
+/// version of the board's own build (<see cref="Hatch.Contracts.LauncherVersion.Current"/>).
+/// The board makes the comparison; the page only reads it. False where no
+/// version was reported.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -5500,7 +5511,9 @@ public record RunnerDto(
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
     IReadOnlyList<string> Hold = null!,
-    bool Pulling = false)
+    bool Pulling = false,
+    int? LauncherVersion = null,
+    bool LauncherBehind = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -5579,7 +5592,8 @@ public record RunnerSessionDto(
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
-    bool Pulling = false)
+    bool Pulling = false,
+    int? LauncherVersion = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -5796,6 +5810,14 @@ public enum RunnerBoardDrift
 /// True while the loop is pulling a model, written on every loop beat; null
 /// or false clears it. A <c>once</c> beat leaves it alone.
 /// </param>
+/// <param name="LauncherVersion">
+/// The version of the launcher that started this loop, from the child's own
+/// <c>HATCH_LAUNCHER_VERSION</c>. Absent for a loop with no launcher and for a
+/// runner built before the field existed; a board built before it ignores it.
+/// Absent leaves a stored value alone, except on a fresh <c>loop</c> beat, where
+/// it clears it. The board compares it with its own build's launcher version;
+/// the sender never says whether it is behind.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -5849,7 +5871,8 @@ public record RunnerHeartbeatRequest(
     long? AcceleratorMemoryBytes = null,
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
-    bool? Pulling = null);
+    bool? Pulling = null,
+    int? LauncherVersion = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

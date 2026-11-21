@@ -25,9 +25,10 @@ public static class Launcher
     /// <summary>
     /// One whole number, starting at 1. It goes up when the launcher learns to
     /// do something a child or the board should know about, and never when it
-    /// merely changes inside.
+    /// merely changes inside. The number itself lives in <c>Hatch.Contracts</c>,
+    /// so the board compares against the same one.
     /// </summary>
-    public const int Version = 1;
+    public const int Version = Hatch.Contracts.LauncherVersion.Current;
 
     /// <summary>Where the launcher says which version it is. Set by the launcher and by no person.</summary>
     public const string VersionVariable = "HATCH_LAUNCHER_VERSION";
@@ -363,6 +364,17 @@ public sealed class LauncherLink
             System.Globalization.CultureInfo.InvariantCulture, out var version) && version >= 1
             ? new LauncherLink(version, environment.GetValueOrDefault(Launcher.PathVariable) is { Length: > 0 } path ? path : null)
             : null;
+
+    /// <summary>
+    /// The one line a child says at the start of a night when its launcher is
+    /// older than the child's own build, or null when it is level or newer.
+    /// Pure: it says nothing itself, so the caller decides when.
+    /// </summary>
+    /// <param name="own">The launcher version of this build.</param>
+    public string? StaleLine(int own) =>
+        Version >= own
+            ? null
+            : $"hatch: the launcher at {Path ?? "(path unknown)"} is version {Version} and this build is {own} - download hatch again from the Runner page and start it again to bring it up to date";
 
     /// <summary>
     /// Whether the launcher is at least <paramref name="version"/>. Where it is

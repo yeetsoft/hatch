@@ -105,10 +105,16 @@ reads it as text. **Rotate key** and **Revoke** are an admin's too, and neither
 appears on a revoked runner. A **Behind** badge beside the name means a live
 session's own build has fallen behind the board's (restart it against a newer
 deploy), and a **Rebuild** badge means one has fallen behind its own checkout's
-source (run `make build-hatch` in that checkout, or start its supervised loop again, which builds first). The two never mean the same
-thing, and either, both or neither can be true of one runner; a session started
-outside a checkout holding Hatch's source never shows **Rebuild**. A failed save
-in this card says so inside it.
+source (run `make build-hatch` in that checkout, or start its supervised loop again, which builds first). A
+**Launcher behind** badge means the downloaded launcher that started the loop is
+older than the one this board's build knows: start the loop again from a fresh
+download (from the Runner page), and the badge goes with the old process. Where
+the launcher replaces itself, which a later release brings to macOS and Linux,
+starting the loop again is enough. The three never mean the same thing, and any
+of them, all or none can be true of one runner; a session started outside a
+checkout holding Hatch's source never shows **Rebuild**, and a loop with no
+launcher, such as one under `scripts/hatch.sh`, never shows **Launcher behind**.
+A failed save in this card says so inside it.
 
 **What it may work.** **Tags** (one per line; empty is any runner), **Under**
 (an epic to stay inside, like `AER-930`; empty is the whole board, and a link
