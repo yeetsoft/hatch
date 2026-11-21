@@ -126,8 +126,8 @@ verdict lines sit in a grid on a desktop and stack one per line on a phone.
 
 ## The Ambitions page
 
-The Ambitions page, at `/ambitions`, is a top-level link after **Ballot** on
-the nav bar and in the phone menu. It lists every ambition across every
+The Ambitions page, at `/ambitions`, is a top-level link after the magnifying
+glass on the nav bar, and in the phone menu. It lists every ambition across every
 project, in one read, each with where it stands. It follows the tab's
 project scope the same way Plan and Ballot do, and nothing is stored for it.
 

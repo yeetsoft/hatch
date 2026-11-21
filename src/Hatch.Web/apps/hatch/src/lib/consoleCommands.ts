@@ -265,6 +265,8 @@ export function commandList(ctx: CommandContext): Command[] {
         run: (env) => env.openStep('preapproval'),
       },
       goTo(HOME, HOME_LABEL),
+      // The Ballot has no nav row, but stays one search away.
+      goTo('/ballot', 'Ballot'),
       ...navRows(ctx.isAdmin).map((row) => goTo(row.to, row.label)),
       goTo('/settings', 'Settings'),
       { id: 'new-issue', name: 'New issue', hint: 'issue', run: (env) => env.newIssue() },
