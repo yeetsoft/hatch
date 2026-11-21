@@ -1040,8 +1040,6 @@ public class AdminSurfaceTests
     /// <summary>Hatch routes that are the operator's, mirroring <see cref="UserOutsideHatch"/>.</summary>
     private static readonly string[] AdminInHatch =
     [
-        "RunnersController.CreateRunner",
-        "RunnersController.SuggestRunnerName",
         "RunnersController.SetRunnerOwner",
         "ScopesController.GetScopes",
         "ScopesController.GetScope",

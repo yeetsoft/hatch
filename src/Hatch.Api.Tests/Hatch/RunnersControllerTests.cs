@@ -4578,6 +4578,139 @@ public class RunnersControllerTests
         Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
     }
 
+    // ---- A user minting one ----
+
+    private const string OnlyAnAdminSentence = "only an admin may create a runner for somebody else";
+
+    [Fact]
+    public async Task Create_AUserNamingNoOwner_OwnsTheRunnerAndGetsTheSecretUncached()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        Assert.StartsWith("hatch_ak_", minted.Secret, StringComparison.Ordinal);
+        Assert.Equal(h.PersonId, minted.Runner.OwnerPersonId);
+        Assert.Equal(h.PersonId, Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+        Assert.Single(await h.Db.RunnerConfigs.ToListAsync());
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task Create_AUserNamingThemselves_OwnsTheRunnerAndGetsTheSecretUncached()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        h.Actors.AddPerson("Owner", h.PersonId);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: h.PersonId)));
+
+        Assert.StartsWith("hatch_ak_", minted.Secret, StringComparison.Ordinal);
+        Assert.Equal(h.PersonId, minted.Runner.OwnerPersonId);
+        Assert.Equal(h.PersonId, Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task Create_AUserNamingSomebodyElse_IsRefusedAndNothingIsWritten()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var other = h.Actors.AddPerson("Annie");
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: other.Id));
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Equal(OnlyAnAdminSentence, result.Value);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AUserNamingSomebodyWhoDoesNotExist_IsRefusedTheSameWay()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: Guid.NewGuid()));
+
+        // The same 403 as for a person who does, so ids cannot be probed.
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Equal(OnlyAnAdminSentence, result.Value);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AUserWithNoPersonBehindTheCall_IsRefusedRatherThanWritingNoOwner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User, nobody: true);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir"));
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("SUGGEST-NAME")]
+    [InlineData("TOO-LONG")]
+    public async Task Create_AUserWithANameThatCannotBeUsed_IsStillABadRequest(string? name)
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        if (name == "TOO-LONG") name = new string('x', EfApiKey.MaxNameLength + 1);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest(name));
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+    }
+
+    [Fact]
+    public async Task Create_AUserWithANameAlreadyHeld_IsStillAConflict()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        var again = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir"));
+
+        Assert.IsType<ConflictObjectResult>(again.Result);
+        Assert.Single(await h.Keys.ListApiKeysAsync(default));
+    }
+
+    [Fact]
+    public async Task Create_AnAdminNamingSomebodyElse_StillGetsThemAsOwner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var other = h.Actors.AddPerson("Annie");
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: other.Id)));
+
+        Assert.Equal(other.Id, minted.Runner.OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task Create_WithTheWallOff_ReadsNoOwnerRule()
+    {
+        var h = await NewAsync(wall: false);
+        var other = h.Actors.AddPerson("Annie");
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: other.Id)));
+
+        Assert.Equal(other.Id, minted.Runner.OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task Suggest_AUserReadsTheNextCastName()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+
+        Assert.Equal(RunnerCast.All[0], await h.SuggestAsync());
+    }
+
     // ---- Suggesting a name ----
 
     [Fact]

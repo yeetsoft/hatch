@@ -41,8 +41,10 @@ Users**: `pending`, `user` or `admin`.
   `admin`.
 - **`user`** reaches every route on the board.
 - **`admin`** reaches what a user does and adds the operator's own controls:
-  people, sessions, runner keys and the core settings. With the wall up, an
-  admin also controls every runner, not only the ones that work for them.
+  people, sessions and the core settings. With the wall up, an admin also
+  controls every runner, not only the ones that work for them, may create a
+  runner for any person or for nobody, and may change a runner's owner. A user
+  creates, rotates and revokes only their own runners.
 
 The first `admin` is the first new Google identity to sign in while no admin
 exists. The `migrate` log says so, so that you sign in yourself before you
@@ -212,9 +214,10 @@ The heartbeat table a running loop writes is a bridge, joined to the key by
 name, that HA-1937 retires.
 
 - **Where it is minted.** A key is minted only by *creating a runner*
-  (`POST /api/runners`), from **Runners → Create runner**, admin only:
-  no key may mint, rotate, revoke or re-own a key, only a person at that
-  screen. The dialog takes **Name** ("What the audit trail will call it") and
+  (`POST /api/runners`), by a signed-in person - a user for themselves, an
+  admin for anyone: no key may mint, rotate, revoke or re-own a key, only a
+  person. The Runners page's **Create runner** button is not yet shown to a
+  user; the API takes them already. The dialog takes **Name** ("What the audit trail will call it") and
   **Owner** (hint: "Whose tickets this key's --mine reaches. The key sees only
   the projects its owner sees; with nobody, it sees every project."), then
   **Create**. The secret is shown once, on the page, beside the two `hatch config`
@@ -311,6 +314,7 @@ to sign-in instead.
     - `setting an issue's pre-approval level is a person's call, not an agent's`
     - `moving work into a protected column is an owner's or approver's call, not an agent's`
     - `only <name>, or an admin, may control <runner>`
+    - `only an admin may create a runner for somebody else`
 - **What the CLI prints for a `403`** is the API's own reason: a role-gate
   code prints as itself (`hatch: 403 - not_admin`), and a plain-sentence
   refusal prints that sentence (`hatch: 403 - only an owner or approver of
@@ -321,8 +325,11 @@ to sign-in instead.
 
 ## Whose tickets `--mine` reaches
 
-- **Who sets it.** An admin, from a runner's Identity card on the Runners
-  page — a key may never set its own. **Owner**, on the create dialog and the
+- **Who sets it.** A user's own runner is theirs from the moment they create
+  it: with the wall up, a user who creates a runner owns it, and may name only
+  themselves as its owner. Only an admin makes a runner for somebody else or
+  for nobody, and only an admin changes an owner later, from a runner's
+  Identity card on the Runners page — a key may never set its own. **Owner**, on the create dialog and the
   Identity card, lists people only and is pre-selected to the admin at the
   screen; left as is, that admin becomes the key's owner. The **Owner** select
   on an existing, unrevoked row also offers `nobody`; a revoked row shows its

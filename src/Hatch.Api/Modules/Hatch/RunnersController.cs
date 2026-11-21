@@ -123,8 +123,9 @@ public class RunnersController(
 
     /// <summary>
     /// Mints a runner: a key and the config row beside it, answered once with
-    /// the secret. Admin only, and never a key - an agent that could mint
-    /// runners could mint itself more of whatever a runner may do.
+    /// the secret. A signed-in user may mint one for themselves and an admin
+    /// for anyone; never a key - an agent that could mint runners could mint
+    /// itself more of whatever a runner may do.
     /// </summary>
     /// <remarks>
     /// Every refusal comes before anything is written: the gate, the name, the
@@ -133,12 +134,19 @@ public class RunnersController(
     /// the literal route beside <c>{name}</c>, and a runner called that could
     /// not be reached by its own URL.
     ///
+    /// <para>The owner rule is read here and not in the role attribute, which
+    /// reads only a role. Where the wall is on, a caller below admin owns what
+    /// they mint: naming anybody else is a 403, judged before the person is
+    /// looked up so a user cannot probe which ids exist, and a runner with no
+    /// owner would see every project, so none is written for a user. With the
+    /// wall off there are no roles and the rule is not read.</para>
+    ///
     /// <para>The key's uniqueness is <see cref="IAuthService"/>'s to judge, and
     /// it logs the mint too - so there is no logger here. The config row is
     /// written even with no tags, so a minted runner always has one.</para>
     /// </remarks>
     [HttpPost]
-    [RequireRole(PersonRole.Admin)]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<RunnerMintedDto>> CreateRunner([FromBody] CreateRunnerRequest? request, CancellationToken ct)
     {
         if (await NotAPerson(ct) is { } refusal) return refusal;
@@ -151,17 +159,24 @@ public class RunnersController(
             return BadRequest($"\"{name}\" is a route word");
 
         // No owner named defaults to whoever is minting it, or to nobody where
-        // the wall is off, as the key route this was ported from does.
+        // the wall is off, as the key route this was ported from does. Below
+        // admin, with the wall on, the owner is the caller and nobody else.
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var mustOwn = wallEnabled && callerPerson?.Role is not >= PersonRole.Admin;
+
         Guid? ownerPersonId;
         if (request?.OwnerPersonId is { } named)
         {
+            if (mustOwn && callerPerson?.Id != named) return OnlyAnAdminMintsForOthers();
             if (await actors.ResolveAsync(ActorKind.Person, named, ct) is null)
                 return BadRequest("that person does not exist");
             ownerPersonId = named;
         }
         else
         {
-            ownerPersonId = (await caller.PersonAsync(ct))?.Id;
+            if (mustOwn && callerPerson is null) return OnlyAnAdminMintsForOthers();
+            ownerPersonId = (callerPerson ?? await caller.PersonAsync(ct))?.Id;
         }
 
         if (RunnerTags.Normalise(request?.Tags, out var tags) is { } tagsRefusal) return BadRequest(tagsRefusal);
@@ -182,14 +197,16 @@ public class RunnersController(
         Response.Headers.CacheControl = "no-store";
 
         // A new key holds nothing and drives nothing, so nothing is read for it.
-        var wallEnabled = auth.Value.Enabled;
-        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
             wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
+
+    /// <summary>The 403 for a caller below admin who names somebody else as a new runner's owner, or who has no person to default to.</summary>
+    private static ObjectResult OnlyAnAdminMintsForOthers() =>
+        new("only an admin may create a runner for somebody else") { StatusCode = StatusCodes.Status403Forbidden };
 
     /// <summary>
     /// A cast-list name no key and no heartbeat row holds, for the form that
@@ -200,7 +217,7 @@ public class RunnersController(
     /// only asks it <c>Contains</c>. A literal route, so it beats <c>{name}</c>.
     /// </remarks>
     [HttpGet("suggest-name")]
-    [RequireRole(PersonRole.Admin)]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<string>> SuggestRunnerName(CancellationToken ct)
     {
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

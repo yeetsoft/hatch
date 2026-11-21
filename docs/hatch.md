@@ -4363,8 +4363,11 @@ reads the same way, whichever repository it binds.
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
 key's `OwnerPersonId` to decide whose tickets it may take, so a key that could
 set its own owner could simply say it is whoever holds the tickets it wants.
-`RunnersController`'s minting and re-owning routes are each `[RequireAdmin]`
-with no `AcceptKey`; its rotating and revoking routes ask for the runner's
+`RunnersController`'s re-owning route is `[RequireAdmin]` with no `AcceptKey`;
+its minting route asks for a user and checks the owner inside the action, since
+the role attribute reads only a role: with the wall up a user may mint only a
+runner they own, naming anybody else is a `403`, and no request leaves a runner
+with no owner, while an admin may name anyone; its rotating and revoking routes ask for the runner's
 owner or an admin (`RequireRole(User)` and an ownership check, not
 `CanControl`, which passes for a runner that belongs to nobody) and take no key
 either — not one route carved out for a key — so no key can mint a runner,
@@ -11003,12 +11006,11 @@ next heartbeat.
 
 **A runner's name is its key's** — assigned once, at mint, and never chosen
 or recorded by the runner itself. `POST /api/runners`
-(`RunnersController.CreateRunner`, admin-only, no `AcceptKey`) is the only way
-one is minted, from the Runners page's Create runner dialog. The cast list in
+(`RunnersController.CreateRunner`, `RequireRole(User)` and an owner rule, no
+`AcceptKey`) is the only way one is minted, from the Runners page's Create runner dialog. The cast list in
 `src/Hatch.Contracts/runner-names.txt` (main and recurring characters from
 three TV shows, plus the colorful one-offs) only suggests a name there —
-`GET /api/runners/suggest-name` (`RunnerCast.Suggest`, admin-only,
-`RunnersController.cs:204`) answers one no key or heartbeat already holds —
+`GET /api/runners/suggest-name` (`RunnerCast.Suggest`, `RequireRole(User)`) answers one no key or heartbeat already holds —
 and an admin is free to type anything else instead. There is no
 `hatch config --runner`, or any other way, for a checkout to pick or override
 the name it runs under; a runner has one identity, its key's, for good.
