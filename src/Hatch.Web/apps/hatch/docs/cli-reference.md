@@ -687,6 +687,11 @@ In Review` or `  skips In Progress, Testing`, the columns named in board order.
 `all` adds nothing, the same as a rule naming none of the board's current
 columns. See [the runner](the-runner#refused-columns).
 
+A runner an admin has marked preferred closes its line with `  preferred`, last,
+after the column rule. One that is not marked adds nothing. `--json` carries
+`preferred` on every row, `true` or `false`. See
+[the runner](the-runner#preferred).
+
 `hatch runners refuse` reads, sets and lifts the calling key's own refused
 models - the runner is always the calling key's own name, never a flag, and a
 call with no key is refused: `hatch: a refusal is a key's - run \`hatch
