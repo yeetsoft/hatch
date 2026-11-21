@@ -523,6 +523,23 @@ export function runnerBuildLabel(facts: BuildFacts, now: Date): string | null {
   return phrase ? `${shortSha(revision)} · ${phrase.relative}` : shortSha(revision);
 }
 
+/** Whether a runner's signing fails. A word this build does not know is no answer, so false. */
+export const signingFails = (runner: Runner): boolean => runner.signing === 'fails';
+
+/** What a runner reports about signing its commits, as its page says it - or null where it never said, or said a word this build does not know. A failure carries what git said. */
+export function signingWords(runner: Runner): string | null {
+  switch (runner.signing) {
+    case 'works':
+      return 'Signs its commits';
+    case 'off':
+      return 'Does not sign its commits';
+    case 'fails':
+      return runner.signingWhy ? `Signing fails: ${runner.signingWhy}` : 'Signing fails';
+    default:
+      return null;
+  }
+}
+
 /** A runner's tags, joined - or null where it has named none. */
 export function tagsLabel(runner: Runner): string | null {
   return runner.tags.length === 0 ? null : runner.tags.join(', ');

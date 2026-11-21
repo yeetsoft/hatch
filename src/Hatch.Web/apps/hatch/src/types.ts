@@ -3436,6 +3436,13 @@ export interface Runner {
       that fit its machine, computed on read. Empty, never null - and empty for
       a runner that reports no accelerator memory. Mirrors RunnerDto.Hold. */
   hold: string[];
+  /** Whether this runner's commits are signed, the worst over the checkouts it serves:
+      `fails` before `off` before `works`. Absent or null where it never said; a word this
+      build does not know reads as no answer. Mirrors RunnerDto.Signing. */
+  signing?: 'off' | 'works' | 'fails' | null;
+  /** What git said, where `signing` is `fails` - one line of at most 200 characters, keys
+      masked. Mirrors RunnerDto.SigningWhy. */
+  signingWhy?: string | null;
 }
 
 /** One session beneath a runner: one `go-to-work` loop, so two checkouts

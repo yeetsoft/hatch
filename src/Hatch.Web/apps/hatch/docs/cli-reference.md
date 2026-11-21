@@ -651,6 +651,13 @@ reports no memory prints the backend alone (`  accelerator rocm`). A runner
 that never reported one, or reported `none`, prints nothing extra
 ([the runner](the-runner#what-a-runner-advertises)).
 
+A runner that reports whether it signs its commits adds `  signs its commits`,
+`  does not sign its commits` or `  signing fails: <what git said>` after the
+accelerator and before any projects. A runner serving several checkouts reads as
+its worst: fails, then does not sign, then signs. One that never said, or said a
+word this `hatch` does not know, prints nothing extra
+([the runner](the-runner#signing-commits)).
+
 A runner that reports dependencies closes that part of its line with
 `  has dotnet 10.0.100, node 22.11.0, pwsh`, comma-separated, before any
 projects; one with none prints nothing extra.

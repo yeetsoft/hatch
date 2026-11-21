@@ -70,6 +70,33 @@ public sealed record Runtime(
     }
 
     /// <summary>
+    /// Whether this runner's commits are signed, as the board is told on every
+    /// beat: the worst over the checkouts it serves that have been asked, and
+    /// any clone made under the workspace since. Null until one has been - the
+    /// start-up line asks every served checkout, so that is only a runner with
+    /// no checkout. The reason is one line, masked and at most
+    /// <see cref="RunnerSigning.MaxWhyLength"/> characters.
+    /// </summary>
+    public (string State, string? Why)? SigningAnswer()
+    {
+        var served = Checkouts.Select(c => SigningCache.Latest(c.Path)).OfType<SigningCheck>();
+        var cloned = Settings.Workspace is { } workspace && !Settings.IsWorkspaceOff(workspace)
+            ? SigningCache.LatestUnder(workspace)
+            : [];
+
+        var answer = RunnerSigning.Worst(served.Concat(cloned).Select(c => (
+            (string?)(c.State switch { Signing.Works => RunnerSigning.Works, Signing.Fails => RunnerSigning.Fails, _ => RunnerSigning.Off }),
+            (string?)c.Why)));
+        if (answer is not { } worst) return null;
+
+        // Scrub appends an ellipsis past its own cap, which would make 201.
+        var first = (worst.Why ?? "").Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0) ?? "";
+        var why = worst.State == RunnerSigning.Fails ? Scrub.Lines([first]).FirstOrDefault() : null;
+        if (why is { Length: > RunnerSigning.MaxWhyLength }) why = why[..RunnerSigning.MaxWhyLength];
+        return (worst.State, why);
+    }
+
+    /// <summary>
     /// This process's own build identity, read once off the entry assembly -
     /// see CliRevision.cs. Replaceable so a test can assert what a heartbeat
     /// sends without a stamped assembly to build.

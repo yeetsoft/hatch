@@ -11160,6 +11160,29 @@ CLI version — a session from a CLI old enough to send none of the six still
 carries `ip`. Nothing else is collected: no environment variable, no
 process id, no MAC address.
 
+**A loop also says whether it signs its commits.** Unlike the six machine
+fields above, the answer can change during a night, so it is not read once: the
+loop asks its signing cache on every beat, and a loop beat carries `signing`
+(`off`, `works` or `fails`) and, beside `fails`, `signingWhy`. The answer is the
+worst over the checkouts the loop serves — `fails`, then `off`, then `works`,
+written once as `RunnerSigning.Worst` in `Hatch.Contracts` and called by the
+loop and the board alike — taken from the latest check of each, so a checkout
+not yet asked says nothing. `signingWhy` is the first line of what git said,
+masked of keys by the loop and cut to 200 characters; the board cuts it to 200
+again and keeps it only beside `fails`. It rides the *session* row
+(`EfHatchRunnerSession.Signing`, `SigningWhy`): `RunnersController.SeedSession`
+writes it, and `TouchSession` rewrites both when a beat sends a `signing`, so a
+later check moves the answer and a `works` drops an old reason; a beat that
+sends none — a `once` beat, an older loop — leaves them alone. A word the board
+does not know is stored as no answer and the beat is still accepted. A runner
+reads as the worst of its live loop sessions (`RunnersController.ProjectAsync`,
+as `Models`, `Has` and `Pulling` are), so a keyed runner and its `RunnerDto`
+carry it with no legacy row; the legacy `POST /runners/{name}` route ignores
+both fields. The Runners page and `hatch runners` word it as *Signs its
+commits*, *Does not sign its commits* and *Signing fails*, and the list marks
+only a runner whose signing fails. Refusing work on what a runner said is a
+separate ticket, not this one.
+
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:
 

@@ -133,6 +133,17 @@ describe('RunnerRow', () => {
     expect(draw(runner({ sessions: [session()] }))).not.toContain('revoked');
   });
 
+  it('badges a runner whose signing fails, in the danger tone and with no title inside the link, and no other', () => {
+    const failing = draw(runner({ signing: 'fails', signingWhy: 'no secret key', sessions: [session()] }));
+    expect(failing).toContain('>signing fails</span>');
+    expect(failing).toContain('hatch-badge--danger');
+    expect(failing).not.toContain('no secret key');
+
+    for (const signing of ['works', 'off', null] as const)
+      expect(draw(runner({ signing, sessions: [session()] }))).not.toContain('signing fails');
+    expect(draw(runner({ sessions: [session()] }))).not.toContain('signing fails');
+  });
+
   it('labels the glyph with what the speaking session is doing', () => {
     expect(draw(runner({ sessions: [session({ claimKey: 'AER-1' })] }))).toContain('aria-label="Working"');
     expect(draw(runner({ sessions: [session({ state: 'paused' })] }))).toContain('aria-label="Paused"');

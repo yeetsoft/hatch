@@ -39,6 +39,8 @@ import {
   sessionActivity,
   sessionRepositoriesLabel,
   sessionsByStart,
+  signingFails,
+  signingWords,
   sessionTokenBudget,
   runnerBuildLabel,
   runnerStrip,
@@ -618,6 +620,37 @@ describe('dangerousLabel', () => {
 
   it('says the phrase for a runner that refuses it', () => {
     expect(dangerousLabel(runner({ refusesDangerous: true }))).toBe('Refuses dangerous work');
+  });
+});
+
+describe('signingWords', () => {
+  it('says nothing for a runner that never said', () => {
+    expect(signingWords(runner())).toBeNull();
+    expect(signingWords(runner({ signing: null }))).toBeNull();
+  });
+
+  it('says the two good readings in plain words', () => {
+    expect(signingWords(runner({ signing: 'works' }))).toBe('Signs its commits');
+    expect(signingWords(runner({ signing: 'off' }))).toBe('Does not sign its commits');
+  });
+
+  it('says what git said where signing fails, and still says it failed with no reason', () => {
+    expect(signingWords(runner({ signing: 'fails', signingWhy: 'no secret key' }))).toBe('Signing fails: no secret key');
+    expect(signingWords(runner({ signing: 'fails' }))).toBe('Signing fails');
+  });
+
+  it('reads a word it does not know as no answer', () => {
+    expect(signingWords(runner({ signing: 'maybe' as never }))).toBeNull();
+    expect(signingFails(runner({ signing: 'maybe' as never }))).toBe(false);
+  });
+});
+
+describe('signingFails', () => {
+  it('is true only for a runner whose signing fails', () => {
+    expect(signingFails(runner({ signing: 'fails' }))).toBe(true);
+    expect(signingFails(runner({ signing: 'works' }))).toBe(false);
+    expect(signingFails(runner({ signing: 'off' }))).toBe(false);
+    expect(signingFails(runner())).toBe(false);
   });
 });
 

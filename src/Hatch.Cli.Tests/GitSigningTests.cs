@@ -259,4 +259,39 @@ public sealed class GitSigningTests : IDisposable
 
         Assert.Null(cache.Failed(_repo, start));
     }
+
+    [Fact]
+    public void The_latest_answer_is_kept_whatever_it_was_and_does_not_expire()
+    {
+        var cache = new SigningCache();
+        var start = DateTimeOffset.UnixEpoch;
+        Assert.Null(cache.Latest(_repo));
+
+        var failed = new SigningCheck(Signing.Fails, "locked");
+        cache.Record(_repo, failed, start);
+        Assert.Equal(failed, cache.Latest(_repo));
+        Assert.Null(cache.Failed(_repo, start.AddMinutes(30)));
+        Assert.Equal(failed, cache.Latest(_repo));
+
+        var works = new SigningCheck(Signing.Works);
+        cache.Record(_repo, works, start.AddHours(1));
+        Assert.Equal(works, cache.Latest(_repo));
+
+        var off = new SigningCheck(Signing.Off);
+        cache.Record(_repo, off, start.AddHours(2));
+        Assert.Equal(off, cache.Latest(_repo));
+        Assert.Null(cache.Latest(Path.Combine(_temp, "elsewhere")));
+    }
+
+    [Fact]
+    public void The_latest_answers_under_a_directory_are_those_of_the_checkouts_inside_it()
+    {
+        var cache = new SigningCache();
+        var inside = new SigningCheck(Signing.Fails, "locked");
+        cache.Record(Path.Combine(_temp, "workspace", "one"), inside, DateTimeOffset.UnixEpoch);
+        cache.Record(Path.Combine(_temp, "workspace-two", "two"), new SigningCheck(Signing.Works), DateTimeOffset.UnixEpoch);
+        cache.Record(_repo, new SigningCheck(Signing.Works), DateTimeOffset.UnixEpoch);
+
+        Assert.Equal([inside], cache.LatestUnder(Path.Combine(_temp, "workspace")));
+    }
 }

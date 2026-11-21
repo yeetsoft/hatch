@@ -170,7 +170,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, IReadOnlyList<StatusDto> statuses, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Bound(r) + Models(r) + Refuses(r) + ColumnRule(r, statuses))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Signing(r) + Bound(r) + Models(r) + Refuses(r) + ColumnRule(r, statuses))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -261,6 +261,20 @@ public sealed class RunnersCommand(Cli cli)
         if (row.AcceleratorDeviceCount is int count and > 1) line += " x" + count.ToString(CultureInfo.InvariantCulture);
         return line;
     }
+
+    /// <summary>
+    /// Whether a runner signs its commits, after its accelerator: <c>signs its
+    /// commits</c>, <c>does not sign its commits</c>, or <c>signing fails:</c> and
+    /// what git said. Nothing where it never said, or said a word this build does
+    /// not know, so a row from an older runner reads as it always has.
+    /// </summary>
+    private static string Signing(RunnerDto row) => row.Signing switch
+    {
+        RunnerSigning.Works => "  signs its commits",
+        RunnerSigning.Off => "  does not sign its commits",
+        RunnerSigning.Fails => row.SigningWhy is { Length: > 0 } why ? $"  signing fails: {why}" : "  signing fails",
+        _ => "",
+    };
 
     /// <summary>
     /// The projects a runner is bound to, closing its row; nothing where it is

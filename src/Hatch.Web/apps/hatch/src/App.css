@@ -10152,6 +10152,13 @@ button.hatch-option.chosen {
   font-size: var(--t-micro);
 }
 
+/* What git said where signing fails is one line of up to 200 characters, and
+   may hold a stretch no space breaks - a key id, a path - which would push a
+   phone's page sideways. */
+.hatch-runner-signing {
+  overflow-wrap: anywhere;
+}
+
 .hatch-runner-list {
   margin: 0;
   padding: 0;

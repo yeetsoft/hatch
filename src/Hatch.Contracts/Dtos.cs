@@ -5306,6 +5306,56 @@ public static class RunnerAgentDownKinds
 }
 
 /// <summary>
+/// Whether a runner's commits are signed, carried on
+/// <see cref="RunnerHeartbeatRequest.Signing"/> and read back off
+/// <see cref="RunnerDto.Signing"/>. The loop and the board both fold several
+/// answers into one through <see cref="Worst"/>, so the rule is written once.
+/// </summary>
+public static class RunnerSigning
+{
+    /// <summary>The checkout does not ask for signed commits.</summary>
+    public const string Off = "off";
+
+    /// <summary>The checkout asks for signed commits and a trial signature succeeded.</summary>
+    public const string Works = "works";
+
+    /// <summary>The checkout asks for signed commits and a trial signature failed.</summary>
+    public const string Fails = "fails";
+
+    /// <summary>The three words the board keeps; anything else is stored as no answer.</summary>
+    public static readonly string[] Words = [Off, Works, Fails];
+
+    /// <summary>The longest <see cref="RunnerHeartbeatRequest.SigningWhy"/> the board keeps.</summary>
+    public const int MaxWhyLength = 200;
+
+    /// <summary>
+    /// The worst of several answers: <see cref="Fails"/> before <see cref="Off"/>
+    /// before <see cref="Works"/>, with the reason of the first one that fails.
+    /// A word that is not one of <see cref="Words"/> counts as no answer; null
+    /// when none of them said.
+    /// </summary>
+    public static (string State, string? Why)? Worst(IEnumerable<(string? State, string? Why)> answers)
+    {
+        (string State, string? Why)? worst = null;
+        foreach (var (state, why) in answers)
+        {
+            if (state is null || Array.IndexOf(Words, state) < 0)
+                continue;
+            if (worst is null || Rank(state) < Rank(worst.Value.State))
+                worst = (state, state == Fails ? why : null);
+        }
+        return worst;
+    }
+
+    private static int Rank(string state) => state switch
+    {
+        Fails => 0,
+        Off => 1,
+        _ => 2,
+    };
+}
+
+/// <summary>
 /// What a person is ordering a runner to do, from the Runners page's own
 /// <c>POST .../order</c>.
 /// </summary>
@@ -5521,6 +5571,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// The board makes the comparison; the page only reads it. False where no
 /// version was reported.
 /// </param>
+/// <param name="Signing">
+/// Whether this runner's commits are signed - one of <see cref="RunnerSigning.Words"/>,
+/// the worst over the checkouts it serves, read off its live sessions as
+/// <see cref="Models"/> and <see cref="Has"/> are. Null where it never said.
+/// </param>
+/// <param name="SigningWhy">What git said, where <paramref name="Signing"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -5593,7 +5649,9 @@ public record RunnerDto(
     bool Pulling = false,
     int? LauncherVersion = null,
     bool LauncherBehind = false,
-    bool Preferred = false)
+    bool Preferred = false,
+    string? Signing = null,
+    string? SigningWhy = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -5906,6 +5964,16 @@ public enum RunnerBoardDrift
 /// <see cref="Os"/> is a shortened description and cannot name a build. Null for
 /// a machine whose platform is not one of the four, and for an older runner.
 /// </param>
+/// <param name="Signing">
+/// Whether this loop's commits are signed - one of <see cref="RunnerSigning.Words"/>,
+/// the worst over the checkouts it serves. Written on every loop beat; a <c>once</c>
+/// beat and an older runner send none. Absent leaves a stored value alone; a word the
+/// board does not know is stored as no answer, and the beat is still accepted.
+/// </param>
+/// <param name="SigningWhy">
+/// What git said, where <paramref name="Signing"/> is <c>fails</c> - the first line,
+/// scrubbed of keys and cut to 200 characters. Read only with that word.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -5961,7 +6029,9 @@ public record RunnerHeartbeatRequest(
     string? AcceleratorBackend = null,
     bool? Pulling = null,
     int? LauncherVersion = null,
-    string? Rid = null);
+    string? Rid = null,
+    string? Signing = null,
+    string? SigningWhy = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

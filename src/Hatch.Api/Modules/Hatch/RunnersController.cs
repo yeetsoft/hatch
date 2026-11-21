@@ -249,6 +249,12 @@ public class RunnersController(
         if (dto.Models.Count == 0) dto = dto with { Models = RunnerDeclaration.Declared(null, loop.Select(s => s.Models)) };
         if (dto.Has.Count == 0) dto = dto with { Has = RunnerDeclaration.Declared(null, loop.Select(s => s.Has)) };
 
+        // Whether this runner signs its commits is a fact about each loop's
+        // own checkouts, so the runner reads as the worst of its live loops.
+        if (dto.Signing is null &&
+            RunnerSigning.Worst(loop.Select(s => (s.Signing, s.SigningWhy))) is { } signing)
+            dto = dto with { Signing = signing.State, SigningWhy = signing.Why };
+
         // A keyed runner with no legacy row has no row-level accelerator fact
         // at all, so the newest live loop session's own carries it - the same
         // fallback PutRefusedModels makes for the agent alone.
@@ -2031,6 +2037,8 @@ public class RunnersController(
             AcceleratorMemoryBytes = request.AcceleratorMemoryBytes,
             AcceleratorDeviceCount = request.AcceleratorDeviceCount,
             AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength),
+            Signing = NormaliseSigning(request.Signing),
+            SigningWhy = SigningWhy(request.Signing, request.SigningWhy),
             Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength),
             Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength),
             AgentVersion = Fits(request.AgentVersion, EfHatchRunnerSession.MaxAgentVersionLength),
@@ -2088,6 +2096,14 @@ public class RunnersController(
         if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
         if (request.LauncherVersion is not null) session.LauncherVersion = request.LauncherVersion;
         if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
+
+        // Written when sent, so a later check that changes the answer moves it
+        // and a word the board does not know clears it; absent leaves it alone.
+        if (request.Signing is not null)
+        {
+            session.Signing = NormaliseSigning(request.Signing);
+            session.SigningWhy = SigningWhy(request.Signing, request.SigningWhy);
+        }
 
         if (request.Os is not null) session.Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength);
         if (request.Arch is not null) session.Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength);
@@ -2241,6 +2257,23 @@ public class RunnersController(
     /// </summary>
     private static string NormaliseAgentDownKind(string? kind) =>
         kind == RunnerAgentDownKinds.SignedOut ? RunnerAgentDownKinds.SignedOut : RunnerAgentDownKinds.NotStarting;
+
+    /// <summary>
+    /// A signing word the board keeps: trimmed, lowercased, and one of
+    /// <see cref="RunnerSigning.Words"/> - anything else is no answer, and the
+    /// heartbeat that sent it is still accepted.
+    /// </summary>
+    private static string? NormaliseSigning(string? word)
+    {
+        var normal = word?.Trim().ToLowerInvariant();
+        return normal is not null && Array.IndexOf(RunnerSigning.Words, normal) >= 0 ? normal : null;
+    }
+
+    /// <summary>What git said, kept only beside <see cref="RunnerSigning.Fails"/> and cut to one line that fits.</summary>
+    private static string? SigningWhy(string? word, string? why) =>
+        NormaliseSigning(word) == RunnerSigning.Fails
+            ? Fits(why?.Split('\n', 2)[0], EfHatchRunner.MaxSigningWhyLength)
+            : null;
 
     /// <summary>
     /// The remotes a beat named, canonicalised and newline-joined - or null

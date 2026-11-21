@@ -564,6 +564,55 @@ public sealed class GoToWorkTests
         Assert.Null(beat.AcceleratorBackend);
     }
 
+    // ---- The heartbeat says whether this runner signs ----
+
+    [Fact]
+    public async Task A_loop_beat_carries_what_the_start_up_check_found()
+    {
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Fails, "gpg failed to sign the data") };
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default);
+
+        Assert.NotEmpty(Beats(h));
+        var first = Beats(h)[0];
+        Assert.Equal(RunnerSigning.Fails, first.Signing);
+        Assert.Equal("gpg failed to sign the data", first.SigningWhy);
+    }
+
+    [Theory]
+    [InlineData(Signing.Works, "works")]
+    [InlineData(Signing.Off, "off")]
+    public async Task A_loop_beat_carries_the_good_readings_with_no_reason(Signing found, string word)
+    {
+        using var h = new Harness { CanSign = new SigningCheck(found) };
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default);
+
+        var first = Beats(h)[0];
+        Assert.Equal(word, first.Signing);
+        Assert.Null(first.SigningWhy);
+    }
+
+    [Fact]
+    public async Task A_once_beat_carries_no_signing_so_it_cannot_overwrite_the_loops()
+    {
+        using var h = new Harness { CanSign = new SigningCheck(Signing.Fails, "locked") };
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == "/api/runners/sessions")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Equal(RunnerKinds.Once, beat.Kind);
+        Assert.Null(beat.Signing);
+        Assert.Null(beat.SigningWhy);
+    }
+
     [Fact]
     public async Task A_loop_beat_carries_the_tallys_runs_and_spend_and_this_machine()
     {

@@ -784,6 +784,23 @@ sets it in the project dialog.
 - **Signing works.** Nothing is changed. The prompt says what to do if a commit
   still cannot be signed - see [the branch](what-a-session-is-told#the-branch).
 
+**What the board is told.** The loop says what it found on every heartbeat, as
+`signing` (`off`, `works` or `fails`) and, beside `fails`, `signingWhy`: the
+first line of what git said, with any key in it masked and at most 200
+characters. A runner serves several checkouts and the board keeps one answer for
+it, the worst of them: `fails`, then `off`, then `works`. The answer is the
+latest one for each checkout, so it moves when a later check changes it - the
+start-up line, or the check before an increment - and a checkout not yet asked
+says nothing. A `hatch work` run sends none, since it shares the loop's own row.
+A runner that has said nothing, and an older one, shows nothing.
+
+The **Runners** page reads it on the runner's own page as *Signs its commits*,
+*Does not sign its commits* or *Signing fails* with what git said, and marks a
+runner whose signing fails with a **signing fails** badge in the list. `hatch
+runners` prints the same on the runner's line
+([`runners`](cli-reference#runners)). It only reports: the board does not yet
+refuse work to a runner for what it said.
+
 ## The runner's name
 
 A runner's name is its key's. The board reads it from `GET /api/me`
