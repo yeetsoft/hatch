@@ -313,8 +313,9 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
    This is the one moment no claim is held. A one-off order from the page
    (work a named ticket, or take one ordinary pass) is read here too, and runs
    as the next increment even while paused, counting like any other.
-3. **Age restart.** Under Hatch's own supervisor a loop that has run long
-   enough asks to come back as a newer build ([Restarts](#restarts)).
+3. **Age restart.** Under a checkout's wrapper script a loop that has run
+   long enough asks to come back as a newer build ([Restarts](#restarts)). A
+   downloaded `hatch` has no source to rebuild, so it never does.
 4. **Pause.** Paused from the board or from the keyboard, it keeps
    heartbeating and takes nothing. The board wins if both are true. A
    `--standby` start is paused the same way, until the board's Go to Work sets
@@ -556,12 +557,13 @@ really off.
 
 Two more things turn restarts off before any of those flags is even read:
 `--once`, since it heartbeats as a one-off and never comes back regardless;
-and an unset `HATCH_NIGHT_STATE`, which only Hatch's own supervisor sets. A
+and an unset `HATCH_NIGHT_STATE`, which only something standing over the loop
+sets: a checkout's wrapper script, or a downloaded build's launcher, below. A
 `hatch` started by hand has nothing standing over it, so it is the loop it
 started as, and all three flags do nothing there. An unsupervised run also
 prints one line, once before its first increment, saying so and naming
 `scripts/hatch.sh go-to-work` (`scripts\hatch.ps1 go-to-work` in PowerShell)
-as the way to get restarts back.
+as the way to get restarts back. That line is not printed under a launcher.
 
 The supervisor is `scripts/hatch.sh`, or `scripts\hatch.ps1` in PowerShell on
 Windows: it builds before its first launch as well as on every restart, so a night
@@ -582,6 +584,43 @@ PowerShell supervisor runs the loop from a copy of the build made under
 `%TEMP%`, since Windows will not let a rebuild overwrite a binary a running
 process is still holding open.
 
+A downloaded `hatch` supervises itself. The published builds are stamped as
+downloads, and one started as `go-to-work` or `do-my-work` with nothing above
+it becomes a **launcher**: it runs its own file again as the child, with
+`HATCH_NIGHT_STATE` set to a file of its own, and waits. When the child exits
+`75` the launcher starts it again with the same arguments, and any other exit
+code ends the launcher with that code. It removes its state, and any file a
+`--runners` set left beside it, on every way out it controls. `-h` and `--help`
+start no launcher, and neither does a build nobody stamped, a loop that already
+has a `HATCH_NIGHT_STATE` (every loop under the wrapper scripts, and every member
+of a `--runners` set), or the container image's build.
+
+The child owns the terminal, so keys, the footer, colour and width are as for a
+loop started by hand. The launcher reads no keys and writes nothing while it
+waits. On macOS and Linux it passes the first Ctrl-C, SIGTERM or SIGHUP it gets
+on to the child, once; the child lets go of its claim, prints its tally, and the
+launcher exits after it with its code. A terminal's Ctrl-C reaches both at once,
+so a child under a launcher ignores a repeat of a signal it caught within two
+seconds, and a person pressing it again later still ends it. On Windows the
+console reaches the child itself and the launcher only waits.
+
+A launcher has no source to rebuild, so a loop under one restarts for `hatch use`
+and for its set, and for nothing else: a change to Hatch's own source in a
+checkout it serves is ignored, and `--restart-after` is still accepted and does
+nothing. `--no-restart` and `--once` keep their meaning and the loop never
+restarts. The night's totals carry across a restart exactly as under a wrapper
+script: runs, spend, tokens, the hour's window, `--until`, the failure streak and
+the log file.
+
+The launcher tells the child three things through its environment:
+`HATCH_NIGHT_STATE`, `HATCH_LAUNCHER_VERSION` and `HATCH_LAUNCHER_PATH`
+([Environment variables](environment-variables)). The version is one whole
+number, 1 so far, and it goes up when the launcher learns to do something a child
+or the board should know about. A child reads it before it relies on anything
+newer than version 1. Where the launcher is too old it carries on without that
+thing and says so in one line; no pairing of launcher and child makes either one
+exit.
+
 Windows client editions refuse scripts by default (execution policy
 `Restricted`). `powershell -NoProfile -ExecutionPolicy Bypass -File
 .\scripts\hatch.ps1 go-to-work` runs the supervisor anyway, and
@@ -593,9 +632,10 @@ to change, and no flag will get round it.
 A loop that follows the active profile (one started without `--profile` or
 `HATCH_PROFILE`) also restarts when `hatch use` moves the pointer. It looks
 at the top of each pass, between increments and never inside one, and comes
-back on the new profile's board with the night's totals carried. Unsupervised,
-or with `--no-restart`, it stops instead and says why, since there is nothing
-to bring it back. A pointer naming a profile with no file, or no valid name, is
+back on the new profile's board with the night's totals carried. That holds
+under a checkout's wrapper script and under a downloaded build's launcher alike.
+Unsupervised, or with `--no-restart`, it stops instead and says why, since there
+is nothing to bring it back. A pointer naming a profile with no file, or no valid name, is
 ignored: the loop says so once and stays on the profile it started under. A
 loop pinned with `--profile` or `HATCH_PROFILE` never looks.
 
@@ -614,7 +654,8 @@ Exit codes:
      closed terminal included
 1    a refusal: a flag it does not take, a stop file that already exists, a
      lock it could not take
-75   asking the supervisor to rebuild and run it again
+75   asking whatever stands over it - a wrapper script, or a downloaded
+     build's launcher - to run it again (rebuilt first, by a wrapper script)
 ```
 
 ### One loop per served checkout

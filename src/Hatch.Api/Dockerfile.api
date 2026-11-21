@@ -112,7 +112,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
       -p:SourceRevisionId=$HATCH_REVISION \
-      -p:HatchSequence=$HATCH_SEQUENCE
+      -p:HatchSequence=$HATCH_SEQUENCE \
+      -p:HatchLauncher=true
 
 FROM cli-src AS cli-osx-arm64
 ARG HATCH_REVISION
@@ -125,7 +126,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
       -p:SourceRevisionId=$HATCH_REVISION \
-      -p:HatchSequence=$HATCH_SEQUENCE
+      -p:HatchSequence=$HATCH_SEQUENCE \
+      -p:HatchLauncher=true
 
 FROM cli-src AS cli-osx-x64
 ARG HATCH_REVISION
@@ -138,7 +140,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
       -p:SourceRevisionId=$HATCH_REVISION \
-      -p:HatchSequence=$HATCH_SEQUENCE
+      -p:HatchSequence=$HATCH_SEQUENCE \
+      -p:HatchLauncher=true
 
 FROM cli-src AS cli-linux-x64
 ARG HATCH_REVISION
@@ -151,7 +154,8 @@ RUN dotnet publish src/Hatch.Cli/Hatch.Cli.csproj \
       -p:SelfContained=true \
       -p:PublishTrimmed=true \
       -p:SourceRevisionId=$HATCH_REVISION \
-      -p:HatchSequence=$HATCH_SEQUENCE
+      -p:HatchSequence=$HATCH_SEQUENCE \
+      -p:HatchLauncher=true
 
 # Build runtime image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0

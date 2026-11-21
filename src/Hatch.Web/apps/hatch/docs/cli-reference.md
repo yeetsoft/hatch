@@ -1267,8 +1267,10 @@ is simply never on the board this key reads.
 - `--until <HH:MM>` stops at that wall-clock hour, tomorrow's if it has gone by.
 - `--stop-file <path>` stops once that path exists, so `touch` it from anywhere.
 - `--restart-after <minutes>` comes back as a newer build at least that often.
-  `0` means only when the loop's own source actually changed.
-- `--no-restart` never comes back as a newer build.
+  `0` means only when the loop's own source actually changed. It is for a
+  checkout's loop under `scripts/hatch.sh` or `scripts/hatch.ps1`; under a
+  downloaded build's launcher it is accepted and does nothing.
+- `--no-restart` never comes back, as a newer build or for `hatch use`.
 - `--abort-merge` is as for `work`: it clears any merge in progress in a
   served checkout before the reset ends the night for it, discarding whatever
   was uncommitted in it, and carries on - with no banner and no wait, since a
@@ -1298,7 +1300,10 @@ loaded, writes nothing ([Refused models](the-runner#refused-models)).
 
 None of the bounds, `--project` included, is set by default. Each is read
 between increments, so the increment in flight always finishes. The two restart flags do nothing in a
-`hatch` started by hand, which has no supervisor to rebuild and run it again.
+`hatch` started by hand, which has nothing standing over it to run it again. A downloaded
+`hatch` is its own launcher and restarts when `hatch use` moves the profile it
+follows, but it has no source to rebuild, so `--restart-after` does nothing there either
+([restarts](one-increment-and-the-loop#restarts)).
 
 ### do-my-work
 
@@ -1322,7 +1327,7 @@ has the rest, including what happens to a key that belongs to nobody.
 | `0` | It worked, or usage was asked for with `-h`, `--help` or `help`. For `work`, an increment ran, whatever its session exited with. For `go-to-work` and `do-my-work`, the night ended: a bound was reached, a pass found nothing to do, three increments in a row failed, or it was interrupted. |
 | `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_MODELS`, a bad `HATCH_HAS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else, when the workspace could not be reset, and when the board refused a pass (a `--mine` key that belongs to nobody); the night's tally still prints and the ticket is still given back. |
 | `2` | Nothing to do, as an answer and not a fault. `next` found nothing workable, `pr` was read with no URL set, and `work` found the board idle, the ticket blocked, or another runner holding it. `runner-credential` also exits `2` while no credential has been saved yet, which is the ordinary state between starting the container runner and pasting one in. |
-| `75` | `go-to-work` or `do-my-work` is asking its supervisor to rebuild it and run it again. It never happens in a loop started by hand, nor under `--no-restart` or `--once`. |
+| `75` | `go-to-work` or `do-my-work` is asking whatever stands over it to run it again: a wrapper script, which rebuilds first, or a downloaded build's launcher. It never happens in a loop started by hand, nor under `--no-restart` or `--once`. |
 | `130` | Interrupted, for `work` and every command except `go-to-work` and `do-my-work`. The first signal prints that it is letting go of the ticket and releases the claim; a second is immediate. |
 
 `go-to-work` and `do-my-work` never exit `130`. They catch their own
