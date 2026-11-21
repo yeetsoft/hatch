@@ -168,7 +168,8 @@ On a touch screen, press and hold a card until it lifts, then drag it to a colum
 
 Above the board, the bar carries a second control: which projects *this
 browser tab* is looking at. Scoped, it shows each project's mark and key,
-filled; unscoped, it reads **All projects**. Opening it shows every
+filled; unscoped, it reads **All projects** in an outlined pill, its caret
+turning over while the panel is open. Opening it shows every
 project as a checkbox — ticking or unticking one writes the scope
 immediately, and unticking the last one means every project again, same
 as never scoping at all.

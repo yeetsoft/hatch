@@ -191,7 +191,7 @@ export function ScopeControl({
               <MenuCaret />
             </button>
           ) : (
-            <button {...props}>
+            <button {...props} className={`${props.className} hatch-scope-control--unscoped`}>
               All projects
               {triggerGlyphs}
               <MenuCaret />
