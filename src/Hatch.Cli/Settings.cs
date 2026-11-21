@@ -185,7 +185,14 @@ public sealed partial record Settings
     /// The folder <c>HATCH_LOG=on</c> means: <c>logs</c>, beside
     /// <see cref="UserConfigPath"/> - the folder the standby item already logs to.
     /// </summary>
-    public static string DefaultLogPath() => Path.Combine(Path.GetDirectoryName(UserConfigPath())!, "logs");
+    public static string DefaultLogPath() => Path.Combine(UserFolder(), "logs");
+
+    /// <summary>
+    /// The per-user folder everything above it sits beside or inside -
+    /// <c>Path.GetDirectoryName(UserConfigPath())</c>, named so a caller does
+    /// not have to derive it from a file that happens to live there.
+    /// </summary>
+    public static string UserFolder() => Path.GetDirectoryName(UserConfigPath())!;
 
     /// <summary>
     /// The workspace one run serves, and whether it is the default: the

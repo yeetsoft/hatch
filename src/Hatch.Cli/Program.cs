@@ -40,6 +40,11 @@ if (!Program.Commands.Contains(command))
     return 1;
 }
 
+// What a launcher checking a downloaded build runs - before anything is
+// resolved, read or configured, so it answers on a build that has nothing set
+// up yet.
+if (command == "version") return new VersionCommand(say, new CliRevision()).Run(rest);
+
 var environment = Environment.GetEnvironmentVariables()
     .Cast<System.Collections.DictionaryEntry>()
     .ToDictionary(e => (string)e.Key, e => e.Value as string);
@@ -576,7 +581,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "use", "image", "standby", "board", "next", "queue", "changelog", "activity", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
+        "config", "use", "image", "version", "standby", "board", "next", "queue", "changelog", "activity", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
         "verdict", "depends", "capability", "serves", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -629,6 +634,7 @@ internal partial class Program
         "  hatch use --none             ...clear it",
         "  hatch image dockerfile       the Dockerfile this checkout's declared dependencies render to",
         "  hatch image build            build and tag the image that Dockerfile describes",
+        "  hatch version                one line of JSON: this build's revision, sequence and launcher version",
         "  hatch board                  the columns, and how many cards in each",
         "  hatch next                   top workable card of \"todo\"",
         "  hatch next \"in progress\"      ...or of any column",
