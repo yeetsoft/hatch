@@ -31,6 +31,7 @@ without the flag.
 | `config` | No | No: it writes local files only |
 | `use` | No | No: it writes local files only |
 | `image` | Yes | No |
+| `version` | No | No |
 | `standby` | Yes | No: it registers or forgets a login item on this machine |
 | `board` | No | No |
 | `next` | No | No |
@@ -357,6 +358,20 @@ runner started from the pushed image reports one on [`runners`](#runners)'s
 [`build --push`](#build) is the other way to build and push the same image:
 anyone with Docker runs it, from a laptop, a runner host, or a CI that is not
 GitHub's.
+
+It touches no ticket and no column, so it writes nothing to the board.
+
+### version
+
+```
+hatch version
+```
+
+Prints one line of JSON: `{"revision":"<sha or dev>","sequence":N,"launcher":N}`
+- this build's git revision and commit sequence, and the launcher protocol
+version it speaks. It reads no settings, makes no board call and needs no
+checkout, so it answers on a bare machine - what a launcher checking a
+downloaded build runs before anything else about that build is known.
 
 It touches no ticket and no column, so it writes nothing to the board.
 
