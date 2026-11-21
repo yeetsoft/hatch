@@ -72,7 +72,7 @@ Neither check costs an increment. The runner takes both on a clock between incre
 
 ## When review is a session's
 
-The review row and the ambition's pass row — [the twelve rows Hatch seeds](playbooks#the-twelve-rows-hatch-seeds) — are the only two rows whose two ends are the same column. What still tells them apart: the review row edits the tree, fixing a conflict or a failing build; the pass row is denied every tool that would let it. One playbook, at its own model and effort, answers both the conflict dispatch and the build dispatch.
+The review row and the ambition's pass row — [the thirteen rows Hatch seeds](playbooks#the-thirteen-rows-hatch-seeds) — are the only two rows whose two ends are the same column. What still tells them apart: the review row edits the tree, fixing a conflict or a failing build; the pass row is denied every tool that would let it. One playbook, at its own model and effort, answers both the conflict dispatch and the build dispatch.
 
 The runner adds one of two sections to the prompt depending on which; [what a session is told](what-a-session-is-told) has the fuller treatment of each. A conflict dispatch gets a `## The conflict` section — the branch, the trunk, both shas and the files that conflict — and the session starts on the branch with the trunk merge already in progress. A build dispatch gets a `## The failing build` section — the branch and its sha, each failing check named with its link, and up to 150 lines of its log ending at the last `##[error]` line, the lines leading up to the failure and not the cleanup that follows it — and the session starts with the trunk already merged in and no merge in progress.
 
