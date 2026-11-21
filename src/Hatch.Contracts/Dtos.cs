@@ -1891,11 +1891,17 @@ public record ActivityPageDto(IReadOnlyList<ActivityEventDto> Events, bool HasMo
 /// </param>
 /// <param name="Matched">
 /// Which parts of the issue held the words searched for, in this order and no other:
-/// <c>title</c>, <c>description</c>, <c>comment</c>, <c>work-log</c>. Empty when the search
-/// named no words, because then nothing was matched against.
+/// <c>title</c>, <c>previous-title</c>, <c>description</c>, <c>comment</c>, <c>work-log</c>.
+/// Empty when the search named no words, because then nothing was matched against.
+/// </param>
+/// <param name="PreviousTitles">
+/// This issue's own previous titles, newest first - see
+/// <see cref="EfHatchIssue.PreviousTitlesNewestFirst"/>. Empty on an issue never
+/// retitled, whether or not <paramref name="Matched"/> names <c>previous-title</c>.
 /// </param>
 public record SearchHitDto(
-    IssueCardDto Card, DateTimeOffset CreatedAt, DateTimeOffset? ClosedAt, IReadOnlyList<string> Matched);
+    IssueCardDto Card, DateTimeOffset CreatedAt, DateTimeOffset? ClosedAt, IReadOnlyList<string> Matched,
+    IReadOnlyList<string> PreviousTitles);
 
 /// <summary>
 /// A page of search results.

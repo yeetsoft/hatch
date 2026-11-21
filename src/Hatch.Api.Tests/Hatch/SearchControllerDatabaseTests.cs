@@ -135,16 +135,18 @@ public class SearchControllerDatabaseTests
     {
         await using var h = await NewAsync();
 
-        // The work log is written before the comment, so insertion order would
-        // say work-log first; the report goes title, description, comment, work-log.
-        var issue = await h.FileAsync("gasket", "something else");
+        // The previous title is set after the work log and the comment, so
+        // insertion order would say work-log, comment, previous-title; the
+        // report goes title, previous-title, description, comment, work-log.
+        var issue = await h.FileAsync("the old gasket", "something else");
         await h.AddWorkLogAsync(issue.Id, title: "tidied up", summary: "the gasket held");
         await h.AddCommentAsync(issue.Id, "the gasket again");
+        await h.RetitleAsync(issue.Id, "gasket");
 
         var result = await h.SearchAsync("gasket");
 
         var hit = Assert.Single(result.Hits);
-        Assert.Equal(["title", "comment", "work-log"], hit.Matched);
+        Assert.Equal(["title", "previous-title", "comment", "work-log"], hit.Matched);
     }
 
     [SkippableFact]
@@ -158,6 +160,161 @@ public class SearchControllerDatabaseTests
 
         var hit = Assert.Single(result.Hits);
         Assert.Equal(["title", "comment"], hit.Matched);
+    }
+
+    // ---- Previous titles ----
+
+    [SkippableFact]
+    public async Task APreviousTitleAlone_FindsTheIssue_AndSaysPreviousTitle()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync("the gasket");
+        await h.RetitleAsync(issue.Id, "something else");
+
+        var result = await h.SearchAsync("gasket");
+
+        var hit = Assert.Single(result.Hits);
+        Assert.Equal(issue.Key, hit.Card.Key);
+        Assert.Equal(["previous-title"], hit.Matched);
+    }
+
+    [SkippableFact]
+    public async Task ATitleAndAPreviousTitleAndAComment_AreReportedInOrder()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync("the gasket");
+        await h.RetitleAsync(issue.Id, "gasket");
+        await h.AddCommentAsync(issue.Id, "the gasket again");
+
+        var result = await h.SearchAsync("gasket");
+
+        var hit = Assert.Single(result.Hits);
+        Assert.Equal(["title", "previous-title", "comment"], hit.Matched);
+    }
+
+    [SkippableFact]
+    public async Task WordsSplitBetweenTheCurrentAndAPreviousTitle_FindTheIssue_ButNameNeitherPart()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync("sprocket");
+        await h.RetitleAsync(issue.Id, "gasket");
+
+        var result = await h.SearchAsync("gasket sprocket");
+
+        Assert.Equal(1, result.Total);
+        var hit = Assert.Single(result.Hits);
+        Assert.Equal(issue.Key, hit.Card.Key);
+        Assert.DoesNotContain("title", hit.Matched);
+        Assert.DoesNotContain("previous-title", hit.Matched);
+    }
+
+    [SkippableFact]
+    public async Task APreviousTitlesList_IsNewestFirstOnTheHit()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync("A");
+        await h.RetitleAsync(issue.Id, "B");
+        await h.RetitleAsync(issue.Id, "A");
+        await h.RetitleAsync(issue.Id, "C");
+
+        var result = await h.SearchAsync("C");
+
+        var hit = Assert.Single(result.Hits);
+        Assert.Equal(["A", "B"], hit.PreviousTitles);
+    }
+
+    [SkippableFact]
+    public async Task AnIssueFoundByItsTitleAlone_HasAnEmptyPreviousTitlesList()
+    {
+        await using var h = await NewAsync();
+        await h.FileAsync("gasket");
+
+        var result = await h.SearchAsync("gasket");
+
+        Assert.Empty(Assert.Single(result.Hits).PreviousTitles);
+    }
+
+    [SkippableFact]
+    public async Task ANeverRetitledIssue_IsFoundAndRankedExactlyAsBefore()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync("gasket");
+
+        var result = await h.SearchAsync("gasket");
+
+        var hit = Assert.Single(result.Hits);
+        Assert.Equal(issue.Key, hit.Card.Key);
+        Assert.Equal(["title"], hit.Matched);
+        Assert.Empty(hit.PreviousTitles);
+    }
+
+    [SkippableFact]
+    public async Task ACurrentTitleMatch_OutranksAPreviousTitleMatch_FiledAfterIt()
+    {
+        await using var h = await NewAsync();
+
+        // The weaker match (previous title, weight B) filed first, so the
+        // newest-first tie-break - which would put it ahead - cannot be what
+        // orders them.
+        var inPreviousTitle = await h.FileAsync("gasket");
+        await h.RetitleAsync(inPreviousTitle.Id, "something else");
+        var inTitle = await h.FileAsync("gasket");
+
+        var result = await h.SearchAsync("gasket");
+
+        Assert.Equal(2, result.Total);
+        Assert.Equal([inTitle.Key, inPreviousTitle.Key], result.Hits.Select(x => x.Card.Key));
+    }
+
+    [SkippableFact]
+    public async Task ACurrentTitleMatch_OutranksAPreviousTitleMatch_FiledBeforeIt()
+    {
+        await using var h = await NewAsync();
+
+        // The stronger match filed first this time, so neither filing order
+        // can be what hides a wrong sort.
+        var inTitle = await h.FileAsync("gasket");
+        var inPreviousTitle = await h.FileAsync("gasket");
+        await h.RetitleAsync(inPreviousTitle.Id, "something else");
+
+        var result = await h.SearchAsync("gasket");
+
+        Assert.Equal(2, result.Total);
+        Assert.Equal([inTitle.Key, inPreviousTitle.Key], result.Hits.Select(x => x.Card.Key));
+    }
+
+    [SkippableFact]
+    public async Task APreviousTitleMatch_OutranksACommentMatch_FiledAfterIt()
+    {
+        await using var h = await NewAsync();
+
+        // The weaker match (a comment, with no weight in the issue's own
+        // vector) filed first.
+        var inComment = await h.FileAsync("something else");
+        await h.AddCommentAsync(inComment.Id, "the gasket again");
+        var inPreviousTitle = await h.FileAsync("gasket");
+        await h.RetitleAsync(inPreviousTitle.Id, "something else");
+
+        var result = await h.SearchAsync("gasket");
+
+        Assert.Equal(2, result.Total);
+        Assert.Equal([inPreviousTitle.Key, inComment.Key], result.Hits.Select(x => x.Card.Key));
+    }
+
+    [SkippableFact]
+    public async Task APreviousTitleMatch_OutranksACommentMatch_FiledBeforeIt()
+    {
+        await using var h = await NewAsync();
+
+        var inPreviousTitle = await h.FileAsync("gasket");
+        await h.RetitleAsync(inPreviousTitle.Id, "something else");
+        var inComment = await h.FileAsync("something else");
+        await h.AddCommentAsync(inComment.Id, "the gasket again");
+
+        var result = await h.SearchAsync("gasket");
+
+        Assert.Equal(2, result.Total);
+        Assert.Equal([inPreviousTitle.Key, inComment.Key], result.Hits.Select(x => x.Card.Key));
     }
 
     // ---- Narrowing ----
@@ -259,6 +416,19 @@ public class SearchControllerDatabaseTests
             db.Issues.Add(issue);
             await db.SaveChangesAsync();
             return (issue.Id, IssueKey.Format("AER", number));
+        }
+
+        /// <summary>
+        /// Exercises the write path's own entity method, the same way
+        /// <c>IssuesController</c>'s patch does, rather than poking
+        /// <c>PreviousTitles</c> directly.
+        /// </summary>
+        public async Task RetitleAsync(long issueId, string to)
+        {
+            var db = Connect();
+            var issue = await db.Issues.SingleAsync(i => i.Id == issueId);
+            issue.Retitle(to);
+            await db.SaveChangesAsync();
         }
 
         public async Task AddCommentAsync(long issueId, string body, string kind = EfHatchComment.Note)

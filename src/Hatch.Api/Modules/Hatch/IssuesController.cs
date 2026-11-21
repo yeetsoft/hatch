@@ -937,7 +937,7 @@ public class IssuesController(
         if (edit.Title is { Length: > 0 } title && title != issue.Title)
         {
             events.Add(Event(actor, EfHatchIssueEvent.Retitled, new { from = issue.Title, to = title }, now));
-            issue.Title = title;
+            issue.Retitle(title);
         }
 
         if (edit.Description is { } description && description != issue.Description)

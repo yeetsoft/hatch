@@ -896,6 +896,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<Guid?>("PreApprovalSetBy")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("PreviousTitles")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer");
 
@@ -956,7 +960,7 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("tsvector")
-                        .HasComputedColumnSql("setweight(to_tsvector('english', \"Title\"), 'A') || setweight(to_tsvector('english', \"Description\"), 'B')", true);
+                        .HasComputedColumnSql("setweight(to_tsvector('english', \"Title\"), 'A') || setweight(to_tsvector('english', \"Description\"), 'B') || setweight(to_tsvector('english', \"PreviousTitles\"), 'B')", true);
 
                     b.Property<DateTimeOffset?>("StalledAt")
                         .HasColumnType("timestamp with time zone");
