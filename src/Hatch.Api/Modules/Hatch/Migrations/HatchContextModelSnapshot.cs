@@ -2730,6 +2730,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("PromptChars")
                         .HasColumnType("integer");
 
+                    b.Property<long?>("QuestionId")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Reads")
                         .HasColumnType("jsonb");
 
@@ -2766,6 +2769,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("QuestionId");
 
                     b.HasIndex("SearchVector");
 
