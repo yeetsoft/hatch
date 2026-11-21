@@ -10642,6 +10642,16 @@ top of a pass, after the stop conditions and before the order and paused
 branches, so it holds no claim; `behind` is followed at once and any other word
 after ten unbroken minutes. See [Restarts](#what-it-stops-for) below.
 
+The launcher also removes the builds it can no longer need. After a change of
+build and at each start it sweeps `versions/`, keeping the current and previous
+build of each board a loop ran against in the last thirty days and any build in
+use: a launcher says which builds it runs with a locked `<sha>.in-use-<guid>`
+file, macOS and Linux are scanned for processes running from `versions/`, and
+Windows refuses to open a running file for writing. A build is renamed to
+`.old-<guid>` and then deleted, a delete that fails is left for the next sweep,
+and an unfinished `.tmp-*` download goes at a day old. The macOS scan has never
+been run by hand.
+
 So: a console program in the solution, compiled against
 `src/Hatch.Contracts` — the same records the API serves, so a fixture that
 goes stale does not quietly deserialise into a dispatch with empty fields, it
