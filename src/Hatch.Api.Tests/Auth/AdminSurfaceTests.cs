@@ -1040,8 +1040,6 @@ public class AdminSurfaceTests
     [
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
-        "RunnersController.RevokeRunner",
-        "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
         "ScopesController.GetScopes",
         "ScopesController.GetScope",
