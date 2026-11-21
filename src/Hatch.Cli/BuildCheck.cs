@@ -51,7 +51,7 @@ public static class BuildCheck
     /// <paramref name="revision"/> with <see cref="Verdict"/>.
     /// </summary>
     /// <remarks>
-    /// <c>HATCH_NIGHT_STATE</c> and every <c>HATCH_LAUNCHER_*</c> variable are
+    /// <c>HATCH_NIGHT_STATE</c>, <c>HATCH_LAUNCHER_VERSION</c> and <c>HATCH_LAUNCHER_PATH</c> are
     /// stripped from the child's environment - this run is a check, not an
     /// increment of whatever loop called it, and a child that saw those would
     /// read as the launcher's own supervised process. A start that throws
@@ -88,13 +88,9 @@ public static class BuildCheck
         };
         start.ArgumentList.Add("version");
 
-        start.Environment.Remove("HATCH_NIGHT_STATE");
-        foreach (var key in start.Environment.Keys
-                     .Where(k => k.StartsWith("HATCH_LAUNCHER_", StringComparison.Ordinal))
-                     .ToArray())
-        {
-            start.Environment.Remove(key);
-        }
+        start.Environment.Remove(Launcher.StateVariable);
+        start.Environment.Remove(Launcher.VersionVariable);
+        start.Environment.Remove(Launcher.PathVariable);
 
         Process process;
         try
