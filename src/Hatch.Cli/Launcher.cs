@@ -166,12 +166,16 @@ public static class Launcher
     /// for. On Windows the console reaches the child itself, so nothing is passed.
     /// A child a signal ended on Linux or macOS answers 128 plus the signal, the
     /// one thing here that is not passed through exactly.</para>
+    ///
+    /// <para><paramref name="told"/> replaces the two variables above where a
+    /// caller has its own to tell: the launcher that has just replaced itself
+    /// starts the new file with <see cref="SelfUpdate.HandoffVariable"/> alone.</para>
     /// </remarks>
     public static async Task<int?> HandOnAsync(
         string[] args, string program, string ownPath, LaunchSignals signals, bool forwards, int version,
-        ILaunchedChild starter, Action<string> say)
+        ILaunchedChild starter, Action<string> say, IReadOnlyDictionary<string, string>? told = null)
     {
-        var environment = new Dictionary<string, string>
+        var environment = told ?? new Dictionary<string, string>
         {
             [VersionVariable] = version.ToString(System.Globalization.CultureInfo.InvariantCulture),
             [PathVariable] = ownPath,
@@ -274,11 +278,38 @@ public static class Launcher
     /// <param name="tempRoot">Where the state directory is made.</param>
     /// <param name="say">The one line the launcher says when it cannot start its child.</param>
     /// <param name="builds">What changing build needs. Null: the launcher only ever runs its own file.</param>
+    /// <param name="self">What replacing this launcher's own file needs. Null: the launcher never does.</param>
     public static async Task<int> RunAsync(
         string[] args, ILaunchedChild starter, string ownPath, LaunchSignals signals, bool forwards,
-        int version, string tempRoot, Action<string> say, LauncherBuilds? builds = null)
+        int version, string tempRoot, Action<string> say, LauncherBuilds? builds = null, SelfUpdate? self = null)
     {
-        var directory = Path.Combine(tempRoot, "hatch-night-" + Guid.NewGuid().ToString("N"));
+        // First, before anything is made: sweep what an earlier start left
+        // aside, and take a stored build that is newer than this file. On
+        // Linux and macOS that is this process, in its own place; on Windows
+        // it is the new file, started once and waited for.
+        LauncherResume? resumed = null;
+        string? named = null;
+
+        if (self is not null)
+        {
+            self.Sweep();
+
+            if (self.Resume is { } resumeDirectory && LauncherResume.Read(resumeDirectory) is { } found)
+            {
+                resumed = found;
+                named = resumeDirectory;
+            }
+            else if (!self.Handoff && await UpdateAtStartAsync(args, starter, signals, forwards, say, self) is { } code)
+            {
+                return code;
+            }
+        }
+
+        var directory = named ?? Path.Combine(tempRoot, "hatch-night-" + Guid.NewGuid().ToString("N"));
+
+        // True once another process has taken this one's place: the night's
+        // directory is that one's now, and is not removed.
+        var handedOver = false;
 
         try
         {
@@ -364,6 +395,22 @@ public static class Launcher
                 var hold = new BuildHold();
                 var failed = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 string? note = null;
+
+                // A launcher that replaced itself in the middle of a night left
+                // all of the above behind: the next child starts as it would have.
+                if (resumed is not null)
+                {
+                    program = resumed.Program;
+                    programSha = resumed.ProgramSha;
+                    confirmed = (resumed.ConfirmedProgram, resumed.ConfirmedSha);
+                    trial = resumed.Trial;
+                    trialOrigin = resumed.TrialOrigin;
+                    aside = resumed.ReadAside(directory);
+                    hold = BuildHold.Parse(resumed.Hold);
+                    foreach (var (revision, times) in resumed.ParseFailed()) failed[revision] = times;
+
+                    LauncherResume.Remove(directory);
+                }
 
                 while (true)
                 {
@@ -532,6 +579,45 @@ public static class Launcher
                         programSha = request.Revision;
                         trial = request.Revision;
                         trialOrigin = board.Origin;
+
+                        // A launcher older than the build it has just stored becomes
+                        // it. Windows carries on as it was and the next start runs
+                        // the new file; elsewhere this process is replaced by it.
+                        if (self is not null
+                            && await self.JustStoredAsync(stored, request.Revision) is { } newer
+                            && Volatile.Read(ref received) == 0
+                            && await self.SwapAsync(newer))
+                        {
+                            self.Updated(newer);
+
+                            if (!self.RenameAside && Volatile.Read(ref received) == 0)
+                            {
+                                var resume = new LauncherResume(
+                                    program, programSha, confirmed.Program, confirmed.Sha, trial, trialOrigin,
+                                    hold.Format(builds.Clock.GetUtcNow()), LauncherResume.FormatFailed(failed),
+                                    HasAside: false);
+
+                                if (LauncherResume.Write(directory, resume, aside, out var execFailure))
+                                {
+                                    var added = new Dictionary<string, string>
+                                    {
+                                        [SelfUpdate.HandoffVariable] = "1",
+                                        [SelfUpdate.ResumeVariable] = directory,
+                                    };
+
+                                    if (self.Exec.Replace(ownPath, args, added, out execFailure))
+                                    {
+                                        handedOver = true;
+                                        return 0;
+                                    }
+
+                                    LauncherResume.Remove(directory);
+                                }
+
+                                self.Refuse($"it could not start the new build in its own place: {execFailure}");
+                            }
+                        }
+
                         continue;
                     }
 
@@ -550,9 +636,45 @@ public static class Launcher
         }
         finally
         {
-            try { Directory.Delete(directory, recursive: true); }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            if (!handedOver)
+            {
+                try { Directory.Delete(directory, recursive: true); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
         }
+    }
+
+    /// <summary>
+    /// The start-of-night check: when a stored build is newer than this file,
+    /// makes the file that build and carries on as it. Answers the exit code
+    /// where Windows started the new file and waited for it, and where Linux or
+    /// macOS handed this process over (only a fake's exec says so); null where
+    /// this process carries on, having changed nothing or being unable to start
+    /// the new file.
+    /// </summary>
+    private static async Task<int?> UpdateAtStartAsync(
+        string[] args, ILaunchedChild starter, LaunchSignals signals, bool forwards, Action<string> say,
+        SelfUpdate self)
+    {
+        if (await self.FindNewerAsync() is not { } newer) return null;
+        if (!await self.SwapAsync(newer)) return null;
+
+        self.Updated(newer);
+
+        var handoff = new Dictionary<string, string> { [SelfUpdate.HandoffVariable] = "1" };
+
+        if (!self.RenameAside)
+        {
+            if (self.Exec.Replace(self.OwnPath, args, handoff, out var why)) return 0;
+
+            self.Refuse($"it could not start the new build in its own place: {why}");
+            return null;
+        }
+
+        // Windows: this running file was renamed aside, and the new one is at
+        // the path. It is started once, and this process only waits for it.
+        return await HandOnAsync(
+            args, self.OwnPath, self.OwnPath, signals, forwards: false, Version, starter, say, handoff);
     }
 
     /// <summary>The board this launcher is for just now. Never throws: a resolver that cannot say is no board.</summary>
@@ -611,9 +733,12 @@ public static class Launcher
         var path = Environment.ProcessPath ?? throw new InvalidOperationException("the path of this program is unknown");
         using var signals = LaunchSignals.Register();
 
+        var builds = board is null ? null : LauncherBuilds.Real(board);
+        var self = builds is null ? null : SelfUpdate.Real(new CliRevision(), path, builds.Store, say);
+
         return await RunAsync(
             args, new ProcessLaunchedChild(), path, signals, forwards: !OperatingSystem.IsWindows(), Version,
-            Path.GetTempPath(), say, board is null ? null : LauncherBuilds.Real(board));
+            Path.GetTempPath(), say, builds, self);
     }
 }
 

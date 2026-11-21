@@ -77,6 +77,38 @@ one more process start. `go-to-work`, `do-my-work`, `version`, `inbox` and
 or `scripts/hatch.ps1`, a build nobody stamped, or the container image's build.
 A build that was handed a command never hands it on again.
 
+The `hatch` on your `PATH` also keeps itself current, so the download is for good.
+When the loop starts as a launcher, before anything else, it looks at the builds
+kept under `versions/` that a board's record names as current. If one has a higher
+sequence than the launcher, the launcher makes the file at its own path that build
+and carries on as it, and says one line: `hatch: updated itself to build <sha>`.
+It reads the sequence by running the kept build's `version`. After a change of
+build in the middle of a night it does the same for the build it has just kept.
+Newer means a higher sequence and nothing else: a board that rolls back moves the
+loop's build and leaves the launcher alone, and with two boards on different
+builds the launcher becomes the newer.
+
+The new file is written beside the old one, run once from there and asked for its
+revision, and only then put in place, so a copy that will not run replaces
+nothing. On macOS and Linux a change of build in the middle of a night replaces
+the process itself in its own place: the process id, the terminal, the arguments
+and the night's state are the same on the far side, and the next loop starts as
+it would have. On Windows a running file cannot be overwritten, only renamed, so
+the launcher renames its own file aside (as `hatch.exe.old-<n>`), puts the new
+build at the path and carries on as it was; the next start runs the new file. At
+a start it starts the new file once and waits for it, passing its exit code on,
+and there is never more than that one extra process. The file left aside is
+removed at a later start. A copy or rename that fails, such as a folder on `PATH`
+you cannot write to, never ends a night or stops a command: the launcher says one
+line why, once per start, and carries on with the build it has.
+
+If the `hatch` on your `PATH` is a link, the launcher follows it: the file the
+link points at is replaced, and the link is left as it was. A build nobody
+stamped, a checkout through `scripts/hatch.sh` or `scripts/hatch.ps1`, a file
+named by `HATCH_RUNNER_BIN` and the container image's build never replace
+themselves. A launcher older than version 3 cannot do any of this; the board
+shows it as behind, and it needs one last download.
+
 That page carries a command reference beneath the download, so a person who
 has just downloaded `hatch` has it in front of them. The whole reference is
 the [CLI reference](cli-reference).
@@ -262,6 +294,11 @@ HATCH_BUILD_HOLD     builds the launcher will not move to, sha=unix seconds or
                      sha=never; the launcher sets it
 HATCH_BUILD_NOTE     one line the launcher has the child say at start; the
                      launcher sets it
+HATCH_LAUNCHER_HANDOFF  1 on the process a launcher started in its own place, so
+                     it does not look for a newer build again; the launcher
+                     sets it
+HATCH_LAUNCHER_RESUME  the night's directory, for a launcher that took over from
+                     another at a change of build; the launcher sets it
 HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
                      on PATH
 ```
