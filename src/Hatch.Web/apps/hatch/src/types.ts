@@ -2952,6 +2952,18 @@ export interface WorkLogEntry {
   reads: { path: string; count: number }[];
 }
 
+/** What an ambition may cost and what it has cost. Mirrors IssueBudgetDto. */
+export interface IssueBudget {
+  /** The budget in dollars, or null when a person has set none. */
+  budgetUsd: number | null;
+  /** The priced sessions' sum across the whole tree beneath the ambition. */
+  spentUsd: number;
+  /** How many sessions carried no price, and so added nothing to `spentUsd`. */
+  unpricedSessions: number;
+  /** True when there is a budget and `spentUsd` has reached it. */
+  spent: boolean;
+}
+
 /** What a set of sessions cost, added up. Mirrors WorkLogTotalsDto. */
 export interface WorkLogTotals {
   sessions: number;
