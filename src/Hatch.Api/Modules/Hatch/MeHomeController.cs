@@ -14,7 +14,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 /// <remarks>
 /// Its own controller, with no class-level attribute, for the reason
-/// <see cref="OvernightController"/> splits its read from its write:
+/// <see cref="ProjectsController"/> splits its reads from its writes:
 /// <see cref="MeController"/> is open to a key, and a home screen is a
 /// person's own choice, never an agent's.
 /// </remarks>
@@ -70,7 +70,7 @@ public class MeHomeController(
 
     /// <summary>
     /// A person, not a key - checked in the action as well as declared in the
-    /// attribute, for <see cref="OvernightController"/>'s reason:
+    /// attribute, for <see cref="RunnersController"/>'s reason:
     /// <see cref="RoleGate"/> is dormant wherever the wall is off, and a
     /// guarantee that evaporates under a switch is not a guarantee. A keyless
     /// runner that named itself with the runner header is refused too.

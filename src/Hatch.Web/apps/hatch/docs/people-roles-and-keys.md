@@ -222,7 +222,7 @@ name, that HA-1937 retires.
   only by a runner whose owner can see it, so a runner scoped out of a
   project is never elected its driver, however long it has run, and a peer
   scoped out of a project is not counted as able to take its tickets.
-- **Replacing a secret.** An admin rotates a runner with
+- **Replacing a secret.** The runner's owner, or an admin, rotates a runner with
   `POST /api/runners/{name}/rotate`; a new secret is made at once and
   shown once, sent `no-store`; the old secret is refused from the next call (a
   `401`), so every loop using it needs the new one; the name, owner, tags,
@@ -242,8 +242,7 @@ name, that HA-1937 retires.
   browser specifically, not merely a signed-in session with no UI; a
   column's settings; a project's repositories, logo, landing and auto-heal
   settings, playbook source and members; Hatch's own settings; a runner's
-  record; attachment upload and delete; marking the
-  overnight view seen; choosing a home screen; running a backup.
+  record; attachment upload and delete; choosing a home screen; running a backup.
   [`api-reference`](api-reference) has the route-by-route version.
 - **Which runners a key sees.** A key reads the runners of its owner, an
   admin's key reads every runner, and a key with no owner reads only the
@@ -262,6 +261,10 @@ name, that HA-1937 retires.
   revoked, and every call after is checked against that fresh — nothing
   about a key is cached — so the next call the key makes is a `401`.
   Revoking an already-revoked key changes nothing.
+- **Who may revoke or rotate.** The runner's owner, or an admin. A user gets
+  `403` on a runner that belongs to someone else, with a sentence naming the
+  owner, and on a runner that belongs to nobody: such a key sees every
+  project, so only an admin may press it. A key is refused both routes.
 - **Where the key goes:** never into the artifact — [the runner](the-runner#where-the-key-never-goes)
   says where it stays instead.
 

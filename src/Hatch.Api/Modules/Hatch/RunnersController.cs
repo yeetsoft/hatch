@@ -1156,34 +1156,46 @@ public class RunnersController(
     /// <summary>
     /// Stops a runner's key working, by the runner's name. The row stays - the
     /// audit trail names this key, and a revoked runner is still listed - so
-    /// this is a <c>POST</c>, not a <c>DELETE</c>. Admin only, and never a key.
+    /// this is a <c>POST</c>, not a <c>DELETE</c>. The runner's owner, or an
+    /// admin, and never a key.
     /// </summary>
     [HttpPost("{name}/revoke")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<IActionResult> RevokeRunner(string name, CancellationToken ct)
     {
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (await KeyNamedAsync(runner, ct) is not { } key) return NotFound();
 
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        if (await OwnerOrAdminRefusalAsync(key, wallEnabled, callerPerson, ct) is { } refused) return refused;
+
         return await keys.RevokeApiKeyAsync(key.Id, ct) ? NoContent() : NotFound();
     }
 
     /// <summary>
-    /// Replaces a runner's secret, answered once. Admin only, and never a key -
-    /// a key that could rotate could take over another runner's name.
+    /// Replaces a runner's secret, answered once. The runner's owner, or an
+    /// admin, and never a key - a key that could rotate could take over another
+    /// runner's name.
     /// </summary>
     /// <remarks>
     /// Config, heartbeat rows and sessions are untouched: they join to the key
     /// by id or by name, and rotating only changes the key's hash, prefix and
-    /// <see cref="EfApiKey.RotatedAt"/>.
+    /// <see cref="EfApiKey.RotatedAt"/>. The ownership refusal comes before the
+    /// revoked one, so a stranger learns nothing of the key's state.
     /// </remarks>
     [HttpPost("{name}/rotate")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<RunnerMintedDto>> RotateRunner(string name, CancellationToken ct)
     {
         if (await NotAPerson(ct) is { } refusal) return refusal;
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (await KeyNamedAsync(runner, ct) is not { } key) return NotFound();
+
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        if (await OwnerOrAdminRefusalAsync(key, wallEnabled, callerPerson, ct) is { } refused) return refused;
+
         if (!key.IsLive(time.GetUtcNow())) return Conflict($"{runner}'s key is revoked");
 
         if (await keys.RotateApiKeyAsync(key.Id, ct) is not { } rotated) return NotFound();
@@ -1194,12 +1206,26 @@ public class RunnersController(
         var found = (await Runner.JoinAsync(db, keys, ct)).First(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
         var held = await runners.HeldAsync(db, claims, now, ct);
         var drivers = await runners.DriversAsync(db, keys, now, ct);
-        var wallEnabled = auth.Value.Enabled;
-        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
         var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
         return new RunnerMintedDto(dto, rotated.Secret);
+    }
+
+    /// <summary>
+    /// The 403 for a caller who neither owns this key nor is an admin, or null
+    /// where they may go on. Not <see cref="CanControl"/>: that passes for a
+    /// runner that belongs to nobody, and rotating one would hand a user a
+    /// secret that sees every project.
+    /// </summary>
+    private async Task<ObjectResult?> OwnerOrAdminRefusalAsync(EfApiKey key, bool wallEnabled, EfPerson? callerPerson, CancellationToken ct)
+    {
+        if (OwnsOrAdministers(key.OwnerPersonId, wallEnabled, callerPerson)) return null;
+
+        return key.OwnerPersonId is null
+            ? new ObjectResult($"only an admin may control {key.Name}, which belongs to nobody")
+                { StatusCode = StatusCodes.Status403Forbidden }
+            : await ControlRefusalAsync(key.Name, key.OwnerPersonId, ct);
     }
 
     /// <summary>
@@ -1658,6 +1684,10 @@ public class RunnersController(
     /// <summary>Whether this row is the caller's own: the wall off, or the caller being the row's owner. Unlike <see cref="CanControl"/>, an admin does not have it on others' rows, and nobody has it on a row that belongs to nobody.</summary>
     private static bool Yours(Guid? forPersonId, bool wallEnabled, EfPerson? callerPerson) =>
         !wallEnabled || (forPersonId is { } id && callerPerson?.Id == id);
+
+    /// <summary>Whether the caller owns this key, or is an admin. Built on <see cref="Yours"/>, so a key that belongs to nobody is an admin's alone.</summary>
+    private static bool OwnsOrAdministers(Guid? ownerPersonId, bool wallEnabled, EfPerson? callerPerson) =>
+        Yours(ownerPersonId, wallEnabled, callerPerson) || (wallEnabled && callerPerson?.Role >= PersonRole.Admin);
 
     // ---- The name ----
 

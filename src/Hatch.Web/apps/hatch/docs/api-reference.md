@@ -1486,8 +1486,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, and `statusMode`/`statusIds` (the column rule) - `statusMode` is `all`, `except` or `only`; the two take each other or neither, `400` otherwise; `400` for a mode none of the three names, or an id no column has; `all` keeps the ids `[]` regardless of what was sent; a name with no key is `400`, since the rule has nowhere to live; `preferred` marks the runner to take work before unmarked runners - absent leaves it as it was, `true` or `false` sets it, a key is `403` (and so is a person who neither owns the runner nor is an admin), and a name with no key is `400`, since the flag has nowhere to live |
 | PUT | `/runners/{name}/refused-models` | key, own row, or person | Replaces the whole list of models this key refuses to run; `400` for an absent `models`, a blank entry, or one of a different agent than it reports; `404` for a name no key answers to, `409` for a revoked key |
-| POST | `/runners/{name}/revoke` | **admin** | Stops the runner's key working, by the runner's name; the runner stays listed, `404` for a name no key answers to |
-| POST | `/runners/{name}/rotate` | **admin** | Replaces the runner's secret: the old one is refused from the next call; answers the runner and the new `secret` once, sent `no-store`, with `prefix` and `rotatedAt` updated; name, owner, config, sessions and attribution carry over; `404` for a name no key answers to, `409` for a revoked key |
+| POST | `/runners/{name}/revoke` | **person: own runner, or admin** | Stops the runner's key working, by the runner's name; the runner stays listed and a second revoke changes nothing; a user gets `403` on a runner that belongs to someone else, with a sentence naming the owner (`only <name>, or an admin, may control <runner>`), and on a runner that belongs to nobody; `404` for a name no key answers to |
+| POST | `/runners/{name}/rotate` | **person: own runner, or admin** | Replaces the runner's secret: the old one is refused from the next call; answers the runner and the new `secret` once, sent `no-store`, with `prefix` and `rotatedAt` updated; name, owner, config, sessions and attribution carry over; a user gets `403` on a runner that belongs to someone else, with a sentence naming the owner (`only <name>, or an admin, may control <runner>`), and on a runner that belongs to nobody - and that comes before the `409`, so a stranger learns nothing of the key's state; `404` for a name no key answers to, `409` for a revoked key |
 | PUT | `/runners/{name}/owner` | **admin** | Sets or clears (`personId: null`) whose tickets the runner's `--mine` reaches; `400` for an unknown person, `404` for a name no key answers to |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
@@ -1835,7 +1835,7 @@ attempt, whoever made it. `POST /backup/run`, person-only, runs one backup
 synchronously, capped at two minutes, and answers the same shape: a `failed`
 attempt is still a `200`, with its sentence in `lastError`. It `400`s with no
 folder configured, `409`s while another run already holds the gate, and
-`403`s for an API key, the same as a program reaching `/overnight/seen`.
+`403`s for an API key, the same as a program reaching `PUT /me/home`.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
 Owner, Scope, Home)` - `kind: key` for an API key, naming its own name, its
@@ -1895,8 +1895,6 @@ a key.
 | GET | `/work-log/history` | key | Spend over time, in equal buckets |
 | GET | `/work-log/sessions` | key | The sessions in a range, ranked, and what the range cost in total |
 | GET | `/work-log/by-playbook` | key | The sessions in a range, folded by the playbook, transition, issue type, model, effort, outcome and reason they ran under |
-| GET | `/overnight` | key | What landed in the newest night |
-| POST | `/overnight/seen` | **person** | Marks the night read, for the caller |
 | GET | `/activity` | key | The event trail across every issue, newest first, a page at a time |
 | GET | `/changelog` | key | What shipped, a window of days at a time |
 | GET | `/changelog/file` | key | What shipped, as the YAML file a repository keeps checked in |
@@ -1954,10 +1952,7 @@ describe the log and not the range. Absent, every session is read.
 Each row of `/work-log/sessions` and of `/work-log/by-playbook` carries
 `outcome` and `reason`, null where the session recorded none.
 
-`/overnight` answers an `OvernightDto(From, To, Count, Rows, Unseen)`,
-grouping and gap-splitting the newest night's terminal landings; `seen` is a
-person's own mark of having looked, and refuses a program (a key) for the
-same reason `work-log`'s write refuses a person, in reverse. `/activity`
+`/activity`
 pages the same event trail
 `/issues/{key}/events` reads for one issue, across every issue instead,
 ordered the same way so one event never sorts differently between the two
@@ -2166,7 +2161,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **46** person-only paths on this page,
+on this page with both) - there are **49** person-only paths on this page,
 across both halves together:
 
 ```
@@ -2215,7 +2210,6 @@ POST   /runners/{name}/order
 DELETE /runners/{name}/order
 GET    /settings
 PUT    /settings
-POST   /overnight/seen
 PUT    /me/home
 POST   /backup/run
 POST   /playbooks
@@ -2223,11 +2217,11 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Thirty-one belong to a project, a column, the WIP section, a ticket's own
-fields, or attachment upload and delete; the other eleven are a runner's own record (now
+Thirty-nine belong to a project, a column, the WIP section, a ticket's own
+fields, or attachment upload and delete; the other ten are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`),
-Hatch's settings on both verbs, marking the overnight seen, the home screen,
-running a backup, and the three playbook writes.
+Hatch's settings on both verbs, the home screen, running a backup, and the
+three playbook writes.
 
 Two writes that look like the same shape are deliberately **not** on this
 list, because the attribute itself does not narrow them - the narrowing is
