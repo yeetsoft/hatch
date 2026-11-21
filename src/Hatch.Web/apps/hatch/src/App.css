@@ -1133,6 +1133,34 @@
   gap: var(--sp-1);
 }
 
+/* Unscoped, the trigger is an outlined pill reading All projects, so it reads
+   as the control that scopes the page and not as one more menu beside Track,
+   Agents and Manage. Painted from the bar's own tokens, since the bar is the
+   gradient: an outline in --on-chrome, softened at rest, and the accent
+   trigger's own wash on hover and while open. Two classes, so the pill's
+   border and radius beat the base trigger's whatever the load order. */
+.hatch-menu__trigger.hatch-scope-control--unscoped {
+  gap: var(--sp-1);
+  padding: 0 var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--on-chrome) 55%, transparent);
+  border-radius: var(--r-pill);
+}
+
+.hatch-menu__trigger.hatch-scope-control--unscoped:hover,
+.hatch-menu__trigger.hatch-scope-control--unscoped[aria-expanded='true'] {
+  border-color: var(--on-chrome);
+}
+
+/* The caret turns over while the panel is open. Here, not in Menu.css, so no
+   other menu changes. */
+.hatch-scope-control--unscoped .hatch-menu__caret {
+  transition: transform var(--transition);
+}
+
+.hatch-scope-control--unscoped[aria-expanded='true'] .hatch-menu__caret {
+  transform: rotate(180deg);
+}
+
 .hatch-scope-control__chip {
   display: inline-flex;
   align-items: center;
