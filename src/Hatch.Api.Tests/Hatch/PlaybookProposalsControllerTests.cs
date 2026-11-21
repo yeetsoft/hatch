@@ -235,17 +235,22 @@ public class PlaybookProposalsControllerTests
         Assert.Contains(expected, Reason(result.Result));
     }
 
-    [Fact]
-    public async Task ARowThatWouldBeACheckAndAnswerQuestions_IsRefusedWithThePatchSentence()
+    [Theory]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    public async Task ARowThatWouldBeMoreThanOneOfTheThreeKinds_IsRefusedWithThePatchSentence(
+        bool isCheck, bool answersQuestions, bool worksOutChanges)
     {
         var h = await NewAsync();
-        var patch = new PlaybookPatchRequest(null, null, null, null, null, null, IsCheck: true, AnswersQuestions: true);
+        var patch = new PlaybookPatchRequest(
+            null, null, null, null, null, null, IsCheck: isCheck, AnswersQuestions: answersQuestions, WorksOutChanges: worksOutChanges);
         var expected = await ExpectedRefusalAsync(h, patch);
 
         var result = await h.Proposals.SubmitProposal(
             new PlaybookProposalRequest("why", null, [ChangeFrom(h.Playbook.Id, patch)]), default);
 
-        Assert.Equal("a playbook is a check or it answers questions, not both", expected);
+        Assert.Equal("a playbook is a check, answers questions or works out changes - never more than one", expected);
         Assert.Contains(expected, Reason(result.Result));
     }
 
@@ -663,6 +668,23 @@ public class PlaybookProposalsControllerTests
     }
 
     [Fact]
+    public async Task ApproveAll_OnAWorksOutChangesChange_WritesTheColumn_AndLeavesTheOtherTwoAlone()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(
+            patch: new PlaybookPatchRequest(null, null, null, null, null, null, WorksOutChanges: true));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default));
+
+        Assert.True(Assert.Single(result.Playbooks).WorksOutChanges);
+        var row = await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id);
+        Assert.True(row.WorksOutChanges);
+        Assert.False(row.IsCheck);
+        Assert.False(row.AnswersQuestions);
+    }
+
+    [Fact]
     public async Task ApproveAll_OnALocalModelChange_WritesTheColumn_AndLeavesTheModelAlone()
     {
         var h = await NewAsync();
@@ -958,7 +980,7 @@ public class PlaybookProposalsControllerTests
     private static PlaybookProposalChangeRequest ChangeFrom(int playbookId, PlaybookPatchRequest patch) => new(
         playbookId, patch.FromStatusId, patch.ToStatusId, patch.Types, patch.Prompt, patch.Model, patch.Effort,
         patch.Budget, patch.BriefLimit, patch.Shape, patch.DeniedTools, patch.ProjectId, patch.IsCheck,
-        AnswersQuestions: patch.AnswersQuestions);
+        AnswersQuestions: patch.AnswersQuestions, WorksOutChanges: patch.WorksOutChanges);
 
     /// <summary>
     /// The sentence <c>PATCH /playbooks/{id}</c> would give for the same patch, read off a twin

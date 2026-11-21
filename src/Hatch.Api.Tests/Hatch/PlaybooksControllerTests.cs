@@ -898,14 +898,43 @@ public class PlaybooksControllerTests
     }
 
     [Fact]
-    public async Task ARowThatIsACheckAndAnswersQuestions_IsRefusedOnCreate()
+    public async Task WorksOutChanges_IsSetAndReadBack()
+    {
+        var h = await NewAsync();
+        var plain = await h.CreateAsync();
+        Assert.False(plain.WorksOutChanges);
+
+        var row = await h.CreateAsync(projectId: h.ProjectA.ToString(), worksOutChanges: true);
+        Assert.True(row.WorksOutChanges);
+        Assert.True((await h.ReadAsync(row.Id)).WorksOutChanges);
+
+        var toFalse = await h.SetAsync(row.Id, worksOutChanges: false);
+        Assert.False(toFalse.WorksOutChanges);
+        Assert.False((await h.ReadAsync(row.Id)).WorksOutChanges);
+
+        var toTrue = await h.SetAsync(row.Id, worksOutChanges: true);
+        Assert.True(toTrue.WorksOutChanges);
+        Assert.True((await h.ReadAsync(row.Id)).WorksOutChanges);
+
+        // A patch that names another field leaves it alone.
+        var other = await h.SetAsync(row.Id, budget: "3");
+        Assert.True(other.WorksOutChanges);
+    }
+
+    [Theory]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    public async Task ARowThatIsMoreThanOneOfTheThreeKinds_IsRefusedOnCreate(bool isCheck, bool answersQuestions, bool worksOutChanges)
     {
         var h = await NewAsync();
 
         var refusal = await h.Playbooks.CreatePlaybook(
-            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", IsCheck: true, AnswersQuestions: true), default);
+            new PlaybookCreateRequest(
+                h.Todo, h.InProgress, [], "do it", "sonnet", "high",
+                IsCheck: isCheck, AnswersQuestions: answersQuestions, WorksOutChanges: worksOutChanges), default);
 
-        Assert.Equal("a playbook is a check or it answers questions, not both", Reason(refusal.Result));
+        Assert.Equal("a playbook is a check, answers questions or works out changes - never more than one", Reason(refusal.Result));
         Assert.Empty(await h.Db.Playbooks.ToListAsync());
     }
 
@@ -923,7 +952,7 @@ public class PlaybooksControllerTests
         var both = await h.Playbooks.PatchPlaybook(
             check.Id, new PlaybookPatchRequest(null, null, null, null, null, null, IsCheck: true, AnswersQuestions: true), default);
 
-        const string sentence = "a playbook is a check or it answers questions, not both";
+        const string sentence = "a playbook is a check, answers questions or works out changes - never more than one";
         Assert.Equal(sentence, Reason(toAnswer.Result));
         Assert.Equal(sentence, Reason(toCheck.Result));
         Assert.Equal(sentence, Reason(both.Result));
@@ -936,6 +965,37 @@ public class PlaybooksControllerTests
         var row = Value(swapped);
         Assert.False(row.IsCheck);
         Assert.True(row.AnswersQuestions);
+    }
+
+    [Fact]
+    public async Task SettingWorksOutChangesOnACheckOrAnAnsweringRow_IsRefusedOnPatch()
+    {
+        var h = await NewAsync();
+        var check = Created(await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, ["story"], "do it", "sonnet", "high", IsCheck: true), default));
+        var answering = Created(await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, ["bug"], "do it", "sonnet", "high", AnswersQuestions: true), default));
+        var works = Created(await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, ["task"], "do it", "sonnet", "high", WorksOutChanges: true), default));
+
+        var onCheck = await h.Playbooks.PatchPlaybook(
+            check.Id, new PlaybookPatchRequest(null, null, null, null, null, null, WorksOutChanges: true), default);
+        var onAnswering = await h.Playbooks.PatchPlaybook(
+            answering.Id, new PlaybookPatchRequest(null, null, null, null, null, null, WorksOutChanges: true), default);
+        var toCheck = await h.Playbooks.PatchPlaybook(
+            works.Id, new PlaybookPatchRequest(null, null, null, null, null, null, IsCheck: true), default);
+        var toAnswering = await h.Playbooks.PatchPlaybook(
+            works.Id, new PlaybookPatchRequest(null, null, null, null, null, null, AnswersQuestions: true), default);
+
+        const string sentence = "a playbook is a check, answers questions or works out changes - never more than one";
+        Assert.Equal(sentence, Reason(onCheck.Result));
+        Assert.Equal(sentence, Reason(onAnswering.Result));
+        Assert.Equal(sentence, Reason(toCheck.Result));
+        Assert.Equal(sentence, Reason(toAnswering.Result));
+        Assert.False((await h.ReadAsync(check.Id)).WorksOutChanges);
+        Assert.False((await h.ReadAsync(answering.Id)).WorksOutChanges);
+        Assert.False((await h.ReadAsync(works.Id)).IsCheck);
+        Assert.False((await h.ReadAsync(works.Id)).AnswersQuestions);
     }
 
     // ---- Model families ----
@@ -1261,20 +1321,22 @@ public class PlaybooksControllerTests
         public async Task<PlaybookDto> CreateAsync(
             string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
             bool? isCheck = null, string? quietLimitSeconds = null, string? maxRunSeconds = null, string? localModel = null,
-            bool? answersQuestions = null) =>
+            bool? answersQuestions = null, bool? worksOutChanges = null) =>
             Created(await Playbooks.CreatePlaybook(
                 new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit,
                     ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds,
-                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel, AnswersQuestions: answersQuestions), default));
+                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel, AnswersQuestions: answersQuestions,
+                    WorksOutChanges: worksOutChanges), default));
 
         public async Task<PlaybookDto> SetAsync(
             int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
             bool? isCheck = null, string? prompt = null, string? quietLimitSeconds = null, string? maxRunSeconds = null,
-            string? localModel = null, bool? answersQuestions = null) =>
+            string? localModel = null, bool? answersQuestions = null, bool? worksOutChanges = null) =>
             Value(await Playbooks.PatchPlaybook(
                 id, new PlaybookPatchRequest(null, null, null, prompt, null, null, budget, briefLimit,
                     ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds,
-                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel, AnswersQuestions: answersQuestions), default));
+                    MaxRunSeconds: maxRunSeconds, LocalModel: localModel, AnswersQuestions: answersQuestions,
+                    WorksOutChanges: worksOutChanges), default));
 
         /// <summary>There is no API to set a prescribed text, so a test sets it on the row.</summary>
         public async Task SetDefaultPromptAsync(int id)
