@@ -51,6 +51,9 @@ namespace Hatch.Contracts;
 /// <param name="FilesContributions">Whether the board files its repositories' outside pull requests as contributions - see <see cref="EfHatchProject.FilesContributions"/>. Off by default.</param>
 /// <param name="FilesContributionsBy">Who last changed <paramref name="FilesContributions"/>, or null until the first change - see <see cref="EfHatchProject.FilesContributionsBy"/>.</param>
 /// <param name="FilesContributionsAt">When <paramref name="FilesContributions"/> was last changed, or null until the first change - see <see cref="EfHatchProject.FilesContributionsAt"/>.</param>
+/// <param name="AllowsUnsignedCommits">Whether the project allows commits that are not signed - see <see cref="EfHatchProject.AllowsUnsignedCommits"/>. On by default.</param>
+/// <param name="AllowsUnsignedCommitsBy">Who last changed <paramref name="AllowsUnsignedCommits"/>, or null until the first change - see <see cref="EfHatchProject.AllowsUnsignedCommitsBy"/>.</param>
+/// <param name="AllowsUnsignedCommitsAt">When <paramref name="AllowsUnsignedCommits"/> was last changed, or null until the first change - see <see cref="EfHatchProject.AllowsUnsignedCommitsAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -68,7 +71,8 @@ public record ProjectDto(
     bool RunnersWorkContributions = false, string? RunnersWorkContributionsBy = null, DateTimeOffset? RunnersWorkContributionsAt = null,
     string OnePullRequestPolicy = OnePullRequestPolicies.Optional, string? OnePullRequestPolicyBy = null, DateTimeOffset? OnePullRequestPolicyAt = null,
     string Priority = ProjectPriorities.Normal, string? PriorityBy = null, DateTimeOffset? PriorityAt = null,
-    bool FilesContributions = false, string? FilesContributionsBy = null, DateTimeOffset? FilesContributionsAt = null)
+    bool FilesContributions = false, string? FilesContributionsBy = null, DateTimeOffset? FilesContributionsAt = null,
+    bool AllowsUnsignedCommits = true, string? AllowsUnsignedCommitsBy = null, DateTimeOffset? AllowsUnsignedCommitsAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -177,6 +181,9 @@ public record ProjectRunnersWorkContributionsWriteRequest(bool RunnersWorkContri
 
 /// <summary>A write to whether a project files outside pull requests as contributions - see <see cref="EfHatchProject.FilesContributions"/>.</summary>
 public record ProjectFilesContributionsWriteRequest(bool FilesContributions);
+
+/// <summary>A write to whether a project allows unsigned commits - see <see cref="EfHatchProject.AllowsUnsignedCommits"/>.</summary>
+public record ProjectAllowsUnsignedCommitsWriteRequest(bool AllowsUnsignedCommits);
 
 /// <summary>A write to whether a project's one-PR default binds its stories - see <see cref="EfHatchProject.OnePullRequestPolicy"/>.</summary>
 public record ProjectOnePrPolicyWriteRequest(string Policy);

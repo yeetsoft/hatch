@@ -460,6 +460,7 @@ public class ScopeRouteMatrixTests
         ("ProjectsController.PutCheckApprovesMerge", Lookup(t => Put($"/api/projects/{t.ProjectId}/check-approves-merge", new { checkApprovesMerge = false }))),
         ("ProjectsController.PutRunnersWorkContributions", Lookup(t => Put($"/api/projects/{t.ProjectId}/runners-work-contributions", new { runnersWorkContributions = false }))),
         ("ProjectsController.PutFilesContributions", Lookup(t => Put($"/api/projects/{t.ProjectId}/files-contributions", new { filesContributions = false }))),
+        ("ProjectsController.PutAllowsUnsignedCommits", Lookup(t => Put($"/api/projects/{t.ProjectId}/allows-unsigned-commits", new { allowsUnsignedCommits = true }))),
         ("ProjectsController.PutNoCodeCloses", Lookup(t => Put($"/api/projects/{t.ProjectId}/no-code-closes", new { noCodeCloses = false }))),
         ("ProjectsController.PutOnePrPolicy", Lookup(t => Put($"/api/projects/{t.ProjectId}/one-pr-policy", new { policy = "optional" }))),
         ("ProjectsController.PutPriority", Lookup(t => Put($"/api/projects/{t.ProjectId}/priority", new { priority = "normal" }))),
