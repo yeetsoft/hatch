@@ -2220,6 +2220,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long?>("MaxTokensPerHour")
                         .HasColumnType("bigint");
 
+                    b.Property<bool>("Preferred")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("RefusedModels")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

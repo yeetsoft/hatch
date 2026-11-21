@@ -11047,6 +11047,17 @@ was written is dropped from `statusIds` on the next read rather than carried
 as a ghost id. Nothing reads this rule for dispatch yet, and the Runners page
 draws nothing for it - both come with a later ticket.
 
+**It can also be marked preferred.** `preferred` on `PATCH /api/runners/{name}`
+says this runner takes work before unmarked runners; absent leaves it as it
+was, and `true` or `false` sets it. The flag lives on the key's config row,
+like the column rule, so a name with no key is refused it outright. It is
+only a person's to write - an admin, or the person who owns the runner - and
+a key is refused with `403`, even on its own row, because the flag widens the
+runner's share rather than narrowing it, as a refused model does. It reads
+`false` for a key that has never run and for a heartbeat row with no key, and
+a peer's declaration carries it. Nothing reads it for dispatch yet, and the
+Runners page draws nothing for it - both come with later stories.
+
 **It also says whether it refuses dangerous work, and which projects it is
 bound to, on every beat.** `refusesDangerous` and `projects` ride every
 heartbeat beside `remotes` and `agent`, the same way `models` and `has` do

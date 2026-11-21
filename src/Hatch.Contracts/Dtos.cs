@@ -5613,7 +5613,8 @@ public record RunnerDto(
     IReadOnlyList<string> Hold = null!,
     bool Pulling = false,
     int? LauncherVersion = null,
-    bool LauncherBehind = false)
+    bool LauncherBehind = false,
+    bool Preferred = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -6136,6 +6137,11 @@ public static class RunnerBuildComparisons
 /// regardless of what was sent.
 /// </param>
 /// <param name="StatusIds">The column ids <see cref="StatusMode"/> reads against, judged against the board's own columns.</param>
+/// <param name="Preferred">
+/// Whether the runner takes work before unmarked runners. Absent leaves it
+/// alone; true or false sets it. Only a person may send it - a key is refused -
+/// and only for a name with a key, since the flag lives on the key's config row.
+/// </param>
 public record RunnerPatchRequest(
     string? State = null,
     string? Under = null,
@@ -6146,7 +6152,8 @@ public record RunnerPatchRequest(
     string? MaxTokens = null,
     string? MaxTokensPerHour = null,
     string? StatusMode = null,
-    IReadOnlyList<int>? StatusIds = null);
+    IReadOnlyList<int>? StatusIds = null,
+    bool? Preferred = null);
 
 /// <summary>
 /// The body of <c>PUT /runners/{name}/refused-models</c>. <paramref name="Models"/>

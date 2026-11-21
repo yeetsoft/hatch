@@ -26,6 +26,11 @@ namespace Hatch.Api.Modules.Hatch;
 /// row and for a key with no config row. See <see cref="Dispatch.ColumnFold"/>.
 /// </param>
 /// <param name="StatusIds">The column ids <paramref name="StatusMode"/> reads against.</param>
+/// <param name="Preferred">
+/// Whether the runner's key is marked to take work before unmarked runners.
+/// False for a keyless beat and for a key with no config row. Nothing in
+/// <c>Dispatch</c> reads it yet.
+/// </param>
 /// <param name="OwnerPersonId">
 /// The person the runner's key belongs to, whether or not <paramref name="Mine"/>
 /// is set - <paramref name="Principal"/> is only resolved under <c>Mine</c>.
@@ -45,7 +50,8 @@ public sealed record RunnerDeclaration(
     IReadOnlyList<string> Refused,
     Guid? OwnerPersonId = null,
     string StatusMode = RunnerStatusMode.All,
-    IReadOnlyList<int>? StatusIds = null)
+    IReadOnlyList<int>? StatusIds = null,
+    bool Preferred = false)
 {
     /// <summary>What this runner refuses - models and columns - as a pass judges it.</summary>
     public RunnerRefusal ToRefusal() => new(Name, Refused, StatusMode, StatusIds);
@@ -83,7 +89,8 @@ public sealed record RunnerDeclaration(
             config is null ? [] : RunnerTagColumn.Read(config.RefusedModels),
             row.ForPersonId,
             config?.StatusMode ?? RunnerStatusMode.All,
-            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds));
+            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds),
+            config?.Preferred ?? false);
     }
 
     /// <summary>
@@ -153,7 +160,8 @@ public sealed record RunnerDeclaration(
             config is null ? [] : RunnerTagColumn.Read(config.RefusedModels),
             runner.OwnerPersonId,
             config?.StatusMode ?? RunnerStatusMode.All,
-            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds));
+            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds),
+            config?.Preferred ?? false);
     }
 
     /// <summary>

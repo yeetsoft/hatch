@@ -4910,6 +4910,94 @@ public class RunnersControllerTests
         Assert.Equal(2, patched.MaxRuns);
     }
 
+    // ---- Preferred ----
+
+    [Fact]
+    public async Task Patch_Preferred_ByAnAdmin_ReadsBackOnPatchAndOnGet()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(Preferred: true));
+
+        Assert.True(patched.Preferred);
+        Assert.True((await h.GetAsync(Runner))!.Preferred);
+        Assert.True((await h.Db.RunnerConfigs.SingleAsync(c => c.ApiKeyId == key.Id)).Preferred);
+    }
+
+    [Fact]
+    public async Task Patch_LeavingPreferredOut_LeavesItAlone()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Preferred: true));
+
+        var other = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "2"));
+        Assert.True(other.Preferred);
+        Assert.Equal(2, other.MaxRuns);
+
+        var cleared = await h.PatchAsync(Runner, new RunnerPatchRequest(Preferred: false));
+        Assert.False(cleared.Preferred);
+        Assert.False((await h.GetAsync(Runner))!.Preferred);
+    }
+
+    [Fact]
+    public async Task Patch_Preferred_ByAKey_Is403()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        await h.AddKeyAsync(Runner);
+
+        var byKey = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Preferred: true), default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)byKey.Result!).StatusCode);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_Preferred_ByAPersonWhoCannotControlTheRunner_Is403()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Preferred: true), default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_Preferred_WithNoKey_Is400_ButOtherFieldsStillSave()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Preferred: true), default);
+        Assert.IsType<BadRequestObjectResult>(refusal.Result);
+        Assert.Contains("no key", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "2"));
+        Assert.Equal(2, patched.MaxRuns);
+        Assert.False(patched.Preferred);
+    }
+
+    [Fact]
+    public async Task GetList_CarriesPreferredOnEveryRow()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync("marked");
+        await h.AddKeyAsync("unmarked");
+        await h.PatchAsync("marked", new RunnerPatchRequest(Preferred: true));
+        await h.BeatAsync("beat-only", new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var rows = (await h.ListAllAsync()).ToDictionary(r => r.Name, r => r.Preferred);
+
+        Assert.True(rows["marked"]);
+        Assert.False(rows["unmarked"]);
+        Assert.False(rows["beat-only"]);
+    }
+
     [Fact]
     public async Task Get_AfterAColumnIsDeleted_DropsItsIdFromStatusIds()
     {
