@@ -257,13 +257,7 @@ export function RunnerPage() {
         {advice !== 'none' && (
           <p className="text-muted">
             This Hatch has its wall up, so the runner needs a key.{' '}
-            {advice === 'needs-key-admin' ? (
-              <>
-                Mint one on the <Link to="/runners">Runners</Link> page and put it in the second command.
-              </>
-            ) : (
-              <>Ask an admin for one and put it in the second command.</>
-            )}{' '}
+            Mint one on the <Link to="/runners">Runners</Link> page and put it in the second command.{' '}
             Or run <code>hatch config</code> and paste it at the prompt, which keeps it out of your shell
             history.
           </p>

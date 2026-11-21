@@ -4161,7 +4161,7 @@ applied by the query filters on `HatchContext`; see
 An `EfApiKey` is what a runner *is*. The board's settings for it live in
 `RunnerConfigs`, in the `hatch` schema, carrying the key's `ApiKeyId` with no
 foreign key, because the key is in core. The secret is shown once, when an
-admin creates the runner.
+person creates the runner.
 
 A secret is `hatch_ak_` + 32 characters from a cryptographic RNG, drawn from
 letters and digits only because a key is copied through shells, YAML and JSON

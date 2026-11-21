@@ -216,11 +216,12 @@ name, that HA-1937 retires.
 - **Where it is minted.** A key is minted only by *creating a runner*
   (`POST /api/runners`), by a signed-in person - a user for themselves, an
   admin for anyone: no key may mint, rotate, revoke or re-own a key, only a
-  person. The Runners page's **Create runner** button is not yet shown to a
-  user; the API takes them already. The dialog takes **Name** ("What the audit trail will call it") and
-  **Owner** (hint: "Whose tickets this key's --mine reaches. The key sees only
+  person. The Runners page's **Create runner** button is shown to a user as
+  well as an admin, and not with the wall off. The dialog takes **Name** ("What the audit trail will call it") and,
+  for an admin, **Owner** (hint: "Whose tickets this key's --mine reaches. The key sees only
   the projects its owner sees; with nobody, it sees every project."), then
-  **Create**. The secret is shown once, on the page, beside the two `hatch config`
+  **Create**. A user's dialog has no Owner: it says the runner will be theirs, and the
+  runner is. The secret is shown once, on the page, beside the two `hatch config`
   commands it needs next, and the response is sent `no-store`, so it is never
   shown again. A name already held, by a key revoked or not, is refused. An
   admin can change the owner later, on the runner's Identity card, which
@@ -247,7 +248,7 @@ name, that HA-1937 retires.
   (`409`) — rotate to replace a leaked secret and keep the runner working,
   revoke to stop it. [`api-reference`](api-reference) has the route. On the
   Runners page these are Rotate key and Revoke on a runner's own Identity
-  card, admin only.
+  card, for the runner's owner or an admin.
 - **What a key reaches.** Every route of the board's own API (not sign-in, `people` or `ui-logs`), less the routes that
   take a person only. Those refuse a key outright — on a walled Hatch with
   `key_not_accepted`, and with the wall off they refuse any program the same

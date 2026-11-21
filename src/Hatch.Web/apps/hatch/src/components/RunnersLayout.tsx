@@ -8,6 +8,7 @@ import { getStatuses } from '../api/client';
 import { useLoaded } from '../lib/useLoaded';
 import { useRunners } from '../lib/useRunners';
 import { useMe } from '../lib/useMe';
+import { canCreateRunner } from '../lib/runnerKey';
 import { useAttentionContext } from '../lib/useAttentionContext';
 import { waitingOnARunnerLines } from '../lib/attention';
 import { usePhone } from '../lib/viewport';
@@ -44,6 +45,7 @@ export function RunnersLayout() {
   const { data: statuses } = useLoaded(getStatuses);
   const { me, isAdmin } = useMe();
   const { attention } = useAttentionContext();
+  const canCreate = canCreateRunner(me);
   const wallOff = me?.kind === 'local' || me?.kind === 'none';
   const now = new Date();
   const phone = usePhone();
@@ -67,7 +69,7 @@ export function RunnersLayout() {
       <RunnerList
         runners={runners}
         selected={selected}
-        isAdmin={isAdmin}
+        canCreate={canCreate}
         wallOff={wallOff}
         now={now}
         onCreate={() => setCreating(true)}
@@ -76,9 +78,9 @@ export function RunnersLayout() {
       <LocalModelsCard />
     </>
   );
-  // Never on the wall-off variant: the admin routes this opens are dormant
-  // there, and hatch config bootstraps the runner instead.
-  const headerActions = isAdmin && (
+  // Never on the wall-off variant: the routes this opens are dormant there,
+  // and hatch config bootstraps the runner instead.
+  const headerActions = canCreate && (
     <Button variant="primary" onClick={() => setCreating(true)}>
       Create runner
     </Button>
@@ -95,7 +97,14 @@ export function RunnersLayout() {
       ))}
     </div>
   );
-  const dialog = <CreateRunnerDialog open={creating} onClose={() => setCreating(false)} onCreated={onCreated} />;
+  const dialog = (
+    <CreateRunnerDialog
+      open={creating}
+      onClose={() => setCreating(false)}
+      onCreated={onCreated}
+      chooseOwner={isAdmin}
+    />
+  );
 
   if (phone) {
     if (match) {

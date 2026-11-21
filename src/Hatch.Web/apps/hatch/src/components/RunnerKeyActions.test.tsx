@@ -20,7 +20,7 @@ const runner = (over: Partial<Runner> = {}): Runner =>
 describe('RunnerKeyActions', () => {
   it('draws the owner select, Rotate key and Revoke', () => {
     const html = renderToStaticMarkup(
-      <RunnerKeyActions runner={runner()} onSecret={() => {}} reload={async () => {}} />,
+      <RunnerKeyActions runner={runner()} onSecret={() => {}} reload={async () => {}} ownerEditable />,
     );
     expect(html).toContain('aria-label="Owner of Quill"');
     expect(html).toContain('>Rotate key</button>');
@@ -29,7 +29,7 @@ describe('RunnerKeyActions', () => {
 
   it('hints, under the select, that the key reads through its owner', () => {
     const html = renderToStaticMarkup(
-      <RunnerKeyActions runner={runner()} onSecret={() => {}} reload={async () => {}} />,
+      <RunnerKeyActions runner={runner()} onSecret={() => {}} reload={async () => {}} ownerEditable />,
     );
     expect(html).toContain(OWNER_SCOPE_HINT.replace("'", '&#x27;'));
     expect(html.indexOf('nobody</option>')).toBeLessThan(html.indexOf('The key sees only the projects its owner sees'));
@@ -37,14 +37,25 @@ describe('RunnerKeyActions', () => {
 
   it('marks nobody selected when the runner has no owner', () => {
     const html = renderToStaticMarkup(
-      <RunnerKeyActions runner={runner({ ownerPersonId: null })} onSecret={() => {}} reload={async () => {}} />,
+      <RunnerKeyActions runner={runner({ ownerPersonId: null })} onSecret={() => {}} reload={async () => {}} ownerEditable />,
     );
     expect(html).toMatch(/<option value="" selected[^>]*>nobody<\/option>/);
   });
 
+  it('draws Rotate key and Revoke with no select and no hint where the owner is not editable', () => {
+    const html = renderToStaticMarkup(
+      <RunnerKeyActions runner={runner()} onSecret={() => {}} reload={async () => {}} ownerEditable={false} />,
+    );
+    expect(html).not.toContain('<select');
+    expect(html).not.toContain('Owner of Quill');
+    expect(html).not.toContain('--mine');
+    expect(html).toContain('>Rotate key</button>');
+    expect(html).toContain('>Revoke</button>');
+  });
+
   it('keeps both modals shut until pressed', () => {
     const html = renderToStaticMarkup(
-      <RunnerKeyActions runner={runner()} onSecret={() => {}} reload={async () => {}} />,
+      <RunnerKeyActions runner={runner()} onSecret={() => {}} reload={async () => {}} ownerEditable />,
     );
     expect(html).not.toContain('A new secret is made now');
     expect(html).not.toContain('Anything using this key is refused');

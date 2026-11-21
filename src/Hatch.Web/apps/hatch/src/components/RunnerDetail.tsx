@@ -28,6 +28,7 @@ import {
 } from '../lib/runners';
 import { saveRunner, saveRunnerSettings } from '../lib/saveRunner';
 import { sessionActions } from '../lib/sessionActions';
+import { canManageKey as mayManageKey } from '../lib/runnerKey';
 import { useMe } from '../lib/useMe';
 import { usePhone } from '../lib/viewport';
 import { RecentSessions } from './RecentSessions';
@@ -201,14 +202,14 @@ function RunnerConfigCards({
  * inputs; `rotatedAt`/`revokedAt` draw only when set.
  *
  * `actions` is a slot for the owner select, Rotate and Revoke buttons -
- * `RunnerKeyActions`, for an admin on a runner that is neither revoked nor
+ * `RunnerKeyActions`, for an admin or the owner on a runner that is neither revoked nor
  * retired. `refusal` draws inside this Card, never at the page's top: a
  * failed save belongs to the section whose control failed, per "Identity
  * and key".
  *
  * `ownerEditable` hides the "for X / no owner" text line, since
  * `RunnerKeyActions`'s own owner select already says who it is for - an
- * Owner or a Viewer still reads it as text.
+ * admin only; an owner or a Viewer still reads it as text.
  */
 export function IdentityCard({
   runner,
@@ -255,7 +256,7 @@ export function IdentityCard({
 export function RunnerDetail() {
   const { name } = useParams();
   const { runners, statuses, reload, secret, setSecret } = useRunnersOutlet();
-  const { isAdmin } = useMe();
+  const { me, isAdmin } = useMe();
   const phone = usePhone();
   const now = new Date();
 
@@ -297,11 +298,11 @@ export function RunnerDetail() {
     </>
   );
 
-  // Admin, on a runner that is neither revoked nor retired - "Who sees what":
-  // only that variant creates, picks an owner, rotates or revokes.
-  const canManageKey = isAdmin && runnerActionable(runner) && !isRetired(runner);
+  // An admin, or the owner on their own runner, and the runner neither revoked
+  // nor retired - "Who sees what": only an admin picks an owner.
+  const canManageKey = mayManageKey(me, runner) && runnerActionable(runner) && !isRetired(runner);
   const keyActions = canManageKey && (
-    <RunnerKeyActions runner={runner} onSecret={setSecret} reload={reload} />
+    <RunnerKeyActions runner={runner} onSecret={setSecret} reload={reload} ownerEditable={isAdmin} />
   );
   const secretPanel = secret?.name === runner.name && <SecretPanel secret={secret} onDone={() => setSecret(null)} />;
 
@@ -313,7 +314,7 @@ export function RunnerDetail() {
         </Button>
         <PageHeader title={name} actions={badges} level={1} />
         {secretPanel}
-        <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey} />
+        <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey && isAdmin} />
         <RunnerConfigCards runner={runner} live={live} statuses={statuses} reload={reload} />
         <SessionsCards runner={runner} live={live} now={now} reload={reload} />
       </>
@@ -324,7 +325,7 @@ export function RunnerDetail() {
     <>
       <PageHeader title={name} actions={badges} level={2} />
       {secretPanel}
-      <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey} />
+      <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey && isAdmin} />
       <RunnerConfigCards runner={runner} live={live} statuses={statuses} reload={reload} />
       <SessionsCards runner={runner} live={live} now={now} reload={reload} />
     </>

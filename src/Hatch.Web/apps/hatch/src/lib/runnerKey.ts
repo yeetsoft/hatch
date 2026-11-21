@@ -1,20 +1,38 @@
 import { message } from './errors';
 import { MAX_NAME_LENGTH } from './runners';
-import type { CreateRunnerRequest, Me, RunnerMinted } from '../types';
+import type { CreateRunnerRequest, Me, Runner, RunnerMinted } from '../types';
 
 /**
  * What the Runner page should say about a key, from who is looking.
  *
  * `Me.kind` is `person` only when the wall is up. Somebody who has not been
  * answered yet is `none` - the page is silent by design until it knows, so
- * nothing flashes a claim that turns out wrong. Only an Admin is sent to the
- * keys page; anyone else is told to ask, since the page would refuse them.
+ * nothing flashes a claim that turns out wrong. Any signed-in person, admin
+ * or user, is sent to the Runners page to make a key.
  */
-export type KeyAdvice = 'needs-key-admin' | 'needs-key-user' | 'none';
+export type KeyAdvice = 'needs-key' | 'none';
 
 export function keyAdvice(me: Me | null): KeyAdvice {
-  if (me?.kind !== 'person') return 'none';
-  return me.role === 'admin' ? 'needs-key-admin' : 'needs-key-user';
+  return me?.kind === 'person' ? 'needs-key' : 'none';
+}
+
+/**
+ * Whether the caller may create a runner - "Who sees what" in
+ * docs/runners-page-design.md. A signed-in admin or user; the wall-off
+ * variants (`local`, `none`) have no role and never match.
+ */
+export function canCreateRunner(me: Me | null): boolean {
+  return me?.kind === 'person' && (me.role === 'admin' || me.role === 'user');
+}
+
+/**
+ * Whether the caller may rotate or revoke this runner's key: an admin on any
+ * runner, a user on their own (`runner.yours`). Wall off is never true, even
+ * though `yours` is true there. The caller still checks the runner is neither
+ * revoked nor retired.
+ */
+export function canManageKey(me: Me | null, runner: Pick<Runner, 'yours'>): boolean {
+  return me?.kind === 'person' && (me.role === 'admin' || runner.yours);
 }
 
 /**
@@ -54,21 +72,25 @@ export interface CreateRunnerClient {
 }
 
 /**
- * Create's own press. `CreateRunner` has no way to say "nobody" - an omitted
- * `ownerPersonId` defaults to the caller - so "nobody" creates with no owner
- * at all, then clears it with a second call. If that second call fails the
- * secret still shows; the Identity owner select shows the true owner.
+ * Create's own press. `ownerPersonId` has three states: undefined means the
+ * caller (a user's runner, sent with no owner at all and no second call), a
+ * person's id names that person, and `''` means "nobody". `CreateRunner` has
+ * no way to say "nobody" - an omitted `ownerPersonId` defaults to the caller -
+ * so "nobody" creates with no owner at all, then clears it with a second
+ * call. If that second call fails the secret still shows; the Identity owner
+ * select shows the true owner.
  */
 export async function createRunnerKey(
   client: CreateRunnerClient,
-  request: { name: string; ownerPersonId: string },
+  request: { name: string; ownerPersonId?: string },
 ): Promise<{ secret: RunnerSecret } | { refusal: string }> {
   const name = request.name.trim();
+  const nobody = request.ownerPersonId === '';
   try {
     const minted = await client.createRunner(
       request.ownerPersonId ? { name, ownerPersonId: request.ownerPersonId } : { name },
     );
-    if (!request.ownerPersonId) {
+    if (nobody) {
       try {
         await client.setRunnerOwner(minted.runner.name, null);
       } catch {
