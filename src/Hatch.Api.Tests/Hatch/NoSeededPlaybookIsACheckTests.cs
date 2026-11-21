@@ -8,15 +8,16 @@ namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
 /// No seeding migration turns a playbook into a check or denies it a tool, bar
-/// the three that mean to: <see cref="SeedReflectionPlaybook"/>,
-/// <see cref="SeedAmbitionPassPlaybook"/> and
-/// <see cref="SeedQuestionAnsweringPlaybook"/> deny their rows the tools that
-/// edit the tree, so a reflection, an ambition pass and a question answer judge
-/// and file rather than change. The review row still says what <see cref="RewordReviewPlaybook"/>
-/// left it. <c>IsCheck</c> and <c>DeniedTools</c> are columns whose defaults are
-/// the stock behaviour; a seed that named <c>IsCheck</c> would make a fresh
-/// install differ from one that was never seeded, and so would one that named
-/// <c>DeniedTools</c> on any row but those three.
+/// the four that mean to: <see cref="SeedReflectionPlaybook"/>,
+/// <see cref="SeedAmbitionPassPlaybook"/>, <see cref="SeedQuestionAnsweringPlaybook"/>
+/// and <see cref="SeedWorksOutChangesPlaybook"/> deny their rows the tools that
+/// edit the tree, so a reflection, an ambition pass, a question answer and a
+/// change work-out judge and file rather than change. The review row still says
+/// what <see cref="RewordReviewPlaybook"/> left it. <c>IsCheck</c> and
+/// <c>DeniedTools</c> are columns whose defaults are the stock behaviour; a seed
+/// that named <c>IsCheck</c> would make a fresh install differ from one that was
+/// never seeded, and so would one that named <c>DeniedTools</c> on any row but
+/// those four.
 /// </summary>
 [Collection(HatchDatabaseCollection.Name)]
 public class NoSeededPlaybookIsACheckTests
@@ -35,7 +36,7 @@ public class NoSeededPlaybookIsACheckTests
 
         var denying = Migrations.Where(m => m.Forward.Any(s => s.Contains("DeniedTools"))).ToList();
         Assert.Equal(
-            [nameof(SeedReflectionPlaybook), nameof(SeedAmbitionPassPlaybook), nameof(SeedQuestionAnsweringPlaybook)],
+            [nameof(SeedReflectionPlaybook), nameof(SeedAmbitionPassPlaybook), nameof(SeedQuestionAnsweringPlaybook), nameof(SeedWorksOutChangesPlaybook)],
             denying.Select(m => m.Name));
         Assert.All(denying, m => Assert.Contains($"'{ExpectedDeniedTools}'::jsonb", string.Join("\n", m.Forward)));
     }
@@ -87,7 +88,7 @@ public class NoSeededPlaybookIsACheckTests
         var reflection = rows.Single(p => p.Types == "reflection");
         Assert.Equal(ExpectedRules, EfHatchPlaybook.ReadDeniedTools(reflection.DeniedTools));
 
-        var ambition = rows.Single(p => p.Types == "ambition" && !p.AnswersQuestions);
+        var ambition = rows.Single(p => p.Types == "ambition" && !p.AnswersQuestions && !p.WorksOutChanges);
         Assert.Equal(ambition.FromStatusId, ambition.ToStatusId);
         Assert.Equal(ExpectedRules, EfHatchPlaybook.ReadDeniedTools(ambition.DeniedTools));
 
@@ -95,6 +96,11 @@ public class NoSeededPlaybookIsACheckTests
         Assert.Equal("ambition", answering.Types);
         Assert.Equal(answering.FromStatusId, answering.ToStatusId);
         Assert.Equal(ExpectedRules, EfHatchPlaybook.ReadDeniedTools(answering.DeniedTools));
+
+        var worksOutChanges = rows.Single(p => p.WorksOutChanges);
+        Assert.Equal("ambition", worksOutChanges.Types);
+        Assert.Equal(worksOutChanges.FromStatusId, worksOutChanges.ToStatusId);
+        Assert.Equal(ExpectedRules, EfHatchPlaybook.ReadDeniedTools(worksOutChanges.DeniedTools));
 
         var review = rows.Single(p => p.FromStatusId == p.ToStatusId && p.Types != "ambition");
         Assert.Equal(RewordReviewPlaybook.Stock, review.Prompt);
@@ -115,10 +121,11 @@ public class NoSeededPlaybookIsACheckTests
         (nameof(SeedReflectionPlaybook), Sql(new SeedReflectionPlaybookProbe().Forward)),
         (nameof(SeedAmbitionPassPlaybook), Sql(new SeedAmbitionPassPlaybookProbe().Forward)),
         (nameof(SeedQuestionAnsweringPlaybook), Sql(new SeedQuestionAnsweringPlaybookProbe().Forward)),
+        (nameof(SeedWorksOutChangesPlaybook), Sql(new SeedWorksOutChangesPlaybookProbe().Forward)),
     ];
 
     // Held here rather than read off the migration, so an edit to the migration
-    // alone fails a test; SeedReflectionPlaybookTests, SeedAmbitionPassPlaybookTests and SeedQuestionAnsweringPlaybookTests hold the same list.
+    // alone fails a test; SeedReflectionPlaybookTests, SeedAmbitionPassPlaybookTests, SeedQuestionAnsweringPlaybookTests and SeedWorksOutChangesPlaybookTests hold the same list.
     private const string ExpectedDeniedTools =
         """["Edit","Write","NotebookEdit","Bash(git add *)","Bash(git commit *)","Bash(git push *)","Bash(git checkout *)","Bash(git switch *)","Bash(git reset *)","Bash(git restore *)","Bash(git stash *)","Bash(git merge *)","Bash(git rebase *)","Bash(git cherry-pick *)","Bash(git clean *)"]""";
 
@@ -176,6 +183,11 @@ public class NoSeededPlaybookIsACheckTests
     }
 
     private sealed class SeedQuestionAnsweringPlaybookProbe : SeedQuestionAnsweringPlaybook
+    {
+        public IReadOnlyList<MigrationOperation> Forward => Operations(Up);
+    }
+
+    private sealed class SeedWorksOutChangesPlaybookProbe : SeedWorksOutChangesPlaybook
     {
         public IReadOnlyList<MigrationOperation> Forward => Operations(Up);
     }

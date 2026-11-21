@@ -58,6 +58,7 @@ interface Draft {
   deniedTools: string;
   isCheck: boolean;
   answersQuestions: boolean;
+  worksOutChanges: boolean;
   projectId: string;
   prompt: string;
 }
@@ -79,6 +80,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
       deniedTools: deniedToolsDraft(playbook.deniedTools),
       isCheck: playbook.isCheck,
       answersQuestions: playbook.answersQuestions,
+      worksOutChanges: playbook.worksOutChanges,
       projectId: playbook.projectId === null ? '' : String(playbook.projectId),
       prompt: playbook.prompt,
     };
@@ -99,6 +101,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
     deniedTools: '',
     isCheck: false,
     answersQuestions: false,
+    worksOutChanges: false,
     projectId: '',
     prompt: '',
   };
@@ -169,6 +172,7 @@ export function PlaybookEditDialog({
           deniedTools: deniedToolsRequest(draft!.deniedTools),
           isCheck: draft!.isCheck,
           answersQuestions: draft!.answersQuestions,
+          worksOutChanges: draft!.worksOutChanges,
           projectId: draft!.projectId,
           prompt,
         });
@@ -188,6 +192,7 @@ export function PlaybookEditDialog({
           deniedTools: deniedToolsRequest(draft!.deniedTools),
           isCheck: draft!.isCheck,
           answersQuestions: draft!.answersQuestions,
+          worksOutChanges: draft!.worksOutChanges,
           projectId: draft!.projectId || undefined,
           prompt,
         });
@@ -298,7 +303,7 @@ export function PlaybookEditDialog({
               <input
                 type="checkbox"
                 checked={draft.isCheck}
-                disabled={draft.answersQuestions}
+                disabled={draft.answersQuestions || draft.worksOutChanges}
                 onChange={(e) => write({ isCheck: e.target.checked })}
               />
               Is check
@@ -306,17 +311,32 @@ export function PlaybookEditDialog({
           </Field>
           <Field
             label="Answers questions"
-            hint="The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this or a check, not both."
+            hint="The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this, a check or a row that works out changes - never more than one."
             as="div"
           >
             <label>
               <input
                 type="checkbox"
                 checked={draft.answersQuestions}
-                disabled={draft.isCheck}
+                disabled={draft.isCheck || draft.worksOutChanges}
                 onChange={(e) => write({ answersQuestions: e.target.checked })}
               />
               Answers questions
+            </label>
+          </Field>
+          <Field
+            label="Works out changes"
+            hint="The row a session runs on to work out what a change to an ambition does to its epics in flight. It edits nothing. A row is this, a check or a row that answers questions - never more than one."
+            as="div"
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.worksOutChanges}
+                disabled={draft.isCheck || draft.answersQuestions}
+                onChange={(e) => write({ worksOutChanges: e.target.checked })}
+              />
+              Works out changes
             </label>
           </Field>
           {hasMultipleProjects(projects) && (

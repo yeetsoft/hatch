@@ -1727,6 +1727,57 @@ public class DispatchTests
         Assert.Equal(2, Dispatch.MatchWeave([flagged, AnsweringRow(2, "epic", answers: false, fromSort: 20)], 1)!.Id);
     }
 
+    // ---- A row that works out changes is never matched ----
+
+    private static EfHatchPlaybook WorksOutChangesRow(int id, string types, bool worksOutChanges, int fromSort = 30) => new()
+    {
+        Id = id,
+        FromStatusId = fromSort,
+        FromStatus = new EfHatchStatus { Name = $"c{fromSort}", SortOrder = fromSort },
+        ToStatusId = fromSort,
+        Types = types,
+        Shape = EfHatchPlaybook.AnyShape,
+        Prompt = "do the thing",
+        Model = "sonnet",
+        Effort = "high",
+        WorksOutChanges = worksOutChanges,
+        CreatedAt = Now,
+        UpdatedAt = Now,
+    };
+
+    [Theory]
+    [InlineData("ambition")]
+    [InlineData("")]
+    public void Match_ReturnsNothing_WhenOnlyAWorksOutChangesRowCoversTheType(string types)
+    {
+        var rows = new List<EfHatchPlaybook> { WorksOutChangesRow(1, types, worksOutChanges: true) };
+
+        Assert.Null(Dispatch.Match(rows, 30, 30, "ambition", isParent: false, projectId: 1));
+    }
+
+    [Theory]
+    [InlineData("reflection")]
+    [InlineData("")]
+    public void MatchReflection_SkipsAWorksOutChangesRow(string types)
+    {
+        var flagged = WorksOutChangesRow(1, types, worksOutChanges: true);
+
+        Assert.Null(Dispatch.MatchReflection([flagged], 1));
+        Assert.Equal(2, Dispatch.MatchReflection([flagged, WorksOutChangesRow(2, "reflection", worksOutChanges: false)], 1)!.Id);
+    }
+
+    [Theory]
+    [InlineData("epic")]
+    [InlineData("")]
+    public void MatchWeave_SkipsAWorksOutChangesRow(string types)
+    {
+        // Leftmost column, so only the flag keeps it from being picked.
+        var flagged = WorksOutChangesRow(1, types, worksOutChanges: true, fromSort: 10);
+
+        Assert.Null(Dispatch.MatchWeave([flagged], 1));
+        Assert.Equal(2, Dispatch.MatchWeave([flagged, WorksOutChangesRow(2, "epic", worksOutChanges: false, fromSort: 20)], 1)!.Id);
+    }
+
     // ---- StalledFold: SL-418's one shared held/stall rule ----
 
     [Fact]

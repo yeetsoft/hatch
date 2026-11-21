@@ -3399,7 +3399,7 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? Match(List<EfHatchPlaybook> playbooks, int from, int to, string type, bool isParent, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions && p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges && p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderByDescending(p => p.ProjectId is not null)
             .ThenByDescending(p => p.Specificity)
@@ -3432,7 +3432,7 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? MatchReflection(List<EfHatchPlaybook> playbooks, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges
                         && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("reflection"))
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderByDescending(p => p.ProjectId is not null)
@@ -3451,7 +3451,7 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? MatchWeave(List<EfHatchPlaybook> playbooks, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges
                         && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("epic"))
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderBy(p => p.FromStatus!.SortOrder)
