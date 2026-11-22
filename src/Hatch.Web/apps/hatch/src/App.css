@@ -830,13 +830,22 @@
   min-width: 0;
 }
 
-/* overflow hidden so the rounded ends actually cut the first and last
+/* One bar, drawn three times: the status meter's, the capabilities bar's on the
+   Ambitions page and the Budget card's. The shape is written here once and the
+   three share it by selector list, so they cannot drift apart.
+
+   overflow hidden so the rounded ends actually cut the first and last
    segments, rather than the segments squaring off the corners of the bar. */
+.hatch-meter-bar,
+.hatch-ambition-bar,
+.hatch-budget-bar {
+  display: flex;
+  overflow: hidden;
+}
+
 .hatch-meter-bar {
   flex: 1;
   min-width: 0;
-  display: flex;
-  overflow: hidden;
   border-radius: var(--r-chip);
 }
 
@@ -844,17 +853,32 @@
   height: 6px;
 }
 
+/* --r-ctl is half of 12px, so the two bars that are 12px high have round ends. */
+.hatch-meter-lg .hatch-meter-bar,
+.hatch-ambition-bar,
+.hatch-budget-bar {
+  border-radius: var(--r-ctl);
+}
+
 .hatch-meter-lg .hatch-meter-bar {
   height: 20px;
-  border-radius: var(--r-ctl);
+}
+
+.hatch-ambition-bar,
+.hatch-budget-bar {
+  height: 12px;
 }
 
 /* flex-grow is set inline, from the count. flex-basis is 0 so growth is the
    only thing dividing the bar, and min-width is the floor that keeps one task
    out of two hundred a visible sliver rather than a sub-pixel nothing. */
-.hatch-meter-segment {
+.hatch-meter-segment,
+.hatch-ambition-segment {
   flex-basis: 0;
   min-width: 3px;
+}
+
+.hatch-meter-segment {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -869,7 +893,8 @@
    Load-bearing: a column keeps the default grey until somebody paints it on
    the Statuses page, and a bar of adjacent greys with no divider reads as one
    undifferentiated block - which is the one thing this bar exists not to be. */
-.hatch-meter-segment + .hatch-meter-segment {
+.hatch-meter-segment + .hatch-meter-segment,
+.hatch-ambition-segment + .hatch-ambition-segment {
   border-left: 1px solid var(--card);
 }
 
@@ -914,11 +939,8 @@
    card says "spent" in words as well, so colour is never the only signal. The
    width is set inline from barFraction, already clamped to 0-100. */
 .hatch-budget-bar {
-  height: 12px;
   margin-bottom: var(--sp-2);
-  overflow: hidden;
-  border-radius: var(--r-chip);
-  background: var(--line);
+  background: var(--line-strong);
 }
 
 .hatch-budget-fill {
@@ -4252,18 +4274,6 @@ input.hatch-inline-title-input {
 .hatch-ambition-heading {
   margin: 0 0 var(--sp-2);
   font-size: var(--t-body);
-}
-
-.hatch-ambition-bar {
-  display: flex;
-  height: 12px;
-  overflow: hidden;
-  border-radius: var(--r-pill);
-}
-
-.hatch-ambition-segment {
-  flex-basis: 0;
-  min-width: 0;
 }
 
 .hatch-ambition-holds {
