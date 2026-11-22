@@ -3579,6 +3579,13 @@ export interface Runner {
   /** What git said, where `signing` is `fails` - one line of at most 200 characters, keys
       masked. Mirrors RunnerDto.SigningWhy. */
   signingWhy?: string | null;
+  /** Whether this runner is signed in to its forge, the worst over the checkouts it serves:
+      `fails` before `works`. Absent or null where it never said; a word this build does
+      not know reads as no answer. Mirrors RunnerDto.Forge. */
+  forge?: 'works' | 'fails' | null;
+  /** What gh said, where `forge` is `fails` - one line of at most 200 characters. Mirrors
+      RunnerDto.ForgeWhy. */
+  forgeWhy?: string | null;
 }
 
 /** One session beneath a runner: one `go-to-work` loop, so two checkouts

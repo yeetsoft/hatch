@@ -171,7 +171,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, IReadOnlyList<StatusDto> statuses, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Signing(r) + Bound(r) + Models(r) + Refuses(r) + ColumnRule(r, statuses) + Preferred(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r, now) + Has(r) + Accelerator(r) + Signing(r) + Forge(r) + Bound(r) + Models(r) + Refuses(r) + ColumnRule(r, statuses) + Preferred(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -274,6 +274,19 @@ public sealed class RunnersCommand(Cli cli)
         RunnerSigning.Works => "  signs its commits",
         RunnerSigning.Off => "  does not sign its commits",
         RunnerSigning.Fails => row.SigningWhy is { Length: > 0 } why ? $"  signing fails: {why}" : "  signing fails",
+        _ => "",
+    };
+
+    /// <summary>
+    /// Whether a runner is signed in to its forge, after its signing: <c>signed in
+    /// to its forge</c>, or <c>forge sign-in fails:</c> and what gh said. Nothing
+    /// where it never said, or said a word this build does not know, so a row from
+    /// an older runner reads as it always has.
+    /// </summary>
+    private static string Forge(RunnerDto row) => row.Forge switch
+    {
+        RunnerForge.Works => "  signed in to its forge",
+        RunnerForge.Fails => row.ForgeWhy is { Length: > 0 } why ? $"  forge sign-in fails: {why}" : "  forge sign-in fails",
         _ => "",
     };
 

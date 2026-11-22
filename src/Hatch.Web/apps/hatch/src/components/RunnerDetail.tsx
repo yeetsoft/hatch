@@ -23,6 +23,8 @@ import {
   liveSessions,
   runnerActionable,
   sessionsByStart,
+  forgeFails,
+  forgeWords,
   signingFails,
   signingWords,
 } from '../lib/runners';
@@ -223,6 +225,7 @@ export function IdentityCard({
   ownerEditable?: boolean;
 }) {
   const signing = signingWords(runner);
+  const forge = forgeWords(runner);
   return (
     <Card>
       <h2 className="hatch-section-title">Identity and key</h2>
@@ -242,6 +245,12 @@ export function IdentityCard({
           <p className="text-danger hatch-runner-signing">{signing}</p>
         ) : (
           <Text tone="muted">{signing}</Text>
+        ))}
+      {forge !== null &&
+        (forgeFails(runner) ? (
+          <p className="text-danger hatch-runner-forge">{forge}</p>
+        ) : (
+          <Text tone="muted">{forge}</Text>
         ))}
       {refusal && <p className="text-danger">{refusal}</p>}
       {actions}

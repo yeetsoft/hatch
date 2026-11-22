@@ -462,6 +462,24 @@ describe('IdentityCard', () => {
     expect(renderToStaticMarkup(<IdentityCard runner={runner()} />)).not.toMatch(/sign/i);
     expect(renderToStaticMarkup(<IdentityCard runner={runner({ signing: 'maybe' as never })} />)).not.toMatch(/sign/i);
   });
+
+  it('says a runner is signed in to its forge, in muted words', () => {
+    const html = renderToStaticMarkup(<IdentityCard runner={runner({ forge: 'works' })} />);
+    expect(html).toContain('Signed in to its forge');
+    expect(html).not.toMatch(/text-danger[^>]*>Signed in/);
+  });
+
+  it('says forge sign-in fails in the danger tone, with what gh said', () => {
+    const html = renderToStaticMarkup(
+      <IdentityCard runner={runner({ forge: 'fails', forgeWhy: 'token expired' })} />,
+    );
+    expect(html).toMatch(/text-danger[^>]*>Forge sign-in fails: token expired/);
+  });
+
+  it('shows no forge line for a runner that never said, or one saying a word it does not know', () => {
+    expect(renderToStaticMarkup(<IdentityCard runner={runner()} />)).not.toMatch(/forge/i);
+    expect(renderToStaticMarkup(<IdentityCard runner={runner({ forge: 'maybe' as never })} />)).not.toMatch(/forge/i);
+  });
 });
 
 describe('RunnerDetail: the owner select, Rotate and Revoke', () => {

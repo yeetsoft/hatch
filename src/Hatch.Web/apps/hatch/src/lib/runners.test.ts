@@ -39,6 +39,8 @@ import {
   sessionActivity,
   sessionRepositoriesLabel,
   sessionsByStart,
+  forgeFails,
+  forgeWords,
   signingFails,
   signingWords,
   sessionTokenBudget,
@@ -657,6 +659,36 @@ describe('signingFails', () => {
     expect(signingFails(runner({ signing: 'works' }))).toBe(false);
     expect(signingFails(runner({ signing: 'off' }))).toBe(false);
     expect(signingFails(runner())).toBe(false);
+  });
+});
+
+describe('forgeWords', () => {
+  it('says nothing for a runner that never said', () => {
+    expect(forgeWords(runner())).toBeNull();
+    expect(forgeWords(runner({ forge: null }))).toBeNull();
+  });
+
+  it('says a working sign-in in plain words', () => {
+    expect(forgeWords(runner({ forge: 'works' }))).toBe('Signed in to its forge');
+  });
+
+  it('says what gh said where sign-in fails, and still says it failed with no reason', () => {
+    expect(forgeWords(runner({ forge: 'fails', forgeWhy: 'token expired' }))).toBe('Forge sign-in fails: token expired');
+    expect(forgeWords(runner({ forge: 'fails' }))).toBe('Forge sign-in fails');
+  });
+
+  it('reads a word it does not know as no answer', () => {
+    expect(forgeWords(runner({ forge: 'maybe' as never }))).toBeNull();
+    expect(forgeFails(runner({ forge: 'maybe' as never }))).toBe(false);
+  });
+});
+
+describe('forgeFails', () => {
+  it('is true only for a runner whose forge sign-in fails', () => {
+    expect(forgeFails(runner({ forge: 'fails' }))).toBe(true);
+    expect(forgeFails(runner({ forge: 'works' }))).toBe(false);
+    expect(forgeFails(runner({ forge: null }))).toBe(false);
+    expect(forgeFails(runner())).toBe(false);
   });
 });
 
