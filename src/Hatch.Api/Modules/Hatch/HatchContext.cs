@@ -114,6 +114,9 @@ public class HatchContext : DbContext, IModuleContext
     public DbSet<EfHatchRunnerConfig> RunnerConfigs => Set<EfHatchRunnerConfig>();
     public DbSet<EfHatchRunnerSession> RunnerSessions => Set<EfHatchRunnerSession>();
 
+    /// <summary>Every change of a runner's state, with its instant - see <see cref="EfHatchRunnerState"/>.</summary>
+    public DbSet<EfHatchRunnerState> RunnerStates => Set<EfHatchRunnerState>();
+
     /// <summary>
     /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
     /// end of a relationship to a filtered <c>Projects</c>. It is the one table
