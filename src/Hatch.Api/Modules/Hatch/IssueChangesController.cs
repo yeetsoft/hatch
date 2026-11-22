@@ -58,7 +58,7 @@ public class IssueChangesController(HatchContext db, ICallerIdentity caller, Tim
                 .Where(o => o.ChangeEventId > c.After && o.ChangeEventId <= c.Upto)
                 .OrderBy(o => o.EpicProjectKey, StringComparer.Ordinal).ThenBy(o => o.EpicNumber)
                 .Select(o => new ChangeOutcomeDto(
-                    o.ChangeEventId, IssueKey.Format(o.EpicProjectKey, o.EpicNumber), o.EpicTitle, o.EpicColumn,
+                    o.Id, o.ChangeEventId, IssueKey.Format(o.EpicProjectKey, o.EpicNumber), o.EpicTitle, o.EpicColumn,
                     o.Outcome, o.Why, o.RecordedBy, o.RecordedAt,
                     o.Decision is null ? null : new ChangeDecisionDto(o.Decision, o.DecidedBy!, o.DecidedAt!.Value)))
                 .ToList()))
@@ -144,8 +144,8 @@ public class IssueChangesController(HatchContext db, ICallerIdentity caller, Tim
         return existing is null ? CreatedAtAction(nameof(GetChanges), new { key }, dto) : Ok(dto);
     }
 
-    private static ChangeOutcomeDto MapOutcome(EfHatchChangeOutcome o, string epicKey, string epicTitle, string epicColumn) =>
-        new(o.ChangeEventId, epicKey, epicTitle, epicColumn, o.Outcome, o.Why, o.RecordedBy, o.RecordedAt,
+    internal static ChangeOutcomeDto MapOutcome(EfHatchChangeOutcome o, string epicKey, string epicTitle, string epicColumn) =>
+        new(o.Id, o.ChangeEventId, epicKey, epicTitle, epicColumn, o.Outcome, o.Why, o.RecordedBy, o.RecordedAt,
             o.Decision is null ? null : new ChangeDecisionDto(o.Decision, o.DecidedBy!, o.DecidedAt!.Value));
 
     /// <summary>
@@ -213,7 +213,7 @@ public class IssueChangesController(HatchContext db, ICallerIdentity caller, Tim
         return value?.ValueKind == JsonValueKind.Number && value.Value.TryGetInt32(out var n) ? n : null;
     }
 
-    private static BadRequestObjectResult? NotAnAmbition(EfHatchIssue issue, string key) =>
+    internal static BadRequestObjectResult? NotAnAmbition(EfHatchIssue issue, string key) =>
         issue.Type == "ambition" ? null : new($"only an ambition has changes - {key} is a {issue.Type}");
 
     private async Task<EfHatchIssue?> LoadAsync(string key, CancellationToken ct)

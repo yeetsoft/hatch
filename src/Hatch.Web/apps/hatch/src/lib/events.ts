@@ -173,6 +173,15 @@ export function describe(event: IssueEvent): string {
     return `change to ${short(ambition)}: ${words[outcome]} - ${short(why)}`;
   }
 
+  /* A person's decision on this epic's outcome. Carries
+     { ambition, changeEventId, decision } - no from/to. */
+  if (event.kind === 'change_decided') {
+    const { ambition, decision } = event.payload ?? {};
+    const words: Record<string, string> = { shelve: 'shelved', keep: 'kept running' };
+    if (typeof ambition !== 'string' || typeof decision !== 'string' || words[decision] === undefined) return '';
+    return `change to ${short(ambition)}: ${words[decision]}`;
+  }
+
   /* A serves change carries the capability ids each side. Either side may be
      empty, which the generic arrow would draw as a bare blank. */
   if (event.kind === 'serves_changed') {

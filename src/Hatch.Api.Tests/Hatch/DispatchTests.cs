@@ -3123,6 +3123,7 @@ public class DispatchTests
     [Theory]
     [InlineData(EfHatchIssueEvent.CapabilityJudged)]
     [InlineData(EfHatchIssueEvent.ChangeOutcomeRecorded)]
+    [InlineData(EfHatchIssueEvent.ChangeDecided)]
     [InlineData(EfHatchIssueEvent.Commented)]
     [InlineData(EfHatchIssueEvent.Created)]
     public async Task ScanAsync_APassesOwnWrites_DoNotClearTheFold(string kind)
