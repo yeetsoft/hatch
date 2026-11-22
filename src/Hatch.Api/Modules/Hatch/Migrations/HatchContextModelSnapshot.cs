@@ -990,6 +990,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset?>("PullRequestReadAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PullRequestRecordedBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("PullRequestRecordedByKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("PullRequestReviewDecision")
                         .HasMaxLength(24)
                         .HasColumnType("character varying(24)");

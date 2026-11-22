@@ -1546,6 +1546,7 @@ public class WorkController(
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
                 i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.PreApproval, i.LocalModel, i.HumanWork,
                 i.StalledAt, i.StalledWhy, i.Held, i.PullRequestUrl,
+                i.PullRequestRecordedBy, i.PullRequestRecordedByKind,
                 i.ClosedAt, i.NoCode, i.CreatedBy,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
@@ -1599,6 +1600,8 @@ public class WorkController(
                 StalledWhy: c.StalledWhy,
                 Held: c.Held,
                 PullRequestUrl: c.PullRequestUrl,
+                PullRequestRecordedBy: c.PullRequestRecordedBy,
+                PullRequestRecordedByKind: c.PullRequestRecordedByKind,
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
                 OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),

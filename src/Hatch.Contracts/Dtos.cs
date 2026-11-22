@@ -548,6 +548,17 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// and <c>pullPassedOver</c>. The value itself still applies. Empty for a
 /// reader whose scope holds everything.
 /// </param>
+/// <param name="PullRequestRecordedBy">
+/// Who recorded <paramref name="PullRequestUrl"/> - a person's or an API
+/// key's name, never a person id. Null where the url was recorded before
+/// this was kept, or none is held.
+/// </param>
+/// <param name="PullRequestRecordedByKind">
+/// <c>"person"</c> or <c>"key"</c>: which kind of caller recorded
+/// <paramref name="PullRequestUrl"/>, since a person and a key may share a
+/// name. Null where the url was recorded before this was kept, or none is
+/// held.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -602,7 +613,9 @@ public record IssueCardDto(
     string? PriorityPassedOverLevel = null,
     bool ParentBeyondScope = false,
     bool ChildBeyondScope = false,
-    IReadOnlyList<string> FromBeyondScope = null!)
+    IReadOnlyList<string> FromBeyondScope = null!,
+    string? PullRequestRecordedBy = null,
+    string? PullRequestRecordedByKind = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -880,6 +893,17 @@ public record IssueClaimDto(
 /// leaves <see cref="StartedBy"/> null but still starts the clock. Null only
 /// where it never crossed.
 /// </param>
+/// <param name="PullRequestRecordedBy">
+/// Who recorded <paramref name="PullRequestUrl"/> - a person's or an API
+/// key's name, never a person id. Null where the url was recorded before
+/// this was kept, or none is held.
+/// </param>
+/// <param name="PullRequestRecordedByKind">
+/// <c>"person"</c> or <c>"key"</c>: which kind of caller recorded
+/// <paramref name="PullRequestUrl"/>, since a person and a key may share a
+/// name. Null where the url was recorded before this was kept, or none is
+/// held.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -959,7 +983,9 @@ public record IssueDto(
     IReadOnlyList<string> FromBeyondScope = null!,
     string? PullPassedOver = null,
     string? PreApprovalPassedOverLevel = null,
-    string? PriorityPassedOverLevel = null)
+    string? PriorityPassedOverLevel = null,
+    string? PullRequestRecordedBy = null,
+    string? PullRequestRecordedByKind = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -

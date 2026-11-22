@@ -112,6 +112,8 @@ public class IssueContributionController(
                 issue.Events.Add(NoCode.SetAside(issue, new { pullRequest = recorded }, actor, now));
 
             issue.PullRequestUrl = recorded;
+            issue.PullRequestRecordedBy = actor;
+            issue.PullRequestRecordedByKind = await caller.IsProgramAsync(ct) ? ActorKind.Key : ActorKind.Person;
         }
 
         issue.UpdatedAt = now;
