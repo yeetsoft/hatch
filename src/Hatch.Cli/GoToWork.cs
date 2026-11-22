@@ -3101,7 +3101,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var trunkLanding = work.Landing == Landings.Trunk;
                 if ((report.Moved || report.Resolved || report.FixPushed)
                     && report.EndedInReview
-                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest))
+                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest && !left.HasWaitingPullRequest))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
                         runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, runtime.Adapter, ct);

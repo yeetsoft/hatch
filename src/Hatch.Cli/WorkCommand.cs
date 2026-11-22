@@ -775,7 +775,7 @@ public sealed class WorkCommand(Runtime runtime)
                 if (report is not null
                     && (report.Moved || report.Resolved || report.FixPushed)
                     && report.EndedInReview
-                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest))
+                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest && !left.HasWaitingPullRequest))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
                         runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, runtime.Adapter, CancellationToken.None);

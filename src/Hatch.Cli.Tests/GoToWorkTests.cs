@@ -5961,7 +5961,7 @@ public sealed class GoToWorkTests
     private static void UnpublishedBoard(
         Harness h, string key = "AER-1", string endsIn = "In Review", bool endsInReview = true,
         bool branchOnOrigin = true, string? pullRequest = null, int letGo = 0,
-        string? landing = null, IReadOnlyList<LandingDto>? landings = null)
+        string? landing = null, IReadOnlyList<LandingDto>? landings = null, bool waiting = false)
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
         h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -5974,7 +5974,12 @@ public sealed class GoToWorkTests
                 Fixtures.Work(key, from: "In Progress", to: "In Review", letGo: letGo, landing: landing), Fixtures.Json));
         h.Wire.Json("GET", $"/api/work/{key}", Fixtures.Work(key, from: endsIn, to: endsIn, inReview: endsInReview));
 
-        h.Wire.Json("GET", $"/api/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings));
+        h.Wire.Json("GET", $"/api/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings) with
+        {
+            WaitingPullRequest = waiting
+                ? new WaitingPullRequestDto("AER-1 Pr: a thing", "body", "aer-1-thing", new string('b', 40), null, "a runner", "gh is signed out", DateTimeOffset.UnixEpoch)
+                : null,
+        });
         h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
         h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("POST", $"/api/issues/{key}/comments", Fixtures.Comment());
@@ -6023,6 +6028,20 @@ public sealed class GoToWorkTests
 
         var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_waiting_pull_request_counts_as_published_and_the_increment_is_worked()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, waiting: true);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        Assert.DoesNotContain(UnpublishedComments(h), c => c.Kind == "question");
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
     [Fact]

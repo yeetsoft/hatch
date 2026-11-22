@@ -1383,15 +1383,20 @@ public static class Prompt
                 ? "Use that line as given. Never write a relative link."
                 : "No link to the ticket is available, so the line is the bare key. Do not make a link up, and never write a relative one.",
             "",
-            $"Afterwards, record it on the ticket with `hatch pr {key} <url>`.",
+            $"Open it with `hatch pr {key} --title \"{key} Area: what changed\" --body-file <path>`, the body",
+            "written to a file first, or `-` for standard input. Push the branch first. It opens the pull",
+            "request and records it on the ticket.",
             "`hatch pr` also writes the ticket's chain into the pull request's body, for a board that receives it.",
+            "When it says the pull request is written and waits, the forge could not open it from here and a",
+            "runner that can will: carry on, move the ticket, and ask nothing.",
             .. sharedType is null
                 ?
                 [
                     $"Record it on this ticket's own key, `hatch pr {key} <url>`. A plan on the ticket that names",
                     "another ticket for the pull request, a parent story for instance, does not change that.",
+                    $"A pull request opened another way is recorded the same way, with `hatch pr {key} <url>`.",
                 ]
-                : Array.Empty<string>(),
+                : new[] { $"A pull request opened another way is recorded with `hatch pr {key} <url>`." },
             "",
             .. offersNoCode ? NoCodeDeclaration(key) : NothingToDeclare(key),
         ];

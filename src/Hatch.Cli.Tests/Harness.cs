@@ -771,6 +771,15 @@ public sealed class FakeForge
     /// <summary>When set, what every body edit answers instead of storing the body.</summary>
     public BodyEditAnswer? EditAnswer { get; set; }
 
+    /// <summary>Every pull request asked to be opened, in order.</summary>
+    public List<(string Path, string Head, string Trunk, string Title, string Body)> Opened { get; } = [];
+
+    /// <summary>What every attempt to open a pull request answers, unless <see cref="OpenFor"/> says otherwise. By default it opens one.</summary>
+    public PullRequestOpenAnswer OpenAnswer { get; set; } = new("https://forge.example.test/pull/1", null);
+
+    /// <summary>What opening from one head branch answers.</summary>
+    public Dictionary<string, PullRequestOpenAnswer> OpenFor { get; } = [];
+
     /// <summary>Every update asked for, with the number and sha it carried, in order.</summary>
     public List<(string Path, long Number, string Sha)> UpdateCalls { get; } = [];
 
@@ -859,6 +868,13 @@ public sealed class FakeForge
 
             owner.Bodies[url] = body;
             return Task.FromResult(new BodyEditAnswer(true, null));
+        }
+
+        public Task<PullRequestOpenAnswer> OpenPullRequestAsync(
+            string head, string trunk, string title, string body, CancellationToken ct)
+        {
+            owner.Opened.Add((path, head, trunk, title, body));
+            return Task.FromResult(owner.OpenFor.GetValueOrDefault(head, owner.OpenAnswer));
         }
 
         public Task<UpdateAnswer> UpdateAsync(long number, string sha, CancellationToken ct)

@@ -2519,6 +2519,25 @@ bind several repositories and whoever opens it has to know which one the branch
 is in. The runner is never a field: it is the caller's name, so the trail and
 the record cannot disagree.
 
+`hatch pr KEY --title T --body-file F [--repo P]` is what writes it
+(`IssueCommands.OpenPullRequestAsync`), and it tries the forge first. The
+refusals, all before anything is sent, are a url already recorded, a project
+that lands on the trunk, a task on its story's shared branch, a title that is
+not `KEY ` and a subject or is over 256 characters, a body over the forge's
+limit, a trunk or detached head, and a branch origin does not hold at HEAD after
+one fetch (`Workspace.CurrentBranch`, `Workspace.OriginBranchSha`). The body is
+the file as written, with the ticket link and a blank line put in front when its
+first line is not that link. `IForge.OpenPullRequestAsync` is `gh pr create
+--head --base --title --body-file` from a temporary file written without a
+byte-order mark; success is the last line of standard output, and a failure
+whose standard error says *already exists* answers the url it prints, so a retry
+records the existing pull request and leaves none waiting. Any other failure
+stores the pull request here, with `why` as gh's first line (a default sentence
+where it said none, cut to 500), prints that it is written and waits, and exits
+`0`: the prompt tells the session to carry on. A url recorded in between is the
+route's `409`, the program's ordinary error exit. The envelope write takes the
+checkout `--repo` names, not the working directory.
+
 It is not a pull request. It does not count as having one (`HasPr` is unchanged,
 so it blocks nobody), a conflict on its branch is still dispatched from the
 merge checks, and it is neither a `reviews` row, since those need a recorded
@@ -10061,8 +10080,8 @@ is a stash that would not go.
 **An increment that moved, resolved or fixed and ended in review is refused as
 unpublished** (`GoToWork.cs:1590-1596`, `Unpublished.RefuseAsync`; the same guard
 in `WorkCommand.cs:632-639` for `hatch work <key>`) on either of two arms: a
-branch left **unmerged on origin** (`left.BranchOnOrigin && !left.HasPullRequest`,
-where `BranchOnOrigin` is the merge check's verdict being anything but `none`, so
+branch left **unmerged on origin** (`left.BranchOnOrigin && !left.HasPullRequest &&
+!left.HasWaitingPullRequest`, where `BranchOnOrigin` is the merge check's verdict being anything but `none`, so
 a branch whose changes are all in the trunk counts as absent), or, in a
 trunk-landing project, **no landing recorded** (`Lifecycle.HasLandingAsync`,
 `LeaveOutcome.HasLanding`). The two call sites pick exactly one of those arms by
@@ -10082,6 +10101,13 @@ ticket`. For a trunk-landing project the comment says "no landing recorded" and
 names `hatch landed <key> <sha>`, the terminal line says "left no landing
 recorded", and the second occurrence asks whether the work has landed, with the
 options `landing recorded` and `no landing needed for this ticket`.
+
+An issue with a [waiting pull request](#a-pull-request-waiting-to-be-opened)
+is not refused: `LeaveOutcome.HasWaitingPullRequest` is read from the same
+issue read as `HasPullRequest` (`Lifecycle.PullRequestStateAsync`), and counts
+as published for this guard alone. It is never fed to `Workspace.Leave`'s
+`syncPullRequest`, so the trunk is merged forward into a branch only for a real
+pull request. A read that fails answers neither.
 
 **The runner never pushes to the trunk**, in any project. Landing is the
 session's own `git push`; `hatch landed` records it, the poll confirms it

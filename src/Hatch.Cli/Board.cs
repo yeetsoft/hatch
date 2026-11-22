@@ -826,6 +826,13 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public Task<IssueDto?> SetNoCodeAsync(string key, string reason, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/no-code", new NoCodeRequest(reason), ct);
 
+    /// <summary>
+    /// Stores the pull request a session wrote but could not open, on the issue. A `409` - a url is
+    /// already recorded - is the program's ordinary error exit.
+    /// </summary>
+    public Task<IssueDto?> PutWaitingPullRequestAsync(string key, WaitingPullRequestRequest request, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/waiting-pull-request", request, ct);
+
     /// <summary>The release note a session wrote for the issue, written under the claim the runner holds.</summary>
     public Task<IssueDto?> ReleaseNoteAsync(string key, string note, Guid heldToken, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(

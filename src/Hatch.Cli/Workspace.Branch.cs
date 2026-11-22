@@ -98,6 +98,25 @@ public sealed partial class Workspace
     }
 
     /// <summary>
+    /// The branch the checkout is on, or null where HEAD is detached - or names no branch at all.
+    /// </summary>
+    public string? CurrentBranch()
+    {
+        var named = Git("rev-parse", "--abbrev-ref", "HEAD");
+        return named.Ok && named.Out.Trim() is { Length: > 0 } branch && branch != "HEAD" ? branch : null;
+    }
+
+    /// <summary>
+    /// The commit the remote-tracking ref of <paramref name="branch"/> names, in full, or null where
+    /// origin has no such branch as of the last fetch.
+    /// </summary>
+    public string? OriginBranchSha(string branch)
+    {
+        var sha = Git("rev-parse", "--verify", "--quiet", $"refs/remotes/origin/{branch}");
+        return sha.Ok && sha.Out.Trim() is { Length: > 0 } full ? full : null;
+    }
+
+    /// <summary>
     /// Whether a trunk-landing session should be asked to write
     /// <c>.hatch/README.md</c>: never off the trunk, and only when the trunk's own
     /// copy is absent or a version older than the one this build ships. Reading
