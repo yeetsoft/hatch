@@ -155,6 +155,90 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_trunk_landing_project_whose_trunk_readme_is_old_is_told_to_write_it()
+    {
+        var branches = new[]
+        {
+            new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, TrunkLanding = true, Trunk = "main", AsksReadme = true },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk), branches: branches);
+
+        var landing = prompt.IndexOf("## Landing on the trunk", StringComparison.Ordinal);
+        var landed = prompt.IndexOf("hatch landed AER-12", StringComparison.Ordinal);
+        Assert.True(landing > 0 && landed > landing);
+
+        var text = prompt[landing..landed];
+        Assert.Contains("hatch readme --file", text, StringComparison.Ordinal);
+        Assert.Contains("written", text, StringComparison.Ordinal);
+        Assert.Contains("Never commit it on its own", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_trunk_landing_project_whose_trunk_readme_is_current_hears_nothing_about_it()
+    {
+        var branches = new[]
+        {
+            new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, TrunkLanding = true, Trunk = "main", AsksReadme = false },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk), branches: branches);
+
+        Assert.DoesNotContain("hatch readme --file", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_trunk_landing_project_with_no_branches_hears_nothing_about_the_readme()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk));
+
+        Assert.DoesNotContain("hatch readme --file", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_pull_request_project_hears_nothing_about_the_readme_even_when_the_entry_asks()
+    {
+        var branches = new[]
+        {
+            new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, TrunkLanding = true, Trunk = "main", AsksReadme = true, Cut = "aer-12-x" },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"), branches: branches);
+
+        Assert.DoesNotContain("hatch readme --file", prompt, StringComparison.Ordinal);
+        Assert.Contains("## Opening a pull request", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_row_that_denies_git_writes_hears_nothing_about_the_readme()
+    {
+        var branches = new[]
+        {
+            new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, TrunkLanding = true, Trunk = "main", AsksReadme = true },
+        };
+        var work = Fixtures.Work("AER-12", landing: Landings.Trunk) with { Playbook = Fixtures.Playbook(deniedTools: ["Bash(git push *)"]) };
+        var prompt = Prompt.Compose(work, branches: branches);
+
+        Assert.DoesNotContain("hatch readme --file", prompt, StringComparison.Ordinal);
+        Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Two_trunk_landing_checkouts_asking_for_the_readme_name_only_the_one_that_asks()
+    {
+        var branches = new[]
+        {
+            new BranchEntry { Path = "/checkouts/one", Kind = BranchKind.None, TrunkLanding = true, Trunk = "main", AsksReadme = true },
+            new BranchEntry { Path = "/checkouts/two", Kind = BranchKind.None, TrunkLanding = true, Trunk = "main", AsksReadme = false },
+        };
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk), branches: branches);
+
+        var landing = prompt.IndexOf("## Landing on the trunk", StringComparison.Ordinal);
+        var landed = prompt.IndexOf("hatch landed AER-12", StringComparison.Ordinal);
+        var text = prompt[landing..landed];
+
+        Assert.Contains("/checkouts/one", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("/checkouts/two", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_default_project_still_opens_a_pull_request_not_a_landing()
     {
         var prompt = Prompt.Compose(Fixtures.Work("AER-12"));

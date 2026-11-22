@@ -97,6 +97,26 @@ public sealed partial class Workspace
         return head.Ok && head.Out.Trim() is { Length: > 0 } sha ? sha : null;
     }
 
+    /// <summary>
+    /// Whether a trunk-landing session should be asked to write
+    /// <c>.hatch/README.md</c>: never off the trunk, and only when the trunk's own
+    /// copy is absent or a version older than the one this build ships. Reading
+    /// the blob fails: ask nothing, since git gave no answer either way.
+    /// </summary>
+    private bool AsksReadme(string trunk, bool trunkLanding)
+    {
+        if (!trunkLanding) return false;
+
+        var blob = ReadBlob(trunk, ReadmeFile.Path);
+        if (blob.Outcome == BlobOutcome.Failed) return false;
+
+        var content = blob.Outcome == BlobOutcome.Found
+            ? new System.Text.UTF8Encoding(false).GetString(blob.Content!)
+            : null;
+
+        return ReadmeFile.Judge(content) is ReadmeVerdict.Write or ReadmeVerdict.Replace;
+    }
+
     private string Short(string reference) => Git("rev-parse", "--short=9", reference).Out.Trim();
 
     private int Count(string range)
@@ -132,6 +152,7 @@ public sealed partial class Workspace
                 Cut = cut,
                 Trunk = trunk,
                 TrunkLanding = trunkLanding,
+                AsksReadme = AsksReadme(trunk, trunkLanding),
                 Sha = merged.Count == 0 || trunkLanding ? Short($"refs/remotes/origin/{trunk}") : "",
                 Planned = planned,
             }, null);
@@ -246,6 +267,7 @@ public sealed partial class Workspace
             Merged = merged,
             Trunk = trunk,
             TrunkLanding = trunkLanding,
+            AsksReadme = AsksReadme(trunk, trunkLanding),
         };
         say($"hatch:   {entry.Sentence()}");
         return entry;
@@ -359,6 +381,7 @@ public sealed partial class Workspace
             Merged = merged,
             Trunk = trunk,
             TrunkLanding = trunkLanding,
+            AsksReadme = AsksReadme(trunk, trunkLanding),
             Planned = true,
         };
     }

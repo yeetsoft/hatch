@@ -9872,6 +9872,19 @@ and before the spawn:
   <sha>` for each repository and a comment with the sha. The increment is not
   finished until the landing is recorded, and `## Where this increment ends`
   still names review.
+- **The same paragraph can ask the session to bring `.hatch/README.md` current.**
+  `Workspace` decides before the prompt is composed: a trunk-landing entry's
+  `AsksReadme` (`Branches.cs`) is set only when `ReadBlob` reads the trunk's own
+  copy of the file and `ReadmeFile.Judge` (`ReadmeFile.cs`; `hatch readme --file`
+  applies the same rule to a working tree) calls it absent or older than the
+  version this build ships - never on a copy that is current, newer, or one
+  Hatch did not write, and never off the trunk.
+  When it is set, `Prompt.Landing` adds a paragraph asking the session to run
+  `hatch readme --file` before its last commit and to commit the file, if it
+  prints `written`, in that same commit - never on its own. The runner never
+  pushes the trunk itself (see [Leaving the tree](#leaving-the-tree)), so this
+  is asked of the session instead, and a session that skips it is asked again
+  the next time.
 - **The copy on this machine is only a copy.** Behind `origin`, it is
   fast-forwarded. Ahead, it is used as it is. Diverged, the local tip is kept
   under `<branch>-local-<short sha>`, said on the terminal and in the prompt, and

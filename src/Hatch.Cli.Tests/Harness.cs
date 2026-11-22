@@ -586,7 +586,7 @@ public sealed class FakeWorkspace
                     Path = entry.Path, Kind = entry.Kind, Branch = entry.Branch, Sha = entry.Sha, Ahead = entry.Ahead,
                     Merge = entry.Merge, Conflicted = entry.Conflicted, Candidates = entry.Candidates,
                     Merged = entry.Merged, Cut = entry.Cut, Planned = true,
-                    Trunk = entry.Trunk, TrunkLanding = entry.TrunkLanding,
+                    Trunk = entry.Trunk, TrunkLanding = entry.TrunkLanding, AsksReadme = entry.AsksReadme,
                 }
                 : entry;
         }

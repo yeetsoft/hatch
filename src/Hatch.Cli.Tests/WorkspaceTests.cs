@@ -836,4 +836,111 @@ public sealed class WorkspaceTests : RepoFixture
         Assert.Equal("main", plan.Trunk);
         Assert.Equal($"work: would stay on main at {plan.Sha} - this project lands on the trunk", plan.Sentence());
     }
+
+    // ---- AsksReadme ----
+
+    private static readonly string OlderReadme = ReadmeFile.Text.Replace("Version 1.", "Version 0.", StringComparison.Ordinal);
+    private static readonly string NewerReadme = ReadmeFile.Text.Replace("Version 1.", "Version 2.", StringComparison.Ordinal);
+    private const string ForeignReadme = "# Somebody else's notes\n";
+
+    [Fact]
+    public void No_copy_on_the_trunk_asks_for_the_readme()
+    {
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.True(ws.Enter("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+        Assert.True(ws.Plan("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+    }
+
+    [Fact]
+    public void An_older_copy_on_the_trunk_asks_for_the_readme()
+    {
+        MoveMain(".hatch/README.md", OlderReadme);
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.True(ws.Enter("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+        Assert.True(ws.Plan("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+    }
+
+    [Fact]
+    public void The_same_version_on_the_trunk_does_not_ask_for_the_readme()
+    {
+        MoveMain(".hatch/README.md", ReadmeFile.Text);
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.False(ws.Enter("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+        Assert.False(ws.Plan("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+    }
+
+    [Fact]
+    public void A_newer_version_on_the_trunk_does_not_ask_for_the_readme()
+    {
+        MoveMain(".hatch/README.md", NewerReadme);
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.False(ws.Enter("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+        Assert.False(ws.Plan("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+    }
+
+    [Fact]
+    public void A_file_hatch_did_not_write_does_not_ask_for_the_readme()
+    {
+        MoveMain(".hatch/README.md", ForeignReadme);
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.False(ws.Enter("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+        Assert.False(ws.Plan("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+    }
+
+    [Fact]
+    public void No_copy_but_not_trunk_landing_does_not_ask_for_the_readme()
+    {
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.False(ws.Enter("HA-31", "Thing", null, trunkLanding: false).AsksReadme);
+        Assert.False(ws.Plan("HA-31", "Thing", null, trunkLanding: false).AsksReadme);
+    }
+
+    [Fact]
+    public void An_already_merged_entry_with_no_trunk_copy_asks_for_the_readme()
+    {
+        Publish("ha-31-first", "x.txt", "x");
+        G(_other, "checkout", "--quiet", "main");
+        G(_other, "merge", "--quiet", "--ff-only", "origin/ha-31-first");
+        G(_other, "push", "--quiet", "origin", "main");
+
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.True(ws.Enter("HA-31", "First", null, trunkLanding: true).AsksReadme);
+        Assert.True(ws.Plan("HA-31", "First", null, trunkLanding: true).AsksReadme);
+    }
+
+    [Fact]
+    public void An_entered_branch_with_no_trunk_copy_asks_for_the_readme()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.True(ws.Enter("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+        Assert.True(ws.Plan("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+    }
+
+    [Fact]
+    public void Several_unmerged_branches_never_ask_for_the_readme_even_with_no_trunk_copy()
+    {
+        Publish("ha-31-first", "x.txt", "x");
+        Publish("ha-31-second", "y.txt", "y");
+        var ws = Ws();
+        ws.Prepare();
+
+        Assert.False(ws.Enter("HA-31", "Thing", null, trunkLanding: true).AsksReadme);
+    }
 }

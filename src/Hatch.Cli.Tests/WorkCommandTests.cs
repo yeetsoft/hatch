@@ -220,6 +220,22 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task A_dry_run_on_a_trunk_landing_project_prints_the_readme_paragraph()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", landing: Landings.Trunk));
+        h.Workspace.EntryFor[h.Root] = new BranchEntry
+        {
+            Path = h.Root, Kind = BranchKind.None, Cut = "aer-1-x", Trunk = "main", TrunkLanding = true, AsksReadme = true,
+        };
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--dry-run"], default));
+
+        var prompt = string.Join('\n', h.Say.Said);
+        Assert.Contains("hatch readme --file", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task An_unnamed_dry_run_asks_before_it_reads_the_next_issue()
     {
         using var h = new Harness();
