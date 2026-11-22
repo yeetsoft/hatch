@@ -234,9 +234,13 @@ The per-issue PATCH 400s if the issue is not an `epic`.
 | GET | `/board` | key | Every column and every card in the house, in one request - the WIP meter alongside it, read from the same instant |
 
 The answer is a `BoardDto`: `Statuses`, `Issues` (each an `IssueCardDto`), an
-optional `Wip`, an optional `DoneHorizonHours`, and `PastHorizon` - the
+optional `Wip`, an optional `DoneHorizonHours`, `PastHorizon` - the
 stories the horizon withheld, handed over separately so a client can count
-them against their still-open epic. There is no write here, and no refusal
+them against their still-open epic - `Normals`, one `{ StatusId, Seconds }` per
+active column (`Seconds` null under ten stays, worked out over every project and
+kept five minutes), and `At`, the instant the board was read at. Each card also
+carries `EnteredColumnAt` and `Aged`: when it entered its column, and whether it
+has stood there longer than the column's normal with no open child. There is no write here, and no refusal
 beyond the standard ones.
 
 Every card names who filed it, as `createdBy` - a person's or an API key's

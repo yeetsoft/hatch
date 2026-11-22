@@ -559,6 +559,16 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// name. Null where the url was recorded before this was kept, or none is
 /// held.
 /// </param>
+/// <param name="EnteredColumnAt">
+/// When this card entered the column it stands in: the instant of its newest
+/// status change, else its creation. A rank move changes nothing. Set only on
+/// the board read; null elsewhere.
+/// </param>
+/// <param name="Aged">
+/// Whether this card has stood in its column longer than the column's normal
+/// (<see cref="ColumnNormalDto"/>) and has no open child. Set only on the
+/// board read; false elsewhere.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -615,7 +625,9 @@ public record IssueCardDto(
     bool ChildBeyondScope = false,
     IReadOnlyList<string> FromBeyondScope = null!,
     string? PullRequestRecordedBy = null,
-    string? PullRequestRecordedByKind = null)
+    string? PullRequestRecordedByKind = null,
+    DateTimeOffset? EnteredColumnAt = null,
+    bool Aged = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -2456,9 +2468,23 @@ public record RunnerCapacityDto(string ProjectKey, int Steps, IReadOnlyList<stri
 /// and not deferred. Empty wherever the horizon is off; the server always
 /// sends the list, never null.
 /// </param>
+/// <param name="Normals">
+/// One entry for every active column - after the first, not terminal, not
+/// deferred - in board order. Null where the read worked none out.
+/// </param>
+/// <param name="At">The server's instant the board was read at, so a client ages a card against the same clock the server did.</param>
 public record BoardDto(
     IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues, WipDto? Wip = null,
-    int? DoneHorizonHours = null, IReadOnlyList<IssueCardDto>? PastHorizon = null);
+    int? DoneHorizonHours = null, IReadOnlyList<IssueCardDto>? PastHorizon = null,
+    IReadOnlyList<ColumnNormalDto>? Normals = null, DateTimeOffset? At = null);
+
+/// <summary>
+/// How long a card normally stands in one column: the ninetieth percentile of
+/// the stays that ended over the last thirty days, across every project.
+/// </summary>
+/// <param name="StatusId">The column.</param>
+/// <param name="Seconds">The normal, in seconds, or null where the column has fewer than ten stays to go on.</param>
+public record ColumnNormalDto(int StatusId, long? Seconds);
 
 /// <summary>
 /// How full the WIP section is right now, the shape <c>GET /board</c> carries
