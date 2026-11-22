@@ -42,6 +42,7 @@ public sealed class MergeTrain : IAsyncDisposable
     private readonly HashSet<string> _seenClosed = [];
     private HashSet<string> _saidBefore = [];
     private readonly OutsideFiler _filer = new();
+    private readonly PullRequestRepair _repair = new();
 
     // The sentence a 409 from the merged route came back with, per issue: the
     // last tick's, and the one being built. One 409 is the race the walk-on
@@ -173,6 +174,10 @@ public sealed class MergeTrain : IAsyncDisposable
         // its project binds.
         var lists = new Dictionary<string, PullRequestListAnswer>();
         await ReadPullRequestsAsync(runtime, complain, review, lists, ct);
+
+        // A pull request recorded on the wrong ticket is put right before the filer looks, so the filer's own
+        // live check finds it recorded and never files it as an outsider. Only the project's driver does it.
+        await RepairPullRequestsAsync(runtime, complain, review, lists, ct);
 
         // Right after it, so the list it read is the list this one files from: one read of a
         // path a tick. Only the project's driver files, and nothing here throws out of the tick.
@@ -376,6 +381,26 @@ public sealed class MergeTrain : IAsyncDisposable
         catch (Exception e) when (e is not OperationCanceledException)
         {
             complain($"hatch: could not read pull requests - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The misplaced pull request half: an issue in review with none recorded gets the one its branch has,
+    /// even off another ticket a key recorded it on - see <see cref="PullRequestRepair"/>. The outer
+    /// try/catch keeps anything unanticipated here from propagating into <see cref="TickAsync"/> and
+    /// aborting the halves that run after it.
+    /// </summary>
+    private async Task RepairPullRequestsAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review,
+        Dictionary<string, PullRequestListAnswer> lists, CancellationToken ct)
+    {
+        try
+        {
+            await _repair.RepairAsync(runtime, complain, review, lists, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not put misplaced pull requests right - {e.Message}");
         }
     }
 
