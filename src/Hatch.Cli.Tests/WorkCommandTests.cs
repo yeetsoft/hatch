@@ -12,6 +12,9 @@ public sealed class WorkCommandTests
 {
     private const string Queue = "/api/work/queue";
 
+    /// <summary>The one read the start-up check of the forge makes, quietly, to learn each repository's identity. It reads no work and claims nothing.</summary>
+    private const string ProjectsRead = "/api/projects";
+
     /// <summary>Everything an increment reads and writes after the session ends.</summary>
     private static void Bookkeeping(Harness h, string key)
     {
@@ -770,7 +773,7 @@ public sealed class WorkCommandTests
 
         // Nothing was read and nothing was claimed - an increment that cannot
         // start should not take a ticket off the board to find that out.
-        Assert.Empty(h.Wire.Calls);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path != ProjectsRead);
     }
 
     [Fact]
@@ -814,7 +817,7 @@ public sealed class WorkCommandTests
         Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "grok", "AER-1"], default));
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_GROK_BIN is not there: {missing}", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path != ProjectsRead);
     }
 
     /// <summary>
@@ -833,7 +836,7 @@ public sealed class WorkCommandTests
         Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "codex", "AER-1"], default));
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path != ProjectsRead);
     }
 
     /// <summary>Ollama has no binary setting of its own - it spawns through the same codex harness, so the missing-CodexBin refusal is the one it hits.</summary>
@@ -847,7 +850,7 @@ public sealed class WorkCommandTests
         Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "ollama", "AER-1"], default));
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path != ProjectsRead);
     }
 
     [Fact]

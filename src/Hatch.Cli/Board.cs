@@ -51,6 +51,13 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public Func<(string State, string? Why)?> Signing { get; set; } = () => null;
 
     /// <summary>
+    /// What this machine says about being signed in to its forge - <c>works</c> or <c>fails</c>, with a
+    /// reason beside <c>fails</c> - read afresh at each read, as <see cref="Signing"/> is. Null is no
+    /// answer, and then no parameter is sent.
+    /// </summary>
+    public Func<(string State, string? Why)?> Forge { get; set; } = () => null;
+
+    /// <summary>
     /// The agent this runner spawns, sent as <c>agent=</c> on every dispatch read
     /// so the board folds a move that runs on another one; null sends nothing.
     /// </summary>
@@ -389,6 +396,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         parts.AddRange(ModelParts());
         parts.AddRange(DangerousParts());
         parts.AddRange(SigningParts());
+        parts.AddRange(ForgeParts());
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/work/{key}{query}", ct));
@@ -407,6 +415,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         var parts = DeclareParts(checkouts, clones);
         parts.AddRange(TagParts());
         parts.AddRange(SigningParts());
+        parts.AddRange(ForgeParts());
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         var answer = await Client.Send(HttpMethod.Post, $"/api/work/{key}/hop{query}", null, ct);
 
@@ -554,6 +563,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
             .Concat(ModelParts())
             .Concat(DangerousParts())
             .Concat(SigningParts())
+            .Concat(ForgeParts())
             .Concat(ProjectParts())
             .ToList() is { Count: > 0 } parts
             ? $"&{string.Join('&', parts)}"
@@ -577,6 +587,14 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         yield return $"signing={Uri.EscapeDataString(answer.State)}";
         if (answer.State == "fails" && !string.IsNullOrWhiteSpace(answer.Why))
             yield return $"signingWhy={Uri.EscapeDataString(answer.Why)}";
+    }
+
+    private IEnumerable<string> ForgeParts()
+    {
+        if (Forge() is not { } answer) yield break;
+        yield return $"forge={Uri.EscapeDataString(answer.State)}";
+        if (answer.State == "fails" && !string.IsNullOrWhiteSpace(answer.Why))
+            yield return $"forgeWhy={Uri.EscapeDataString(answer.Why)}";
     }
 
     private IEnumerable<string> ProjectParts() => Projects.Select(p => $"project={Uri.EscapeDataString(p)}");
