@@ -298,54 +298,9 @@ public class ReportsController(
             .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
             .ToList();
 
-        // Plain queries joined here rather than a subquery for the earliest
-        // answer: comments rather than events, since the `asked` event carries
-        // no question id. A lapse is the one answer the board writes itself, a
-        // comment and an `answered` event {questionId, lapsed: true} at the
-        // same instant; the comment carries no marker, so the event names it.
-        // The wait figures are over a person's answers, so that comment is set
-        // aside and the question is counted as lapsed instead.
-        //
-        // The prefilter is a containment on Postgres, which has no LIKE for
-        // jsonb, and a substring on InMemory, which has no containment.
-        var lapseAt = new Dictionary<long, DateTimeOffset>();
-        var answered = db.IssueEvents.AsNoTracking()
-            .Where(e => e.Kind == EfHatchIssueEvent.Answered && e.Payload != null);
-        var lapseEvents = await (db.Database.IsNpgsql()
-                ? answered.Where(e => EF.Functions.JsonContains(e.Payload!, "{\"lapsed\":true}"))
-                : answered.Where(e => e.Payload!.Contains("lapsed")))
-            .Select(e => new { e.At, e.Payload })
-            .ToListAsync(ct);
-
-        foreach (var e in lapseEvents)
-        {
-            if (!LetGo.IsLapsedAnswer(e.Payload)) continue;
-            if (IssueEventPayload.Parse(e.Payload) is { } payload
-                && payload.TryGetProperty("questionId", out var id) && id.TryGetInt64(out var questionId))
-                lapseAt[questionId] = e.At;
-        }
-
-        var asked = await db.Comments.AsNoTracking()
-            .Where(c => c.Kind == EfHatchComment.Question)
-            .Select(c => new { c.Id, c.IssueId, c.CreatedAt })
-            .ToListAsync(ct);
-
-        var answers = await db.Comments.AsNoTracking()
-            .Where(c => c.AnswersId != null)
-            .Select(c => new { AnswersId = c.AnswersId!.Value, c.CreatedAt })
-            .ToListAsync(ct);
-
-        var earliestAnswer = answers
-            .Where(a => !(lapseAt.TryGetValue(a.AnswersId, out var lapsedAt) && lapsedAt == a.CreatedAt))
-            .GroupBy(a => a.AnswersId)
-            .ToDictionary(g => g.Key, g => g.Min(a => a.CreatedAt));
-
-        var questions = asked
-            .Select(q => new FlowReport.Question(
-                q.IssueId, q.Id, q.CreatedAt,
-                earliestAnswer.TryGetValue(q.Id, out var answeredAt) ? answeredAt : null,
-                !earliestAnswer.ContainsKey(q.Id) && lapseAt.TryGetValue(q.Id, out var lapsedAt) ? lapsedAt : null))
-            .ToList();
+        // How a question is paired with its answer is QuestionTrail's, shared with
+        // the board health read.
+        var questions = await QuestionTrail.ReadAsync(db, null, null, ct);
 
         var sessions = (await db.WorkLog.AsNoTracking()
                 .Where(w => w.EndedAt >= start && w.EndedAt < end)
