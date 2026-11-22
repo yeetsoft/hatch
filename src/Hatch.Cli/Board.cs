@@ -782,6 +782,14 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         await Client.WriteAsync<List<ServedCapabilityDto>>(
             HttpMethod.Put, $"/api/issues/{key}/serves", new IssueServesWriteRequest(ids), ct) ?? [];
 
+    /// <summary>An ambition's changes to its capabilities, newest first, each with its entries and recorded outcomes.</summary>
+    public async Task<IReadOnlyList<ChangeDto>> ChangesAsync(string key, CancellationToken ct) =>
+        await Client.GetAsync<List<ChangeDto>>($"/api/issues/{key}/changes", ct) ?? [];
+
+    /// <summary>One epic's outcome on one of the ambition's changes.</summary>
+    public Task<ChangeOutcomeDto?> RecordOutcomeAsync(string key, long eventId, ChangeOutcomeRequest request, CancellationToken ct) =>
+        Client.PostAsync<ChangeOutcomeDto>($"/api/issues/{key}/changes/{eventId}/outcomes", request, ct);
+
     /// <summary>A story's own say over whether its tasks share one branch and one pull request: <c>on</c>, <c>off</c> or <c>inherit</c>.</summary>
     public Task<IssueDto?> SetOnePrAsync(string key, string value, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/one-pr", new OnePrRequest(value), ct);

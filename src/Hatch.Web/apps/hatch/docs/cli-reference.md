@@ -49,6 +49,7 @@ without the flag.
 | `depends` | No | Only with a second key |
 | `capability` | Only `judge` with no `--sha`: it reads the head of the checkout it stands in | Only with `add`, `edit`, `move`, `remove` or `judge` |
 | `serves` | No | Only with ids or `--none` |
+| `change` | No | Only with `outcome` |
 | `one-pr` | No | Only with `on`, `off` or `inherit` |
 | `dangerous` | No | Only with a reason or `--clear` |
 | `omit` | No | Only with a runner and reason, or `--lift` |
@@ -951,6 +952,29 @@ it, and ids with `--none` are refused. The ids are the ones `hatch capability
 list` prints after the `#`. It prints `<epic> serves nothing`, or `<epic> serves
 2 capabilities:` and then `  <ambition> #<id>  <state>  <statement>` for each.
 A key is never refused this.
+
+### change
+
+```
+hatch change list <ambition>
+hatch change outcome <ambition> <epic> carries_on|not_touched|serves_nothing "<why>" --change <id>
+```
+
+An ambition's latest change to its capabilities - what was added, changed or
+removed since the one before - and the outcome each epic beneath it records
+against one.
+
+- `list` prints the newest change: its id, when it was saved, and whether it
+  has been worked out; what each entry added, changed or removed, with a
+  `how to tell:` line where that changed too; and the outcomes recorded so
+  far, one per epic, or `no outcomes yet`. An ambition with no change says
+  `<key> has not been changed`.
+- `outcome` records one epic's outcome - one of `carries_on`, `not_touched`
+  or `serves_nothing` - and why, in prose. `--change <id>` names the change,
+  the id `list` prints after "change", and is required: a default of the
+  newest change could record against one that has since moved on. A word
+  that is not one of the three, a blank why, a missing `--change`, or an id
+  that is not a positive number is refused before anything is sent.
 
 ### one-pr
 
