@@ -141,7 +141,14 @@ function reorder(
   afterKey: string | null,
   beforeKey: string | null,
 ): IssueCard[] {
-  const moved = { ...card, statusId };
+  const moved: IssueCard = { ...card, statusId };
+  // The age was worked out for the column the card has left. Carried over, a
+  // dropped card would wear a chip that is wrong for its new column until the
+  // refetch; a rank move inside one column is still the same stay.
+  if (statusId !== card.statusId) {
+    moved.aged = false;
+    delete moved.enteredColumnAt;
+  }
   const rest = all.filter((i) => i.key !== card.key);
 
   /* The target column as the rank sees it, which is the board's own order with

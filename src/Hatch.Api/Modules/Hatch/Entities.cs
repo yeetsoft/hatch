@@ -3554,6 +3554,13 @@ public class EfHatchPlaybook
     /// </summary>
     public bool WorksOutChanges { get; set; }
 
+    /// <summary>
+    /// Whether this row shapes a draft ambition: its title, its description and
+    /// its capabilities. It is never a check, and the ordinary match never
+    /// returns it: only a dispatch aimed at it by name reaches it.
+    /// </summary>
+    public bool ShapesAmbition { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
     public required DateTimeOffset UpdatedAt { get; set; }
 

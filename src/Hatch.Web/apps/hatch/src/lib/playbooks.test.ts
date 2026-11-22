@@ -382,6 +382,7 @@ describe('coverage', () => {
       id: 7,
       answersQuestions: false,
       worksOutChanges: false,
+      shapesAmbition: false,
       defaultPrompt: null,
       updatedAt: '2026-01-01T00:00:00Z',
       projectId: 9,

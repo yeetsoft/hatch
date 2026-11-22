@@ -36,6 +36,7 @@ const BASE: Playbook = {
   isCheck: false,
   answersQuestions: false,
   worksOutChanges: false,
+  shapesAmbition: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,

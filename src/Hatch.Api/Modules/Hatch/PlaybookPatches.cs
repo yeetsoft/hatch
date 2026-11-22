@@ -11,13 +11,14 @@ internal sealed record PlaybookState(
     int FromStatusId, int ToStatusId, string Types, string Shape,
     string? Prompt, string? DefaultPrompt, string Model, string Effort,
     int? Budget, int? BriefLimit, int? QuietLimitSeconds, string? DeniedTools, bool IsCheck, int? ProjectId,
-    int? MaxRunSeconds = null, string? LocalModel = null, bool AnswersQuestions = false, bool WorksOutChanges = false)
+    int? MaxRunSeconds = null, string? LocalModel = null, bool AnswersQuestions = false, bool WorksOutChanges = false,
+    bool ShapesAmbition = false)
 {
     public static PlaybookState Of(EfHatchPlaybook p) => new(
         p.FromStatusId, p.ToStatusId, p.Types, p.Shape,
         p.Prompt, p.DefaultPrompt, p.Model, p.Effort,
         p.Budget, p.BriefLimit, p.QuietLimitSeconds, p.DeniedTools, p.IsCheck, p.ProjectId, p.MaxRunSeconds, p.LocalModel,
-        p.AnswersQuestions, p.WorksOutChanges);
+        p.AnswersQuestions, p.WorksOutChanges, p.ShapesAmbition);
 
     public string EffectivePrompt => Prompt ?? DefaultPrompt ?? "";
 }
@@ -30,13 +31,17 @@ internal sealed record PlaybookState(
 /// </summary>
 internal static class PlaybookPatches
 {
-    /// <summary>The sentence create, patch and a proposal all refuse a row that is more than one of the three kinds with.</summary>
-    public const string CheckAndAnswersRefusal = "a playbook is a check, answers questions or works out changes - never more than one";
+    /// <summary>The sentence create, patch and a proposal all refuse a row that is more than one of the four kinds with.</summary>
+    public const string OneKindRefusal = "a playbook is a check, answers questions, works out changes or shapes an ambition - never more than one";
+
+    /// <summary>Whether more than one of the four kinds a row can be is true - the one test create, patch and a proposal share.</summary>
+    public static bool MoreThanOneKind(bool isCheck, bool answersQuestions, bool worksOutChanges, bool shapesAmbition) =>
+        (isCheck ? 1 : 0) + (answersQuestions ? 1 : 0) + (worksOutChanges ? 1 : 0) + (shapesAmbition ? 1 : 0) > 1;
 
     /// <summary>
     /// Null when the patch is legal against this state and the live board;
     /// otherwise the sentence PATCH has always used. Checked in order: shape,
-    /// project id, project, column and clash, check/answers-questions/works-out-changes, prompt, model and effort, local model, budget,
+    /// project id, project, column and clash, one-kind rule, prompt, model and effort, local model, budget,
     /// brief limit, quiet limit, run limit, denied tools - so two faults at once report the same one first.
     /// </summary>
     public static async Task<string?> RefusalAsync(
@@ -72,8 +77,9 @@ internal static class PlaybookPatches
         var isCheck = request.IsCheck ?? current.IsCheck;
         var answersQuestions = request.AnswersQuestions ?? current.AnswersQuestions;
         var worksOutChanges = request.WorksOutChanges ?? current.WorksOutChanges;
-        if ((isCheck && answersQuestions) || (isCheck && worksOutChanges) || (answersQuestions && worksOutChanges))
-            return CheckAndAnswersRefusal;
+        var shapesAmbition = request.ShapesAmbition ?? current.ShapesAmbition;
+        if (MoreThanOneKind(isCheck, answersQuestions, worksOutChanges, shapesAmbition))
+            return OneKindRefusal;
 
         if (request.Prompt is not null)
         {
@@ -166,6 +172,7 @@ internal static class PlaybookPatches
             IsCheck = request.IsCheck ?? current.IsCheck,
             AnswersQuestions = request.AnswersQuestions ?? current.AnswersQuestions,
             WorksOutChanges = request.WorksOutChanges ?? current.WorksOutChanges,
+            ShapesAmbition = request.ShapesAmbition ?? current.ShapesAmbition,
             ProjectId = projectId,
         };
     }

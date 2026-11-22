@@ -431,6 +431,38 @@ describe('place, with an express card', () => {
   });
 });
 
+/* A card's age was worked out for the column it was in. Dropped somewhere else,
+   it must not wear that chip until the refetch says otherwise. */
+describe('place, with an aged card', () => {
+  const aged = (key: string, statusId: number, rank: number): IssueCard => ({
+    ...card(key, statusId, rank),
+    aged: true,
+    enteredColumnAt: '2026-11-22T06:00:00Z',
+  });
+  const issues = [aged('AER-1', INBOX, 1024), aged('AER-2', INBOX, 2048), card('AER-9', TODO, 1024)];
+  const find = (placed: NonNullable<ReturnType<typeof place>>, key: string) =>
+    placed.issues.find((i) => i.key === key)!;
+
+  it('loses its age when moved to another column', () => {
+    const moved = find(place(issues, issues, 'AER-1', 'AER-9')!, 'AER-1');
+
+    expect(moved.statusId).toBe(TODO);
+    expect(moved.aged).toBe(false);
+    expect(moved.enteredColumnAt).toBeUndefined();
+  });
+
+  it('keeps its age when only its rank changes', () => {
+    const moved = find(place(issues, issues, 'AER-1', columnDroppableId(INBOX))!, 'AER-1');
+
+    expect(moved.aged).toBe(true);
+    expect(moved.enteredColumnAt).toBe('2026-11-22T06:00:00Z');
+  });
+
+  it('leaves the cards it did not move alone', () => {
+    expect(find(place(issues, issues, 'AER-1', 'AER-9')!, 'AER-2').aged).toBe(true);
+  });
+});
+
 describe('place, when the board has moved underneath', () => {
   it('has nothing to say about a card that is no longer there', () => {
     expect(place(board, board, 'AER-404', 'AER-1')).toBeNull();
