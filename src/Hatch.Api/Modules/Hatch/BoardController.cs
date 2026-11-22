@@ -219,8 +219,7 @@ public class BoardController(
         IReadOnlyList<ColumnNormals.Normal> table = normals is null ? [] : await normals.ForAsync(db, statuses, now, ct);
         var normalOf = table.Where(n => n.Seconds is not null).ToDictionary(n => n.StatusId, n => n.Seconds!.Value);
 
-        bool Candidate(CardRow i) =>
-            normalOf.TryGetValue(i.StatusId, out var seconds) && (now - EnteredAt(i)).TotalSeconds > seconds;
+        bool Candidate(CardRow i) => ColumnNormals.PastNormal(normalOf, i.StatusId, EnteredAt(i), now);
 
         var gate = issues.Concat(past).Any(Candidate)
             ? await FamilyGate.ForAsync(db, actors, statuses, ct)

@@ -32,6 +32,16 @@ public sealed class ColumnNormals
     /// <summary>How long an answer is reused, while the board's columns are unchanged.</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// Whether a card that entered <paramref name="statusId"/> at <paramref name="enteredAt"/>
+    /// has stood past that column's normal at <paramref name="now"/>: the column has a
+    /// normal, and the time in it is strictly greater. The board's aged flag and the
+    /// board health's past-normal count both read this, so neither can disagree.
+    /// </summary>
+    public static bool PastNormal(
+        IReadOnlyDictionary<int, long> normalOf, int statusId, DateTimeOffset enteredAt, DateTimeOffset now) =>
+        normalOf.TryGetValue(statusId, out var seconds) && (now - enteredAt).TotalSeconds > seconds;
+
     /// <summary>The two lists <see cref="Fold"/> reads, as <see cref="ReadAsync"/> returns them.</summary>
     private sealed record Rows(List<TimelineReport.Row> Issues, List<FlowReport.Event> Moves);
 

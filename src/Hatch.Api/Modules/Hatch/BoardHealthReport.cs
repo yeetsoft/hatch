@@ -232,7 +232,7 @@ public static class BoardHealthReport
                 {
                     var at = slot[s.Id];
                     if (board[at].IsTerminal || at == 0 || at < workSlot || (firstTerminal >= 0 && at > firstTerminal)) continue;
-                    if (isLeaf && normals.TryGetValue(s.Id, out var normal) && (now - s.Opens).TotalSeconds > normal) pastNormal++;
+                    if (isLeaf && ColumnNormals.PastNormal(normals, s.Id, s.Opens, now)) pastNormal++;
                 }
             }
 
