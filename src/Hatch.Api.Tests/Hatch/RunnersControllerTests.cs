@@ -4417,6 +4417,175 @@ public class RunnersControllerTests
         Assert.Null(await h.GetAsync("here:/checkouts/owned-key"));
     }
 
+    // ---- The states a runner was in ----
+
+    private static async Task<IReadOnlyList<RunnerStateStretchDto>> StretchesAsync(Harness h, string? from = null, string? to = null)
+    {
+        var (stretches, refusal) = await h.StatesAsync(Runner, from, to);
+        Assert.Null(refusal);
+        return Assert.IsAssignableFrom<IReadOnlyList<RunnerStateStretchDto>>(stretches);
+    }
+
+    private static async Task SeedAsync(Harness h, DateTimeOffset at, string state, string? kind = null)
+    {
+        h.Db.RunnerStates.Add(new EfHatchRunnerState { Runner = Runner, At = at, State = state, Kind = kind });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task States_DefaultsToTheLastTwentyFourHours()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 7 * 24 * 3600);
+        await h.AddKeyAsync(Runner);
+        await SeedAsync(h, Now.AddHours(-60), RunnerStateRule.Running);
+        await SeedAsync(h, Now.AddHours(-50), RunnerStateRule.Paused);
+        await SeedAsync(h, Now.AddHours(-30), RunnerStateRule.Running);
+        await SeedAsync(h, Now.AddHours(-2), RunnerStateRule.Paused);
+
+        var stretches = await StretchesAsync(h);
+
+        // The first two stretches ended before the window opened. The one that
+        // was open at its start is kept, and begins where it began.
+        Assert.Equal(
+        [
+            new RunnerStateStretchDto(RunnerStateRule.Running, null, Now.AddHours(-30), Now.AddHours(-2)),
+            new RunnerStateStretchDto(RunnerStateRule.Paused, null, Now.AddHours(-2), null),
+        ],
+        stretches);
+    }
+
+    [Fact]
+    public async Task States_Refuses400ForABoundThatIsNotAnInstant()
+    {
+        var h = await NewAsync();
+        await h.AddKeyAsync(Runner);
+
+        var (stretches, refusal) = await h.StatesAsync(Runner, from: "yesterday");
+
+        Assert.Null(stretches);
+        Assert.Equal(RangeBounds.NotAnInstant("yesterday"), refusal);
+        Assert.Equal(RangeBounds.NotAnInstant("soon"), (await h.StatesAsync(Runner, to: "soon")).Refusal);
+    }
+
+    [Fact]
+    public async Task States_Refuses400ForARangeThatEndsBeforeItBegins()
+    {
+        var h = await NewAsync();
+        await h.AddKeyAsync(Runner);
+
+        var (stretches, refusal) = await h.StatesAsync(Runner, from: "2026-09-08T10:00:00Z", to: "2026-09-08T09:00:00Z");
+
+        Assert.Null(stretches);
+        Assert.Equal("a range ends before it begins", refusal);
+    }
+
+    [Fact]
+    public async Task States_404sForAnUnknownName()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Runners.GetRunnerStates("nobody:/here", default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task States_404sForARunnerTheCallerMayNotSee()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        h.Actors.Principal = null;
+        await h.AddKeyAsync("here:/checkouts/owned-key", Guid.NewGuid());
+
+        var result = await h.Runners.GetRunnerStates("here:/checkouts/owned-key", default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task States_AnswersAnEmptyListForARunnerWithNoRows()
+    {
+        var h = await NewAsync();
+        await h.AddKeyAsync(Runner);
+
+        var (stretches, refusal) = await h.StatesAsync(Runner);
+
+        Assert.Null(refusal);
+        Assert.NotNull(stretches);
+        Assert.Empty(stretches);
+    }
+
+    [Fact]
+    public async Task States_IncludesTheOpenStretchStartingWhereItBegan()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 7 * 24 * 3600);
+        await h.AddKeyAsync(Runner);
+        await SeedAsync(h, Now.AddDays(-3), RunnerStateRule.Paused);
+        await SeedAsync(h, Now.AddDays(-2), RunnerStateRule.Running);
+
+        var stretches = await StretchesAsync(h, from: Now.AddHours(-1).ToString("O"));
+
+        // Nothing is clipped to the range: the stretch already open begins
+        // two days back and has no end.
+        var open = Assert.Single(stretches);
+        Assert.Equal(new RunnerStateStretchDto(RunnerStateRule.Running, null, Now.AddDays(-2), null), open);
+    }
+
+    [Fact]
+    public async Task States_KeepsTheAgentDownKindAndFoldsAdjacentRowsInTheSameState()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 7 * 24 * 3600);
+        await h.AddKeyAsync(Runner);
+        await SeedAsync(h, Now.AddHours(-5), RunnerStateRule.Running);
+        await SeedAsync(h, Now.AddHours(-4), RunnerStateRule.Running);
+        await SeedAsync(h, Now.AddHours(-3), RunnerStateRule.AgentDown, "signed-out");
+        await SeedAsync(h, Now.AddHours(-2), RunnerStateRule.AgentDown, "signed-out");
+        await SeedAsync(h, Now.AddHours(-1), RunnerStateRule.Running);
+
+        var stretches = await StretchesAsync(h);
+
+        Assert.Equal(
+        [
+            new RunnerStateStretchDto(RunnerStateRule.Running, null, Now.AddHours(-5), Now.AddHours(-3)),
+            new RunnerStateStretchDto(RunnerStateRule.AgentDown, "signed-out", Now.AddHours(-3), Now.AddHours(-1)),
+            new RunnerStateStretchDto(RunnerStateRule.Running, null, Now.AddHours(-1), null),
+        ],
+        stretches);
+    }
+
+    [Fact]
+    public async Task States_ShowsAnExpiredExhaustionFromTheClockAndWritesNothing()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 24 * 3600);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Exhausted: true, ExhaustedUntil: Now.AddMinutes(10)));
+        var before = await h.Db.RunnerStates.AsNoTracking().CountAsync();
+        Assert.True(before > 0);
+
+        h.Time.Advance(TimeSpan.FromMinutes(30));
+        var stretches = await StretchesAsync(h);
+
+        var last = stretches[^1];
+        Assert.Equal(RunnerStateRule.Running, last.State);
+        Assert.Equal(Now.AddMinutes(10), last.From);
+        Assert.Null(last.To);
+        Assert.Contains(stretches, s => s.State == RunnerStateRule.Exhausted && s.To == Now.AddMinutes(10));
+        Assert.Equal(before, await h.Db.RunnerStates.AsNoTracking().CountAsync());
+    }
+
+    [Fact]
+    public async Task States_DoesNotCapARangeOfMoreThanADay()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 365 * 24 * 3600);
+        await h.AddKeyAsync(Runner);
+        await SeedAsync(h, Now.AddDays(-40), RunnerStateRule.Running);
+        await SeedAsync(h, Now.AddDays(-30), RunnerStateRule.Paused);
+        await SeedAsync(h, Now.AddDays(-20), RunnerStateRule.Running);
+
+        var stretches = await StretchesAsync(h, from: Now.AddDays(-45).ToString("O"));
+
+        Assert.Equal(3, stretches.Count);
+        Assert.Equal(Now.AddDays(-40), stretches[0].From);
+    }
+
     [Fact]
     public async Task GetRunner_ResolvesAnEscapedName()
     {
@@ -8017,6 +8186,19 @@ public class RunnersControllerTests
         {
             var result = await Runners.GetRunner(name, default);
             return result.Result is NotFoundResult or NotFoundObjectResult ? null : Value(result);
+        }
+
+        /// <summary>The stretches the states route answers; null for a 404, and the sentence for a 400.</summary>
+        public async Task<(IReadOnlyList<RunnerStateStretchDto>? Stretches, string? Refusal)> StatesAsync(
+            string name, string? from = null, string? to = null)
+        {
+            var result = await Runners.GetRunnerStates(name, default, from, to);
+            return result.Result switch
+            {
+                NotFoundResult or NotFoundObjectResult => (null, null),
+                BadRequestObjectResult bad => (null, bad.Value as string),
+                _ => (Value(result), null),
+            };
         }
 
         /// <summary>Mints a runner as the harness's caller, with the response the controller writes its headers to.</summary>
