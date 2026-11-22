@@ -207,7 +207,8 @@ public class MessageDeliveryTests
                 var runners = TestClaims.Runners();
                 return new(
                     db, new StubActorDirectory(), claims, Caller, Time, TestClaims.Preemption(db, Time), runners,
-                    new Dispatch(db, new StubActorDirectory(), claims, Time), new RunnerSessions(runners));
+                    new Dispatch(db, new StubActorDirectory(), claims, Time), new RunnerSessions(runners),
+                    new global::Hatch.Api.Tests.Auth.StubAuthService(), new RunnerStateLog(runners));
             }
         }
 

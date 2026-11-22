@@ -62,6 +62,11 @@ public static class HatchModule
         // a beat already draws.
         services.AddSingleton<RunnerSessions>();
 
+        // Every change of a runner's state, written by the calls that touch the
+        // runner. A singleton on RunnerSessions' terms: it holds only the limit,
+        // and takes the scoped context and key service on each call.
+        services.AddSingleton<RunnerStateLog>();
+
         // The board's own horizon, on the same terms as Runners above it.
         services.AddSingleton<DoneHorizon>();
 

@@ -34,7 +34,7 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueClaimController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption,
-    Runners runners, Dispatch dispatch, RunnerSessions runnerSessions) : ControllerBase
+    Runners runners, Dispatch dispatch, RunnerSessions runnerSessions, IAuthService keys, RunnerStateLog stateLog) : ControllerBase
 {
     /// <summary>
     /// Takes the lease, or says who already has it.
@@ -357,10 +357,12 @@ public class IssueClaimController(
             session,
             spentNothing);
 
-        if (token is not null && given == ClaimOutcomes.Dropped)
-            await CountForPauseAsync(issue, claim, verdict, now, ct);
+        var paused = token is not null && given == ClaimOutcomes.Dropped
+            ? await CountForPauseAsync(issue, claim, verdict, now, ct)
+            : null;
 
         await db.SaveChangesAsync(ct);
+        if (paused is not null) await stateLog.RecordAsync(db, keys, paused, now, ct);
         return NoContent();
     }
 
@@ -374,28 +376,31 @@ public class IssueClaimController(
     /// written in the same save as the release's event. Nothing happens
     /// where there is no key or no live session at the claim's checkout.
     /// </summary>
-    private async Task CountForPauseAsync(
+    private async Task<string?> CountForPauseAsync(
         EfHatchIssue issue, ClaimSnapshot claim, SpentNothing.Verdict verdict, DateTimeOffset now, CancellationToken ct)
     {
-        if (verdict == SpentNothing.Verdict.NoRows || claim.Runner is null) return;
-        if (await caller.ApiKeyAsync(ct) is not { } key) return;
+        if (verdict == SpentNothing.Verdict.NoRows || claim.Runner is null) return null;
+        if (await caller.ApiKeyAsync(ct) is not { } key) return null;
 
         var session = await db.RunnerSessions
             .Where(s => s.ApiKeyId == key.Id && s.Where == claim.Runner && s.EndedAt == null)
             .OrderBy(s => s.Id)
             .FirstOrDefaultAsync(ct);
-        if (session is null) return;
+        if (session is null) return null;
 
         if (verdict == SpentNothing.Verdict.Spent)
         {
             session.PauseStreak = 0;
-            return;
+            return null;
         }
 
-        if (claims.RunnerPauseAfter <= 0) return;
+        if (claims.RunnerPauseAfter <= 0) return null;
 
         session.PauseStreak++;
-        if (session.PauseStreak < claims.RunnerPauseAfter) return;
+        if (session.PauseStreak < claims.RunnerPauseAfter) return null;
+
+        // Before the pause is set, while the facts still say what the gap was.
+        await stateLog.SettleAsync(db, keys, key.Name, now, ct);
 
         var line = $"{session.PauseStreak} sessions in a row ended in error without spending a token, " +
             $"the last on {IssueKey.Format(issue.Project!.Key, issue.Number)}";
@@ -405,6 +410,9 @@ public class IssueClaimController(
             ? line[..EfHatchRunner.MaxAgentDownLineLength]
             : line;
         session.PauseStreak = 0;
+
+        // The caller records it, after the save that carries the pause.
+        return key.Name;
     }
 
     // ---- The one narrowing ----
@@ -513,9 +521,17 @@ public class IssueClaimController(
     {
         if (claim.ClaimedBy is null || claim.Runner is null) return default;
 
+        // Settle, never record, before the bump below overwrites LastSeenAt: a
+        // beat after a long silence must not hide that the runner was gone. The
+        // state the beat leaves behind is the loop's own next beat to record.
+        var callerKey = await caller.ApiKeyAsync(ct);
+        if (callerKey is not null) await stateLog.SettleAsync(db, keys, callerKey.Name, now, ct);
+        if (!string.Equals(callerKey?.Name, claim.ClaimedBy, StringComparison.Ordinal))
+            await stateLog.SettleAsync(db, keys, claim.ClaimedBy, now, ct);
+
         var sessions = 0;
         Guid? keyId = null;
-        if (await caller.ApiKeyAsync(ct) is { } key)
+        if (callerKey is { } key)
         {
             sessions = await db.RunnerSessions
                 .Where(s => s.ApiKeyId == key.Id && s.Where == claim.Runner && s.EndedAt == null)
@@ -545,6 +561,7 @@ public class IssueClaimController(
 
         if (liveAtClaim is null) return default;
 
+        await stateLog.SettleAsync(db, keys, liveAtClaim, now, ct);
         await db.LegacyRunners.Where(r => r.Name == liveAtClaim)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
 
