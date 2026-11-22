@@ -543,6 +543,21 @@ export function signingWords(runner: Runner): string | null {
   }
 }
 
+/** Whether a runner's forge sign-in fails. A word this build does not know is no answer, so false. */
+export const forgeFails = (runner: Runner): boolean => runner.forge === 'fails';
+
+/** What a runner reports about its forge sign-in, as its page says it - or null where it never said, or said a word this build does not know. A failure carries what gh said. */
+export function forgeWords(runner: Runner): string | null {
+  switch (runner.forge) {
+    case 'works':
+      return 'Signed in to its forge';
+    case 'fails':
+      return runner.forgeWhy ? `Forge sign-in fails: ${runner.forgeWhy}` : 'Forge sign-in fails';
+    default:
+      return null;
+  }
+}
+
 /** A runner's tags, joined - or null where it has named none. */
 export function tagsLabel(runner: Runner): string | null {
   return runner.tags.length === 0 ? null : runner.tags.join(', ');

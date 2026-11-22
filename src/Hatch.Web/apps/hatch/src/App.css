@@ -10250,10 +10250,11 @@ button.hatch-option.chosen {
   font-size: var(--t-micro);
 }
 
-/* What git said where signing fails is one line of up to 200 characters, and
-   may hold a stretch no space breaks - a key id, a path - which would push a
-   phone's page sideways. */
-.hatch-runner-signing {
+/* What git said where signing fails, or gh said where forge sign-in fails, is
+   one line of up to 200 characters, and may hold a stretch no space breaks - a
+   key id, a path - which would push a phone's page sideways. */
+.hatch-runner-signing,
+.hatch-runner-forge {
   overflow-wrap: anywhere;
 }
 

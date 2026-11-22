@@ -150,6 +150,23 @@ describe('RunnerRow', () => {
     expect(draw(runner({ sessions: [session()] }))).not.toContain('signing fails');
   });
 
+  it('badges a runner whose forge sign-in fails, in the danger tone and with no reason inside the link, and no other', () => {
+    const failing = draw(runner({ forge: 'fails', forgeWhy: 'token expired', sessions: [session()] }));
+    expect(failing).toContain('>forge sign-in fails</span>');
+    expect(failing).toContain('hatch-badge--danger');
+    expect(failing).not.toContain('token expired');
+
+    for (const forge of ['works', null] as const)
+      expect(draw(runner({ forge, sessions: [session()] }))).not.toContain('forge sign-in fails');
+    expect(draw(runner({ sessions: [session()] }))).not.toContain('forge sign-in fails');
+  });
+
+  it('draws both badges for a runner whose signing and forge sign-in both fail', () => {
+    const html = draw(runner({ signing: 'fails', forge: 'fails', sessions: [session()] }));
+    expect(html).toContain('>signing fails</span>');
+    expect(html).toContain('>forge sign-in fails</span>');
+  });
+
   it('labels the glyph with what the speaking session is doing', () => {
     expect(draw(runner({ sessions: [session({ claimKey: 'AER-1' })] }))).toContain('aria-label="Working"');
     expect(draw(runner({ sessions: [session({ state: 'paused' })] }))).toContain('aria-label="Paused"');

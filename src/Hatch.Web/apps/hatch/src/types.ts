@@ -2350,6 +2350,43 @@ export interface CumulativeFlow {
   unresolved: number;
 }
 
+// ---- Board health ----
+
+/** One equal slice of a board health window. Counts and durations only; nothing
+    names an issue. Mirrors BoardHealthBarDto. */
+export interface BoardHealthBar {
+  start: string;
+  end: string;
+  /** Moves right made by the board itself, a runner, or a person: the three
+      add up to `moved`. */
+  board: number;
+  runner: number;
+  person: number;
+  moved: number;
+  /** Where work stood at the bar's end. */
+  waiting: number;
+  inFlight: number;
+  done: number;
+  waitingPullRequests: number;
+  waitingQuestions: number;
+  /** Null when nothing was in flight, or nothing waited. */
+  oldestInFlightSeconds: number | null;
+  oldestWaitSeconds: number | null;
+}
+
+/** The whole health of the board over a window in one read. `bars` is empty
+    when no issue is in scope yet. Mirrors BoardHealthDto. */
+export interface BoardHealth {
+  from: string;
+  to: string;
+  barMinutes: number;
+  bars: BoardHealthBar[];
+  total: number;
+  previousTotal: number;
+  pastNormal: number;
+  hasWorkColumn: boolean;
+}
+
 // ---- Changelog report ----
 
 /** Closed epics bucketed over a window, with the work beneath them. Mirrors
@@ -3542,6 +3579,13 @@ export interface Runner {
   /** What git said, where `signing` is `fails` - one line of at most 200 characters, keys
       masked. Mirrors RunnerDto.SigningWhy. */
   signingWhy?: string | null;
+  /** Whether this runner is signed in to its forge, the worst over the checkouts it serves:
+      `fails` before `works`. Absent or null where it never said; a word this build does
+      not know reads as no answer. Mirrors RunnerDto.Forge. */
+  forge?: 'works' | 'fails' | null;
+  /** What gh said, where `forge` is `fails` - one line of at most 200 characters. Mirrors
+      RunnerDto.ForgeWhy. */
+  forgeWhy?: string | null;
 }
 
 /** One session beneath a runner: one `go-to-work` loop, so two checkouts
