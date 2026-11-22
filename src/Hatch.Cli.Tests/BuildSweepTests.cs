@@ -462,7 +462,7 @@ public sealed class BuildSweepTests : IDisposable
 
         var target = new FileInfo($"/proc/{process.Id}/exe").LinkTarget;
         throw new TimeoutException(
-            $"never saw pid {process.Id} (exe -> {target ?? "unknown"}) among {seen.Count} path(s) from the last scan"
+            $"never saw pid {process.Id} (exe -> {target ?? "unknown"}, has exited: {process.HasExited}) among {seen.Count} path(s) from the last scan"
             + (last is null ? "" : $"; the last scan threw {last}"));
     }
 }
