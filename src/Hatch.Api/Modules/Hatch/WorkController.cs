@@ -1630,6 +1630,16 @@ public class WorkController(
         var match = route.Match;
         var playbook = match?.Playbook;
 
+        // A draft ambition standing in the from-column of the row that shapes it is
+        // briefed by that row - the same rule the scan applies, from the same finder,
+        // so `hatch work <key>` agrees with the queue.
+        if (to is not null && Dispatch.ShapeStands(issue, from, statuses)
+            && await _dispatch.MatchShapingAsync(from.Id, to.Id, issue.Type, children.Count > 0, issue.ProjectId, ct) is { Playbook: not null } shapingMatch)
+        {
+            match = shapingMatch;
+            playbook = shapingMatch.Playbook;
+        }
+
         // An ambition with a change that qualifies is aimed at the row that works it
         // out, ahead of a question and ahead of its pass - the same rule the scan
         // applies, from the same finder.
