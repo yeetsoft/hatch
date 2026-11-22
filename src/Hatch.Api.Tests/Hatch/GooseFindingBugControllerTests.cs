@@ -287,6 +287,24 @@ public class GooseFindingBugControllerTests
         }
     }
 
+    [Fact]
+    public async Task AStandingStillFinding_HasATitleNamingTheIssue_AndABriefWithItsBound()
+    {
+        var h = await NewAsync();
+        var finding = await h.FindingAsync("standing-still", "AER-12", "3:41", h.ProjectId);
+
+        Assert.True(FindingBugs.Knows("standing-still"));
+        Assert.Equal("Ticket standing still: AER-12", FindingBugs.Title(finding));
+
+        var description = FindingBugs.Description(finding, new HatchOptions());
+        Assert.Contains("`standing-still`", description);
+        Assert.Contains($"{new HatchOptions().GooseStandingHours} hours", description);
+        Assert.Contains("with nothing set to move it", description);
+        Assert.DoesNotContain("http", description);
+
+        Assert.Contains("2 hours", FindingBugs.Description(finding, new HatchOptions { GooseStandingHours = 2 }));
+    }
+
     // ---- The brief ----
 
     [Fact]

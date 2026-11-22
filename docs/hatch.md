@@ -5478,8 +5478,8 @@ The file-a-bug button is `FindingBugDialog`, shared with the attention panel.
 
 A finding is a stored row a person can read and act on, with the evidence
 beside it - `train-ready` below is the first check that opens one, `ready-unclaimed`,
-`ready-no-runner`, `claim-repeating` and `questions-waiting` follow it, and a
-person files a bug from one (**Filing a bug**, below). `FindingCheck` (`GooseFindings.cs`) is the one
+`ready-no-runner`, `claim-repeating`, `questions-waiting` and `standing-still`
+follow it, and a person files a bug from one (**Filing a bug**, below). `FindingCheck` (`GooseFindings.cs`) is the one
 reconciler every such check shares, so none of them can disagree about when a
 clock starts, when a row opens, or when it closes: a subclass says only what it
 is watching (`ReadAsync`: a sentence for the run, the check's own bound, and
@@ -5572,7 +5572,9 @@ query filter as the route above, so a narrowed caller gets their projects' rows
 and never a project-less one, with no second filter to drift from it. Each adds
 `IssueKey`, derived and never stored: the finding's token when it parses as an
 issue key whose project half is the finding's own project, else null, and the
-panel then links the row to the project's board. The attention panel draws them
+panel then links the row to the project's board. A `standing-still` finding's
+token is a column and a claim, so its `IssueKey` reads the subject instead, held
+to the same project rule. The attention panel draws them
 first under **Findings**, and each row without a bug has a **File a bug** button
 that posts to `/api/goose/findings/{id}/bug`. A stuck merge train can show twice
 there, as the board's own row under **Stalled merge trains** and as a `train-ready` finding;
@@ -5711,6 +5713,59 @@ question's first line. The run's entry says how many waiting questions it
 looked at and how many were past the bound. `BeganAt` is the first sweep that
 sees a question past the bound - at most one sweep interval after it, the same
 clock `train-ready` has. It judges by age alone and suggests or gives no answer.
+
+#### `standing-still`
+
+The goose's clock on a ticket standing still (`StandingStillCheck`, HA-2664),
+whatever the cause: the five checks above each watch one named cause, and a
+ticket that matched none of them - HA-2636 stood in review nine hours - was
+missed. Its bound is `Hatch__GooseStandingHours` (default 4; `0` turns the check
+off and closes what it holds, a negative falls back to 4; the guard is
+`GooseSettings.StandingBound`).
+
+**What it reads.** The scan `ReadyWork` already makes: `ReadySnapshot.Board` is
+the whole `Scan` that `Dispatch.ReadyBoardAsync` kept the ready rows of, folded
+rows included, memoised per sweep, so the check adds no second scan. It adds no
+rule of its own about what holds a row - it reads the scan's `BlockedKind` and
+the review judge's own mark, never the words of a sentence, so a reworded
+sentence cannot change what is watched. `ScanRow.WaitsOnApprover` (from
+`ReviewWork.Judgement.WaitsOnApprover`, carried by `Blocking`) is true exactly
+when the review judge folds a clean row as idle and adds its "waits for an owner
+or approver" clause - the issue's effective pre-approval is below
+`PreApproved`. Its sentence and its kind (`other`) are unchanged, and a dead end
+(HA-2663) is not marked: that row waits on no one, so this check does open on it.
+
+**What is watched.** Leaf rows in the columns from `Columns.Implementation` up to,
+not including, the first terminal column, less `Columns.Merges` (which
+`train-ready` watches); a deferred column is no lane. Leaf means no child the
+dispatcher counts as work: `FamilyGate.EpicOpenChildren` for an epic or
+ambition, `FamilyGate.OpenWorkChildren` otherwise. A task waiting on its story's
+shared pull request (`FamilyGate.IsWaiting`) is not watched, and so its story is
+once every child is done or waiting on it.
+
+**What keeps a row out.** A live claim (`IssueClaims.IsLive` on the row's own
+claim, not the row's kind, since an earlier fold can say something else first),
+`BlockedKind == person`, `WaitsOnApprover`, and an issue filed as the bug for a
+finding (`GooseFindings.FiledFromAFindingAsync`).
+
+**The clock** is the reconciler's own, starting on the first sweep that sees the
+issue as a candidate: reading the start from the event trail was rejected, since
+the trail does not say when a pause or a question ended. The subject is the
+issue's key and the token is `<column id>:<newest claim_taken event id>`, so a
+column change or any claim - even one taken and released between two sweeps -
+is a new condition that restarts the clock and closes the finding, and a
+candidate that drops out loses its sighting. One finding opens per issue, in the
+issue's own project, so `AttentionController.FindingsAsync` reads the subject,
+not the token, for its `IssueKey`.
+
+The sentence is `<key> has stood in <column> with nothing set to move it`. The
+evidence is `column` (the name, and when the newest `status_changed` event, or
+failing that the `created` event, put it there), `queue` (the row's sentence, or
+`clear`), `last claim` (the newest `claim_taken` event's holder and time, then
+the first `claim_released` or `claim_cleared` after it, or `not released`; or
+`none`) and `pull request` (the recorded url, or `none recorded`). The check
+moves, claims and files nothing. `FindingBugs` titles a bug from it `Ticket
+standing still: <key>`.
 
 ## Reports
 

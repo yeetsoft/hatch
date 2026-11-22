@@ -777,6 +777,115 @@ public class DispatchTests
             row.Blocked);
     }
 
+    // ---- The approver mark (HA-2664): a mark on the review judge's answer, never a reading of its words ----
+
+    private static (IReadOnlyList<EfHatchMergeCheck> Merges, IReadOnlyList<EfHatchBuildCheck> Builds) CleanAndGreen(bool withBuild)
+    {
+        var (canonical, _) = RemoteIdentity.Canonical("https://example.com/o/r");
+        var merge = new EfHatchMergeCheck
+        {
+            IssueId = 1, Remote = "https://example.com/o/r", Canonical = canonical!, Trunk = "main", TrunkSha = new string('a', 40),
+            Verdict = MergeVerdicts.Clean, Branch = "aer-1-thing", BranchSha = new string('b', 40),
+            CheckedAt = Now, Runner = "host:/checkout", CheckedBy = "runner",
+        };
+        var build = new EfHatchBuildCheck
+        {
+            IssueId = 1, Remote = "https://example.com/o/r", Canonical = canonical!, Branch = "aer-1-thing", Sha = new string('b', 40),
+            ShaSince = Now, Verdict = BuildVerdicts.Passed, CheckedAt = Now, Runner = "host:/checkout", CheckedBy = "runner",
+        };
+        return ([merge], withBuild ? [build] : []);
+    }
+
+    [Theory]
+    [InlineData(PreApprovalLevels.None, true, true)]
+    [InlineData(PreApprovalLevels.Express, true, true)]
+    [InlineData(PreApprovalLevels.PreApproved, true, false)]
+    [InlineData(PreApprovalLevels.None, false, true)]
+    [InlineData(PreApprovalLevels.Express, false, true)]
+    [InlineData(PreApprovalLevels.PreApproved, false, false)]
+    public void ReviewJudge_MarksACleanIdleRowBelowPreApproved_AsWaitingOnAnApprover(int level, bool withBuild, bool marked)
+    {
+        var (merges, builds) = CleanAndGreen(withBuild);
+
+        var judged = ReviewWork.Judge(null, [], merges, builds, preApproval: level);
+
+        Assert.Equal(marked, judged.WaitsOnApprover);
+        Assert.NotNull(judged.Fold);
+        Assert.False(judged.DeadEnd);
+        Assert.Equal(marked, judged.Fold!.Contains("owner or approver"));
+    }
+
+    [Fact]
+    public void ReviewJudge_NeverMarksADeadEnd_OrAnyOtherFold_OrWork()
+    {
+        var (merges, builds) = CleanAndGreen(withBuild: true);
+
+        var deadEnd = ReviewWork.Judge(
+            null, [], merges, builds, preApproval: PreApprovalLevels.PreApproved,
+            carry: new ReviewWork.Carry("AER-1", HasPullRequest: false, HasChildren: false, MergeColumnAfterReview: true));
+        Assert.True(deadEnd.DeadEnd);
+        Assert.False(deadEnd.WaitsOnApprover);
+
+        var noCheck = ReviewWork.Judge(null, [], [], [], preApproval: PreApprovalLevels.None);
+        Assert.NotNull(noCheck.Fold);
+        Assert.False(noCheck.WaitsOnApprover);
+
+        var noCode = ReviewWork.Judge("declared", [], merges, builds, preApproval: PreApprovalLevels.None);
+        Assert.False(noCode.WaitsOnApprover);
+
+        var failed = builds.Select(b => { b.Verdict = BuildVerdicts.Failed; return b; }).ToList();
+        var work = ReviewWork.Judge(null, [], merges, failed, preApproval: PreApprovalLevels.None);
+        Assert.Null(work.Fold);
+        Assert.False(work.WaitsOnApprover);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AReviewRowWaitingOnAnApprover_IsMarked_WithItsSentenceAndKindUnchanged()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "T", h.Review);
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+
+        Assert.True(row.WaitsOnApprover);
+        Assert.Equal(
+            PlainSentence + "; it waits for an owner or approver to approve it", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+        Assert.False(row.DeadEnd);
+    }
+
+    [Fact]
+    public async Task ScanAsync_APreApprovedReviewRow_IsNotMarkedAsWaitingOnAnApprover()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "T", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+
+        Assert.False(row.WaitsOnApprover);
+        Assert.Equal(PlainSentence, row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_NoOtherRow_IsMarkedAsWaitingOnAnApprover()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "in progress", h.InProgress);
+        await h.FileAsync("task", "to do", h.Todo);
+        var noChecks = await h.FileAsync("task", "no check yet", h.Review);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.NotEmpty(scan.Rows);
+        Assert.All(scan.Rows, r => Assert.False(r.WaitsOnApprover));
+        Assert.NotNull(RowFor(scan, noChecks).Blocked);
+    }
+
     [Fact]
     public async Task ScanAsync_TheSameTaskWithAPullRequestRecorded_IsCarriedByTheApproveHop()
     {

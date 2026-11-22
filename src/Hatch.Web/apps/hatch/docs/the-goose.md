@@ -85,7 +85,7 @@ how fresh the watcher is.
 
 ## Settings
 
-All seven are server settings, set in the environment like any other
+All eight are server settings, set in the environment like any other
 ([Deployment overview](deployment-overview)):
 
 | Variable | Default | Meaning |
@@ -97,6 +97,7 @@ All seven are server settings, set in the environment like any other
 | `Hatch__GooseNoRunnerMinutes` | `15` | How long a project may have ready work that no live runner can take before the `ready-no-runner` check below opens a finding. `0` turns the check off; a negative value falls back to `15`. |
 | `Hatch__GooseRepeatClaims` | `5` | How many claims by one runner on one ticket, with the ticket not moving, make the `claim-repeating` check below open a finding. `0` turns the check off; less than that falls back to `5`. |
 | `Hatch__GooseQuestionHours` | `24` | How long a question may wait before the `questions-waiting` check below opens a finding. `0` turns the check off; less than that falls back to `24`. |
+| `Hatch__GooseStandingHours` | `4` | How many hours a ticket may stand in one column, with no runner on it and nobody it is waiting for, before the `standing-still` check below opens a finding. `0` turns the check off; less than that falls back to `4`. |
 
 Each sweep also deletes the runs whose last sweep is older than the keep
 window.
@@ -227,14 +228,55 @@ the bound. It judges by age alone: it suggests no answer and answers nothing.
 The condition begins at the first sweep that sees a question past the bound,
 so its start can trail the question by up to one sweep interval.
 
+### `standing-still`
+
+Watches for a ticket that has stood in one column for hours with nothing set to
+move it, whatever the cause. The other checks each watch one named cause. This
+one is a clock on standing still itself, so a cause nobody has named yet is not
+missed.
+
+It watches leaf tickets in the columns from the implementation column up to,
+but not including, the first terminal one. The merge column is left out,
+because `train-ready` watches it, and so is a deferred column. A leaf is a
+ticket with no child that is still work. A task waiting on its story's shared
+pull request is not watched, since it moves when the story does; the story is
+watched once every task under it is done or waiting on it.
+
+A watched ticket is left alone while any of these is true:
+
+- a runner holds a live claim on it;
+- the queue says it waits on a person: a pause, a hold, a stall held for a
+  person, a question waiting, human work, a ticket assigned to a person, or a
+  next column only a person moves work into;
+- it is in review, clean, and waits for an owner or approver to approve it;
+- it was filed as the bug for a finding.
+
+The clock starts on the first sweep that sees the ticket with none of those
+true, and it runs `Hatch__GooseStandingHours`. It starts again when the ticket
+changes column, when a runner claims it - even a claim taken and released
+between two sweeps - and after any of the lines above has been true. It does not
+read when the ticket entered its column, because the trail does not say when a
+pause or a question ended: a ticket whose question was answered a minute ago
+would open a finding at once.
+
+The sentence names the ticket and its column, for example *"AER-12 has stood in
+In Review with nothing set to move it"*. The evidence gives the column and when
+the ticket entered it, the queue's sentence for the ticket or that it is clear,
+the last claim with who held it and when it was released (or that there was
+none), and the pull request recorded (or that none is). It closes when the
+ticket changes column, when a runner claims it, or when it stops being watched.
+
+The check only says what it saw. It moves nothing, claims nothing and files
+nothing.
+
 ### How a finding reaches the panel
 
 An open finding is listed first under **Findings** in the Human group of the
 [attention panel](watching-the-loop#what-is-waiting-on-you), longest-standing
 first. Each row is the sentence and how long the condition has been true. It
 links to the issue the finding is about when its subject is an issue in the
-finding's own project - for `train-ready`, the head - and to the project's board
-otherwise. The bug filed from it, if any, is a link of its own, and so is **Goose**,
+finding's own project - for `train-ready`, the head, and for `standing-still`,
+the ticket - and to the project's board otherwise. The bug filed from it, if any, is a link of its own, and so is **Goose**,
 which opens [the page](#the-page) where the finding is read in full. Every open
 finding is counted by the bar's control, which lights for it.
 
