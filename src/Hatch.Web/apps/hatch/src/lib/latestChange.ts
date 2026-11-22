@@ -40,6 +40,13 @@ export function outcomeWord(outcome: ChangeOutcome['outcome']): string {
   return 'Serves nothing now';
 }
 
+/** The badge an outcome wears. */
+export function outcomeTone(outcome: ChangeOutcome['outcome']): 'success' | 'muted' | 'warn' {
+  if (outcome === 'carries_on') return 'success';
+  if (outcome === 'not_touched') return 'muted';
+  return 'warn';
+}
+
 /** The word a decision reads as, past tense - "Shelved" or "Kept running". */
 export function decisionWord(decision: ChangeDecision['decision']): string {
   return decision === 'shelve' ? 'Shelved' : 'Kept running';

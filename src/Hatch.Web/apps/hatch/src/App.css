@@ -4211,28 +4211,6 @@ input.hatch-inline-title-input {
   }
 }
 
-/* The word is what tells the four states apart - these four colours are
-   decoration on top of it, never instead. */
-.hatch-capability-state {
-  font-weight: 700;
-}
-
-.hatch-capability-state-holds {
-  color: var(--success-ink);
-}
-
-.hatch-capability-state-does-not-hold {
-  color: var(--danger-ink);
-}
-
-.hatch-capability-state-cannot-tell {
-  color: var(--warn-ink);
-}
-
-.hatch-capability-state-not-checked {
-  color: var(--muted);
-}
-
 /* ---- The Ambitions page ----
 
    One row per ambition, in three parts: the head, the capability bar, and the
@@ -4409,11 +4387,6 @@ input.hatch-inline-title-input {
   min-width: 0;
 }
 
-.hatch-pass-changed {
-  font-size: var(--t-label);
-  color: var(--muted);
-}
-
 .hatch-pass .hatch-comment {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -4461,6 +4434,7 @@ input.hatch-inline-title-input {
 .hatch-change-outcome-meta {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: var(--sp-1);
   margin-left: auto;
   min-width: 0;

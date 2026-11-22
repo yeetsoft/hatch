@@ -77,7 +77,8 @@ epics that serve it. An ambition with none says so and shows the `hatch capabili
 command to start one. An epic's page draws a Serves section naming each
 capability it serves, with the ambition it belongs to and that capability's
 state. The section is left out when the epic serves nothing, and no other type
-draws either one.
+draws either one. Each state is a pill, green, red, amber or grey, and looks the
+same on Serves, on each verdict in Passes and for the outcome in Latest change.
 
 An ambition's page also draws Epics in flight, between Capabilities and
 Progress. It lists each direct child in a column that is neither terminal nor
