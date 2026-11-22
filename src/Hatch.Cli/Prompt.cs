@@ -1338,6 +1338,13 @@ public static class Prompt
             "",
             $"Afterwards, record it on the ticket with `hatch pr {key} <url>`.",
             "`hatch pr` also writes the ticket's chain into the pull request's body, for a board that receives it.",
+            .. sharedType is null
+                ?
+                [
+                    $"Record it on this ticket's own key, `hatch pr {key} <url>`. A plan on the ticket that names",
+                    "another ticket for the pull request, a parent story for instance, does not change that.",
+                ]
+                : Array.Empty<string>(),
             "",
             .. offersNoCode ? NoCodeDeclaration(key) : NothingToDeclare(key),
         ];
