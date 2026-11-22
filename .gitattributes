@@ -34,3 +34,9 @@ src/Hatch.Contracts/recipes/*  text eol=lf
 # reason as the recipes above, and the text a reviewer read and ran through
 # actionlint is the text a CRLF checkout must not change.
 src/Hatch.Cli/hatch-runner-image.yml  text eol=lf
+
+# The readme Hatch ships is embedded in the binary and committed here as
+# .hatch/README.md, and the same bytes go into every repository. A CRLF checkout
+# would build a binary whose text differs from a Linux build's.
+src/Hatch.Cli/hatch-readme.md  text eol=lf
+.hatch/README.md  text eol=lf

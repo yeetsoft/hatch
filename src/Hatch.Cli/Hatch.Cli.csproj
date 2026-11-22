@@ -68,6 +68,7 @@
   -->
   <ItemGroup>
     <EmbeddedResource Include="hatch-runner-image.yml" LogicalName="hatch-runner-image.yml" />
+    <EmbeddedResource Include="hatch-readme.md" LogicalName="hatch-readme.md" />
   </ItemGroup>
 
   <ItemGroup>

@@ -17,13 +17,16 @@ public sealed class ApiCommand(Cli cli)
 {
     public static readonly string[] ApiUsage =
     [
-        "usage: hatch api <METHOD> <path> [<json body>]",
+        "usage: hatch api <METHOD> <path> [<json body> | -]",
         "",
         "  hatch api GET /api/issues?statusId=2",
         "  hatch api PATCH /api/issues/AER-12 '{\"dueAt\":\"2026-10-01\"}'",
+        "  echo '{\"dueAt\":\"2026-10-01\"}' | hatch api PATCH /api/issues/AER-12 -",
         "",
-        "  The body is sent as it was typed. docs/hatch-planning.md has the shapes",
-        "  for filing and reshaping work.",
+        "  The body is sent as it was typed. A body of - is read from standard input",
+        "  instead, which keeps its double quotes in Windows PowerShell 5.1, where an",
+        "  argument loses them. docs/hatch-planning.md has the shapes for filing and",
+        "  reshaping work.",
     ];
 
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
@@ -39,7 +42,19 @@ public sealed class ApiCommand(Cli cli)
             return 1;
         }
 
-        object? body = args.Length == 3 && args[2].Length > 0 ? new RawJson(args[2]) : null;
+        var text = args.Length == 3 ? args[2] : "";
+        if (text == "-")
+        {
+            if (cli.In.Interactive)
+            {
+                cli.Say.Complain("hatch: api - reads the body from standard input, and none was piped");
+                return 1;
+            }
+
+            text = cli.In.ReadAll().TrimEnd('\r', '\n');
+        }
+
+        object? body = text.Length > 0 ? new RawJson(text) : null;
 
         var answer = await cli.Board.Client.Send(method, path, body, ct);
 

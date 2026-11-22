@@ -631,6 +631,14 @@ is no larger than the memory reported, minus any this runner refuses
 ([Refused models](#refused-models)). `hatch runners --json` carries it
 unchanged. A running ollama loop reads it and pulls what its server lacks,
 between increments ([Models](#models)).
+### The readme file
+
+`hatch readme --file` writes `.hatch/README.md` at the root of a checkout, beside
+`.hatch/dependencies.json`, `.hatch/playbooks.yaml` and `.hatch/changelog.yml`.
+It is a short readme for an agent that has never heard of Hatch, and the binary
+carries its text, so the runner reads nothing from the board for it. A copy Hatch
+wrote at a lower version is replaced; a newer one, and a file Hatch did not
+write, are left. [`hatch readme`](cli-reference#readme) has the rule.
 
 ## What a repository needs
 

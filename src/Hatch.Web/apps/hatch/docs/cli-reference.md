@@ -37,6 +37,7 @@ without the flag.
 | `next` | No | No |
 | `queue` | No | No |
 | `changelog` | Only with `--file`, unless `--repo` names the remote | No: `--file` writes one local file only |
+| `readme` | Only with `--file` | No: `--file` writes one local file only |
 | `runners` | No | Only with `refuse` and a model, or `--lift` |
 | `show` | No | No |
 | `comments` | No | No |
@@ -572,6 +573,36 @@ Changelog report under Reports.
 - `--repo <remote>` goes with `--file` and names the remote to ask about in
   place of the checkout's origin, so it needs no checkout. The file then goes
   under the working directory unless `<path>` says otherwise.
+
+### readme
+
+```
+hatch readme [--file]
+```
+
+The short readme Hatch ships for an agent that has never heard of it: what
+Hatch is, how to reach it, how to file an issue and how a ticket should read.
+It is sixty lines at most and names no host, project or person, so the same
+bytes go into every repository. The text is embedded in the binary. It needs
+no key and no checkout, like `version`.
+
+- With no flag it prints the text.
+- `--file` writes it to `.hatch/README.md` at the root of the checkout it is run
+  in, creating `.hatch`. It prints `written .hatch/README.md` or `unchanged
+  .hatch/README.md` and exits 0 either way. Outside a checkout it refuses in a
+  sentence and writes nothing.
+
+The first line of the text is a comment saying Hatch wrote it, with a whole
+number, its version. That number goes up by one whenever the text changes, and
+it decides whether a copy is replaced:
+
+- No file: it is written.
+- A file Hatch wrote, with a lower version: it is replaced.
+- A file Hatch wrote, with the same or a higher version: it is left. A newer
+  `hatch` wrote the higher one.
+- A file whose first line is not Hatch's: it is left. The command says in one
+  sentence on standard error that it is not a file Hatch wrote, and to move or
+  remove it, prints nothing on standard output, and exits 1.
 
 ### activity
 
@@ -1150,7 +1181,7 @@ on [the Ballot](questions-and-decisions#looking-back).
 ### api
 
 ```
-hatch api <METHOD> <path> [<json body>]
+hatch api <METHOD> <path> [<json body> | -]
 ```
 
 The escape hatch: any route under `/api/`, for what no other command
@@ -1166,6 +1197,11 @@ hatch api PATCH /api/issues/AER-12 '{"dueAt":"2026-10-01"}'
   A path Git Bash on Windows has rewritten to a drive path
   (`C:/…/Git/api/board`) is read back as `/api/board`, query string kept.
 - The body is sent exactly as typed, so quote it for your shell.
+- A body of `-` is read from standard input instead:
+  `echo '{"dueAt":"2026-10-01"}' | hatch api PATCH /api/issues/AER-12 -`. A pipe
+  keeps its double quotes in Windows PowerShell 5.1, which strips them from an
+  argument, so one line works in Git Bash, PowerShell and a POSIX shell. With
+  nothing piped it says so and sends nothing.
 - A 2xx prints the body untouched, so it pipes to `jq`. A non-2xx exits 1 and
   prints the refusal, since here the refusal is the answer someone asked for.
   A 403 prints the API's own reason - a role-gate code, or a plain sentence -

@@ -25,6 +25,9 @@ public class Input
     /// <summary>A line, or null at end of input - which is the gesture for "I am done here".</summary>
     public virtual string? Line() => Console.ReadLine();
 
+    /// <summary>Everything left on standard input - a body piped in, read to its end.</summary>
+    public virtual string ReadAll() => Console.In.ReadToEnd();
+
     /// <summary>
     /// A line that never reaches the screen: the one value on it that a
     /// screenshot, a shoulder or a scrollback should not be able to keep.
@@ -84,6 +87,13 @@ public sealed class Replies(params string?[] lines) : Input
     public override void Prompt(string text) => Asked.Add(text);
 
     public override string? Line() => _lines.Count > 0 ? _lines.Dequeue() : null;
+
+    public override string ReadAll()
+    {
+        var rest = string.Join("\n", _lines.Select(l => l ?? ""));
+        _lines.Clear();
+        return rest;
+    }
 
     public override string? Secret() => Line();
 }
