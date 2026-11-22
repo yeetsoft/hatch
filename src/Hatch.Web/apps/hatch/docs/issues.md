@@ -666,6 +666,20 @@ value a ticket already holds writes nothing. The issue page shows the live
 value, its own value and the ticket it was inherited from, beside Local
 model; a board card marked human carries the same source.
 
+## A pull request waiting to be opened
+
+Work can be written and pushed and still have no pull request, when the place
+it was written could not open one. The ticket then carries the pull request
+itself: its title, its body, the branch and sha, the repository's remote, the
+name that wrote it and why it was not opened. The issue page's facts panel
+shows its `Pull request` row reading `Written, waiting to be opened`, with the
+runner, the reason and when, and the title opens to the branch and the body as
+written. A `pull request waiting` chip sits under the title. The page has
+nothing to edit or delete it with: a person records the pull request's url, as
+they would any other, and that clears it. Until then the ticket still counts as
+having no pull request recorded, but the attention panel does not list it as
+in review with none.
+
 ## Finished with no code
 
 A one-line reason, at most 200 characters and trimmed, saying that a ticket

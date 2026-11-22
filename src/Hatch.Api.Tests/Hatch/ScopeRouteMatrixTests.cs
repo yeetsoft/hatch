@@ -366,6 +366,8 @@ public class ScopeRouteMatrixTests
         ("IssuePreApprovalController.PutIssueExpress", Lookup(t => Put($"/api/issues/{t.Key}/express", new { express = false }))),
         ("IssueOnePrController.PutIssueOnePr", Lookup(t => Put($"/api/issues/{t.Key}/one-pr", new { value = "inherit" }))),
         ("IssueNoCodeController.PutIssueNoCode", Lookup(t => Put($"/api/issues/{t.Key}/no-code", new { reason = "" }))),
+        ("IssueWaitingPullRequestController.PutWaitingPullRequest", Lookup(t => Put($"/api/issues/{t.Key}/waiting-pull-request", new { title = "t", body = "b", branch = "ha-1-x", sha = "abc", remote = "r", why = "w" }))),
+        ("IssueWaitingPullRequestController.DeleteWaitingPullRequest", Lookup(t => Delete($"/api/issues/{t.Key}/waiting-pull-request")) with { Destructive = true }),
         ("IssueDangerousController.PutIssueDangerous", Lookup(t => Put($"/api/issues/{t.Key}/dangerous", new { reason = "" }))),
         ("IssueReleaseNoteController.PutIssueReleaseNote", Lookup(t => Put($"/api/issues/{t.Key}/release-note", new { note = "" }))),
         ("IssuePlaybookController.PatchIssuePlaybook", Lookup(t => Patch($"/api/issues/{t.Key}/playbook", new { model = (string?)null, effort = (string?)null }))),

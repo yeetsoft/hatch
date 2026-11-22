@@ -11,6 +11,7 @@ import { runnerTagsSentence } from '../lib/runnerTags';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
 import { TypeBadge } from './TypeBadge';
+import { WaitingPullRequestFact } from './WaitingPullRequest';
 import { LEGAL_PARENT_TYPES, RUNS_CHILDREN } from '../types';
 import type { Issue, Project } from '../types';
 
@@ -90,7 +91,11 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
       </Field>
 
       <Field label="Pull request" as="div">
-        {issue.pullRequestUrl ? <PullRequestLink url={issue.pullRequestUrl} /> : <span className="text-muted">—</span>}
+        {issue.pullRequestUrl ? (
+          <PullRequestLink url={issue.pullRequestUrl} />
+        ) : (
+          <WaitingPullRequestFact url={issue.pullRequestUrl} waiting={issue.waitingPullRequest} />
+        )}
       </Field>
 
       {/* The read view only reports the declaration: it is set from the edit

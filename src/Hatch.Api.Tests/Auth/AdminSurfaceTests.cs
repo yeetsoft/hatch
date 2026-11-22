@@ -504,6 +504,10 @@ public class AdminSurfaceTests
         // See IssueWipLimitController.
         "IssueWipLimitController.PatchIssueWipLimit",
 
+        // Removing a waiting pull request is a person's alone; a key may only
+        // write one. See IssueWaitingPullRequestController and PersonOnly.
+        "IssueWaitingPullRequestController.DeleteWaitingPullRequest",
+
         // What an ambition may cost, cut the same way as the limit just above:
         // a key that could set its own ambition's budget could lift its own
         // ceiling. The read is open to a key - see AcceptsKey. See
@@ -618,6 +622,11 @@ public class AdminSurfaceTests
         // about the work with the reach of recording a pull request through
         // PATCH, which is key-open too. IssueNoCodeController.
         "IssueNoCodeController.PutIssueNoCode",
+
+        // That an issue's pull request is written and waiting to be opened -
+        // the same kind of statement, and a key may write it. Taking it away is
+        // a person's: see PersonOnly. IssueWaitingPullRequestController.
+        "IssueWaitingPullRequestController.PutWaitingPullRequest",
 
         // That an issue came from outside, which a runner is the one to see: the
         // pull request, its author and where it originated. Write-once, and no
@@ -798,6 +807,7 @@ public class AdminSurfaceTests
         "PlaybookProposalsController.ApproveAll",
         "IssuePlaybookController.PatchIssuePlaybook",
         "IssueWipLimitController.PatchIssueWipLimit",
+        "IssueWaitingPullRequestController.DeleteWaitingPullRequest",
         "IssueBudgetController.PatchIssueBudget",
         "IssueChangeDecisionController.PostDecision",
         "RunnersController.PatchRunner",
@@ -957,6 +967,7 @@ public class AdminSurfaceTests
         "IssueServesController.PutServes",
         "IssueMessagesController.Deliver",
         "IssueNoCodeController.PutIssueNoCode",
+        "IssueWaitingPullRequestController.PutWaitingPullRequest",
         "IssueOnePrController.PutIssueOnePr",
         "IssuePassesController.GetPasses",
         "IssueReleaseNoteController.PutIssueReleaseNote",

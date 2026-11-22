@@ -41,6 +41,8 @@ the next heading of the same level and stop.
     branch and pull request?
   - [Finished with no code](#finished-with-no-code) - How does a ticket that
     changed nothing say so, and where does it stand?
+  - [A pull request waiting to be opened](#a-pull-request-waiting-to-be-opened) -
+    What does an issue carry when its pull request is written and not yet open?
   - [WIP](#wip) - How full is the WIP section right now?
   - [Claim](#claim) - What is a lease on an issue, and which columns hold
     it?
@@ -1177,6 +1179,8 @@ through the gate that was supposed to stop it.
 `DueAt`/`DueAtHasTime`, `PullRequestUrl`, `PullRequestMergeState`,
 `PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestHeadSince`,
 `PullRequestReadAt`,
+`WaitingPrTitle`/`WaitingPrBody`/`WaitingPrBranch`/`WaitingPrSha`/`WaitingPrRemote`/`WaitingPrRunner`/`WaitingPrWhy`/`WaitingPrAt`
+(one [waiting pull request](#a-pull-request-waiting-to-be-opened), flat nullable columns, all set or all null),
 `ClosedAt`, `ModelOverride`, `EffortOverride`, `AssigneePersonId`/`AssigneeApiKeyId`,
 `CreatedBy`, `CreatedAt`, `UpdatedAt`.
 
@@ -2500,6 +2504,33 @@ whose destination is review or a column to its right, to declare it with
 told there is no pull request to open and nothing to declare, and to say what
 it found in the comment instead - there is no review column there to declare
 into. Either way the issue page shows the declaration and its reason.
+
+### A pull request waiting to be opened
+
+Work can be written and pushed where a pull request cannot be opened. The issue
+then carries the pull request itself, so a person or a later runner can find it:
+`PUT /api/issues/{key}/waiting-pull-request` with `{ title, body, branch, sha,
+remote, why }` stores it in the flat `WaitingPr*` columns of `EfHatchIssue`
+(`IssueWaitingPullRequestController`, with the rules beside it in
+`WaitingPullRequest`, copying the [no-code declaration](#finished-with-no-code)
+end to end). There is one per issue and a second write replaces it. `remote` is
+the checkout's origin, the value `hatch landed` sends, because a project can
+bind several repositories and whoever opens it has to know which one the branch
+is in. The runner is never a field: it is the caller's name, so the trail and
+the record cannot disagree.
+
+It is not a pull request. It does not count as having one (`HasPr` is unchanged,
+so it blocks nobody), a conflict on its branch is still dispatched from the
+merge checks, and it is neither a `reviews` row, since those need a recorded
+url, nor part of `inReviewWithoutPullRequest`. `IssueDto.waitingPullRequest`
+carries it; the board card does not. Recording a pull request url by any route
+clears it in the same save - `PATCH` and the contribution route both call
+`WaitingPullRequest.ClearOnRecord` beside `NoCode.SetAside` - with a
+`waiting_pull_request_changed` event carrying the url as `pullRequest`. A move
+to a column left of review leaves it in place. The issue page draws a `pull
+request waiting` chip, and its Pull request field says *Written, waiting to be
+opened* with the runner, the reason and the time, and the title and body behind
+a `<details>`; there is nothing on the page to edit or delete it.
 
 ### WIP
 
@@ -3866,6 +3897,9 @@ set, cleared by hand, or cleared by a move left of review - payload `{ from, to 
 with `moved` naming the column on the last), `no_code_set_aside` (a branch or a
 pull request showed the issue did finish with code - payload `reason`, the
 declaration that was set aside, beside `remote` and `verdict` or `pullRequest`),
+`waiting_pull_request_changed` (an issue's [waiting pull request](#a-pull-request-waiting-to-be-opened)
+was written, replaced, removed, or cleared by recording a url - payload `{ from, to }`,
+each side `{ title, branch, sha }` or null, and `pullRequest` carrying the url on the last),
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
 `priority_changed`, `express_changed`, `question_level_changed` (a person set a
 question's level - payload `{ questionId, from, to }`, both by name), `wip_limit_changed` (an epic's [Stories
@@ -4519,6 +4553,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
 | `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner, headBranch? }`; answers `204`. `headBranch` is the branch the pull request comes from, kept beside the state and cleared with the url; blank or absent leaves what is kept, and writes no event. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be, or a head branch longer than a contribution's can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
+| `/issues/{key}/waiting-pull-request` | PUT, DELETE | Keeps one [waiting pull request](#a-pull-request-waiting-to-be-opened) on an issue. **PUT** is open to a key: `{ title, body?, branch, sha, remote?, why }`, trimmed, answering the `IssueDto`; the caller's name is kept as its runner. Refused, in a sentence, with `400` for a blank title, branch, sha or why, a title over 256 characters, a why over 500 or a body over the forge's limit, `409` once a pull request url is recorded, and `404` on an unknown key. A second write replaces the first; one that changes nothing writes no event and does not move `UpdatedAt`. **DELETE** is a person's alone (a key gets `403`), answers `204`, and answers `204` with no event where nothing waits. The column is not checked. Each real change adds a `waiting_pull_request_changed` event |
 | `/issues/{key}/landing` | PUT | Keeps what a repository holds for an issue's branch — see [landing](#landing). `{ remote, sha, trunk?, containedBy?, runner? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an empty or non-hex sha, and `containedBy` given without a `trunk`; `404` on an unknown key. The column is not checked. A write that repeats the stored sha and `containedBy` writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
@@ -5112,6 +5147,11 @@ clearing a conflict on are both visible at once, without either shouting. A
 ticket with no pull request at all is never counted in `reviewsHeldBack`: that
 count is only ever about a pull request the loop is sitting on, not about a
 ticket with nowhere to review it in the first place.
+
+An issue with a [waiting pull request](#a-pull-request-waiting-to-be-opened) is
+not counted in `inReviewWithoutPullRequest` either: its pull request is written
+and only needs opening, which is a fact the issue page carries, not a thing
+forgotten. It is not a `reviews` row, because those need a recorded url.
 
 The control keeps itself current on a sixty-second poll and on
 `visibilitychange`, the way [the battery](#the-battery) does, and a read that
@@ -11454,6 +11494,25 @@ commits*, *Does not sign its commits* and *Signing fails*, and the list marks
 only a runner whose signing fails. The board refuses work on what a
 runner said: a project that allows only signed commits is folded for a runner
 that has not said `works`, see [the dispatcher](#the-dispatcher), item 12c.
+
+**The board also keeps whether a loop can sign in to its forge.** This is the
+board's half only, and it changes no dispatch. A loop beat may carry `forge`
+(`works` or `fails`) and, beside `fails`, `forgeWhy`, and the board stores both
+on the session row (`EfHatchRunnerSession.Forge`, `ForgeWhy`) exactly as it
+stores signing: `SeedSession` writes them, and `TouchSession` rewrites both when
+a beat sends a `forge`, so a later check moves the answer and a `works` drops an
+old reason. A beat that sends none leaves them alone, and a word the board does
+not know is stored as no answer with the beat still accepted. `forgeWhy` is the
+first line of what the forge said, cut to 200 characters and kept only beside
+`fails`. A runner reads as the worst of its live loop sessions, `fails` then
+`works`, written once as `RunnerForge.Worst` in `Hatch.Contracts` for the loop
+and the board alike (`RunnerDeclaration.ForgeOf`, read in
+`RunnersController.ProjectAsync`); a session carries its own on
+`RunnerSessionDto`. A runner that never said reads null, and the legacy
+`POST /runners/{name}` route ignores both fields. Nothing on the dispatcher
+reads it, `ForgeOf` is not part of `RunnerDeclaration`, and the `/work` reads
+accept `?forge=` and `?forgeWhy=` from the loop and ignore them: the board
+stores nothing from a read.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:
