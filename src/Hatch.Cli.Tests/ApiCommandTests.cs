@@ -112,6 +112,31 @@ public sealed class ApiCommandTests
         Assert.Equal("""{"title":"A thing","type":"task"}""", h.Wire.To("POST", "/api/issues").Single().Body);
     }
 
+    /// <summary>
+    /// Windows PowerShell 5.1 strips the double quotes from an argument, so a body
+    /// that has to survive it comes in on standard input.
+    /// </summary>
+    [Fact]
+    public async Task A_body_of_a_dash_is_read_from_standard_input_and_sent_as_it_came()
+    {
+        using var h = new CliHarness(replies: ["""{"title":"A thing","type":"task"}"""]);
+        h.In.AtATerminal = false;
+        h.Wire.Reply("POST", "/api/issues", HttpStatusCode.OK, "{}");
+
+        Assert.Equal(0, await new ApiCommand(h.Cli).RunAsync(["POST", "/api/issues", "-"], default));
+        Assert.Equal("""{"title":"A thing","type":"task"}""", h.Wire.To("POST", "/api/issues").Single().Body);
+    }
+
+    [Fact]
+    public async Task A_body_of_a_dash_with_nothing_piped_complains_and_sends_nothing()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new ApiCommand(h.Cli).RunAsync(["POST", "/api/issues", "-"], default));
+        Assert.Contains("api - reads the body from standard input, and none was piped", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
     [Fact]
     public async Task A_call_with_no_body_sends_none()
     {

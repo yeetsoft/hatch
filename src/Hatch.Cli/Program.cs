@@ -45,6 +45,10 @@ if (!Program.Commands.Contains(command))
 // up yet.
 if (command == "version") return new VersionCommand(say, new CliRevision()).Run(rest);
 
+// The readme for an agent that has never heard of Hatch: printed or written with
+// no key and no board, so it answers before anything is read, like version.
+if (command == "readme") return new ReadmeCommand(say).Run(rest);
+
 var environment = Environment.GetEnvironmentVariables()
     .Cast<System.Collections.DictionaryEntry>()
     .ToDictionary(e => (string)e.Key, e => e.Value as string);
@@ -641,7 +645,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "use", "image", "version", "standby", "board", "next", "queue", "changelog", "activity", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
+        "config", "use", "image", "version", "standby", "board", "next", "queue", "changelog", "readme", "activity", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
         "verdict", "depends", "capability", "serves", "change", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -704,6 +708,8 @@ internal partial class Program
         "  hatch changelog              what shipped, as markdown - the newest 7 days that shipped something",
         "  hatch changelog --days 30 --before 2026-09-01 --project AER --json",
         "  hatch changelog --file       write .hatch/changelog.yml, and say whether it changed",
+        "  hatch readme                 print the short readme for an agent new to Hatch",
+        "  hatch readme --file          write it to .hatch/README.md, and say whether it changed",
         "  hatch activity               one actor's rundown, as markdown - the key's owner, the last 14 days",
         "  hatch activity --actor <name> --days 7 --before 2026-09-12T17:00:00Z --project AER --json",
         "  hatch runners                one line per runner that has spoken lately, most recently heard from first",

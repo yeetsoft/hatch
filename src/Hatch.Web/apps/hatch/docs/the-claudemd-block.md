@@ -29,6 +29,13 @@ the commands in it are the installed binary's: they work from any directory once
 that exists in only one checkout would be true of exactly one installation, and
 the block is for every one of them.
 
+The block is not the readme. The block is pasted by hand into `CLAUDE.md` or
+`AGENTS.md`, and it is a working session's contract: what to do with a ticket
+the runner hands over. The readme is written by Hatch into `.hatch/README.md`
+(`hatch readme --file`), and it is for an agent that knows nothing yet: what
+Hatch is, and how to file an issue. A newer `hatch` replaces an older copy of
+it, so nobody maintains it by hand.
+
 This page is the block's home. Copy it from here; the repository's own
 `CLAUDE.md` or `AGENTS.md` is the copy that gets read, and this is the copy
 that is kept current.
@@ -52,7 +59,7 @@ the bulk endpoint and the plan reads. Read it on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `changelog`, `activity`, `runners`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`, `verdict`, `depends`, `capability`, `serves`, `one-pr`, `dangerous`, `omit`, `recuse`, `dream`, `ask`,
+`queue`, `changelog`, `readme`, `activity`, `runners`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`, `verdict`, `depends`, `capability`, `serves`, `one-pr`, `dangerous`, `omit`, `recuse`, `dream`, `ask`,
 `questions`, `answer`, `config`, `use`, `image`, `version`, `standby`, `work`, `go-to-work`, `do-my-work`, and `api`
 for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board
