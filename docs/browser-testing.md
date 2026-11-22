@@ -114,7 +114,11 @@ instead. Never send anyone to an online trace viewer: opening a trace there
 uploads it.
 
 A failed case leaves both under `src/Hatch.Api.Tests/TestResults/e2e/<case>-<pid>/`
-(`E2eHarness.LeaveEvidenceAsync`). A passing case leaves nothing.
+(`E2eHarness.LeaveEvidenceAsync`). A passing case leaves nothing by itself, but
+the ambition page cases and the scope control cases save their screenshots
+whether they pass or fail. A dispatched `e2e` run (`gh workflow run ci.yml
+--ref <branch>`) keeps those as the `ambition-page-screenshots` and
+`scope-control-screenshots` artifacts.
 
 ## Rendering two checkouts side by side
 

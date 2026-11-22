@@ -398,6 +398,19 @@ jobs:
           path: src/Hatch.Api.Tests/TestResults/e2e/ScopeControl*/*.png
           if-no-files-found: ignore
 
+      # The ambition page cases are the only proof a restyle changed anything -
+      # the cases themselves assert on words, not looks - so this one runs
+      # always, same as the scope control step above. A label repeats across
+      # cases, but each sits in its own pid-suffixed folder, and upload-artifact
+      # keeps those folder names under the glob's common root, so nothing collides.
+      - name: Upload ambition page screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ambition-page-screenshots
+          path: src/Hatch.Api.Tests/TestResults/e2e/Ambition*/*.png
+          if-no-files-found: ignore
+
   # Proves the image `publish.yml` builds after every merge to main actually
   # builds, and that gh - the thing src/Hatch.Cli/Forge.cs shells out to
   # inside it - is really on PATH and runs, on a PR rather than only after one
