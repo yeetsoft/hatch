@@ -3818,8 +3818,24 @@ dispatcher reads the same thing `GET /issues/{key}/changes` does.
   the same change replaces `Outcome`, `Why`, `RecordedBy` and `RecordedAt`; a
   row already decided is refused with `409` and nothing is written; a
   recording identical to the one stored writes nothing.
-- **`Decision`, `DecidedBy` and `DecidedAt` are never written here.** They
-  stand for a person's decision on a recorded outcome, a later story's.
+- **`Decision`, `DecidedBy` and `DecidedAt` are a person's decision on a
+  `serves_nothing` outcome**, written by `POST
+  /issues/{key}/changes/outcomes/{id}/decision` with `{ decision }`, `key`
+  the ambition and `id` the outcome's own. `Decision` is `shelve` or `keep`,
+  once per row. A person's route only: a key is refused `403
+  key_not_accepted`. Refused with a sentence, writing nothing: `404` for an
+  `id` that is not this ambition's; `400` for any other word, an outcome that
+  does not serve nothing, or (shelve) a board with no deferred column; `409`
+  for an outcome already decided, or (shelve) an epic in a terminal or a
+  deferred column; `403` for (shelve) a protected deferred column the caller
+  may not move work into. `keep` moves nothing. `shelve` moves the epic and
+  the open work under it into the first deferred column in board order, in one
+  transaction with the decision, leaving work already terminal or deferred
+  where it is; it writes a `status_changed` event on each issue moved and the
+  deferral note on every issue waiting on one, and files no
+  changelog task - a deferred column is not a close.
+- **A decision writes one `change_decided` event on the epic**, see [Issue
+  event](#issue-event).
 - **A write (new or replaced) writes one `change_outcome_recorded` event on
   the epic** — not the ambition — see [Issue event](#issue-event). It shows
   on the epic's own History.
@@ -3872,7 +3888,10 @@ sha, author }`; not `verdict_recorded`, which is a check session's own),
 recorded a [ChangeOutcome](#changeoutcome) - written on the epic, not the
 ambition the change happened to - payload `{ ambition, changeEventId,
 outcome, why }`, `ambition` the ambition's display key),
-`dreams_woven` (`PUT /issues/{key}/dreams` replaced the
+`change_decided` (`POST /issues/{key}/changes/outcomes/{id}/decision`
+recorded a person's decision on that epic's outcome - written on the epic -
+payload `{ ambition, changeEventId, decision }`, `decision` `shelve` or
+`keep`), `dreams_woven` (`PUT /issues/{key}/dreams` replaced the
 set of dreams this issue drew on - payload `{ from, to }`, both sides every
 dream id sorted ascending), `serves_changed` (`PUT /issues/{key}/serves`
 replaced the set of [capabilities](#capability) this epic serves - payload `{

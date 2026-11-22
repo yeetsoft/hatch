@@ -2756,8 +2756,9 @@ public class EfHatchCapabilityVerdict
 /// <see cref="ChangeEventId"/> carries no foreign key, the way
 /// <see cref="EfHatchWorkLogEntry.QuestionId"/> does not: it names an issue
 /// event's id, and an event is never deleted on its own. <see cref="Decision"/>,
-/// <see cref="DecidedBy"/> and <see cref="DecidedAt"/> stay null through this
-/// story - nothing here writes them.
+/// <see cref="DecidedBy"/> and <see cref="DecidedAt"/> are a person's decision on a
+/// <see cref="ServesNothing"/> outcome - written by
+/// <c>POST /issues/{key}/changes/outcomes/{id}/decision</c>, and null until then.
 /// </remarks>
 [Table("ChangeOutcomes")]
 public class EfHatchChangeOutcome
@@ -2769,6 +2770,9 @@ public class EfHatchChangeOutcome
     public const string CarriesOn = "carries_on";
     public const string NotTouched = "not_touched";
     public const string ServesNothing = "serves_nothing";
+
+    public const string Shelve = "shelve";
+    public const string Keep = "keep";
 
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
@@ -3154,6 +3158,14 @@ public class EfHatchIssueEvent
     /// display key.
     /// </summary>
     public const string ChangeOutcomeRecorded = "change_outcome_recorded";
+
+    /// <summary>
+    /// `POST /issues/{key}/changes/outcomes/{id}/decision` recorded a person's
+    /// decision on this epic's outcome - shelve it or keep it running. Written
+    /// on the epic. The payload is `{ ambition, changeEventId, decision }`,
+    /// `ambition` the ambition's display key.
+    /// </summary>
+    public const string ChangeDecided = "change_decided";
 
     /// <summary>
     /// `POST /issues/{key}/remand` shelved this issue into a dream - see

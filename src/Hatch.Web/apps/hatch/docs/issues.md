@@ -157,6 +157,23 @@ the why; once a person has decided one, it cannot be recorded over. Each
 recording shows on the epic's own History, naming the ambition, the outcome
 and the why - not on the ambition's, since the judgment is about the epic.
 
+An epic whose outcome is serves nothing waits for a person, and there are two
+presses. Both are a person's only: a key cannot make either, and each answers
+once per outcome.
+
+- **Shelve it** moves the epic and the open work under it into the first
+  deferred column, the way deferring them by hand would, and records the
+  decision. Work already closed or already deferred stays where it is. Whoever
+  waits on a shelved issue is told on their own ticket. It follows the same
+  access rule as any move into that column, and it needs an epic that is still
+  open.
+- **Keep it running** records the decision, who made it and when, and moves
+  nothing. The epic stays on the board and the outcome is closed.
+
+Each shows on the epic's own History as `change to AER-12: shelved` or `change
+to AER-12: kept running`. A shelved epic can still become a dream: the remand
+door on the epic's own page is how.
+
 ## Budget
 
 An ambition can carry a dollar budget: how much it may cost. It is optional. An ambition has none until a person sets one, and nothing asks for one.

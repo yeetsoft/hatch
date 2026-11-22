@@ -297,6 +297,21 @@ describe('describe, capability events', () => {
     expect(describeEvent(event({ kind: 'change_outcome_recorded', payload: { ambition: 'AER-12', outcome: 'fine' } }))).toBe('');
     expect(describeEvent(event({ kind: 'change_outcome_recorded', payload: { outcome: 'carries_on' } }))).toBe('');
   });
+
+  it('says what a person decided about a change outcome on this epic', () => {
+    expect(
+      describeEvent(event({ kind: 'change_decided', payload: { ambition: 'AER-12', changeEventId: 9, decision: 'shelve' } })),
+    ).toBe('change to AER-12: shelved');
+
+    expect(
+      describeEvent(event({ kind: 'change_decided', payload: { ambition: 'AER-12', changeEventId: 9, decision: 'keep' } })),
+    ).toBe('change to AER-12: kept running');
+  });
+
+  it('draws a change_decided event with a malformed payload as blank', () => {
+    expect(describeEvent(event({ kind: 'change_decided', payload: { ambition: 'AER-12', decision: 'drop' } }))).toBe('');
+    expect(describeEvent(event({ kind: 'change_decided', payload: { decision: 'keep' } }))).toBe('');
+  });
 });
 
 describe('short', () => {

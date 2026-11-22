@@ -18,7 +18,7 @@ public sealed class ChangeCommandsTests : RepoFixture
             "somebody", DateTimeOffset.UnixEpoch);
 
     private static ChangeOutcomeDto Outcome(long eventId, string epic, string outcome, string why) =>
-        new(eventId, epic, "An epic", "To Do", outcome, why, "somebody", DateTimeOffset.UnixEpoch, null);
+        new(1, eventId, epic, "An epic", "To Do", outcome, why, "somebody", DateTimeOffset.UnixEpoch, null);
 
     private static ChangeDto Change(
         long id, DateTimeOffset savedAt, DateTimeOffset? workedOutAt,

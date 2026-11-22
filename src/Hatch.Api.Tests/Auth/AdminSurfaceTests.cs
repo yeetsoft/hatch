@@ -431,6 +431,10 @@ public class AdminSurfaceTests
         "IssueChangesController.GetChanges",
         "IssueChangesController.PostOutcome",
 
+        // A person's decision on an epic that serves nothing: shelve it or keep it.
+        // A person's only - see IssueChangeDecisionController and PersonOnly.
+        "IssueChangeDecisionController.PostDecision",
+
         // Shelving a tree into a dream. Key-accepting like the module around
         // it - see IssueRemandController.
         "IssueRemandController.Remand",
@@ -795,6 +799,7 @@ public class AdminSurfaceTests
         "IssuePlaybookController.PatchIssuePlaybook",
         "IssueWipLimitController.PatchIssueWipLimit",
         "IssueBudgetController.PatchIssueBudget",
+        "IssueChangeDecisionController.PostDecision",
         "RunnersController.PatchRunner",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
