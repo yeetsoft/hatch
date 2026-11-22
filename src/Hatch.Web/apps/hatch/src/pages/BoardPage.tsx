@@ -21,6 +21,8 @@ import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
 import { RemandDialog } from '../components/RemandDialog';
 import { ColumnHead } from '../components/ColumnHead';
 import { FlowArrows } from '../components/FlowArrows';
+import { BoardHealthStrip } from '../components/BoardHealthStrip';
+import { BoardHealthToggle } from '../components/BoardHealthToggle';
 import { FlowVizControl } from '../components/FlowVizControl';
 import { GoToWorkControl, GoToWorkNote } from '../components/GoToWorkControl';
 import { GoToWorkStatus } from '../components/GoToWorkStatus';
@@ -86,6 +88,8 @@ import type { RemandOffer } from '../lib/remand';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
 import { useRunners } from '../lib/useRunners';
+import { readStripShown, writeStripShown } from '../lib/boardStrip';
+import { POLL_MS } from '../lib/refresh';
 import { useScope } from '../lib/useScope';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { usePhone, useStandalone } from '../lib/viewport';
@@ -101,16 +105,6 @@ import { ScopeGate } from '../components/ScopeGate';
 /** The URL's whole vocabulary here: which project, by key - the same param
     PlanPage's picker uses. */
 const PROJECT = 'project';
-
-/** How often the board re-asks while it is on screen.
- *
- *  Half a runner's heartbeat. A runner beats at a fifth of its lease - 60 s at
- *  the default 300 s - and that is how often a card's claim and its chatter can
- *  change, so 30 s keeps the board within one heartbeat of the runner. Between
- *  the runners page's 20 s (a control surface under a finger) and the attention
- *  bar's minute: most moves on this board are made by the loop, with nobody
- *  watching, and a read is a few cheap queries. */
-export const POLL_MS = 30 * 1000;
 
 /** How long the ring stays on a card the console found once its peek has
  *  closed: long enough to see where the eye was sent, short enough not to look
@@ -161,6 +155,9 @@ function BoardContent() {
   // layout's own PhoneColumn never gets a rows map, so a band would have
   // nowhere to land.
   const [flowViz, setFlowViz] = useState(false);
+  /* Whether the health strip is drawn. Above the early returns with the other
+     state; the strip reads only while it is mounted, so hidden means no read. */
+  const [stripShown, setStripShown] = useState(readStripShown);
   const flowing = flowViz && !stacked;
 
   // The card under the cursor and the column it is over, kept only for the
@@ -891,6 +888,16 @@ function BoardContent() {
             <GoToWorkControl plan={goToWork} status={status} reload={reloadRunners} isPhone={isPhone} />
             <QueueControl cards={board.issues} runners={runners} onTake={onTake} handle={queue} />
             {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
+            {!isPhone && (
+              <BoardHealthToggle
+                on={stripShown}
+                onToggle={() => {
+                  const next = !stripShown;
+                  setStripShown(next);
+                  writeStripShown(next);
+                }}
+              />
+            )}
             {isPhone ? (
               <button
                 type="button"
@@ -918,6 +925,8 @@ function BoardContent() {
           </>
         }
       />
+
+      {stripShown && !isPhone && <BoardHealthStrip />}
 
       {isPhone && goToWork.mode !== 'loading' && (
         <p className="hatch-go-to-work-note text-muted">
