@@ -9,7 +9,7 @@ namespace Hatch.Cli;
 /// is what every real run does; a test sets it so a heartbeat happens inside a
 /// test rather than in five minutes' time.
 /// </param>
-public sealed record Runtime(
+public sealed partial record Runtime(
     Settings Settings,
     Board Board,
     ISessionRunner Sessions,
@@ -40,6 +40,9 @@ public sealed record Runtime(
 
     /// <summary>The checkouts that could not sign, held thirty minutes. A reference, so it survives <c>runtime with { ... }</c>.</summary>
     public SigningCache SigningCache { get; init; } = new();
+
+    /// <summary>What each checkout's forge said about this runner's sign-in. A reference, so it survives <c>runtime with { ... }</c>.</summary>
+    public ForgeSignInCache ForgeCache { get; init; } = new();
 
     /// <summary>
     /// Whether this increment's git calls and session are making commits
@@ -281,7 +284,17 @@ public sealed record Runtime(
     /// binds none. Replaceable so a test can say what a build came to without a
     /// forge to ask.
     /// </summary>
-    public Func<string, string?, IForge> Forge { get; init; } = (_, _) =>
+    public Func<string, string?, IForge> Forge =>
+        (path, canonical) => new WatchedForge(MakeForge(path, canonical), this, path, canonical);
+
+    /// <summary>
+    /// The forge as it is made, with nothing watching it: <see cref="Forge"/> wraps what this makes so that
+    /// a call that comes back with a reason asks again whether the runner is signed in. Replaceable for
+    /// the same reason <see cref="Forge"/> was. <c>Cli.Forge</c> (<c>hatch pr</c> and the commands that
+    /// read a forge once) is another seam and stays unwrapped: a command that runs once has no beat to
+    /// tell the board on.
+    /// </summary>
+    public Func<string, string?, IForge> MakeForge { get; init; } = (_, _) =>
         throw new InvalidOperationException("no forge was configured");
 
     /// <summary>
@@ -324,7 +337,7 @@ public sealed record Runtime(
     public Runtime WithGit() => this with
     {
         Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain, unsigned: Unsigned),
-        Forge = (path, canonical) => new GhForge(path, canonical),
+        MakeForge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         SourceRevision = () => new GitSourceRevision(Root),
         NewBoard = () => new Board(new HatchClient(Settings, onWaiting: Say.Complain), refusesDangerous: Settings.RefusesDangerous)
@@ -332,6 +345,7 @@ public sealed record Runtime(
             Has = Has,
             Models = () => AdvertisedModels() ?? [],
             Signing = () => SigningAnswer(),
+            Forge = () => ForgeAnswer(),
             Agent = Adapter.Id,
         },
         MakeClone = (remote, path) => new GitClone(remote, path),
