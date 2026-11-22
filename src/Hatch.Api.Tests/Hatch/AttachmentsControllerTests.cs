@@ -72,14 +72,103 @@ public class AttachmentsControllerTests
     }
 
     [Fact]
-    public async Task APostFromAKey_Is403AndNothingIsStored()
+    public async Task AKeyUploadsWithAProject_AndGetsTheRowBack()
+    {
+        var (options, projectA, _) = await NewScopedProjectsAsync();
+        var controller = ScopedKeyController(ScopeSeed.Request(options, ScopeSeed.Only(projectA)));
+
+        var dto = Value(await Post(controller, Pdf, "report.pdf", "application/pdf", projectA));
+
+        Assert.Equal("report.pdf", dto.FileName);
+        Assert.Equal("application/pdf", dto.ContentType);
+        Assert.Equal(Pdf.Length, dto.Size);
+        using var db = new HatchContext(options);
+        var row = await db.Attachments.SingleAsync(a => a.Id == dto.Id);
+        Assert.Equal(projectA, row.ProjectId);
+        // A key has no grant, so PersonIdAsync names nobody: the row says nothing of who uploaded it.
+        Assert.Null(row.CreatedById);
+        Assert.Equal(Pdf, row.Bytes);
+    }
+
+    [Fact]
+    public async Task AKeyUploadWithNoProject_IsRefusedWithOneSentenceAndNothingIsStored()
     {
         var (controller, db) = New(program: true);
 
         var result = await Post(controller, Pdf, "report.pdf", "application/pdf");
 
-        Assert.Equal(403, Assert.IsType<ObjectResult>(result.Result).StatusCode);
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("a key's upload names a project", bad.Value);
         Assert.Empty(db.Attachments);
+    }
+
+    [Fact]
+    public async Task AKeyNamingAProjectOutOfItsScope_Is404AndStoresNothing()
+    {
+        var (options, projectA, projectB) = await NewScopedProjectsAsync();
+        var controller = ScopedKeyController(ScopeSeed.Request(options, ScopeSeed.Only(projectA)));
+
+        var result = await Post(controller, Pdf, "a.pdf", "application/pdf", projectB);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        using var db = new HatchContext(options);
+        Assert.Empty(db.Attachments);
+    }
+
+    [Fact]
+    public async Task APersonsUploadWithNoProject_IsStillStored()
+    {
+        var (controller, db) = New();
+
+        Value(await Post(controller, Pdf, "report.pdf", "application/pdf"));
+
+        Assert.Null((await db.Attachments.SingleAsync()).ProjectId);
+    }
+
+    [Theory]
+    [InlineData("mp4", "video/mp4")]
+    [InlineData("mov", "video/quicktime")]
+    [InlineData("webm", "video/webm")]
+    public async Task AVideoDeclaredAsSomethingElse_IsStoredUnderItsSniffedType(string container, string expected)
+    {
+        var (controller, _) = New();
+
+        var dto = Value(await Post(controller, VideoBytes(container), "clip.bin", "text/plain"));
+
+        Assert.Equal(expected, dto.ContentType);
+    }
+
+    [Fact]
+    public async Task AnMp4DeclaredAsAnImage_IsStoredAsVideo()
+    {
+        var (controller, _) = New();
+
+        var dto = Value(await Post(controller, VideoBytes("mp4"), "clip.png", "image/png"));
+
+        Assert.Equal("video/mp4", dto.ContentType);
+    }
+
+    [Fact]
+    public async Task AKeysVideo_IsStoredAsVideo()
+    {
+        var (options, projectA, _) = await NewScopedProjectsAsync();
+        var controller = ScopedKeyController(ScopeSeed.Request(options, ScopeSeed.Only(projectA)));
+
+        var dto = Value(await Post(controller, VideoBytes("mov"), "clip.mov", "application/octet-stream", projectA));
+
+        Assert.Equal("video/quicktime", dto.ContentType);
+    }
+
+    [Theory]
+    [InlineData("heic")]
+    [InlineData("matroska")]
+    public async Task AFileSharingAVideoBoxButNotAVideo_KeepsItsDeclaredType(string kind)
+    {
+        var (controller, _) = New();
+
+        var dto = Value(await Post(controller, VideoBytes(kind), "file.bin", "application/x-thing"));
+
+        Assert.Equal("application/x-thing", dto.ContentType);
     }
 
     [Fact]
@@ -455,6 +544,26 @@ public class AttachmentsControllerTests
 
     private static AttachmentsController ScopedController(HatchContext db) =>
         NewController(db, new StubCaller { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } });
+
+    private static AttachmentsController ScopedKeyController(HatchContext db) =>
+        NewController(db, new StubCaller
+        {
+            Key = new EfApiKey { Name = "hatch", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = Now },
+        });
+
+    /// <summary>The first bytes of a container, then a little filler.</summary>
+    private static byte[] VideoBytes(string container) => container switch
+    {
+        "mp4" => Head("ftypisom"),
+        "mov" => Head("ftypqt  "),
+        "heic" => Head("ftypheic"),
+        "webm" => [0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x84, .. "webm"u8, 0, 0, 0, 0],
+        "matroska" => [0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x88, .. "matroska"u8, 0, 0, 0, 0],
+        _ => throw new ArgumentOutOfRangeException(nameof(container)),
+    };
+
+    private static byte[] Head(string ftypAndBrand) =>
+        [0x00, 0x00, 0x00, 0x18, .. Encoding.ASCII.GetBytes(ftypAndBrand), 0, 0, 0, 0, 0, 0, 0, 0];
 
     private static async Task<(DbContextOptions<HatchContext> Options, int ProjectA, int ProjectB)> NewScopedProjectsAsync()
     {
