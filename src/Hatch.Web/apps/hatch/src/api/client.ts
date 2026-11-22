@@ -16,6 +16,7 @@ import type {
   Attention,
   BackupStatus,
   Board,
+  BoardHealth,
   Capability,
   ChangelogReport,
   Comment,
@@ -1015,6 +1016,23 @@ export interface CumulativeFlowQuery {
   to?: string | null;
   /** Narrows the read to these projects' issues; every project when null,
       undefined or empty. */
+  project?: string[] | null;
+}
+
+/** The board's health over a window, from `GET /api/board/health`. `window` and
+    `project` are sent only when set, `project` repeated once per key, so the
+    server's own window and every project stand when they are left out. */
+export const getBoardHealth = (query: BoardHealthQuery) => {
+  const params = new URLSearchParams();
+  if (query.window) params.set('window', query.window);
+  for (const key of query.project ?? []) params.append('project', key);
+  const qs = params.toString();
+  return fetchJson<BoardHealth>('/api/board/health' + (qs ? '?' + qs : ''));
+};
+
+/** The board health route's query string. */
+export interface BoardHealthQuery {
+  window?: string | null;
   project?: string[] | null;
 }
 
