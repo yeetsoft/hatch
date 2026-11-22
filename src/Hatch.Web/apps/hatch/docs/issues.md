@@ -92,7 +92,8 @@ column and badges stack under the title. No other type draws it.
 A pass is a session on an ambition standing in the implementation column, aimed
 at that column itself rather than the next one. A person starts the first one
 by moving the ambition into the implementation column; after that, a pass runs
-again on its own whenever the ambition has room.
+again on its own whenever the ambition has room. An ambition that has not been
+started yet is a [draft](#a-draft-ambition), and a pass never runs on one.
 
 It reads each capability against the trunk and records a verdict — holds, does
 not hold, cannot tell — with what it looked at and a sha, the same way any
@@ -131,6 +132,39 @@ own entry, "Recorded outside a pass", dated at the verdict's own time. The page
 works that out when it reads, and nothing is stored for it. Every entry's own
 comments follow, rendered the way the Comments section renders a body. The
 verdict lines sit in a grid on a desktop and stack one per line on a phone.
+
+## A draft ambition
+
+A draft ambition is one that stands left of the implementation column and has
+not been started. It is sent to the row that shapes it once, and then it waits
+for a person to start it.
+
+**Where it stands.** A draft stands in the from-column of the row that shapes
+ambitions, Breakdown on a stock board. A person files it into that column; no
+button does it for them yet.
+
+**The row that shapes it.** Hatch sends one session at a draft standing in that
+column, to the [row flagged as shaping an
+ambition](playbooks#rows-that-shape-ambitions). The session is an ordinary
+advance, so it ends with the draft in the row's to-column, Backlog on a stock
+board. Only a flagged row on that exact move is matched, and only for an
+ambition: an epic, a story, a task or a bug on the same move gets its own row,
+never this one. Where the project and the board each have one, the project's wins.
+
+**Where it stands after.** Once the draft stands in the to-column, nothing is
+aimed at it. It is not shaped again, and it is never sent to a pass.
+
+**What the queue says.** A draft with no row for its move reads
+`waits for a person to start it - move it into "<implementation column>"`,
+where the quoted name is the board's implementation column. It no longer asks
+for a playbook. Every other type with no row keeps the sentence it had.
+An open question on the draft holds it the way it holds any ticket, with the
+question's own sentence.
+
+**Starting it.** Starting an ambition is a person's move into the implementation
+column. From there [a pass](#passes) runs exactly as it does for any ambition.
+A person who moves a shaped draft back into the from-column gets it shaped
+again.
 
 ## Changing an ambition
 

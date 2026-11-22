@@ -311,9 +311,10 @@ It lists no epics, files no work and never starts the ambition. It carries the
 same denied-tools list as the other judging rows, so it cannot edit the tree.
 
 The ordinary match never returns a flagged row, whatever its types say, for the
-same reason a row that answers questions is skipped. Hatch does not yet send a
-session to the row on its own, so for now it is only listed. A file on a
-project's trunk cannot flag a row.
+same reason a row that answers questions is skipped. The dispatcher sends one
+session to the row for an ambition standing in its from-column, and aims nothing
+at the ambition once it stands in the to-column; see [a draft
+ambition](issues#a-draft-ambition). A file on a project's trunk cannot flag a row.
 
 ## The fourteen rows Hatch seeds
 
