@@ -8060,6 +8060,24 @@ no-driver one on the next scan, with no beat needed. The sentence reaches
 `hatch queue` and `GET /api/work/queue` as the row's ordinary blocked
 sentence, with no new field.
 
+**A pull request on the wrong ticket is put right by the runner.** In the merge
+train's tick (`MergeTrain.TickCoreAsync`), `PullRequestRepair`
+(`MisplacedPullRequests.cs`) runs after the pull request half reads the open
+pull requests and before the outside filer looks at them, taking the tick's own
+list so a checkout is listed once. For a review row the runner drives - not in
+the merges column, landing by pull request, with no pull request recorded and
+one merge check on a branch - it takes the open pull requests whose head is
+exactly that branch, from the repository itself and into the trunk. Exactly one
+is the match; none, or two, writes nothing. If no issue holds it, the issue
+records it, the call `hatch pr` makes, and says so in a comment. If another
+issue holds it and a key recorded it there (`pullRequestRecordedByKind` is
+`key`, and the issue is no filed outsider), the runner clears the other issue
+first and then records, so a failure between the two leaves it on nobody and
+the next tick finishes. A person's record, one the board does not say who made,
+and a filed outsider's are never moved: the issue in review is told once per
+runner run which ticket holds it, and neither issue changes. The filer runs
+after, so it finds the pull request recorded and never files it as an outsider.
+
 #### Landing on the trunk
 
 A project whose `Landing` is `trunk` (see [Project](#project)) has no pull

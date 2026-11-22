@@ -33,6 +33,26 @@ nor the build is read from it — the merge check is made on the issue's
 branch, and the build is asked of the forge for the repository — so a pull
 request nobody recorded still has its build read.
 
+### A pull request on the wrong ticket
+
+A pull request can end up recorded on a ticket it does not belong to. The
+runner that drives the project puts it right on its own, with no session. An
+issue in review with no pull request recorded, no no-code declaration and
+one branch on origin named for it gets the one open pull request the forge
+lists from that branch, aimed at the trunk and not from a fork. A comment says
+the runner recorded it and where it found it.
+
+If another ticket held it and a key recorded it there, the runner takes it off
+that ticket first, and each ticket gets a comment naming the other.
+
+It leaves the pull request where it is when a person recorded it, when the
+board does not say who did, or when the other ticket was filed from an outside
+pull request. The ticket in review gets one comment naming the holder, once per
+runner run. It also writes nothing when the forge lists no pull request from the
+branch or more than one, and it never touches an issue in the merges column, one
+that lands on the trunk, one with a no-code declaration, or one whose project
+the runner does not drive.
+
 ## The build check and the merge check
 
 Code decides here, not a prompt. The runner asks git whether the branch merges with the trunk, asks the forge how the build on its tip came out, and writes each answer onto the issue; the board reads what the issue holds and applies one rule. Both answers are kept per repository, because a project may bind several and a passing one must not hide a failing one.
