@@ -2,8 +2,8 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import './Badge.css';
 
 /** `muted` is the resting state — a fact about a row, not a warning about it.
-    The three accents are for a badge that has something to say. */
-export type BadgeTone = 'muted' | 'success' | 'danger' | 'primary';
+    The four accents are for a badge that has something to say. */
+export type BadgeTone = 'muted' | 'success' | 'danger' | 'primary' | 'warn';
 
 export interface BadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
   tone?: BadgeTone;
