@@ -79,6 +79,7 @@ public class AdminSurfaceTests
         // the operator is doing and every card title on it - not a fact about
         // the house that a hallway tablet has any business rendering.
         "BoardController.GetBoard",
+        "BoardHealthController.GetBoardHealth",
         "ProjectsController.GetProjects",
         "ProjectsController.CreateProject",
         "ProjectsController.PatchProject",
@@ -936,6 +937,7 @@ public class AdminSurfaceTests
         "BallotController.GetBallot",
         "AmbitionsController.GetAmbitions",
         "BoardController.GetBoard",
+        "BoardHealthController.GetBoardHealth",
         "BroughtCurrentController.PutBroughtCurrent",
         "BuildCheckController.PutBuildCheck",
         "ChangelogController.GetChangelog",

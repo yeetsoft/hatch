@@ -91,6 +91,8 @@ the next heading of the same level and stop.
     does it say about it?
 - [Reports](#reports) - When did things happen on the board, which the board
   as it stands cannot say?
+  - [The board health read](#the-board-health-read) - How healthy is the board
+    right now, in one call?
 - [The dispatcher](#the-dispatcher) - What should an agent do next, and how?
   - [Deadlocked](#deadlocked) - When will no pass ever clear a row on its
     own?
@@ -4536,6 +4538,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — except the one card the server itself withholds: a terminal card whose `ClosedAt` is older than `doneHorizonHours` (48 by default, off at `0`) is not handed over at all, and `doneHorizonHours` on the DTO says what that horizon is; stories the horizon withheld whose epic is still on the board are handed over in `pastHorizon` instead, as ordinary cards, so a client can count them; `issues` is unchanged — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) — and `normals`, `at`, and on each card `enteredColumnAt` and `aged`: how long a column's stays normally last and who is past it (see [the flow](#the-flow)) |
+| `/board/health` | GET | The board's health in one read for a program: 24 bars over a `window` of `2h`, `4h`, `8h` (default), `12h` or `24h` - moves right by the board, a runner and a person, the bands waiting, in flight and done, and what waits on a person, whose last bar is the attention control's own count. `project` (repeatable). Open to a key. `400` for another window or an unknown `project` - see [the board health read](#the-board-health-read) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, `filedFromKey` (`""` finds the issues filed from nothing), ANDed, all optional; POST takes `filedFromKey` |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `filedFromKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way, each issue keeping its parent unless `parentKey` says otherwise — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it, and keeping its parent unless `parentKey` names another or `""`; `400` on an unknown project, `403` from a key, `409` naming any issue in the moving set holding a live claim, or a one-PR story's tasks that the move would leave in another project |
@@ -6045,6 +6048,71 @@ for [the timeline](#the-timeline). There is **no CLI subcommand** for it
 either; a script reaches the same answer with
 `hatch api GET /api/reports/cumulative-flow?...`, which is the
 [API surface](#api-surface)'s row for it.
+
+### The board health read
+
+```
+GET /api/board/health?window=&project=
+```
+
+The cumulative flow says how many issues stood in each column; the flow says
+what moved and how long it took. This read says **how the board is doing right
+now**, in one call and with no page: twenty-four equal bars across a window, so
+a program can tell a board that is moving from one that is stuck, and a board
+waiting on a person from one waiting on the loop. The route is open to a person
+or to a key, and nothing in the answer names an issue: counts and durations only.
+
+`window` is one of `2h`, `4h`, `8h`, `12h` or `24h`, and `8h` when absent; any
+other is a `400` naming the five. A bar is a twenty-fourth of it, so 20 minutes
+at the default. `project` narrows every count to those projects and repeats; one
+that names no project is a `400`.
+
+Bar boundaries are on the UTC clock: the last bar starts at now floored to a
+multiple of the bar's width, so a bar does not slide while now is inside it. The
+**last bar is read at now**, not at its end, which is still to come.
+
+It answers `{ from, to, barMinutes, bars, total, previousTotal, pastNormal,
+hasWorkColumn }`. `total` is the moves right in the window and `previousTotal`
+the same over the window before it, for comparison. `pastNormal` is how many
+issues with no children now stand in flight longer than their column's
+[normal](#the-flow). Each bar carries:
+
+- `start`, `end`;
+- `board`, `runner`, `person` and `moved` - the moves **right** made inside the
+  bar, split three ways and summing to `moved`. A move is the board's when it
+  carries a hop flag or a `merged`, `landed` or `pushback` flag; it is a runner's
+  when a claim was open on the issue and its holder made the move; everything
+  else is a person's;
+- `waiting`, `inFlight` and `done` - read at the bar's end. They are the
+  [cumulative flow](#the-cumulative-flow)'s own bands, cut from the same
+  stretches and so equal to it at every bar's end: before the implementation
+  column, from it up to a terminal column, and closed inside the window. They come
+  from the columns' flags, not their names. A board with no implementation column
+  has none of the three, and `hasWorkColumn` says so;
+- `waitingPullRequests` and `waitingQuestions` - what waited on a person at the
+  bar's end, and `oldestWaitSeconds` for the longest of either;
+- `oldestInFlightSeconds` - how long the oldest issue with no children had
+  stood in flight.
+
+**The last bar is the attention control's own count.** Its waiting pull requests
+and questions are what [the attention panel](#what-is-waiting-on-you) lists as
+reviews and questions, from the same code, so the number a program reads here is
+the number the control shows. Earlier bars are rebuilt from the trail and are
+exact except where it cannot be.
+
+**Known gaps in the past bars.** A check approving a merge, and a pull request
+held back by a conflict or a failed build, count as waiting on a person in a
+past bar; only the attention panel knows the difference today. Pre-approval is
+walked up the parents an issue has today and ignores the project line a level
+may not cross. A question of the merge level, or one awaiting its look back,
+ends at a terminal column in a past bar yet counts now. Whether an issue has
+children is today's answer, not the answer then. A parent in a project the
+caller cannot see carries no level into a past bar.
+
+The status history is never loaded whole. Status changes are read back to the
+start of the window before this one, and everything else from the start of this
+one; for each issue the newest event before that point is read too, since it
+says where a stretch began or whether a claim was open.
 
 ### The flow
 

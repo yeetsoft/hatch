@@ -4186,6 +4186,58 @@ public record CumulativeFlowDto(
     IReadOnlyList<CumulativeFlowPointDto> Points,
     int Unresolved);
 
+/// <summary>One bar of the board health read: a stretch of the window, what moved in it and where work stood at its end.</summary>
+/// <param name="Start">The bar's first instant.</param>
+/// <param name="End">The bar's end, exclusive. The last bar is read at the instant the answer was made, not here.</param>
+/// <param name="Board">Moves right the board made itself in the bar: a hop, a merge, a landing or a push back.</param>
+/// <param name="Runner">Moves right a runner made in the bar, under the claim it held.</param>
+/// <param name="Person">Moves right everyone else made in the bar.</param>
+/// <param name="Moved">The three above added up.</param>
+/// <param name="Waiting">Issues standing in a column before implementation at the bar's end.</param>
+/// <param name="InFlight">Issues standing from the implementation column up to, not into, a terminal one.</param>
+/// <param name="Done">Issues that closed inside the window and stood closed at the bar's end.</param>
+/// <param name="WaitingPullRequests">Pull requests in review waiting on a person at the bar's end.</param>
+/// <param name="WaitingQuestions">Questions waiting on a person at the bar's end.</param>
+/// <param name="OldestInFlightSeconds">How long the oldest issue with no children had stood in flight at the bar's end; null when none.</param>
+/// <param name="OldestWaitSeconds">How long the oldest pull request or question had waited on a person; null when none.</param>
+public record BoardHealthBarDto(
+    DateTimeOffset Start,
+    DateTimeOffset End,
+    int Board,
+    int Runner,
+    int Person,
+    int Moved,
+    int Waiting,
+    int InFlight,
+    int Done,
+    int WaitingPullRequests,
+    int WaitingQuestions,
+    long? OldestInFlightSeconds,
+    long? OldestWaitSeconds);
+
+/// <summary>
+/// The whole health of the board over a window in one read: twenty-four equal
+/// bars of what moved right and who moved it, where work stood and what waited on
+/// a person. Counts and durations only; nothing in the answer names an issue.
+/// </summary>
+/// <param name="From">The first bar's start, on the UTC clock.</param>
+/// <param name="To">The last bar's end.</param>
+/// <param name="BarMinutes">How wide a bar is: the window divided by twenty-four.</param>
+/// <param name="Bars">The twenty-four bars, oldest first; none when no issue is in scope yet.</param>
+/// <param name="Total">Moves right over the whole window.</param>
+/// <param name="PreviousTotal">Moves right over the window before it, for comparison.</param>
+/// <param name="PastNormal">Issues with no children standing in flight longer than their column's normal, now.</param>
+/// <param name="HasWorkColumn">Whether the board has an implementation column; without one no bar counts waiting, in flight or done.</param>
+public record BoardHealthDto(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    int BarMinutes,
+    IReadOnlyList<BoardHealthBarDto> Bars,
+    int Total,
+    int PreviousTotal,
+    int PastNormal,
+    bool HasWorkColumn);
+
 /// <summary>One board column's counts over a flow report's window.</summary>
 /// <param name="StatusId">The column's id.</param>
 /// <param name="Name">The column's name, as the board spells it.</param>

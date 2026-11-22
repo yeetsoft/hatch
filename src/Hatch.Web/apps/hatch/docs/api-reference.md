@@ -232,6 +232,7 @@ The per-issue PATCH 400s if the issue is not an `epic`.
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | GET | `/board` | key | Every column and every card in the house, in one request - the WIP meter alongside it, read from the same instant |
+| GET | `/board/health` | key | The board's health over a window in one read: twenty-four bars of moves right (by the board, a runner or a person), what waited, flew and finished, and what waited on a person. `window` is one of `2h`, `4h`, `8h` (default), `12h`, `24h`; `project` repeats. `400` for any other window or an unknown project |
 
 The answer is a `BoardDto`: `Statuses`, `Issues` (each an `IssueCardDto`), an
 optional `Wip`, an optional `DoneHorizonHours`, `PastHorizon` - the
@@ -242,6 +243,11 @@ kept five minutes), and `At`, the instant the board was read at. Each card also
 carries `EnteredColumnAt` and `Aged`: when it entered its column, and whether it
 has stood there longer than the column's normal with no open child. There is no write here, and no refusal
 beyond the standard ones.
+
+`/board/health` answers a `BoardHealthDto` - `From`, `To`, `BarMinutes`, `Bars` (each a
+`BoardHealthBarDto`), `Total`, `PreviousTotal`, `PastNormal` and `HasWorkColumn` - with
+counts and durations only: no issue is named. The last bar's waiting pull requests and
+questions are the attention control's own count. See docs/hatch.md, "The board health read".
 
 Every card names who filed it, as `createdBy` - a person's or an API key's
 name, so a runner's own filings are filterable too. Every route that serves

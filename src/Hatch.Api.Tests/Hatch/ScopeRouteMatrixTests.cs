@@ -410,6 +410,7 @@ public class ScopeRouteMatrixTests
 
         // A report that validates its project filter answers 400 "there is no
         // project N", for a hidden project as for one nothing has.
+        ("BoardHealthController.GetBoardHealth", Lookup(t => Get($"/api/board/health?project={t.ProjectKey}"))),
         ("ReportsController.GetCumulativeFlow", Lookup(t => Get($"/api/reports/cumulative-flow?project={t.ProjectKey}"))),
         ("ReportsController.GetChangelogReport", Lookup(t => Get($"/api/reports/changelog?projectId={t.ProjectId}"))),
         ("ReportsController.GetActivityReport", Lookup(t => Get($"/api/reports/activity?actor=someone&projectId={t.ProjectId}"))),
