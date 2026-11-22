@@ -1503,6 +1503,37 @@ public class EfHatchIssue
     public DateTimeOffset? NoCodeAt { get; set; }
 
     /// <summary>
+    /// The title of a pull request that is written and waiting to be opened, or
+    /// null where there is none. The <c>WaitingPr*</c> columns are one record:
+    /// set together and cleared together. Written only by
+    /// <see cref="IssueWaitingPullRequestController"/>, and cleared by
+    /// <see cref="WaitingPullRequest"/> when a pull request url is recorded.
+    /// The caps are the API's, not the columns'.
+    /// </summary>
+    public string? WaitingPrTitle { get; set; }
+
+    /// <summary>The body of the waiting pull request, up to the GitHub body limit.</summary>
+    public string? WaitingPrBody { get; set; }
+
+    /// <summary>The branch the waiting pull request is to be opened from.</summary>
+    public string? WaitingPrBranch { get; set; }
+
+    /// <summary>The commit the branch stood at when the pull request was written.</summary>
+    public string? WaitingPrSha { get; set; }
+
+    /// <summary>The remote of the repository the branch is in, as <c>hatch landed</c> sends it; a project can bind several.</summary>
+    public string? WaitingPrRemote { get; set; }
+
+    /// <summary>The name that wrote it: the caller of the write, never sent by the client.</summary>
+    public string? WaitingPrRunner { get; set; }
+
+    /// <summary>Why it could not be opened where it was written.</summary>
+    public string? WaitingPrWhy { get; set; }
+
+    /// <summary>When the waiting pull request was last written or replaced.</summary>
+    public DateTimeOffset? WaitingPrAt { get; set; }
+
+    /// <summary>
     /// When an increment last left this ticket where it found it. Null for
     /// the overwhelming majority of issues.
     /// </summary>
@@ -3046,6 +3077,14 @@ public class EfHatchIssueEvent
     /// <c>{ reason, ... }</c>: the reason that was set aside, and what set it aside.
     /// </summary>
     public const string NoCodeSetAside = "no_code_set_aside";
+
+    /// <summary>
+    /// An issue's waiting pull request was written, replaced, removed or
+    /// cleared - see <see cref="EfHatchIssue.WaitingPrTitle"/>. The payload is
+    /// <c>{ from, to }</c>, each side <c>{ title, branch, sha }</c> or null, and
+    /// <c>pullRequest</c> carries the url when recording one cleared it.
+    /// </summary>
+    public const string WaitingPullRequestChanged = "waiting_pull_request_changed";
 
     /// <summary>
     /// A session proposed changes to playbooks - see <see cref="EfHatchPlaybookProposal"/>.

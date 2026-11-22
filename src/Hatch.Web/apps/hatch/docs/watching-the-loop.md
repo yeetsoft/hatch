@@ -641,7 +641,8 @@ heading alone, and opens to its section headings. A section or group with
 anything in it is open and has no button, since there is nothing to hide.
 **Findings**, **Backups**, **Stalled merge trains** and **Out of usage** are not
 folded but simply absent when empty. **Pull requests to review** stays open while it has a
-count to say - issues in review with no pull request recorded, or held back by
+count to say - issues in review with no pull request recorded (not one whose
+pull request is written and waiting to be opened), or held back by
 the loop - because that is the only place it is said. The panel opens folded
 every time, and nothing is remembered between openings. Pressing a heading never
 closes the panel; Tab reaches every heading, and Escape closes it.

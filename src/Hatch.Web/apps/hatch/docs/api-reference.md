@@ -358,6 +358,8 @@ not mint an issue number - try again".
 | omitted-runners | PUT | `/issues/{key}/omitted-runners/{runner}` | key | Omits a runner from this ticket and its subtree, with an optional reason; rewrites the reason if already omitted |
 | omitted-runners | DELETE | `/issues/{key}/omitted-runners/{runner}` | key | Lifts the ticket's own omission of a runner; 404 for one only an ancestor carries |
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
+| waiting-pull-request | PUT | `/issues/{key}/waiting-pull-request` | key | A pull request written and waiting to be opened: title, body, branch, sha, remote and why it could not be opened where it was written. Replaces any already there; the caller is its runner; answers the `IssueDto` |
+| waiting-pull-request | DELETE | `/issues/{key}/waiting-pull-request` | **person** | Removes it; `204`, also where nothing waits |
 | contribution | PUT | `/issues/{key}/contribution` | key | That the issue came from outside: pull request URL, head branch, author login and association, origin. Write-once, unique per pull request URL; answers the `IssueDto` |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue. A key may also write it under a changelog task's live claim |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why. On a claim whose session spent nothing (no tokens, ended in error) the board leaves the mark off, still answers `200` with the issue, and writes a `stall_declined` event instead |
@@ -366,14 +368,16 @@ not mint an issue number - try again".
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
-assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `omitted-runners`, `no-code`, `contribution` and `landing` are key-open despite
+assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `omitted-runners`, `no-code`, `waiting-pull-request` (its PUT; the DELETE is a person's), `contribution` and `landing` are key-open despite
 sitting beside five person-only fields: one-pr is the story's or bug's own say over its
 project's default, which gives a key nothing it could not already do by
 filing it that way; runner-tags is a statement about which runner may
 pick the ticket up, not a power over the board, for the same reason, and
 dangerous is the same kind of statement, and so is omitted-runners; no-code
 is a statement of fact about the work, with the same reach as recording a pull
-request through `PATCH`, which is also key-open; landing
+request through `PATCH`, which is also key-open; waiting-pull-request
+is the same kind of statement, that work was written and could not be opened where it was
+written, and a key may only write it - taking it away is a person's; landing
 is a fact a session or a poll reports about a repository and a sha, not a
 power over the board. `stall` carries no
 `[RequireRole]` at all, on the method or the class - it is reachable by
@@ -436,7 +440,19 @@ recorded or a counted merge check found a branch, and `404` for no such key;
 re-sending the reason it already holds writes nothing. A later branch-finding
 merge check or a recorded pull request clears the declaration with a
 `no_code_set_aside` event, and a move into a column left of review clears it
-with a `no_code_changed` one. `pre-approval` and
+with a `no_code_changed` one. `waiting-pull-request` PUT takes `title`, `body`,
+`branch`, `sha`, `remote` and `why`, and 400s a blank title, branch, sha or why,
+a title over 256 characters, a why over 500, and a body over 65,536; `404` for no
+such key; `409` once a pull request url is recorded, since there is then none
+waiting. The body and the remote may be empty. The runner is the caller's name,
+not a field. A second write replaces the first, and one that changes nothing
+writes no event and does not move `updatedAt`. `IssueDto.waitingPullRequest`
+carries it (`title`, `body`, `branch`, `sha`, `remote`, `runner`, `why`, `at`), null
+where none waits; the board card does not. Each write, removal, and clearing
+adds a `waiting_pull_request_changed` event, `{ from, to }` with each side
+`{ title, branch, sha }` or null. Recording a pull request url by `PATCH` or the
+contribution route clears it in the same save, the event carrying the url as
+`pullRequest`. A move leaves it in place. `pre-approval` and
 `express` gate by what is being set: raising to or lowering from
 `preapproved` needs an owner or approver, 403 otherwise, since that is the
 approve press given in advance; every other transition is gated like an
@@ -2091,7 +2107,8 @@ person's runners, and an ownerless key's, never appear.
 from, since two polls a poll interval apart would show a lit control beside
 an empty list. It answers an `AttentionDto`: open questions waiting on
 somebody, pull requests in review split into plain reviews, conflicts, and
-failing builds, how many sit in review with no pull request at all, the
+failing builds, how many sit in review with no pull request at all (not one
+that declared no code, or has a pull request written and waiting to be opened), the
 issues in review that declared they were finished with no code and wait for a
 person to close them (`noCodeHeld`) - not one that is pre-approved or in a
 project with the no-code setting on, which the close hop carries - the
