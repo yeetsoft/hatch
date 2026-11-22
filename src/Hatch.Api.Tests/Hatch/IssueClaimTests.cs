@@ -3819,6 +3819,93 @@ public class IssueClaimTests
         Assert.NotNull((await h.SessionAsync(session)).EndedAt);
     }
 
+    // ---- The record of a runner's state changes (HA-2685) ----
+
+    /// <summary>A first row for the runner, running from <see cref="Now"/> - what the loop's own beat wrote before the claim.</summary>
+    private static async Task SeedStateAsync(Harness h, string runner)
+    {
+        var db = h.Connect();
+        db.RunnerStates.Add(new EfHatchRunnerState { Runner = runner, At = Now, State = RunnerStateRule.Running });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<List<EfHatchRunnerState>> StatesAsync(Harness h, string runner) =>
+        await h.Connect().RunnerStates.AsNoTracking().Where(s => s.Runner == runner).OrderBy(s => s.At).ThenBy(s => s.Id).ToListAsync();
+
+    [SkippableFact]
+    public async Task AClaimBeatAfterALongSilence_WritesGoneFromTheLimit_BeforeItBumpsTheBeat()
+    {
+        await using var h = await NewAsync();
+        var (session, issue, token) = await WorkingAsync(h);
+        await SeedStateAsync(h, "loop-key");
+
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, null, null)).Result);
+
+        var rows = await StatesAsync(h, "loop-key");
+        Assert.Equal(["running", "gone"], rows.Select(r => r.State));
+        Assert.Equal(Now.AddSeconds(Harness.RunnerGoneAfterSeconds), rows[1].At);
+        Assert.Equal(h.Time.GetUtcNow(), (await h.SessionAsync(session)).LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task ALongIncrement_WhoseClaimBeatsStayInsideTheLimit_LeavesNoGoneRow()
+    {
+        await using var h = await NewAsync();
+        var (_, issue, token) = await WorkingAsync(h);
+        await SeedStateAsync(h, "loop-key");
+
+        // Five times the limit in all, a beat every half of it.
+        for (var i = 0; i < 10; i++)
+        {
+            h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds / 2));
+            Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, null, null)).Result);
+        }
+
+        Assert.Single(await StatesAsync(h, "loop-key"));
+    }
+
+    [SkippableFact]
+    public async Task ASessionTheSweepEnded_RevivedByAClaimBeat_ReadsGoneFromTheLimit_AndNothingMore()
+    {
+        await using var h = await NewAsync();
+        var (session, issue, token) = await WorkingAsync(h);
+        await SeedStateAsync(h, "loop-key");
+
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        await SweepAsync(h);
+        Assert.NotNull((await h.SessionAsync(session)).EndedAt);
+
+        Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, null, null)).Result);
+
+        Assert.Null((await h.SessionAsync(session)).EndedAt);
+        var rows = await StatesAsync(h, "loop-key");
+        Assert.Equal(["running", "gone"], rows.Select(r => r.State));
+        Assert.Equal(Now.AddSeconds(Harness.RunnerGoneAfterSeconds), rows[1].At);
+    }
+
+    [SkippableFact]
+    public async Task TheBoardPausingASession_WritesOneAgentDownRow_AfterTheSaveThatCarriesIt()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+        h.Keys.Keys.Add(h.Caller.Key!);
+        await SeedStateAsync(h, "runner-one");
+
+        DateTimeOffset at = default;
+        for (var i = 0; i < 3; i++)
+        {
+            at = h.Time.GetUtcNow();
+            await DropAsync(h, await h.FileAsync());
+        }
+
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, (await h.SessionAsync(id)).AgentDownKind);
+        var rows = await StatesAsync(h, "runner-one");
+        Assert.Equal(["running", "agent-down"], rows.Select(r => r.State));
+        Assert.Equal(RunnerAgentDownKinds.BoardPaused, rows[1].Kind);
+        Assert.Equal(at, rows[1].At);
+    }
+
     // ---- The harness ----
 
     private sealed class Harness : IAsyncDisposable
@@ -3873,7 +3960,7 @@ public class IssueClaimTests
                 var db = Connect();
                 var dispatch = new Dispatch(db, Actors, Rule, Time);
                 var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time, Keys);
-                return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch, new RunnerSessions(RunnersRule));
+                return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch, new RunnerSessions(RunnersRule), Keys, new RunnerStateLog(RunnersRule));
             }
         }
 
@@ -3889,7 +3976,7 @@ public class IssueClaimTests
                 return new RunnersController(
                     db, RunnersRule, Rule, Caller, Actors, Time, Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()),
                     new StubSiteSettings(), Keys, new RunnerSessions(RunnersRule), dispatch, new StubHatchRevision(), new StubRunnerBuilds(),
-                    NullLogger<RunnersController>.Instance);
+                    new RunnerStateLog(RunnersRule), NullLogger<RunnersController>.Instance);
             }
         }
 

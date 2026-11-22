@@ -5164,3 +5164,37 @@ public class EfHatchGooseFinding
 
     public EfHatchIssue? BugIssue { get; set; }
 }
+
+/// <summary>
+/// One change of a runner's state, with the instant it began: the record the
+/// Runners tile's lanes and the state route read. One row per change between
+/// <see cref="RunnerStateRule.All"/>, never one for a beat that changed
+/// nothing. Written by <see cref="RunnerStateLog"/>, never by a background job:
+/// a state the clock ended is written, at the instant it ended, by the next
+/// call that touches the runner.
+/// </summary>
+[Table("RunnerStates")]
+[Index(nameof(Runner), nameof(At), nameof(Id))]
+public class EfHatchRunnerState
+{
+    public const int MaxStateLength = 16;
+    public const int MaxKindLength = 16;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>The runner's name: the key's own when a key has one, else the heartbeat's.</summary>
+    [MaxLength(EfHatchRunner.MaxNameLength)]
+    public required string Runner { get; set; }
+
+    /// <summary>When the runner came to be in <see cref="State"/>.</summary>
+    public required DateTimeOffset At { get; set; }
+
+    /// <summary>One of <see cref="RunnerStateRule.All"/>.</summary>
+    [MaxLength(MaxStateLength)]
+    public required string State { get; set; }
+
+    /// <summary>The agent-down kind, set only when <see cref="State"/> is <c>agent-down</c>.</summary>
+    [MaxLength(MaxKindLength)]
+    public string? Kind { get; set; }
+}

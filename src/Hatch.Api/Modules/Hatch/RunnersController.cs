@@ -46,7 +46,7 @@ public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
     TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,
     RunnerSessions sessions, Dispatch dispatch, IHatchRevision revision, IRunnerBuilds builds,
-    ILogger<RunnersController> logger) : ControllerBase
+    RunnerStateLog stateLog, ILogger<RunnersController> logger) : ControllerBase
 {
     /// <summary>
     /// Every runner this Hatch knows of: one entry per visible key - revoked
@@ -389,6 +389,10 @@ public class RunnersController(
         var where = Fits(request.Where, EfHatchRunner.MaxNameLength);
         var ip = HttpContext?.Connection.RemoteIpAddress?.ToString();
 
+        // Before anything is written: the sweep below ends sessions and the beat
+        // overwrites the facts a quiet gap is judged by.
+        await stateLog.SettleAsync(db, keys, key.Name, now, ct);
+
         await sessions.MarkGoneAsync(db, key.Id, now, ct);
 
         var live = await db.RunnerSessions
@@ -437,7 +441,8 @@ public class RunnersController(
 
         if (kind == EfHatchRunner.LoopKind)
         {
-            await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct);
+            foreach (var retired in await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct))
+                await stateLog.RecordAsync(db, keys, retired, now, ct);
 
             // Before the config read below, so this beat's instruction already
             // carries what was carried.
@@ -451,6 +456,10 @@ public class RunnersController(
         // told it drives nothing is found out. "" is told nothing.
         session.DrivesTold = string.Join('\n', drives);
         await db.SaveChangesAsync(ct);
+
+        // The one record for this key's runner, however many sessions it holds.
+        // It also reads the retirement RetireRenamedAsync cleared on this name.
+        await stateLog.RecordAsync(db, keys, key.Name, now, ct);
 
         var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
         var site = await siteSettings.GetAsync(ct);
@@ -503,8 +512,12 @@ public class RunnersController(
 
         if (session.EndedAt is null)
         {
-            session.EndedAt = time.GetUtcNow();
+            var now = time.GetUtcNow();
+            await stateLog.SettleAsync(db, keys, key.Name, now, ct);
+
+            session.EndedAt = now;
             await db.SaveChangesAsync(ct);
+            await stateLog.RecordAsync(db, keys, key.Name, now, ct);
         }
 
         return NoContent();
@@ -576,23 +589,24 @@ public class RunnersController(
         var site = await siteSettings.GetAsync(ct);
         var localModels = await LocalModelsAsync(ct);
 
+        // Before anything is written: the seed and the touch below overwrite
+        // the facts a quiet gap is judged by. Once, for both exits - the
+        // insert-race catch falls through to the same touch.
+        await stateLog.SettleAsync(db, keys, runner, now, ct);
+
         if (row is null)
         {
             db.LegacyRunners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedModels), Joined(normalisedHas)));
 
+            var seeded = false;
+            var retired = new List<string>();
             try
             {
                 // Before the save, so the one write carries the new row and
                 // the retirements together.
-                await RetireSuperseded(row, now, ct);
+                retired = await RetireSuperseded(row, now, ct);
                 await db.SaveChangesAsync(ct);
-
-                // A row born on this very beat has never been ordered.
-                var refusedModels = await RefusedFromKeyAsync(ct);
-                return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), null,
-                    defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
-                    with { RefusedModels = refusedModels, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refusedModels),
-                        BoardBuild = await BoardBuildAsync(request, ct) };
+                seeded = true;
             }
             catch (DbUpdateException)
             {
@@ -605,6 +619,18 @@ public class RunnersController(
                 db.Entry(row).State = EntityState.Detached;
                 row = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == runner, ct);
                 if (row is null) throw;
+            }
+
+            if (seeded)
+            {
+                await RecordAsync(runner, retired, now, ct);
+
+                // A row born on this very beat has never been ordered.
+                var refusedModels = await RefusedFromKeyAsync(ct);
+                return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), null,
+                    defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
+                    with { RefusedModels = refusedModels, Hold = LocalModelFit.Hold(localModels, row.Agent, row.AcceleratorMemoryBytes, refusedModels),
+                        BoardBuild = await BoardBuildAsync(request, ct) };
             }
         }
 
@@ -623,8 +649,9 @@ public class RunnersController(
         }
 
         Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedModels), Joined(normalisedHas));
-        await RetireSuperseded(row, now, ct);
+        var retiredNow = await RetireSuperseded(row, now, ct);
         await db.SaveChangesAsync(ct);
+        await RecordAsync(runner, retiredNow, now, ct);
 
         var refused = await RefusedFromKeyAsync(ct);
         return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), order,
@@ -656,10 +683,10 @@ public class RunnersController(
     /// with the wall up proves nothing, so it retires nothing; with the wall
     /// off, null matches null. Does not save: the caller's write carries it.
     /// </summary>
-    private async Task RetireSuperseded(EfHatchRunner row, DateTimeOffset now, CancellationToken ct)
+    private async Task<List<string>> RetireSuperseded(EfHatchRunner row, DateTimeOffset now, CancellationToken ct)
     {
-        if (row.Where is not { Length: > 0 } where) return;
-        if (row.ForPersonId is null && auth.Value.Enabled) return;
+        if (row.Where is not { Length: > 0 } where) return [];
+        if (row.ForPersonId is null && auth.Value.Enabled) return [];
 
         var name = row.Name;
         var kind = row.Kind;
@@ -676,6 +703,18 @@ public class RunnersController(
             r.RetiredAt = now;
             r.RetiredBy = name;
         }
+
+        return older.Select(r => r.Name).ToList();
+    }
+
+    /// <summary>
+    /// Records the beating runner, then every name the beat retired - each after
+    /// the save that carried it, so a retired runner reads gone from its last beat.
+    /// </summary>
+    private async Task RecordAsync(string runner, IEnumerable<string> retired, DateTimeOffset now, CancellationToken ct)
+    {
+        await stateLog.RecordAsync(db, keys, runner, now, ct);
+        foreach (var name in retired) await stateLog.RecordAsync(db, keys, name, now, ct);
     }
 
     /// <summary>
@@ -705,9 +744,10 @@ public class RunnersController(
     /// <c>once</c> beat never reaches here - it shares the loop's name and
     /// proves nothing about what else has gone.
     /// </summary>
-    private async Task RetireRenamedAsync(string name, Guid? owner, string? where, DateTimeOffset now, CancellationToken ct)
+    private async Task<List<string>> RetireRenamedAsync(string name, Guid? owner, string? where, DateTimeOffset now, CancellationToken ct)
     {
-        if (where is not { Length: > 0 }) return;
+        if (where is not { Length: > 0 }) return [];
+        var retired = new List<string>();
 
         var own = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == name && r.RetiredAt != null, ct);
         if (own is not null)
@@ -725,10 +765,12 @@ public class RunnersController(
             {
                 r.RetiredAt = now;
                 r.RetiredBy = name;
+                retired.Add(r.Name);
             }
         }
 
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+        return retired;
     }
 
     /// <summary>
@@ -1037,6 +1079,9 @@ public class RunnersController(
             untilAt = moment.At;
         }
 
+        // Before the state is written over: a stretch the clock ended is judged by it.
+        if (state is not null) await stateLog.SettleAsync(db, keys, runner, now, ct);
+
         // The heartbeat row is tracked and may be absent: a key that has never
         // run has none. State lives only there, so with none it is skipped
         // rather than refused.
@@ -1094,6 +1139,7 @@ public class RunnersController(
         }
 
         await db.SaveChangesAsync(ct);
+        if (state is not null) await stateLog.RecordAsync(db, keys, runner, now, ct);
 
         return await ProjectAsync(
             new Runner(aggregate.Key, config ?? aggregate.Config, beatRow, aggregate.Sessions),
@@ -1427,8 +1473,12 @@ public class RunnersController(
         if (state is null || !EfHatchRunner.States.Contains(state))
             return BadRequest($"a runner is {string.Join(", ", EfHatchRunner.States)} - not \"{sent}\"");
 
+        var now = time.GetUtcNow();
+        await stateLog.SettleAsync(db, keys, key.Name, now, ct);
+
         session.State = state;
         await db.SaveChangesAsync(ct);
+        await stateLog.RecordAsync(db, keys, key.Name, now, ct);
 
         return await AnswerAsync(key.Name, ct);
     }
@@ -1569,6 +1619,8 @@ public class RunnersController(
                 && s.AgentDownKind == RunnerAgentDownKinds.BoardPaused && s.AgentDownUntil > now)
             .ToListAsync(ct);
 
+        await stateLog.SettleAsync(db, keys, key.Name, now, ct);
+
         foreach (var sibling in siblings)
         {
             sibling.AgentDownUntil = null;
@@ -1578,6 +1630,7 @@ public class RunnersController(
         }
 
         await db.SaveChangesAsync(ct);
+        await stateLog.RecordAsync(db, keys, key.Name, now, ct);
         return NoContent();
     }
 
@@ -1613,9 +1666,12 @@ public class RunnersController(
             .Where(s => s.ApiKeyId == key!.Id && s.Kind == EfHatchRunner.LoopKind && s.EndedAt == null)
             .ToListAsync(ct);
 
+        await stateLog.SettleAsync(db, keys, key!.Name, now, ct);
+
         foreach (var session in candidates.Where(s => sessions.IsLive(s, now))) session.State = state;
 
         await db.SaveChangesAsync(ct);
+        await stateLog.RecordAsync(db, keys, key.Name, now, ct);
         return NoContent();
     }
 
