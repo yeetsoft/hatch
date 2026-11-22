@@ -6299,6 +6299,44 @@ input.hatch-inline-title-input {
   border-color: var(--primary);
 }
 
+/* Sat in its column longer than is normal for it (the server's call: see
+   lib/cardAge.ts). A faint indigo wash over the whole card and nothing on the
+   border, so it is seen from across the board without being mistaken for the
+   asking card, whose border it leaves alone. Laid over --bg as asking is, with
+   background-image over a pinned background-color. :not(.asking) is what lets
+   a card that is both keep the asking wash and border; its chip is drawn
+   either way. */
+.hatch-card.aged:not(.asking) {
+  --tile-ground: var(--aged-ground);
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--aged-bg), var(--aged-bg));
+}
+
+/* The flow band lies over the lower half of the card, and on a card with a one-line
+   title the marks row is in that half - the chip would be stamped over. An aged
+   card under a band is therefore tall enough that its marks row ends above the
+   half-way line: the head and the marks row take about 3.3rem, so twice that, and
+   a little over. Only an aged card is held to it; the flow view is the desk's. */
+.hatch-card.aged.banded {
+  min-height: 7rem;
+}
+
+/* The chip: a clock and the time in the column, in the stalled chip's shape.
+   Words as well as the tint, so the mark is not a colour alone. */
+.hatch-card-age {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--aged-bg);
+  color: var(--aged-ink);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
 .hatch-card-asking {
   margin-left: auto;
   display: inline-flex;
