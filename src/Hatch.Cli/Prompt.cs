@@ -60,6 +60,7 @@ public static class Prompt
         if (work.Ambition is { Principles.Count: > 0 } ambition) lines.AddRange(Principles(ambition));
 
         if (work.Answering is { } answering) lines.AddRange(QuestionToAnswer(answering, work.IssueUrl, key));
+        if (work.Changing is { } changing) lines.AddRange(ChangeToWorkOut(changing, work.IssueUrl, key));
 
         if (work.NextBriefLimit is { } limit)
         {
@@ -89,7 +90,8 @@ public static class Prompt
         if (work.LastCheckFindings is { Length: > 0 } findings) lines.AddRange(LastCheck(findings));
 
         var sharedStory = Branches.IsShared(work) ? work.BranchKey : null;
-        var deniesGitWrites = DeniesGitWrites(work.Playbook?.DeniedTools) || work.Kind == WorkKinds.Answer;
+        var deniesGitWrites = DeniesGitWrites(work.Playbook?.DeniedTools) || work.Kind == WorkKinds.Answer
+            || work.Changing is not null;
         if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory, deniesGitWrites, signing));
 
         // After the branch, which says where the work goes, and before the
@@ -259,8 +261,9 @@ public static class Prompt
             startsHere: BoundForImplementation(work), deniesGitWrites: deniesGitWrites,
             offersNoCode: work.OffersNoCode ?? true,
             buildsPast: work.BuildPast is { Count: > 0 },
-            staysPut: issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id && work.Answering is null,
-            answering: work.Answering));
+            staysPut: issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id && work.Answering is null
+                && work.Changing is null,
+            answering: work.Answering, changing: work.Changing));
         return string.Join('\n', lines);
     }
 
@@ -282,6 +285,77 @@ public static class Prompt
         : "At `build`, the work built past it is built but not merged until the question is answered.";
 
     /// <summary>
+    /// A link to another issue, built from the ambition's own: the last segment
+    /// of the ambition's link is swapped for the other key. Without an absolute
+    /// http(s) link ending in the ambition's key, it is the bare key, and
+    /// nothing is made up.
+    /// </summary>
+    private static string Reference(string? issueUrl, string ambitionKey, string otherKey)
+    {
+        var linked = Uri.TryCreate(issueUrl, UriKind.Absolute, out var url)
+            && url.Scheme is "http" or "https"
+            && issueUrl!.EndsWith("/" + ambitionKey, StringComparison.Ordinal);
+        return linked ? $"[{otherKey}]({issueUrl![..^ambitionKey.Length]}{otherKey})" : otherKey;
+    }
+
+    /// <summary>
+    /// The change a change dispatch is for: what was added, changed or removed
+    /// among the ambition's capabilities, then each epic to weigh against it
+    /// with where it stands and which capabilities it serves.
+    /// </summary>
+    private static IEnumerable<string> ChangeToWorkOut(WorkChangeDto change, string? issueUrl, string ambitionKey)
+    {
+        yield return "## The change to work out";
+        yield return "";
+        yield return "This session is here to work out one change to what the ambition's capabilities say,";
+        yield return "and to record, for each epic beneath it, what the change means for that epic.";
+        yield return "";
+
+        foreach (var entry in change.Entries)
+        {
+            var name = entry.Position is { } position ? $"capability {position}" : $"capability #{entry.CapabilityId}";
+            switch (entry.Kind)
+            {
+                case "added":
+                    yield return $"- added {name}: {Folded(entry.StatementAfter)}";
+                    if (entry.HowToTellAfter is { Length: > 0 } howAfter) yield return $"  how to tell: {Folded(howAfter)}";
+                    break;
+
+                case "changed":
+                    yield return $"- changed {name}:";
+                    yield return $"  was: {Folded(entry.StatementBefore)}";
+                    yield return $"  now: {Folded(entry.StatementAfter)}";
+                    if (entry.HowToTellBefore != entry.HowToTellAfter)
+                    {
+                        yield return $"  how to tell was: {Folded(entry.HowToTellBefore)}";
+                        yield return $"  how to tell now: {Folded(entry.HowToTellAfter)}";
+                    }
+                    break;
+
+                case "removed":
+                    yield return $"- removed {name}: {Folded(entry.StatementBefore)}";
+                    break;
+            }
+        }
+
+        yield return "";
+        yield return "The epics to weigh:";
+        yield return "";
+
+        foreach (var epic in change.Epics)
+        {
+            var serves = epic.Serves.Count == 0
+                ? "serves no capability"
+                : $"serves {(epic.Serves.Count == 1 ? "capability" : "capabilities")} {string.Join(", ", epic.Serves)}";
+            yield return $"- {Reference(issueUrl, ambitionKey, epic.Key)} {epic.Title} ({epic.Column}) {serves}";
+        }
+
+        yield return "";
+    }
+
+    private static string Folded(string? text) => (text ?? "").ReplaceLineEndings(" ");
+
+    /// <summary>
     /// The question an answering dispatch is for: the issue it is on, who asked
     /// and when, what it says, and every option with the recommended one marked.
     /// The link swaps the last segment of the ambition's own link for the
@@ -290,12 +364,7 @@ public static class Prompt
     /// </summary>
     private static IEnumerable<string> QuestionToAnswer(WorkQuestionDto question, string? issueUrl, string ambitionKey)
     {
-        var linked = Uri.TryCreate(issueUrl, UriKind.Absolute, out var url)
-            && url.Scheme is "http" or "https"
-            && issueUrl!.EndsWith("/" + ambitionKey, StringComparison.Ordinal);
-        var reference = linked
-            ? $"[{question.IssueKey}]({issueUrl![..^ambitionKey.Length]}{question.IssueKey})"
-            : question.IssueKey;
+        var reference = Reference(issueUrl, ambitionKey, question.IssueKey);
 
         yield return "## The question to answer";
         yield return "";
@@ -776,7 +845,8 @@ public static class Prompt
         bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
         bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
         bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null,
-        bool buildsPast = false, bool staysPut = false, WorkQuestionDto? answering = null) =>
+        bool buildsPast = false, bool staysPut = false, WorkQuestionDto? answering = null,
+        WorkChangeDto? changing = null) =>
     [
         "## Reaching Hatch",
         "",
@@ -813,7 +883,7 @@ public static class Prompt
             "(200 characters at most).",
             "",
         }),
-        ..(isCheck || startsHere || answering is not null ? Array.Empty<string>() : new[]
+        ..(isCheck || startsHere || answering is not null || changing is not null ? Array.Empty<string>() : new[]
         {
             "Claiming is the marker that you have started. The ticket moves once, at the end,",
             "to the column under \"Where this increment ends\".",
@@ -869,7 +939,9 @@ public static class Prompt
         ..PreApproval(preApproval),
         "## Where this increment ends",
         "",
-        ..(answering is not null ? AnsweringEnd(answering) : staysPut ? new[]
+        ..(answering is not null ? AnsweringEnd(answering)
+        : changing is not null ? ChangingEnd(key, changing)
+        : staysPut ? new[]
         {
             $"{key} stays in \"{to}\" when you stop. Only the operator moves work into a",
             "terminal column. A verdict on every capability (`hatch capability judge`)",
@@ -942,6 +1014,38 @@ public static class Prompt
         "",
         "Move nothing, cut no branch, and open no pull request. Only the operator moves work",
         "into a terminal column.",
+    ];
+
+    /// <summary>
+    /// How a change increment ends: one outcome for every epic it was sent to
+    /// weigh, and nothing moved, filed or pushed. The key is the ambition's own,
+    /// which is the ticket the change is on.
+    /// </summary>
+    private static string[] ChangingEnd(string key, WorkChangeDto change) =>
+    [
+        "This increment works out a change and moves nothing. Record one outcome for every epic",
+        "listed above, whatever it is:",
+        "",
+        "```",
+        ..change.Epics.Select(e =>
+            $"hatch change outcome {key} {e.Key} carries_on|not_touched|serves_nothing \"<why>\" --change {change.Id}"),
+        "```",
+        "",
+        "`carries_on` says the epic still stands, and the change asks something new of it.",
+        "`not_touched` says the change leaves the epic as it is.",
+        "`serves_nothing` says that, with the change, the epic no longer serves any capability.",
+        "Say why in a sentence that names what in the change decided it.",
+        "",
+        "For an epic that carries on, also comment on it with what the change now asks of it:",
+        "",
+        "```",
+        "hatch comment <epic> \"...\"",
+        "```",
+        "",
+        "An epic that serves nothing is shelved by a person, not by this session.",
+        "",
+        "Move nothing, file nothing, cut no branch, and open no pull request. Only the operator",
+        "moves work into a terminal column.",
     ];
 
     /// <summary>

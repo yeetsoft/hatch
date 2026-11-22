@@ -1919,6 +1919,119 @@ public sealed class IncrementTests
         Assert.Null(billed.QuestionId);
     }
 
+    /// <summary>An ambition dispatched to work out a change, naming two epics: moves nothing, and records an outcome on each.</summary>
+    private static WorkDto ChangeWork(bool changing = true) =>
+        PassWork() with
+        {
+            Changing = changing
+                ? new WorkChangeDto(
+                    91, [],
+                    [
+                        new WorkChangeEpicDto("AER-5", "Card payments", "In Progress", [1]),
+                        new WorkChangeEpicDto("AER-6", "Old ledger", "Backlog", []),
+                    ])
+                : null,
+        };
+
+    private static ChangeDto ChangeWith(params string[] outcomes) =>
+        new(
+            91, DateTimeOffset.UnixEpoch, false, null, [],
+            outcomes.Select(e => new ChangeOutcomeDto(
+                91, e, "A title", "In Progress", "carries_on", "Why.", "agent", DateTimeOffset.UnixEpoch, null)).ToList());
+
+    private static async Task<(IncrementReport Report, Harness H)> ChangeAsync(
+        bool changing, IReadOnlyList<ChangeDto>? changes = null, bool changesFail = false)
+    {
+        var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", ChangeWork(changing));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Reply("PUT", "/api/issues/AER-1/stall", HttpStatusCode.OK, "{}");
+        h.Wire.Json("GET", "/api/issues/AER-1/capabilities", new List<CapabilityDto>());
+        if (changesFail) h.Wire.Reply("GET", "/api/issues/AER-1/changes", HttpStatusCode.InternalServerError, "boom");
+        else h.Wire.Json("GET", "/api/issues/AER-1/changes", changes ?? []);
+
+        var report = await h.Runtime.Increment().RunAsync(
+            ChangeWork(changing), h.Root, "opus", "high", quiet: false, claim, default);
+        await claim.ReleaseAsync();
+        return (report, h);
+    }
+
+    [Fact]
+    public async Task A_change_increment_with_an_outcome_on_every_epic_is_released_worked()
+    {
+        var (report, h) = await ChangeAsync(changing: true, [ChangeWith("AER-5", "AER-6")]);
+        using var _ = h;
+
+        Assert.True(report.ChangeWorkedOut);
+        Assert.Empty(report.ChangeMissing);
+        Assert.False(report.Moved);
+        Assert.False(report.Stalled);
+        Assert.False(report.LetGo);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+        Assert.Equal("change 91 worked out, outcomes recorded on 2 epics", report.Outcome);
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("GET", "/api/issues/AER-1/capabilities"));
+    }
+
+    [Fact]
+    public async Task A_change_increment_missing_one_epics_outcome_is_a_stall_that_names_the_epic()
+    {
+        var (report, h) = await ChangeAsync(changing: true, [ChangeWith("AER-5")]);
+        using var _ = h;
+
+        Assert.False(report.ChangeWorkedOut);
+        Assert.Equal(["AER-6"], report.ChangeMissing);
+        Assert.True(report.Stalled);
+        Assert.True(report.LetGo);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Contains("change 91 still has no outcome for AER-6", report.Outcome, StringComparison.Ordinal);
+
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Contains("left AER-1 where it found it and let it go", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_change_increment_that_could_not_read_the_change_is_neither_worked_nor_a_stall()
+    {
+        var (report, h) = await ChangeAsync(changing: true, changesFail: true);
+        using var _ = h;
+
+        Assert.False(report.ChangeWorkedOut);
+        Assert.Empty(report.ChangeMissing);
+        Assert.False(report.Stalled);
+        Assert.Contains("not known", report.Flag, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_change_increment_whose_change_is_gone_from_the_board_is_not_a_stall_either()
+    {
+        var (report, h) = await ChangeAsync(changing: true, [ChangeWith("AER-5", "AER-6") with { Id = 92 }]);
+        using var _ = h;
+
+        Assert.False(report.ChangeWorkedOut);
+        Assert.False(report.Stalled);
+        Assert.Contains("not known", report.Flag, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_change_increments_work_log_row_names_the_change_and_a_passs_row_names_none()
+    {
+        var (_, h) = await ChangeAsync(changing: true, [ChangeWith("AER-5", "AER-6")]);
+        using var _h = h;
+        Assert.Equal(91, h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>().ChangeEventId);
+
+        var (_, pass) = await ChangeAsync(changing: false);
+        using var _p = pass;
+        Assert.Null(pass.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>().ChangeEventId);
+    }
+
     [Fact]
     public async Task A_pass_whose_capabilities_could_not_be_read_afterwards_is_not_called_a_stall_on_that_account()
     {
