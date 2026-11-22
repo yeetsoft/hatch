@@ -418,7 +418,8 @@ public class WorkController(
             taken?.GetValueOrDefault(r.Issue.Id)?.Untaken,
             notes.GetValueOrDefault(r.Issue.Id),
             r.ProjectLevel,
-            r.Answering?.Sentence())).ToList();
+            r.Answering?.Sentence(),
+            r.Changing?.Sentence())).ToList();
     }
 
     /// <summary>
@@ -1626,12 +1627,26 @@ public class WorkController(
         var match = route.Match;
         var playbook = match?.Playbook;
 
+        // An ambition with a change that qualifies is aimed at the row that works it
+        // out, ahead of a question and ahead of its pass - the same rule the scan
+        // applies, from the same finder.
+        //
         // An ambition with a qualifying question beneath it is aimed at its answering
         // row instead of its pass - the same rule the scan applies, from the same
         // finder, so the queue never promises what this does not hand out. A board
         // with no such row leaves the pass as it was.
-        AnswerQuestions.Candidate? answering = null;
+        WorkOutChanges.Candidate? changing = null;
         if (Dispatch.PassStands(issue, from, Columns.Implementation(statuses))
+            && (await WorkOutChanges.ForAsync(db, family, statuses, [issue.Id], ct)).TryGetValue(issue.Id, out var changed)
+            && await _dispatch.MatchWorkingOutAsync(from.Id, issue.Type, children.Count > 0, issue.ProjectId, ct) is { Playbook: not null } workingOutMatch)
+        {
+            changing = changed;
+            match = workingOutMatch;
+            playbook = workingOutMatch.Playbook;
+        }
+
+        AnswerQuestions.Candidate? answering = null;
+        if (changing is null && Dispatch.PassStands(issue, from, Columns.Implementation(statuses))
             && (await AnswerQuestions.ForAsync(db, gate, [issue.Id], ct)).TryGetValue(issue.Id, out var asked)
             && await _dispatch.MatchAnsweringAsync(from.Id, issue.Type, children.Count > 0, issue.ProjectId, ct) is { Playbook: not null } answeringMatch)
         {
@@ -1691,7 +1706,7 @@ public class WorkController(
             issue, from, rowTo, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
-            has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor, answering: answering is not null,
+            has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor, answering: answering is not null || changing is not null,
             signing: signing);
 
         // The same deferral the scan makes, asked here for a named dispatch: a
@@ -1701,7 +1716,7 @@ public class WorkController(
             blocked = ModelFamilies.LeftForPreferred(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, first);
 
         var hopped = hop && blocked is null;
-        var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing, Dispatch.IsPass(issue, from, rowTo, implementationStatus), answering is not null);
+        var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing, Dispatch.IsPass(issue, from, rowTo, implementationStatus), answering is not null, changing is not null);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
             && rowTo is not null && rowTo.Id == review?.Id;
         var releaseNoteFor = await ReleaseNoteForAsync(issue.Id, ct);
@@ -1783,7 +1798,8 @@ public class WorkController(
             buildPast.Count == 0 ? null : buildPast,
             ambition,
             answering is null ? null : AnswerQuestions.ToDto(answering),
-            issue.Project!.AllowsUnsignedCommits);
+            issue.Project!.AllowsUnsignedCommits,
+            changing is null ? null : WorkOutChanges.ToDto(changing));
     }
 
     /// <summary>

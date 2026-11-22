@@ -37,6 +37,11 @@ public class QueryFilterAuditTests
             + "ambition, and a session that answered it still counts, so a read that left either out would aim "
             + "two callers at different questions or at one twice. What leaves is the question's key, title and "
             + "body, and only to the caller who is dispatched the ambition above it."),
+        ["WorkOutChanges.ForAsync"] = (2,
+            "The epics an ambition's change is weighed against, and the capabilities each serves. An epic in a "
+            + "project the caller cannot see still stands beneath the ambition, so a read that left one out would "
+            + "aim two callers at different changes, or at none. What leaves is the epic's key, title, column and "
+            + "the positions it serves, and only to the caller who is dispatched the ambition above it."),
         ["OnePrLock.CrossProjectTaskCountAsync"] = (1,
             "How many tasks of a story stand in another project. A task in a project the caller cannot see still "
             + "keeps its story from sharing one pull request, so a count that left it out would let a scoped caller "

@@ -941,6 +941,18 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public void The_queue_draws_a_change_row_as_the_sentence_saying_what_it_works_out()
+    {
+        var row = Fixtures.Row("AER-1", selfMove: true) with
+        {
+            Kind = WorkKinds.Change,
+            Changing = "works out what a change does to 3 epics",
+        };
+
+        Assert.EndsWith("In Progress  works out what a change does to 3 epics", BoardCommands.Draw([row]).Single());
+    }
+
+    [Fact]
     public void The_queue_draws_a_pass_as_a_move_to_its_own_column()
     {
         var lines = BoardCommands.Draw([Fixtures.Row("AER-1", selfMove: true)]);

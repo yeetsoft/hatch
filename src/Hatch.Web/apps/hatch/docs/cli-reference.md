@@ -471,6 +471,11 @@ An ambition that would be sent to answer a question shows it as
 the question is on, in place of the usual arrow
 ([what a session may answer](questions-and-decisions#what-a-session-may-answer)).
 
+An ambition that would be sent to work out a change shows it as `works out what
+a change does to 3 epics`, with the count of epics it will weigh, in place of the
+usual arrow. A change goes ahead of a question
+([changing an ambition](issues#changing-an-ambition)).
+
 A row's marker says where the pass puts it:
 
 - `!!` is emergency and `! ` is expedited. Every emergency row is considered

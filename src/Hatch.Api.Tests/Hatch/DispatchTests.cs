@@ -3052,22 +3052,24 @@ public class DispatchTests
     /// <summary>A pass's work log row, written straight to the table: the ambition's playbook from the implementation column to itself.</summary>
     private static async Task PassRowAsync(
         Harness h, EfHatchIssue ambition, string? outcome = ClaimOutcomes.Worked, TimeSpan? ago = null,
-        string type = "ambition", int? from = null, int? to = null, long? questionId = null)
+        string type = "ambition", int? from = null, int? to = null, long? questionId = null, long? changeEventId = null)
     {
         var ended = Now - (ago ?? TimeSpan.FromHours(2));
         h.Db.WorkLog.Add(new EfHatchWorkLogEntry
         {
             IssueId = ambition.Id, SessionId = Guid.NewGuid().ToString("N"), StartedAt = ended.AddMinutes(-10), EndedAt = ended, DurationMs = 600_000, CreatedAt = ended,
             IssueType = type, PlaybookFromStatusId = from ?? h.InProgress, PlaybookToStatusId = to ?? h.InProgress, Outcome = outcome,
-            QuestionId = questionId,
+            QuestionId = questionId, ChangeEventId = changeEventId,
         });
         await h.Db.SaveChangesAsync();
     }
 
-    private static async Task EventAsync(Harness h, EfHatchIssue issue, string kind, string? payload = null, TimeSpan? ago = null)
+    private static async Task<long> EventAsync(Harness h, EfHatchIssue issue, string kind, string? payload = null, TimeSpan? ago = null)
     {
-        h.Db.IssueEvents.Add(new EfHatchIssueEvent { IssueId = issue.Id, Actor = "operator", Kind = kind, Payload = payload, At = Now - (ago ?? TimeSpan.FromHours(1)) });
+        var written = new EfHatchIssueEvent { IssueId = issue.Id, Actor = "operator", Kind = kind, Payload = payload, At = Now - (ago ?? TimeSpan.FromHours(1)) };
+        h.Db.IssueEvents.Add(written);
         await h.Db.SaveChangesAsync();
+        return written.Id;
     }
 
     private static string MovedTo(int toId) => $$"""{"to":"x","from":"y","toId":{{toId}},"fromId":1}""";
@@ -3600,6 +3602,251 @@ public class DispatchTests
         Assert.Null(row.Blocked);
     }
 
+    // ---- An ambition aimed at a change ----
+
+    private const string Edited = """{"id":7,"position":1,"from":{"statement":"a","howToTell":"b"},"to":{"statement":"c","howToTell":"d"}}""";
+    private const string Written = """{"id":7,"position":1,"statement":"a","howToTell":"b"}""";
+
+    /// <summary>
+    /// An ambition with room standing in the implementation column, the board's flagged
+    /// row, and one open epic filed well before any change the tests make.
+    /// </summary>
+    private static async Task<(Harness H, EfHatchIssue Ambition, EfHatchIssue Epic)> ChangeAsync(bool flaggedRow = true, int? limit = 5)
+    {
+        var (h, ambition) = await PassAsync(limit, 0);
+        if (flaggedRow) await h.AddPlaybookAsync(h.InProgress, h.InProgress, types: "ambition", worksOut: true);
+        var epic = await OldEpicAsync(h, ambition, "E", h.Todo);
+        return (h, ambition, epic);
+    }
+
+    /// <summary>An epic filed before the one hour ago that <see cref="EventAsync"/> stamps a change with.</summary>
+    private static async Task<EfHatchIssue> OldEpicAsync(Harness h, EfHatchIssue ambition, string title, int statusId)
+    {
+        var epic = await h.FileAsync("epic", title, statusId, parentId: ambition.Id);
+        epic.CreatedAt = Now - TimeSpan.FromHours(3);
+        await h.Db.SaveChangesAsync();
+        return epic;
+    }
+
+    private static Task<long> ChangedAsync(Harness h, EfHatchIssue ambition, string kind = EfHatchIssueEvent.CapabilityEdited, TimeSpan? ago = null) =>
+        EventAsync(h, ambition, kind, kind == EfHatchIssueEvent.CapabilityEdited ? Edited : Written, ago);
+
+    private static void AssertNotAimedAtAChange(ScanRow row)
+    {
+        Assert.Null(row.Changing);
+        Assert.Equal(WorkKinds.Advance, row.Kind);
+        Assert.Null(row.Blocked);
+    }
+
+    [Theory]
+    [InlineData(EfHatchIssueEvent.CapabilityEdited)]
+    [InlineData(EfHatchIssueEvent.CapabilityAdded)]
+    [InlineData(EfHatchIssueEvent.CapabilityRemoved)]
+    public async Task ScanAsync_AnAmbitionWhoseCapabilityWasEditedAddedOrRemoved_IsAimedAtTheChange(string kind)
+    {
+        var (h, ambition, epic) = await ChangeAsync();
+        var eventId = await ChangedAsync(h, ambition, kind);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Null(row.Blocked);
+        Assert.Equal(WorkKinds.Change, row.Kind);
+        Assert.Equal(row.From.Id, row.To!.Id);
+        Assert.False(row.Hop);
+        Assert.Equal(eventId, row.Changing!.Change.Id);
+        Assert.Equal(epic.Title, row.Changing.Epics.Single().Title);
+        Assert.Equal($"{h.ProjectKey}-{epic.Number}", row.Changing.Epics.Single().Key);
+        Assert.Equal("works out what a change does to 1 epic", row.Changing.Sentence());
+    }
+
+    [Fact]
+    public async Task ScanAsync_AReorderAlone_DoesNotAimTheAmbitionAtAChange()
+    {
+        var (h, ambition, _) = await ChangeAsync();
+        await EventAsync(h, ambition, EfHatchIssueEvent.CapabilityMoved, Written);
+
+        AssertNotAimedAtAChange(await PassRowForAsync(h, ambition));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnAmbitionWithNoOpenEpic_IsNotAimedAtItsChange()
+    {
+        var (h, ambition) = await PassAsync(5, 0, closedEpics: 1, deferredEpics: 1);
+        await h.AddPlaybookAsync(h.InProgress, h.InProgress, types: "ambition", worksOut: true);
+        foreach (var epic in h.Db.Issues.Where(i => i.ParentId == ambition.Id).ToList()) epic.CreatedAt = Now - TimeSpan.FromHours(3);
+        await h.Db.SaveChangesAsync();
+        await ChangedAsync(h, ambition);
+
+        AssertNotAimedAtAChange(await PassRowForAsync(h, ambition));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnEpicFiledAfterTheChange_IsNotWeighed_AndAloneDoesNotAimIt()
+    {
+        var (h, ambition) = await PassAsync(5, 0);
+        await h.AddPlaybookAsync(h.InProgress, h.InProgress, types: "ambition", worksOut: true);
+        await ChangedAsync(h, ambition);
+        await h.FileAsync("epic", "filed after", h.Todo, parentId: ambition.Id);
+
+        AssertNotAimedAtAChange(await PassRowForAsync(h, ambition));
+
+        await OldEpicAsync(h, ambition, "filed before", h.Todo);
+
+        var row = await PassRowForAsync(h, ambition);
+        Assert.Equal(WorkKinds.Change, row.Kind);
+        Assert.Equal(["filed before"], row.Changing!.Epics.Select(e => e.Title));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AWorkedRowNamingTheChange_StopsItBeingAimedAt()
+    {
+        var (h, ambition, _) = await ChangeAsync();
+        var eventId = await ChangedAsync(h, ambition);
+        await PassRowAsync(h, ambition, changeEventId: eventId);
+
+        AssertNotAimedAtAChange(await PassRowForAsync(h, ambition));
+    }
+
+    [Theory]
+    [InlineData(ClaimOutcomes.Dropped)]
+    [InlineData(null)]
+    public async Task ScanAsync_ARowNamingTheChangeWithAnyOtherOutcome_LeavesItAimedAt(string? outcome)
+    {
+        var (h, ambition, _) = await ChangeAsync();
+        var eventId = await ChangedAsync(h, ambition);
+        await PassRowAsync(h, ambition, outcome, changeEventId: eventId);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Equal(WorkKinds.Change, row.Kind);
+        Assert.Equal(eventId, row.Changing!.Change.Id);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ACapabilityEventNewerThanAWorkedRow_IsANewChange_AndIsAimedAt()
+    {
+        var (h, ambition, _) = await ChangeAsync();
+        var first = await ChangedAsync(h, ambition, ago: TimeSpan.FromHours(3));
+        await PassRowAsync(h, ambition, changeEventId: first, ago: TimeSpan.FromHours(2));
+        AssertNotAimedAtAChange(await PassRowForAsync(h, ambition));
+
+        var second = await ChangedAsync(h, ambition, EfHatchIssueEvent.CapabilityAdded);
+
+        var row = await PassRowForAsync(h, ambition);
+        Assert.Equal(WorkKinds.Change, row.Kind);
+        Assert.Equal(second, row.Changing!.Change.Id);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AWorkedRowNamingAChange_IsNotAPass_SoItDoesNotSettleTheNextOne()
+    {
+        var (h, ambition, _) = await ChangeAsync();
+        var eventId = await ChangedAsync(h, ambition, ago: TimeSpan.FromHours(3));
+        await PassRowAsync(h, ambition, changeEventId: eventId);
+
+        // Room is open and no pass has run, so the ambition is dispatched to its pass.
+        AssertNotAimedAtAChange(await PassRowForAsync(h, ambition));
+
+        await PassRowAsync(h, ambition);
+
+        Assert.Equal(Settled, (await PassRowForAsync(h, ambition)).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AFullRoomAndASettledPass_DoNotHoldAChange()
+    {
+        var (h, ambition, _) = await ChangeAsync(limit: 1);
+        var eventId = await ChangedAsync(h, ambition, ago: TimeSpan.FromHours(2) + TimeSpan.FromMinutes(30));
+        await PassRowAsync(h, ambition);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Null(row.Blocked);
+        Assert.Equal(WorkKinds.Change, row.Kind);
+        Assert.Equal(eventId, row.Changing!.Change.Id);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AFullRoomWithAChangeWorkedOut_FoldsAsItDidBefore()
+    {
+        var (h, ambition, _) = await ChangeAsync(limit: 1);
+        var eventId = await ChangedAsync(h, ambition);
+        await PassRowAsync(h, ambition, changeEventId: eventId);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Equal("1 of its epics is open, and it runs 1 at once - the next pass runs when one closes", row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AChangeAndAQuestionBothWaiting_DispatchesTheChange()
+    {
+        var (h, ambition, epic) = await ChangeAsync();
+        await h.AddPlaybookAsync(h.InProgress, h.InProgress, types: "ambition", answers: true);
+        var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
+        var question = await QuestionAsync(h, story, QuestionLevels.BuildName);
+        var eventId = await ChangedAsync(h, ambition);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Equal(WorkKinds.Change, row.Kind);
+        Assert.Null(row.Answering);
+        Assert.Equal(eventId, row.Changing!.Change.Id);
+
+        await PassRowAsync(h, ambition, changeEventId: eventId);
+
+        row = await PassRowForAsync(h, ambition);
+        Assert.Equal(WorkKinds.Answer, row.Kind);
+        Assert.Equal(question.Id, row.Answering!.QuestionId);
+        Assert.Null(row.Changing);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ABoardWithNoFlaggedRow_RunsThePassForAChange()
+    {
+        var (h, ambition, _) = await ChangeAsync(flaggedRow: false);
+        await ChangedAsync(h, ambition);
+
+        AssertNotAimedAtAChange(await PassRowForAsync(h, ambition));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AChangeOnAnIssueNotInTheImplementationColumn_IsNotAimedAt()
+    {
+        var (h, ambition, _) = await ChangeAsync();
+        await ChangedAsync(h, ambition);
+        ambition.StatusId = h.Todo;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null((await PassRowForAsync(h, ambition)).Changing);
+    }
+
+    [Fact]
+    public async Task MatchWorkingOut_KeepsOnlyTheFlaggedRow_AndMatchAndMatchAnsweringKeepOnlyTheOthers()
+    {
+        var plain = AnsweringRow(1, "ambition", answers: false);
+        var flagged = AnsweringRow(2, "ambition", answers: false);
+        flagged.WorksOutChanges = true;
+        var rows = new List<EfHatchPlaybook> { plain, flagged };
+
+        Assert.Equal(2, Dispatch.MatchWorkingOut(rows, 30, "ambition", isParent: false, projectId: 1)!.Id);
+        Assert.Equal(1, Dispatch.Match(rows, 30, 30, "ambition", isParent: false, projectId: 1)!.Id);
+        Assert.Null(Dispatch.MatchAnswering(rows, 30, "ambition", isParent: false, projectId: 1));
+        Assert.Null(Dispatch.MatchWorkingOut(rows, 30, "story", isParent: false, projectId: 1));
+        Assert.Null(Dispatch.MatchWorkingOut([plain], 30, "ambition", isParent: false, projectId: 1));
+    }
+
+    [Theory]
+    [InlineData(1, "works out what a change does to 1 epic")]
+    [InlineData(3, "works out what a change does to 3 epics")]
+    public void Sentence_ForAChange_SaysHowManyEpicsItWeighs(int epics, string expected)
+    {
+        var change = new AmbitionChanges.AmbitionChange(9, 0, long.MaxValue, Now, [], null);
+        var weighed = Enumerable.Range(1, epics).Select(i => new WorkOutChanges.Epic($"HA-{i}", "E", "To Do", [])).ToList();
+
+        Assert.Equal(expected, new WorkOutChanges.Candidate(change, weighed).Sentence());
+    }
+
     [Fact]
     public async Task MatchAnswering_KeepsOnlyTheFlaggedRow_AndMatchKeepsOnlyTheOther()
     {
@@ -3867,7 +4114,7 @@ public class DispatchTests
 
         public async Task AddPlaybookAsync(
             int from, int to, string types = "", string model = "sonnet", string shape = "any",
-            int? briefLimit = null, int? projectId = null, bool isCheck = false, bool answers = false)
+            int? briefLimit = null, int? projectId = null, bool isCheck = false, bool answers = false, bool worksOut = false)
         {
             Db.Playbooks.Add(new EfHatchPlaybook
             {
@@ -3882,6 +4129,7 @@ public class DispatchTests
                 ProjectId = projectId,
                 IsCheck = isCheck,
                 AnswersQuestions = answers,
+                WorksOutChanges = worksOut,
                 CreatedAt = Now,
                 UpdatedAt = Now,
             });

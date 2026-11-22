@@ -174,6 +174,28 @@ Each shows on the epic's own History as `change to AER-12: shelved` or `change
 to AER-12: kept running`. A shelved epic can still become a dream: the remand
 door on the epic's own page is how.
 
+**When the session is sent.** A running ambition, one standing in the
+implementation column, is sent to the row marked *works out changes* when its
+newest change has not been worked out and at least one open epic beneath it was
+filed before that change's newest event. An open epic is a direct child in a
+column that is neither done nor shelved. An epic filed after the change was
+written with it in view, so it is not weighed, and on its own it sends no
+session. A board with no such row sends nothing, and the ambition runs as it
+always did.
+
+The session goes ahead of an open question and ahead of the pass. With a change
+and a question both waiting, the change is worked out first and the question is
+answered on a later look. A full room and a pass that has already run do not
+hold it, since working a change out opens no epic.
+
+It is sent once for each change. A session that ends `worked` and names the
+change on its work log row closes it, and the ambition reads as it did before.
+A row that ended any other way leaves the change waiting, so it is sent again.
+A capability added, edited or removed after that is a new change, and sends a
+new session. A session that works a change out never counts as a pass, so it
+neither settles nor holds the next one. `hatch queue` shows the row as `works
+out what a change does to 3 epics`.
+
 ## Budget
 
 An ambition can carry a dollar budget: how much it may cost. It is optional. An ambition has none until a person sets one, and nothing asks for one.
