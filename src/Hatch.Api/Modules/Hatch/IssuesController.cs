@@ -234,6 +234,8 @@ public class IssuesController(
                 i.StalledWhy,
                 i.Held,
                 i.PullRequestUrl,
+                i.PullRequestRecordedBy,
+                i.PullRequestRecordedByKind,
                 i.ClosedAt,
                 i.NoCode,
                 i.CreatedBy,
@@ -310,6 +312,8 @@ public class IssuesController(
                 StalledWhy: i.StalledWhy,
                 Held: i.Held,
                 PullRequestUrl: i.PullRequestUrl,
+                PullRequestRecordedBy: i.PullRequestRecordedBy,
+                PullRequestRecordedByKind: i.PullRequestRecordedByKind,
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
                 OnePrFrom: disclosed.Key(DisclosedValues.OnePr, onePrFrom),
@@ -1040,6 +1044,17 @@ public class IssuesController(
             issue.PullRequestHeadBranch = null;
             issue.PullRequestHeadSince = null;
             issue.PullRequestReadAt = null;
+
+            if (string.IsNullOrWhiteSpace(edit.PullRequestUrl))
+            {
+                issue.PullRequestRecordedBy = null;
+                issue.PullRequestRecordedByKind = null;
+            }
+            else
+            {
+                issue.PullRequestRecordedBy = actor;
+                issue.PullRequestRecordedByKind = await caller.IsProgramAsync(ct) ? ActorKind.Key : ActorKind.Person;
+            }
         }
 
         if (parentKey is not null && parent.Issue?.Id != issue.ParentId)

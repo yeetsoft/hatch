@@ -265,9 +265,10 @@ whether recorded with `hatch pr` or by a contribution record), `originInstance`
 and `originKey` (exact match on a contribution record's origin; a trailing `/`
 on the instance is ignored, and an issue with no record matches neither), all
 optional and ANDed together. Every card, and `GET /issues/{key}`, carries
-`contribution` - the record, or null - and a review row from `GET /work/review`
-carries `branch`, the head branch a contribution recorded, null on the board's
-own rows. `docs/hatch-planning.md` has these filters in
+`contribution` - the record, or null - and carries `pullRequestRecordedBy` and
+`pullRequestRecordedByKind` wherever it carries `pullRequestUrl`; a review row
+from `GET /work/review` carries `branch`, the head branch a contribution
+recorded, null on the board's own rows. `docs/hatch-planning.md` has these filters in
 full, the bulk endpoint's own filters, and the `/plan` reads' arithmetic -
 none of that is re-derived here.
 
@@ -474,6 +475,10 @@ false or empty, and a reader whose scope holds everything never sees one set.
 recorded, or one never started) and `startedAt` (null only where it never crossed): written the first time
 a move, a PATCH, a bulk edit or a hop carries the issue rightward across the board's send-back column, and
 overwritten by the next crossing, including back to nobody for a key's.
+`IssueDto` and `IssueCardDto` also carry `pullRequestRecordedBy` and `pullRequestRecordedByKind`: who
+recorded `pullRequestUrl`, by a `PATCH` (`hatch pr`) or a filed contribution, and whether that caller was
+a `key` or a `person` - the two may share a name. Both are null where the url was recorded before this was
+kept, or where no url is held; both are cleared when the url is.
 `IssueDto` and `IssueCardDto` also carry `pullPassedOver`: the key of the issue's parent where that parent
 is in another project and in progress, yet may not pull it - the person who started it (`startedBy`) has
 no say in this ticket's project, or nobody started it - or null. Read live, beside `preApprovalPassedOver`.
