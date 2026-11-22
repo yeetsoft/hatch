@@ -127,15 +127,8 @@ public sealed class StandingStillCheck(HatchContext db, ReadyWork work, IOptions
     /// task waiting on its story's pull request. A task that is itself waiting on
     /// its story's pull request moves when the story does, so it is not watched.
     /// </summary>
-    private static bool IsLeaf(Scan scan, ScanRow row)
-    {
-        var id = row.Issue.Id;
-        if (scan.Family.IsWaiting(id)) return false;
-
-        return IssueTypeKinds.RunsChildren(row.Issue.Type)
-            ? scan.Family.EpicOpenChildren(id, scan.Statuses).Count == 0
-            : scan.Family.OpenWorkChildren(id).Count == 0;
-    }
+    private static bool IsLeaf(Scan scan, ScanRow row) =>
+        scan.Family.IsLeaf(row.Issue.Id, row.Issue.Type, scan.Statuses);
 
     /// <summary>Whether something is already set to move this row: a live claim, a person, or an approver.</summary>
     private static bool HeldBack(Scan scan, ScanRow row)

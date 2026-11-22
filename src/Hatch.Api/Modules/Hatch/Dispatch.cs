@@ -5242,6 +5242,21 @@ public sealed class FamilyGate
     public IReadOnlyList<long> OpenWorkChildren(long issueId) =>
         OpenChildren(issueId).Where(id => !_waiting.Contains(id)).ToList();
 
+    /// <summary>
+    /// Whether no child of this issue is work the dispatcher counts as open: an
+    /// epic is read as <see cref="EpicOpenChildren"/> reads it, anything else as
+    /// <see cref="OpenWorkChildren"/> does. A task waiting on its story's pull
+    /// request is not a leaf, since it moves when the story does.
+    /// </summary>
+    public bool IsLeaf(long issueId, string type, List<EfHatchStatus> statuses)
+    {
+        if (IsWaiting(issueId)) return false;
+
+        return IssueTypeKinds.RunsChildren(type)
+            ? EpicOpenChildren(issueId, statuses).Count == 0
+            : OpenWorkChildren(issueId).Count == 0;
+    }
+
     /// <summary>The direct children of this issue, in board order.</summary>
     public IReadOnlyList<long> Children(long issueId) =>
         _children.TryGetValue(issueId, out var kids) ? kids : [];
