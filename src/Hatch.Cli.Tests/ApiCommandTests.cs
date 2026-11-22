@@ -29,6 +29,61 @@ public sealed class ApiCommandTests
         Assert.Equal(1, h.Wire.Count("GET", "/api/statuses"));
     }
 
+    /// <summary>Git Bash on Windows turns /api/board into a drive path before the program sees it.</summary>
+    [Fact]
+    public async Task A_path_rewritten_to_a_drive_path_reaches_the_route()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/board", HttpStatusCode.OK, "{}");
+
+        Assert.Equal(0, await new ApiCommand(h.Cli).RunAsync(["GET", "C:/Program Files/Git/api/board"], default));
+        Assert.Equal(1, h.Wire.Count("GET", "/api/board"));
+    }
+
+    [Fact]
+    public async Task A_rewritten_path_keeps_its_query_string()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/issues", HttpStatusCode.OK, "[]");
+
+        Assert.Equal(0, await new ApiCommand(h.Cli).RunAsync(["GET", "C:/Program Files/Git/api/issues?statusId=2"], default));
+        Assert.Equal("?statusId=2", h.Wire.To("GET", "/api/issues").Single().Query);
+    }
+
+    [Fact]
+    public async Task A_rewritten_path_on_another_drive_with_backslashes_reaches_the_route()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/board", HttpStatusCode.OK, "{}");
+
+        Assert.Equal(0, await new ApiCommand(h.Cli).RunAsync(["GET", @"D:\tools\git\api\board"], default));
+        Assert.Equal(1, h.Wire.Count("GET", "/api/board"));
+    }
+
+    /// <summary>The first api segment is the route, so an odd root ends in a 404 that names it, not a cut route.</summary>
+    [Fact]
+    public async Task A_root_that_contains_an_api_folder_is_read_at_the_first_segment()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("GET", "/api/Git/api/board", HttpStatusCode.NotFound);
+
+        Assert.Equal(1, await new ApiCommand(h.Cli).RunAsync(["GET", "C:/work/api/Git/api/board"], default));
+        Assert.Contains("404 - no such issue or route: /api/Git/api/board", h.Complained);
+        Assert.DoesNotContain("Exception", h.Complained);
+    }
+
+    [Fact]
+    public async Task A_drive_path_with_no_api_segment_is_one_sentence_and_sends_nothing()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new ApiCommand(h.Cli).RunAsync(["GET", "C:/Program Files/Git/health"], default));
+        Assert.Contains("C:/Program Files/Git/health", h.Complained);
+        Assert.Contains("/api/", h.Complained);
+        Assert.DoesNotContain("Exception", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
     [Fact]
     public async Task The_method_is_taken_however_it_was_typed()
     {
