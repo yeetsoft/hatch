@@ -8539,8 +8539,11 @@ public class WorkControllerTests
 
         Assert.False(entry.Hop);
         Assert.Equal(
-            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            "deadlocked - its branch merges cleanly with main and its build passes, but it is pre-approved with no pull request recorded, " +
+            $"so nothing carries it past review - record its pull request with `hatch pr {Key(issue)} <url>`",
             entry.Blocked);
+        Assert.True(entry.Deadlocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
     }
 
     [Fact]

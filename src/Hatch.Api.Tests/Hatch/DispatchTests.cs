@@ -692,6 +692,206 @@ public class DispatchTests
         Assert.Equal("its branch merges cleanly with main and its build passes - nothing for an agent to do", row.Blocked);
     }
 
+    // ---- A review dead end: pre-approved, clean, and no hop to carry it (HA-2663) ----
+
+    private const string DeadEndSentence =
+        "its branch merges cleanly with main and its build passes, but it is pre-approved with no pull request recorded, " +
+        "so nothing carries it past review - record its pull request with `hatch pr {0} <url>`";
+
+    private const string PlainSentence = "its branch merges cleanly with main and its build passes - nothing for an agent to do";
+
+    /// <summary>
+    /// The shape HA-2636 stood in: an epic and a story running, the story holding
+    /// the pull request, and a pre-approved task in review whose own branch is
+    /// clean and green with no pull request recorded on it.
+    /// </summary>
+    private static async Task<(EfHatchIssue Epic, EfHatchIssue Story, EfHatchIssue Task)> DeadEndShapeAsync(
+        Harness h, bool mergeColumn = true)
+    {
+        if (mergeColumn)
+        {
+            h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+            await h.Db.SaveChangesAsync();
+        }
+
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var story = await h.FileAsync("story", "S", h.InProgress, parentId: epic.Id);
+        story.PullRequestUrl = "https://example.com/o/r/pull/1";
+        await h.Db.SaveChangesAsync();
+        var task = await h.FileAsync("task", "T", h.Review, parentId: story.Id);
+        await h.PreApprovedAsync(task);
+        await h.AddMergeCheckAsync(task, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(task, BuildVerdicts.Passed);
+        return (epic, story, task);
+    }
+
+    [Fact]
+    public async Task ScanAsync_APreApprovedReviewTaskWithNoPullRequest_IsADeadEndAndDeadlocksItsFamily()
+    {
+        var h = await NewAsync();
+        var (epic, story, task) = await DeadEndShapeAsync(h);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+
+        var key = IssueKey.Format(h.ProjectKey, task.Number);
+        var row = RowFor(scan, task);
+        Assert.True(row.Deadlocked);
+        Assert.Equal("deadlocked - " + string.Format(DeadEndSentence, key), row.Blocked);
+        Assert.Contains($"hatch pr {key} <url>", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+        Assert.Null(row.WaitsOn);
+        Assert.False(row.Hop);
+
+        Assert.NotNull(RowFor(scan, story).WaitsOn);
+        Assert.True(RowFor(scan, story).Deadlocked);
+        Assert.NotNull(RowFor(scan, epic).WaitsOn);
+        Assert.True(RowFor(scan, epic).Deadlocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ADeadEndRow_IsNotMarkedWithoutAskingForDeadlocks()
+    {
+        var h = await NewAsync();
+        var (_, _, task) = await DeadEndShapeAsync(h);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
+
+        Assert.False(row.Deadlocked);
+        Assert.Equal(string.Format(DeadEndSentence, IssueKey.Format(h.ProjectKey, task.Number)), row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ADeadEndTaskWithNoBuildVerdict_SaysTheSameThing()
+    {
+        var h = await NewAsync();
+        var (_, _, task) = await DeadEndShapeAsync(h);
+        h.Db.BuildChecks.RemoveRange(h.Db.BuildChecks.Where(b => b.IssueId == task.Id));
+        await h.Db.SaveChangesAsync();
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
+
+        Assert.Equal(
+            "its branch merges cleanly with main, but it is pre-approved with no pull request recorded, " +
+            $"so nothing carries it past review - record its pull request with `hatch pr {IssueKey.Format(h.ProjectKey, task.Number)} <url>`",
+            row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_TheSameTaskWithAPullRequestRecorded_IsCarriedByTheApproveHop()
+    {
+        var h = await NewAsync();
+        var (epic, story, task) = await DeadEndShapeAsync(h);
+        task.PullRequestUrl = "https://example.com/o/r/pull/2";
+        await h.Db.SaveChangesAsync();
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+
+        Assert.Equal(HopKinds.Approve, RowFor(scan, task).HopKind);
+        Assert.Null(RowFor(scan, task).Blocked);
+        Assert.False(RowFor(scan, task).Deadlocked);
+        Assert.False(RowFor(scan, story).Deadlocked);
+        Assert.False(RowFor(scan, epic).Deadlocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_TheSameTaskWithANoCodeDeclaration_IsCarriedByTheCloseHop()
+    {
+        var h = await NewAsync();
+        var (epic, story, task) = await DeadEndShapeAsync(h);
+        task.NoCode = "nothing to change";
+        await h.Db.SaveChangesAsync();
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+
+        Assert.Equal(HopKinds.Close, RowFor(scan, task).HopKind);
+        Assert.Null(RowFor(scan, task).Blocked);
+        Assert.False(RowFor(scan, story).Deadlocked);
+        Assert.False(RowFor(scan, epic).Deadlocked);
+    }
+
+    [Theory]
+    [InlineData(PreApprovalLevels.Express, "; express does not carry it past review, so it waits for an owner or approver to approve it")]
+    [InlineData(PreApprovalLevels.None, "; it waits for an owner or approver to approve it")]
+    public async Task ScanAsync_TheSameTaskBelowPreApproved_StillWaitsForAnOwnerOrApprover(int level, string tail)
+    {
+        var h = await NewAsync();
+        var (_, _, task) = await DeadEndShapeAsync(h);
+        task.PreApproval = level;
+        await h.Db.SaveChangesAsync();
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true), task);
+
+        Assert.Equal(PlainSentence + tail, row.Blocked);
+        Assert.False(row.Deadlocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_APreApprovedParentInReviewWithNoPullRequest_IsCarriedByTheCloseHopOnceItsChildrenAreDone()
+    {
+        var h = await NewAsync();
+        h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+        await h.Db.SaveChangesAsync();
+        var story = await h.FileAsync("story", "S", h.Review);
+        await h.PreApprovedAsync(story);
+        await h.FileAsync("task", "done", h.Done, parentId: story.Id);
+        await h.AddMergeCheckAsync(story, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(story, BuildVerdicts.Passed);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+
+        Assert.Equal(HopKinds.Close, RowFor(scan, story).HopKind);
+        Assert.Null(RowFor(scan, story).Blocked);
+        Assert.False(RowFor(scan, story).Deadlocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_APreApprovedParentInReviewWithOpenChildren_KeepsThePlainSentence()
+    {
+        var h = await NewAsync();
+        h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+        await h.Db.SaveChangesAsync();
+        var story = await h.FileAsync("story", "S", h.Review);
+        await h.PreApprovedAsync(story);
+        await h.FileAsync("task", "still open", h.Todo, parentId: story.Id);
+        await h.AddMergeCheckAsync(story, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(story, BuildVerdicts.Passed);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
+
+        Assert.Equal(PlainSentence, row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_APreApprovedIssueWithAPullRequestTheMergeJudgeHolds_KeepsThePlainSentence()
+    {
+        var h = await NewAsync();
+        var (_, _, task) = await DeadEndShapeAsync(h);
+        task.PullRequestUrl = "https://example.com/o/r/pull/2";
+        task.PullRequestClosedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+
+        Assert.Null(RowFor(scan, task).HopKind);
+        Assert.Equal(PlainSentence, RowFor(scan, task).Blocked);
+        Assert.False(RowFor(scan, task).Deadlocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_TheSameTaskOnABoardWithNoMergeColumn_KeepsThePlainSentence()
+    {
+        var h = await NewAsync();
+        var (epic, story, task) = await DeadEndShapeAsync(h, mergeColumn: false);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+
+        Assert.Equal(PlainSentence, RowFor(scan, task).Blocked);
+        Assert.False(RowFor(scan, task).Deadlocked);
+        Assert.False(RowFor(scan, story).Deadlocked);
+        Assert.False(RowFor(scan, epic).Deadlocked);
+    }
+
     [Fact]
     public async Task ScanAsync_ACleanIssueWithNoBuildVerdict_AlsoSaysItWaitsOnAnApprover()
     {
@@ -1501,7 +1701,7 @@ public class DispatchTests
 
     private static readonly EfHatchStatus DeadlockStatus = new() { Name = "todo", SortOrder = 10 };
 
-    private static ScanRow DRow(long id, IReadOnlyList<long>? waitsOn = null, bool anyOf = false) =>
+    private static ScanRow DRow(long id, IReadOnlyList<long>? waitsOn = null, bool anyOf = false, bool deadEnd = false) =>
         new(
             new EfHatchIssue
             {
@@ -1509,7 +1709,7 @@ public class DispatchTests
                 StatusId = DeadlockStatus.Id, Rank = id, CreatedBy = "operator", CreatedAt = Now, UpdatedAt = Now,
             },
             DeadlockStatus, null, null, null, "normal", false,
-            WaitsOn: waitsOn, AnyOf: anyOf);
+            WaitsOn: waitsOn, AnyOf: anyOf, DeadEnd: deadEnd);
 
     [Fact]
     public void Find_ATwoRing_MarksExactlyTheRing()
@@ -1549,6 +1749,22 @@ public class DispatchTests
         var rows = new[] { DRow(1, [99]), DRow(2, [1]) };
 
         Assert.Empty(Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_ADeadEndRowThatWaitsOnNothing_IsMarkedAndSoIsEveryRowWaitingOnItThroughAChain()
+    {
+        var rows = new[] { DRow(1, [], deadEnd: true), DRow(2, [1]), DRow(3, [2]), DRow(4, []) };
+
+        Assert.Equal(new HashSet<long> { 1, 2, 3 }, Deadlocks.Find(rows));
+    }
+
+    [Fact]
+    public void Find_ARowThatAcceptsAnyOfItsWaitedOn_IsClearWhileOneOfThemIsMovable()
+    {
+        var rows = new[] { DRow(1, [], deadEnd: true), DRow(2, []), DRow(3, [1, 2], anyOf: true) };
+
+        Assert.Equal(new HashSet<long> { 1 }, Deadlocks.Find(rows));
     }
 
     [Fact]

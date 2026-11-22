@@ -6757,7 +6757,9 @@ missing configuration:
     not read on that tip or has no checks, because it has no branch on origin
     (one already merged counts as none), because more than one branch is named
     for it (an issue whose pull request's branch is not known yet), or because
-    no runner has checked yet. See [the review
+    no runner has checked yet. A clean, pre-approved row with no pull request,
+    no children and a merge column after review is a dead end, and its sentence
+    says to record a pull request with `hatch pr`. See [the review
     dispatch](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review).
 
 …and then, before the hop is even asked: a story, bug or task standing left
@@ -6824,6 +6826,15 @@ the work-in-progress limit is: it frees as soon as any one of the rows holding
 a slot can move, so it is deadlocked only when all of them are stuck. Whatever
 cannot move at the fixpoint is deadlocked. A row parked behind a higher
 priority tier is clear, not deadlocked: the park is not a fold.
+
+One row is deadlocked while waiting on no issue at all: a [review dead
+end](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
+(`ScanRow.DeadEnd`), a pre-approved issue in review that no hop will ever carry
+because it has no pull request, no children and no no-code declaration, on a
+board with a merge column after review. It waits on no issue, but no pass will
+move it either: a person has to record its pull request with `hatch pr`. It is
+never counted as movable, so the story or epic waiting on it, directly or
+through a chain, is deadlocked too.
 
 The queue marks them, and only the queue does (`work/next`, preemption and the
 dashboard pay nothing for it). The judgement is **board-wide**, whatever
@@ -7558,9 +7569,19 @@ an issue past review, and only `preapproved` arms it. Below that the sentence
 continues *; it waits for an owner or approver to approve it*, and where the
 issue's effective level is `express` it says *; express does not carry it past
 review, so it waits for an owner or approver to approve it*. A `preapproved`
-issue that still reaches this fold — no pull request recorded, or nothing for the
-merge judge to merge — keeps the bare sentence: an approver is not what holds it.
-The queue, `GET /api/work/queue` and the board's own row all print the same text.
+issue is not held by an approver, so it never gets that tail. Two hops carry it
+out of review: the approve hop needs a pull request recorded and a merge column
+after review, and the close hop needs children or a no-code declaration. With
+none of them it is a **review dead end**: `ReviewWork.Judge`, given the issue's
+`Carry` (key, pull request, children, merge column after review), folds it with
+*its branch merges cleanly with `<trunk>`[ and its build passes], but it is
+pre-approved with no pull request recorded, so nothing carries it past review -
+record its pull request with `hatch pr <KEY> <url>`* and sets `DeadEnd`. A
+`preapproved` issue that still reaches this fold with a pull request the merge
+judge holds, or on a board with no merge column after review - where recording
+a pull request would move nothing - keeps the bare sentence. A dead end's kind
+stays `other`, and [it is deadlocked](#deadlocked). The queue,
+`GET /api/work/queue` and the board's own row all print the same text.
 
 Where the project binds repositories only a verdict for one it still binds
 counts, for a merge check and a build alike, and an issue conflicts, or has a

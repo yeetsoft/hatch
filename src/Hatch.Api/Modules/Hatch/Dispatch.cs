@@ -551,7 +551,8 @@ public sealed class Dispatch(
                         ProjectLevel: gate.ProjectLevel(issue.Id),
                         ModelIsLocal: ResolveModel(issue, playbook, localLevel, models).Local,
                         Across: blocking.Across,
-                        Answering: answering));
+                        Answering: answering,
+                        DeadEnd: blocking.DeadEnd));
                 }
             }
 
@@ -584,9 +585,10 @@ public sealed class Dispatch(
             var dead = Deadlocks.Find(whole);
 
             // Marked after the loop and not inline, which is the same thing: a
-            // deadlocked row has a non-empty WaitsOn, which only a non-null
-            // fold produces, so the tier-park rewrite never touched it and its
-            // sentence is never null. BlockedKind stays what the fold said.
+            // deadlocked row has a non-empty WaitsOn or is a dead end, and both
+            // only a non-null fold produces, so the tier-park rewrite never
+            // touched it and its sentence is never null. BlockedKind stays what
+            // the fold said.
             for (var i = 0; i < rows.Count; i++)
                 if (dead.Contains(rows[i].Issue.Id))
                     rows[i] = rows[i] with { Deadlocked = true, Blocked = $"deadlocked - {rows[i].Blocked}" };
@@ -2873,7 +2875,15 @@ public sealed class Dispatch(
         // whether or not a session is spawned for it. The one exemption is a
         // review self-move the review judge already folds - nothing is handed
         // to any runner on that row, and its own sentence says why.
-        var judged = conflicts ? ReviewWork.Judge(issue, verdicts, builds, issue.RecordedBranch, gate.EffectivePreApproval(issue.Id).Level) : (ReviewWork.Judgement?)null;
+        var judged = conflicts
+            ? ReviewWork.Judge(
+                issue, verdicts, builds, issue.RecordedBranch, gate.EffectivePreApproval(issue.Id).Level,
+                new ReviewWork.Carry(
+                    IssueKey.Format(issue.Project!.Key, issue.Number),
+                    !string.IsNullOrWhiteSpace(issue.PullRequestUrl),
+                    family.Children(issue.Id).Count > 0,
+                    Columns.Advance(statuses, from) is { MergesPullRequest: true }))
+            : (ReviewWork.Judgement?)null;
         var contributionHeld = judged is { } reviewJudged
             && ReviewWork.HeldContribution(issue.Project!.RunnersWorkContributions, issue.Contribution?.PullRequestUrl, reviewJudged);
         var reviewIdle = judged is { Fold: not null } || contributionHeld;
@@ -2996,7 +3006,7 @@ public sealed class Dispatch(
                         ? $"add one to .hatch/playbooks.yaml on {checkTrunk}, or a board-wide one on the Playbooks page"
                         : "add one on the Playbooks page"),
                     BlockedKinds.Other)
-                : new Blocking(reviewBlock, BlockedKinds.Other);
+                : new Blocking(reviewBlock, BlockedKinds.Other, DeadEnd: judged is { DeadEnd: true });
 
         // A contribution's branch the project has not asked a runner to work:
         // conflict or build work the judge would dispatch, held for a person.
@@ -3671,7 +3681,7 @@ public sealed record ScanRow(
     string? Model = null, IReadOnlyList<string>? DeniedTools = null,
     IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false,
     string? ProjectLevel = null, bool ModelIsLocal = false, AcrossLine? Across = null,
-    AnswerQuestions.Candidate? Answering = null);
+    AnswerQuestions.Candidate? Answering = null, bool DeadEnd = false);
 
 /// <summary>A row <see cref="Dispatch.HeldAtProjectLineAsync"/> lists, and the line it stands at.</summary>
 public sealed record AcrossHold(ScanRow Row, AcrossLine Line);
@@ -3689,9 +3699,11 @@ public sealed record AcrossLine(string FromKey, bool IsLevel, int? Level = null)
 /// issues - their ids. <see cref="WaitsOn"/> is null where the fold waits on no
 /// issue (a person, a clock, a build); <see cref="AnyOf"/> is true where any
 /// one of them leaving is enough (a WIP limit), false where all must (a
-/// dependency).
+/// dependency). <see cref="DeadEnd"/> is true for a review row that waits on no
+/// issue and never will be carried: <see cref="Deadlocks.Find"/> counts it as
+/// stuck, and so everything waiting on it.
 /// </summary>
-public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, AcrossLine? Across = null)
+public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, AcrossLine? Across = null, bool DeadEnd = false)
 {
     /// <summary>A fold on a list that could in principle be empty: empty means it waits on no issue, so null.</summary>
     public static Blocking Waiting(string sentence, string kind, IReadOnlyList<long> ids, bool anyOf = false) =>
@@ -5403,7 +5415,7 @@ public static class Deadlocks
         var byId = rows.ToDictionary(r => r.Issue.Id);
 
         var movable = new HashSet<long>(
-            byId.Values.Where(r => r.WaitsOn is null || r.WaitsOn.Count == 0).Select(r => r.Issue.Id));
+            byId.Values.Where(r => !r.DeadEnd && (r.WaitsOn is null || r.WaitsOn.Count == 0)).Select(r => r.Issue.Id));
 
         var changed = true;
         while (changed)
