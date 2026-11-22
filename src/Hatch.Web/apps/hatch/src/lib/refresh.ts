@@ -5,6 +5,16 @@
  * decided here, where they can be tested without a DOM.
  */
 
+/** How often the board re-asks while it is on screen.
+ *
+ *  Half a runner's heartbeat. A runner beats at a fifth of its lease - 60 s at
+ *  the default 300 s - and that is how often a card's claim and its chatter can
+ *  change, so 30 s keeps the board within one heartbeat of the runner. Between
+ *  the runners page's 20 s (a control surface under a finger) and the attention
+ *  bar's minute: most moves on this board are made by the loop, with nobody
+ *  watching, and a read is a few cheap queries. */
+export const POLL_MS = 30 * 1000;
+
 /** Whether a timed or visibility-driven refresh may start now: only for a page
     that is on screen, and not while something local - a drag, a move on its way
     to the server - is holding the state still. */
