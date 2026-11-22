@@ -196,6 +196,35 @@ new session. A session that works a change out never counts as a pass, so it
 neither settles nor holds the next one. `hatch queue` shows the row as `works
 out what a change does to 3 epics`.
 
+**On the ambition's page.** An ambition's page has a Latest change section,
+after the Budget card and before Epics in flight, reading
+`GET /issues/{key}/changes` on the same tolerant terms Capabilities and
+Passes do: a failure is a sentence in the section, not the page's error. An
+ambition that was never changed draws no section, and no other type draws
+it. Only the newest change is drawn - an older one's own outcomes are never
+shown under it.
+
+It opens with what was changed, one line per event: a badge saying Added,
+Changed or Removed, then the words - struck through on a removal, the old
+ones struck through beside the new ones on a change, plain on an add. A
+change not yet worked out says so in one sentence, "This change has not been
+worked out yet. A session will work out what it does to each epic.", and
+draws no epic lines and no presses even where outcomes already exist, since a
+session may still replace them.
+
+Once worked out, one line follows for each epic with an outcome: the key as a
+link, the title, and the outcome - carries on, not touched or serves nothing
+now - with its why. An outcome of serves nothing, on an epic that is still
+open and has no decision yet, carries the two presses the epic's own page
+describes: Shelve it, which asks first naming how many open issues move with
+it, and Keep it running, which decides at once. Either calls the decision
+route and the section reloads. Once decided, the line reads who decided it
+and when, in place of the presses; an epic that has since closed or been
+deferred by another door shows its column instead. A refusal from the route
+is shown as its own sentence beside the presses. On a phone the outcome and
+the why stack under the epic's title, and the two presses wrap to fit the
+width.
+
 ## Budget
 
 An ambition can carry a dollar budget: how much it may cost. It is optional. An ambition has none until a person sets one, and nothing asks for one.

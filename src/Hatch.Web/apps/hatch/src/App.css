@@ -4408,6 +4408,75 @@ input.hatch-inline-title-input {
   }
 }
 
+/* ---- Latest change, on an ambition's issue page ----
+
+   What happened to the ambition's capabilities most recently: one line per
+   entry with a badge for what happened to it, then one line per epic with an
+   outcome - its word, its why, and either the two decision presses or the
+   line saying what was decided. Rows reuse .hatch-progress-row and
+   .hatch-progress-title; the outcome/why and the decision/presses stack under
+   the epic's title on a phone, the same break .hatch-epics-in-flight-meta
+   uses. */
+.hatch-change-entries {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+}
+
+.hatch-change-entry {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.hatch-change-entry-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-change-outcome-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-left: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-change-decision {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-change-presses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.hatch-change-shelve .hatch-form-actions {
+  margin-top: var(--sp-4);
+}
+
+@media (max-width: 40rem) {
+  .hatch-change-outcome-meta,
+  .hatch-change-decision {
+    flex: 1 0 100%;
+    margin-left: 0;
+  }
+}
+
 .hatch-key-preview {
   color: var(--muted);
   font-size: var(--t-label);
