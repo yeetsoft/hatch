@@ -172,7 +172,9 @@ public class WorkController(
         [FromQuery] string? agent = null,
         [FromQuery] List<string>? has = null,
         [FromQuery] string? signing = null,
-        [FromQuery] string? signingWhy = null)
+        [FromQuery] string? signingWhy = null,
+        [FromQuery] string? forge = null,
+        [FromQuery] string? forgeWhy = null)
     {
         if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
 
@@ -182,10 +184,10 @@ public class WorkController(
         if (refusal is not null) return BadRequest(refusal);
 
         var repos = RepositoryDeclaration.From(remote, standing, clones);
-        var signs = await CallerSigningAsync(signing, signingWhy, runner, ct);
+        var (signs, forges) = await CallerAnswersAsync(signing, signingWhy, forge, forgeWhy, runner, ct);
         var scan = await _dispatch.ScanAsync(
             offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project),
-            asking: Asking(runner), models: models, has: hasDeclared, signing: signs);
+            asking: Asking(runner), models: models, has: hasDeclared, signing: signs, forge: forges);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // The first clear row of the queue, and nothing else. Not a second
@@ -196,7 +198,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, scan.Models ?? ModelDeclaration.Unjudged, hasDeclared, Asking(runner), scan.Refusal, scan.Signing ?? signs, ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, scan.Models ?? ModelDeclaration.Unjudged, hasDeclared, Asking(runner), scan.Refusal, scan.Signing ?? signs, scan.Forge ?? forges, ct);
     }
 
     /// <summary>
@@ -325,7 +327,9 @@ public class WorkController(
         [FromQuery] List<string>? has = null,
         [FromQuery] bool takers = false,
         [FromQuery] string? signing = null,
-        [FromQuery] string? signingWhy = null)
+        [FromQuery] string? signingWhy = null,
+        [FromQuery] string? forge = null,
+        [FromQuery] string? forgeWhy = null)
     {
         if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
 
@@ -342,6 +346,7 @@ public class WorkController(
         RunnerRefusal? asRefusal = null;
         Actor? principal = null;
         var signs = SigningDeclaration.Unjudged;
+        var forges = ForgeDeclaration.Unjudged;
 
         if (!string.IsNullOrWhiteSpace(asRunner))
         {
@@ -373,6 +378,7 @@ public class WorkController(
             models = declared.Models;
             asRefusal = declared.ToRefusal();
             signs = declared.Signing;
+            forges = declared.Forge;
             hasDeclared = declared.Has;
             projects = declared.Projects.ToList();
             principal = declared.Principal;
@@ -380,12 +386,12 @@ public class WorkController(
         else
         {
             repos = RepositoryDeclaration.From(remote, standing, clones);
-            signs = await CallerSigningAsync(signing, signingWhy, runner, ct);
+            (signs, forges) = await CallerAnswersAsync(signing, signingWhy, forge, forgeWhy, runner, ct);
         }
 
         var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects,
             asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models, has: hasDeclared,
-            refusal: asRefusal, signing: signs);
+            refusal: asRefusal, signing: signs, forge: forges);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         var taken = takers
@@ -675,7 +681,9 @@ public class WorkController(
         [FromQuery] string? agent = null,
         [FromQuery] List<string>? has = null,
         [FromQuery] string? signing = null,
-        [FromQuery] string? signingWhy = null)
+        [FromQuery] string? signingWhy = null,
+        [FromQuery] string? forge = null,
+        [FromQuery] string? forgeWhy = null)
     {
         if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
 
@@ -693,6 +701,7 @@ public class WorkController(
 
         var statuses = await _dispatch.OrderedStatusesAsync(ct);
         var now = time.GetUtcNow();
+        var (signs, forges) = await CallerAnswersAsync(signing, signingWhy, forge, forgeWhy, runner, ct);
 
         // Its own gate rather than the scan's, because nothing scanned here -
         // built from the same rows and the same rule, so a named dispatch and a
@@ -713,7 +722,8 @@ public class WorkController(
             hasDeclared,
             Asking(runner),
             await RefusalAsync(runner, ct),
-            await CallerSigningAsync(signing, signingWhy, runner, ct),
+            signs,
+            forges,
             ct,
             askPeers: true);
     }
@@ -1531,7 +1541,8 @@ public class WorkController(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, PaceReadings? pace, DependencyGate gate,
         FamilyGate family, ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, ModelDeclaration models, HasDeclaration has, RunnerAsking? asking,
-        RunnerRefusal? runnerRefusal, SigningDeclaration signing, CancellationToken ct, bool askPeers = false)
+        RunnerRefusal? runnerRefusal, SigningDeclaration signing, ForgeDeclaration forge, CancellationToken ct,
+        bool askPeers = false)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
 
@@ -1720,7 +1731,7 @@ public class WorkController(
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
             has: has, requirement: requirement, refusal: runnerRefusal, leftFor: leftFor, answering: answering is not null || changing is not null,
-            signing: signing);
+            signing: signing, forge: forge);
 
         // The same deferral the scan makes, asked here for a named dispatch: a
         // row left for a runner marked preferred that is free to take it.
@@ -2015,34 +2026,47 @@ public class WorkController(
             string.IsNullOrWhiteSpace(runner) ? (await caller.ApiKeyAsync(ct))?.Name : runner, ct);
 
     /// <summary>
-    /// Whose signing a dispatch is judged on, see <see cref="Dispatch.SigningFold"/>: a
-    /// word the caller sent wins; else a keyed caller is judged on its runner's
-    /// live loops - the one <paramref name="runner"/> names, else the key's own -
-    /// and a caller with no key and no word is the board's own scan, not judged.
-    /// An install with no project that allows only signed commits is not judged
-    /// either, which spares a runner join on every poll.
+    /// Whose signing and forge a dispatch is judged on, see <see cref="Dispatch.SigningFold"/> and
+    /// <see cref="Dispatch.ForgeFold"/>. Each: a word the caller sent wins; else a keyed caller is
+    /// judged on its runner's live loops - the one <paramref name="runner"/> names, else the
+    /// key's own - and a caller with no key and no word is the board's own scan, not judged.
+    /// An install with no project that allows only signed commits does not judge signing. The
+    /// runner join is made once for both, and not at all where both words were sent.
     /// </summary>
-    private async Task<SigningDeclaration> CallerSigningAsync(
-        string? signing, string? signingWhy, string? runner, CancellationToken ct)
+    private async Task<(SigningDeclaration Signing, ForgeDeclaration Forge)> CallerAnswersAsync(
+        string? signing, string? signingWhy, string? forge, string? forgeWhy, string? runner, CancellationToken ct)
     {
         var key = await caller.ApiKeyAsync(ct);
         var name = string.IsNullOrWhiteSpace(runner) ? key?.Name : runner;
 
-        if (RunnersController.NormaliseSigning(signing) is { } word)
-            return new SigningDeclaration(name ?? "", word, RunnersController.SigningWhy(word, signingWhy), true);
+        var signWord = RunnersController.NormaliseSigning(signing);
+        var forgeWord = RunnersController.NormaliseForge(forge);
 
-        if (key is null) return SigningDeclaration.Unjudged;
-        if (!await db.Projects.AnyAsync(p => !p.AllowsUnsignedCommits, ct)) return SigningDeclaration.Unjudged;
+        var signs = signWord is not null
+            ? new SigningDeclaration(name ?? "", signWord, RunnersController.SigningWhy(signWord, signingWhy), true)
+            : null;
+        var forges = forgeWord is not null
+            ? new ForgeDeclaration(name ?? "", forgeWord, RunnersController.ForgeWhy(forgeWord, forgeWhy))
+            : null;
 
-        var none = new SigningDeclaration(name ?? "", null, null, true);
-        if (keys is null || sessions is null || name is null) return none;
+        if (key is null)
+            return (signs ?? SigningDeclaration.Unjudged, forges ?? ForgeDeclaration.Unjudged);
+
+        var judgeSigning = signs is null && await db.Projects.AnyAsync(p => !p.AllowsUnsignedCommits, ct);
+        if (!judgeSigning && forges is not null) return (signs ?? SigningDeclaration.Unjudged, forges);
+
+        var noSigning = new SigningDeclaration(name ?? "", null, null, true);
+        var noForge = new ForgeDeclaration(name ?? "", null, null);
+        if (keys is null || sessions is null || name is null)
+            return (signs ?? (judgeSigning ? noSigning : SigningDeclaration.Unjudged), forges ?? noForge);
 
         var now = time.GetUtcNow();
         var found = (await Runner.JoinAsync(db, keys, ct)).FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.Ordinal));
-        if (found is null) return none;
+        var live = found?.Sessions?.Where(s => sessions.IsLive(s, now) && s.Kind == EfHatchRunner.LoopKind).ToList() ?? [];
 
-        var live = found.Sessions?.Where(s => sessions.IsLive(s, now) && s.Kind == EfHatchRunner.LoopKind).ToList() ?? [];
-        return RunnerDeclaration.SigningOf(name, live);
+        return (
+            signs ?? (judgeSigning ? RunnerDeclaration.SigningOf(name, live) : SigningDeclaration.Unjudged),
+            forges ?? RunnerDeclaration.ForgeDeclarationOf(name, live));
     }
 
     internal static List<string> ProjectKeys(IEnumerable<string>? raw) =>

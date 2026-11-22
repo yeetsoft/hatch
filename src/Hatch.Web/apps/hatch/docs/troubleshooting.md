@@ -296,6 +296,22 @@ run](the-runner#when-it-will-not-run).
   If **Waiting on a runner** lists the ticket as *no live runner signs its commits*,
   no runner anywhere can take it: fix one, or an owner can allow unsigned
   commits in the project dialog.
+- **A ticket reads "ends in a pull request" in the queue, and the runner passes
+  over it.** The runner's forge sign-in fails, so the board does not hand it a
+  step that would push a branch and then not be able to open the pull request.
+  The sentence ends with what `gh` said:
+  *"HA-12 ends in a pull request - build-box cannot reach its forge (gh said: ...)"*.
+  Sign `gh` in on that machine (`gh auth login`, or a token the forge accepts);
+  the loop asks again within a pass and the row clears. Or leave the ticket for a
+  runner that can. Breakdown, analysis, conflict work and a project that lands on
+  its trunk are still handed to it.
+- **A ticket in review reads "its failing build cannot be read".** The same fault,
+  met on the review self-move: the runner reads the failing check's log through
+  `gh`, and cannot. *"HA-12's failing build cannot be read by build-box - it
+  cannot reach its forge (gh said: ...)"*. Fix `gh` there, or leave it for a
+  runner that can. If **Waiting on a runner** lists a step as *no live runner can
+  open a pull request*, every live runner has said its forge fails; a runner that
+  has said nothing, such as an older build, is not counted as failing.
 - **The session still asked.** The paragraph at the end of its branch section
   tells it what to do in each case, and none of them is to ask. A session that
   asked anyway is worth a note on the ticket, with the prompt it was given -
