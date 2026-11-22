@@ -978,6 +978,10 @@ dropped or pasted belongs to the project the issue, or the New issue dialog,
 is in; one dropped before this landed, or dropped anywhere else, stays
 unlinked.
 
+A session can attach a file too: it uploads with its key, naming a project,
+and links what comes back from a comment or a description. An MP4,
+QuickTime or WebM video is stored as a video whatever type it was sent with.
+
 A PNG, JPEG, GIF or WebP becomes an inline image; anything else becomes a
 download link named for the file itself, routed through
 [the API reference](api-reference). An image over 2 MB is redrawn smaller
@@ -1016,5 +1020,5 @@ description at once if nothing else was being edited, so the stored
 description never links a file that is gone; a description already
 mid-edit keeps those edits unsaved, with the row and its link already
 gone and Save still offered for the rest. Deleting an attachment is
-person-only, the same line the upload already draws - see
+person-only; uploading is not - see
 [the API reference](api-reference#attachments-images-and-import).

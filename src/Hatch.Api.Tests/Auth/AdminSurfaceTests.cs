@@ -89,7 +89,7 @@ public class AdminSurfaceTests
         "ProjectsController.GetMembers",
         // A pasted image: read by a key named in a brief.
         "ImagesController.GetImage",
-        // A stored file: read by a key named in a brief, posted and deleted by a person.
+        // A stored file: read by a key named in a brief, deleted by a person.
         "AttachmentsController.GetAttachment",
         "AttachmentsController.GetAttachments",
         "AttachmentsController.PostAttachment",
@@ -911,7 +911,6 @@ public class AdminSurfaceTests
         // A shaping press files a draft ambition and spends a shaping session
         // on it - a person's to press, not an agent's. See DreamShapeController.
         "DreamShapeController.PostShape",
-        "AttachmentsController.PostAttachment",
         "AttachmentsController.DeleteAttachment",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
@@ -929,6 +928,7 @@ public class AdminSurfaceTests
         "AssigneeController.GetAssignees",
         "AttachmentsController.GetAttachment",
         "AttachmentsController.GetAttachments",
+        "AttachmentsController.PostAttachment",
         "AttentionController.GetAttention",
         "GooseController.GetRun",
         "GooseController.ListFindings",

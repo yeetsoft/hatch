@@ -43,9 +43,8 @@ public class AttachmentsController(HatchContext db, TimeProvider time, ICallerId
     private const int SniffBytes = 16;
 
     /// <summary>
-    /// Person-only, like the image paste: an upload is somebody's file, and
-    /// widening it to a key is one attribute and one line out of the audit's
-    /// person-only list.
+    /// A person or a key may upload. A key's upload must name a project, since
+    /// a key has no person to hang the file on; a person's may leave it out.
     /// </summary>
     /// <remarks>
     /// <paramref name="file"/> is nullable on purpose. Under
@@ -57,12 +56,12 @@ public class AttachmentsController(HatchContext db, TimeProvider time, ICallerId
     /// the server.
     /// </remarks>
     [HttpPost]
-    [RequireRole(PersonRole.User)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     [RequestSizeLimit(MaxBytes + 64 * 1024)]
     public async Task<ActionResult<AttachmentDto>> PostAttachment(IFormFile? file, [FromQuery] int? projectId, CancellationToken ct)
     {
-        if (await caller.IsProgramAsync(ct))
-            return StatusCode(StatusCodes.Status403Forbidden, "files are attached by a person, not uploaded by an agent");
+        if (projectId is null && await caller.IsProgramAsync(ct))
+            return BadRequest("a key's upload names a project");
 
         // Checked before the file is read: the scope filter HA-2383 already
         // put on Projects makes an out-of-scope id read as absent with no
@@ -81,9 +80,12 @@ public class AttachmentsController(HatchContext db, TimeProvider time, ICallerId
         if (bytes.Length == 0) return BadRequest("that file is empty");
         if (bytes.Length > MaxBytes) return BadRequest($"That file is larger than {MaxBytes / (1024 * 1024)} MB.");
 
+        // Image first, then video, then what the client said.
         var contentType = PersonPhoto.TryDetectContentType(bytes.AsSpan(0, Math.Min(bytes.Length, SniffBytes)), out var sniffed, out _)
             ? sniffed
-            : DeclaredOrDefault(file.ContentType);
+            : AttachmentVideo.TryDetectContentType(bytes.AsSpan(0, Math.Min(bytes.Length, AttachmentVideo.SniffBytes)), out var video)
+                ? video
+                : DeclaredOrDefault(file.ContentType);
 
         var attachment = new EfHatchAttachment
         {
