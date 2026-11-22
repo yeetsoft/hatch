@@ -232,6 +232,7 @@ public sealed class SharedBranchTests
 
         Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("`hatch pr AER-6 <url>`", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("A plan on the ticket that names", prompt, StringComparison.Ordinal);
         Assert.Contains("## No pull request from this ticket", prompt, StringComparison.Ordinal);
         Assert.Contains("do not run `hatch pr AER-6`", prompt, StringComparison.Ordinal);
         Assert.Contains("titled with the story's key, not", prompt, StringComparison.Ordinal);
@@ -287,6 +288,7 @@ public sealed class SharedBranchTests
         Assert.Contains("This story's tasks share its branch, and none of them opens a pull request of its", prompt, StringComparison.Ordinal);
         Assert.Contains("the one pull request for all of them is yours to open", prompt, StringComparison.Ordinal);
         Assert.Contains("**Title:** `AER-5 ` and then", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("A plan on the ticket that names", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
