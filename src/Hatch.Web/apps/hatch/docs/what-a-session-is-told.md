@@ -52,6 +52,28 @@ under it. It ends with the level in one sentence: at `build`, the work built
 past the question is built but not merged until the question is answered; at
 `merge`, it is merged, and a person looks over the answer after.
 
+### The change to work out
+
+Only when the dispatch carries a change: an ambition whose capabilities were
+added to, edited or removed, sent to work out what that means for the epics
+beneath it. It stands where the question to answer stands, straight after the
+principles and ahead of the repositories, and never beside it. It opens with a
+sentence saying why the session is there, then one block for each thing that
+changed. A capability is named by its position, or by `#` and its id where it
+has none now.
+
+- `added capability 3:` and the new words, with `how to tell:` under them where
+  there is one.
+- `changed capability 3:` with `was:` and `now:` under it, the words before and
+  after. `how to tell was:` and `how to tell now:` follow only when the two
+  differ.
+- `removed capability 3:` and the words it had.
+
+Line endings in any of them are folded to spaces. Then comes the list of epics
+to weigh, one line each: a link built the way the question's link is, and the
+bare key where it cannot be, then the title, the column in brackets, and the
+positions of the capabilities the epic serves, or `serves no capability`.
+
 ### Repositories
 
 When the dispatch has any. A line for each repository the ticket's project
@@ -325,6 +347,18 @@ moves nothing, cuts no branch and opens no pull request, so there is no
 playbook row denies, and the sentence about claiming being the marker of
 starting is left out. A session that ends normally is released as worked,
 whether it answered or declined, and its work-log row names the question.
+
+A change dispatch ends the same way, because it too moves nothing. It prints one
+`hatch change outcome <ambition> <epic> carries_on|not_touched|serves_nothing
+"<why>" --change <id>` line for each epic it named, the ambition, the epic and
+the change's id filled in, and says what the three words mean. It says to
+comment on an epic that carries on, with what the change now asks of it, and
+that an epic that serves nothing is shelved by a person, not by the session. It
+moves nothing, files nothing, cuts no branch and opens no pull request, so
+[Opening a pull request](#opening-a-pull-request) and the sentence about
+claiming are left out as they are for an answering dispatch. How the runner
+tells that such a session finished is in [a change
+increment](one-increment-and-the-loop#a-change-increment).
 
 The prompt then ends with two things that are plain paragraphs, not sections,
 not with a heading of their own: a ticket moving into review may be asked for

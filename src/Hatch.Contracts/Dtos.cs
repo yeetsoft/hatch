@@ -3450,6 +3450,11 @@ public record DreamRemandResultDto(
 /// Where it is false a runner that cannot sign lets the ticket go rather than
 /// commit unsigned.
 /// </param>
+/// <param name="Changing">
+/// The change this dispatch is for: what an ambition's capabilities gained, lost
+/// or had rewritten, and the epics beneath it to weigh against that. Null on
+/// every other dispatch, and on an older board's answer.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3487,7 +3492,8 @@ public record WorkDto(
     IReadOnlyList<QuestionDto>? BuildPast = null,
     WorkAmbitionDto? Ambition = null,
     WorkQuestionDto? Answering = null,
-    bool AllowsUnsignedCommits = true);
+    bool AllowsUnsignedCommits = true,
+    WorkChangeDto? Changing = null);
 
 /// <summary>
 /// The question an answering dispatch is for: where it stands, what it says,
@@ -3510,6 +3516,32 @@ public record WorkQuestionDto(
     string Level,
     string AskedBy,
     DateTimeOffset AskedAt);
+
+/// <summary>
+/// The change a dispatch is for: its id, what was changed, and the epics to
+/// weigh against it.
+/// </summary>
+/// <param name="Id">The id of the change's newest event - what the session names in <c>--change</c> when it records an outcome.</param>
+/// <param name="Entries">What was changed, one per event, oldest first - the entries <c>GET /issues/{key}/changes</c> returns.</param>
+/// <param name="Epics">The epics beneath the ambition that the session records an outcome for.</param>
+public record WorkChangeDto(
+    long Id,
+    IReadOnlyList<ChangeEntryDto> Entries,
+    IReadOnlyList<WorkChangeEpicDto> Epics);
+
+/// <summary>
+/// One epic a change dispatch asks the session to weigh: where it stands and
+/// which of the ambition's capabilities it serves.
+/// </summary>
+/// <param name="Key">The epic's key.</param>
+/// <param name="Title">The epic's title.</param>
+/// <param name="Column">The name of the column the epic stands in.</param>
+/// <param name="Serves">The positions of the capabilities the epic serves. Empty where it serves none.</param>
+public record WorkChangeEpicDto(
+    string Key,
+    string Title,
+    string Column,
+    IReadOnlyList<int> Serves);
 
 /// <summary>
 /// The ambition standing above a dispatched issue: its key and title, and the
