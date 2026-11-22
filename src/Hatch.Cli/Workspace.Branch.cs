@@ -177,6 +177,7 @@ public sealed partial class Workspace
         ArgumentNullException.ThrowIfNull(branch);
 
         var remote = $"refs/remotes/origin/{branch}";
+        var originSha = FullSha(remote) ?? "";
         var local = $"refs/heads/{branch}";
         var keptAs = "";
         var localAhead = false;
@@ -233,6 +234,7 @@ public sealed partial class Workspace
             Kind = BranchKind.Entered,
             Branch = branch,
             Sha = sha,
+            OriginSha = originSha,
             Head = head,
             Ahead = aheadOfTrunk,
             Merge = outcome,

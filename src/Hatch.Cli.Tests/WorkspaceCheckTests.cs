@@ -395,6 +395,20 @@ public sealed class WorkspaceCheckTests : RepoFixture
     }
 
     [Fact]
+    public void A_branch_whose_only_change_is_the_readme_reports_neither_flagged_path()
+    {
+        Publish("ha-31-thing", ".hatch/README.md", "# Our own readme\n");
+        var ws = Ws();
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-31", "playbooks.yaml")!;
+
+        Assert.Null(verdict.PlaybookFilePath);
+        Assert.Null(verdict.DependencyFilePath);
+        Assert.Null(verdict.DependencyFileContent);
+    }
+
+    [Fact]
     public void A_recorded_branch_is_checked_whatever_the_key_and_a_key_named_branch_is_ignored()
     {
         Publish("ar-77-something", "x.txt", "x");

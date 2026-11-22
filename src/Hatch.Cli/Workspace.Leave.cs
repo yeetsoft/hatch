@@ -29,7 +29,7 @@ public sealed partial class Workspace
 
     private static int _oldGitSaid;
 
-    public Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null)
+    public Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null, Carrying? carry = null)
     {
         var notes = new List<string>();
         void Note(string line, bool bad = false)
@@ -97,6 +97,7 @@ public sealed partial class Workspace
         // Check reads local remote-tracking refs, which are current for a branch
         // this same tree just pushed, pull request or not.
         if (syncPullRequest) NoteSync(Sync(lower, recordedBranch), Note);
+        KeepReadmeCurrent(lower, trunk, recordedBranch, carry, Note);
         var found = Check(lower, recordedBranch: recordedBranch);
 
         return new Leaving(root, notes, found);

@@ -65,7 +65,13 @@ public interface IWorkspace
     /// </summary>
     /// <param name="syncPullRequest">The issue has a pull request, so its branch on origin is brought up to date with the trunk.</param>
     /// <param name="recordedBranch">The head branch the issue's contribution recorded, in place of a branch named for the key.</param>
-    Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null);
+    /// <param name="carry">
+    /// How this checkout was entered and how commits here are signed, so the
+    /// readme step can tell a session that only read from one that pushed, and
+    /// sign the commit it makes the way every other commit here is signed. Null
+    /// skips the step entirely - a caller with nothing to say about entry.
+    /// </param>
+    Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null, Carrying? carry = null);
 
     /// <summary>
     /// The trunk's name and every branch on origin, from one <c>ls-remote</c> -

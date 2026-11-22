@@ -3,6 +3,14 @@ namespace Hatch.Cli.Tests;
 /// <summary>Leaving the tree against real git.</summary>
 public sealed class WorkspaceLeaveTests : RepoFixture
 {
+    /// <summary>
+    /// Readme tests below rely on the once-per-process line being fresh -
+    /// cleared here rather than in <see cref="RepoFixture"/> itself, since
+    /// xUnit runs every other class that derives from it alongside this one,
+    /// and a shared reset in the base constructor would race with them.
+    /// </summary>
+    public WorkspaceLeaveTests() => Workspace.ForgetReadmeSaid();
+
     // ---- Leaving ----
 
     [Fact]
@@ -280,6 +288,315 @@ public sealed class WorkspaceLeaveTests : RepoFixture
         Assert.Contains(left.Notes, n => n.Contains("was refused"));
         Assert.Equal(before, Tip(_origin, "ha-31-thing"));
         Assert.Equal("main", Current(_work));
+    }
+
+    // ---- Readme ----
+
+    private static CommitSigning Unsigned => new(Signing.Off, true);
+
+    private static string ReadmeAt(int version) =>
+        $"<!-- Written by Hatch. Version {version}. Change this text in Hatch, not here: a newer version replaces the file. -->\nolder text\n";
+
+    private const string ForeignReadme = "# Our own readme\n";
+
+    private string ReadmeBlob(string branch) => G(_origin, "cat-file", "blob", $"{branch}:{ReadmeFile.Path}");
+
+    [Fact]
+    public void Readme_is_written_on_the_branch_when_neither_side_has_a_copy()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.Contains(left.Notes, n => n.Contains($".hatch/README.md was written on ha-31-thing (version {ReadmeFile.Version})"));
+        Assert.Equal(ReadmeFile.Text, ReadmeBlob("ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_is_replaced_on_the_branch_when_both_sides_lack_the_current_version()
+    {
+        Publish("ha-31-thing", ReadmeFile.Path, ReadmeAt(0));
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.Contains(left.Notes, n => n.Contains($".hatch/README.md was replaced on ha-31-thing (version {ReadmeFile.Version})"));
+        Assert.Equal(ReadmeFile.Text, ReadmeBlob("ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_is_untouched_when_the_branch_already_holds_the_current_version()
+    {
+        Publish("ha-31-thing", ReadmeFile.Path, ReadmeAt(ReadmeFile.Version));
+        var ws = Ws();
+        ws.Prepare();
+        var before = Tip(_origin, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_is_untouched_when_the_branch_already_holds_a_newer_version()
+    {
+        Publish("ha-31-thing", ReadmeFile.Path, ReadmeAt(ReadmeFile.Version + 1));
+        var ws = Ws();
+        ws.Prepare();
+        var before = Tip(_origin, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_is_untouched_when_the_trunk_already_holds_it_and_the_branch_lacks_it()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        MoveMain(ReadmeFile.Path, ReadmeFile.Text);
+        var ws = Ws();
+        ws.Prepare();
+        var before = Tip(_origin, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_is_written_when_the_trunk_holds_an_older_version_than_this_build_and_the_branch_has_none()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        MoveMain(ReadmeFile.Path, ReadmeAt(0));
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.Contains(left.Notes, n => n.Contains($".hatch/README.md was written on ha-31-thing (version {ReadmeFile.Version})"));
+        Assert.Equal(ReadmeFile.Text, ReadmeBlob("ha-31-thing"));
+    }
+
+    [Fact]
+    public void A_foreign_readme_on_either_side_writes_nothing_and_says_so_once_across_two_leaves()
+    {
+        Publish("ha-31-thing", ReadmeFile.Path, ForeignReadme);
+        Publish("ha-32-other", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var beforeThing = Tip(_origin, "ha-31-thing");
+
+        var left1 = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.Equal(beforeThing, Tip(_origin, "ha-31-thing"));
+        Assert.Contains(_complained, l => l.Contains(ReadmeFile.ForeignSentence));
+        var saidOnce = _complained.Count(l => l.Contains(ReadmeFile.ForeignSentence));
+
+        MoveMain(ReadmeFile.Path, ForeignReadme);
+        ws.Prepare();
+        var beforeOther = Tip(_origin, "ha-32-other");
+
+        var left2 = ws.Leave("HA-32", false, carry: new Carrying(null, Unsigned));
+
+        Assert.Equal(beforeOther, Tip(_origin, "ha-32-other"));
+        Assert.Equal(saidOnce, _complained.Count(l => l.Contains(ReadmeFile.ForeignSentence)));
+        Assert.DoesNotContain(left1.Notes, n => n.Contains(".hatch/README.md"));
+        Assert.DoesNotContain(left2.Notes, n => n.Contains(".hatch/README.md"));
+    }
+
+    [Fact]
+    public void Readme_is_untouched_when_the_increment_did_not_move_the_branch()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var tip = Tip(_origin, "ha-31-thing");
+        var before = tip;
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(tip, Unsigned));
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_is_untouched_when_only_the_runners_own_merge_forward_moved_the_branch()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        MoveMain("b.txt", "b");
+        var ws = Ws();
+        ws.Prepare();
+        var entryTip = Tip(_origin, "ha-31-thing");
+        var entry = ws.Enter("HA-31", "Thing", null);
+        Assert.Equal(MergeOutcome.Clean, entry.Merge);
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(entryTip, Unsigned));
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+    }
+
+    [Fact]
+    public void Readme_is_written_on_a_branch_new_on_origin_with_commits()
+    {
+        var ws = Ws();
+        ws.Prepare();
+        G(_work, "checkout", "--quiet", "-b", "ha-31-thing");
+        File.WriteAllText(Path.Combine(_work, "more.txt"), "more");
+        Commit(_work, "Session work");
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.Contains(left.Notes, n => n.Contains("the runner pushed them"));
+        Assert.Contains(left.Notes, n => n.Contains($".hatch/README.md was written on ha-31-thing (version {ReadmeFile.Version})"));
+        Assert.Equal(ReadmeFile.Text, ReadmeBlob("ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_is_untouched_when_origin_has_no_branch_for_the_issue()
+    {
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+    }
+
+    [Fact]
+    public void Readme_is_untouched_when_origin_has_two_open_branches()
+    {
+        Publish("ha-31-one", "one.txt", "one");
+        Publish("ha-31-two", "two.txt", "two");
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+    }
+
+    [Fact]
+    public void A_refused_readme_push_is_a_line_and_the_branch_is_as_it_was()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        Publish("ha-31-thing", "x.txt", "x");
+
+        var hook = Path.Combine(_origin, "hooks", "pre-receive");
+        File.WriteAllText(hook, "#!/bin/sh\necho 'protected' >&2\nexit 1\n");
+        File.SetUnixFileMode(hook, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        var ws = Ws();
+        ws.Prepare();
+        var before = Tip(_origin, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, Unsigned));
+
+        Assert.Contains(left.Notes, n => n.Contains("the push of .hatch/README.md to ha-31-thing was refused") && n.Contains("the branch is as it was"));
+        Assert.Contains(_complained, l => l.Contains("the push of .hatch/README.md"));
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_commit_is_signed_when_this_git_can_sign()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        G(_work, "config", "--local", "commit.gpgsign", "true");
+        G(_work, "config", "--local", "gpg.program", FakeSigner());
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, new CommitSigning(Signing.Works, true)));
+
+        Assert.Contains(left.Notes, n => n.Contains(".hatch/README.md was written"));
+        Assert.Contains("gpgsig", G(_origin, "cat-file", "commit", "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Readme_commit_is_unsigned_when_this_git_cannot_sign_and_the_project_allows_it()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, new CommitSigning(Signing.Fails, true)));
+
+        Assert.Contains(left.Notes, n => n.Contains(".hatch/README.md was written"));
+        Assert.DoesNotContain("gpgsig", G(_origin, "cat-file", "commit", "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Nothing_is_pushed_when_this_git_cannot_sign_and_the_project_requires_it()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var before = Tip(_origin, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, new CommitSigning(Signing.Fails, false)));
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+        Assert.Contains(_complained, l => l.Contains("cannot sign .hatch/README.md"));
+    }
+
+    [Fact]
+    public void A_failed_signed_commit_is_a_bad_note_and_never_falls_back_to_unsigned()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        G(_work, "config", "--local", "commit.gpgsign", "true");
+        G(_work, "config", "--local", "gpg.program", FailingSigner());
+        var before = Tip(_origin, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false, carry: new Carrying(null, new CommitSigning(Signing.Works, true)));
+
+        Assert.Contains(left.Notes, n => n.Contains(".hatch/README.md could not be committed"));
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    [Fact]
+    public void Carry_null_leaves_the_readme_untouched()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        var before = Tip(_origin, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false);
+
+        Assert.DoesNotContain(left.Notes, n => n.Contains(".hatch/README.md"));
+        Assert.Equal(before, Tip(_origin, "ha-31-thing"));
+    }
+
+    /// <summary>A gpg program that signs anything it is handed - for a test where signing has to succeed.</summary>
+    private string FakeSigner()
+    {
+        var script = Path.Combine(_temp, "fake-signer.sh");
+        File.WriteAllText(
+            script,
+            "#!/bin/sh\ncat >/dev/null\necho \"[GNUPG:] SIG_CREATED \" >&2\necho \"-----BEGIN PGP SIGNATURE-----\"\necho \"ZmFrZQ==\"\necho \"-----END PGP SIGNATURE-----\"\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return script.Replace('\\', '/');
+    }
+
+    /// <summary>A gpg program that always fails - for a test where signing has to fail.</summary>
+    private string FailingSigner()
+    {
+        var script = Path.Combine(_temp, "failing-signer.sh");
+        File.WriteAllText(script, "#!/bin/sh\ncat >/dev/null\necho 'no secret key' >&2\nexit 2\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return script.Replace('\\', '/');
     }
 
     // ---- Sync ----

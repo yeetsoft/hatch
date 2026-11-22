@@ -762,7 +762,9 @@ public sealed class WorkCommand(Runtime runtime)
                 var modelRefusal = report is { Unservable: true }
                     ? new ModelRefusalInfo(report.UnservableModel!, report.UnservableUntil, report.SessionId)
                     : null;
-                var left = await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit, preempted, modelRefusal: modelRefusal);
+                var left = await lifecycle.LeaveAsync(
+                    work, chosen, owned, CancellationToken.None, limit, preempted, modelRefusal: modelRefusal,
+                    entered: entering.Entries, signing: commitSigning);
 
                 // Something happened - the ticket moved into review, or a
                 // conflict resolved, or a build fix pushed, on a branch judged

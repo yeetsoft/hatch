@@ -505,6 +505,9 @@ public sealed class FakeWorkspace
     /// <summary>Each <c>Leave</c>, with whether the pull request was to be synced and the recorded branch it was given.</summary>
     public List<(string Path, string Key, bool Sync, string? RecordedBranch)> Left { get; } = [];
 
+    /// <summary>What each <c>Leave</c> was given to carry, in the same order as <see cref="Left"/>.</summary>
+    public List<Carrying?> LeftCarrying { get; } = [];
+
     /// <summary>What each <c>Enter</c> was given as the answer to a which-branch question.</summary>
     public List<string?> Answers { get; } = [];
 
@@ -594,10 +597,11 @@ public sealed class FakeWorkspace
             return owner.PresenceFor.GetValueOrDefault((path, key));
         }
 
-        public Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null)
+        public Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null, Carrying? carry = null)
         {
             owner.Calls.Add($"leave {path}");
             owner.Left.Add((path, key, syncPullRequest, recordedBranch));
+            owner.LeftCarrying.Add(carry);
             return new Leaving(path, [.. owner.LeaveNotes], owner.FoundFor.GetValueOrDefault(path));
         }
 
