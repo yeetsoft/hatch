@@ -4244,6 +4244,12 @@ public class EfHatchRunner
     /// <summary>Room for what git said where signing fails: one line, on the terms <see cref="MaxAgentDownLineLength"/> has.</summary>
     public const int MaxSigningWhyLength = RunnerSigning.MaxWhyLength;
 
+    /// <summary>Room for <see cref="RunnerForge.Works"/> and <see cref="RunnerForge.Fails"/>, both five characters; the same eight signing has.</summary>
+    public const int MaxForgeLength = 8;
+
+    /// <summary>Room for what the forge said where its sign-in fails: one line, on the terms <see cref="MaxSigningWhyLength"/> has.</summary>
+    public const int MaxForgeWhyLength = RunnerForge.MaxWhyLength;
+
     /// <summary>Room for a registry image reference with its tag, such as <c>ghcr.io/owner/repo/hatch-runner:abc123</c>.</summary>
     public const int MaxImageLength = 256;
 
@@ -4947,6 +4953,17 @@ public class EfHatchRunnerSession
     /// <summary>What git said, where <see cref="Signing"/> is <c>fails</c>; null otherwise.</summary>
     [MaxLength(EfHatchRunner.MaxSigningWhyLength)]
     public string? SigningWhy { get; set; }
+
+    /// <summary>
+    /// Whether this session's loop can sign in to its forge, one of <see cref="RunnerForge.Words"/>,
+    /// as its last beat said. Null where it never said, or said a word the board does not know.
+    /// </summary>
+    [MaxLength(EfHatchRunner.MaxForgeLength)]
+    public string? Forge { get; set; }
+
+    /// <summary>What the forge said, where <see cref="Forge"/> is <c>fails</c>; null otherwise.</summary>
+    [MaxLength(EfHatchRunner.MaxForgeWhyLength)]
+    public string? ForgeWhy { get; set; }
 
     /// <summary>
     /// The project keys this session's last heartbeat was answered with as the

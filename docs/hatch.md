@@ -11495,6 +11495,25 @@ only a runner whose signing fails. The board refuses work on what a
 runner said: a project that allows only signed commits is folded for a runner
 that has not said `works`, see [the dispatcher](#the-dispatcher), item 12c.
 
+**The board also keeps whether a loop can sign in to its forge.** This is the
+board's half only, and it changes no dispatch. A loop beat may carry `forge`
+(`works` or `fails`) and, beside `fails`, `forgeWhy`, and the board stores both
+on the session row (`EfHatchRunnerSession.Forge`, `ForgeWhy`) exactly as it
+stores signing: `SeedSession` writes them, and `TouchSession` rewrites both when
+a beat sends a `forge`, so a later check moves the answer and a `works` drops an
+old reason. A beat that sends none leaves them alone, and a word the board does
+not know is stored as no answer with the beat still accepted. `forgeWhy` is the
+first line of what the forge said, cut to 200 characters and kept only beside
+`fails`. A runner reads as the worst of its live loop sessions, `fails` then
+`works`, written once as `RunnerForge.Worst` in `Hatch.Contracts` for the loop
+and the board alike (`RunnerDeclaration.ForgeOf`, read in
+`RunnersController.ProjectAsync`); a session carries its own on
+`RunnerSessionDto`. A runner that never said reads null, and the legacy
+`POST /runners/{name}` route ignores both fields. Nothing on the dispatcher
+reads it, `ForgeOf` is not part of `RunnerDeclaration`, and the `/work` reads
+accept `?forge=` and `?forgeWhy=` from the loop and ignore them: the board
+stores nothing from a read.
+
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:
 

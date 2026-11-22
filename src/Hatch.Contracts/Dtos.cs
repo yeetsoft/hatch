@@ -5510,6 +5510,46 @@ public static class RunnerSigning
 }
 
 /// <summary>
+/// Whether a runner's forge sign-in works, carried on
+/// <see cref="RunnerHeartbeatRequest.Forge"/> and read back off
+/// <see cref="RunnerDto.Forge"/>. The loop and the board both fold several
+/// answers into one through <see cref="Worst"/>, so the rule is written once.
+/// </summary>
+public static class RunnerForge
+{
+    /// <summary>The forge accepted the runner's sign-in.</summary>
+    public const string Works = "works";
+
+    /// <summary>The forge refused the runner's sign-in.</summary>
+    public const string Fails = "fails";
+
+    /// <summary>The two words the board keeps; anything else is stored as no answer.</summary>
+    public static readonly string[] Words = [Works, Fails];
+
+    /// <summary>The longest <see cref="RunnerHeartbeatRequest.ForgeWhy"/> the board keeps.</summary>
+    public const int MaxWhyLength = 200;
+
+    /// <summary>
+    /// The worst of several answers: <see cref="Fails"/> before <see cref="Works"/>,
+    /// with the reason of the first one that fails. A word that is not one of
+    /// <see cref="Words"/> counts as no answer; null when none of them said.
+    /// </summary>
+    public static (string State, string? Why)? Worst(IEnumerable<(string? State, string? Why)> answers)
+    {
+        (string State, string? Why)? worst = null;
+        foreach (var (state, why) in answers)
+        {
+            if (state is null || Array.IndexOf(Words, state) < 0)
+                continue;
+            if (state == Fails)
+                return (Fails, why);
+            worst ??= (Works, null);
+        }
+        return worst;
+    }
+}
+
+/// <summary>
 /// What a person is ordering a runner to do, from the Runners page's own
 /// <c>POST .../order</c>.
 /// </summary>
@@ -5731,6 +5771,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// <see cref="Models"/> and <see cref="Has"/> are. Null where it never said.
 /// </param>
 /// <param name="SigningWhy">What git said, where <paramref name="Signing"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
+/// <param name="Forge">
+/// Whether this runner can sign in to its forge - one of <see cref="RunnerForge.Words"/>,
+/// the worst over its live loop sessions, read as <see cref="Signing"/> is.
+/// Null where it never said.
+/// </param>
+/// <param name="ForgeWhy">What the forge said, where <paramref name="Forge"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -5805,7 +5851,9 @@ public record RunnerDto(
     bool LauncherBehind = false,
     bool Preferred = false,
     string? Signing = null,
-    string? SigningWhy = null)
+    string? SigningWhy = null,
+    string? Forge = null,
+    string? ForgeWhy = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -5825,6 +5873,11 @@ public record RunnerDto(
 /// facts this session's runner reports about itself on every beat, as on
 /// <see cref="RunnerDto"/>: memory is the total across its devices.
 /// </summary>
+/// <param name="Forge">
+/// Whether this session's loop can sign in to its forge - one of
+/// <see cref="RunnerForge.Words"/>, as its last beat said. Null where it never said.
+/// </param>
+/// <param name="ForgeWhy">What the forge said, where <paramref name="Forge"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
 public record RunnerSessionDto(
     int Id,
     string? Where,
@@ -5885,7 +5938,9 @@ public record RunnerSessionDto(
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
     bool Pulling = false,
-    int? LauncherVersion = null)
+    int? LauncherVersion = null,
+    string? Forge = null,
+    string? ForgeWhy = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -6128,6 +6183,16 @@ public enum RunnerBoardDrift
 /// What git said, where <paramref name="Signing"/> is <c>fails</c> - the first line,
 /// scrubbed of keys and cut to 200 characters. Read only with that word.
 /// </param>
+/// <param name="Forge">
+/// Whether this loop can sign in to its forge - one of <see cref="RunnerForge.Words"/>.
+/// Written on every loop beat that sends it; a <c>once</c> beat and an older runner send none.
+/// Absent leaves a stored value alone; a word the board does not know is stored as no
+/// answer, and the beat is still accepted.
+/// </param>
+/// <param name="ForgeWhy">
+/// What the forge said, where <paramref name="Forge"/> is <c>fails</c> - the first line,
+/// scrubbed of keys and cut to 200 characters. Read only with that word.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -6185,7 +6250,9 @@ public record RunnerHeartbeatRequest(
     int? LauncherVersion = null,
     string? Rid = null,
     string? Signing = null,
-    string? SigningWhy = null);
+    string? SigningWhy = null,
+    string? Forge = null,
+    string? ForgeWhy = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
