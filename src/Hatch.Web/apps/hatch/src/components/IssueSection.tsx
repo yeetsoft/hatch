@@ -22,6 +22,7 @@ export function IssueSection({
   title,
   count,
   defaultOpen = true,
+  className,
   children,
 }: {
   /** The section's storage key - kebab-case, matching the row in the table
@@ -32,6 +33,9 @@ export function IssueSection({
       is. Undefined draws nothing. */
   count?: number;
   defaultOpen?: boolean;
+  /** Added after `hatch-issue-section`. The ambition page's sections pass
+      `hatch-ambition-section` so they share one gap under the heading. */
+  className?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(() => sectionOpens(readSectionStates(), id, defaultOpen));
@@ -39,7 +43,7 @@ export function IssueSection({
   return (
     <Card>
       <details
-        className="hatch-issue-section"
+        className={className ? `hatch-issue-section ${className}` : 'hatch-issue-section'}
         open={open}
         onToggle={(e) => {
           const next = e.currentTarget.open;
