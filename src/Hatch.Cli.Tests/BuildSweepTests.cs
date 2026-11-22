@@ -382,9 +382,14 @@ public sealed class BuildSweepTests : IDisposable
     {
         Skip.IfNot(OperatingSystem.IsWindows() || OperatingSystem.IsLinux(), "run by hand nowhere else");
 
+        // The copy is started under the name hatch, so it must be a program
+        // that does not choose what to be from its own name. /bin/sleep can
+        // not be trusted to: where coreutils is one program behind many names
+        // (Ubuntu 26.04 onward), a copy called hatch ends at once. Bash
+        // waiting on a read it never gets stays bash, and stays running.
         var source = OperatingSystem.IsWindows()
             ? Path.Combine(Environment.SystemDirectory, "ping.exe")
-            : "/bin/sleep";
+            : "/bin/bash";
         Skip.IfNot(File.Exists(source), source + " is not here");
 
         Directory.CreateDirectory(Folder(A));
@@ -393,16 +398,23 @@ public sealed class BuildSweepTests : IDisposable
         RecordOf(One, C);
 
         var start = new ProcessStartInfo(binary) { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var arg in OperatingSystem.IsWindows() ? new[] { "-n", "60", "127.0.0.1" } : ["60"])
+        foreach (var arg in OperatingSystem.IsWindows() ? new[] { "-n", "60", "127.0.0.1" } : ["-c", "read -r -t 60 _"])
             start.ArgumentList.Add(arg);
+        start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
 
         using var process = Process.Start(start)!;
         try
         {
-            if (OperatingSystem.IsLinux()) WaitUntilSeen(process, Folder(A));
-
             var kept = Store().Sweep(now, RunningBuilds.Paths());
+
+            // Still running once the sweep is over, so it was running while the
+            // sweep looked: a build removed now was removed from under it.
+            if (process.HasExited)
+                Assert.Fail(
+                    $"the stand-in build ended before the sweep could be judged - exit {process.ExitCode}: " +
+                    process.StandardError.ReadToEnd().Trim());
 
             Assert.True(Has(A), "a running build was removed");
             Assert.NotNull(Store().Find(A));
@@ -423,46 +435,5 @@ public sealed class BuildSweepTests : IDisposable
         }
 
         Assert.False(Has(A), "the build was not removed once nothing ran it");
-    }
-
-    // A scan right after Process.Start can miss the child before /proc catches up with it
-    // (or, on a busy box, drop it from a short-lived listing error); wait for the real scan
-    // to see it rather than asserting against whatever the first scan happened to return.
-    private static void WaitUntilSeen(Process process, string folder)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        var attempts = 0;
-        var seen = Array.Empty<string>() as IReadOnlyCollection<string>;
-        Exception? last = null;
-
-        while (DateTime.UtcNow < deadline)
-        {
-            attempts++;
-
-            try
-            {
-                seen = RunningBuilds.Paths();
-                last = null;
-            }
-            catch (Exception e)
-            {
-                seen = Array.Empty<string>();
-                last = e;
-            }
-
-            if (seen.Any(path => path.StartsWith(folder, StringComparison.Ordinal)
-                                  && (path.Length == folder.Length || path[folder.Length] == Path.DirectorySeparatorChar)))
-            {
-                Console.WriteLine($"WaitUntilSeen: {process.Id} seen after {attempts} attempt(s)");
-                return;
-            }
-
-            Thread.Sleep(20);
-        }
-
-        var target = new FileInfo($"/proc/{process.Id}/exe").LinkTarget;
-        throw new TimeoutException(
-            $"never saw pid {process.Id} (exe -> {target ?? "unknown"}, has exited: {process.HasExited}) among {seen.Count} path(s) from the last scan"
-            + (last is null ? "" : $"; the last scan threw {last}"));
     }
 }
