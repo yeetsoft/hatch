@@ -10,6 +10,7 @@ import {
   getChangelogReport,
   getAmbitions,
   getBallot,
+  getBoardHealth,
   getPlan,
   getQueue,
   getTimeline,
@@ -358,6 +359,37 @@ describe('getChangelogReport', () => {
     expect(
       await urlOf({ loose: false, from: '', bucket: null, projectId: [], level: 'story', offsetMinutes: 60 }),
     ).toBe('/api/reports/changelog?level=story&offsetMinutes=60');
+  });
+});
+
+describe('getBoardHealth', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getBoardHealth>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getBoardHealth(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends the window and repeats project once per key', async () => {
+    expect(await urlOf({ window: '8h', project: ['AER', 'FIL'] })).toBe(
+      '/api/board/health?window=8h&project=AER&project=FIL',
+    );
+  });
+
+  it('sends the window alone when no project is set', async () => {
+    expect(await urlOf({ window: '24h' })).toBe('/api/board/health?window=24h');
+  });
+
+  it('sends nothing when neither is set, or both are empty', async () => {
+    expect(await urlOf({})).toBe('/api/board/health');
+    expect(await urlOf({ window: null, project: [] })).toBe('/api/board/health');
+    expect(await urlOf({ window: '', project: null })).toBe('/api/board/health');
   });
 });
 
