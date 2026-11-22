@@ -25,6 +25,7 @@ const BEFORE: Playbook = {
   isCheck: false,
   answersQuestions: false,
   worksOutChanges: false,
+  shapesAmbition: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -108,6 +109,18 @@ describe('PlaybookProposalCard', () => {
     );
     const rows = html.match(/<tr>.*?<\/tr>/gs) ?? [];
     const flagRow = rows.find((r) => r.includes('>Works out changes<'))!;
+    expect(flagRow).toContain('>no<');
+    expect(flagRow).toContain('>yes<');
+    expect(flagRow.match(/hatch-playbook-proposal-cell--changed/g)).toHaveLength(2);
+  });
+
+  it('shows the shapes-an-ambition flag before and after as no and yes', () => {
+    const after: Playbook = { ...BEFORE, shapesAmbition: true };
+    const html = renderToStaticMarkup(
+      <PlaybookProposalCard change={change({ after, changedFields: ['shapesAmbition'] })} statuses={STATUSES} />,
+    );
+    const rows = html.match(/<tr>.*?<\/tr>/gs) ?? [];
+    const flagRow = rows.find((r) => r.includes('>Shapes an ambition<'))!;
     expect(flagRow).toContain('>no<');
     expect(flagRow).toContain('>yes<');
     expect(flagRow.match(/hatch-playbook-proposal-cell--changed/g)).toHaveLength(2);

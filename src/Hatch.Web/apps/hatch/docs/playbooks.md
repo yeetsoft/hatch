@@ -232,6 +232,13 @@ nothing but the prompt keeps a session to that. These go further:
   nothing and changes no capability and no link. It shares the pass row's
   edge, and the ordinary match never returns it: see [the
   flag](#rows-that-work-out-changes) below.
+- **The row that shapes an ambition** carries the same denied-tools list. A
+  session on it reads a draft ambition's comments and events, writes its title
+  and description in the ambition's shape, adds each capability as a row, asks
+  where the brief leaves a choice that is the person's, and records the dreams
+  it drew on. It lists no epics, files no work and never starts the ambition. It
+  sits on the reflection row's edge, and the ordinary match never returns it:
+  see [the flag](#rows-that-shape-ambitions) below.
 - **A check playbook** is the only kind of row that cannot move its ticket at
   all. While its claim is held, a key's move of that ticket is refused; the
   session records a verdict, pass or fail with its findings, and the runner
@@ -252,8 +259,8 @@ nothing but the prompt keeps a session to that. These go further:
 ### Rows that answer questions
 
 A row can be flagged as answering questions. It is for the session that is
-asked to answer one question on an issue. A row is a check, answers questions
-or works out changes - never more than one - and a save that sets two is
+asked to answer one question on an issue. A row is a check, answers questions,
+works out changes or shapes an ambition - never more than one - and a save that sets two is
 refused with those words. The flag is set beside the check flag, on the
 Playbooks page, and a person sets it; the seeded row is the only one that
 carries it by default. A flagged row shows an "answers questions" badge on the
@@ -273,9 +280,9 @@ columns](the-board-and-its-columns#who-moves-work).
 
 A row can be flagged as working out changes. It is for the session that is
 asked what one change to an ambition does to its epics in flight. A row is a
-check, answers questions or works out changes - never more than one - and a
+check, answers questions, works out changes or shapes an ambition - never more than one - and a
 save that sets two is refused with those words. The flag is set beside the
-other two, on the Playbooks page, and a person sets it; the seeded row is the
+other three, on the Playbooks page, and a person sets it; the seeded row is the
 only one that carries it by default. A flagged row shows a "works out
 changes" badge on the page, and a proposed change to the flag shows on its
 proposal card like any other field.
@@ -285,7 +292,30 @@ the same reason a row that answers questions is skipped. Hatch does not yet
 send a session to the row on its own, so for now it is only listed. A file on
 a project's trunk cannot flag a row.
 
-## The thirteen rows Hatch seeds
+### Rows that shape ambitions
+
+A row can be flagged as shaping an ambition. It is for the session that is
+asked to turn a draft ambition into a title, a description and a table of
+capabilities. A row is a check, answers questions, works out changes or shapes
+an ambition - never more than one - and a save that sets two is refused with
+those words. The flag is set beside the other three, on the Playbooks page, and
+a person sets it; the seeded row is the only one that carries it by default. A
+flagged row shows a "shapes an ambition" badge on the page, and a proposed
+change to the flag shows on its proposal card like any other field.
+
+The stock row runs from Breakdown to Backlog for the `ambition` type, any shape,
+beside the reflection row. A session on it works from what the person gave, adds
+each capability with `hatch capability add`, asks with `hatch ask` where the
+brief leaves a choice that is the person's, and records the dreams it drew on.
+It lists no epics, files no work and never starts the ambition. It carries the
+same denied-tools list as the other judging rows, so it cannot edit the tree.
+
+The ordinary match never returns a flagged row, whatever its types say, for the
+same reason a row that answers questions is skipped. Hatch does not yet send a
+session to the row on its own, so for now it is only listed. A file on a
+project's trunk cannot flag a row.
+
+## The fourteen rows Hatch seeds
 
 The column names below are the stock ones.
 
@@ -295,6 +325,7 @@ The column names below are the stock ones.
 | Breakdown → Backlog | stories | Asks for a brief title and a summary, then writes at most five acceptance criteria and cuts the plan into tasks; a story that needs more becomes an epic | Judges |
 | Breakdown → Backlog | tasks and bugs | Asks for a brief title, then formalises a note: what is wrong, where the code is, a pattern to copy, one criterion | Judges |
 | Breakdown → Review | reflections | Reads the board's own history for a window, writes the report, files each recommendation and hypothesis linked back to it, and declares no code | Judges, with denied tools |
+| Breakdown → Backlog | ambitions | Shapes a draft ambition: writes its title and description, adds each capability, asks where the brief leaves a choice, and records the dreams it drew on | Judges, with denied tools |
 | To Do → In Progress | epics | Chooses which story starts | Judges |
 | To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam, each titled in one short line, keeping the summary at the top first and plain; the tasks open their own pull requests unless the ticket shares one branch (`hatch one-pr`), in which case the last task opens the one | Judges |
 | In Progress → In Progress | ambitions | Reads the ambition's capabilities against the trunk, records a verdict on each, and carves as many epics under it as its own limit allows | Judges, with denied tools |
@@ -310,7 +341,7 @@ for dreams that bear on the epic it is turning into a plan — woven or
 hand-written alike — quotes the ones that do into the brief, and records
 which it drew on.
 
-Thirteen rows are seeded, but a stock board ends with twelve. The epic row on **To Do →
+Fourteen rows are seeded, but a stock board ends with thirteen. The epic row on **To Do →
 In Progress** is retired wherever the board pulls an epic across that move
 itself, because a session told to choose what starts would be telling the board
 what it has already decided. It goes only while its prompt is still the seeded

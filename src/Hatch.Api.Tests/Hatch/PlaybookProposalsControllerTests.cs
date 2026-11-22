@@ -236,21 +236,25 @@ public class PlaybookProposalsControllerTests
     }
 
     [Theory]
-    [InlineData(true, true, false)]
-    [InlineData(true, false, true)]
-    [InlineData(false, true, true)]
-    public async Task ARowThatWouldBeMoreThanOneOfTheThreeKinds_IsRefusedWithThePatchSentence(
-        bool isCheck, bool answersQuestions, bool worksOutChanges)
+    [InlineData(true, true, false, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, true, false)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, false, true, true)]
+    public async Task ARowThatWouldBeMoreThanOneOfTheFourKinds_IsRefusedWithThePatchSentence(
+        bool isCheck, bool answersQuestions, bool worksOutChanges, bool shapesAmbition)
     {
         var h = await NewAsync();
         var patch = new PlaybookPatchRequest(
-            null, null, null, null, null, null, IsCheck: isCheck, AnswersQuestions: answersQuestions, WorksOutChanges: worksOutChanges);
+            null, null, null, null, null, null, IsCheck: isCheck, AnswersQuestions: answersQuestions, WorksOutChanges: worksOutChanges,
+            ShapesAmbition: shapesAmbition);
         var expected = await ExpectedRefusalAsync(h, patch);
 
         var result = await h.Proposals.SubmitProposal(
             new PlaybookProposalRequest("why", null, [ChangeFrom(h.Playbook.Id, patch)]), default);
 
-        Assert.Equal("a playbook is a check, answers questions or works out changes - never more than one", expected);
+        Assert.Equal("a playbook is a check, answers questions, works out changes or shapes an ambition - never more than one", expected);
         Assert.Contains(expected, Reason(result.Result));
     }
 
@@ -668,7 +672,7 @@ public class PlaybookProposalsControllerTests
     }
 
     [Fact]
-    public async Task ApproveAll_OnAWorksOutChangesChange_WritesTheColumn_AndLeavesTheOtherTwoAlone()
+    public async Task ApproveAll_OnAWorksOutChangesChange_WritesTheColumn_AndLeavesTheOthersAlone()
     {
         var h = await NewAsync();
         var proposal = await h.ProposeAsync(
@@ -682,6 +686,24 @@ public class PlaybookProposalsControllerTests
         Assert.True(row.WorksOutChanges);
         Assert.False(row.IsCheck);
         Assert.False(row.AnswersQuestions);
+    }
+
+    [Fact]
+    public async Task ApproveAll_OnAShapesAmbitionChange_WritesTheColumn_AndLeavesTheOthersAlone()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(
+            patch: new PlaybookPatchRequest(null, null, null, null, null, null, ShapesAmbition: true));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default));
+
+        Assert.True(Assert.Single(result.Playbooks).ShapesAmbition);
+        var row = await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id);
+        Assert.True(row.ShapesAmbition);
+        Assert.False(row.IsCheck);
+        Assert.False(row.AnswersQuestions);
+        Assert.False(row.WorksOutChanges);
     }
 
     [Fact]
@@ -980,7 +1002,7 @@ public class PlaybookProposalsControllerTests
     private static PlaybookProposalChangeRequest ChangeFrom(int playbookId, PlaybookPatchRequest patch) => new(
         playbookId, patch.FromStatusId, patch.ToStatusId, patch.Types, patch.Prompt, patch.Model, patch.Effort,
         patch.Budget, patch.BriefLimit, patch.Shape, patch.DeniedTools, patch.ProjectId, patch.IsCheck,
-        AnswersQuestions: patch.AnswersQuestions, WorksOutChanges: patch.WorksOutChanges);
+        AnswersQuestions: patch.AnswersQuestions, WorksOutChanges: patch.WorksOutChanges, ShapesAmbition: patch.ShapesAmbition);
 
     /// <summary>
     /// The sentence <c>PATCH /playbooks/{id}</c> would give for the same patch, read off a twin

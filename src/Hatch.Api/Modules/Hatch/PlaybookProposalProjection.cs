@@ -72,7 +72,7 @@ internal static class PlaybookProposalProjection
             beforeDto.Model, beforeDto.Effort, beforeDto.Budget, beforeDto.BriefLimit, beforeDto.QuietLimitSeconds,
             EfHatchPlaybook.WriteDeniedTools(beforeDto.DeniedTools), beforeDto.IsCheck, beforeDto.ProjectId,
             beforeDto.MaxRunSeconds, beforeDto.LocalModel, AnswersQuestions: beforeDto.AnswersQuestions,
-            WorksOutChanges: beforeDto.WorksOutChanges);
+            WorksOutChanges: beforeDto.WorksOutChanges, ShapesAmbition: beforeDto.ShapesAmbition);
 
         var after = PlaybookPatches.Apply(before, patch);
 
@@ -141,6 +141,7 @@ internal static class PlaybookProposalProjection
         if (before.IsCheck != after.IsCheck) fields.Add("isCheck");
         if (before.AnswersQuestions != after.AnswersQuestions) fields.Add("answersQuestions");
         if (before.WorksOutChanges != after.WorksOutChanges) fields.Add("worksOutChanges");
+        if (before.ShapesAmbition != after.ShapesAmbition) fields.Add("shapesAmbition");
         if (before.ProjectId != after.ProjectId) fields.Add("projectId");
         return fields;
     }

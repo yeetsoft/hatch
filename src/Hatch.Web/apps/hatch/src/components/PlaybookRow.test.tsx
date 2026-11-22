@@ -28,6 +28,7 @@ const BASE: Playbook = {
   isCheck: false,
   answersQuestions: false,
   worksOutChanges: false,
+  shapesAmbition: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -381,6 +382,16 @@ describe('PlaybookRow', () => {
     expect(show({ ...BASE, worksOutChanges: true })).toContain('works out changes');
     expect(show(BASE)).not.toContain('works out changes');
     expect(show({ ...BASE, isCheck: true, deniedTools: ['Bash'] })).not.toContain('works out changes');
+  });
+
+  it('shows the shapes-an-ambition badge on a flagged row only', () => {
+    const show = (playbook: Playbook) =>
+      renderToStaticMarkup(
+        <PlaybookRow playbook={playbook} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
+      );
+    expect(show({ ...BASE, shapesAmbition: true })).toContain('shapes an ambition');
+    expect(show(BASE)).not.toContain('shapes an ambition');
+    expect(show({ ...BASE, worksOutChanges: true })).not.toContain('shapes an ambition');
   });
 
   it('shows the note badge only when passed a note', () => {
