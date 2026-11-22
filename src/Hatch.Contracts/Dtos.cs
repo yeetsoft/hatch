@@ -1710,6 +1710,17 @@ public record DreamCreateRequest(string Body, string? Source = null, int? Projec
 /// <param name="DreamIds">The dreams the person had on screen when they pressed, if any.</param>
 public record DreamWeaveRequest(int? ProjectId, string? Mode, string? Seed = null, IReadOnlyList<long>? DreamIds = null);
 
+/// <summary>
+/// What a person sends to file a draft ambition - see
+/// <c>DreamShapeController</c> and <c>AmbitionShape</c>. At least one of
+/// <paramref name="Words"/>, <paramref name="DreamIds"/> and <paramref name="AttachmentIds"/> is needed.
+/// </summary>
+/// <param name="ProjectId">The project the draft is born in. Nullable so a missing one is a sentence ("an ambition needs a home"), not a bound default.</param>
+/// <param name="Words">What the person wrote, quoted into the draft's description. The first line becomes its title.</param>
+/// <param name="DreamIds">Dreams the draft is shaped from. They are recorded on the draft, not copied into it.</param>
+/// <param name="AttachmentIds">Uploaded files, linked from the draft's description. Each belongs to this project or to none.</param>
+public record DreamShapeRequest(int? ProjectId, string? Words = null, IReadOnlyList<long>? DreamIds = null, IReadOnlyList<Guid>? AttachmentIds = null);
+
 /// <summary>A page of dreams, and how many matched before paging.</summary>
 public record DreamsPageDto(IReadOnlyList<DreamDto> Dreams, int Total);
 

@@ -27,7 +27,7 @@ public class ImagesController(HatchContext db) : ControllerBase
     /// can put other content types into <see cref="HatchContext.Attachments"/>,
     /// and this route stays image-only.
     /// </summary>
-    private static readonly string[] ImageContentTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+    internal static readonly string[] ImageContentTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
     [HttpGet("{id:guid}")]
     [RequireRole(PersonRole.User, AcceptKey = true)]
