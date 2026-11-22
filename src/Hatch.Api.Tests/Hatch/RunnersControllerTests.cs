@@ -4502,6 +4502,69 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task Failures_404sForARunnerTheCallerMayNotSee()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        h.Actors.Principal = null;
+        var key = await h.AddKeyAsync("here:/checkouts/owned-key", Guid.NewGuid());
+        h.Db.RunnerFailures.Add(new EfHatchRunnerFailure { ApiKeyId = key.Id, Where = "", Kind = "forge", BeganAt = Now, LastReportedAt = Now });
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Runners.GetRunnerFailures("here:/checkouts/owned-key", default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task Failures_AnswersBothListsNewestFirst_ToTheOwner()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User, runnerGoneAfterSeconds: 3600);
+        var owner = h.Actors.AddPerson("Owner", h.Caller.Key!.OwnerPersonId);
+        h.Actors.Principal = owner;
+        var key = await h.AddKeyAsync("here:/checkouts/owned-key", owner.Id);
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, "here:/tree"));
+
+        EfHatchRunnerFailure Row(string where, string kind, int began, int? ended) => new()
+        {
+            ApiKeyId = key.Id, Where = where, Kind = kind, Why = kind + " said so",
+            BeganAt = Now.AddMinutes(began), LastReportedAt = Now.AddMinutes(began), EndedAt = ended is { } e ? Now.AddMinutes(e) : null,
+        };
+
+        h.Db.RunnerFailures.AddRange(
+            Row("here:/tree", "forge", -30, null), Row("here:/tree", "signing", -10, null),
+            Row("here:/tree", "agent-signed-out", -90, -80), Row("", "forge", -60, -50),
+            // Open, but at a checkout nothing is heard from: in neither list.
+            Row("here:/elsewhere", "forge", -20, null),
+            // Another key's, ended: not this runner's.
+            new EfHatchRunnerFailure { ApiKeyId = Guid.NewGuid(), Where = "", Kind = "forge", BeganAt = Now, LastReportedAt = Now, EndedAt = Now });
+        await h.Db.SaveChangesAsync();
+
+        var read = Assert.IsType<RunnerFailuresDto>((await h.Runners.GetRunnerFailures("here:/checkouts/owned-key", default)).Value);
+
+        Assert.Equal(["signing", "forge"], read.Current.Select(f => f.Kind));
+        Assert.Equal("here:/tree", read.Current[0].Where);
+        Assert.Equal("signing said so", read.Current[0].Why);
+        Assert.Equal(Now.AddMinutes(-10), read.Current[0].BeganAt);
+        Assert.All(read.Current, f => Assert.Null(f.EndedAt));
+
+        Assert.Equal(["forge", "agent-signed-out"], read.Earlier.Select(f => f.Kind));
+        Assert.Null(read.Earlier[0].Where);
+        Assert.Equal(Now.AddMinutes(-50), read.Earlier[0].EndedAt);
+    }
+
+    [Fact]
+    public async Task Failures_AnswersTwoEmptyListsForANameWithNoKey()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync("here:/checkouts/legacy", new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var read = Assert.IsType<RunnerFailuresDto>((await h.Runners.GetRunnerFailures("here:/checkouts/legacy", default)).Value);
+
+        Assert.Empty(read.Current);
+        Assert.Empty(read.Earlier);
+    }
+
+    [Fact]
     public async Task States_AnswersAnEmptyListForARunnerWithNoRows()
     {
         var h = await NewAsync();
