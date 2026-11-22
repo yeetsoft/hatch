@@ -5216,7 +5216,7 @@ board remembered.
 
 `waitingOnARunner` lists every issue whose next move is clear, but that no live
 runner can take: every live runner's own declaration folds it on the
-[model fold, the refusal fold, the dependency fold and the signing fold](#what-a-pass-skipped), and on nothing
+[model fold, the refusal fold, the dependency fold, the signing fold and the forge fold](#what-a-pass-skipped), and on nothing
 else. A runner is live when it is being heard from, running, and not out of
 usage - the same test a peer is held to when one runner's let-go ticket is left
 for another. Each entry is `key`, `title`, `type`, `move` (the column the move
@@ -5246,6 +5246,13 @@ when a move needs more than one:
   purpose: a project that wants signed commits wants a runner known to sign,
   so an unprofiled fleet is spared the scans only where no project allows
   only signed commits.
+- `no live runner can open a pull request` - the move ends in a pull request
+  (see item 12d of [the dispatcher](#the-dispatcher)), and every live runner has
+  said its forge sign-in `fails`. The reverse of the signing shape: a live
+  runner that never said is not judged, so one such runner, or one that said
+  `works`, empties the entry. Every runner in service is older than the
+  check, and counting silence as failure would list work no runner has been
+  asked about.
 
 A split fleet lists nothing, deliberately: where one runner lacks the model
 and another lacks the tool, no single sentence is true of all of them, and the
@@ -6907,7 +6914,40 @@ missing configuration:
     sentence word for word and a peer that cannot sign is no peer that
     could take a ticket another runner let go of. A project that allows
     unsigned commits is never folded, for any caller. Said after the column
-    item and before the toolchain item.
+    item and before the forge item.
+12d. The asking runner's **forge sign-in fails**, and the move needs the forge.
+    Only a runner that said `fails` is folded: a runner that has said nothing,
+    and every runner older than the check, is not judged. That is the one place
+    this differs from the signing item, where no answer counts as not signing.
+    A move needs the forge when it is either of:
+    - a step out of the implementation column into another column, in a
+      project that lands by pull request, for a ticket that opens its own pull
+      request. A task that rides its story's one pull request opens none and is
+      not folded; the story whose own step opens that pull request is, but not
+      while it still has open children, which are the work. An epic or an
+      ambition is never folded.
+    - the review self-move while it is build work. The runner reads the failing
+      check's log through `gh` before it spawns anything, and a runner that
+      cannot reach its forge would wait there on every pass.
+
+    Never a hop. Never an idle review self-move the review judge already folds.
+    Never conflict work, which needs only git. Never a column left of
+    implementation. Never a project that lands on its trunk. Kind `other`,
+    waiting on nobody. *"HA-12 ends in a pull request - build-box cannot reach
+    its forge (gh said: HTTP 401)"* or *"HA-12's failing build cannot be read
+    by build-box - it cannot reach its forge (gh said: HTTP 401)"*, with no
+    parentheses where the runner gave no reason; a runner with no name reads
+    *this runner*. Whose answer is read is as for signing: `?forge=` where the
+    caller sent `works` or `fails` (a `?forgeWhy=` rides beside `fails`; any
+    other word counts as not sent), else, for a caller holding a key, the worst
+    answer of the live loop sessions of the runner `?runner=` names or the
+    calling key's own. `?asRunner=` and every peer scan read that runner's own
+    sessions and ignore `?forge=`, so `takers`, `untaken` and the let-go
+    deferral judge each peer on its own answer: a peer whose forge fails is no
+    peer that could take a step another runner let go of, and
+    `runnerCapacity` prints the sentence word for word. A caller with no key
+    and no `?forge=` is the board's own scan and is not judged. Said after the
+    signing item and before the toolchain item.
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
@@ -8506,7 +8546,8 @@ question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
 runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, a model it cannot
 spawn or refuses, a column it does not work, a project that allows only signed
-commits when it has not said it signs them, or a
+commits when it has not said it signs them, a step that ends in a pull request
+when the runner's forge sign-in fails, or a
 clean, checked review row a passing check would carry into the merge column
 but no check playbook covers the move for, among them: no new kind.
 
@@ -8564,7 +8605,8 @@ assignee, an unanswered question, a repository this runner lacks, a runner tag t
 project asks for and this runner lacks, a ticket omitted for this runner, a flagged-dangerous issue a runner that
 refuses dangerous work was asked about, a model the runner cannot spawn, a model the
 runner refuses, a column it does not work, a project that allows only signed
-commits it has not said it signs, an unmet dependency, an open child, a
+commits it has not said it signs, a step that ends in a pull request for a
+runner whose forge sign-in fails, an unmet dependency, an open child, a
 full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
 — for an issue in review — the verdict on its branch, then [the hop](#the-hop),
 and last the missing playbook — last because it is only worth saying about an
@@ -11599,8 +11641,7 @@ only a runner whose signing fails. The board refuses work on what a
 runner said: a project that allows only signed commits is folded for a runner
 that has not said `works`, see [the dispatcher](#the-dispatcher), item 12c.
 
-**The board also keeps whether a loop can sign in to its forge.** This is the
-board's half only, and it changes no dispatch. A loop beat may carry `forge`
+**The board also keeps whether a loop can sign in to its forge.** A loop beat may carry `forge`
 (`works` or `fails`) and, beside `fails`, `forgeWhy`, and the board stores both
 on the session row (`EfHatchRunnerSession.Forge`, `ForgeWhy`) exactly as it
 stores signing: `SeedSession` writes them, and `TouchSession` rewrites both when
@@ -11613,10 +11654,12 @@ first line of what the forge said, cut to 200 characters and kept only beside
 and the board alike (`RunnerDeclaration.ForgeOf`, read in
 `RunnersController.ProjectAsync`); a session carries its own on
 `RunnerSessionDto`. A runner that never said reads null, and the legacy
-`POST /runners/{name}` route ignores both fields. Nothing on the dispatcher
-reads it, `ForgeOf` is not part of `RunnerDeclaration`, and the `/work` reads
-accept `?forge=` and `?forgeWhy=` from the loop and ignore them: the board
-stores nothing from a read.
+`POST /runners/{name}` route ignores both fields. The board refuses work on it:
+a runner that said `fails` is folded off a step that ends in a pull request, and
+off build work in review, see [the dispatcher](#the-dispatcher), item 12d. A
+runner that said nothing is not judged. The `/work` reads accept `?forge=` and
+`?forgeWhy=` from the loop, and judge them the way they judge `?signing=`; the
+board stores nothing from a read.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:
