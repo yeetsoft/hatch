@@ -296,7 +296,7 @@ The column names below are the stock ones.
 | Breakdown → Backlog | tasks and bugs | Asks for a brief title, then formalises a note: what is wrong, where the code is, a pattern to copy, one criterion | Judges |
 | Breakdown → Review | reflections | Reads the board's own history for a window, writes the report, files each recommendation and hypothesis linked back to it, and declares no code | Judges, with denied tools |
 | To Do → In Progress | epics | Chooses which story starts | Judges |
-| To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam, each titled in one short line, keeping the summary at the top first and plain | Judges |
+| To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam, each titled in one short line, keeping the summary at the top first and plain; the tasks open their own pull requests unless the ticket shares one branch (`hatch one-pr`), in which case the last task opens the one | Judges |
 | In Progress → In Progress | ambitions | Reads the ambition's capabilities against the trunk, records a verdict on each, and carves as many epics under it as its own limit allows | Judges, with denied tools |
 | In Progress → In Progress | ambition questions | Reads what the ambition and the trunk say and answers one question, or leaves it open | Judges, with denied tools |
 | In Progress → In Progress | ambition changes | Reads one change to an ambition and each epic it names, and gives each epic exactly one outcome | Judges, with denied tools |
