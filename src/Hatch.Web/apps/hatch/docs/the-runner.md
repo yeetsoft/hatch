@@ -19,8 +19,8 @@ are not sitting at, and prints the revision it was built from. That is the same
 build as the page serving it, so the two are never a version apart. Four
 platforms are built: `win-x64`, `osx-arm64`, `osx-x64` and `linux-x64`.
 
-On a Hatch with the wall up, an admin makes the runner's key from **Agents →
-Runners → Create runner**. The secret is shown once, with the `hatch config
+On a Hatch with the wall up, a signed-in person makes the runner's key from **Agents →
+Runners → Create runner** - a user for themselves, an admin for anyone. The secret is shown once, with the `hatch config
 --origin` and `hatch config --key` commands that take it (see [Runners and their
 keys](people-roles-and-keys#runners-and-their-keys)). That key can also fetch
 its own platform's build straight from `/api/runner/download/<rid>`, and check
@@ -42,6 +42,83 @@ installing first — the wrapper itself needs the .NET SDK, and bash 3.2+ or
 PowerShell 5.1+. `make build-hatch` builds the binary once so every command
 after is fast, and `make publish-hatch` produces the four platform binaries
 the Runner page serves.
+
+A runner downloads once. A downloaded `hatch` running a loop can be moved to a
+newer build of the board it works for: it fetches the build with the runner's
+own key, checks it, and runs the loop's next restart from it, and on any failure
+carries on with the build it had. Builds are kept at `versions/<sha>/`, and each
+board's record of its current and previous build is in `boards/`, both in the
+per-user folder (the one `hatch config` writes to). Deleting `versions/` by
+hand is safe: the next start runs the downloaded file itself, and the board is
+asked again.
+
+A machine keeps only the builds it can still need. After a change of build
+succeeds, and at each start, the launcher removes from `versions/` every build
+that is not the current or previous build of a board this machine has run a loop
+against in the last thirty days, and that nothing is running. "Running" covers
+another loop on the same machine, each member of a `--runners` set, a session's
+`hatch` calls and its hooks, and a plain command in flight. A download that was
+never finished is removed once it is a day old. Nothing outside `versions/` is
+ever removed, and the launcher's own file never is. A build that cannot be removed
+is left, tried again at the next change of build and the next start, and costs the
+night nothing; the launcher says so in one line, once.
+
+A plain command runs on that build too. `hatch board`, `hatch show`, `hatch
+work` and every other command except the loop's own, typed outside a loop, is
+handed on to the build recorded as current for the board the call is aimed at
+(the profile, then an exported variable, then `scripts/.env`, then the per-user
+file, as for any call), with the same arguments, and the downloaded file waits
+for it. Where no build is recorded for that board, or the call names no board,
+it runs the newest build kept: the one whose file was written last. It never
+reaches the network to decide, never downloads and never changes which build a
+board is on. Where nothing is kept, or the build chosen is the downloaded
+file itself, the downloaded file answers the command. A recorded build that is
+gone, or will not start, does not stop the command: the downloaded file answers
+it and says so in one line on standard error. A build that starts and then
+fails has given the command's own result, and is not retried.
+
+The exit code, the three streams and the terminal pass through untouched, so
+`hatch answer`, the prompts of `hatch config` and `hatch work -i` work as they
+always did, and a pipe into or out of `hatch` still works. A signal is passed on
+once and then waited for. The one thing that does not pass through exactly is a
+child a signal ended on Linux or macOS: the downloaded file answers its exit
+code, 128 plus the signal, and does not die of the signal itself. The cost is
+one more process start. `go-to-work`, `do-my-work`, `version`, `inbox` and
+`hatch --help` are not handed on; nor is a checkout through `scripts/hatch.sh`
+or `scripts/hatch.ps1`, a build nobody stamped, or the container image's build.
+A build that was handed a command never hands it on again.
+
+The `hatch` on your `PATH` also keeps itself current, so the download is for good.
+When the loop starts as a launcher, before anything else, it looks at the builds
+kept under `versions/` that a board's record names as current. If one has a higher
+sequence than the launcher, the launcher makes the file at its own path that build
+and carries on as it, and says one line: `hatch: updated itself to build <sha>`.
+It reads the sequence by running the kept build's `version`. After a change of
+build in the middle of a night it does the same for the build it has just kept.
+Newer means a higher sequence and nothing else: a board that rolls back moves the
+loop's build and leaves the launcher alone, and with two boards on different
+builds the launcher becomes the newer.
+
+The new file is written beside the old one, run once from there and asked for its
+revision, and only then put in place, so a copy that will not run replaces
+nothing. On macOS and Linux a change of build in the middle of a night replaces
+the process itself in its own place: the process id, the terminal, the arguments
+and the night's state are the same on the far side, and the next loop starts as
+it would have. On Windows a running file cannot be overwritten, only renamed, so
+the launcher renames its own file aside (as `hatch.exe.old-<n>`), puts the new
+build at the path and carries on as it was; the next start runs the new file. At
+a start it starts the new file once and waits for it, passing its exit code on,
+and there is never more than that one extra process. The file left aside is
+removed at a later start. A copy or rename that fails, such as a folder on `PATH`
+you cannot write to, never ends a night or stops a command: the launcher says one
+line why, once per start, and carries on with the build it has.
+
+If the `hatch` on your `PATH` is a link, the launcher follows it: the file the
+link points at is replaced, and the link is left as it was. A build nobody
+stamped, a checkout through `scripts/hatch.sh` or `scripts/hatch.ps1`, a file
+named by `HATCH_RUNNER_BIN` and the container image's build never replace
+themselves. A launcher older than version 3 cannot do any of this; the board
+shows it as behind, and it needs one last download.
 
 That page carries a command reference beneath the download, so a person who
 has just downloaded `hatch` has it in front of them. The whole reference is
@@ -85,7 +162,7 @@ board it offers `Create a runner on this board? [Y/n]`, then a suggested
 `Runner name`, and mints a fresh key under that name - written here as this
 checkout's key, with no owner until an admin sets one; a name already taken
 refuses and writes nothing. Against a wall that is on, the probe is refused
-outright and `hatch config` says there is no key - an admin creates the
+outright and `hatch config` says there is no key - a signed-in person creates the
 runner on the Runners page, then `hatch config --key <key>` picks it up. A
 key that does not start `hatch_ak_` prints a warning but is carried on
 anyway, since the call that follows is the one that actually knows whether
@@ -224,6 +301,15 @@ HATCH_LAUNCHER_VERSION  which version of the launcher started this loop; the
                      launcher sets it, and a person never does
 HATCH_LAUNCHER_PATH  the launcher's own file; the launcher sets it, and a person
                      never does
+HATCH_BUILD_HOLD     builds the launcher will not move to, sha=unix seconds or
+                     sha=never; the launcher sets it
+HATCH_BUILD_NOTE     one line the launcher has the child say at start; the
+                     launcher sets it
+HATCH_LAUNCHER_HANDOFF  1 on the process a launcher started in its own place, so
+                     it does not look for a newer build again; the launcher
+                     sets it
+HATCH_LAUNCHER_RESUME  the night's directory, for a launcher that took over from
+                     another at a change of build; the launcher sets it
 HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
                      on PATH
 ```
@@ -434,6 +520,17 @@ prints the same line; with none free, it takes the move on the row's ordinary
 model and the work answer says `modelFellBack`. A runner that is working,
 paused or omitted on the ticket is not free. See [the local
 model](playbooks#the-local-model).
+
+**A preferred runner.** A runner an admin marks preferred on the Runners page
+is given work first. A runner that is not marked, asking while a marked one is
+live, idle and able to take a clear row, is told the row is left for it, *"HA-12
+in In Progress is left for build-box, which is preferred and free"*, and
+`hatch queue` prints the same line. Idle means no live claim and no model being
+pulled; able means the marked runner's own tags, omissions, refused models and
+column rule let the row through. A marked runner is never told this, a move that
+needs no session is never held back by it, and with no marked runner free the
+row is clear as it always was. The local-model level of the same name is a
+different rule.
 
 ### Has
 
@@ -714,6 +811,142 @@ The rule leaves hops alone: a hop spawns no session, so a runner that does not
 work a column can still carry a ticket across it. It also leaves an idle review
 self-move to the review judge's own sentence. A runner that is wrong on both
 the tags and the columns hears about the tags first.
+
+## Signing commits
+
+A machine may be set to sign every commit, with a key that is locked, a program
+that is not there, or an agent that is not running. A session on it would find
+that out at its first commit, with nobody there to say what to do. So the loop
+asks git first, in each checkout it serves, and acts on the answer.
+
+**The check.** It asks git itself, so it reads the machine's own key, program
+and format. The answer is one of three:
+
+- `off` - git is not set to sign commits here. Nothing more is done.
+- `works` - git is set to sign, and signed a test object.
+- `fails` - git is set to sign, and signing failed or did not answer within
+  twenty seconds. It carries the first line of what git complained of.
+
+The test object is one commit made with `git commit-tree -S` and left
+unreachable. It moves no ref and touches neither the index nor the working
+tree. It cannot prompt, since its input is closed, and it ends the signing
+program, and everything that program started, when the time is up. It sets no
+identity of its own, because git's default signing key comes from the one the
+checkout already has.
+
+**At the start.** `go-to-work`, `do-my-work` and `work` run the check in each
+checkout they serve. For one that answers `fails` they print one line: what git
+said, and that commits will be unsigned where a project allows it. `off` and
+`works` print nothing.
+
+**Before each increment.** The loop runs it again in the checkout the session
+will run in - after the workspace reset, before the issue's branch is prepared,
+since the merge of the trunk into that branch is the first commit. A checkout
+that answered `fails` is not asked again for thirty minutes.
+
+**What the project allows.** The dispatch says whether the project allows
+unsigned commits (`AllowsUnsignedCommits`, true when the board does not say). An owner
+sets it in the project dialog.
+
+- **Signing fails, and unsigned commits are allowed.** For that increment the
+  loop sets `commit.gpgsign` and `tag.gpgsign` to false through
+  `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, after
+  any pairs the environment already holds. It does so for every git call of its
+  own - the merge of the trunk into the branch, the commit that saves work when
+  an account runs out of usage - and for the session it spawns, whichever agent
+  it is and attached or not. Nothing is written to a git settings file, and the
+  next increment starts without the override. Git older than 2.31 does not read
+  those variables: there the loop passes `-c commit.gpgsign=false` on its own
+  calls, and the prompt tells the session to do the same.
+- **The machine cannot sign (`off` or `fails`), and only signed commits are
+  allowed.** The board does not hand such a runner a move on that project: the
+  ticket reads as blocked for it, with a sentence saying the project allows
+  only signed commits and that this runner does not sign, or has not said
+  whether it does. If one reaches the loop anyway, the loop does not turn
+  signing off and spawns nothing. It lets the
+  ticket go with one comment saying this runner cannot sign, and what git said.
+  The next one in a row is flagged and waits, as any ticket that keeps coming
+  back does. It is not an increment run, so it never counts toward the three
+  failures in a row that end a night. `hatch work AER-12` refuses the same way
+  and exits `78`.
+- **The machine cannot sign, and no project it serves allows unsigned commits.**
+  Every ticket would be let go again, so the loop says so and exits `78`
+  (`EX_CONFIG`) at the start, before its first heartbeat and with nothing
+  claimed. It reads the projects it was started for - its `--project` list, or
+  every project its key reaches - and the complaint names the first five of
+  them, what git said in each checkout where signing fails (or that git is not
+  set to sign), and the two ways out: fix signing on this machine, or have an
+  owner allow unsigned commits in the project's settings. It carries on as
+  usual where any checkout can sign or any of those projects allows unsigned
+  commits, and it fails open: a board that does not answer, or one too old to
+  list the setting, reads as "carry on", so it never exits `78` against an older
+  board. A machine that could sign at the start and cannot at a later ticket
+  gets the same answer there: the ticket is let go as above, the closing tally
+  prints, and the loop exits `78` holding no claim. A wrapper script, a
+  downloaded build's launcher and a runner set's host do not
+  run it again on `78`, since nothing a restart does changes what git says.
+  A set's host exits `78` only when every member did.
+- **Signing works.** Nothing is changed. The prompt says what to do if a commit
+  still cannot be signed - see [the branch](what-a-session-is-told#the-branch).
+
+**What the board is told.** The loop says what it found on every heartbeat, as
+`signing` (`off`, `works` or `fails`) and, beside `fails`, `signingWhy`: the
+first line of what git said, with any key in it masked and at most 200
+characters. A runner serves several checkouts and the board keeps one answer for
+it, the worst of them: `fails`, then `off`, then `works`. The answer is the
+latest one for each checkout, so it moves when a later check changes it - the
+start-up line, or the check before an increment - and a checkout not yet asked
+says nothing. A `hatch work` run sends none, since it shares the loop's own row.
+A runner that has said nothing, and an older one, shows nothing.
+
+The **Runners** page reads it on the runner's own page as *Signs its commits*,
+*Does not sign its commits* or *Signing fails* with what git said, and marks a
+runner whose signing fails with a **signing fails** badge in the list. `hatch
+runners` prints the same on the runner's line
+([`runners`](cli-reference#runners)).
+
+The board also acts on it. Where a project allows only signed commits, a runner
+whose signing is `off` or `fails`, or that has said nothing, is not handed a
+move on it: `hatch queue` shows the ticket blocked with the reason, and the
+loop passes over it in silence. Only `works` clears it. A project that allows
+unsigned commits is not affected, for any runner. The **Waiting on a runner** list
+names a ticket no live runner can take for this, as *no live runner signs its
+commits*.
+
+**What the CLI sends on a read.** A beat is not the only way the board hears. The
+CLI also puts its answer on every read a dispatch is judged on - `work/next`,
+`work/queue`, `work/KEY`, and a hop - as `signing=off`, `signing=works` or
+`signing=fails`, with `signingWhy=` beside `fails`, escaped. It is the same
+worst-of-the-checkouts answer a beat carries. Each of those commands asks git in
+its checkouts before its first read, so the answer is never missing for want of
+a beat: `go-to-work` and `do-my-work` at the start, `hatch work AER-12` (with or
+without `--dry-run`) before it reads the ticket, and `hatch queue` and `hatch
+next` in each checkout they run in. Where git is not set to sign that costs
+nothing; where it is, it costs one test signature per checkout. A machine with no
+checkout to ask sends no parameter, and the board reads that as having said
+nothing. So a ticket in a project that allows only signed commits is left for a
+runner that signs, a runner that cannot sign is not held up waiting for its own
+beat, and `hatch queue` shows what the board would hand this machine.
+
+## Preferred
+
+A key can also be marked **preferred**, which says its runner takes work before
+the others. While a marked runner is live and idle, the board leaves a clear row
+for it: a runner that is not marked, asking for that row, is told it is left for
+the marked one. It is set on the Runners page alone - not `hatch config` and not
+a `HATCH_*` variable - and it lives on the key's config row beside the refused
+models.
+
+The board reads it on every dispatch read, so a change binds on the runner's
+next dispatch with no restart. `hatch queue`, run as another runner, says why in
+one sentence: *HA-12 in In Progress is left for build-box, which is preferred and
+free*. A marked runner is never told this. The mark is not a refusal and takes
+nothing away from anyone: with no marked runner free, the row is clear as it
+always was.
+
+`hatch runners` closes a marked runner's row with `  preferred`, after the
+column rule, and `--json` carries `preferred` on every row
+([`hatch runners`](cli-reference#runners)).
 
 ## The runner's name
 
@@ -1234,6 +1467,12 @@ loop at every sign-in, with no terminal and no signed-in session required:
   where `systemctl --user show-environment` succeeds; otherwise an XDG
   autostart entry (`~/.config/autostart/<id>.desktop`), for a login that
   never starts the user session systemd would run the unit under.
+
+In a downloaded `hatch` the item names the launcher, the file you downloaded,
+and never a build kept under `versions/`, so removing an old build cannot break
+the loop that starts at sign-in. Run from a kept build with no launcher above it,
+`hatch standby install` refuses in one sentence. An item an older build wrote is
+still found by `hatch standby show`.
 
 It starts the loop **paused**: the loop heartbeats but takes no ticket until
 something sets it running - the Runners page's **Resume**, or a `go-to-work

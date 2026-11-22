@@ -51,6 +51,9 @@ namespace Hatch.Contracts;
 /// <param name="FilesContributions">Whether the board files its repositories' outside pull requests as contributions - see <see cref="EfHatchProject.FilesContributions"/>. Off by default.</param>
 /// <param name="FilesContributionsBy">Who last changed <paramref name="FilesContributions"/>, or null until the first change - see <see cref="EfHatchProject.FilesContributionsBy"/>.</param>
 /// <param name="FilesContributionsAt">When <paramref name="FilesContributions"/> was last changed, or null until the first change - see <see cref="EfHatchProject.FilesContributionsAt"/>.</param>
+/// <param name="AllowsUnsignedCommits">Whether the project allows commits that are not signed - see <see cref="EfHatchProject.AllowsUnsignedCommits"/>. On by default.</param>
+/// <param name="AllowsUnsignedCommitsBy">Who last changed <paramref name="AllowsUnsignedCommits"/>, or null until the first change - see <see cref="EfHatchProject.AllowsUnsignedCommitsBy"/>.</param>
+/// <param name="AllowsUnsignedCommitsAt">When <paramref name="AllowsUnsignedCommits"/> was last changed, or null until the first change - see <see cref="EfHatchProject.AllowsUnsignedCommitsAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -68,7 +71,8 @@ public record ProjectDto(
     bool RunnersWorkContributions = false, string? RunnersWorkContributionsBy = null, DateTimeOffset? RunnersWorkContributionsAt = null,
     string OnePullRequestPolicy = OnePullRequestPolicies.Optional, string? OnePullRequestPolicyBy = null, DateTimeOffset? OnePullRequestPolicyAt = null,
     string Priority = ProjectPriorities.Normal, string? PriorityBy = null, DateTimeOffset? PriorityAt = null,
-    bool FilesContributions = false, string? FilesContributionsBy = null, DateTimeOffset? FilesContributionsAt = null)
+    bool FilesContributions = false, string? FilesContributionsBy = null, DateTimeOffset? FilesContributionsAt = null,
+    bool AllowsUnsignedCommits = true, string? AllowsUnsignedCommitsBy = null, DateTimeOffset? AllowsUnsignedCommitsAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -177,6 +181,9 @@ public record ProjectRunnersWorkContributionsWriteRequest(bool RunnersWorkContri
 
 /// <summary>A write to whether a project files outside pull requests as contributions - see <see cref="EfHatchProject.FilesContributions"/>.</summary>
 public record ProjectFilesContributionsWriteRequest(bool FilesContributions);
+
+/// <summary>A write to whether a project allows unsigned commits - see <see cref="EfHatchProject.AllowsUnsignedCommits"/>.</summary>
+public record ProjectAllowsUnsignedCommitsWriteRequest(bool AllowsUnsignedCommits);
 
 /// <summary>A write to whether a project's one-PR default binds its stories - see <see cref="EfHatchProject.OnePullRequestPolicy"/>.</summary>
 public record ProjectOnePrPolicyWriteRequest(string Policy);
@@ -3437,6 +3444,12 @@ public record DreamRemandResultDto(
 /// because an open <c>build</c> or <c>merge</c> question stands beneath it.
 /// Null on every other dispatch.
 /// </param>
+/// <param name="AllowsUnsignedCommits">
+/// Whether the project lets a runner that cannot sign a commit make it unsigned.
+/// True by default, and absent from an older board's answer, which reads as true.
+/// Where it is false a runner that cannot sign lets the ticket go rather than
+/// commit unsigned.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3473,7 +3486,8 @@ public record WorkDto(
     bool ModelFellBack = false,
     IReadOnlyList<QuestionDto>? BuildPast = null,
     WorkAmbitionDto? Ambition = null,
-    WorkQuestionDto? Answering = null);
+    WorkQuestionDto? Answering = null,
+    bool AllowsUnsignedCommits = true);
 
 /// <summary>
 /// The question an answering dispatch is for: where it stands, what it says,
@@ -4478,34 +4492,6 @@ public record WorkLogByPlaybookRowDto(
     long? MaxPeakContextTokens,
     double? MedianPromptChars);
 
-// ---- Overnight ----
-
-/// <summary>
-/// What landed in the newest night - see <c>Overnight.NewestNight</c> for what
-/// a night is and where it is cut.
-/// </summary>
-/// <param name="From">When the night's earliest landing landed, or null when nothing has ever landed.</param>
-/// <param name="To">When the night's newest landing landed, or null when nothing has ever landed.</param>
-/// <param name="Count">How many issues landed - the same as <c>Rows.Count</c>, carried so a client does not have to count the list to draw the headline.</param>
-/// <param name="Rows">Epics, then bugs, then stories, then tasks; within one type, most descendants first. Empty when nothing has ever landed.</param>
-/// <param name="Unseen">How many of <c>Rows</c> landed after this reader's own mark - every row, for a reader who has never read the page.</param>
-public record OvernightDto(
-    DateTimeOffset? From,
-    DateTimeOffset? To,
-    int Count,
-    IReadOnlyList<OvernightRowDto> Rows,
-    int Unseen = 0);
-
-/// <summary>One issue that landed in the night, as a row draws it.</summary>
-/// <param name="DescendantCount">Every issue below this one, at any depth - see <c>Rollup.Tree.DescendantCount</c>.</param>
-public record OvernightRowDto(
-    string Key,
-    string Type,
-    string Title,
-    string ProjectKey,
-    DateTimeOffset LandedAt,
-    int DescendantCount);
-
 // ---- Changelog ----
 
 /// <summary>
@@ -5320,6 +5306,56 @@ public static class RunnerAgentDownKinds
 }
 
 /// <summary>
+/// Whether a runner's commits are signed, carried on
+/// <see cref="RunnerHeartbeatRequest.Signing"/> and read back off
+/// <see cref="RunnerDto.Signing"/>. The loop and the board both fold several
+/// answers into one through <see cref="Worst"/>, so the rule is written once.
+/// </summary>
+public static class RunnerSigning
+{
+    /// <summary>The checkout does not ask for signed commits.</summary>
+    public const string Off = "off";
+
+    /// <summary>The checkout asks for signed commits and a trial signature succeeded.</summary>
+    public const string Works = "works";
+
+    /// <summary>The checkout asks for signed commits and a trial signature failed.</summary>
+    public const string Fails = "fails";
+
+    /// <summary>The three words the board keeps; anything else is stored as no answer.</summary>
+    public static readonly string[] Words = [Off, Works, Fails];
+
+    /// <summary>The longest <see cref="RunnerHeartbeatRequest.SigningWhy"/> the board keeps.</summary>
+    public const int MaxWhyLength = 200;
+
+    /// <summary>
+    /// The worst of several answers: <see cref="Fails"/> before <see cref="Off"/>
+    /// before <see cref="Works"/>, with the reason of the first one that fails.
+    /// A word that is not one of <see cref="Words"/> counts as no answer; null
+    /// when none of them said.
+    /// </summary>
+    public static (string State, string? Why)? Worst(IEnumerable<(string? State, string? Why)> answers)
+    {
+        (string State, string? Why)? worst = null;
+        foreach (var (state, why) in answers)
+        {
+            if (state is null || Array.IndexOf(Words, state) < 0)
+                continue;
+            if (worst is null || Rank(state) < Rank(worst.Value.State))
+                worst = (state, state == Fails ? why : null);
+        }
+        return worst;
+    }
+
+    private static int Rank(string state) => state switch
+    {
+        Fails => 0,
+        Off => 1,
+        _ => 2,
+    };
+}
+
+/// <summary>
 /// What a person is ordering a runner to do, from the Runners page's own
 /// <c>POST .../order</c>.
 /// </summary>
@@ -5535,6 +5571,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// The board makes the comparison; the page only reads it. False where no
 /// version was reported.
 /// </param>
+/// <param name="Signing">
+/// Whether this runner's commits are signed - one of <see cref="RunnerSigning.Words"/>,
+/// the worst over the checkouts it serves, read off its live sessions as
+/// <see cref="Models"/> and <see cref="Has"/> are. Null where it never said.
+/// </param>
+/// <param name="SigningWhy">What git said, where <paramref name="Signing"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -5606,7 +5648,10 @@ public record RunnerDto(
     IReadOnlyList<string> Hold = null!,
     bool Pulling = false,
     int? LauncherVersion = null,
-    bool LauncherBehind = false)
+    bool LauncherBehind = false,
+    bool Preferred = false,
+    string? Signing = null,
+    string? SigningWhy = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -5919,6 +5964,16 @@ public enum RunnerBoardDrift
 /// <see cref="Os"/> is a shortened description and cannot name a build. Null for
 /// a machine whose platform is not one of the four, and for an older runner.
 /// </param>
+/// <param name="Signing">
+/// Whether this loop's commits are signed - one of <see cref="RunnerSigning.Words"/>,
+/// the worst over the checkouts it serves. Written on every loop beat; a <c>once</c>
+/// beat and an older runner send none. Absent leaves a stored value alone; a word the
+/// board does not know is stored as no answer, and the beat is still accepted.
+/// </param>
+/// <param name="SigningWhy">
+/// What git said, where <paramref name="Signing"/> is <c>fails</c> - the first line,
+/// scrubbed of keys and cut to 200 characters. Read only with that word.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -5974,7 +6029,9 @@ public record RunnerHeartbeatRequest(
     string? AcceleratorBackend = null,
     bool? Pulling = null,
     int? LauncherVersion = null,
-    string? Rid = null);
+    string? Rid = null,
+    string? Signing = null,
+    string? SigningWhy = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -6042,7 +6099,9 @@ public record RunnerUsageWindowDto(
 /// Present exactly when this beat sent a stamped <c>Revision</c> and
 /// <c>Sequence</c>, the board is stamped, and the two revisions differ - null
 /// otherwise, and null from a Hatch too old to answer it, which a runner reads
-/// as nothing to do. Informational: nothing acts on it yet.
+/// as nothing to do. A downloaded loop that finds itself behind asks its
+/// launcher for this build at the top of its next pass, and one told something
+/// else holds for ten minutes first; a loop with no launcher only reads it.
 /// </param>
 public record RunnerInstructionDto(
     string State,
@@ -6127,6 +6186,11 @@ public static class RunnerBuildComparisons
 /// regardless of what was sent.
 /// </param>
 /// <param name="StatusIds">The column ids <see cref="StatusMode"/> reads against, judged against the board's own columns.</param>
+/// <param name="Preferred">
+/// Whether the runner takes work before unmarked runners. Absent leaves it
+/// alone; true or false sets it. Only a person may send it - a key is refused -
+/// and only for a name with a key, since the flag lives on the key's config row.
+/// </param>
 public record RunnerPatchRequest(
     string? State = null,
     string? Under = null,
@@ -6137,7 +6201,8 @@ public record RunnerPatchRequest(
     string? MaxTokens = null,
     string? MaxTokensPerHour = null,
     string? StatusMode = null,
-    IReadOnlyList<int>? StatusIds = null);
+    IReadOnlyList<int>? StatusIds = null,
+    bool? Preferred = null);
 
 /// <summary>
 /// The body of <c>PUT /runners/{name}/refused-models</c>. <paramref name="Models"/>

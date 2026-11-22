@@ -39,6 +39,8 @@ import {
   sessionActivity,
   sessionRepositoriesLabel,
   sessionsByStart,
+  signingFails,
+  signingWords,
   sessionTokenBudget,
   runnerBuildLabel,
   runnerStrip,
@@ -437,6 +439,12 @@ describe('runnerStrip', () => {
     expect(runnerStrip([], NOW)).toEqual([]);
   });
 
+  it('carries the preferred mark on a marked runner only', () => {
+    const rows = runnerStrip([runner({ name: 'alfa', preferred: true }), runner({ name: 'bravo' })], NOW);
+
+    expect(rows.map((row) => row.preferred)).toEqual([true, false]);
+  });
+
   it('keeps the order given, not sorted', () => {
     const a = runner({ name: 'alfa' });
     const b = runner({ name: 'bravo' });
@@ -618,6 +626,37 @@ describe('dangerousLabel', () => {
 
   it('says the phrase for a runner that refuses it', () => {
     expect(dangerousLabel(runner({ refusesDangerous: true }))).toBe('Refuses dangerous work');
+  });
+});
+
+describe('signingWords', () => {
+  it('says nothing for a runner that never said', () => {
+    expect(signingWords(runner())).toBeNull();
+    expect(signingWords(runner({ signing: null }))).toBeNull();
+  });
+
+  it('says the two good readings in plain words', () => {
+    expect(signingWords(runner({ signing: 'works' }))).toBe('Signs its commits');
+    expect(signingWords(runner({ signing: 'off' }))).toBe('Does not sign its commits');
+  });
+
+  it('says what git said where signing fails, and still says it failed with no reason', () => {
+    expect(signingWords(runner({ signing: 'fails', signingWhy: 'no secret key' }))).toBe('Signing fails: no secret key');
+    expect(signingWords(runner({ signing: 'fails' }))).toBe('Signing fails');
+  });
+
+  it('reads a word it does not know as no answer', () => {
+    expect(signingWords(runner({ signing: 'maybe' as never }))).toBeNull();
+    expect(signingFails(runner({ signing: 'maybe' as never }))).toBe(false);
+  });
+});
+
+describe('signingFails', () => {
+  it('is true only for a runner whose signing fails', () => {
+    expect(signingFails(runner({ signing: 'fails' }))).toBe(true);
+    expect(signingFails(runner({ signing: 'works' }))).toBe(false);
+    expect(signingFails(runner({ signing: 'off' }))).toBe(false);
+    expect(signingFails(runner())).toBe(false);
   });
 });
 
@@ -1461,6 +1500,7 @@ describe('the runner detail\'s two forms', () => {
       refusedModels: '',
       statusMode: 'all',
       statusIds: [],
+      preferred: false,
     });
     expect(settingsOf(runner())).toEqual({
       tags: '',
@@ -1468,6 +1508,7 @@ describe('the runner detail\'s two forms', () => {
       refusedModels: '',
       statusMode: 'all',
       statusIds: [],
+      preferred: false,
     });
     expect(settingsOf(runner({ refusedModels: ['fable', 'haiku'] })).refusedModels).toBe('fable\nhaiku');
   });
@@ -1568,6 +1609,26 @@ describe('the runner detail\'s two forms', () => {
     expect(settingsChanged({ ...settingsOf(r), statusIds: [2] }, r)).toBe(true);
     expect(settingsChanged({ ...settingsOf(r), statusIds: [3, 2] }, r)).toBe(false);
     expect(settingsChanged({ ...settingsOf(runner()), statusMode: 'only' }, runner())).toBe(true);
+  });
+
+  it('notices the preferred mark changing, and reads an absent one as off', () => {
+    const r = runner({ preferred: true });
+    expect(settingsOf(r).preferred).toBe(true);
+    expect(settingsOf(runner()).preferred).toBe(false);
+    expect(settingsChanged(settingsOf(r), r)).toBe(false);
+    expect(settingsChanged({ ...settingsOf(r), preferred: false }, r)).toBe(true);
+    expect(settingsChanged({ ...settingsOf(runner()), preferred: true }, runner())).toBe(true);
+  });
+
+  it('sends the preferred mark only where it changed', () => {
+    const off = runner();
+    expect(settingsRequest(settingsOf(off), off).patch).not.toHaveProperty('preferred');
+    expect(settingsRequest({ ...settingsOf(off), tags: 'gpu' }, off).patch).not.toHaveProperty('preferred');
+    expect(settingsRequest({ ...settingsOf(off), preferred: true }, off).patch).toMatchObject({ preferred: true });
+
+    const on = runner({ preferred: true });
+    expect(settingsRequest(settingsOf(on), on).patch).not.toHaveProperty('preferred');
+    expect(settingsRequest({ ...settingsOf(on), preferred: false }, on).patch).toMatchObject({ preferred: false });
   });
 
   it('ignores the ticked ids under all', () => {

@@ -67,6 +67,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/no-code-closes` | **person** | Sets `noCodeCloses` |
 | PUT | `/projects/{id}/runners-work-contributions` | **person** | Sets `runnersWorkContributions` |
 | PUT | `/projects/{id}/files-contributions` | **person** | Sets `filesContributions` |
+| PUT | `/projects/{id}/allows-unsigned-commits` | **person** | Sets `allowsUnsignedCommits` |
 | PUT | `/projects/{id}/one-pr-policy` | **person** | Sets `onePullRequestPolicy`, returning overrides nothing has started under to inherit on a tightening |
 | PUT | `/projects/{id}/priority` | **person** | Sets `priority` to `paused`, `normal` or `expedited` |
 
@@ -105,7 +106,11 @@ resending the value a project already holds writes nothing, the audit fields inc
 (`runnersWorkContributionsBy`, `runnersWorkContributionsAt` on the `ProjectDto`). The files-contributions PUT body is
 `ProjectFilesContributionsWriteRequest(FilesContributions)`; nothing reads the flag yet, and
 resending the value a project already holds writes nothing, the audit fields included
-(`filesContributionsBy`, `filesContributionsAt` on the `ProjectDto`). The one-pr-policy PUT body is
+(`filesContributionsBy`, `filesContributionsAt` on the `ProjectDto`). The allows-unsigned-commits PUT body is
+`ProjectAllowsUnsignedCommitsWriteRequest(AllowsUnsignedCommits)`; a project allows unsigned commits (`true`) until an
+owner says otherwise, every dispatch carries the value in `WorkDto.AllowsUnsignedCommits`, and resending the value a
+project already holds writes nothing, the audit fields included (`allowsUnsignedCommitsBy`, `allowsUnsignedCommitsAt`
+on the `ProjectDto`). The one-pr-policy PUT body is
 `ProjectOnePrPolicyWriteRequest(Policy)`, `optional` or `enforced` and nothing else (a `400` names
 the bad value), owner only, and resending the value a project already holds writes nothing, the audit
 fields included. The priority PUT body is
@@ -132,7 +137,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The runners-work-contributions PUT 403s if the caller is not an owner. The files-contributions PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`. The priority PUT 403s if the caller is not an owner, and 400s on anything but `paused`, `normal` or `expedited`.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The runners-work-contributions PUT 403s if the caller is not an owner. The files-contributions PUT 403s if the caller is not an owner. The allows-unsigned-commits PUT 403s if the caller is not an owner, a key included. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`. The priority PUT 403s if the caller is not an owner, and 400s on anything but `paused`, `normal` or `expedited`.
 
 ## Scopes
 
@@ -1078,10 +1083,10 @@ the second half of this page, after the board's own.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, a ticket it is omitted from is left out, and a move on a model its key refuses (see `/runners/{name}/refused-models`) is folded; `?model=` (repeatable) and `?agent=` say what the caller's runner offers, so a move whose model it does not offer is folded, nothing sent folds nothing, and a bad entry is a `400`; `?has=` (repeatable, `id` or `id@version`) says what development dependencies the runner has, so a move that runs the issue's code is folded when a bound repository's `.hatch/dependencies.json` declares one it does not satisfy, or when that file is invalid - absent folds nothing, and a bad entry is a `400` |
-| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing; `?runner=` and `?asRunner=` agree on the key's refused models); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before; a call with no key and neither `tag` nor `dangerous` sent is the board's own scan, so a person's board-wide read (wall off) folds nothing on tags or the danger flag; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now, adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, the fold's own sentence verbatim; filled in only when `takers` holds fewer than two names, empty otherwise, null alongside a null `takers`) - `hatch queue` and the web queue ask for this, the runner loop's own poll does not |
+| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, a clear row is left for a free runner marked preferred, a ticket it is omitted from is left out, and a move on a model its key refuses (see `/runners/{name}/refused-models`) is folded; `?model=` (repeatable) and `?agent=` say what the caller's runner offers, so a move whose model it does not offer is folded, nothing sent folds nothing, and a bad entry is a `400`; `?has=` (repeatable, `id` or `id@version`) says what development dependencies the runner has, so a move that runs the issue's code is folded when a bound repository's `.hatch/dependencies.json` declares one it does not satisfy, or when that file is invalid - absent folds nothing, and a bad entry is a `400`; `?signing=` (`off`, `works` or `fails`, with `?signingWhy=` beside `fails`) says whether the runner signs its commits, so a move on a project that allows only signed commits is folded unless it is `works` - a word outside those three counts as not sent, and a caller holding a key that sends none is judged on the live loop sessions of the runner `?runner=` names (else the key's own), the worst answer winning, no answer folding it too; a caller with no key and no `?signing=` is the board's own scan and is not judged |
+| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=`, `?has=`, `?signing=` and `?signingWhy=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, signing included - it ignores `?signing=` - and a row that never reported models or dependencies folds nothing; `?runner=` and `?asRunner=` agree on the key's refused models); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before; a call with no key and neither `tag` nor `dangerous` sent is the board's own scan, so a person's board-wide read (wall off) folds nothing on tags or the danger flag; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now, adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, the fold's own sentence verbatim; filled in only when `takers` holds fewer than two names, empty otherwise, null alongside a null `takers`) - `hatch queue` and the web queue ask for this, the runner loop's own poll does not |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
-| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner - the calling key's own name where none is sent - so an issue omitted for it, or on a model its key refuses, comes back blocked |
+| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=`, `?has=`, `?signing=` and `?signingWhy=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner - the calling key's own name where none is sent - so an issue omitted for it, on a model its key refuses, or left for a free runner marked preferred, comes back blocked |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
 | POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged; of two reports of one merge, the first moves the issue and the second gets a `409` |
@@ -1472,17 +1477,17 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil`; carries `launcherVersion`, the version of the launcher that started the loop (absent for a loop with no launcher), and `launcherBehind`, true when that version is lower than the launcher version of the board's own build - the board makes the comparison, and a session carries the raw `launcherVersion` only |
+| GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil`; carries `launcherVersion`, the version of the launcher that started the loop (absent for a loop with no launcher), and `launcherBehind`, true when that version is lower than the launcher version of the board's own build - the board makes the comparison, and a session carries the raw `launcherVersion` only; carries `preferred`, whether the runner is marked to take work before unmarked runners, `false` for a key that never ran and for a heartbeat row with no key; carries `signing` (`off`, `works` or `fails`) and, beside `fails`, `signingWhy`, whether the runner's commits are signed and what git said - read off its live loop sessions and folded to the worst, `fails` then `off` then `works`, so a runner serving several checkouts reads as its worst; both absent for a runner that never said, and `signingWhy` is one line of at most 200 characters with any key masked |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted`; a pause the board wrote (`agentDownKind` `board-paused`) is left whole while it lasts; `usageSource` and `usageProbeOff` say where the usage reading came from and why its probe is off, and travel together: a beat that names a `usageSource` sets both (a null `usageProbeOff` clears a stored reason), and a beat without one leaves both as they were, with or without a reading; `rid` names the platform the build was published for (`win-x64`, `osx-arm64`, `osx-x64` or `linux-x64`) and is never stored; the answer's `boardBuild` names the board's own build when it differs from the beat's `revision`, and is absent otherwise |
-| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way, and takes `usageSource`/`usageProbeOff` on the same pairing rule; takes `rid` and answers `boardBuild` exactly as `POST /runners/{name}` does; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause; takes `launcherVersion`, the version of the launcher the loop was started by, on every beat of a loop under one and none otherwise - a beat that omits it leaves the stored value alone, a fresh `loop` beat that omits it clears it, and a board built before the field ignores it |
+| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields, and leaves a `board-paused` pause alone the same way, and takes `usageSource`/`usageProbeOff` on the same pairing rule; takes `rid` and answers `boardBuild` exactly as `POST /runners/{name}` does; while that pause is ahead of now the answer's `state` is `paused` (a stored `stopping` stays `stopping`), and the stored state is left as it was, so the page does not read it as a person's pause; takes `launcherVersion`, the version of the launcher the loop was started by, on every beat of a loop under one and none otherwise - a beat that omits it leaves the stored value alone, a fresh `loop` beat that omits it clears it, and a board built before the field ignores it; takes `signing` (`off`, `works` or `fails`) and `signingWhy`, whether the loop's commits are signed and, beside `fails`, the first line of what git said (cut to 200 characters), on every beat of a loop and none on a `once` beat - sent, the pair replaces the session's stored answer (a word the board does not know is stored as no answer and the beat is still accepted, and a word other than `fails` drops the reason), absent leaves it alone, and a board built before the fields ignores them; the legacy `POST /runners/{name}` above ignores both |
 | POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
-| POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
-| GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
-| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, and `statusMode`/`statusIds` (the column rule) - `statusMode` is `all`, `except` or `only`; the two take each other or neither, `400` otherwise; `400` for a mode none of the three names, or an id no column has; `all` keeps the ids `[]` regardless of what was sent; a name with no key is `400`, since the rule has nowhere to live |
+| POST | `/runners` | **person** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused; with the wall up, a user may name only themselves as `ownerPersonId` - anybody else, known or not, is a `403` with `only an admin may create a runner for somebody else`, and nothing is written - while an admin may name any person; with the wall off the owner rule is not read |
+| GET | `/runners/suggest-name` | **person** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
+| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, and `statusMode`/`statusIds` (the column rule) - `statusMode` is `all`, `except` or `only`; the two take each other or neither, `400` otherwise; `400` for a mode none of the three names, or an id no column has; `all` keeps the ids `[]` regardless of what was sent; a name with no key is `400`, since the rule has nowhere to live; `preferred` marks the runner to take work before unmarked runners - absent leaves it as it was, `true` or `false` sets it, a key is `403` (and so is a person who neither owns the runner nor is an admin), and a name with no key is `400`, since the flag has nowhere to live |
 | PUT | `/runners/{name}/refused-models` | key, own row, or person | Replaces the whole list of models this key refuses to run; `400` for an absent `models`, a blank entry, or one of a different agent than it reports; `404` for a name no key answers to, `409` for a revoked key |
-| POST | `/runners/{name}/revoke` | **admin** | Stops the runner's key working, by the runner's name; the runner stays listed, `404` for a name no key answers to |
-| POST | `/runners/{name}/rotate` | **admin** | Replaces the runner's secret: the old one is refused from the next call; answers the runner and the new `secret` once, sent `no-store`, with `prefix` and `rotatedAt` updated; name, owner, config, sessions and attribution carry over; `404` for a name no key answers to, `409` for a revoked key |
+| POST | `/runners/{name}/revoke` | **person: own runner, or admin** | Stops the runner's key working, by the runner's name; the runner stays listed and a second revoke changes nothing; a user gets `403` on a runner that belongs to someone else, with a sentence naming the owner (`only <name>, or an admin, may control <runner>`), and on a runner that belongs to nobody; `404` for a name no key answers to |
+| POST | `/runners/{name}/rotate` | **person: own runner, or admin** | Replaces the runner's secret: the old one is refused from the next call; answers the runner and the new `secret` once, sent `no-store`, with `prefix` and `rotatedAt` updated; name, owner, config, sessions and attribution carry over; a user gets `403` on a runner that belongs to someone else, with a sentence naming the owner (`only <name>, or an admin, may control <runner>`), and on a runner that belongs to nobody - and that comes before the `409`, so a stranger learns nothing of the key's state; `404` for a name no key answers to, `409` for a revoked key |
 | PUT | `/runners/{name}/owner` | **admin** | Sets or clears (`personId: null`) whose tickets the runner's `--mine` reaches; `400` for an unknown person, `404` for a name no key answers to |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
@@ -1572,8 +1577,10 @@ lists for the platform the beat names in `rid`, from the same code; both are
 `null` for a beat that names no platform, one the board does not publish, or
 an image that published nothing, and the part is still sent. A matching
 revision, an unstamped side (`dev`, or no count) and a beat with no revision
-all get no part, and so does an older board. Nothing acts on it yet. `rid` is
-never stored.
+all get no part, and so does an older board. A downloaded loop acts on it: on
+`behind` it asks its launcher for the build at the top of its next pass, and on
+any other word only once every beat for ten minutes has named the same revision.
+A loop with no launcher only reads it. `rid` is never stored.
 
 `throttledUntil` is a fact the runner reports about its own
 `--max-tokens-per-hour`, never a person's to set: it is the instant the loop
@@ -1828,7 +1835,7 @@ attempt, whoever made it. `POST /backup/run`, person-only, runs one backup
 synchronously, capped at two minutes, and answers the same shape: a `failed`
 attempt is still a `200`, with its sentence in `lastError`. It `400`s with no
 folder configured, `409`s while another run already holds the gate, and
-`403`s for an API key, the same as a program reaching `/overnight/seen`.
+`403`s for an API key, the same as a program reaching `PUT /me/home`.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
 Owner, Scope, Home)` - `kind: key` for an API key, naming its own name, its
@@ -1888,8 +1895,6 @@ a key.
 | GET | `/work-log/history` | key | Spend over time, in equal buckets |
 | GET | `/work-log/sessions` | key | The sessions in a range, ranked, and what the range cost in total |
 | GET | `/work-log/by-playbook` | key | The sessions in a range, folded by the playbook, transition, issue type, model, effort, outcome and reason they ran under |
-| GET | `/overnight` | key | What landed in the newest night |
-| POST | `/overnight/seen` | **person** | Marks the night read, for the caller |
 | GET | `/activity` | key | The event trail across every issue, newest first, a page at a time |
 | GET | `/changelog` | key | What shipped, a window of days at a time |
 | GET | `/changelog/file` | key | What shipped, as the YAML file a repository keeps checked in |
@@ -1947,10 +1952,7 @@ describe the log and not the range. Absent, every session is read.
 Each row of `/work-log/sessions` and of `/work-log/by-playbook` carries
 `outcome` and `reason`, null where the session recorded none.
 
-`/overnight` answers an `OvernightDto(From, To, Count, Rows, Unseen)`,
-grouping and gap-splitting the newest night's terminal landings; `seen` is a
-person's own mark of having looked, and refuses a program (a key) for the
-same reason `work-log`'s write refuses a person, in reverse. `/activity`
+`/activity`
 pages the same event trail
 `/issues/{key}/events` reads for one issue, across every issue instead,
 ordered the same way so one event never sorts differently between the two
@@ -2055,10 +2057,12 @@ or through a chain, on something itself waiting on it - and the backup's
 own trouble (`backup`), null when `Hatch__BackupPath` is unset or the
 backup is healthy. `waitingOnARunner` lists the issues whose next move is
 clear but that no live runner can take, because every live runner's own
-declaration folds it on the model it runs on or on a development dependency
-its project's repository asks for - a move whose ticket requires its local
+declaration folds it on the model it runs on, on a development dependency
+its project's repository asks for, or on signing - a move whose ticket requires its local
 model, and that no live runner lists, reads `requires <id> locally - no live
-runner lists it`; each entry carries `key`, `title`, `type`,
+runner lists it`, and one on a project that allows only signed commits, where no
+live runner's signing is `works`, reads `no live runner signs its commits` (a
+live runner that never said counts as not signing); each entry carries `key`, `title`, `type`,
 `move` (the column the move starts from) and `missing` (what no live runner
 has), ordered by tier and then rank, and the list is empty when no runner is
 live. `trainStalled` lists the projects whose merge train has passed over every
@@ -2159,7 +2163,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **46** person-only paths on this page,
+on this page with both) - there are **49** person-only paths on this page,
 across both halves together:
 
 ```
@@ -2177,6 +2181,7 @@ PUT    /projects/{id}/check-approves-merge
 PUT    /projects/{id}/no-code-closes
 PUT    /projects/{id}/runners-work-contributions
 PUT    /projects/{id}/files-contributions
+PUT    /projects/{id}/allows-unsigned-commits
 PUT    /projects/{id}/one-pr-policy
 PUT    /projects/{id}/priority
 PUT    /projects/{id}/reflection
@@ -2207,7 +2212,6 @@ POST   /runners/{name}/order
 DELETE /runners/{name}/order
 GET    /settings
 PUT    /settings
-POST   /overnight/seen
 PUT    /me/home
 POST   /backup/run
 POST   /playbooks
@@ -2215,11 +2219,11 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Thirty-one belong to a project, a column, the WIP section, a ticket's own
-fields, or attachment upload and delete; the other eleven are a runner's own record (now
+Thirty-nine belong to a project, a column, the WIP section, a ticket's own
+fields, or attachment upload and delete; the other ten are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`),
-Hatch's settings on both verbs, marking the overnight seen, the home screen,
-running a backup, and the three playbook writes.
+Hatch's settings on both verbs, the home screen, running a backup, and the
+three playbook writes.
 
 Two writes that look like the same shape are deliberately **not** on this
 list, because the attribute itself does not narrow them - the narrowing is

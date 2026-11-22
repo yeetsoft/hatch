@@ -85,6 +85,20 @@ export function RunnerSettingsForm({
               onChange={(statusMode, statusIds) => setDraft({ ...draft, statusMode, statusIds })}
             />
           )}
+          <Field
+            as="div"
+            label="Preferred"
+            hint="Takes work before runners without this. With less work than runners, the others sit idle."
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.preferred}
+                onChange={(e) => setDraft({ ...draft, preferred: e.target.checked })}
+              />{' '}
+              Preferred
+            </label>
+          </Field>
           {isIssueKeyShape(draft.under) && <Text tone="muted">{underLink(draft.under.trim())}</Text>}
 
           {refusal && <p className="text-danger">{refusal}</p>}
@@ -106,6 +120,7 @@ export function RunnerSettingsForm({
           {statuses && (
             <Text>Columns: {columnsWords(runner.statusMode ?? 'all', runner.statusIds ?? [], statuses)}</Text>
           )}
+          <Text>Preferred: {runner.preferred ? 'yes' : 'no'}</Text>
         </>
       )}
 

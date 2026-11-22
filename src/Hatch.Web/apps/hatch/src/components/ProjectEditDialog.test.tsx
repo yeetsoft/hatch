@@ -53,6 +53,9 @@ function project(overrides: Partial<Project>): Project {
     filesContributions: false,
     filesContributionsBy: null,
     filesContributionsAt: null,
+    allowsUnsignedCommits: true,
+    allowsUnsignedCommitsBy: null,
+    allowsUnsignedCommitsAt: null,
     onePullRequestPolicy: 'optional',
     onePullRequestPolicyBy: null,
     onePullRequestPolicyAt: null,
@@ -452,6 +455,57 @@ describe('ProjectEditDialog', () => {
 
     expect(html).toContain('Does not file contributions');
     expect(html).not.toContain('outside pull requests as contributions on the board');
+  });
+
+  it('shows an owner the unsigned-commits checkbox, ticked, and its hint', () => {
+    const html = render(project({ canAdminister: true }));
+
+    expect(html).toContain('Allow unsigned commits');
+    expect(html).toMatch(/<input[^>]*type="checkbox"[^>]*checked=""[^>]*\/>Allow unsigned commits/);
+    expect(html).toContain('Off, only runners that sign their commits will work this project.');
+  });
+
+  it('shows an owner who changed the unsigned-commits setting, and when', () => {
+    const html = render(
+      project({
+        canAdminister: true,
+        allowsUnsignedCommits: false,
+        allowsUnsignedCommitsBy: 'Dana',
+        allowsUnsignedCommitsAt: '2026-03-09T00:00:00Z',
+      }),
+    );
+
+    expect(html).toContain(`set by Dana on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}`);
+  });
+
+  it('shows an owner no set-by line when the unsigned-commits setting has never been written', () => {
+    const html = render(project({ canAdminister: true }));
+
+    expect(html).not.toContain('set by');
+  });
+
+  it('shows anyone else a sentence, and no control, where only signed commits are allowed', () => {
+    const html = render(
+      project({
+        canAdminister: false,
+        allowsUnsignedCommits: false,
+        allowsUnsignedCommitsBy: 'Dana',
+        allowsUnsignedCommitsAt: '2026-03-09T00:00:00Z',
+      }),
+    );
+
+    expect(html).toContain(
+      `Allows only signed commits, set by Dana on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}.`,
+    );
+    expect(html).not.toContain('Allow unsigned commits');
+    expect(html).not.toContain('only runners that sign their commits');
+  });
+
+  it('shows anyone else nothing about it where unsigned commits are allowed', () => {
+    const html = render(project({ canAdminister: false, allowsUnsignedCommits: true }));
+
+    expect(html).not.toContain('signed commits');
+    expect(html).not.toContain('Allow unsigned commits');
   });
 
   it('shows an owner the Board heading and the stories-on-epics checkbox', () => {

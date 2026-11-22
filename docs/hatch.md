@@ -71,8 +71,6 @@ the next heading of the same level and stop.
   - [Playbook proposal](#playbook-proposal) - What does a session propose
     changing about a playbook, before a person decides it?
   - [Verdict](#verdict) - What did a check session conclude about an issue?
-  - [Overnight seen](#overnight-seen) - When did a reader last read the
-    overnight page?
 - [The wall, the roles, and API keys](#the-wall-the-roles-and-api-keys) - Who
   may reach Hatch, and how does an API key differ from a person?
 - [API surface](#api-surface) - Which routes exist under `/api`, and
@@ -91,8 +89,6 @@ the next heading of the same level and stop.
     does it say about it?
 - [Reports](#reports) - When did things happen on the board, which the board
   as it stands cannot say?
-- [The overnight](#the-overnight) - What did the loop actually land while
-  nobody was watching?
 - [The dispatcher](#the-dispatcher) - What should an agent do next, and how?
   - [Deadlocked](#deadlocked) - When will no pass ever clear a row on its
     own?
@@ -435,6 +431,10 @@ change. Nothing dispatches on it yet, and
 repositories' outside pull requests as contributions), with `FilesContributionsBy` and
 `FilesContributionsAt` beside it - who changed it last and when, a name and an
 instant, null until the first change. Nothing reads it yet.
+`AllowsUnsignedCommits` (`bool`, default `true` - whether the project allows commits
+that are not signed), with `AllowsUnsignedCommitsBy` and `AllowsUnsignedCommitsAt`
+beside it - who changed it last and when, a name and an instant, null until the
+first change. Every dispatch carries it as `WorkDto.AllowsUnsignedCommits`.
 A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
@@ -532,6 +532,18 @@ to anyone else, and `404` on an unknown project. A change stamps
 `FilesContributionsBy` and `FilesContributionsAt`; re-sending the value the
 project already holds writes nothing, the stamp included. Nothing reads the flag
 yet.
+
+`AllowsUnsignedCommits` is written through its own route, `PUT
+/projects/{id}/allows-unsigned-commits` (`ProjectsController.PutAllowsUnsignedCommits`),
+guarded the same way - `[RequireRole(User)]`, `NotAPerson` checked again in the
+action, then an owner check answering `403` naming the project's key (*"only an
+owner of `<KEY>` may change whether it allows unsigned commits"*) to anyone else,
+and `404` on an unknown project. A change stamps `AllowsUnsignedCommitsBy` and
+`AllowsUnsignedCommitsAt`; re-sending the value the project already holds writes
+nothing, the stamp included. `PATCH` and `POST` do not reach it. Every existing
+project allows unsigned commits after the migration. The project dialog shows an
+owner a checkbox, *"Allow unsigned commits"*, ticked by default; anyone else reads
+a sentence, only where the project allows only signed commits.
 
 `OnePullRequestPolicy` is written through its own route too, `PUT
 /projects/{id}/one-pr-policy` (`ProjectsController.PutOnePrPolicy`), guarded
@@ -767,9 +779,9 @@ caller with everything reads exactly what it did before.
 - Through a repository: `TrunkBuilds`, `PlaybookFiles`, `DependencyFiles` and
   `ChangelogFiles`, visible when any visible project binds that `Canonical`.
 
-**What does not.** `Statuses`, `WipLimits`, `OvernightSeen`, the runner tables,
-`PersonScopes` and `PersonScopeProjects` (the resolver reads them), and
-everything in the core schema.
+**What does not.** `Statuses`, `WipLimits`, the runner tables, `PersonScopes` and
+`PersonScopeProjects` (the resolver reads them), and everything in the core
+schema.
 
 **Required navigations.** A row whose required navigation points at a hidden
 row is dropped from an `Include` rather than returned with a hole in it: a
@@ -3550,6 +3562,20 @@ peer is left — an installation with one runner behaves exactly as it did.
 accepted: a capable but busy peer leaves the ticket waiting while the dropper
 idles.
 
+**A row can be left for a runner marked preferred.** When the caller names itself
+the same way, a clear row is folded for it while a runner marked
+[preferred](#runners-on-the-board) is free to take it: `HA-12 in In Progress is
+left for build-box, which is preferred and free`, kind `other`. The peer is the
+let-go deferral's own: a preferred key's beat or live session that is idle - no
+live claim at its checkout, and not pulling a model - and whose own scan finds
+the row clear, or parked only behind higher-ranking work, so a tag, an
+omission, a refused model or a column rule of the preferred runner's own lets
+the row through. A preferred runner is never folded by it, and a peer's own scan
+asks nobody, so two preferred runners each read the row clear. It is said last,
+after every fold that is the asker's own, the let-go one included, and never on
+a [hop](#the-hop). An installation with no runner marked preferred behaves
+exactly as it did.
+
 **A row clear only because its resume window has passed names it.** `hatch
 queue` prints it in place of the bare arrow, e.g. `clear for To Do -> In
 Progress - it stalled 18 minutes ago and resumes itself after 15 minutes`
@@ -4042,22 +4068,6 @@ else — not by a replace, which leaves it alone. A verdict with it set is not
 looked at again: a retried apply under the same claim finds no unapplied row and
 answers `404`. Written by `POST /issues/{key}/verdicts`; no route reads it back.
 
-### Overnight seen
-
-`EfHatchOvernightSeen` — `PersonId` (a bare `Guid` rather than a foreign key,
-for the reason `EfHatchProjectMember.PersonId` is one: Hatch owns its own
-schema and migration history, and a constraint into `public.People` is the
-compile-time coupling `Modules/README.md` exists to prevent), `SeenAt`.
-
-One reader's own mark on [the overnight](#the-overnight) page — when they last
-read it, nothing more. Set only by `POST /api/overnight/seen`, a
-person's call and nothing else's: a program is refused the same way
-(`OvernightController.NotAPerson`). No body — a person has only their own
-mark to set — and a second call replaces the first rather than adding a row.
-
-**Strictly later than the mark, not later-or-equal, decides unseen** — a
-landing at exactly the mark is the mark, not after it.
-
 ## The wall, the roles, and API keys
 
 Hatch ships its own wall, off by default (`HATCH_AUTH` in `compose.yaml`), with
@@ -4133,7 +4143,8 @@ first that applies winning:
 3. **A person reads their own row**, and no row is `all`.
 4. **A key reads its live owner's row**, through `IActorDirectory.PrincipalAsync`
    (the owner resolved live, as it is for a key's other questions). A key with
-   no live owner — none was set, or the owner was deleted — is unbounded.
+   no live owner — none was set — is unbounded. Deleting an owner revokes the
+   key, so a key never outlives its owner into that state.
 
 `none` is the empty set. `some` is the rows that remain after any cascade. The
 answer is read once per request. A wall that is up with no person and no key
@@ -4150,7 +4161,7 @@ applied by the query filters on `HatchContext`; see
 An `EfApiKey` is what a runner *is*. The board's settings for it live in
 `RunnerConfigs`, in the `hatch` schema, carrying the key's `ApiKeyId` with no
 foreign key, because the key is in core. The secret is shown once, when an
-admin creates the runner.
+person creates the runner.
 
 A secret is `hatch_ak_` + 32 characters from a cryptographic RNG, drawn from
 letters and digits only because a key is copied through shells, YAML and JSON
@@ -4339,10 +4350,15 @@ reads the same way, whichever repository it binds.
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
 key's `OwnerPersonId` to decide whose tickets it may take, so a key that could
 set its own owner could simply say it is whoever holds the tickets it wants.
-`RunnersController`'s minting, revoking and re-owning routes are each
-`[RequireAdmin]` with no `AcceptKey` — not one route carved out for a key —
-so no key can mint a runner, revoke one, or change whose it is; a person does
-that, at the Runners page, on purpose.
+`RunnersController`'s re-owning route is `[RequireAdmin]` with no `AcceptKey`;
+its minting route asks for a user and checks the owner inside the action, since
+the role attribute reads only a role: with the wall up a user may mint only a
+runner they own, naming anybody else is a `403`, and no request leaves a runner
+with no owner, while an admin may name anyone; its rotating and revoking routes ask for the runner's
+owner or an admin (`RequireRole(User)` and an ownership check, not
+`CanControl`, which passes for a runner that belongs to nobody) and take no key
+either — not one route carved out for a key — so no key can mint a runner,
+revoke one, rotate one, or change whose it is; a person does that, on purpose.
 
 **And so is the WIP section and its limits.** Which columns are work in
 progress, and how much of each slice of the board may sit across them at once,
@@ -4430,6 +4446,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
 | `/projects/{id}/runners-work-contributions` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ runnersWorkContributions }` — whether a runner works a contribution's branch when it conflicts or its build fails; this route is the only way to write the flag, and the answer is the `ProjectDto`. A change stamps `runnersWorkContributionsBy`/`runnersWorkContributionsAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/files-contributions` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ filesContributions }` — whether the board files its repositories' outside pull requests as contributions; nothing reads it yet, this route is the only way to write the flag, and the answer is the `ProjectDto`. A change stamps `filesContributionsBy`/`filesContributionsAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
+| `/projects/{id}/allows-unsigned-commits` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ allowsUnsignedCommits }` — whether the project allows commits that are not signed, on until an owner says otherwise; every dispatch carries it as `WorkDto.AllowsUnsignedCommits`, this route is the only way to write the flag, and the answer is the `ProjectDto`. A change stamps `allowsUnsignedCommitsBy`/`allowsUnsignedCommitsAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/no-code-closes` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ noCodeCloses }` — whether a no-code declaration on an issue closes it outright; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `noCodeClosesBy`/`noCodeClosesAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
@@ -4487,9 +4504,9 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/questions` | GET | Every open question in the house |
 | `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
-| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?model=` (repeatable) and `?agent=` declare which models and which agent the runner offers, folding a move whose model it cannot spawn — see [the dispatcher](#the-dispatcher); absent folds nothing, and a bad entry is a `400`. `?has=` (repeatable, `id` or `id@version`) declares the development dependencies the runner has, folding a move that runs the issue's code whose project's bound repositories declare a dependency none of these satisfies, or whose `.hatch/dependencies.json` is invalid — see [the dispatcher](#the-dispatcher); absent folds nothing, and a bad entry is a `400`. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. `?runner=<name>` names the caller's own runner, so a ticket that runner let go of last is folded for it while another live runner could take it — see [what a pass skipped](#what-a-pass-skipped); absent folds nothing. The same `?runner=` also folds a ticket that runner is [omitted](#omitted-runners) from, its own or an ancestor's — see [the dispatcher](#the-dispatcher). Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
-| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=`, `?dangerous=`, `?model=`, `?agent=` and `?has=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. `?runner=<name>` folds an issue that runner is [omitted](#omitted-runners) from, and nothing else: this route runs no let-go fold. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=`, `?dangerous=`, `?model=`, `?agent=` and `?has=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; the row's `Models`, `Agent` and `Has` fold a move whose model it cannot spawn or whose dependency it lacks, and a row that never reported them folds nothing; a name no live row answers to is a `400` naming it. Where that key holds live loop sessions, both `asRunner` and the let-go peer check below judge it off its beat row, its config and those sessions together — a key with no sessions answers exactly as it always has. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it, and one it is [omitted](#omitted-runners) from. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now — see [runner capacity](#runner-capacity) — adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, filled in only when `takers` holds fewer than two names). `hatch queue` and the web queue ask for this; `/work/next`'s own poll does not |
+| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?model=` (repeatable) and `?agent=` declare which models and which agent the runner offers, folding a move whose model it cannot spawn — see [the dispatcher](#the-dispatcher); absent folds nothing, and a bad entry is a `400`. `?has=` (repeatable, `id` or `id@version`) declares the development dependencies the runner has, folding a move that runs the issue's code whose project's bound repositories declare a dependency none of these satisfies, or whose `.hatch/dependencies.json` is invalid — see [the dispatcher](#the-dispatcher); absent folds nothing, and a bad entry is a `400`. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. `?runner=<name>` names the caller's own runner, so a ticket that runner let go of last is folded for it while another live runner could take it — see [what a pass skipped](#what-a-pass-skipped); absent folds nothing. The same `?runner=` also folds a ticket that runner is [omitted](#omitted-runners) from, its own or an ancestor's — see [the dispatcher](#the-dispatcher) — and a clear row left for a runner marked [preferred](#runners-on-the-board) that is free to take it. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
+| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=`, `?dangerous=`, `?model=`, `?agent=` and `?has=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. `?runner=<name>` folds an issue that runner is [omitted](#omitted-runners) from, and one left for a free runner marked [preferred](#runners-on-the-board): this route runs no let-go fold. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=`, `?dangerous=`, `?model=`, `?agent=` and `?has=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; the row's `Models`, `Agent` and `Has` fold a move whose model it cannot spawn or whose dependency it lacks, and a row that never reported them folds nothing; a name no live row answers to is a `400` naming it. Where that key holds live loop sessions, both `asRunner` and the let-go peer check below judge it off its beat row, its config and those sessions together — a key with no sessions answers exactly as it always has. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it, one it is [omitted](#omitted-runners) from, and a clear row left for a free runner marked [preferred](#runners-on-the-board). `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now — see [runner capacity](#runner-capacity) — adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, filled in only when `takers` holds fewer than two names). `hatch queue` and the web queue ask for this; `/work/next`'s own poll does not |
 | `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent, or a parent in a project whose *A passing check approves the merge* setting is on, in review with no pull request and every child done, or an issue that declared itself finished with no code and is pre-approved or in a project whose *A no-code declaration closes the ticket* setting is on, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads `?runner=<name>` for the omission fold alone, folding an issue that runner is [omitted](#omitted-runners) from, and not the let-go one. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. When two requests report one merge at once, the first moves the issue and the second gets the same `409` an issue already past review gets (see [two reports of one merge](#the-merge-train)). See [the five paths past the terminal guard](#the-five-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
@@ -5118,7 +5135,7 @@ board remembered.
 
 `waitingOnARunner` lists every issue whose next move is clear, but that no live
 runner can take: every live runner's own declaration folds it on the
-[model fold, the refusal fold and the dependency fold](#what-a-pass-skipped), and on nothing
+[model fold, the refusal fold, the dependency fold and the signing fold](#what-a-pass-skipped), and on nothing
 else. A runner is live when it is being heard from, running, and not out of
 usage - the same test a peer is held to when one runner's let-go ticket is left
 for another. Each entry is `key`, `title`, `type`, `move` (the column the move
@@ -5128,8 +5145,8 @@ The list is empty when no runner is live - the existing "no runner" condition
 says that - and when every gap is met by some live runner. A runner that never
 declared models or what it has is never counted as lacking them: one that
 declared neither, and refuses nothing, empties the list, and a check is skipped where no live runner
-declared that capability. `missing` takes one of two shapes, joined with `; `
-when a move needs both:
+declared that capability. `missing` takes one of three shapes, joined with `; `
+when a move needs more than one:
 
 - `no live runner offers fable` - the move runs on a model alias no live
   runner offers; or `pinned to <id> - no live runner's agent is <agent>` for a
@@ -5142,6 +5159,12 @@ when a move needs both:
   project's bound repositories declare dependencies no live runner's `has`
   satisfies; an
   invalid dependencies file is named as it is.
+- `no live runner signs its commits` - the ticket's project allows only signed
+  commits, and no live runner's signing is `works`. Unlike the two above, a
+  live runner that never said whether it signs counts as not signing, on
+  purpose: a project that wants signed commits wants a runner known to sign,
+  so an unprofiled fleet is spared the scans only where no project allows
+  only signed commits.
 
 A split fleet lists nothing, deliberately: where one runner lacks the model
 and another lacks the tool, no single sentence is true of all of them, and the
@@ -5154,7 +5177,9 @@ any live runner run this move at all* (a model or a tool), but *which live
 runner, right now, could pick up this clear step*. A runner capable of the
 move can still fold it on a claim, a full WIP slice, an open question, a
 person, or a dependency edge, and those folds are a runner's own business,
-not a capacity gap - so the two lists never disagree: `waitingOnARunner`'s
+not a capacity gap - and neither is a row left for a [preferred
+runner](#the-dispatcher), because capacity reads the peers' own scans, which
+never apply that deferral - so the two lists never disagree: `waitingOnARunner`'s
 own rule is unchanged, and this one only narrows further, past the rows it
 already lists.
 
@@ -6427,65 +6452,6 @@ busy runner never drags every `jsonb` across. An index on
 `IssueEvents (Actor, At)` is what keeps the first query from reading the whole
 trail.
 
-## The overnight
-
-The leaderboard says what the nights cost. The overnight page says **what the
-loop actually landed** — the one read nothing else on the board collapses
-into: a card's own status, a trunk's own build, an open question each say one
-thing about one issue, and none of them say what came in together while
-nobody was watching.
-
-The page is at `/overnight` in the Hatch app, under **Agents** in the primary
-nav, beside the Leaderboard. It holds one table, the newest night in it —
-epics, then bugs, then stories, then tasks; within a type, most descendants
-first, then newest first — behind one read and one write:
-
-```
-GET  /api/overnight
-POST /api/overnight/seen
-```
-
-`GET` answers `OvernightDto`: `from`, `to`, `count`, the ordered `rows`, and
-`unseen` — this reader's own count of how many of those rows they have not
-looked at yet (see [Overnight seen](#overnight-seen)). `POST` sets that mark
-to now; the page fires it the moment it is opened, independent of whether the
-row data itself has loaded, so reading the page is what counts as reading it,
-and it reloads the nav control below rather than waiting on a page reload.
-With nothing ever landed, the page draws an empty state rather than a table.
-
-**Lands** is the moment an issue reaches a terminal column
-(`EfHatchStatus.IsTerminal`) — read off the newest `status_changed`
-[event](#issue-event) on the issue. **A night** is `Overnight.QuietGap` —
-four hours, named as a constant so an operator who wants a different gap
-knows where to look — and the newest night is the run of landings nearest
-the newest one, split off by any gap bigger than that constant on either
-side (`Overnight.NewestNight`): two landings exactly four hours apart are one
-night; four hours and one tick apart, two. The fold is pure and synchronous,
-computed only from landing instants, with no reference to whether a loop was
-running — worth saying plainly, because this document already uses "night"
-several dozen times elsewhere for a different thing: one `go-to-work` run's
-own lifetime, start to whichever of its stop conditions fires (a bound, three
-failures, the board asking it to stop). The two usually coincide, because
-that lifetime is exactly what produces a run of landings with no four-hour
-gap in it, but they are not the same computation — a person moving cards by
-hand with no loop running at all still produces a night by this page's
-definition, and a loop idling on a quiet board for over four hours without
-landing anything splits what was one continuous process run into two nights
-by this one, even though nothing about the loop itself ended. Said once here,
-so a careful reader of this same document is not left reconciling the two
-senses of the word silently.
-
-**Not a session.** The leaderboard's session is one agent increment — one row
-in `hatch.work_log_entries`, written at the end of one spawn, carrying a
-cost. A night is coarser and carries no cost accounting of its own: several
-increments across several tickets, or zero (a hand-moved card lands too),
-over however long the loop kept landing something, with no tokens and no
-notional USD anywhere in `Overnight.Landing` or `OvernightDto`.
-
-**Agents → Overnight**'s own nav control carries `unseen` beside the page:
-quiet while it is `0`, a lit mark and the count otherwise — and opening the
-page is what clears it, the same `POST` above.
-
 ## The dispatcher
 
 `GET /api/work/next` answers "what should an agent do next, and how?" in
@@ -6556,7 +6522,7 @@ caller that declared what it can spawn (the model item below). Nothing else in
 the refusals consults one: an issue with no playbook for its next move is
 refused in the same sentence whether it names a model or not.
 
-**Seventeen refusals**, and two of them are rules of the whole loop rather than
+**Twenty refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -6701,7 +6667,29 @@ missing configuration:
     Review"*, or *"… it works every column except In Progress, Testing"*, the
     columns named in board order; an `only` rule with nothing listed reads
     *"it works no column"*. Kind `other`. Waits on nobody. Said after the
-    refusal item and before the toolchain item.
+    refusal item and before the signing item.
+12c. The ticket's project **allows only signed commits** — the project's
+    *Allow unsigned commits* setting is off — and the asking runner has not
+    said that it signs them: its signing is `off`, `fails`, or no answer, and
+    only `works` clears. Gated as the refusal item is — every move a session
+    is spawned for, never a hop, never an idle review self-move — and kind
+    `other`, waiting on nobody. *"HA-12 allows only signed commits -
+    build-box does not sign its commits"*, *"… signing fails on build-box
+    (gpg: signing failed: No pinentry)"* (no parentheses where the runner gave
+    no reason), or *"… build-box has not said whether it signs"*; a runner
+    with no name reads *this runner*. Whose answer is read is the one thing
+    that differs from the items above: `?signing=` where the caller sent one
+    of `off`, `works` or `fails` (a `?signingWhy=` rides beside `fails`; any
+    other word counts as not sent), else, for a caller holding a key, the
+    worst answer of the live loop sessions of the runner `?runner=` names or
+    the calling key's own - none, so no answer, where no such runner is live.
+    A caller with no key and no `?signing=` is the board's own scan and is
+    not judged. `?asRunner=` and every peer scan read that runner's own
+    sessions and ignore `?signing=`, so `takers` and `untaken` print the
+    sentence word for word and a peer that cannot sign is no peer that
+    could take a ticket another runner let go of. A project that allows
+    unsigned commits is never folded, for any caller. Said after the column
+    item and before the toolchain item.
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
@@ -8250,7 +8238,8 @@ relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
 runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, a model it cannot
-spawn or refuses, or a
+spawn or refuses, a column it does not work, a project that allows only signed
+commits when it has not said it signs them, or a
 clean, checked review row a passing check would carry into the merge column
 but no check playbook covers the move for, among them: no new kind.
 
@@ -8269,6 +8258,15 @@ minutes ago, and another live runner could take it - it is left for them while
 one can`, kind `other`; every other runner's row is unchanged. See [A ticket a
 runner let go of](#the-dispatcher) for what counts as another runner that could
 take it. A name matching no row is fine, and no `runner` folds nothing.
+
+**A row left for a preferred runner is folded for an unmarked one.** The same
+`?runner=<name>` (or `?asRunner=`) folds a clear row while a runner marked
+[preferred](#runners-on-the-board) is live, idle and able to take it: `HA-12 in
+In Progress is left for build-box, which is preferred and free`, kind `other`.
+It is said last - after the let-go fold and every other fold the asker owns -
+never on a hop, and never to a preferred runner. `work/{key}` carries the same
+sentence as `blocked`, and `work/next` skips the row. A name matching no key
+folds nothing.
 
 **A ticket omitted for this runner is folded for it too.** The same
 `?runner=<name>` (or `?asRunner=`) also folds a row the runner is
@@ -8298,7 +8296,8 @@ terminal, a live [claim](#claim), a [pause](#expedite), a ready date, an
 assignee, an unanswered question, a repository this runner lacks, a runner tag the
 project asks for and this runner lacks, a ticket omitted for this runner, a flagged-dangerous issue a runner that
 refuses dangerous work was asked about, a model the runner cannot spawn, a model the
-runner refuses, an unmet dependency, an open child, a
+runner refuses, a column it does not work, a project that allows only signed
+commits it has not said it signs, an unmet dependency, an open child, a
 full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
 — for an issue in review — the verdict on its branch, then [the hop](#the-hop),
 and last the missing playbook — last because it is only worth saying about an
@@ -9516,6 +9515,22 @@ One pass, from the board to the release:
    that does not answer, spawns anyway and says so rather than refusing a
    session over a question it could not even ask.
 
+   Also between the reset and the spawn, **before the issue's branch is
+   prepared**, the runner asks git whether it can sign a commit in the checkout
+   the session will run in (`off`, `works` or `fails`: one `commit-tree -S`
+   of a test object, ended at twenty seconds, touching no ref, index or tree;
+   a `fails` is not asked again for thirty minutes). Where it fails and the
+   dispatch's `AllowsUnsignedCommits` (true by default) is true, the increment's
+   own git calls and its session run with `commit.gpgsign` and `tag.gpgsign`
+   false through `GIT_CONFIG_COUNT` and its numbered pairs, after any the
+   environment held - `-c` on the runner's own calls where git is older than
+   2.31 - and the branch section of the prompt says to commit as usual and
+   say "committed unsigned". Where the machine cannot sign (`off` or `fails`)
+   and the project allows only signed commits, nothing is spawned: the ticket
+   is let go with one comment, a second in a row is flagged stalled, and the
+   increment is no run and no failure. See [signing
+   commits](../src/Hatch.Web/apps/hatch/docs/the-runner.md#signing-commits).
+
    The session's environment is set first from this runner's own `HATCH_BASE`
    and `HATCH_KEY`, plus `PATH` — the pair is how the session spawned is the
    same runner as the loop that spawned it - see
@@ -10632,6 +10647,70 @@ and **Rebuild**. The version rises only when the launcher learns something, so a
 deploy alone never lights it; a child that finds its launcher older than its own
 build says so once on its first start of the night.
 
+A launcher also replaces its own file, so the `hatch` on a `PATH` is downloaded
+once ([`LauncherSelf.cs`](../src/Hatch.Cli/LauncherSelf.cs)). At every start,
+before the state directory is made, it sweeps what an earlier start left aside and
+looks at the build every `boards/` record names as current: the one with the
+highest sequence, read by running its `version`, replaces the file at the launcher's
+own path when that sequence is higher than the launcher's. Newer means a higher
+sequence, so a board that rolls back moves the child and leaves the launcher. The
+copy is written beside the old file, run from there and asked for its revision,
+then swapped in. A file that is a link is followed and the file it points at
+replaced. On Linux and macOS the swap is a rename and the process then calls
+`execve` on its own path with the same arguments and
+`HATCH_LAUNCHER_HANDOFF=1`; a change of build in the middle of a night first writes
+`resume` and the state to put back into the night's directory and passes it
+as `HATCH_LAUNCHER_RESUME`, so the next child starts on the same trial, holds and
+fallback. On Windows the running file is renamed aside as `<file>.old-<pid>-<id>`
+and the new one put at the path; between children the launcher carries on as it
+was, and at a start it starts the new file once with the handoff variable and
+waits for it, so there is never a chain. Either variable is read once and removed.
+Nothing here ends a night: a failure is one line, once per start. A build nobody
+stamped, a development build, `scripts/hatch.sh`, `scripts/hatch.ps1`,
+`HATCH_RUNNER_BIN` (all set `HATCH_NIGHT_STATE`) and the container image's build
+never do it. The launcher version is 3 for it.
+
+A launcher also changes build. When the child hears from its board that the
+board is on another build, it writes `build.json` beside the night's state (the
+board's origin, the revision, where to download it and its sha256) and exits 75;
+the launcher fetches the build, checks it, keeps it under
+`versions/<sha>/` and starts the next child from it, and records it as the
+board's build once that child's first beat is answered. The child decides at the
+top of a pass, after the stop conditions and before the order and paused
+branches, so it holds no claim; `behind` is followed at once and any other word
+after ten unbroken minutes. See [Restarts](#what-it-stops-for) below.
+
+The launcher also removes the builds it can no longer need. After a change of
+build and at each start it sweeps `versions/`, keeping the current and previous
+build of each board a loop ran against in the last thirty days and any build in
+use: a launcher says which builds it runs with a locked `<sha>.in-use-<guid>`
+file, macOS and Linux are scanned for processes running from `versions/`, and
+Windows refuses to open a running file for writing. A build is looked at
+again for a lease or a record just before it is removed, since a change of
+build can land while the sweep runs. A build is renamed to
+`.old-<guid>` and then deleted, a delete that fails is left for the next sweep,
+and an unfinished `.tmp-*` download goes at a day old. The macOS scan has never
+been run by hand.
+
+A launcher also hands on a plain command. Any command but `go-to-work`,
+`do-my-work`, `version` and `inbox`, on a stamped build with no
+`HATCH_LAUNCHER_VERSION` above it, works out its board the way it always has,
+reads that board's record under `boards/`, and runs the same arguments through
+the build recorded as current, or through the newest kept build (the binary
+written last) where no build is recorded or the call names no board. The child
+is told it has a launcher with `HATCH_LAUNCHER_VERSION` and
+`HATCH_LAUNCHER_PATH` and no `HATCH_NIGHT_STATE`, so it never hands on again and
+nothing takes it for a night. Nothing is redirected: the exit code, the streams
+and the terminal are the child's, and the launcher passes the first signal on
+and waits. A child a signal ended on Linux or macOS is answered as 128 plus the
+signal. The decision only reads: no network, no download, no `Record`. Nothing
+kept, a chosen build that is the launcher's own, a recorded build that is not
+kept, or one that will not start, all leave the launcher to answer the command
+itself, with one line on standard error for the last two. `hatch work` is such a
+command, so its increment and its session's `PATH` and hooks name that build.
+`hatch standby install` writes the launcher's path, never one under
+`versions/`. The cost is one more process start.
+
 So: a console program in the solution, compiled against
 `src/Hatch.Contracts` — the same records the API serves, so a fixture that
 goes stale does not quietly deserialise into a dispatch with empty fields, it
@@ -10751,6 +10830,15 @@ except the last one:
   [when an increment does nothing](#when-an-increment-does-nothing) — and
   neither is [the wait that follows one](#runners-on-the-board): the loop is
   spending nothing while it waits, so there is nothing there to fail.
+- **A machine that cannot sign** — exit `78`, the third one nobody asks for.
+  Where git cannot sign a commit and no project the runner serves allows an
+  unsigned one, every ticket it could claim would be let go again. So it says
+  so and exits `78` at the start, before a heartbeat or a claim, or at the first
+  ticket it has to let go for that reason, holding no claim and printing the
+  tally. It fails open against a board that does not answer or is too old to
+  list the setting. A supervisor does not run it again on `78`: the launcher and
+  both scripts pass it through, and a runner set's host exits `78` only when
+  every member did.
 - **A workspace that cannot be made current** — the other one nobody asks for,
   and the only condition that ends a night without an increment having failed. A
   tree that will not reset is a tree every ticket would be built wrong on, and
@@ -10841,9 +10929,12 @@ same change. And it will not restart at all under `--once`, under
 somebody is standing over it, and a runner with nobody to run it again is the
 loop it started as.
 
-Under a launcher the loop restarts for `hatch use` and for its set, and for
-nothing that needs source: a change in a checkout it serves is not read, and
-`--restart-after` does nothing. It tells the loop who it is through
+Under a launcher the loop restarts for `hatch use`, for its set and for a change
+of build, and for nothing that needs source: a change in a checkout it serves is
+not read, and `--restart-after` does nothing. A change of build needs a launcher
+at version 2 and a loop that restarts at all, so it never happens under
+`--no-restart`, `--once`, `hatch.sh`, `hatch.ps1`, an unstamped build or the
+image; a launcher at version 1 gets one line and the loop carries on. It tells the loop who it is through
 `HATCH_LAUNCHER_VERSION`, a whole number that starts at 1, and `HATCH_LAUNCHER_PATH`;
 a child reads the version before relying on anything newer than 1, and where the
 launcher is too old it carries on without that thing and says so in one line. No
@@ -10904,12 +10995,11 @@ next heartbeat.
 
 **A runner's name is its key's** — assigned once, at mint, and never chosen
 or recorded by the runner itself. `POST /api/runners`
-(`RunnersController.CreateRunner`, admin-only, no `AcceptKey`) is the only way
-one is minted, from the Runners page's Create runner dialog. The cast list in
+(`RunnersController.CreateRunner`, `RequireRole(User)` and an owner rule, no
+`AcceptKey`) is the only way one is minted, from the Runners page's Create runner dialog. The cast list in
 `src/Hatch.Contracts/runner-names.txt` (main and recurring characters from
 three TV shows, plus the colorful one-offs) only suggests a name there —
-`GET /api/runners/suggest-name` (`RunnerCast.Suggest`, admin-only,
-`RunnersController.cs:204`) answers one no key or heartbeat already holds —
+`GET /api/runners/suggest-name` (`RunnerCast.Suggest`, `RequireRole(User)`) answers one no key or heartbeat already holds —
 and an admin is free to type anything else instead. There is no
 `hatch config --runner`, or any other way, for a checkout to pick or override
 the name it runs under; a runner has one identity, its key's, for good.
@@ -10988,9 +11078,12 @@ name a build; the board keeps nothing of it. `download` and `sha256` are what
 the Runner page lists for that platform, read from the same code, and both
 are null where the platform is unknown, unsent, or has nothing published -
 the part is still sent. Every beat is answered this way: the named route and
-the session route, `loop` and `once`. Nothing acts on it yet: the **Behind**
-badge and `boardDrift` read the stored row as they always did, and the loop
-ignores the part.
+the session route, `loop` and `once`. The **Behind** badge and `boardDrift` read
+the stored row as they always did. A downloaded loop reads the part: `behind`
+sends it to its launcher for that build at the top of the next pass, and any
+other word does so only when every beat for ten minutes has named the same
+revision (`BoardBuildWatch`). A loop with no launcher, or one run with
+`--no-restart` or `--once`, never acts on it.
 
 **Refused models are a key's alone, and a key may write its own.** `PUT
 /api/runners/{name}/refused-models` holds the list of models this
@@ -11020,8 +11113,23 @@ are taken together, never one without the other, and `all` keeps the ids
 the same as tags and refused models, so a name with no key is refused it
 outright - there is nowhere for it to live. A column deleted after the rule
 was written is dropped from `statusIds` on the next read rather than carried
-as a ghost id. Nothing reads this rule for dispatch yet, and the Runners page
-draws nothing for it - both come with a later ticket.
+as a ghost id. Nothing reads this rule for dispatch yet. The Runners page sets
+it under **What it may work** and shows it to a reader as a `Columns:` line.
+
+**It can also be marked preferred.** `preferred` on `PATCH /api/runners/{name}`
+says this runner takes work before unmarked runners; absent leaves it as it
+was, and `true` or `false` sets it. The flag lives on the key's config row,
+like the column rule, so a name with no key is refused it outright. It is
+only a person's to write - an admin, or the person who owns the runner - and
+a key is refused with `403`, even on its own row, because the flag widens the
+runner's share rather than narrowing it, as a refused model does. It reads
+`false` for a key that has never run and for a heartbeat row with no key, and
+a peer's declaration carries it. Dispatch reads it one way: a runner that is not
+marked is told a clear row is [left for a preferred runner](#the-dispatcher)
+while a marked one is live, idle and able to take it. The Runners page sets it
+with a **Preferred** checkbox under **What it may work** (a reader sees `Preferred:
+yes` or `no`), draws a `preferred` badge on a marked runner in its list, and the
+work queue's runner list draws the same badge beside the name.
 
 **It also says whether it refuses dangerous work, and which projects it is
 bound to, on every beat.** `refusesDangerous` and `projects` ride every
@@ -11163,6 +11271,30 @@ say. That reading is taken whenever the connection has one, regardless of
 CLI version — a session from a CLI old enough to send none of the six still
 carries `ip`. Nothing else is collected: no environment variable, no
 process id, no MAC address.
+
+**A loop also says whether it signs its commits.** Unlike the six machine
+fields above, the answer can change during a night, so it is not read once: the
+loop asks its signing cache on every beat, and a loop beat carries `signing`
+(`off`, `works` or `fails`) and, beside `fails`, `signingWhy`. The answer is the
+worst over the checkouts the loop serves — `fails`, then `off`, then `works`,
+written once as `RunnerSigning.Worst` in `Hatch.Contracts` and called by the
+loop and the board alike — taken from the latest check of each, so a checkout
+not yet asked says nothing. `signingWhy` is the first line of what git said,
+masked of keys by the loop and cut to 200 characters; the board cuts it to 200
+again and keeps it only beside `fails`. It rides the *session* row
+(`EfHatchRunnerSession.Signing`, `SigningWhy`): `RunnersController.SeedSession`
+writes it, and `TouchSession` rewrites both when a beat sends a `signing`, so a
+later check moves the answer and a `works` drops an old reason; a beat that
+sends none — a `once` beat, an older loop — leaves them alone. A word the board
+does not know is stored as no answer and the beat is still accepted. A runner
+reads as the worst of its live loop sessions (`RunnersController.ProjectAsync`,
+as `Models`, `Has` and `Pulling` are), so a keyed runner and its `RunnerDto`
+carry it with no legacy row; the legacy `POST /runners/{name}` route ignores
+both fields. The Runners page and `hatch runners` word it as *Signs its
+commits*, *Does not sign its commits* and *Signing fails*, and the list marks
+only a runner whose signing fails. The board refuses work on what a
+runner said: a project that allows only signed commits is folded for a runner
+that has not said `works`, see [the dispatcher](#the-dispatcher), item 12c.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:
@@ -11823,7 +11955,7 @@ so the trail says who did what without anybody being asked to record it.
   If work should be parked, say so on the ticket.
 - **Edit a playbook.** The API refuses it, and the refusal is deliberate; if a
   playbook is wrong, say so on the ticket and stop.
-- **Mint and revoke keys**, and everything else behind a plain `[RequireAdmin]`.
+- **Mint keys**, and everything else behind a plain `[RequireAdmin]`.
 - **Answer a question**, which is the next section.
 
 ### When a decision is not the implementer's

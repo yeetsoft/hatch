@@ -128,6 +128,73 @@ public class RoleGateTests
     }
 
     /// <summary>
+    /// A key follows its owner: a pending owner is refused with the same reason
+    /// the person would get, at every level, while an owner who is a user or an
+    /// admin, or no owner at all, leaves the key as it was.
+    /// </summary>
+    [Theory]
+    [InlineData(PersonRole.User)]
+    [InlineData(PersonRole.Admin)]
+    public async Task RefusesAKeyWhoseOwnerIsPending_AtEveryLevel(PersonRole minimum)
+    {
+        var key = Key("Claude");
+        key.Owner = Person(PersonRole.Pending);
+        var gate = NewGate(new StubCallerIdentity(null, key));
+
+        var decision = await gate.EvaluateAsync("GET", "/api/board", null, minimum, true, default);
+
+        Assert.Equal(RoleOutcome.Refused, decision.Outcome);
+        Assert.Equal(RoleDecision.PendingApproval, decision.Reason);
+    }
+
+    [Theory]
+    [InlineData(PersonRole.User)]
+    [InlineData(PersonRole.Admin)]
+    public async Task AcceptsAKeyWhoseOwnerIsAUserOrAnAdmin(PersonRole ownerRole)
+    {
+        var key = Key("Claude");
+        key.Owner = Person(ownerRole);
+
+        var decision = await NewGate(new StubCallerIdentity(null, key))
+            .EvaluateAsync("GET", "/api/board", null, PersonRole.User, true, default);
+
+        Assert.Equal(RoleOutcome.Key, decision.Outcome);
+    }
+
+    [Fact]
+    public async Task AcceptsAKeyWithNoOwner()
+    {
+        var decision = await NewGate(new StubCallerIdentity(null, Key("Claude")))
+            .EvaluateAsync("GET", "/api/board", null, PersonRole.User, true, default);
+
+        Assert.Equal(RoleOutcome.Key, decision.Outcome);
+    }
+
+    [Fact]
+    public async Task AnswersKeyNotAcceptedBeforeLookingAtThePendingOwner()
+    {
+        var key = Key("Claude");
+        key.Owner = Person(PersonRole.Pending);
+
+        var decision = await NewGate(new StubCallerIdentity(null, key))
+            .EvaluateAsync("PUT", "/api/people/x", null, PersonRole.User, acceptKey: false, default);
+
+        Assert.Equal(RoleDecision.KeyNotAccepted, decision.Reason);
+    }
+
+    [Fact]
+    public async Task IsDormantForAKeyWhoseOwnerIsPending_WhereTheWallIsOff()
+    {
+        var key = Key("Claude");
+        key.Owner = Person(PersonRole.Pending);
+
+        var decision = await NewGate(new StubCallerIdentity(null, key), enabled: false)
+            .EvaluateAsync("GET", "/api/board", null, PersonRole.User, true, default);
+
+        Assert.Equal(RoleOutcome.Dormant, decision.Outcome);
+    }
+
+    /// <summary>
     /// The gate asks for the grant once, and reads the person off the same
     /// answer. Asking twice would be harmless here and expensive in
     /// production, where a grant lookup writes LastSeenAt.

@@ -87,7 +87,6 @@
   .hatch-topbar .hatch-menu__trigger--accent,
   .hatch-scope-strip .hatch-menu__trigger--accent,
   .hatch-attention-control,
-  .hatch-overnight-control,
   .hatch-battery {
     min-height: 44px;
   }
@@ -1494,23 +1493,6 @@
 
 .hatch-robot-lamp.lit {
   fill: currentColor;
-}
-
-/* The egg glyph: the nav's overnight control. Hollow shell at rest; the
-   crack is drawn only when `lit`, the same hollow-then-fills idea as the
-   robot's own lamp and eyes above. */
-.hatch-egg-shell {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-}
-
-.hatch-egg-crack {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 /* Something is holding this card right now.
@@ -9031,9 +9013,9 @@ button.hatch-option.chosen {
 }
 
 /* The four pills folded into one, for a phone. Four two-digit pills are the
-   widest thing in the bar's widest state - with the battery drawn and the
-   overnight control counting, they push the row past what 393px holds and the
-   brand link is squeezed to a sliver (HA-1228). So at phone width the pills
+   widest thing in the bar's widest state - with the battery drawn, they push
+   the row past what 393px holds and the brand link is squeezed to a sliver
+   (HA-1228). So at phone width the pills
    are hidden and this stands in for them: their sum, in the review pill's
    colours, which are neutral rather than any one section's. Hidden on the
    desk, which has the room. The panel and the control's accessible name are
@@ -9053,87 +9035,6 @@ button.hatch-option.chosen {
   .hatch-attention-pill-total {
     display: inline-flex;
   }
-}
-
-/* The overnight control, beside this one in the bar's trailing slot - a
-   thing to go and look at, not to do. Mirrors .hatch-attention-control for
-   its three carried-over decisions: on the desk quiet and loud share one
-   width so the bar does not shove itself out from under the cursor, the loud
-   state is a digit rather than a dot, and the accessible name says in words
-   what the colour says. At phone width there is no floor at all, for the
-   reason given on .hatch-attention-control. */
-.hatch-overnight-control {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-1-5);
-  min-width: 136px;
-  padding: var(--sp-1) var(--sp-2);
-  border: 1px solid transparent;
-  border-radius: var(--r-ctl);
-  background: none;
-  color: var(--on-chrome);
-  font-size: var(--t-label);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-decoration: none;
-  transition: color var(--transition), background-color var(--transition);
-}
-
-.hatch-overnight-control:hover {
-  background-color: var(--on-chrome-wash);
-}
-
-.hatch-overnight-control:focus-visible {
-  outline: 2px solid var(--chrome-glow);
-  outline-offset: 2px;
-}
-
-@media (max-width: 40rem) {
-  .hatch-overnight-control {
-    min-width: auto;
-  }
-}
-
-.hatch-overnight-rest {
-  color: var(--on-chrome);
-}
-
-/* A tinted ground, like the attention control's own loud state - an unread
-   night is calm news, not an alarm, which is also why its pill below takes
-   the neutral review tone rather than a danger or warn one. */
-.hatch-overnight-asking {
-  color: var(--on-chrome);
-  border-color: var(--on-chrome-wash);
-  background: var(--on-chrome-wash);
-}
-
-.hatch-overnight-asking:hover {
-  border-color: var(--on-chrome);
-}
-
-.hatch-overnight-glyph {
-  width: 20px;
-  height: 20px;
-  flex: none;
-}
-
-.hatch-overnight-word {
-  line-height: 1;
-}
-
-.hatch-overnight-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  padding: 0 var(--sp-1);
-  border-radius: var(--r-pill);
-  font-size: var(--t-micro);
-  font-weight: 700;
-  line-height: 1.6;
-  background: var(--on-chrome);
-  color: var(--chrome);
 }
 
 /* The panel: a dropdown anchored under the control, not a modal. What it holds
@@ -10249,6 +10150,13 @@ button.hatch-option.chosen {
 
 .hatch-runner-row__third {
   font-size: var(--t-micro);
+}
+
+/* What git said where signing fails is one line of up to 200 characters, and
+   may hold a stretch no space breaks - a key id, a path - which would push a
+   phone's page sideways. */
+.hatch-runner-signing {
+  overflow-wrap: anywhere;
 }
 
 .hatch-runner-list {

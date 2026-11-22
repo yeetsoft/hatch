@@ -150,6 +150,13 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
     /// with them (cascade): an ownerless grant is refused by the role gate
     /// anyway, so a session that outlived its person would be a credential
     /// that reaches nothing. Refused with a 409 for the last Admin.
+    ///
+    /// Every live key the person owns is revoked in the same save, at the
+    /// moment of the delete: a key with no owner sees every project, so one
+    /// that outlived its owner would widen a person scoped to one project the
+    /// day they were removed. A key already revoked keeps the time it had. The
+    /// rows stay, owner cleared by the database, so an event that names a key
+    /// still has a name to point to. A refused delete revokes nothing.
     /// </summary>
     [RequireAdmin]
     [HttpDelete("{id:guid}")]
@@ -160,6 +167,13 @@ public class PeopleController(AppDbContext db, TimeProvider time) : ControllerBa
 
         if (person.Role == PersonRole.Admin && await IsLastAdmin(id, ct))
             return Conflict(LastAdminSentence("deleted"));
+
+        // Not AuthService.RevokeApiKeyAsync: it saves on its own, and this has
+        // to be one save with the delete. Its rule is copied - a key that has a
+        // RevokedAt is left alone, so it is not loaded.
+        var now = time.GetUtcNow();
+        var keys = await db.ApiKeys.Where(k => k.OwnerPersonId == id && k.RevokedAt == null).ToListAsync(ct);
+        foreach (var key in keys) key.RevokedAt = now;
 
         db.People.Remove(person);
         await db.SaveChangesAsync(ct);

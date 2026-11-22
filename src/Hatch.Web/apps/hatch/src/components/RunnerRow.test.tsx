@@ -128,9 +128,26 @@ describe('RunnerRow', () => {
     expect(one).not.toMatch(/>x\d+</);
   });
 
+  it('badges a preferred runner, and only that one', () => {
+    expect(draw(runner({ preferred: true, sessions: [session()] }))).toContain('>preferred</span>');
+    expect(draw(runner({ sessions: [session()] }))).not.toContain('preferred');
+    expect(draw(runner({ preferred: false, sessions: [session()] }))).not.toContain('preferred');
+  });
+
   it('badges a revoked runner, and only that one', () => {
     expect(draw(runner({ revokedAt: at(-1000), sessions: [session()] }))).toContain('>revoked</span>');
     expect(draw(runner({ sessions: [session()] }))).not.toContain('revoked');
+  });
+
+  it('badges a runner whose signing fails, in the danger tone and with no title inside the link, and no other', () => {
+    const failing = draw(runner({ signing: 'fails', signingWhy: 'no secret key', sessions: [session()] }));
+    expect(failing).toContain('>signing fails</span>');
+    expect(failing).toContain('hatch-badge--danger');
+    expect(failing).not.toContain('no secret key');
+
+    for (const signing of ['works', 'off', null] as const)
+      expect(draw(runner({ signing, sessions: [session()] }))).not.toContain('signing fails');
+    expect(draw(runner({ sessions: [session()] }))).not.toContain('signing fails');
   });
 
   it('labels the glyph with what the speaking session is doing', () => {

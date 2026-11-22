@@ -345,22 +345,12 @@ public class AdminSurfaceTests
         "DreamsController.EditDream",
         "DreamsController.DeleteDream",
 
-        // What landed in the newest night, across every issue rather than
-        // about one - key-accepting and open to a person the same way
-        // WorkLogController's and ActivityController's reads are. See
-        // OvernightController.
-        "OvernightController.GetOvernight",
-
-        // Marking the night as seen is a person's own mark, never a key's -
-        // see OvernightController.PostSeen.
-        "OvernightController.PostSeen",
-
         // Choosing a home screen is a person's own, never a key's - see
         // MeHomeController.PutHome.
         "MeHomeController.PutHome",
 
         // What shipped, a window at a time - key-accepting and open to a
-        // person the same way OvernightController's read is. See
+        // person the same way WorkLogController's read is. See
         // ChangelogController.
         "ChangelogController.GetChangelog",
 
@@ -370,7 +360,7 @@ public class AdminSurfaceTests
         "ChangelogController.GetChangelogFile",
 
         // The backup folder's truth and the last attempt's - key-accepting and
-        // open to a person like OvernightController's read is. Running one is
+        // open to a person like WorkLogController's read is. Running one is
         // the operator's own act, never a key's or a keyless runner's. See
         // BackupController.
         "BackupController.GetBackup",
@@ -715,6 +705,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutNoCodeCloses",
         "ProjectsController.PutRunnersWorkContributions",
         "ProjectsController.PutFilesContributions",
+        "ProjectsController.PutAllowsUnsignedCommits",
         "ProjectsController.PutOnePrPolicy",
         "ProjectsController.PutPriority",
 
@@ -826,10 +817,6 @@ public class AdminSurfaceTests
         "ScopesController.GetScope",
         "ScopesController.PutScope",
 
-        // Marking the night as seen is a person's own mark, never a key's or
-        // a keyless runner's. See OvernightController.PostSeen.
-        "OvernightController.PostSeen",
-
         // Choosing a home screen is a person's own, never a key's or a
         // keyless runner's. See MeHomeController.PutHome.
         "MeHomeController.PutHome",
@@ -893,6 +880,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutNoCodeCloses",
         "ProjectsController.PutRunnersWorkContributions",
         "ProjectsController.PutFilesContributions",
+        "ProjectsController.PutAllowsUnsignedCommits",
         "ProjectsController.PutOnePrPolicy",
         "ProjectsController.PutPriority",
 
@@ -987,7 +975,6 @@ public class AdminSurfaceTests
         "LocalModelsController.GetLocalModels",
         "MeController.GetMe",
         "MergeCheckController.PutMergeCheck",
-        "OvernightController.GetOvernight",
         "PlanController.GetIssuePlan",
         "PlanController.GetPlan",
         "PlaybookFileController.GetPlaybookFiles",
@@ -1053,10 +1040,6 @@ public class AdminSurfaceTests
     /// <summary>Hatch routes that are the operator's, mirroring <see cref="UserOutsideHatch"/>.</summary>
     private static readonly string[] AdminInHatch =
     [
-        "RunnersController.CreateRunner",
-        "RunnersController.SuggestRunnerName",
-        "RunnersController.RevokeRunner",
-        "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
         "ScopesController.GetScopes",
         "ScopesController.GetScope",

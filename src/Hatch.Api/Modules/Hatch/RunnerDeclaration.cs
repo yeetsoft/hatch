@@ -26,6 +26,11 @@ namespace Hatch.Api.Modules.Hatch;
 /// row and for a key with no config row. See <see cref="Dispatch.ColumnFold"/>.
 /// </param>
 /// <param name="StatusIds">The column ids <paramref name="StatusMode"/> reads against.</param>
+/// <param name="Preferred">
+/// Whether the runner's key is marked to take work before unmarked runners.
+/// False for a keyless beat and for a key with no config row. Nothing in
+/// <c>Dispatch</c> reads it yet.
+/// </param>
 /// <param name="OwnerPersonId">
 /// The person the runner's key belongs to, whether or not <paramref name="Mine"/>
 /// is set - <paramref name="Principal"/> is only resolved under <c>Mine</c>.
@@ -45,8 +50,17 @@ public sealed record RunnerDeclaration(
     IReadOnlyList<string> Refused,
     Guid? OwnerPersonId = null,
     string StatusMode = RunnerStatusMode.All,
-    IReadOnlyList<int>? StatusIds = null)
+    IReadOnlyList<int>? StatusIds = null,
+    bool Preferred = false,
+    SigningDeclaration? SigningAnswer = null)
 {
+    /// <summary>
+    /// Whether the runner signs its commits, as <see cref="Dispatch.SigningFold"/> judges it. A
+    /// declaration is always judged: a runner that never said reads as having
+    /// no answer, and is held off a project that allows only signed commits.
+    /// </summary>
+    public SigningDeclaration Signing => SigningAnswer ?? new SigningDeclaration(Name, null, null, true);
+
     /// <summary>What this runner refuses - models and columns - as a pass judges it.</summary>
     public RunnerRefusal ToRefusal() => new(Name, Refused, StatusMode, StatusIds);
 
@@ -83,7 +97,8 @@ public sealed record RunnerDeclaration(
             config is null ? [] : RunnerTagColumn.Read(config.RefusedModels),
             row.ForPersonId,
             config?.StatusMode ?? RunnerStatusMode.All,
-            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds));
+            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds),
+            config?.Preferred ?? false);
     }
 
     /// <summary>
@@ -153,7 +168,21 @@ public sealed record RunnerDeclaration(
             config is null ? [] : RunnerTagColumn.Read(config.RefusedModels),
             runner.OwnerPersonId,
             config?.StatusMode ?? RunnerStatusMode.All,
-            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds));
+            config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds),
+            config?.Preferred ?? false,
+            SigningOf(runner.Name, live));
+    }
+
+    /// <summary>
+    /// What a runner's live loop sessions say about signing its commits: the worst of
+    /// their answers, see <see cref="RunnerSigning.Worst"/>. Always judged - no answer is
+    /// an answer, that the runner has not said. Shared by this declaration and
+    /// <see cref="RunnersController"/>'s page, so the two cannot drift apart.
+    /// </summary>
+    internal static SigningDeclaration SigningOf(string runner, IEnumerable<EfHatchRunnerSession> live)
+    {
+        var worst = RunnerSigning.Worst(live.Where(s => s.Kind == EfHatchRunner.LoopKind).Select(s => (s.Signing, s.SigningWhy)));
+        return new SigningDeclaration(runner, worst?.State, worst?.Why, true);
     }
 
     /// <summary>

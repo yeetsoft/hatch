@@ -123,8 +123,9 @@ public class RunnersController(
 
     /// <summary>
     /// Mints a runner: a key and the config row beside it, answered once with
-    /// the secret. Admin only, and never a key - an agent that could mint
-    /// runners could mint itself more of whatever a runner may do.
+    /// the secret. A signed-in user may mint one for themselves and an admin
+    /// for anyone; never a key - an agent that could mint runners could mint
+    /// itself more of whatever a runner may do.
     /// </summary>
     /// <remarks>
     /// Every refusal comes before anything is written: the gate, the name, the
@@ -133,12 +134,19 @@ public class RunnersController(
     /// the literal route beside <c>{name}</c>, and a runner called that could
     /// not be reached by its own URL.
     ///
+    /// <para>The owner rule is read here and not in the role attribute, which
+    /// reads only a role. Where the wall is on, a caller below admin owns what
+    /// they mint: naming anybody else is a 403, judged before the person is
+    /// looked up so a user cannot probe which ids exist, and a runner with no
+    /// owner would see every project, so none is written for a user. With the
+    /// wall off there are no roles and the rule is not read.</para>
+    ///
     /// <para>The key's uniqueness is <see cref="IAuthService"/>'s to judge, and
     /// it logs the mint too - so there is no logger here. The config row is
     /// written even with no tags, so a minted runner always has one.</para>
     /// </remarks>
     [HttpPost]
-    [RequireRole(PersonRole.Admin)]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<RunnerMintedDto>> CreateRunner([FromBody] CreateRunnerRequest? request, CancellationToken ct)
     {
         if (await NotAPerson(ct) is { } refusal) return refusal;
@@ -151,17 +159,24 @@ public class RunnersController(
             return BadRequest($"\"{name}\" is a route word");
 
         // No owner named defaults to whoever is minting it, or to nobody where
-        // the wall is off, as the key route this was ported from does.
+        // the wall is off, as the key route this was ported from does. Below
+        // admin, with the wall on, the owner is the caller and nobody else.
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var mustOwn = wallEnabled && callerPerson?.Role is not >= PersonRole.Admin;
+
         Guid? ownerPersonId;
         if (request?.OwnerPersonId is { } named)
         {
+            if (mustOwn && callerPerson?.Id != named) return OnlyAnAdminMintsForOthers();
             if (await actors.ResolveAsync(ActorKind.Person, named, ct) is null)
                 return BadRequest("that person does not exist");
             ownerPersonId = named;
         }
         else
         {
-            ownerPersonId = (await caller.PersonAsync(ct))?.Id;
+            if (mustOwn && callerPerson is null) return OnlyAnAdminMintsForOthers();
+            ownerPersonId = (callerPerson ?? await caller.PersonAsync(ct))?.Id;
         }
 
         if (RunnerTags.Normalise(request?.Tags, out var tags) is { } tagsRefusal) return BadRequest(tagsRefusal);
@@ -182,14 +197,16 @@ public class RunnersController(
         Response.Headers.CacheControl = "no-store";
 
         // A new key holds nothing and drives nothing, so nothing is read for it.
-        var wallEnabled = auth.Value.Enabled;
-        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
             wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
+
+    /// <summary>The 403 for a caller below admin who names somebody else as a new runner's owner, or who has no person to default to.</summary>
+    private static ObjectResult OnlyAnAdminMintsForOthers() =>
+        new("only an admin may create a runner for somebody else") { StatusCode = StatusCodes.Status403Forbidden };
 
     /// <summary>
     /// A cast-list name no key and no heartbeat row holds, for the form that
@@ -200,7 +217,7 @@ public class RunnersController(
     /// only asks it <c>Contains</c>. A literal route, so it beats <c>{name}</c>.
     /// </remarks>
     [HttpGet("suggest-name")]
-    [RequireRole(PersonRole.Admin)]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<string>> SuggestRunnerName(CancellationToken ct)
     {
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -248,6 +265,12 @@ public class RunnersController(
         var loop = runner.Sessions?.Where(s => sessions.IsLive(s, now) && s.Kind == EfHatchRunner.LoopKind).ToList() ?? [];
         if (dto.Models.Count == 0) dto = dto with { Models = RunnerDeclaration.Declared(null, loop.Select(s => s.Models)) };
         if (dto.Has.Count == 0) dto = dto with { Has = RunnerDeclaration.Declared(null, loop.Select(s => s.Has)) };
+
+        // Whether this runner signs its commits is a fact about each loop's
+        // own checkouts, so the runner reads as the worst of its live loops.
+        if (dto.Signing is null &&
+            RunnerDeclaration.SigningOf(runner.Name, loop) is { State: { } signingState } signing)
+            dto = dto with { Signing = signingState, SigningWhy = signing.Why };
 
         // A keyed runner with no legacy row has no row-level accelerator fact
         // at all, so the newest live loop session's own carries it - the same
@@ -980,6 +1003,9 @@ public class RunnersController(
         if ((request.StatusMode is not null || request.StatusIds is not null) && aggregate.Key is null)
             return BadRequest($"{runner} has no key - its column rule has nowhere to live");
 
+        if (request.Preferred is not null && aggregate.Key is null)
+            return BadRequest($"{runner} has no key - its preferred flag has nowhere to live");
+
         if (RunnerStatusMode.Normalise(request.StatusMode, out var normalisedStatusMode) is { } statusModeRefusal)
             return BadRequest(statusModeRefusal);
 
@@ -1025,7 +1051,7 @@ public class RunnersController(
             // the same thing. A key with no config row yet gets one here.
             var bounded = request.Under is not null || request.MaxRuns is not null || request.MaxSpend is not null
                 || request.MaxTokens is not null || request.MaxTokensPerHour is not null || request.UntilAt is not null
-                || request.Tags is not null || request.StatusMode is not null;
+                || request.Tags is not null || request.StatusMode is not null || request.Preferred is not null;
 
             if (bounded)
             {
@@ -1045,6 +1071,7 @@ public class RunnersController(
                     config.StatusMode = normalisedStatusMode;
                     config.StatusIds = RunnerStatusIdsColumn.Write(normalisedStatusIds);
                 }
+                if (request.Preferred is { } preferred) config.Preferred = preferred;
 
                 config.UpdatedAt = now;
             }
@@ -1152,34 +1179,46 @@ public class RunnersController(
     /// <summary>
     /// Stops a runner's key working, by the runner's name. The row stays - the
     /// audit trail names this key, and a revoked runner is still listed - so
-    /// this is a <c>POST</c>, not a <c>DELETE</c>. Admin only, and never a key.
+    /// this is a <c>POST</c>, not a <c>DELETE</c>. The runner's owner, or an
+    /// admin, and never a key.
     /// </summary>
     [HttpPost("{name}/revoke")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<IActionResult> RevokeRunner(string name, CancellationToken ct)
     {
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (await KeyNamedAsync(runner, ct) is not { } key) return NotFound();
 
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        if (await OwnerOrAdminRefusalAsync(key, wallEnabled, callerPerson, ct) is { } refused) return refused;
+
         return await keys.RevokeApiKeyAsync(key.Id, ct) ? NoContent() : NotFound();
     }
 
     /// <summary>
-    /// Replaces a runner's secret, answered once. Admin only, and never a key -
-    /// a key that could rotate could take over another runner's name.
+    /// Replaces a runner's secret, answered once. The runner's owner, or an
+    /// admin, and never a key - a key that could rotate could take over another
+    /// runner's name.
     /// </summary>
     /// <remarks>
     /// Config, heartbeat rows and sessions are untouched: they join to the key
     /// by id or by name, and rotating only changes the key's hash, prefix and
-    /// <see cref="EfApiKey.RotatedAt"/>.
+    /// <see cref="EfApiKey.RotatedAt"/>. The ownership refusal comes before the
+    /// revoked one, so a stranger learns nothing of the key's state.
     /// </remarks>
     [HttpPost("{name}/rotate")]
-    [RequireAdmin]
+    [RequireRole(PersonRole.User)]
     public async Task<ActionResult<RunnerMintedDto>> RotateRunner(string name, CancellationToken ct)
     {
         if (await NotAPerson(ct) is { } refusal) return refusal;
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (await KeyNamedAsync(runner, ct) is not { } key) return NotFound();
+
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        if (await OwnerOrAdminRefusalAsync(key, wallEnabled, callerPerson, ct) is { } refused) return refused;
+
         if (!key.IsLive(time.GetUtcNow())) return Conflict($"{runner}'s key is revoked");
 
         if (await keys.RotateApiKeyAsync(key.Id, ct) is not { } rotated) return NotFound();
@@ -1190,12 +1229,26 @@ public class RunnersController(
         var found = (await Runner.JoinAsync(db, keys, ct)).First(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
         var held = await runners.HeldAsync(db, claims, now, ct);
         var drivers = await runners.DriversAsync(db, keys, now, ct);
-        var wallEnabled = auth.Value.Enabled;
-        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
         var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
         return new RunnerMintedDto(dto, rotated.Secret);
+    }
+
+    /// <summary>
+    /// The 403 for a caller who neither owns this key nor is an admin, or null
+    /// where they may go on. Not <see cref="CanControl"/>: that passes for a
+    /// runner that belongs to nobody, and rotating one would hand a user a
+    /// secret that sees every project.
+    /// </summary>
+    private async Task<ObjectResult?> OwnerOrAdminRefusalAsync(EfApiKey key, bool wallEnabled, EfPerson? callerPerson, CancellationToken ct)
+    {
+        if (OwnsOrAdministers(key.OwnerPersonId, wallEnabled, callerPerson)) return null;
+
+        return key.OwnerPersonId is null
+            ? new ObjectResult($"only an admin may control {key.Name}, which belongs to nobody")
+                { StatusCode = StatusCodes.Status403Forbidden }
+            : await ControlRefusalAsync(key.Name, key.OwnerPersonId, ct);
     }
 
     /// <summary>
@@ -1655,6 +1708,10 @@ public class RunnersController(
     private static bool Yours(Guid? forPersonId, bool wallEnabled, EfPerson? callerPerson) =>
         !wallEnabled || (forPersonId is { } id && callerPerson?.Id == id);
 
+    /// <summary>Whether the caller owns this key, or is an admin. Built on <see cref="Yours"/>, so a key that belongs to nobody is an admin's alone.</summary>
+    private static bool OwnsOrAdministers(Guid? ownerPersonId, bool wallEnabled, EfPerson? callerPerson) =>
+        Yours(ownerPersonId, wallEnabled, callerPerson) || (wallEnabled && callerPerson?.Role >= PersonRole.Admin);
+
     // ---- The name ----
 
     private static readonly string NameRefusal =
@@ -1997,6 +2054,8 @@ public class RunnersController(
             AcceleratorMemoryBytes = request.AcceleratorMemoryBytes,
             AcceleratorDeviceCount = request.AcceleratorDeviceCount,
             AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength),
+            Signing = NormaliseSigning(request.Signing),
+            SigningWhy = SigningWhy(request.Signing, request.SigningWhy),
             Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength),
             Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength),
             AgentVersion = Fits(request.AgentVersion, EfHatchRunnerSession.MaxAgentVersionLength),
@@ -2054,6 +2113,14 @@ public class RunnersController(
         if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
         if (request.LauncherVersion is not null) session.LauncherVersion = request.LauncherVersion;
         if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
+
+        // Written when sent, so a later check that changes the answer moves it
+        // and a word the board does not know clears it; absent leaves it alone.
+        if (request.Signing is not null)
+        {
+            session.Signing = NormaliseSigning(request.Signing);
+            session.SigningWhy = SigningWhy(request.Signing, request.SigningWhy);
+        }
 
         if (request.Os is not null) session.Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength);
         if (request.Arch is not null) session.Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength);
@@ -2207,6 +2274,23 @@ public class RunnersController(
     /// </summary>
     private static string NormaliseAgentDownKind(string? kind) =>
         kind == RunnerAgentDownKinds.SignedOut ? RunnerAgentDownKinds.SignedOut : RunnerAgentDownKinds.NotStarting;
+
+    /// <summary>
+    /// A signing word the board keeps: trimmed, lowercased, and one of
+    /// <see cref="RunnerSigning.Words"/> - anything else is no answer, and the
+    /// heartbeat that sent it is still accepted.
+    /// </summary>
+    internal static string? NormaliseSigning(string? word)
+    {
+        var normal = word?.Trim().ToLowerInvariant();
+        return normal is not null && Array.IndexOf(RunnerSigning.Words, normal) >= 0 ? normal : null;
+    }
+
+    /// <summary>What git said, kept only beside <see cref="RunnerSigning.Fails"/> and cut to one line that fits.</summary>
+    internal static string? SigningWhy(string? word, string? why) =>
+        NormaliseSigning(word) == RunnerSigning.Fails
+            ? Fits(why?.Split('\n', 2)[0], EfHatchRunner.MaxSigningWhyLength)
+            : null;
 
     /// <summary>
     /// The remotes a beat named, canonicalised and newline-joined - or null

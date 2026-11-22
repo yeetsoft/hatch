@@ -11,6 +11,7 @@ import { fullHref } from '../lib/basename';
 import { fixLine } from '../lib/changelog';
 import {
   BUCKET,
+  beneathLabel,
   bucketLabel,
   changelogReportEmptyWords,
   hasQuietGap,
@@ -24,7 +25,6 @@ import {
   type ReportBucketSize,
 } from '../lib/changelogReport';
 import { changelogMarkdown } from '../lib/changelogMarkdown';
-import { beneathLabel } from '../lib/overnight';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { scopedPath } from '../lib/scope';
 import { noProjectWords, reportProjects, withProjects } from '../lib/timeline';

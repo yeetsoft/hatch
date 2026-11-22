@@ -93,8 +93,8 @@ a Hatch with its wall off, `hatch config` offers `Create a runner on this
 board? [Y/n]`, asks `Runner name [<suggestion>]`, creates the runner, writes
 its secret as the key and prints `created runner <name>`; a taken name is
 refused and nothing is written, and the runner has no owner until an admin sets
-one. Against a Hatch with its wall on, it says there is no key, and an admin
-creates the runner on the Runners page; then `hatch config --key <key>`. A loop
+one. Against a Hatch with its wall on, it says there is no key, and you
+create the runner on the Runners page; then `hatch config --key <key>`. A loop
 needs a key either way. Never put it in a repository.
 
 - `--show` says what is set and which layer each value came from, including an
@@ -388,7 +388,9 @@ board call, but it needs a checkout: the item is registered for the one you
 are standing in, and under the profile you name with `--profile`, if any.
 
 - `hatch standby install` registers the item and prints the checkout, the
-  command it runs and the log it writes. It starts at the next sign-in;
+  command it runs and the log it writes. In a downloaded `hatch` the command
+  is the launcher, never a build under `versions/`; run from a kept build with
+  no launcher above it, it refuses. It starts at the next sign-in;
   `hatch go-to-work --standby` starts it now. Run again, it says it is already
   installed and changes nothing.
 - `hatch standby show`, or `hatch standby` alone, prints whether the item is
@@ -455,7 +457,7 @@ at says so in a sentence. Runner tags are judged on the calling key's own tags
 from the Runners page, the same ones its loop carries, so a tagged project is
 not reported as "advertises none" to a key that has them.
 It reads as this checkout's runner, so a row can say a ticket is left for another
-runner.
+runner, or for a [preferred runner](the-runner) that is free.
 
 - `<ancestor key>` narrows it to one epic's tree.
 - `--mine` shows what a `--mine` pass would take and folds past everything
@@ -505,8 +507,12 @@ ancestor key, the lines count only the issues the rows below show, and over
 an empty queue say nothing; unnarrowed, they match the panel. For example: `3 issues
 wait for a runner that offers fable`, `1 issue waits for a runner that has
 pwsh 7 or newer and playwright-browsers`, or, for a ticket that requires its
-local model, `1 issue waits: requires <id> locally - no live runner lists it`. A server too old to send the list
-prints nothing extra.
+local model, `1 issue waits: requires <id> locally - no live runner lists it`, or,
+for a project that allows only signed commits, `1 issue waits for a runner that
+signs its commits`. `queue` and `next` first ask git in each checkout they run
+in whether it can sign, and send the answer with the read
+([signing commits](the-runner#signing-commits)). A server too old to send the
+list prints nothing extra.
 Run inside a checkout of a bound repository, with neither `--mine` nor an
 ancestor key, `queue` then lists each open pull request there that no issue
 records and that the project's driver would pass over rather than file as an
@@ -652,6 +658,13 @@ reports no memory prints the backend alone (`  accelerator rocm`). A runner
 that never reported one, or reported `none`, prints nothing extra
 ([the runner](the-runner#what-a-runner-advertises)).
 
+A runner that reports whether it signs its commits adds `  signs its commits`,
+`  does not sign its commits` or `  signing fails: <what git said>` after the
+accelerator and before any projects. A runner serving several checkouts reads as
+its worst: fails, then does not sign, then signs. One that never said, or said a
+word this `hatch` does not know, prints nothing extra
+([the runner](the-runner#signing-commits)).
+
 A runner that reports dependencies closes that part of its line with
 `  has dotnet 10.0.100, node 22.11.0, pwsh`, comma-separated, before any
 projects; one with none prints nothing extra.
@@ -674,6 +687,11 @@ A runner with a column rule closes its line after that with `  only Breakdown,
 In Review` or `  skips In Progress, Testing`, the columns named in board order.
 `all` adds nothing, the same as a rule naming none of the board's current
 columns. See [the runner](the-runner#refused-columns).
+
+A runner an admin has marked preferred closes its line with `  preferred`, last,
+after the column rule. One that is not marked adds nothing. `--json` carries
+`preferred` on every row, `true` or `false`. See
+[the runner](the-runner#preferred).
 
 `hatch runners refuse` reads, sets and lifts the calling key's own refused
 models - the runner is always the calling key's own name, never a flag, and a
@@ -1367,6 +1385,7 @@ has the rest, including what happens to a key that belongs to nobody.
 | `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_MODELS`, a bad `HATCH_HAS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else, when the workspace could not be reset, and when the board refused a pass (a `--mine` key that belongs to nobody); the night's tally still prints and the ticket is still given back. |
 | `2` | Nothing to do, as an answer and not a fault. `next` found nothing workable, `pr` was read with no URL set, and `work` found the board idle, the ticket blocked, or another runner holding it. `runner-credential` also exits `2` while no credential has been saved yet, which is the ordinary state between starting the container runner and pasting one in. |
 | `75` | `go-to-work` or `do-my-work` is asking whatever stands over it to run it again: a wrapper script, which rebuilds first, or a downloaded build's launcher. It never happens in a loop started by hand, nor under `--no-restart` or `--once`. |
+| `78` | `go-to-work` or `do-my-work` found git here cannot sign a commit while no project it serves allows an unsigned one, so it could never work a ticket: at the start, or at the first ticket it had to let go for that reason. `work AER-12` exits `78` for the same refusal. A wrapper script and a launcher pass `78` through and do not run the loop again; a runner set's host exits `78` only when every member did. See [signing commits](the-runner#signing-commits). |
 | `130` | Interrupted, for `work` and every command except `go-to-work` and `do-my-work`. The first signal prints that it is letting go of the ticket and releases the claim; a second is immediate. |
 
 `go-to-work` and `do-my-work` never exit `130`. They catch their own

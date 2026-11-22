@@ -38,6 +38,75 @@ public sealed record Runtime(
     /// <summary>The models this runner has stopped offering. A reference, so it survives <c>runtime with { ... }</c>.</summary>
     public ModelNarrowing Narrowing { get; init; } = new();
 
+    /// <summary>The checkouts that could not sign, held thirty minutes. A reference, so it survives <c>runtime with { ... }</c>.</summary>
+    public SigningCache SigningCache { get; init; } = new();
+
+    /// <summary>
+    /// Whether this increment's git calls and session are making commits
+    /// unsigned: set by the gate, cleared when the pass ends. A reference, so
+    /// every workspace the runtime makes reads the one flag.
+    /// </summary>
+    public UnsignedCommits Unsigned { get; init; } = new();
+
+    /// <summary>
+    /// How a checkout is asked whether git can sign there. Replaceable so a test
+    /// can say what a machine answered without a signing program to run.
+    /// </summary>
+    public Func<string, CancellationToken, Task<SigningCheck>> SigningProbe { get; init; } =
+        (root, ct) => GitSigning.CheckAsync(root, GitSigning.Limit, ct);
+
+    /// <summary>
+    /// Can git sign in <paramref name="root"/>? A checkout that answered
+    /// <see cref="Signing.Fails"/> in the last thirty minutes is not asked
+    /// again unless <paramref name="fresh"/> says to - the start-up line is.
+    /// </summary>
+    public async Task<SigningCheck> CanSignAsync(string root, CancellationToken ct, bool fresh = false)
+    {
+        if (!fresh && SigningCache.Failed(root, Clock.GetUtcNow()) is { } remembered) return remembered;
+
+        var check = await SigningProbe(root, ct);
+        SigningCache.Record(root, check, Clock.GetUtcNow());
+        return check;
+    }
+
+    /// <summary>
+    /// Whether this runner's commits are signed, as the board is told on every
+    /// beat: the worst over the checkouts it serves that have been asked, and
+    /// any clone made under the workspace since. Null until one has been - the
+    /// start-up line asks every served checkout, so that is only a runner with
+    /// no checkout. The reason is one line, masked and at most
+    /// <see cref="RunnerSigning.MaxWhyLength"/> characters.
+    /// </summary>
+    public (string State, string? Why)? SigningAnswer()
+    {
+        var served = Checkouts.Select(c => SigningCache.Latest(c.Path)).OfType<SigningCheck>();
+        var cloned = Settings.Workspace is { } workspace && !Settings.IsWorkspaceOff(workspace)
+            ? SigningCache.LatestUnder(workspace)
+            : [];
+
+        return Fold(served.Concat(cloned));
+    }
+
+    /// <summary>
+    /// The worst of some signing checks, as the board is told: <c>fails</c>, then
+    /// <c>off</c>, then <c>works</c>. Null with no check. The reason, beside
+    /// <c>fails</c> only, is one line, masked and at most
+    /// <see cref="RunnerSigning.MaxWhyLength"/> characters.
+    /// </summary>
+    public static (string State, string? Why)? Fold(IEnumerable<SigningCheck> checks)
+    {
+        var answer = RunnerSigning.Worst(checks.Select(c => (
+            (string?)(c.State switch { Signing.Works => RunnerSigning.Works, Signing.Fails => RunnerSigning.Fails, _ => RunnerSigning.Off }),
+            (string?)c.Why)));
+        if (answer is not { } worst) return null;
+
+        // Scrub appends an ellipsis past its own cap, which would make 201.
+        var first = (worst.Why ?? "").Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0) ?? "";
+        var why = worst.State == RunnerSigning.Fails ? Scrub.Lines([first]).FirstOrDefault() : null;
+        if (why is { Length: > RunnerSigning.MaxWhyLength }) why = why[..RunnerSigning.MaxWhyLength];
+        return (worst.State, why);
+    }
+
     /// <summary>
     /// This process's own build identity, read once off the entry assembly -
     /// see CliRevision.cs. Replaceable so a test can assert what a heartbeat
@@ -94,6 +163,16 @@ public sealed record Runtime(
     /// launcher restarts for <c>hatch use</c> and nothing that needs source.
     /// </summary>
     public LauncherLink? Launcher { get; init; }
+
+    /// <summary>
+    /// The builds the launcher will not take just now, from <c>HATCH_BUILD_HOLD</c>.
+    /// Empty when there are none, which is every loop but one that has just
+    /// been through a failed change of build.
+    /// </summary>
+    public BuildHold BuildHold { get; init; } = new();
+
+    /// <summary>One line from the launcher about what it decided at the last change of build, from <c>HATCH_BUILD_NOTE</c>; said once at the start.</summary>
+    public string? BuildNote { get; init; }
 
     /// <summary>
     /// The launcher version of this build - what a launcher must be at least for
@@ -153,6 +232,31 @@ public sealed record Runtime(
     {
         var chosen = settings.Models is not null && adapter.Id == settings.Agent ? settings.Models : adapter.Models;
         return chosen.Count > 0 ? narrowing.Offered(chosen, now) : null;
+    }
+
+    /// <summary>
+    /// Asks every checkout this run serves whether git can sign there, at once and
+    /// afresh, so <see cref="SigningAnswer"/> has something to say before the first
+    /// read a dispatch is judged on.
+    /// </summary>
+    public async Task<IReadOnlyList<(string Path, SigningCheck Check)>> AskSigningAsync(CancellationToken ct) =>
+        await Task.WhenAll(Checkouts.Select(async c => (c.Path, Check: await CanSignAsync(c.Path, ct, fresh: true))));
+
+    /// <summary>
+    /// One line for each checkout this run serves where git cannot sign, said at
+    /// the start: what git said, and that commits there will be unsigned where a
+    /// project allows it. A checkout git can sign in, or is not set to sign in,
+    /// is not mentioned. Asked at once rather than in turn, since each failing
+    /// one may take the whole limit to answer. Returns every answer, so the start
+    /// can ask whether any project could be worked at all.
+    /// </summary>
+    public async Task<IReadOnlyList<(string Path, SigningCheck Check)>> SayCannotSignAsync(CancellationToken ct)
+    {
+        var asked = await AskSigningAsync(ct);
+        foreach (var (path, check) in asked.Where(a => a.Check.Fails))
+            Say.Complain($"hatch: {path} - git cannot sign commits here ({check.Why}), so commits will be unsigned where a project allows it");
+
+        return asked;
     }
 
     /// <summary>
@@ -219,7 +323,7 @@ public sealed record Runtime(
     /// <summary>The real ones, over whichever checkout each call names.</summary>
     public Runtime WithGit() => this with
     {
-        Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain),
+        Workspace = (path, baseBranch) => new Workspace(path, baseBranch, Say.Line, Say.Complain, unsigned: Unsigned),
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         SourceRevision = () => new GitSourceRevision(Root),
@@ -227,6 +331,7 @@ public sealed record Runtime(
         {
             Has = Has,
             Models = () => AdvertisedModels() ?? [],
+            Signing = () => SigningAnswer(),
             Agent = Adapter.Id,
         },
         MakeClone = (remote, path) => new GitClone(remote, path),

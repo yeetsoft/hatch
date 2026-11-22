@@ -263,6 +263,66 @@ run](the-runner#when-it-will-not-run).
 - **Want it sooner.** The same as the agent not starting: stop the loop and
   start it again by hand once signed in.
 
+## A session asked whether it may commit unsigned
+
+- **The machine could not sign, and the session was not told what to do.** The
+  runner asks git whether it can sign before each increment, and a session that
+  was started by a build older than that finds out at its first commit. Update
+  the runner: from then on the answer is in the prompt, and the session does
+  not ask.
+- **See what git says here.** The runner prints one line at the start for any
+  checkout where git is set to sign and cannot: what git said, and that commits
+  will be unsigned where a project allows it. Fix it by hand - unlock the key,
+  start the agent, point `gpg.program` at one that is there - and the check
+  passes again within thirty minutes, with no restart.
+- **A ticket was let go with a comment saying this runner cannot sign.** The
+  project allows only signed commits, so the runner will not make an unsigned
+  one. Fix the signing on this machine, or leave the ticket for a runner that
+  can; a second one in a row is flagged stalled and waits like any other.
+- **A ticket reads "allows only signed commits" in the queue, and the runner
+  passes over it.** The project allows only signed commits, and the board
+  folds the move for any runner that has not said its signing works. The
+  sentence says which of three it is:
+  - *"... build-box does not sign its commits"* - git is not set to sign on
+    that machine. Set up signing there, or leave the ticket for a runner that
+    signs.
+  - *"... signing fails on build-box (gpg: signing failed: No pinentry)"* -
+    git is set to sign and could not; the reason is what git said. Unlock the
+    key, start the agent or point `gpg.program` at one that is there. The check
+    passes again within thirty minutes, with no restart.
+  - *"... build-box has not said whether it signs"* - the runner has not
+    reported an answer, usually because it is an older build. Update it. A
+    runner that is only heartbeating by hand never says.
+  If **Waiting on a runner** lists the ticket as *no live runner signs its commits*,
+  no runner anywhere can take it: fix one, or an owner can allow unsigned
+  commits in the project dialog.
+- **The session still asked.** The paragraph at the end of its branch section
+  tells it what to do in each case, and none of them is to ask. A session that
+  asked anyway is worth a note on the ticket, with the prompt it was given -
+  `hatch work AER-12 --dry-run` prints it. See [what a session is
+  told](what-a-session-is-told#the-branch) and [signing
+  commits](the-runner#signing-commits).
+
+## The runner exited 78
+
+- **The log says git cannot sign commits here, and every project it serves
+  allows only signed commits.** The runner could never commit anything it is
+  allowed to work, so it stopped at once with nothing claimed. Exit code `78`
+  is that and nothing else. The log names the projects (the first five), what
+  git said in each checkout, and the two ways out.
+- **Fix signing on this machine.** Unlock the key, start the agent, or point
+  `gpg.program` at one that is there, then start the runner again. A container
+  that restarts on failure keeps restarting until this is fixed.
+- **Or have an owner allow unsigned commits.** It is a setting on each project.
+  Where any project the runner serves allows them, the runner starts and works
+  only that project's tickets.
+- **It exited 78 after working for a while.** Signing worked at the start and
+  stopped working, and the runner met a ticket it had to let go for that. The
+  closing tally says so and no claim is held. The same two ways out apply.
+- **It never runs again by itself.** A wrapper script and a downloaded build's
+  launcher pass `78` through. See [signing
+  commits](the-runner#signing-commits).
+
 ## The runner says the board has it paused
 
 - **Three tickets in a row ended in error without spending a token.** The
@@ -377,6 +437,52 @@ run](the-runner#when-it-will-not-run).
   publish step, or `dotnet run` from a checkout, has none. Build them
   yourself with `make publish-hatch` from the repository root, or rebuild the
   image.
+
+## The runner says it could not move to a build
+
+A downloaded `hatch` running a loop can be moved to a newer build. When it
+cannot, it carries on with the build it has, says one line at the start of the
+next restart, and asks again later: a minute, then two, doubling to an hour. Each
+line reads `hatch: could not move to build <sha> - <why>; carrying on with the
+build it has, asking again in <time>`. The night is never lost over it.
+
+- **`the board answered from another build (mid-deploy?)`** The board was being
+  upgraded while the build was fetched. Nothing to do: the next ask finds it done.
+- **`the download's sha256 is not the one the board gave`** The bytes were damaged
+  on the way, or a proxy changed them. It asks again on its own. If it keeps
+  happening, look at what stands between this machine and the board.
+- **`the new build did not report revision`** The fetched file did not say it is the
+  build it was meant to be, or would not run on this machine. Check that the
+  platform matches, and that nothing (antivirus, a read-only mount) is stopping it
+  from starting.
+- **`could not start` or `did not answer "version" within 60s`** The same, seen
+  from the other side: the file arrived whole but would not run here.
+- **`403 downloading`, `401 downloading`, a timeout, or a connection message** The
+  board could not be reached with this runner's key. See [a 401 or a
+  403](#a-401-or-a-403).
+- **`installing <sha> - <message>`** The disk, not the board: it is full, or the
+  per-user folder is not writable. Free space or fix the folder's permissions; the
+  builds live in `versions/` there.
+- **`kept <n> old build(s) it could not remove; tried again at the next change of
+  build`** The launcher removes the builds it no longer needs, and this one was in
+  use, held open by a scanner or another process, or on a disk that refused. It
+  says so once and tries again by itself; nothing is lost and no night is delayed.
+  If it never clears, delete the folders under `versions/` that no process is
+  running by hand.
+
+## The runner went back to the build it had
+
+When a new build ends before the board has answered its first beat, the launcher
+puts the night's totals back as they were, starts the build it had, and never asks
+for that build again until the launcher itself is started again. The line reads
+`hatch: build <sha> ended with exit <code> before the board answered it; carrying
+on with the build it had` (or `could not be started`). A build that ended after the
+board answered it is a normal end, and ends the loop as it always has.
+
+- Read the log for what the new build said as it ended. It is a build that does not
+  work, and an upgrade is the way out: the board's next build is asked for as usual.
+- Deleting `versions/` in the per-user folder is safe at any time. The next start
+  runs the downloaded file itself.
 
 ## A psql shell
 

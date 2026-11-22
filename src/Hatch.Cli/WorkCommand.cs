@@ -210,6 +210,7 @@ public sealed class WorkCommand(Runtime runtime)
         }
 
         runtime = served;
+        await runtime.SayCannotSignAsync(ct);
         try { return await SpendAsync(key, under, mine, model, effort, attach, quiet, abortMerge, ct); }
         finally { held?.Dispose(); }
     }
@@ -223,6 +224,9 @@ public sealed class WorkCommand(Runtime runtime)
         string? key, string? under, bool mine, string? model, string? effort, string agent, CancellationToken ct)
     {
         var clones = runtime.Settings.Workspace is not null;
+
+        // Asked before the first read, so the board is told what this machine signs.
+        await runtime.AskSigningAsync(ct);
 
         WorkDto? work;
         try
@@ -293,7 +297,9 @@ public sealed class WorkCommand(Runtime runtime)
         var plan = lifecycle.Plan(work, chosen);
         foreach (var entry in plan) runtime.Say.Line($"# would enter: {entry.Sentence()}");
         runtime.Say.Line("");
-        runtime.Say.Lines(Prompt.Compose(work, chosen.Repositories, plan).Split('\n'));
+        var signing = await runtime.CanSignAsync(chosen.Root, ct);
+        runtime.Say.Lines(Prompt.Compose(
+            work, chosen.Repositories, plan, signing: new CommitSigning(signing.State, work.AllowsUnsignedCommits, signing.OldGit)).Split('\n'));
         return 0;
     }
 
@@ -645,6 +651,21 @@ public sealed class WorkCommand(Runtime runtime)
                 }
             }
 
+            // Before the branch is prepared, as the loop asks it: the merge of
+            // the trunk into that branch is a commit.
+            var signing = await runtime.CanSignAsync(chosen.Root, ct);
+            if (signing.State != Signing.Works && !work.AllowsUnsignedCommits)
+            {
+                runtime.Say.Complain(
+                    $"hatch: {work.Issue.Key} - this project allows only signed commits, and git here cannot sign"
+                    + (signing.Why.Length > 0 ? $" ({signing.Why})" : " (it is not set to sign commits)")
+                    + " - nothing was spawned");
+                return GoToWorkCommand.CannotSignExitCode;
+            }
+
+            if (signing.Fails) runtime.Unsigned.Set(signing.OldGit);
+            var commitSigning = new CommitSigning(signing.State, work.AllowsUnsignedCommits, signing.OldGit);
+
             var entering = await lifecycle.EnterAsync(work, chosen, ct);
             if (entering.Asked)
             {
@@ -666,7 +687,7 @@ public sealed class WorkCommand(Runtime runtime)
             {
                 if (attach)
                 {
-                    var code = await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, since, ct);
+                    var code = await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, since, commitSigning, ct);
                     owned = true;
 
                     // work -i has no LetGo or stall-counting concept - that is
@@ -716,7 +737,7 @@ public sealed class WorkCommand(Runtime runtime)
                         found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
                         built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
                         work.Playbook?.IsCheck == true ? ct2 => lifecycle.TreeUnchangedAsync(chosen, entering.Entries, ct2) : (Func<CancellationToken, Task<bool>>?)null,
-                        runnerName: runtime.RunnerName, incrementNumber: 1, since: since);
+                        runnerName: runtime.RunnerName, incrementNumber: 1, since: since, signing: commitSigning);
                 }
                 finally
                 {
@@ -796,6 +817,7 @@ public sealed class WorkCommand(Runtime runtime)
         }
         finally
         {
+            runtime.Unsigned.Clear();
             if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId);
         }
     }
@@ -813,7 +835,7 @@ public sealed class WorkCommand(Runtime runtime)
     private async Task<int> AttachAsync(
         WorkDto work, string model, string effort, Claim claim, Checkouts.Choice chosen,
         IReadOnlyList<BranchEntry> branches, Rechecked? conflict, BuildFound? build,
-        IReadOnlyList<RepoSince> since, CancellationToken ct)
+        IReadOnlyList<RepoSince> since, CommitSigning signing, CancellationToken ct)
     {
         runtime.Say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
         runtime.Say.Line(
@@ -833,8 +855,11 @@ public sealed class WorkCommand(Runtime runtime)
         await runtime.Increment().MarkSaidAsync(work, ct);
 
         return await runtime.Sessions.AttachAsync(
-            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build, since), Quiet: false, chosen.AddDirs,
-                DeniedTools: work.Playbook?.DeniedTools ?? [], Settings: runtime.Settings),
+            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build, since, signing), Quiet: false, chosen.AddDirs,
+                DeniedTools: work.Playbook?.DeniedTools ?? [], Settings: runtime.Settings)
+            {
+                Unsigned = signing is { State: Signing.Fails, Allows: true },
+            },
             ct);
     }
 

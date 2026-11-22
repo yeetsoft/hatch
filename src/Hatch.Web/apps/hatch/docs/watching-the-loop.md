@@ -30,7 +30,8 @@ belong to nobody.
 Each row opens that runner's detail, and has three lines:
 
 - The glyph, the runner's name, and on the right an `x2` badge (or `x3`, and so
-  on) when more than one session is live, and a `revoked` badge when it is.
+  on) when more than one session is live, a `preferred` badge when the runner
+  carries the preferred mark, and a `revoked` badge when it is.
 - What it is doing: `Working HA-12 - <its last line>` (with `+1 more` when
   several sessions work), `Idle - seen 4 minutes ago`, `Paused`, `Stopping`,
   `Over 200k tokens/hour until 3:40am`, `Out of usage until …`, `Agent not
@@ -103,8 +104,10 @@ was last used, and when it was rotated or revoked, where either has happened. Th
 owner is an admin's to change, from a list of people and *nobody*; everyone else
 reads it as text. **Rotate key** and **Revoke** are an admin's too, and neither
 appears on a revoked runner. A **Behind** badge beside the name means a live
-session's own build has fallen behind the board's (restart it against a newer
-deploy), and a **Rebuild** badge means one has fallen behind its own checkout's
+session's own build has fallen behind the board's. A downloaded runner follows
+its board by itself within a pass, so one that stays **Behind** is one that could
+not update (its heartbeat names the build, and the loop says why in its log) or
+one run with `--no-restart` or `--once`; restart it against a newer deploy, and a **Rebuild** badge means one has fallen behind its own checkout's
 source (run `make build-hatch` in that checkout, or start its supervised loop again, which builds first). A
 **Launcher behind** badge means the downloaded launcher that started the loop is
 older than the one this board's build knows: start the loop again from a fresh
@@ -145,6 +148,19 @@ dispatch read, like a refused model ([Refused columns](the-runner#refused-column
 A caller who cannot edit reads one line beside `Refuses:`: `Columns: every
 column`, `Columns: every column except In Progress, Testing` or `Columns: only
 Breakdown, In Review`.
+
+Below the columns, a **Preferred** checkbox marks the runner as one that takes
+work before runners without the mark. Its hint reads: *Takes work before runners
+without this. With less work than runners, the others sit idle.* It saves with
+**Save settings** and goes back with **Revert**, like the rest of the card, and
+the request carries it only when it changed. A caller who cannot edit reads
+`Preferred: yes` or `Preferred: no` after `Columns:`, with no control. The mark
+is only a person's to set: the runner's owner or an admin, and a runner with no
+key refuses it.
+
+The web's work queue draws the same `preferred` badge beside a marked runner's
+name in its list of runners, and on no other. The badge sits on that list, not on
+the **Reading as** choice, which takes plain names.
 
 Beneath them, **Declared by its sessions** is read-only: **Projects** is every
 project any live session was started with (every project when none), and whether
@@ -324,20 +340,6 @@ so once - how long it will wait at most - and starts as soon as the session
 goes. If that session beats again while the new loop waits, it is a real second
 loop in the checkout, and the new one is refused with the usual "is already the
 runner" sentence and exits 1.
-
-## Overnight
-
-**Agents → Overnight** is the newest night: the run of landings nearest the
-most recent one, split off by any gap over four hours - a landing is any
-issue reaching a terminal column, by a person's hand or by a hop, not only
-what a loop did. Epics, bugs, stories and tasks are listed in that order, and
-within a type the ones with the most beneath them come first; each row shows
-the issue, its type, its title and how much is beneath it.
-
-The egg-shaped control beside **Overnight** in the nav bar carries a count of
-landings this reader has not seen. It is rechecked about once a minute and
-whenever the tab comes back into focus, and it goes quiet the moment this
-reader opens the Overnight page - for that reader alone, not board-wide.
 
 ## Leaderboard
 
@@ -564,7 +566,8 @@ failed, in a project that has not turned on **Runners work contributions**:
 the key links to the issue, the pull request opens on the forge, and a
 contribution mirrored from another instance names where it came from.
 **Waiting on a runner** lists every issue whose next move no live runner can
-take for want of a model, a tool, or a dependency its project declares - and links to the Runners page, where each runner shows what it offers
+take for want of a model, a tool, a dependency its project declares, or - where
+the project allows only signed commits - a runner that signs them, and links to the Runners page, where each runner shows what it offers
 ([the runner](the-runner#what-a-runner-advertises) covers what that is); like
 **Backups**, it lights the control and adds no pill to the bar.
 **Waiting on another project's approver** lists each issue that a level or a
@@ -599,8 +602,10 @@ loop](one-increment-and-the-loop#stalls) covers what a stall is.
 
 Each row under **Waiting on a runner** is the issue's key, a link, its title,
 and `in <column> - <the gap>`. The gap reads `no live runner offers fable`, or
-`no live runner has pwsh 7 or newer and playwright-browsers`; a move that
-needs both joins them with `; `. A pinned id reads `pinned to <id> - no live
+`no live runner has pwsh 7 or newer and playwright-browsers`, or `no live
+runner signs its commits` (a live runner that has not said whether it signs
+counts as not signing, here); a move that needs more than one joins them with
+`; `. A pinned id reads `pinned to <id> - no live
 runner's agent is <agent>`. A board with no live runner at all lists nothing -
 that is the *no runner* condition, not this one - and neither does a split
 fleet, one runner lacking the model and another the tool, since no single

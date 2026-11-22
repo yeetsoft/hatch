@@ -35,11 +35,16 @@ Users**: `pending`, `user` or `admin`.
 
 - **`pending`** reaches nothing behind the wall. They see the sign-in screen,
   which tells them "An administrator has to approve your account before you can
-  see the board."
+  see the board." A key whose owner is `pending` is refused too, on every route
+  that takes a key, with `403 pending_approval`. The key is not revoked and
+  nothing about it changes, so it works again when the owner is `user` or
+  `admin`.
 - **`user`** reaches every route on the board.
 - **`admin`** reaches what a user does and adds the operator's own controls:
-  people, sessions, runner keys and the core settings. With the wall up, an
-  admin also controls every runner, not only the ones that work for them.
+  people, sessions and the core settings. With the wall up, an admin also
+  controls every runner, not only the ones that work for them, may create a
+  runner for any person or for nobody, and may change a runner's owner. A user
+  creates, rotates and revokes only their own runners.
 
 The first `admin` is the first new Google identity to sign in while no admin
 exists. The `migrate` log says so, so that you sign in yourself before you
@@ -57,6 +62,12 @@ An admin lets someone in two ways, both on **Manage → Users**:
 The last `admin` cannot be demoted or deleted. The refusal is a `409`, and the
 **Role** select and **Delete** button on that row are disabled. Make someone
 else an `admin` first.
+
+Deleting a person revokes every key they own, in the same press. Each key stops
+at the moment of the delete, and a key that was already revoked keeps the time
+it had. The keys stay listed on **Runners** as revoked, with no owner, so an old
+event still has a name to point to. A delete that is refused, such as the last
+`admin`, revokes nothing.
 
 ## Owners and approvers
 
@@ -203,16 +214,22 @@ The heartbeat table a running loop writes is a bridge, joined to the key by
 name, that HA-1937 retires.
 
 - **Where it is minted.** A key is minted only by *creating a runner*
-  (`POST /api/runners`), from **Runners → Create runner**, admin only:
-  no key may mint, rotate, revoke or re-own a key, only a person at that
-  screen. The dialog takes **Name** ("What the audit trail will call it") and
-  **Owner** (hint: "Whose tickets this key's --mine reaches. The key sees only
+  (`POST /api/runners`), by a signed-in person - a user for themselves, an
+  admin for anyone: no key may mint, rotate, revoke or re-own a key, only a
+  person. The Runners page's **Create runner** button is shown to a user as
+  well as an admin, and not with the wall off. The dialog takes **Name** ("What the audit trail will call it") and,
+  for an admin, **Owner** (hint: "Whose tickets this key's --mine reaches. The key sees only
   the projects its owner sees; with nobody, it sees every project."), then
-  **Create**. The secret is shown once, on the page, beside the two `hatch config`
+  **Create**. A user's dialog has no Owner: it says the runner will be theirs, and the
+  runner is. The secret is shown once, on the page, beside the two `hatch config`
   commands it needs next, and the response is sent `no-store`, so it is never
   shown again. A name already held, by a key revoked or not, is refused. An
   admin can change the owner later, on the runner's Identity card, which
   carries the same hint under the select.
+- **A key stops with its owner.** Deleting the owner revokes the key. Setting
+  the owner to `pending` refuses the key with `403 pending_approval` until the
+  owner is `user` or `admin` again, and revokes nothing. A key an admin made
+  with no owner is neither: it has no owner to lose.
 - **Inside its owner's scope.** A key reads through its owner's
   [scope](#scope): its `next`, `queue`, `review`, hops, verdicts, merges,
   landings and closes touch only the projects that person can see, and an
@@ -222,7 +239,7 @@ name, that HA-1937 retires.
   only by a runner whose owner can see it, so a runner scoped out of a
   project is never elected its driver, however long it has run, and a peer
   scoped out of a project is not counted as able to take its tickets.
-- **Replacing a secret.** An admin rotates a runner with
+- **Replacing a secret.** The runner's owner, or an admin, rotates a runner with
   `POST /api/runners/{name}/rotate`; a new secret is made at once and
   shown once, sent `no-store`; the old secret is refused from the next call (a
   `401`), so every loop using it needs the new one; the name, owner, tags,
@@ -231,7 +248,7 @@ name, that HA-1937 retires.
   (`409`) — rotate to replace a leaked secret and keep the runner working,
   revoke to stop it. [`api-reference`](api-reference) has the route. On the
   Runners page these are Rotate key and Revoke on a runner's own Identity
-  card, admin only.
+  card, for the runner's owner or an admin.
 - **What a key reaches.** Every route of the board's own API (not sign-in, `people` or `ui-logs`), less the routes that
   take a person only. Those refuse a key outright — on a walled Hatch with
   `key_not_accepted`, and with the wall off they refuse any program the same
@@ -242,8 +259,7 @@ name, that HA-1937 retires.
   browser specifically, not merely a signed-in session with no UI; a
   column's settings; a project's repositories, logo, landing and auto-heal
   settings, playbook source and members; Hatch's own settings; a runner's
-  record; attachment upload and delete; marking the
-  overnight view seen; choosing a home screen; running a backup.
+  record; attachment upload and delete; choosing a home screen; running a backup.
   [`api-reference`](api-reference) has the route-by-route version.
 - **Which runners a key sees.** A key reads the runners of its owner, an
   admin's key reads every runner, and a key with no owner reads only the
@@ -262,6 +278,10 @@ name, that HA-1937 retires.
   revoked, and every call after is checked against that fresh — nothing
   about a key is cached — so the next call the key makes is a `401`.
   Revoking an already-revoked key changes nothing.
+- **Who may revoke or rotate.** The runner's owner, or an admin. A user gets
+  `403` on a runner that belongs to someone else, with a sentence naming the
+  owner, and on a runner that belongs to nobody: such a key sees every
+  project, so only an admin may press it. A key is refused both routes.
 - **Where the key goes:** never into the artifact — [the runner](the-runner#where-the-key-never-goes)
   says where it stays instead.
 
@@ -272,15 +292,15 @@ navigation to the board on a walled Hatch does not meet either: it is sent
 to sign-in instead.
 
 - **A `401` is the wall.** Either a key was sent and refused — never minted,
-  mistyped, or revoked — or no key was sent to a Hatch that has its wall on.
+  mistyped, revoked, or its owner was deleted — or no key was sent to a Hatch that has its wall on.
   The CLI tells the two apart:
   - No key sent: ``hatch: 401 - no key was sent and this Hatch has its wall on. Run `hatch config`.``
   - Key sent: `hatch: 401 - the key was not accepted. Minted, not revoked, copied whole?`
 - **A `403` is a gate.** The wall let the caller in and a rule behind it said
   no. There are two kinds.
   - **The role gate** answers `{ "error": "<code>" }`, with one of:
-    - `pending_approval` — the person has not been let in yet, and is refused
-      at every level.
+    - `pending_approval` — the person, or the owner of the key, has not been
+      let in yet, and is refused at every level.
     - `not_admin` — the person's role is below what the route asks for.
     - `no_person` — an enrolled device nobody has claimed.
     - `key_not_accepted` — a key reached a route that takes no key.
@@ -295,6 +315,7 @@ to sign-in instead.
     - `setting an issue's pre-approval level is a person's call, not an agent's`
     - `moving work into a protected column is an owner's or approver's call, not an agent's`
     - `only <name>, or an admin, may control <runner>`
+    - `only an admin may create a runner for somebody else`
 - **What the CLI prints for a `403`** is the API's own reason: a role-gate
   code prints as itself (`hatch: 403 - not_admin`), and a plain-sentence
   refusal prints that sentence (`hatch: 403 - only an owner or approver of
@@ -305,8 +326,11 @@ to sign-in instead.
 
 ## Whose tickets `--mine` reaches
 
-- **Who sets it.** An admin, from a runner's Identity card on the Runners
-  page — a key may never set its own. **Owner**, on the create dialog and the
+- **Who sets it.** A user's own runner is theirs from the moment they create
+  it: with the wall up, a user who creates a runner owns it, and may name only
+  themselves as its owner. Only an admin makes a runner for somebody else or
+  for nobody, and only an admin changes an owner later, from a runner's
+  Identity card on the Runners page — a key may never set its own. **Owner**, on the create dialog and the
   Identity card, lists people only and is pre-selected to the admin at the
   screen; left as is, that admin becomes the key's owner. The **Owner** select
   on an existing, unrevoked row also offers `nobody`; a revoked row shows its

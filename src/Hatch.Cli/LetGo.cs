@@ -92,6 +92,26 @@ public static class LetGo
         }
     }
 
+    /// <summary>
+    /// This runner's machine cannot sign a commit and the project allows only
+    /// signed ones, so nothing was spawned: the first time in a row, one quiet
+    /// comment saying so and what git said. Not a stall - a person with a
+    /// signing key, or a runner that has one, is what the ticket needs.
+    /// Best-effort, as <see cref="WriteAsync"/>.
+    /// </summary>
+    public static async Task CannotSignAsync(
+        Board board, Terminal say, string key, string runnerName, string why, CancellationToken ct)
+    {
+        try
+        {
+            await board.CommentAsync(key, Increment.CannotSignSentence(runnerName, why), ct);
+        }
+        catch (Exception e) when (e is HatchException or OperationCanceledException)
+        {
+            say.Complain($"hatch: {key} could not be told this runner cannot sign - {e.Message}");
+        }
+    }
+
     private static async Task WriteAsync(
         Board board, Terminal say, IAgentAdapter adapter, string key, string opening, string? sessionId,
         string noSession, CancellationToken ct, string? kept = null)

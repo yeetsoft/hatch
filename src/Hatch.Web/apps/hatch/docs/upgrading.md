@@ -174,6 +174,18 @@ when its source changes ([Restarts](one-increment-and-the-loop#restarts)). The
 container runner never does; a new build reaches it only through the commands
 above.
 
+A downloaded runner follows its board by itself. When the board is deployed on
+a new build, the runner hears it on its next heartbeat, fetches that build from
+the board, checks it, and comes back as it at the top of a pass, never while it
+holds a ticket. The **Behind** badge goes with the old process. A runner that
+was downloaded before this existed cannot do that yet: it needs one last manual
+download, after which it keeps up on its own. A launcher at version 3 or more
+also keeps its own file current, from the builds it keeps
+([Getting it](the-runner#getting-it)), so the one on your `PATH` is not downloaded
+again; a launcher at version 2 or less needs one last download to get that. A runner started with
+`--no-restart` or `--once`, or one run from a checkout by `scripts/hatch.sh` or
+`scripts\hatch.ps1`, never changes build this way.
+
 ## Links an older `hatch` wrote
 
 A pull request, a preemption comment or a `hatch work` read-out names an issue

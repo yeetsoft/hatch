@@ -45,6 +45,72 @@ public sealed partial class BuildStore(string root)
     }
 
     /// <summary>
+    /// The kept build whose binary was written last, or null where none is kept.
+    /// Ties go to the lower sha, so the answer never depends on the order a
+    /// directory is listed in. Reads only, and never throws on an IO error.
+    /// </summary>
+    public string? Newest()
+    {
+        try
+        {
+            if (!Directory.Exists(VersionsDirectory)) return null;
+
+            string? best = null;
+            var bestAt = DateTime.MinValue;
+
+            foreach (var directory in Directory.EnumerateDirectories(VersionsDirectory))
+            {
+                var sha = Path.GetFileName(directory);
+                if (Find(sha) is not { } binary) continue;
+
+                var at = File.GetLastWriteTimeUtc(binary);
+                if (best is null || at > bestAt || (at == bestAt && string.CompareOrdinal(sha, best) < 0))
+                {
+                    best = sha;
+                    bestAt = at;
+                }
+            }
+
+            return best is null ? null : Find(best);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The sha every board's record names as current, once each, in order. A
+    /// record that cannot be read is left out. Reads only, and never throws on
+    /// an IO error.
+    /// </summary>
+    public IReadOnlyList<string> Currents()
+    {
+        try
+        {
+            if (!Directory.Exists(BoardsDirectory)) return [];
+
+            var shas = new SortedSet<string>(StringComparer.Ordinal);
+
+            foreach (var file in Directory.EnumerateFiles(BoardsDirectory, "*.json"))
+            {
+                try
+                {
+                    var record = JsonSerializer.Deserialize(File.ReadAllText(file), HatchJson.Default.BoardRecord);
+                    if (record?.Current is { } sha && ShaPattern().IsMatch(sha)) shas.Add(sha);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { }
+            }
+
+            return [.. shas];
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
     /// Already there, or fetched, checked and moved into place - the move is
     /// what makes the result atomic: nothing ever sees a directory under
     /// <c>versions/&lt;sha&gt;</c> that was not fetched and checked whole.

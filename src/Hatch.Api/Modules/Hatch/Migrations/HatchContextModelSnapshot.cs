@@ -1345,28 +1345,6 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("MergeChecks", "hatch");
                 });
 
-            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchOvernightSeen", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<Guid>("PersonId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("SeenAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PersonId")
-                        .IsUnique();
-
-                    b.ToTable("OvernightSeen", "hatch");
-                });
-
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPersonHome", b =>
                 {
                     b.Property<Guid>("PersonId")
@@ -1693,6 +1671,18 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AllowsUnsignedCommits")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTimeOffset?>("AllowsUnsignedCommitsAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AllowsUnsignedCommitsBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
 
                     b.Property<bool>("AutoHealBugEnabled")
                         .ValueGeneratedOnAdd()
@@ -2220,6 +2210,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long?>("MaxTokensPerHour")
                         .HasColumnType("bigint");
 
+                    b.Property<bool>("Preferred")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("RefusedModels")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -2419,6 +2414,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<int?>("Sequence")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Signing")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("SigningWhy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("SourceRevision")
                         .HasMaxLength(40)

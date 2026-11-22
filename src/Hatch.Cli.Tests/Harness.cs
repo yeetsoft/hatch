@@ -1043,14 +1043,21 @@ public sealed class Harness : IDisposable
                 Has = settings.Has,
                 Tags = tags ?? [],
                 Models = () => Runtime.AdvertisedModels() ?? [],
+                Signing = () => Runtime.SigningAnswer(),
                 Agent = Runtime.Adapter.Id,
             },
             MakeClone = Clone.Factory,
             Clock = Clock,
             Machine = machine ?? MachineFacts.None,
+            SigningProbe = (path, _) =>
+            {
+                SigningAsked.Add((path, Workspace.Calls.ToList()));
+                return Task.FromResult(CanSignLater is { } later && SigningAsked.Count > 1 ? later : CanSign);
+            },
         };
 
         Runtime.Board.Models = () => Runtime.AdvertisedModels() ?? [];
+        Runtime.Board.Signing = () => Runtime.SigningAnswer();
         Runtime.Board.Agent = Runtime.Adapter.Id;
     }
 
@@ -1072,6 +1079,15 @@ public sealed class Harness : IDisposable
 
     /// <summary>The tree, as the pass finds it. Ready unless a test says otherwise.</summary>
     public FakeWorkspace Workspace { get; } = new();
+
+    /// <summary>What git answers when asked whether it can sign here: not set to, unless a test says otherwise.</summary>
+    public SigningCheck CanSign { get; set; } = new(Signing.Off);
+
+    /// <summary>What git says from the second time it is asked on - the machine's key locked after the start. Null keeps <see cref="CanSign"/> throughout.</summary>
+    public SigningCheck? CanSignLater { get; set; }
+
+    /// <summary>Every checkout git was asked about, with what the tree had been asked to do by then.</summary>
+    public List<(string Path, List<string> Calls)> SigningAsked { get; } = [];
 
     /// <summary>Where the build on a tip is read from. Silent - it cannot answer, and says nothing - unless a test says what a build came to.</summary>
     public FakeForge Forge { get; } = new();

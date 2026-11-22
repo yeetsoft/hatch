@@ -119,6 +119,12 @@ export interface Project {
   filesContributionsBy: string | null;
   /** When filesContributions was last changed on this project, or null until the first write. */
   filesContributionsAt: string | null;
+  /** Whether this project allows commits that are not signed. On until an owner says otherwise. See ProjectDto.AllowsUnsignedCommits. */
+  allowsUnsignedCommits: boolean;
+  /** Who last changed allowsUnsignedCommits, or null until the first write. */
+  allowsUnsignedCommitsBy: string | null;
+  /** When allowsUnsignedCommits was last changed on this project, or null until the first write. */
+  allowsUnsignedCommitsAt: string | null;
   /** Whether a ticket's work must land in one pull request, or may land in several. See ProjectDto.OnePullRequestPolicy. */
   onePullRequestPolicy: OnePullRequestPolicy;
   /** Who last changed onePullRequestPolicy, or null until the first write. See ProjectDto.OnePullRequestPolicyBy. */
@@ -1457,6 +1463,11 @@ export interface ProjectRunnersWorkContributionsWriteRequest {
 /** A write to whether outside pull requests are filed as contributions. See ProjectFilesContributionsWriteRequest (Hatch.Contracts). */
 export interface ProjectFilesContributionsWriteRequest {
   filesContributions: boolean;
+}
+
+/** A write to whether a project allows unsigned commits. See ProjectAllowsUnsignedCommitsWriteRequest (Hatch.Contracts). */
+export interface ProjectAllowsUnsignedCommitsWriteRequest {
+  allowsUnsignedCommits: boolean;
 }
 
 /** A write to the one-pull-request policy. See ProjectOnePrPolicyWriteRequest (Hatch.Contracts). */
@@ -3205,28 +3216,6 @@ export interface WorkLogByPlaybook {
   rows: WorkLogByPlaybookRow[];
 }
 
-// ---- Overnight ----
-
-/** The newest night the loop ran, and what landed in it - `OvernightController`'s
-    whole read, already ordered biggest deliveries first. */
-export interface OvernightDto {
-  from: string | null;
-  to: string | null;
-  count: number;
-  rows: OvernightRowDto[];
-  unseen: number;
-}
-
-/** One issue that landed that night, with how many issues sit beneath it. */
-export interface OvernightRowDto {
-  key: string;
-  type: IssueType;
-  title: string;
-  projectKey: string;
-  landedAt: string;
-  descendantCount: number;
-}
-
 // ---- Changelog ----
 
 /** The newest window of days that shipped something - `GET /api/changelog`'s whole read. */
@@ -3439,10 +3428,21 @@ export interface Runner {
   /** The column ids `statusMode` reads against - empty under `'all'`. Ids of
       columns since deleted are dropped on read. Mirrors RunnerDto.StatusIds. */
   statusIds?: number[];
+  /** Whether this runner is marked to take work before unmarked runners. Optional so a stub
+      that predates it still compiles; absent reads as false. Only a person sets it,
+      never the key. Mirrors RunnerDto.Preferred. */
+  preferred?: boolean;
   /** The Ollama ids this runner is asked to hold: the local-models table's rows
       that fit its machine, computed on read. Empty, never null - and empty for
       a runner that reports no accelerator memory. Mirrors RunnerDto.Hold. */
   hold: string[];
+  /** Whether this runner's commits are signed, the worst over the checkouts it serves:
+      `fails` before `off` before `works`. Absent or null where it never said; a word this
+      build does not know reads as no answer. Mirrors RunnerDto.Signing. */
+  signing?: 'off' | 'works' | 'fails' | null;
+  /** What git said, where `signing` is `fails` - one line of at most 200 characters, keys
+      masked. Mirrors RunnerDto.SigningWhy. */
+  signingWhy?: string | null;
 }
 
 /** One session beneath a runner: one `go-to-work` loop, so two checkouts
@@ -3539,6 +3539,8 @@ export interface RunnerPatchRequest {
   /** The column rule: sent with `statusIds` or not at all - the server refuses one without the other. */
   statusMode?: RunnerStatusMode;
   statusIds?: number[];
+  /** The preferred mark: absent leaves it alone. The server refuses it on a runner with no key. */
+  preferred?: boolean;
   under?: string;
   maxRuns?: string;
   maxSpend?: string;

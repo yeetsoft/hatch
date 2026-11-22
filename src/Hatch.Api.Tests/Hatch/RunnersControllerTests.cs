@@ -4578,6 +4578,139 @@ public class RunnersControllerTests
         Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
     }
 
+    // ---- A user minting one ----
+
+    private const string OnlyAnAdminSentence = "only an admin may create a runner for somebody else";
+
+    [Fact]
+    public async Task Create_AUserNamingNoOwner_OwnsTheRunnerAndGetsTheSecretUncached()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        Assert.StartsWith("hatch_ak_", minted.Secret, StringComparison.Ordinal);
+        Assert.Equal(h.PersonId, minted.Runner.OwnerPersonId);
+        Assert.Equal(h.PersonId, Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+        Assert.Single(await h.Db.RunnerConfigs.ToListAsync());
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task Create_AUserNamingThemselves_OwnsTheRunnerAndGetsTheSecretUncached()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        h.Actors.AddPerson("Owner", h.PersonId);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: h.PersonId)));
+
+        Assert.StartsWith("hatch_ak_", minted.Secret, StringComparison.Ordinal);
+        Assert.Equal(h.PersonId, minted.Runner.OwnerPersonId);
+        Assert.Equal(h.PersonId, Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task Create_AUserNamingSomebodyElse_IsRefusedAndNothingIsWritten()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var other = h.Actors.AddPerson("Annie");
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: other.Id));
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Equal(OnlyAnAdminSentence, result.Value);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AUserNamingSomebodyWhoDoesNotExist_IsRefusedTheSameWay()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: Guid.NewGuid()));
+
+        // The same 403 as for a person who does, so ids cannot be probed.
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Equal(OnlyAnAdminSentence, result.Value);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AUserWithNoPersonBehindTheCall_IsRefusedRatherThanWritingNoOwner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User, nobody: true);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir"));
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("SUGGEST-NAME")]
+    [InlineData("TOO-LONG")]
+    public async Task Create_AUserWithANameThatCannotBeUsed_IsStillABadRequest(string? name)
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        if (name == "TOO-LONG") name = new string('x', EfApiKey.MaxNameLength + 1);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest(name));
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+    }
+
+    [Fact]
+    public async Task Create_AUserWithANameAlreadyHeld_IsStillAConflict()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        var again = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir"));
+
+        Assert.IsType<ConflictObjectResult>(again.Result);
+        Assert.Single(await h.Keys.ListApiKeysAsync(default));
+    }
+
+    [Fact]
+    public async Task Create_AnAdminNamingSomebodyElse_StillGetsThemAsOwner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var other = h.Actors.AddPerson("Annie");
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: other.Id)));
+
+        Assert.Equal(other.Id, minted.Runner.OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task Create_WithTheWallOff_ReadsNoOwnerRule()
+    {
+        var h = await NewAsync(wall: false);
+        var other = h.Actors.AddPerson("Annie");
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: other.Id)));
+
+        Assert.Equal(other.Id, minted.Runner.OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task Suggest_AUserReadsTheNextCastName()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+
+        Assert.Equal(RunnerCast.All[0], await h.SuggestAsync());
+    }
+
     // ---- Suggesting a name ----
 
     [Fact]
@@ -4908,6 +5041,94 @@ public class RunnersControllerTests
 
         var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "2"));
         Assert.Equal(2, patched.MaxRuns);
+    }
+
+    // ---- Preferred ----
+
+    [Fact]
+    public async Task Patch_Preferred_ByAnAdmin_ReadsBackOnPatchAndOnGet()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(Preferred: true));
+
+        Assert.True(patched.Preferred);
+        Assert.True((await h.GetAsync(Runner))!.Preferred);
+        Assert.True((await h.Db.RunnerConfigs.SingleAsync(c => c.ApiKeyId == key.Id)).Preferred);
+    }
+
+    [Fact]
+    public async Task Patch_LeavingPreferredOut_LeavesItAlone()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Preferred: true));
+
+        var other = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "2"));
+        Assert.True(other.Preferred);
+        Assert.Equal(2, other.MaxRuns);
+
+        var cleared = await h.PatchAsync(Runner, new RunnerPatchRequest(Preferred: false));
+        Assert.False(cleared.Preferred);
+        Assert.False((await h.GetAsync(Runner))!.Preferred);
+    }
+
+    [Fact]
+    public async Task Patch_Preferred_ByAKey_Is403()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        await h.AddKeyAsync(Runner);
+
+        var byKey = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Preferred: true), default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)byKey.Result!).StatusCode);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_Preferred_ByAPersonWhoCannotControlTheRunner_Is403()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Preferred: true), default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_Preferred_WithNoKey_Is400_ButOtherFieldsStillSave()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Preferred: true), default);
+        Assert.IsType<BadRequestObjectResult>(refusal.Result);
+        Assert.Contains("no key", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "2"));
+        Assert.Equal(2, patched.MaxRuns);
+        Assert.False(patched.Preferred);
+    }
+
+    [Fact]
+    public async Task GetList_CarriesPreferredOnEveryRow()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync("marked");
+        await h.AddKeyAsync("unmarked");
+        await h.PatchAsync("marked", new RunnerPatchRequest(Preferred: true));
+        await h.BeatAsync("beat-only", new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var rows = (await h.ListAllAsync()).ToDictionary(r => r.Name, r => r.Preferred);
+
+        Assert.True(rows["marked"]);
+        Assert.False(rows["unmarked"]);
+        Assert.False(rows["beat-only"]);
     }
 
     [Fact]
@@ -5358,6 +5579,183 @@ public class RunnersControllerTests
         var rotated = Value(await h.RotateAsync(Uri.EscapeDataString(Runner)));
 
         Assert.Equal(Runner, rotated.Runner.Name);
+    }
+
+    // ---- A user's own runner ----
+
+    [Fact]
+    public async Task Rotate_AUserOnTheirOwnRunner_Succeeds_NoStore_AndTheNewSecretVerifies()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var key = await h.AddKeyAsync(Runner, h.PersonId);
+        var hashBefore = key.Hash.ToArray();
+
+        var rotated = Value(await h.RotateAsync(Runner));
+
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.NotEqual(hashBefore, after.Hash);
+        Assert.NotNull(after.RotatedAt);
+        var verified = await h.Keys.VerifyApiKeyAsync(rotated.Secret, default);
+        Assert.Equal(key.Id, verified?.Id);
+    }
+
+    [Fact]
+    public async Task Rotate_AUserOnSomeoneElsesRunner_Is403NamingTheOwner_AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        var hashBefore = key.Hash.ToArray();
+
+        var refused = await h.RotateAsync(Runner);
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Contains("Alice", Reason(refused.Result), StringComparison.Ordinal);
+        Assert.Contains(Runner, Reason(refused.Result), StringComparison.Ordinal);
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(hashBefore, after.Hash);
+        Assert.Null(after.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_AUserOnARunnerThatBelongsToNobody_Is403_AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var key = await h.AddKeyAsync(Runner);
+        var hashBefore = key.Hash.ToArray();
+
+        var refused = await h.RotateAsync(Runner);
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(hashBefore, after.Hash);
+        Assert.Null(after.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_AnAdmin_MayRotateSomeoneElsesAndAnOwnerlessRunner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+        await h.AddKeyAsync("other:/ownerless");
+
+        Value(await h.RotateAsync(Runner));
+        Value(await h.RotateAsync("other:/ownerless"));
+    }
+
+    [Fact]
+    public async Task Rotate_WithTheWallOff_MayRotateAnOwnerlessAndSomeoneElsesRunner()
+    {
+        var h = await NewAsync(wall: false);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+        await h.AddKeyAsync("other:/ownerless");
+
+        Value(await h.RotateAsync(Runner));
+        Value(await h.RotateAsync("other:/ownerless"));
+    }
+
+    [Fact]
+    public async Task Rotate_AnOwnerOfARevokedKey_Is409_AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var key = await h.AddKeyAsync(Runner, h.PersonId);
+        await h.RevokeKeyAsync(key.Id);
+        var hashBefore = (await h.Keys.ListApiKeysAsync(default)).Single().Hash.ToArray();
+
+        var refused = await h.RotateAsync(Runner);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(hashBefore, after.Hash);
+        Assert.Null(after.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_AStrangerOnARevokedKey_Is403_NotTheKeysState()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        await h.RevokeKeyAsync(key.Id);
+
+        var refused = await h.RotateAsync(Runner);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsAssignableFrom<ObjectResult>(refused.Result).StatusCode);
+    }
+
+    [Fact]
+    public async Task Revoke_AUserOnTheirOwnRunner_Succeeds_TheRunnerStaysListed_AndASecondRevokeChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        Assert.IsType<NoContentResult>(await h.RevokeAsync(Runner));
+
+        var first = Assert.Single(await h.Keys.ListApiKeysAsync(default)).RevokedAt;
+        Assert.NotNull(first);
+        Assert.Equal(Runner, Assert.Single(await h.ListAllAsync()).Name);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        await h.RevokeAsync(Runner);
+
+        Assert.Equal(first, Assert.Single(await h.Keys.ListApiKeysAsync(default)).RevokedAt);
+    }
+
+    [Fact]
+    public async Task Revoke_AUserOnSomeoneElsesRunner_Is403NamingTheOwner_AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var refused = await h.RevokeAsync(Runner);
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Contains("Alice", Reason(refused), StringComparison.Ordinal);
+        Assert.Contains(Runner, Reason(refused), StringComparison.Ordinal);
+        Assert.Null(Assert.Single(await h.Keys.ListApiKeysAsync(default)).RevokedAt);
+    }
+
+    [Fact]
+    public async Task Revoke_AUserOnARunnerThatBelongsToNobody_Is403_AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner);
+
+        var refused = await h.RevokeAsync(Runner);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsAssignableFrom<ObjectResult>(refused).StatusCode);
+        Assert.Null(Assert.Single(await h.Keys.ListApiKeysAsync(default)).RevokedAt);
+    }
+
+    [Fact]
+    public async Task Revoke_AnAdmin_MayRevokeSomeoneElsesAndAnOwnerlessRunner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+        await h.AddKeyAsync("other:/ownerless");
+
+        Assert.IsType<NoContentResult>(await h.RevokeAsync(Runner));
+        Assert.IsType<NoContentResult>(await h.RevokeAsync("other:/ownerless"));
+    }
+
+    [Fact]
+    public async Task Revoke_WithTheWallOff_MayRevokeAnOwnerlessAndSomeoneElsesRunner()
+    {
+        var h = await NewAsync(wall: false);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+        await h.AddKeyAsync("other:/ownerless");
+
+        Assert.IsType<NoContentResult>(await h.RevokeAsync(Runner));
+        Assert.IsType<NoContentResult>(await h.RevokeAsync("other:/ownerless"));
     }
 
     [Fact]
@@ -6935,6 +7333,172 @@ public class RunnersControllerTests
         Assert.False(Guard(nameof(RunnersController.DeleteRunnerSessionPause))!.AcceptKey);
         Assert.False(Guard(nameof(RunnersController.PauseAll))!.AcceptKey);
         Assert.False(Guard(nameof(RunnersController.StopAll))!.AcceptKey);
+    }
+
+    // ---- Signing ----
+
+    private const string OtherRunner = "here:/checkouts/two";
+
+    /// <summary>The key the session beats are made under, written to the core database so the runner is keyed.</summary>
+    private static async Task KeyTheCallerAsync(Harness h)
+    {
+        h.CoreDb.ApiKeys.Add(new EfApiKey
+        {
+            Id = h.Caller.Key!.Id, Name = h.Caller.Key.Name, Hash = h.Caller.Key.Hash, Prefix = h.Caller.Key.Prefix, CreatedAt = Now,
+        });
+        await h.CoreDb.SaveChangesAsync();
+    }
+
+    [SkippableTheory]
+    [InlineData("works", "works", null)]
+    [InlineData("off", "off", null)]
+    [InlineData("fails", "fails", "no secret key")]
+    [InlineData(" WORKS ", "works", null)]
+    public async Task SessionHeartbeat_ASigningWord_IsStoredAndCarriedOnTheRunner(string sent, string stored, string? why)
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: sent, SigningWhy: why));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(stored, row.Signing);
+        Assert.Equal(why, row.SigningWhy);
+        var runner = await h.OneAsync();
+        Assert.Equal(stored, runner.Signing);
+        Assert.Equal(why, runner.SigningWhy);
+    }
+
+    [SkippableTheory]
+    [InlineData("works")]
+    [InlineData("off")]
+    public async Task SessionHeartbeat_AReasonBesideAnyWordButFails_IsDropped(string word)
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: word, SigningWhy: "stale"));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(word, row.Signing);
+        Assert.Null(row.SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnUnknownSigningWord_IsStoredAsNoAnswerAndTheBeatIsAccepted()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        var seeded = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "maybe", SigningWhy: "x"));
+        Assert.IsType<RunnerInstructionDto>(seeded.Value);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Signing);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "works"));
+        var touched = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "perhaps", SigningWhy: "x"));
+
+        Assert.IsType<RunnerInstructionDto>(touched.Value);
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Null(row.Signing);
+        Assert.Null(row.SigningWhy);
+        Assert.Null((await h.OneAsync()).Signing);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ABeatWithNoSigning_LeavesTheStoredAnswerAlone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "fails", SigningWhy: "no agent"));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: Runner));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("fails", row.Signing);
+        Assert.Equal("no agent", row.SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ALaterBeat_ChangesTheAnswerAndDropsAnOldReason()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "fails", SigningWhy: "no agent"));
+        Assert.Equal("no agent", (await h.OneAsync()).SigningWhy);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "works"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal("works", runner.Signing);
+        Assert.Null(runner.SigningWhy);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AReasonPastTwoHundredCharacters_IsCutAndKeptToOneLine()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Signing: "fails", SigningWhy: new string('x', 500) + "\nsecond line"));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(new string('x', 200), row.SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task ARunnerServingTwoLiveSessions_ReadsAsTheWorstOfThem()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "works"));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: OtherRunner, Signing: "off"));
+        Assert.Equal("off", (await h.OneAsync()).Signing);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "fails", SigningWhy: "no agent"));
+        var runner = await h.OneAsync();
+        Assert.Equal("fails", runner.Signing);
+        Assert.Equal("no agent", runner.SigningWhy);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Signing: "works"));
+        Assert.Equal("off", (await h.OneAsync()).Signing);
+    }
+
+    [SkippableFact]
+    public async Task ARunnerThatNeverSaid_CarriesNoSigning()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.Signing);
+        Assert.Null(runner.SigningWhy);
+    }
+
+    [SkippableFact]
+    public async Task AKeyWithAConfigRow_StillCarriesTheSigningItsSessionSaid()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, MaxRuns = 5, UpdatedAt = Now });
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Signing: "fails", SigningWhy: "no agent"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal("fails", runner.Signing);
+        Assert.Equal("no agent", runner.SigningWhy);
     }
 
     private static async Task<string> ConnectAsync()

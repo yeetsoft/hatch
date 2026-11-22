@@ -337,4 +337,13 @@ public sealed class CodexAdapterTests : IDisposable
     {
         Assert.Null(new CodexAdapter("/does/not/exist").Executable);
     }
+
+    [Fact]
+    public void The_unsigned_override_reaches_a_headless_and_an_attached_session()
+    {
+        var request = Request() with { Unsigned = true };
+
+        ReachTests.AssertUnsigned(Adapter().BuildHeadless(request).Environment);
+        ReachTests.AssertUnsigned(Adapter().BuildAttached(request).Environment);
+    }
 }

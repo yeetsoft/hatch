@@ -322,6 +322,14 @@ public sealed class Tally
     /// </summary>
     public bool Fatal { get; set; }
 
+    /// <summary>
+    /// Set with <see cref="StopWhy"/> and <see cref="Pass.Fatal"/> when a ticket
+    /// was let go for want of a signer and no project the runner serves allows
+    /// an unsigned commit, so the loop exits <see cref="GoToWorkCommand.CannotSignExitCode"/>
+    /// and not 1. <see cref="Fatal"/> does not set it.
+    /// </summary>
+    public bool CannotSign { get; set; }
+
     // Everything the loop has to stop for, and none of them set by default. An
     // unattended run that stopped for a reason nobody asked for would be a run
     // somebody has to check on, which is the thing being built away from.
@@ -520,6 +528,16 @@ public sealed class Tally
         // After the ledger write, so in a set it is the combined hour this entry joined.
         if (tokens is not null) PeakHour = Math.Max(PeakHour, WindowTotal(now));
     }
+
+    /// <summary>
+    /// A ticket the runner let go without spawning, because it cannot sign and
+    /// the project allows only signed commits. Listed as interrupted and
+    /// counted nowhere else: it is not a run, so it spends nothing, and it never
+    /// reaches the failure streak that ends a night - a machine that cannot sign
+    /// is the machine's to fix, not three broken increments.
+    /// </summary>
+    public void Refused(IncrementReport report) =>
+        _interrupted.Add($"hatch:   cannot sign  {report.Key}  {report.Outcome}");
 
     /// <summary>One increment, added to the run's account.</summary>
     public void Record(IncrementReport report)
@@ -862,6 +880,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// <summary>The session this loop's own beats are answered from, once one has been; see <see cref="EndSessionAsync"/>.</summary>
     private int? _sessionId;
 
+    /// <summary>Whether this process has told its launcher the board answered its build.</summary>
+    private bool answeredMarked;
+
     /// <summary>How long to wait between reminders that nothing has changed.</summary>
     private static readonly TimeSpan StillNothing = TimeSpan.FromMinutes(10);
 
@@ -876,6 +897,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// asking to be replaced is the only move available from in here.
     /// </remarks>
     public const int RestartExitCode = 75;
+
+    /// <summary>
+    /// 78 is <c>EX_CONFIG</c>: git here cannot sign a commit and no project
+    /// this runner serves allows an unsigned one, so it could never work a
+    /// ticket. It collides with 0, 1, 2, 75 and 130 in no way, and a supervisor
+    /// must not run the loop again on it - nothing it does changes the answer.
+    /// </summary>
+    public const int CannotSignExitCode = 78;
 
     /// <summary>How long a loop runs before the backstop restarts it anyway.</summary>
     private const int RestartAfterMinutes = 30;
@@ -979,6 +1008,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(runtime.Say, GoToWorkUsage);
+
+        // What the launcher decided about the last change of build, said the
+        // once, so it reaches the log of the build that carries on.
+        if (runtime.BuildNote is { Length: > 0 } buildNote) runtime.Say.Line(buildNote);
 
         string? key = null, under = null, until = null, stopFile = null, agent = null;
         var interval = 60;
@@ -1289,6 +1322,21 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // After the block above, which replaces the board and with it anything set earlier.
             runtime.Board.Projects = projects;
 
+            // Said once, here, and not on every increment: a locked key is a
+            // thing to know about before the night, and the board's projects
+            // decide per ticket whether it matters.
+            var signingAnswers = await runtime.SayCannotSignAsync(ct);
+
+            // Where git can never sign and no project allows it unsigned, every
+            // ticket would be let go again: say so now, before a heartbeat, a
+            // claim or anything an earlier session left to end. The finally
+            // frees the locks; nothing is claimed and no tally is built.
+            if (await CannotSign.RefusalAsync(runtime.Board, projects, signingAnswers, ct) is { } cannotSign)
+            {
+                foreach (var line in cannotSign) runtime.Say.Complain(line);
+                return CannotSignExitCode;
+            }
+
             // The lock is ours, so no live loop holds these checkouts: whatever
             // session a dead one left running in them is nobody's, and the claim
             // it held is a lease on a ticket nobody is working. Before the first
@@ -1410,7 +1458,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
             }
 
-            return refused ? 1 : restarting ? RestartExitCode : 0;
+            return tally.CannotSign ? CannotSignExitCode : refused ? 1 : restarting ? RestartExitCode : 0;
         }
         finally
         {
@@ -1515,6 +1563,56 @@ public sealed class GoToWorkCommand(Runtime runtime)
         return true;
     }
 
+    /// <summary>
+    /// Answers whether the loop is asking its launcher for the board's build.
+    /// Never for a loop that cannot come back - one with no launcher (a script,
+    /// an unstamped build, the image), or one that is not restarting
+    /// (<c>--no-restart</c>, <c>--once</c>) - and never while a claim is held,
+    /// which is why it is asked at the top of a pass.
+    /// </summary>
+    /// <remarks>
+    /// The watch is judged on every pass it applies to, ordered or not, so its
+    /// ten minutes are counted from the beats that began them. A switch due on
+    /// a pass that carries an order waits for the next one.
+    /// </remarks>
+    private bool BuildChange(BoardBuildWatch watch, RunnerInstructionDto? told, Restarts restart, Tally tally, bool ordered)
+    {
+        if (!restart.On || runtime.Launcher is not { } launcher || runtime.NightStatePath is not { Length: > 0 } statePath)
+            return false;
+
+        var now = runtime.Clock.GetUtcNow();
+        if (watch.Judge(told?.BoardBuild, told is not null, now) != BuildVerdict.Switch || ordered) return false;
+
+        var build = told!.BoardBuild!;
+
+        // A launcher from before this one cannot take a request, so there is
+        // nothing to write and nothing to restart for. It says so once.
+        if (!launcher.Needs(2, "changing build", runtime.Say.Line)) return false;
+
+        var request = new BuildRequest(
+            runtime.Settings.Base, build.Revision, build.Sequence, build.Download!, build.Sha256!,
+            runtime.Machine.Rid ?? MachineFacts.RidOf(
+                OperatingSystem.IsWindows(), OperatingSystem.IsMacOS(), OperatingSystem.IsLinux(),
+                System.Runtime.InteropServices.RuntimeInformation.OSArchitecture) ?? "");
+
+        try
+        {
+            BuildHandoff.Write(Path.GetDirectoryName(statePath)!, request);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            runtime.Say.Complain(
+                $"hatch: the board is on build {BoardBuildWatch.Short(build.Revision)} but the request for it could not be written - {e.Message}; staying on this build");
+            return false;
+        }
+
+        runtime.Say.Line("");
+        runtime.Say.Line(
+            $"hatch: the board is on build {BoardBuildWatch.Short(build.Revision)} ({build.Sequence}) - restarting to come back as it");
+        runtime.Say.Line($"hatch:   {tally.SoFar()}");
+        return true;
+    }
+
     /// <summary>Answers whether the loop is asking to come back as a newer version of itself.</summary>
     private async Task<bool> LoopAsync(
         string? under, bool quiet, bool mine, bool once, bool abortMerge, int interval, int mergeInterval, Tally tally,
@@ -1528,6 +1626,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var agentDown = new SaidOnce();
         var printed = new Printed { At = runtime.Clock.GetUtcNow() };
         var poll = new Poll();
+        var watch = new BoardBuildWatch(runtime.BuildHold, runtime.Say.Line);
 
         // Its own clock, independent of --interval - the three halves it
         // drives are cheap enough, and worth running often enough, to deserve
@@ -1701,6 +1800,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 await SayStoppedAsync(line, under, mine, tally, once, ct);
                 return false;
             }
+
+            // The board is on another build, and this one was downloaded: ask the
+            // launcher for it, now, while no claim is held. After the stop
+            // conditions, so a night that is ending does not switch; before the
+            // paused branch, so a paused runner follows its board too and no
+            // ticket is taken on the build it is leaving. An order is the one
+            // thing that waits a pass: the beat that read it has cleared it on
+            // the board, so a switch here would drop a person's request.
+            if (BuildChange(watch, told, restart, tally, ordered: told?.Order is not null)) return true;
 
             // A person's order, acted on once: the beat that read it has
             // already cleared it on the board, so a loop that was paused reads
@@ -2186,6 +2294,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             ? runtime.SourceRevision().Newest(["src/Hatch.Cli", "src/Hatch.Contracts"])
             : null;
 
+        // Asked of the cache on every beat, since a later check can change it
+        // and the next beat must say so. A once beat shares the loop's row and
+        // sends none, so it cannot blank or overwrite what the loop said.
+        var signing = once ? null : runtime.SigningAnswer();
+
         var request = runtime.Machine.Stamp(new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Fresh: !once && tally.Fresh ? true : null,
@@ -2243,7 +2356,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Usage: usage.UsageReadAt is null ? null : usage.UsageWindows.ToDtos(),
                 UsageReadAt: usage.UsageReadAt,
                 UsageSource: usage.UsageReadAt is null ? null : usage.UsageSource,
-                UsageProbeOff: usage.UsageProbeOff));
+                UsageProbeOff: usage.UsageProbeOff,
+                Signing: signing?.State,
+                SigningWhy: signing?.Why));
 
         var beat = await runtime.Runners().BeatAsync(request, ct);
 
@@ -2252,6 +2367,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // whether that session beats again before calling it a second loop.
         if (beat.Held is not null && !once && tally.Fresh)
             beat = await WaitOutHeldAsync(request, beat, ct);
+
+        // The board answered this build, a refusal included: what failed, if
+        // anything, is not the build. The launcher is watching for exactly
+        // this before it keeps a new build. Written once per process.
+        if (!answeredMarked && (beat.Instruction is not null || beat.Refusal is not null)
+            && runtime.Launcher is not null && runtime.NightStatePath is { Length: > 0 } answeredPath)
+        {
+            answeredMarked = BuildHandoff.MarkAnswered(Path.GetDirectoryName(answeredPath)!, runtime.CliRevision.Revision);
+        }
 
         // The one heartbeat answer that ends a run: this name is already the
         // live runner somewhere else, so nothing here is claimed.
@@ -2838,6 +2962,43 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
             }
 
+            // Asked of the checkout the session will run in, after the reset and
+            // before its branch is prepared - the merge of the trunk into that
+            // branch is a commit, and is the first thing a signer can stop.
+            var signing = await runtime.CanSignAsync(chosen.Root, ct);
+            if (signing.State != Signing.Works && !work.AllowsUnsignedCommits)
+            {
+                // A project that allows only signed commits is never given an
+                // unsigned one, and a session that could not sign would have
+                // nothing to do but stop at its first commit. Nothing is spawned
+                // and nothing is counted as a run: the ticket goes back to the
+                // board, free for a runner that can sign.
+                var refused = await runtime.Increment().CannotSignAsync(work, signing, runtime.RunnerName, ct);
+                tally.Refused(refused);
+                releaseOutcome = refused.ReleaseOutcome;
+                line.Line = $"{refused.Key} needs a runner that can sign commits";
+
+                // Asked again here: git may have been able to sign at the start
+                // and not now. With no project this runner serves allowing an
+                // unsigned commit, every ticket it is offered will be let go the
+                // same way, so it stops and says why, holding no claim.
+                if (await CannotSign.NoneAllowAsync(runtime.Board, runtime.Board.Projects, ct))
+                {
+                    tally.CannotSign = true;
+                    tally.StopWhy = "git cannot sign and no project this runner serves allows unsigned commits";
+                    return Pass.Fatal;
+                }
+
+                // Straight on to the next ticket only where the board took the
+                // let-go: the one that comes back is then flagged, and waits. A
+                // flag that could not be written would be offered again at once,
+                // each time costing a claim, so that one waits for the interval.
+                return refused.Flag is "let go" or "flagged" or "waiting on a question" ? Pass.Cleared : Pass.Waited;
+            }
+
+            if (signing.Fails) runtime.Unsigned.Set(signing.OldGit);
+            var commitSigning = new CommitSigning(signing.State, work.AllowsUnsignedCommits, signing.OldGit);
+
             var entering = await lifecycle.EnterAsync(work, chosen, ct);
             if (entering.Asked)
             {
@@ -2879,7 +3040,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
                     built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
                     work.Playbook?.IsCheck == true ? ct2 => lifecycle.TreeUnchangedAsync(chosen, entering.Entries, ct2) : (Func<CancellationToken, Task<bool>>?)null,
-                    runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1, since: since);
+                    runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1, since: since, signing: commitSigning);
             }
             finally
             {
@@ -3011,6 +3172,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         }
         finally
         {
+            // The next increment starts without the override: it is asked about
+            // its own checkout, and a key unlocked in between is signing again.
+            runtime.Unsigned.Clear();
+
             // The lease covers the bookkeeping too, and this is the door every
             // path out of a pass goes through.
             if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId);

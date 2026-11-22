@@ -244,6 +244,42 @@ internal sealed class WalledHost : IAsyncDisposable
         });
     }
 
+    /// <summary>
+    /// A person made straight in the database with no scope row, which reads as
+    /// <c>all</c>. For a case about what happens to a person, and so to what
+    /// they own, rather than about what they see.
+    /// </summary>
+    public async Task<WalledPerson> AddPersonAsync(string name, PersonRole role)
+    {
+        await EnsureStartedAsync();
+
+        return await deadline.BoundAsync($"adding {name}", async () =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            await using var app = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(hatch).Options);
+            var person = new EfPerson { Name = name, Role = role, CreatedAt = now, UpdatedAt = now };
+            app.People.Add(person);
+            await app.SaveChangesAsync();
+
+            return new WalledPerson(person.Id, person.Name, PersonScopeMode.All, person.Role);
+        });
+    }
+
+    /// <summary>A minted key's row as the database holds it now, read without tracking.</summary>
+    public async Task<EfApiKey> KeyRowAsync(WalledKey key)
+    {
+        await EnsureStartedAsync();
+
+        return await deadline.BoundAsync($"reading key {key.Name}", async () =>
+        {
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var hash = AuthTokens.Hash(key.Secret);
+            return await db.ApiKeys.AsNoTracking().SingleAsync(k => k.Hash == hash);
+        });
+    }
+
     /// <summary>A client that sends the key as a bearer secret, as a runner does.</summary>
     public async Task<HttpClient> AsKeyAsync(WalledKey key) => await AsBearerAsync(key.Secret);
 

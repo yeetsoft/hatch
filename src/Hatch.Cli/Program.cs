@@ -55,12 +55,58 @@ if (!Program.TryExtractProfile(rest, out var withoutProfile, out var profileArg,
     return 1;
 }
 
+// Which board a call is aimed at, asked again wherever it matters because `hatch
+// use` can move it. It reads settings the way the command will and prints nothing
+// when it cannot: the command is the one that says so. Null where nothing names a
+// board.
+LauncherBoard? LauncherBoardNow()
+{
+    if (!Settings.TryResolveProfile(profileArg, environment, out _, out var launcherProfile, out _)) return null;
+
+    var launcherRoot = Checkout.Find(environment.GetValueOrDefault("HATCH_ROOT"), Directory.GetCurrentDirectory());
+    var launcherEnv = launcherRoot is null ? null : Path.Combine(launcherRoot, "scripts", ".env");
+
+    return Settings.TryLoad(launcherEnv, environment, out var launcherSettings, out _, profileFile: launcherProfile)
+        ? new LauncherBoard(launcherSettings.Base, launcherSettings)
+        : null;
+}
+
+var builtAsLauncher = Launcher.BuildLaunches(typeof(Program).Assembly);
+
 // A download supervises its own loop: before any setting is read or any board is
 // called, it runs this same file as the child, hands it the whole argument list
 // as it came, and starts it again when it exits 75. See docs/hatch.md, "Where
 // the loop lives". Nothing stamped, nothing above it and no -h means no launcher.
-if (Launcher.Applies(command, withoutProfile, environment, Launcher.BuildLaunches(typeof(Program).Assembly)))
-    return await Launcher.RunProcessAsync(args, say.Complain);
+if (Launcher.Applies(command, withoutProfile, environment, builtAsLauncher))
+    return await Launcher.RunProcessAsync(args, say.Complain, LauncherBoardNow);
+
+// Every other command runs on the build this board was last on, so a person
+// typing `hatch` outside a loop gets the build the loop is running. Nothing is
+// downloaded, recorded or asked of the network to decide; where there is no
+// build to hand on to, or it will not start, this build answers the command.
+if (Launcher.HandsOn(command, environment, builtAsLauncher))
+{
+    string? chosen = null;
+
+    if (Environment.ProcessPath is { } ownFile)
+    {
+        try
+        {
+            chosen = Launcher.ChooseBuild(
+                LauncherBoardNow(), new BuildStore(Settings.UserFolder()), new CliRevision().Revision, ownFile,
+                out var chooseNote);
+            if (chooseNote is not null) say.Complain(chooseNote);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // Not being able to look is not a reason to refuse the command.
+            chosen = null;
+        }
+    }
+
+    if (chosen is not null && await Launcher.HandOnProcessAsync(args, chosen, say.Complain) is { } handedCode)
+        return handedCode;
+}
 
 rest = withoutProfile;
 
@@ -389,6 +435,8 @@ try
             ActiveProfilePath = Settings.Pinned(profileArg, environment) ? null : Settings.ActiveProfilePath(),
             NightStatePath = nightStatePath,
             Launcher = LauncherLink.From(environment),
+            BuildHold = BuildHold.Parse(environment.GetValueOrDefault(BuildHandoff.HoldVariable)),
+            BuildNote = environment.GetValueOrDefault(BuildHandoff.NoteVariable),
             LogPath = log?.Path,
             SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Slot = memberSlot,
@@ -399,6 +447,7 @@ try
         }.WithGit();
 
         board.Models = () => runtime.AdvertisedModels() ?? [];
+        board.Signing = () => runtime.SigningAnswer();
         board.Agent = adapter.Id;
 
         return command switch
@@ -441,6 +490,16 @@ try
         board.Agent = readAdapter.Id;
     }
 
+    // They read it too, and signing needs no agent: each checkout is asked once,
+    // at once, and the worst answer rides on the read. A checkout git is not set
+    // to sign in costs nothing; one it is costs a trial signature.
+    if (command is "queue" or "next")
+    {
+        var checks = await Task.WhenAll(checkouts.Select(c => GitSigning.CheckAsync(c.Path, GitSigning.Limit, cancelling.Token)));
+        var answer = Runtime.Fold(checks);
+        board.Signing = () => answer;
+    }
+
     var cli = new Cli(board, say, new Input(), settings, runnerName)
     {
         Checkouts = checkouts,
@@ -456,7 +515,7 @@ try
         "changelog" => await new ChangelogCommand(cli).RunAsync(rest, cancelling.Token),
         "activity" => await new ActivityCommand(cli).RunAsync(rest, cancelling.Token),
         "runners" => await new RunnersCommand(cli).RunAsync(rest, cancelling.Token),
-        "standby" => await new StandbyCommand(cli, profileArg, StandbyHosts.ForThisMachine(StandbyHosts.RunProcess)).RunAsync(rest, cancelling.Token),
+        "standby" => await new StandbyCommand(cli, profileArg, StandbyHosts.ForThisMachine(StandbyHosts.RunProcess)) { LauncherPath = launchedBy?.Path }.RunAsync(rest, cancelling.Token),
         "show" => await new IssueCommands(cli).ShowAsync(rest, cancelling.Token),
         "comments" => await new IssueCommands(cli).CommentsAsync(rest, cancelling.Token),
         "start" => await new IssueCommands(cli).StartAsync(rest, cancelling.Token),
@@ -767,6 +826,10 @@ internal partial class Program
         "                     hatch's launcher, never by a person",
         "  HATCH_LAUNCHER_VERSION  which version of the launcher started this loop; the launcher sets it",
         "  HATCH_LAUNCHER_PATH     the launcher's own file; the launcher sets it, and a person never does",
+        "  HATCH_BUILD_HOLD        builds the launcher will not move to, sha=unix seconds or sha=never; the launcher sets it",
+        "  HATCH_BUILD_NOTE        one line the launcher has the child say at start; the launcher sets it",
+        "  HATCH_LAUNCHER_HANDOFF  1 on the process a launcher started in its own place, so it does not look again; the launcher sets it",
+        "  HATCH_LAUNCHER_RESUME   the night's directory, for a launcher that took over from another; the launcher sets it",
         "  HATCH_RTK          off to keep RTK's Bash hook out of a session where rtk is on PATH",
         "                     (exported only: scripts/.env and `config` are not read for it)",
         "",

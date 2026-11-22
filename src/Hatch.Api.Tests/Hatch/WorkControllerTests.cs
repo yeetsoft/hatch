@@ -54,6 +54,31 @@ public class WorkControllerTests
         Assert.False(work.ChecksRequired);
     }
 
+    [Fact]
+    public async Task Work_OnAFreshProject_AllowsUnsignedCommits()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "a story", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.True(work.AllowsUnsignedCommits);
+    }
+
+    [Fact]
+    public async Task Work_OnAProjectThatAllowsOnlySignedCommits_SaysSo()
+    {
+        var h = await NewAsync();
+        var project = await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId);
+        project.AllowsUnsignedCommits = false;
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "a story", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.False(work.AllowsUnsignedCommits);
+    }
+
     // ---- Picking ----
 
     [Fact]
@@ -2764,6 +2789,184 @@ public class WorkControllerTests
         await h.AddSessionAsync(a, "here:/two", standing: true);
 
         Assert.Null(Only(await h.Work.GetQueue(runner: a.Name)).Blocked);
+    }
+
+    // ---- A row left for a runner marked preferred, while it is free ----
+
+    private const string MarkedWhere = "build-box:/work/marked";
+
+    /// <summary>A keyed runner with a live beat and, where <paramref name="preferred"/>, a config row marking it preferred.</summary>
+    private static async Task<EfApiKey> KeyedRunnerAsync(
+        Harness h, bool preferred, Action<EfHatchRunner>? tweak = null, Action<EfHatchRunnerConfig>? configure = null, bool beat = true)
+    {
+        var key = await h.AddKeyAsync(RunnerName());
+        if (preferred || configure is not null)
+        {
+            var config = new EfHatchRunnerConfig { ApiKeyId = key.Id, Preferred = preferred, UpdatedAt = Now };
+            configure?.Invoke(config);
+            h.Db.RunnerConfigs.Add(config);
+            await h.Db.SaveChangesAsync();
+        }
+
+        if (beat) await AddLoopRunnerAsync(h, key.Name, row => { row.Where = preferred ? MarkedWhere : "plain-box:/work/plain"; tweak?.Invoke(row); });
+        return key;
+    }
+
+    private static string LeftForPreferred(EfHatchIssue issue, string runner) =>
+        ModelFamilies.LeftForPreferred(Key(issue), "todo", runner);
+
+    [Fact]
+    public async Task Preferred_AnUnmarkedRunner_IsToldTheRowIsLeftForTheMarkedOne_FromEveryDoor()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "left for the build box", h.Todo);
+        var marked = await KeyedRunnerAsync(h, preferred: true);
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+        var sentence = LeftForPreferred(issue, marked.Name);
+
+        Assert.Equal($"{Key(issue)} in todo is left for {marked.Name}, which is preferred and free", sentence);
+
+        foreach (var queue in new[] { await h.Work.GetQueue(runner: plain.Name), await h.Work.GetQueue(asRunner: plain.Name) })
+        {
+            var entry = Only(queue);
+            Assert.Equal(sentence, entry.Blocked);
+            Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+        }
+
+        Assert.Equal(sentence, Value(await h.Work.GetWork(Key(issue), runner: plain.Name)).Blocked);
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(runner: plain.Name)).Result);
+
+        // The marked runner reads the row clear, and takes it.
+        Assert.Null(Only(await h.Work.GetQueue(runner: marked.Name)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(asRunner: marked.Name)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: marked.Name)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(runner: marked.Name)).Issue.Key);
+
+        // A caller that names no runner is nobody's asker, and is never folded.
+        Assert.Null(Only(await h.Work.GetQueue()).Blocked);
+    }
+
+    public enum MarkedPeer { Claim, Paused, Exhausted, AgentDown, Until, OutOfRuns, Stale, Pulling, Gone }
+
+    [Theory]
+    [InlineData(MarkedPeer.Claim)]
+    [InlineData(MarkedPeer.Paused)]
+    [InlineData(MarkedPeer.Exhausted)]
+    [InlineData(MarkedPeer.AgentDown)]
+    [InlineData(MarkedPeer.Until)]
+    [InlineData(MarkedPeer.OutOfRuns)]
+    [InlineData(MarkedPeer.Stale)]
+    [InlineData(MarkedPeer.Pulling)]
+    [InlineData(MarkedPeer.Gone)]
+    public async Task Preferred_AMarkedRunnerThatIsNotFree_LeavesTheRowToTheUnmarkedOne(MarkedPeer state)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "the marked runner is busy", h.Todo);
+        var other = await h.FileAsync("task", "what the marked runner is holding", h.InProgress);
+        var marked = await KeyedRunnerAsync(h, preferred: true, beat: state != MarkedPeer.Gone, tweak: row =>
+        {
+            switch (state)
+            {
+                case MarkedPeer.Paused: row.State = EfHatchRunner.Paused; break;
+                case MarkedPeer.Exhausted: row.ExhaustedUntil = Now.AddHours(1); break;
+                case MarkedPeer.AgentDown: row.AgentDownUntil = Now.AddHours(1); break;
+                case MarkedPeer.Until: row.UntilAt = Now.AddMinutes(-1); break;
+                case MarkedPeer.OutOfRuns: row.MaxRuns = 3; row.Runs = 3; break;
+                case MarkedPeer.Stale: row.LastSeenAt = Now.AddDays(-1); break;
+                case MarkedPeer.Pulling: row.Pulling = true; break;
+            }
+        });
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+        if (state == MarkedPeer.Claim) await h.ClaimAsync(other, by: marked.Name, runner: MarkedWhere);
+
+        Assert.Null(Entry(await h.Work.GetQueue(runner: plain.Name), issue).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: plain.Name)).Blocked);
+    }
+
+    public enum MarkedRule { Tag, Omitted, RefusedModel, ColumnRule }
+
+    [Theory]
+    [InlineData(MarkedRule.Tag)]
+    [InlineData(MarkedRule.Omitted)]
+    [InlineData(MarkedRule.RefusedModel)]
+    [InlineData(MarkedRule.ColumnRule)]
+    public async Task Preferred_AMarkedRunnerThatCannotTakeTheRow_LeavesItToTheUnmarkedOne(MarkedRule rule)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "not the marked runner's", h.Todo);
+        if (rule == MarkedRule.Tag) await h.RequireTagsAsync("macos");
+        if (rule == MarkedRule.RefusedModel) await h.OverrideAsync(issue, model: "fable");
+
+        var marked = await KeyedRunnerAsync(h, preferred: true, configure: config =>
+        {
+            if (rule == MarkedRule.RefusedModel) config.RefusedModels = RunnerTagColumn.Write(["fable"]);
+            if (rule == MarkedRule.ColumnRule)
+            {
+                config.StatusMode = RunnerStatusMode.Except;
+                config.StatusIds = RunnerStatusIdsColumn.Write([h.Todo]);
+            }
+        });
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+        if (rule == MarkedRule.Omitted) await OmitAsync(h, issue, marked.Name, by: "operator");
+
+        // The unmarked asker says it advertises the tag; the marked runner's own config does not.
+        List<string>? tag = rule == MarkedRule.Tag ? ["macos"] : null;
+        Assert.Null(Only(await h.Work.GetQueue(runner: plain.Name, tag: tag)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: plain.Name, tag: tag)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(runner: plain.Name, tag: tag)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Preferred_ThePreferenceIsNeverAppliedToAHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await KeyedRunnerAsync(h, preferred: true);
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+
+        var entry = Only(await h.Work.GetQueue(runner: plain.Name));
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: plain.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Preferred_TheAskersOwnReason_IsSaidBeforeIt()
+    {
+        var h = await NewAsync();
+        var letGo = await h.FileAsync("task", "the unmarked runner let this go", h.Todo);
+        var omitted = await h.FileAsync("task", "the unmarked runner is omitted", h.Todo);
+        var marked = await KeyedRunnerAsync(h, preferred: true);
+        var plain = await KeyedRunnerAsync(h, preferred: false);
+        await Released(h, letGo, Now.AddMinutes(-7), ClaimOutcomes.Dropped, plain.Name);
+        await OmitAsync(h, omitted, plain.Name, by: "operator");
+
+        var queue = await h.Work.GetQueue(runner: plain.Name);
+
+        Assert.Equal(DeferralSentence(plain.Name, 7), Entry(queue, letGo).Blocked);
+        var reason = Entry(queue, omitted).Blocked;
+        Assert.StartsWith($"{Key(omitted)} is not worked by {plain.Name} - operator omitted it", reason);
+        Assert.DoesNotContain("preferred", reason);
+        Assert.DoesNotContain("preferred", Value(await h.Work.GetWork(Key(omitted), runner: plain.Name)).Blocked);
+
+        // The marked runner reads the let-go row clear.
+        Assert.Null(Entry(await h.Work.GetQueue(runner: marked.Name), letGo).Blocked);
+    }
+
+    [Fact]
+    public async Task Preferred_APeersOwnScanDoesNotApplyIt_SoTwoMarkedRunnersEachReadTheRowClear()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "two build boxes", h.Todo);
+        var first = await KeyedRunnerAsync(h, preferred: true);
+        var second = await KeyedRunnerAsync(h, preferred: true);
+
+        Assert.Null(Only(await h.Work.GetQueue(runner: first.Name)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(runner: second.Name)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: first.Name)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: second.Name)).Blocked);
     }
 
     // ---- Omitted runners on a named dispatch and a hop ----
@@ -6696,6 +6899,261 @@ public class WorkControllerTests
         var config = await h.Db.RunnerConfigs.SingleAsync(c => c.ApiKeyId == peer.Id);
         config.RefusedModels = RunnerTagColumn.Write([]);
         await h.Db.SaveChangesAsync();
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
+    // ---- Signed commits: a runner that has not said it signs is never handed a move on a signed-only project ----
+
+    private static string SigningSentence(EfHatchIssue issue, string tail) =>
+        $"{Key(issue)} allows only signed commits - {tail}";
+
+    private static async Task<(Harness H, EfHatchIssue Issue)> SignedOnlyBoardAsync()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "signed only", h.Todo);
+        await h.RequireSignedCommitsAsync();
+
+        // The harness's caller is a key by default; these tests are keyless
+        // unless one says otherwise, the way the board's own scan is.
+        h.Caller.Key = null;
+        return (h, issue);
+    }
+
+    [Fact]
+    public async Task Queue_SigningOff_FoldsASignedOnlyTicket_OnTheSentence()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var runner = RunnerName();
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, runner: runner, signing: "off"));
+
+        Assert.Equal(SigningSentence(issue, $"{runner} does not sign its commits"), entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_SigningFails_NamesTheReason_AndWorksIsClear()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var runner = RunnerName();
+
+        Assert.Equal(
+            SigningSentence(issue, $"signing fails on {runner} (gpg: signing failed: No pinentry)"),
+            Only(await h.Work.GetQueue(0, null, default, runner: runner, signing: "fails", signingWhy: "gpg: signing failed: No pinentry")).Blocked);
+        Assert.Equal(
+            SigningSentence(issue, $"signing fails on {runner}"),
+            Only(await h.Work.GetQueue(0, null, default, runner: runner, signing: "fails")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: runner, signing: "works")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AKeyedCallerNamingNoRunner_ReadsAsNotHavingSaid()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        h.Caller.Key = new EfApiKey { Name = "no-such-runner", Prefix = "hatch_ak_", Hash = [], CreatedAt = Now };
+
+        Assert.Equal(
+            SigningSentence(issue, "no-such-runner has not said whether it signs"),
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ASigningWordOffTheList_CountsAsNotSent()
+    {
+        var (h, _) = await SignedOnlyBoardAsync();
+
+        // Keyless, so not sent means not judged.
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), signing: "perhaps")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AKeyedCallerThatNeverSaid_IsFolded_AndAKeylessOneIsNot()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one");
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+
+        h.Caller.Key = key;
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} has not said whether it signs"),
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AKeyedCaller_IsJudgedOnItsLiveSessions_TheWorstAnswerWinning()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", signing: "works");
+        h.Caller.Key = key;
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+
+        await h.AddSessionAsync(key, "here:/two", signing: "off");
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} does not sign its commits"),
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ASentSigningWord_BeatsTheRow()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", signing: "works");
+        h.Caller.Key = key;
+
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} does not sign its commits"),
+            Only(await h.Work.GetQueue(0, null, default, signing: "off")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_TheRunnerParameter_NamesWhoseSessionsAnswer()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var asker = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(asker, "here:/one", signing: "works");
+        var named = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(named, "here:/two", signing: "off");
+        h.Caller.Key = asker;
+
+        Assert.Equal(
+            SigningSentence(issue, $"{named.Name} does not sign its commits"),
+            Only(await h.Work.GetQueue(0, null, default, runner: named.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_ReadsTheRunnersOwnRow_AndIgnoresTheSentWord()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", standing: true, signing: "off");
+
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} does not sign its commits"),
+            Only(await h.Work.GetQueue(asRunner: key.Name, signing: "works")).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_SkipsASignedOnlyTicketInSilence_AndTakesAnAllowingProjectsTicket()
+    {
+        var (h, signedOnly) = await SignedOnlyBoardAsync();
+        var otherId = await h.AddProjectAsync("OTH");
+        var allowed = await h.FileAsync("task", "unsigned is fine", h.Todo, rank: 2048, projectId: otherId);
+        var runner = RunnerName();
+
+        var work = Value(await h.Work.GetNextWork(0, null, null, default, runner: runner, signing: "off"));
+
+        Assert.NotEqual(Key(signedOnly), work.Issue.Key);
+        Assert.Equal(allowed.Id, (await h.Db.Issues.SingleAsync(i => i.Project!.Key == "OTH" && i.Number == allowed.Number)).Id);
+
+        Assert.Equal(
+            Key(signedOnly),
+            Value(await h.Work.GetNextWork(0, null, null, default, runner: runner, signing: "works")).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Next_ASignedOnlyTicketAlone_IsNoContentToARunnerThatDoesNotSign()
+    {
+        var (h, _) = await SignedOnlyBoardAsync();
+
+        Assert.IsType<NoContentResult>(
+            (await h.Work.GetNextWork(0, null, null, default, runner: RunnerName(), signing: "off")).Result);
+    }
+
+    [Fact]
+    public async Task Work_ANamedSignedOnlyTicket_IsRefused_AndFallsBackToTheCallingKey()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        h.Caller.Key = key;
+
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} has not said whether it signs"),
+            Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+
+        await h.AddSessionAsync(key, "here:/one", signing: "works");
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+
+        Assert.Equal(
+            SigningSentence(issue, $"{key.Name} does not sign its commits"),
+            Value(await h.Work.GetWork(Key(issue), null, default, signing: "off")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AnExpressHop_IsNeverFoldedOnSigning()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        await h.RequireSignedCommitsAsync();
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), signing: "off"));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Queue_AnIdleReviewSelfMove_KeepsItsOwnSentenceRatherThanTheSigningOne()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "up for review, clean", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean);
+        await h.RequireSignedCommitsAsync();
+
+        var blocked = Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), signing: "off")).Blocked;
+
+        Assert.NotNull(blocked);
+        Assert.DoesNotContain("allows only signed commits", blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AProjectThatAllowsUnsignedCommits_ChangesNothingForAnyCaller()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "unsigned is fine", h.Todo);
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", signing: "off");
+        h.Caller.Key = key;
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, signing: "off")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, signing: "fails", signingWhy: "no")).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatCannotSign_IsNotAPeerThatCouldTakeASignedOnlyTicket()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        var b = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(b, "here:/one", standing: true, signing: "off");
+
+        // The asker is keyless, so it is not itself judged on signing; its only
+        // peer cannot take the ticket, so there is nobody to leave it for.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatSigns_StillTakesASignedOnlyLetGoTicket()
+    {
+        var (h, issue) = await SignedOnlyBoardAsync();
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        var b = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(b, "here:/one", standing: true, signing: "works");
+
         Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
     }
 
@@ -16415,6 +16873,14 @@ public class WorkControllerTests
             await Db.SaveChangesAsync();
         }
 
+        /// <summary>The project allows only signed commits, written straight onto the row.</summary>
+        public async Task RequireSignedCommitsAsync(int? projectId = null)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
+            project.AllowsUnsignedCommits = false;
+            await Db.SaveChangesAsync();
+        }
+
         /// <summary>A second project on the same board, for a test about a playbook that names one project and not the other.</summary>
         public async Task<int> AddProjectAsync(string key)
         {
@@ -17173,7 +17639,8 @@ public class WorkControllerTests
         public async Task<EfHatchRunnerSession> AddSessionAsync(
             EfApiKey key, string? where = null, IReadOnlyList<string>? projects = null, bool? refusesDangerous = null,
             string? remotes = null, bool? mine = null, string? under = null, string? agent = null, DateTimeOffset? at = null,
-            bool? standing = null, string? models = null, string? has = null, string? drivesTold = null)
+            bool? standing = null, string? models = null, string? has = null, string? drivesTold = null,
+            string? signing = null, string? signingWhy = null)
         {
             var session = new EfHatchRunnerSession
             {
@@ -17193,6 +17660,8 @@ public class WorkControllerTests
                 Models = models,
                 Has = has,
                 DrivesTold = drivesTold,
+                Signing = signing,
+                SigningWhy = signingWhy,
             };
             Db.RunnerSessions.Add(session);
             await Db.SaveChangesAsync();

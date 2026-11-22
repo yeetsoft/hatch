@@ -454,7 +454,7 @@ public sealed record ConfigCommand(
             if (e.Status == System.Net.HttpStatusCode.Unauthorized)
             {
                 Say.Complain(NoKey);
-                Say.Complain("hatch: an admin creates a runner on the Runners page, then run hatch config --key <key>.");
+                Say.Complain("hatch: create a runner on the Runners page, then run hatch config --key <key>.");
             }
             else
             {

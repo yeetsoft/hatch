@@ -51,7 +51,7 @@ public sealed class StandbyHostTests : IDisposable
     {
         var root = Path.Combine(_temp, "checkout");
         Directory.CreateDirectory(root);
-        var item = StandbyItem.For(root, "Alder", null, "/opt/hatch/hatch", windows, Path.Combine(_temp, "hatch"), out var refusal);
+        var item = StandbyItem.For(root, "Alder", null, null, "/opt/hatch/hatch", windows, Path.Combine(_temp, "hatch"), out var refusal);
         Assert.Equal("", refusal);
         return Assert.IsType<StandbyItem>(item);
     }
@@ -267,6 +267,22 @@ public sealed class StandbyHostTests : IDisposable
         Assert.False(File.Exists(item.Wrapper));
         Assert.False(host.Installed(item));
         Assert.Equal(StandbyResult.Unchanged, host.Remove(item));
+    }
+
+    [Fact]
+    public void Mac_show_still_finds_an_item_an_older_build_wrote_with_its_own_program()
+    {
+        var root = Path.Combine(_temp, "checkout");
+        Directory.CreateDirectory(root);
+        var folder = Path.Combine(_temp, "hatch");
+
+        // The item as an older build wrote it, naming a kept build, and the item as this one builds it.
+        var older = StandbyItem.For(root, "Alder", null, null, "/opt/old/versions/hatch", false, folder, out _)!;
+        var current = StandbyItem.For(root, "Alder", null, null, "/opt/hatch/hatch", false, folder, out _)!;
+        new MacStandbyHost(Home, Path1).Install(older);
+
+        Assert.NotEqual(older.Command, current.Command);
+        Assert.True(new MacStandbyHost(Home, Path1).Installed(current));
     }
 
     // --- Linux -----------------------------------------------------------------

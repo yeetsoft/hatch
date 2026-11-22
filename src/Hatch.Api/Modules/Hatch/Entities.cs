@@ -377,6 +377,28 @@ public class EfHatchProject
     public DateTimeOffset? FilesContributionsAt { get; set; }
 
     /// <summary>
+    /// Whether this project allows commits that are not signed. On by default:
+    /// a project that has never set it allows them. The dispatch carries it as
+    /// <c>WorkDto.AllowsUnsignedCommits</c>, and a runner honours it.
+    /// Written only by <see cref="ProjectsController.PutAllowsUnsignedCommits"/>.
+    /// </summary>
+    public bool AllowsUnsignedCommits { get; set; } = true;
+
+    /// <summary>
+    /// Who last changed <see cref="AllowsUnsignedCommits"/>, as a name rather
+    /// than a foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null
+    /// until the first change. Written only by <see cref="ProjectsController.PutAllowsUnsignedCommits"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? AllowsUnsignedCommitsBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="AllowsUnsignedCommits"/> was last changed. Null until the
+    /// first change. Written only by <see cref="ProjectsController.PutAllowsUnsignedCommits"/>.
+    /// </summary>
+    public DateTimeOffset? AllowsUnsignedCommitsAt { get; set; }
+
+    /// <summary>
     /// Whether this project binds the tracker's own repository - the project a
     /// session standing in some other project's repository reads to find the
     /// tracker's. At most one project on a board has it on, which the filtered
@@ -595,27 +617,6 @@ public class EfHatchPersonHome
     public required string Home { get; set; }
 
     public required DateTimeOffset UpdatedAt { get; set; }
-}
-
-/// <summary>
-/// The last instant one reader read the Overnight page - one row per person,
-/// never a browser's cookie, so a badge cleared on a phone is cleared on the
-/// desktop too.
-/// </summary>
-[Table("OvernightSeen")]
-[Index(nameof(PersonId), IsUnique = true)]
-public class EfHatchOvernightSeen
-{
-    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public int Id { get; set; }
-
-    /// <summary>
-    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
-    /// <see cref="EfHatchProjectMember.PersonId"/> is one.
-    /// </summary>
-    public Guid PersonId { get; set; }
-
-    public required DateTimeOffset SeenAt { get; set; }
 }
 
 /// <summary>
@@ -4163,6 +4164,12 @@ public class EfHatchRunner
     /// <summary>Room for what the agent said, on the terms a claim's chatter has.</summary>
     public const int MaxAgentDownLineLength = 200;
 
+    /// <summary>Room for <see cref="RunnerSigning.Off"/>, <see cref="RunnerSigning.Works"/> and <see cref="RunnerSigning.Fails"/>, the longest of the three being <c>works</c> or <c>fails</c>.</summary>
+    public const int MaxSigningLength = 8;
+
+    /// <summary>Room for what git said where signing fails: one line, on the terms <see cref="MaxAgentDownLineLength"/> has.</summary>
+    public const int MaxSigningWhyLength = RunnerSigning.MaxWhyLength;
+
     /// <summary>Room for a registry image reference with its tag, such as <c>ghcr.io/owner/repo/hatch-runner:abc123</c>.</summary>
     public const int MaxImageLength = 256;
 
@@ -4594,7 +4601,7 @@ public class EfHatchRunnerConfig
     /// navigation and no foreign key, because <c>EfApiKey</c> lives in the core
     /// schema and a module never references another module's entities
     /// (Modules/README.md) - the same shape as
-    /// <see cref="EfHatchOvernightSeen.PersonId"/>. Never generated: the id is
+    /// <see cref="EfHatchProjectMember.PersonId"/>. Never generated: the id is
     /// the key's, not this row's.
     /// </summary>
     [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
@@ -4637,6 +4644,14 @@ public class EfHatchRunnerConfig
     /// regardless of what was sent.
     /// </summary>
     public string StatusIds { get; set; } = "[]";
+
+    /// <summary>
+    /// Whether this runner is marked to take work before unmarked runners.
+    /// Only a person writes it: unlike a refused model, which only narrows what
+    /// a runner is handed, this widens its share, so no route lets a key set
+    /// its own. Nothing reads it for dispatch yet.
+    /// </summary>
+    public bool Preferred { get; set; }
 
     /// <summary>The epic to stay inside, or null for the whole board, as <see cref="EfHatchRunner.Under"/>.</summary>
     [MaxLength(EfHatchRunner.MaxUnderLength)]
@@ -4847,6 +4862,17 @@ public class EfHatchRunnerSession
     /// <summary>The accelerator backend this session reports, as <see cref="EfHatchRunner.AcceleratorBackend"/>.</summary>
     [MaxLength(EfHatchRunner.MaxAcceleratorBackendLength)]
     public string? AcceleratorBackend { get; set; }
+
+    /// <summary>
+    /// Whether this session's commits are signed, one of <see cref="RunnerSigning.Words"/>, as its
+    /// last beat said. Null where it never said, or said a word the board does not know.
+    /// </summary>
+    [MaxLength(EfHatchRunner.MaxSigningLength)]
+    public string? Signing { get; set; }
+
+    /// <summary>What git said, where <see cref="Signing"/> is <c>fails</c>; null otherwise.</summary>
+    [MaxLength(EfHatchRunner.MaxSigningWhyLength)]
+    public string? SigningWhy { get; set; }
 
     /// <summary>
     /// The project keys this session's last heartbeat was answered with as the

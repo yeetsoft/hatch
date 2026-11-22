@@ -139,7 +139,8 @@ public static class RunnerSet
     /// How the set's children's exit codes become the one code the set host
     /// itself exits with: <c>75</c> (<see cref="GoToWorkCommand.RestartExitCode"/>)
     /// if any child asked for a restart and the host was not itself stopped,
-    /// else <c>1</c> if any child refused, else <c>0</c>.
+    /// else <c>1</c> if any child refused, else <c>78</c>
+    /// (<see cref="GoToWorkCommand.CannotSignExitCode"/>) if every child did, else <c>0</c>.
     /// </summary>
     /// <remarks>
     /// <paramref name="stopped"/> - the host's own stop file was seen - takes
@@ -153,6 +154,9 @@ public static class RunnerSet
         var seen = codes.ToList();
         if (!stopped && seen.Contains(GoToWorkCommand.RestartExitCode)) return GoToWorkCommand.RestartExitCode;
         if (seen.Contains(1)) return 1;
+
+        // Only when every member could not sign: one that could is still working.
+        if (seen.Count > 0 && seen.All(c => c == GoToWorkCommand.CannotSignExitCode)) return GoToWorkCommand.CannotSignExitCode;
         return 0;
     }
 

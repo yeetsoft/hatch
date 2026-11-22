@@ -438,6 +438,30 @@ describe('IdentityCard', () => {
     const html = renderToStaticMarkup(<IdentityCard runner={runner({ name: 'Quill' })} refusal="could not save" />);
     expect(html).toMatch(/text-danger[^>]*>could not save/);
   });
+
+  it('says a runner signs its commits, in muted words', () => {
+    const html = renderToStaticMarkup(<IdentityCard runner={runner({ signing: 'works' })} />);
+    expect(html).toContain('Signs its commits');
+    expect(html).not.toMatch(/text-danger[^>]*>Signs/);
+  });
+
+  it('says a runner does not sign its commits, in muted words', () => {
+    const html = renderToStaticMarkup(<IdentityCard runner={runner({ signing: 'off' })} />);
+    expect(html).toContain('Does not sign its commits');
+    expect(html).not.toContain('text-danger');
+  });
+
+  it('says signing fails in the danger tone, with what git said', () => {
+    const html = renderToStaticMarkup(
+      <IdentityCard runner={runner({ signing: 'fails', signingWhy: 'gpg failed to sign the data' })} />,
+    );
+    expect(html).toMatch(/text-danger[^>]*>Signing fails: gpg failed to sign the data/);
+  });
+
+  it('shows no signing line for a runner that never said, or one saying a word it does not know', () => {
+    expect(renderToStaticMarkup(<IdentityCard runner={runner()} />)).not.toMatch(/sign/i);
+    expect(renderToStaticMarkup(<IdentityCard runner={runner({ signing: 'maybe' as never })} />)).not.toMatch(/sign/i);
+  });
 });
 
 describe('RunnerDetail: the owner select, Rotate and Revoke', () => {
@@ -449,20 +473,52 @@ describe('RunnerDetail: the owner select, Rotate and Revoke', () => {
     expect(html).toContain('>Revoke</button>');
   });
 
-  it('a non-admin sees none of them', () => {
+  it('a user sees Rotate key and Revoke on their own runner, with the owner as text and no select', () => {
     state.isAdmin = false;
     state.me = { kind: 'person', name: 'a', role: 'user' };
-    state.read = { runners: [runner({ name: 'Quill' })], error: null };
+    state.read = { runners: [runner({ name: 'Quill', yours: true, for: 'Ada' })], error: null };
     const html = renderAt('/runners/Quill');
-    expect(html).not.toContain('aria-label="Owner of Quill"');
+    expect(html).toContain('>Rotate key</button>');
+    expect(html).toContain('>Revoke</button>');
+    expect(html).not.toContain('Owner of Quill');
+    expect(html).not.toContain('<select');
+    expect(html).toContain('for Ada');
+  });
+
+  it('a user sees neither button on a runner that is not theirs', () => {
+    state.isAdmin = false;
+    state.me = { kind: 'person', name: 'a', role: 'user' };
+    state.read = { runners: [runner({ name: 'Quill', yours: false, for: 'Bea' })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).not.toContain('Rotate key');
+    expect(html).not.toContain('>Revoke<');
+    expect(html).not.toContain('Owner of Quill');
+    expect(html).toContain('for Bea');
+  });
+
+  it('a user sees neither button on a runner with no owner', () => {
+    state.isAdmin = false;
+    state.me = { kind: 'person', name: 'a', role: 'user' };
+    state.read = { runners: [runner({ name: 'Quill', yours: false, for: null })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).not.toContain('Rotate key');
+    expect(html).not.toContain('>Revoke<');
+    expect(html).toContain('no owner');
+  });
+
+  it('a user sees none on their own runner once it is revoked', () => {
+    state.isAdmin = false;
+    state.me = { kind: 'person', name: 'a', role: 'user' };
+    state.read = { runners: [runner({ name: 'Quill', yours: true, revokedAt: at(-1000) })], error: null };
+    const html = renderAt('/runners/Quill');
     expect(html).not.toContain('Rotate key');
     expect(html).not.toContain('>Revoke<');
   });
 
-  it('wall off sees none of them', () => {
+  it('wall off sees none of them, even where yours is true', () => {
     state.isAdmin = false;
     state.me = { kind: 'local', name: 'a', role: null };
-    state.read = { runners: [runner({ name: 'Quill' })], error: null };
+    state.read = { runners: [runner({ name: 'Quill', yours: true })], error: null };
     const html = renderAt('/runners/Quill');
     expect(html).not.toContain('aria-label="Owner of Quill"');
     expect(html).not.toContain('Rotate key');

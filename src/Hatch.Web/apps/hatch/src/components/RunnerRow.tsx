@@ -7,13 +7,16 @@ import {
   rowThirdLine,
   runnerGlyphState,
   sessionParts,
+  signingFails,
   speakingSession,
 } from '../lib/runners';
 import type { Runner, Status } from '../types';
 
 /**
  * One runner in the list: a link to its detail, in three lines. The glyph and
- * name, with a badge for several live sessions or a revoked key; what it is
+ * name, with a badge for several live sessions, a revoked key or signing that
+ * fails (what git said is on the runner's own page: a row is one link, and a
+ * title inside it would hide the link's own); what it is
  * doing; and whose it is and where it runs. The words are `lib/runners.ts`'s -
  * this only draws them.
  */
@@ -47,7 +50,9 @@ export function RunnerRow({
           <strong className="hatch-runner-name">{runner.name}</strong>
         </span>
         {sessions > 1 && <Badge tone="muted">x{sessions}</Badge>}
+        {runner.preferred && <Badge tone="primary">preferred</Badge>}
         {runner.revokedAt && <Badge tone="muted">revoked</Badge>}
+        {signingFails(runner) && <Badge tone="danger">signing fails</Badge>}
       </span>
       <Text as="span" tone="muted" className="hatch-runner-row__second" title={second}>
         {second}

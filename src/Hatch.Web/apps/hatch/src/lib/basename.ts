@@ -56,7 +56,6 @@ export const APP_ROUTE_ROOTS = [
   'playbooks',
   'design',
   'runners',
-  'overnight',
   'goose',
   'changelog',
   'history',
