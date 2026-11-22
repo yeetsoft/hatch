@@ -317,6 +317,12 @@ export interface IssueCard {
   /** Questions on this issue nobody has answered. Non-zero means it is waiting
       on a person, and the board says so - see IssueCardDto.OpenQuestions. */
   openQuestions: number;
+  /** When it entered the column it is in now, or absent. The server reads it off
+      the issue's own events. */
+  enteredColumnAt?: string;
+  /** The server's verdict: it has sat in this column longer than is normal for
+      it. Absent reads as not aged. */
+  aged?: boolean;
   /** Who owns this card, or null for nobody - which is most of the board, and
       why the card draws no element at all rather than an empty chip. */
   assignee: Assignee | null;
@@ -1361,6 +1367,18 @@ export interface Board {
       So an epic card can count them. Optional so existing Board fixtures
       still type-check; the server always sends the list, never null. */
   pastHorizon?: IssueCard[];
+  /** Each column's normal stay - the 90th percentile over the last 30 days - or
+      null where the column has too few finished stays. Optional so fixtures
+      type-check. */
+  normals?: ColumnNormal[];
+  /** The server's own clock at the read. A card's time in its column is worked
+      out against this, so a skewed browser clock cannot disagree with `aged`. */
+  at?: string;
+}
+
+export interface ColumnNormal {
+  statusId: number;
+  seconds: number | null;
 }
 
 // ---- The importer ----
