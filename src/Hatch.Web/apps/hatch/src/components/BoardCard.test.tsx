@@ -620,6 +620,19 @@ describe('BoardCard, aged', () => {
     expect(html).toContain('hatch-card-age');
   });
 
+  it('is held tall enough under a flow band that the band cannot cover the chip', () => {
+    const banded = renderSortable(
+      <BoardCard card={card()} age={age} band={{ kind: 'clear', words: 'Clear' }} />,
+      ['AER-1'],
+    );
+
+    expect(banded).toMatch(/class="hatch-card[^"]* aged[^"]* banded|class="hatch-card[^"]* banded[^"]* aged/);
+    expect(board({}, age)).not.toContain('banded');
+    expect(renderSortable(<BoardCard card={card()} band={{ kind: 'clear', words: 'Clear' }} />, ['AER-1'])).not.toMatch(
+      /class="hatch-card[^"]* aged/,
+    );
+  });
+
   it('draws the chip after a stall mark and before the assignee', () => {
     const html = board({ stalledAt: '2026-11-22T00:00:00Z', assignee: { kind: 'person', id: '1', name: 'Ada' } }, age);
 

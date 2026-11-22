@@ -6312,6 +6312,15 @@ input.hatch-inline-title-input {
   background-image: linear-gradient(var(--aged-bg), var(--aged-bg));
 }
 
+/* The flow band lies over the lower half of the card, and on a card with a one-line
+   title the marks row is in that half - the chip would be stamped over. An aged
+   card under a band is therefore tall enough that its marks row ends above the
+   half-way line: the head and the marks row take about 3.3rem, so twice that, and
+   a little over. Only an aged card is held to it; the flow view is the desk's. */
+.hatch-card.aged.banded {
+  min-height: 7rem;
+}
+
 /* The chip: a clock and the time in the column, in the stalled chip's shape.
    Words as well as the tint, so the mark is not a colour alone. */
 .hatch-card-age {

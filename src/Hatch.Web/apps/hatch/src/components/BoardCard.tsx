@@ -175,7 +175,7 @@ export function BoardCard({
   const storiesId = useId();
 
   const classes = (carrying: boolean) =>
-    `hatch-card${carrying ? ' hatch-card--carrying' : ''}${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${agedClass(age)}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}${spot ? ` hatch-spot-${spot}` : ''}`;
+    `hatch-card${carrying ? ' hatch-card--carrying' : ''}${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${agedClass(age)}${band ? ' banded' : ''}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}${spot ? ` hatch-spot-${spot}` : ''}`;
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
