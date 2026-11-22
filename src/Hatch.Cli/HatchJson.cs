@@ -74,6 +74,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(DreamDto))]
 [JsonSerializable(typeof(AttentionDto))]
 [JsonSerializable(typeof(RunnerMintedDto))]
+[JsonSerializable(typeof(AttachmentDto))]
 [JsonSerializable(typeof(CapabilityDto))]
 [JsonSerializable(typeof(List<CapabilityDto>))]
 [JsonSerializable(typeof(CapabilityVerdictDto))]

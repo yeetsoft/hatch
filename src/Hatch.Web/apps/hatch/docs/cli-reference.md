@@ -50,6 +50,7 @@ without the flag.
 | `depends` | No | Only with a second key |
 | `capability` | Only `judge` with no `--sha`: it reads the head of the checkout it stands in | Only with `add`, `edit`, `move`, `remove` or `judge` |
 | `serves` | No | Only with ids or `--none` |
+| `attachment` | No | Only `add`, which uploads a file |
 | `change` | No | Only with `outcome` |
 | `one-pr` | No | Only with `on`, `off` or `inherit` |
 | `dangerous` | No | Only with a reason or `--clear` |
@@ -1021,8 +1022,34 @@ list` prints after the `#`. It prints `<epic> serves nothing`, or `<epic> serves
 2 capabilities:` and then `  <ambition> #<id>  <state>  <statement>` for each.
 A key is never refused this.
 
-### change
+### attachment
 
+```
+hatch attachment add <file> [--project <KEY>]
+hatch attachment get <id> [--out <path>]
+```
+
+Sends a file to the board and fetches one from it, so a session needs no other
+tool for either.
+
+`add` uploads the file and prints one line to paste into a comment or a
+description: `![name](/api/images/<id>)` for a PNG, JPEG, GIF or WebP, and
+`[name](/api/attachments/<id>)` for anything else. The board decides the type
+from the bytes, not from the name. `--project` takes a project key and files the
+upload under that project. A person's key may leave it out; a program's key may
+not, and the board's own sentence is printed. A file over 25 MB, a project the
+key cannot reach, and a path that is not a file are refused, with exit code 1.
+
+`get` saves the file under the name it was stored with, in the system temporary
+directory, in a folder of its own id so two files called `image.png` never
+overwrite each other. It never writes into the checkout. It prints the path, the
+content type and the size, one to a line. `--out <path>` saves to that path
+instead; a directory that already exists there means inside it, under the stored
+name. A stored name is only ever used as a file name: a path in it is cut down to
+its last part. An id that is not an attachment id, or that names nothing, is
+refused with exit code 1.
+
+### change
 ```
 hatch change list <ambition>
 hatch change outcome <ambition> <epic> carries_on|not_touched|serves_nothing "<why>" --change <id>

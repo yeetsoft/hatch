@@ -33,6 +33,13 @@ public sealed class Wire : HttpMessageHandler
 
         /// <summary>Where the body is computed fresh from the request rather than fixed in advance. Overrides <see cref="Body"/> when set.</summary>
         public Func<Call, string>? Compute { get; init; }
+
+        /// <summary>Where the answer is a file: its bytes, in place of the text <see cref="Body"/> would send.</summary>
+        public byte[]? Bytes { get; init; }
+
+        public string? ContentType { get; init; }
+
+        public string? Disposition { get; init; }
     }
 
     private readonly List<Rule> _rules = [];
@@ -54,6 +61,22 @@ public sealed class Wire : HttpMessageHandler
     public Wire Reply(string method, string path, HttpStatusCode code, string body = "")
     {
         lock (_gate) _rules.Add(new Rule($"{method} {path}", code, body));
+        return this;
+    }
+
+    /// <summary>
+    /// Answer this route with a file: bytes, a content type and, where given, the
+    /// <c>Content-Disposition</c> header the server would name it by.
+    /// </summary>
+    public Wire File(string method, string path, byte[] bytes, string contentType, string? disposition = null)
+    {
+        lock (_gate)
+            _rules.Add(new Rule($"{method} {path}", HttpStatusCode.OK, "")
+            {
+                Bytes = bytes,
+                ContentType = contentType,
+                Disposition = disposition,
+            });
         return this;
     }
 
@@ -111,6 +134,15 @@ public sealed class Wire : HttpMessageHandler
             _calls.Add(call);
             matched = _rules.FirstOrDefault(r => r.Route == call.Route && r.Left > 0);
             if (matched is not null && matched.Left != int.MaxValue) matched.Left--;
+        }
+
+        if (matched is { Bytes: { } bytes })
+        {
+            var file = new HttpResponseMessage(matched.Code) { Content = new ByteArrayContent(bytes) };
+            file.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(matched.ContentType ?? "application/octet-stream");
+            if (matched.Disposition is { } disposition)
+                file.Content.Headers.ContentDisposition = System.Net.Http.Headers.ContentDispositionHeaderValue.Parse(disposition);
+            return Task.FromResult(file);
         }
 
         var response = matched is null
