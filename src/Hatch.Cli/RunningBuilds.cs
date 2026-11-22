@@ -28,8 +28,9 @@ public static class RunningBuilds
     private static List<string> FromProc()
     {
         var paths = new List<string>();
+        var options = new EnumerationOptions { IgnoreInaccessible = false };
 
-        foreach (var directory in Directory.EnumerateDirectories("/proc"))
+        foreach (var directory in Directory.EnumerateDirectories("/proc", "*", options))
         {
             if (!int.TryParse(Path.GetFileName(directory), out _)) continue;
 

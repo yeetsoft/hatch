@@ -400,6 +400,8 @@ public sealed class BuildSweepTests : IDisposable
         using var process = Process.Start(start)!;
         try
         {
+            if (OperatingSystem.IsLinux()) WaitUntilSeen(process, Folder(A));
+
             var kept = Store().Sweep(now, RunningBuilds.Paths());
 
             Assert.True(Has(A), "a running build was removed");
@@ -421,5 +423,46 @@ public sealed class BuildSweepTests : IDisposable
         }
 
         Assert.False(Has(A), "the build was not removed once nothing ran it");
+    }
+
+    // A scan right after Process.Start can miss the child before /proc catches up with it
+    // (or, on a busy box, drop it from a short-lived listing error); wait for the real scan
+    // to see it rather than asserting against whatever the first scan happened to return.
+    private static void WaitUntilSeen(Process process, string folder)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        var attempts = 0;
+        var seen = Array.Empty<string>() as IReadOnlyCollection<string>;
+        Exception? last = null;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            attempts++;
+
+            try
+            {
+                seen = RunningBuilds.Paths();
+                last = null;
+            }
+            catch (Exception e)
+            {
+                seen = Array.Empty<string>();
+                last = e;
+            }
+
+            if (seen.Any(path => path.StartsWith(folder, StringComparison.Ordinal)
+                                  && (path.Length == folder.Length || path[folder.Length] == Path.DirectorySeparatorChar)))
+            {
+                Console.WriteLine($"WaitUntilSeen: {process.Id} seen after {attempts} attempt(s)");
+                return;
+            }
+
+            Thread.Sleep(20);
+        }
+
+        var target = new FileInfo($"/proc/{process.Id}/exe").LinkTarget;
+        throw new TimeoutException(
+            $"never saw pid {process.Id} (exe -> {target ?? "unknown"}) among {seen.Count} path(s) from the last scan"
+            + (last is null ? "" : $"; the last scan threw {last}"));
     }
 }
