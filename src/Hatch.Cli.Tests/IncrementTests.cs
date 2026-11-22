@@ -1937,7 +1937,7 @@ public sealed class IncrementTests
         new(
             91, DateTimeOffset.UnixEpoch, false, null, [],
             outcomes.Select(e => new ChangeOutcomeDto(
-                91, e, "A title", "In Progress", "carries_on", "Why.", "agent", DateTimeOffset.UnixEpoch, null)).ToList());
+                91, 91, e, "A title", "In Progress", "carries_on", "Why.", "agent", DateTimeOffset.UnixEpoch, null)).ToList());
 
     private static async Task<(IncrementReport Report, Harness H)> ChangeAsync(
         bool changing, IReadOnlyList<ChangeDto>? changes = null, bool changesFail = false)
