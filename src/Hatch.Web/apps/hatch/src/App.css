@@ -2112,6 +2112,246 @@ button.hatch-card-stories:focus-visible {
   color: var(--muted);
 }
 
+/* ---- The board health strip ----
+
+   Four tiles above the columns: moved, in flight, oldest in flight and waiting
+   on you, sharing one window control and one marked moment. Tokens only, so
+   both themes follow without a value of their own here.
+
+   The page is a flex column and .hatch-board takes what is left (flex: 1,
+   min-height: 0), so the strip is flex: none - it keeps its own height and the
+   columns scroll inside themselves under it.
+
+   One fixed first track for the window control, then equal tracks for the
+   tiles: a tile added after the four takes the next track with no change here. */
+.hatch-health-strip {
+  flex: none;
+  display: grid;
+  grid-template-columns: 12rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+.hatch-health-control {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+.hatch-health-windows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.hatch-health-window {
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+
+.hatch-health-window:hover {
+  filter: brightness(0.97);
+}
+
+.hatch-health-window:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-health-window.active {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+}
+
+.hatch-health-axis {
+  margin: 0;
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-health-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.hatch-health-label {
+  margin: 0;
+  font-size: var(--t-label);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.hatch-health-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.hatch-health-link:hover {
+  text-decoration: underline;
+}
+
+.hatch-health-value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1-5);
+  margin: var(--sp-1) 0 0;
+  font-size: var(--t-heading);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.hatch-health-second,
+.hatch-health-detail {
+  margin: 0;
+  font-size: var(--t-label);
+  /* One line each, of a fixed height and cut rather than wrapped, so a hover
+     never moves the sparkline under the pointer. */
+  height: 1.25rem;
+  line-height: 1.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+/* Colour follows meaning. Each tone also has a glyph or a word beside it. */
+.hatch-health-tile--good .hatch-health-glyph,
+.hatch-health-tile--good .hatch-health-second {
+  color: var(--success-ink);
+}
+
+.hatch-health-tile--warn .hatch-health-glyph,
+.hatch-health-tile--warn .hatch-health-second {
+  color: var(--warn-ink);
+}
+
+.hatch-health-tile--neutral .hatch-health-glyph {
+  color: var(--muted);
+}
+
+.hatch-health-glyph {
+  font-size: var(--t-body);
+}
+
+.hatch-health-spark {
+  margin-top: var(--sp-2);
+  height: 2.5rem;
+  border-radius: var(--r-in);
+  cursor: crosshair;
+}
+
+.hatch-health-spark--link {
+  cursor: pointer;
+}
+
+.hatch-health-spark:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-health-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.hatch-health-bar {
+  fill: var(--muted);
+  opacity: 0.55;
+}
+
+.hatch-health-bar--latest {
+  fill: var(--primary);
+  opacity: 1;
+}
+
+.hatch-health-band--done {
+  fill: var(--success-fill);
+  opacity: 0.55;
+}
+
+.hatch-health-band--inflight {
+  fill: var(--primary);
+  opacity: 0.7;
+}
+
+.hatch-health-band--waiting {
+  fill: var(--warn);
+  opacity: 0.55;
+}
+
+.hatch-health-line {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.hatch-health-area {
+  fill: var(--warn-bg);
+  stroke: none;
+}
+
+.hatch-health-tile .hatch-health-dot {
+  stroke: var(--primary);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.hatch-health-moment {
+  stroke: var(--ink);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+/* The hide and show button, framed as .hatch-flow-viz-control is. */
+.hatch-health-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-1-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.hatch-health-toggle:hover {
+  filter: brightness(0.97);
+}
+
+.hatch-health-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-health-toggle.active {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+}
+
+.hatch-health-toggle-glyph {
+  width: 18px;
+  height: 18px;
+}
+
 @media (max-width: 40rem) {
   .hatch-board-search {
     flex: 1 1 auto;
