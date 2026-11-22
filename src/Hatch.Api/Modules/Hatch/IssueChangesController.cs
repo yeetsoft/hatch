@@ -152,7 +152,7 @@ public class IssueChangesController(HatchContext db, ICallerIdentity caller, Tim
     /// One event of a change, read tolerantly: a payload that will not parse,
     /// or does not carry the field wanted, gives null rather than throwing.
     /// </summary>
-    private static ChangeEntryDto MapEntry(EfHatchIssueEvent e)
+    internal static ChangeEntryDto MapEntry(EfHatchIssueEvent e)
     {
         var kind = e.Kind switch
         {

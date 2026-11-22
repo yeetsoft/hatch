@@ -1156,6 +1156,12 @@ question the session is to answer - `issueKey`, `issueTitle`, `questionId`,
 qualifies, is in [what a session may answer](questions-and-decisions#what-a-session-may-answer).
 Each row of `GET /work/queue` carries `answering` too, as one sentence naming the
 issue and the question, and null on every other row.
+An ambition aimed at the row marked *works out changes* has `kind` `change`, and
+`playbook` is that row. Its newest change goes ahead of a question and of the
+pass, and `GET /work/queue` and `GET /work/{key}` agree on it. Each queue row
+carries `changing` as one sentence, `works out what a change does to 3 epics`,
+and null on every other row. When it is sent is in
+[changing an ambition](issues#changing-an-ambition).
 The `WorkDto` also carries `changing`, null on every dispatch that is not for a
 change, and on an older board's answer. It names the change the session is to
 work out - `id`, the id a session gives `hatch change outcome` as `--change` -

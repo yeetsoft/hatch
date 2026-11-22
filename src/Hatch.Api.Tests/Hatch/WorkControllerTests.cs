@@ -635,6 +635,109 @@ public class WorkControllerTests
         if (!roomOpened) Assert.Equal(BlockedKinds.Family, queue.BlockedKind);
     }
 
+    // ---- An ambition aimed at a change ----
+
+    /// <summary>
+    /// An ambition with room, its pass row and a flagged row that differ in their
+    /// prompt, a capability edited an hour ago, and an epic filed well before that
+    /// serving the capability at positions 2 and 1.
+    /// </summary>
+    private static async Task<(Harness H, EfHatchIssue Ambition, EfHatchIssue Epic, EfHatchIssueEvent Event, EfHatchPlaybook Flagged)> ChangedAsync()
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var flagged = Playbook(h.InProgress, h.InProgress, "ambition", "opus");
+        flagged.Prompt = "work out the change";
+        flagged.WorksOutChanges = true;
+        h.Db.Playbooks.Add(Playbook(h.InProgress, h.InProgress, "ambition", "sonnet"));
+        h.Db.Playbooks.Add(flagged);
+        await h.Db.SaveChangesAsync();
+        var ambition = await h.FileAsync("ambition", "A", h.InProgress);
+        await h.SetEpicLimitAsync(ambition, 5);
+        var epic = await h.FileAsync("epic", "the epic", h.Todo, parentId: ambition.Id);
+        epic.CreatedAt = Now.AddHours(-3);
+
+        foreach (var position in new[] { 2, 1 })
+        {
+            var capability = new EfHatchCapability
+            {
+                IssueId = ambition.Id, Position = position, Statement = $"capability {position}", HowToTell = "seen",
+                CreatedBy = "operator", CreatedAt = Now.AddHours(-4), UpdatedAt = Now.AddHours(-4),
+            };
+            h.Db.Capabilities.Add(capability);
+            await h.Db.SaveChangesAsync();
+            h.Db.CapabilityLinks.Add(new EfHatchCapabilityLink { CapabilityId = capability.Id, IssueId = epic.Id, Actor = "operator", At = Now.AddHours(-3) });
+        }
+
+        var changed = new EfHatchIssueEvent
+        {
+            IssueId = ambition.Id, Actor = "operator", Kind = EfHatchIssueEvent.CapabilityEdited, At = Now.AddHours(-1),
+            Payload = """{"id":7,"position":1,"from":{"statement":"old","howToTell":"was"},"to":{"statement":"new","howToTell":"is"}}""",
+        };
+        h.Db.IssueEvents.Add(changed);
+        await h.Db.SaveChangesAsync();
+        return (h, ambition, epic, changed, flagged);
+    }
+
+    [Fact]
+    public async Task Work_AnAmbitionWithAChange_ReadsAsChangeWithTheChangeTheEpicsAndTheFlaggedRow()
+    {
+        var (h, ambition, epic, changed, flagged) = await ChangedAsync();
+
+        var named = Value(await h.Work.GetWork(Key(ambition), null, default));
+        var queue = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(ambition));
+
+        Assert.Null(named.Blocked);
+        Assert.Equal(WorkKinds.Change, named.Kind);
+        Assert.Equal("change", named.Kind);
+        Assert.False(named.Hop);
+        Assert.Equal(h.InProgress, named.ToStatus!.Id);
+        var changing = named.Changing!;
+        Assert.Equal(changed.Id, changing.Id);
+        var entry = changing.Entries.Single();
+        Assert.Equal(changed.Id, entry.EventId);
+        Assert.Equal("changed", entry.Kind);
+        Assert.Equal("old", entry.StatementBefore);
+        Assert.Equal("new", entry.StatementAfter);
+        var weighed = changing.Epics.Single();
+        Assert.Equal(Key(epic), weighed.Key);
+        Assert.Equal("the epic", weighed.Title);
+        Assert.Equal("todo", weighed.Column);
+        Assert.Equal([1, 2], weighed.Serves);
+        Assert.Equal(flagged.Id, named.Playbook!.Id);
+        Assert.Equal("work out the change", named.Playbook.Prompt);
+        Assert.Equal("opus", named.Model);
+        Assert.Null(named.Answering);
+
+        Assert.Equal(WorkKinds.Change, queue.Kind);
+        Assert.Equal("works out what a change does to 1 epic", queue.Changing);
+        Assert.Null(queue.Answering);
+        Assert.Equal(named.Kind, queue.Kind);
+        Assert.Equal(named.Blocked, queue.Blocked);
+    }
+
+    [Fact]
+    public async Task Work_OnTheDispatchOfAnythingElse_CarriesNoChanging()
+    {
+        var (h, ambition, _, changed, _) = await ChangedAsync();
+        h.Db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = ambition.Id, SessionId = "changed", StartedAt = Now.AddMinutes(-70), EndedAt = Now.AddMinutes(-60), DurationMs = 600_000, CreatedAt = Now.AddMinutes(-60),
+            IssueType = "ambition", PlaybookFromStatusId = h.InProgress, PlaybookToStatusId = h.InProgress, Outcome = ClaimOutcomes.Worked,
+            ChangeEventId = changed.Id,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(ambition), null, default));
+        var queue = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(ambition));
+
+        Assert.Null(work.Changing);
+        Assert.Null(queue.Changing);
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal(WorkKinds.Advance, queue.Kind);
+        Assert.NotEqual("opus", work.Model);
+    }
+
     // ---- An ambition aimed at a question ----
 
     /// <summary>

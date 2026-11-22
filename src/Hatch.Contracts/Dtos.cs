@@ -3633,6 +3633,9 @@ public static class WorkKinds
 
     /// <summary>An ambition aimed at its answering row: a session answers one open question beneath it, then the person looks it over on the Ballot.</summary>
     public const string Answer = "answer";
+
+    /// <summary>An ambition aimed at the row that works out a change: a session weighs each open epic beneath it against what its capabilities gained, lost or had rewritten.</summary>
+    public const string Change = "change";
 }
 
 /// <summary>Which of the seven reasons carried a hop - see WorkDto.HopKind.</summary>
@@ -3807,6 +3810,11 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// One short sentence naming the issue and the question, set only where
 /// <paramref name="Kind"/> is <see cref="WorkKinds.Answer"/>. Null on every other row.
 /// </param>
+/// <param name="Changing">
+/// One short sentence saying what a change dispatch works out - how many epics it
+/// weighs - set only where <paramref name="Kind"/> is <see cref="WorkKinds.Change"/>.
+/// Null on every other row.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3825,7 +3833,8 @@ public record QueueEntryDto(
     IReadOnlyList<RunnerReasonDto>? Untaken = null,
     string? TrainNote = null,
     string? ProjectPriority = null,
-    string? Answering = null);
+    string? Answering = null,
+    string? Changing = null);
 
 /// <summary>
 /// One live runner that cannot take a queue row right now, and why - see
