@@ -2324,6 +2324,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset?>("ExhaustedUntil")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Forge")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("ForgeWhy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Has")
                         .HasColumnType("text");
 

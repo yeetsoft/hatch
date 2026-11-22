@@ -186,6 +186,15 @@ public sealed record RunnerDeclaration(
     }
 
     /// <summary>
+    /// What a runner's live loop sessions say about its forge sign-in: the worst of their
+    /// answers, see <see cref="RunnerForge.Worst"/>. Null when none said. Read by the
+    /// runners page alone; it is not part of <see cref="RunnerDeclaration"/>, and dispatch
+    /// does not read it.
+    /// </summary>
+    internal static (string State, string? Why)? ForgeOf(IEnumerable<EfHatchRunnerSession> live) =>
+        RunnerForge.Worst(live.Where(s => s.Kind == EfHatchRunner.LoopKind).Select(s => (s.Forge, s.ForgeWhy)));
+
+    /// <summary>
     /// Per field, <c>has</c> and <c>models</c> alike: <paramref name="beatLines"/>
     /// when the beat said any, else the distinct ordinal union of
     /// <paramref name="sessionLines"/> in session order, else nothing. One
