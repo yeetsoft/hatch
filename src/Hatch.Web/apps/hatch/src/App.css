@@ -3151,6 +3151,23 @@ button.hatch-card-stories:focus-visible {
   opacity: 0.75;
 }
 
+/* A waiting pull request, in the issue facts: the sentence, then the title that
+   opens to the branch and the body. The body is a pull request description
+   written for a forge, so it keeps its line breaks and wraps rather than
+   pushing the card wider than a phone. */
+.hatch-waiting-pr details {
+  margin-top: var(--sp-1);
+}
+
+.hatch-waiting-pr__body {
+  margin: 0;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--t-label);
+}
+
 /* Far enough off to be information rather than a warning - and every `Ready`
    chip, which has no ladder of its own. */
 .hatch-chip-later {

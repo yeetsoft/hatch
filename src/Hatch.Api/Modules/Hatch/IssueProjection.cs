@@ -324,7 +324,8 @@ public static class IssueProjection
                 PreApprovalPassedOverLevel: passedOver.PreApproval is { } pa ? PreApprovalLevels.Name(pa.Level) : null,
                 PriorityPassedOverLevel: passedOver.Priority is { } pr ? PriorityLevels.Name(pr.Level) : null,
                 PullRequestRecordedBy: issue.PullRequestRecordedBy,
-                PullRequestRecordedByKind: issue.PullRequestRecordedByKind);
+                PullRequestRecordedByKind: issue.PullRequestRecordedByKind,
+                WaitingPullRequest: WaitingPullRequest.ToDto(issue));
         });
     }
 

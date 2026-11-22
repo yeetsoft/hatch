@@ -1036,6 +1036,11 @@ public class IssuesController(
             if (!string.IsNullOrWhiteSpace(edit.PullRequestUrl) && NoCode.Declared(issue))
                 events.Add(NoCode.SetAside(issue, new { pullRequest = edit.PullRequestUrl }, actor, now));
 
+            // The pull request is open now, so the waiting one is spent.
+            if (!string.IsNullOrWhiteSpace(edit.PullRequestUrl)
+                && WaitingPullRequest.ClearOnRecord(issue, edit.PullRequestUrl, actor, now) is { } spent)
+                events.Add(spent);
+
             issue.PullRequestUrl = edit.PullRequestUrl;
             issue.PullRequestClosedAt = null;
             issue.PullRequestMergeState = null;

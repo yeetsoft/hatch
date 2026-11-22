@@ -156,6 +156,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
                 i.Title,
                 i.PullRequestUrl,
                 i.NoCode,
+                i.WaitingPrTitle,
                 i.PullRequestClosedAt,
                 Landing = i.Project!.Landing,
                 i.Project.ChecksRequired,
@@ -385,6 +386,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         var withoutPr = inReview.Count(i =>
             string.IsNullOrWhiteSpace(i.PullRequestUrl)
             && !NoCode.Declared(i.NoCode)
+            && !WaitingPullRequest.Has(i.WaitingPrTitle)
             && !(LandingWork.Applies(i.Landing, i.PullRequestUrl) && landingsByIssue.ContainsKey(i.Id))
             && !(family is not null
                 && tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved
