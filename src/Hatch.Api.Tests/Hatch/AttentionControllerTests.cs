@@ -2481,6 +2481,29 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Attention_ListsAReviewDeadEndAndTheStoryWaitingOnIt_WithTheQueuesSentence()
+    {
+        var h = await NewAsync();
+        h.Db.Add(new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true });
+        await h.Db.SaveChangesAsync();
+        var story = await h.FileAsync("story", "holds the pull request", h.InProgress, pullRequestUrl: "https://forge.example/pulls/1");
+        var task = await h.FileAsync("task", "pre-approved, no pull request", h.Review, parentId: story.Id);
+        task.PreApproval = PreApprovalLevels.PreApproved;
+        await h.Db.SaveChangesAsync();
+        await h.CheckAsync(task, MergeVerdicts.Clean);
+        await h.BuildAsync(task, BuildVerdicts.Passed);
+
+        var deadlocked = Value(await h.Attention.GetAttention(default)).Deadlocked!;
+
+        // Queue order, columns right to left: review leads, then in progress.
+        Assert.Equal([Key(task), Key(story)], deadlocked.Select(d => d.Key));
+        var taskRow = deadlocked.Single(d => d.Key == Key(task));
+        Assert.StartsWith("deadlocked - ", taskRow.Sentence);
+        Assert.Contains($"record its pull request with `hatch pr {Key(task)} <url>`", taskRow.Sentence);
+        Assert.Equal("deadlocked - its children are the work, and some are still open", deadlocked.Single(d => d.Key == Key(story)).Sentence);
+    }
+
+    [Fact]
     public async Task Attention_AnswersAnEmptyDeadlockedListWhenNothingIsDeadlocked()
     {
         var h = await NewAsync();
