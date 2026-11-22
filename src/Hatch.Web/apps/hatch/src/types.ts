@@ -777,6 +777,21 @@ export interface Landing {
   checkedAt: string | null;
 }
 
+/** A pull request that is written and waiting to be opened. See WaitingPullRequestDto. */
+export interface WaitingPullRequest {
+  title: string;
+  body: string;
+  branch: string;
+  sha: string;
+  /** The remote of the repository the branch is in, or null where it was not said. */
+  remote: string | null;
+  /** The name that wrote it - a person's or a key's. */
+  runner: string;
+  /** Why it could not be opened where it was written. */
+  why: string;
+  at: string;
+}
+
 export interface Issue {
   key: string;
   projectId: number;
@@ -909,6 +924,8 @@ export interface Issue {
   noCode?: string | null;
   /** When noCode was declared. See IssueDto.NoCodeAt. */
   noCodeAt?: string | null;
+  /** A pull request written and waiting to be opened, or absent. See IssueDto.WaitingPullRequest. */
+  waitingPullRequest?: WaitingPullRequest | null;
   /** See IssueCard.onePr and IssueDto.OnePr. */
   onePr: boolean;
   /** See IssueCard.onePrOwn and IssueDto.OnePrOwn. */

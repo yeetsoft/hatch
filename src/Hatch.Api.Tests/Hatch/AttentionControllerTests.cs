@@ -214,6 +214,26 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Attention_LeavesARowWithAWaitingPullRequestOutOfTheWithoutPullRequestCount_AndOutOfReviews()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "written, waiting to be opened", h.Review);
+        issue.WaitingPrTitle = "Area: what changed";
+        issue.WaitingPrBody = "the body";
+        issue.WaitingPrBranch = "ha-1-thing";
+        issue.WaitingPrSha = "2222222222222222222222222222222222222222";
+        issue.WaitingPrRunner = "a runner";
+        issue.WaitingPrWhy = "the forge refused the push of a pull request";
+        issue.WaitingPrAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+        Assert.Empty(attention.Reviews);
+    }
+
+    [Fact]
     public async Task Attention_StillCountsAnUndeclaredRowWithNoPullRequest_AndListsNoNoCodeHeld()
     {
         var h = await NewAsync();

@@ -1060,6 +1060,30 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("WaitingPrAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WaitingPrBody")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrBranch")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrRemote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrRunner")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrSha")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrTitle")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrWhy")
+                        .HasColumnType("text");
+
                     b.Property<int?>("WipLimit")
                         .HasColumnType("integer");
 

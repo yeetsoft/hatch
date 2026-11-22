@@ -916,6 +916,12 @@ public record IssueClaimDto(
 /// name. Null where the url was recorded before this was kept, or none is
 /// held.
 /// </param>
+/// <param name="WaitingPullRequest">
+/// A pull request that is written and waiting to be opened, or null where
+/// there is none - see <see cref="EfHatchIssue.WaitingPrTitle"/>. Gone once a
+/// pull request url is recorded. Trailing and defaulted for the reason
+/// <paramref name="PullRequestRecordedByKind"/> is.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -997,7 +1003,8 @@ public record IssueDto(
     string? PreApprovalPassedOverLevel = null,
     string? PriorityPassedOverLevel = null,
     string? PullRequestRecordedBy = null,
-    string? PullRequestRecordedByKind = null)
+    string? PullRequestRecordedByKind = null,
+    WaitingPullRequestDto? WaitingPullRequest = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -3042,6 +3049,35 @@ public record NoCodeRequest(string? Reason)
     /// </summary>
     public const int MaxLength = 200;
 }
+
+/// <summary>
+/// A pull request that is written and waiting to be opened, as an issue
+/// carries it. The runner that wrote it is the caller, so it is not here.
+/// </summary>
+/// <param name="Title">The pull request title; at most <see cref="WaitingPullRequestRequest.MaxTitleLength"/> characters.</param>
+/// <param name="Body">The pull request body; at most <see cref="PullRequestEnvelopeWriter.GitHubBodyLimit"/> characters. May be empty.</param>
+/// <param name="Branch">The branch it is to be opened from.</param>
+/// <param name="Sha">The commit the branch stood at.</param>
+/// <param name="Remote">The remote of the repository the branch is in - the checkout's origin, as <c>hatch landed</c> sends it. Null when the writer did not say.</param>
+/// <param name="Why">Why it could not be opened where it was written; at most <see cref="WaitingPullRequestRequest.MaxWhyLength"/> characters.</param>
+public record WaitingPullRequestRequest(
+    string? Title, string? Body, string? Branch, string? Sha, string? Remote, string? Why)
+{
+    public const int MaxTitleLength = 256;
+    public const int MaxWhyLength = 500;
+}
+
+/// <summary>A waiting pull request as an issue carries it - see <see cref="WaitingPullRequestRequest"/>.</summary>
+/// <param name="Title">The pull request title.</param>
+/// <param name="Body">The pull request body.</param>
+/// <param name="Branch">The branch it is to be opened from.</param>
+/// <param name="Sha">The commit the branch stood at.</param>
+/// <param name="Remote">The remote of the repository the branch is in, or null where it was not said.</param>
+/// <param name="Runner">The name that wrote it, a person's or an API key's.</param>
+/// <param name="Why">Why it could not be opened where it was written.</param>
+/// <param name="At">When it was last written or replaced.</param>
+public record WaitingPullRequestDto(
+    string Title, string Body, string Branch, string Sha, string? Remote, string Runner, string Why, DateTimeOffset At);
 
 /// <summary>
 /// The record that an issue came from outside, as stored - see
