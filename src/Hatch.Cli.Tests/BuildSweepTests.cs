@@ -382,9 +382,14 @@ public sealed class BuildSweepTests : IDisposable
     {
         Skip.IfNot(OperatingSystem.IsWindows() || OperatingSystem.IsLinux(), "run by hand nowhere else");
 
+        // The copy is started under the name hatch, so it must be a program
+        // that does not choose what to be from its own name. /bin/sleep can
+        // not be trusted to: where coreutils is one program behind many names
+        // (Ubuntu 26.04 onward), a copy called hatch ends at once. Bash
+        // waiting on a read it never gets stays bash, and stays running.
         var source = OperatingSystem.IsWindows()
             ? Path.Combine(Environment.SystemDirectory, "ping.exe")
-            : "/bin/sleep";
+            : "/bin/bash";
         Skip.IfNot(File.Exists(source), source + " is not here");
 
         Directory.CreateDirectory(Folder(A));
@@ -393,14 +398,23 @@ public sealed class BuildSweepTests : IDisposable
         RecordOf(One, C);
 
         var start = new ProcessStartInfo(binary) { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var arg in OperatingSystem.IsWindows() ? new[] { "-n", "60", "127.0.0.1" } : ["60"])
+        foreach (var arg in OperatingSystem.IsWindows() ? new[] { "-n", "60", "127.0.0.1" } : ["-c", "read -r -t 60 _"])
             start.ArgumentList.Add(arg);
+        start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
 
         using var process = Process.Start(start)!;
         try
         {
             var kept = Store().Sweep(now, RunningBuilds.Paths());
+
+            // Still running once the sweep is over, so it was running while the
+            // sweep looked: a build removed now was removed from under it.
+            if (process.HasExited)
+                Assert.Fail(
+                    $"the stand-in build ended before the sweep could be judged - exit {process.ExitCode}: " +
+                    process.StandardError.ReadToEnd().Trim());
 
             Assert.True(Has(A), "a running build was removed");
             Assert.NotNull(Store().Find(A));
