@@ -7501,6 +7501,180 @@ public class RunnersControllerTests
         Assert.Equal("no agent", runner.SigningWhy);
     }
 
+    // ---- Forge ----
+
+    [SkippableTheory]
+    [InlineData("works", "works", null, null)]
+    [InlineData("fails", "fails", "bad credentials", "bad credentials")]
+    [InlineData(" FAILS ", "fails", "bad credentials", "bad credentials")]
+    [InlineData("works", "works", "stale", null)]
+    public async Task SessionHeartbeat_AForgeWord_IsStoredOnTheSessionAndCarriedOnTheRunner(string sent, string stored, string? why, string? keptWhy)
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Forge: sent, ForgeWhy: why));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(stored, row.Forge);
+        Assert.Equal(keptWhy, row.ForgeWhy);
+        var runner = await h.OneAsync();
+        Assert.Equal(stored, runner.Forge);
+        Assert.Equal(keptWhy, runner.ForgeWhy);
+        var session = Assert.Single(runner.Sessions);
+        Assert.Equal(stored, session.Forge);
+        Assert.Equal(keptWhy, session.ForgeWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AForgeReasonPastTwoHundredCharacters_IsCutAndKeptToOneLine()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Forge: "fails", ForgeWhy: new string('x', 500) + "\nsecond line"));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(new string('x', 200), row.ForgeWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AForgeTwoLineReason_IsKeptToTheFirstLine()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Forge: "fails", ForgeWhy: "bad credentials\nsecond line"));
+
+        Assert.Equal("bad credentials", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).ForgeWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ALaterForgeWorks_ClearsTheReason()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Forge: "fails", ForgeWhy: "bad credentials"));
+        Assert.Equal("bad credentials", (await h.OneAsync()).ForgeWhy);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Forge: "works"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal("works", runner.Forge);
+        Assert.Null(runner.ForgeWhy);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).ForgeWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ABeatWithNoForge_LeavesBothAlone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Forge: "fails", ForgeWhy: "bad credentials"));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: Runner));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("fails", row.Forge);
+        Assert.Equal("bad credentials", row.ForgeWhy);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnUnknownForgeWord_IsStoredAsNoAnswerAndTheBeatIsAccepted()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        var seeded = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Forge: "maybe", ForgeWhy: "x"));
+        Assert.IsType<RunnerInstructionDto>(seeded.Value);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Forge);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Forge: "works"));
+        var touched = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Forge: "perhaps", ForgeWhy: "x"));
+
+        Assert.IsType<RunnerInstructionDto>(touched.Value);
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Null(row.Forge);
+        Assert.Null(row.ForgeWhy);
+        Assert.Null((await h.OneAsync()).Forge);
+    }
+
+    [SkippableFact]
+    public async Task ARunnerServingTwoLiveSessions_ReadsTheWorstForge_AndAnEndedSessionDoesNotCount()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Forge: "works"));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: OtherRunner, Forge: "works"));
+        Assert.Equal("works", (await h.OneAsync()).Forge);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner, Forge: "fails", ForgeWhy: "bad credentials"));
+        var runner = await h.OneAsync();
+        Assert.Equal("fails", runner.Forge);
+        Assert.Equal("bad credentials", runner.ForgeWhy);
+        Assert.Equal(["fails", "works"], runner.Sessions.Select(x => x.Forge).Order());
+
+        var failing = await h.Db.RunnerSessions.SingleAsync(x => x.Forge == "fails");
+        failing.EndedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        runner = await h.OneAsync();
+        Assert.Equal("works", runner.Forge);
+        Assert.Null(runner.ForgeWhy);
+    }
+
+    [SkippableFact]
+    public async Task ARunnerThatNeverSaid_CarriesNoForge()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.Forge);
+        Assert.Null(runner.ForgeWhy);
+        Assert.Null(Assert.Single(runner.Sessions).Forge);
+    }
+
+    [SkippableFact]
+    public async Task AKeyWithAConfigRow_StillCarriesTheForgeItsSessionSaid()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await KeyTheCallerAsync(h);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, MaxRuns = 5, UpdatedAt = Now });
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Forge: "fails", ForgeWhy: "bad credentials"));
+
+        var runner = await h.OneAsync();
+        Assert.Equal("fails", runner.Forge);
+        Assert.Equal("bad credentials", runner.ForgeWhy);
+    }
+
+    [SkippableFact]
+    public async Task TheLegacyRoute_IgnoresBothForgeFields()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Forge: "fails", ForgeWhy: "bad credentials"));
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.Forge);
+        Assert.Null(runner.ForgeWhy);
+    }
+
     private static async Task<string> ConnectAsync()
     {
         Skip.IfNot(

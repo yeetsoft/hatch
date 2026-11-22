@@ -11,6 +11,7 @@ import { PlaybookFileChip } from './PlaybookFileChip';
 import { PullRequestLink } from './PullRequestLink';
 import { PullRequestStateChips } from './PullRequestStateChips';
 import { TypeBadge } from './TypeBadge';
+import { WaitingPullRequestChip } from './WaitingPullRequest';
 import { fullHref } from '../lib/basename';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { scopedPath } from '../lib/scope';
@@ -68,6 +69,7 @@ export function IssueSubheader({
         <MomentChip kind="ready" value={issue.readyAt} expandable />
         <MomentChip kind="due" value={issue.dueAt} muted={stopped} expandable />
         <PullRequestLink url={issue.pullRequestUrl} />
+        <WaitingPullRequestChip url={issue.pullRequestUrl} waiting={issue.waitingPullRequest} />
         {issue.pullRequestUrl && (
           <PullRequestStateChips
             mergeState={issue.pullRequestMergeState}

@@ -59,6 +59,7 @@ interface Draft {
   isCheck: boolean;
   answersQuestions: boolean;
   worksOutChanges: boolean;
+  shapesAmbition: boolean;
   projectId: string;
   prompt: string;
 }
@@ -81,6 +82,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
       isCheck: playbook.isCheck,
       answersQuestions: playbook.answersQuestions,
       worksOutChanges: playbook.worksOutChanges,
+      shapesAmbition: playbook.shapesAmbition,
       projectId: playbook.projectId === null ? '' : String(playbook.projectId),
       prompt: playbook.prompt,
     };
@@ -102,6 +104,7 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
     isCheck: false,
     answersQuestions: false,
     worksOutChanges: false,
+    shapesAmbition: false,
     projectId: '',
     prompt: '',
   };
@@ -173,6 +176,7 @@ export function PlaybookEditDialog({
           isCheck: draft!.isCheck,
           answersQuestions: draft!.answersQuestions,
           worksOutChanges: draft!.worksOutChanges,
+          shapesAmbition: draft!.shapesAmbition,
           projectId: draft!.projectId,
           prompt,
         });
@@ -193,6 +197,7 @@ export function PlaybookEditDialog({
           isCheck: draft!.isCheck,
           answersQuestions: draft!.answersQuestions,
           worksOutChanges: draft!.worksOutChanges,
+          shapesAmbition: draft!.shapesAmbition,
           projectId: draft!.projectId || undefined,
           prompt,
         });
@@ -303,7 +308,7 @@ export function PlaybookEditDialog({
               <input
                 type="checkbox"
                 checked={draft.isCheck}
-                disabled={draft.answersQuestions || draft.worksOutChanges}
+                disabled={draft.answersQuestions || draft.worksOutChanges || draft.shapesAmbition}
                 onChange={(e) => write({ isCheck: e.target.checked })}
               />
               Is check
@@ -311,14 +316,14 @@ export function PlaybookEditDialog({
           </Field>
           <Field
             label="Answers questions"
-            hint="The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this, a check or a row that works out changes - never more than one."
+            hint="The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this, a check, a row that works out changes or a row that shapes an ambition - never more than one."
             as="div"
           >
             <label>
               <input
                 type="checkbox"
                 checked={draft.answersQuestions}
-                disabled={draft.isCheck || draft.worksOutChanges}
+                disabled={draft.isCheck || draft.worksOutChanges || draft.shapesAmbition}
                 onChange={(e) => write({ answersQuestions: e.target.checked })}
               />
               Answers questions
@@ -326,17 +331,32 @@ export function PlaybookEditDialog({
           </Field>
           <Field
             label="Works out changes"
-            hint="The row a session runs on to work out what a change to an ambition does to its epics in flight. It edits nothing. A row is this, a check or a row that answers questions - never more than one."
+            hint="The row a session runs on to work out what a change to an ambition does to its epics in flight. It edits nothing. A row is this, a check, a row that answers questions or a row that shapes an ambition - never more than one."
             as="div"
           >
             <label>
               <input
                 type="checkbox"
                 checked={draft.worksOutChanges}
-                disabled={draft.isCheck || draft.answersQuestions}
+                disabled={draft.isCheck || draft.answersQuestions || draft.shapesAmbition}
                 onChange={(e) => write({ worksOutChanges: e.target.checked })}
               />
               Works out changes
+            </label>
+          </Field>
+          <Field
+            label="Shapes an ambition"
+            hint="The row a session runs on to shape a draft ambition: its title, its description and its capabilities. It edits nothing in the tree. A row is this, a check, a row that answers questions or a row that works out changes - never more than one."
+            as="div"
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.shapesAmbition}
+                disabled={draft.isCheck || draft.answersQuestions || draft.worksOutChanges}
+                onChange={(e) => write({ shapesAmbition: e.target.checked })}
+              />
+              Shapes an ambition
             </label>
           </Field>
           {hasMultipleProjects(projects) && (

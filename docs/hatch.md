@@ -41,6 +41,8 @@ the next heading of the same level and stop.
     branch and pull request?
   - [Finished with no code](#finished-with-no-code) - How does a ticket that
     changed nothing say so, and where does it stand?
+  - [A pull request waiting to be opened](#a-pull-request-waiting-to-be-opened) -
+    What does an issue carry when its pull request is written and not yet open?
   - [WIP](#wip) - How full is the WIP section right now?
   - [Claim](#claim) - What is a lease on an issue, and which columns hold
     it?
@@ -89,6 +91,8 @@ the next heading of the same level and stop.
     does it say about it?
 - [Reports](#reports) - When did things happen on the board, which the board
   as it stands cannot say?
+  - [The board health read](#the-board-health-read) - How healthy is the board
+    right now, in one call?
 - [The dispatcher](#the-dispatcher) - What should an agent do next, and how?
   - [Deadlocked](#deadlocked) - When will no pass ever clear a row on its
     own?
@@ -1177,6 +1181,8 @@ through the gate that was supposed to stop it.
 `DueAt`/`DueAtHasTime`, `PullRequestUrl`, `PullRequestMergeState`,
 `PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestHeadSince`,
 `PullRequestReadAt`,
+`WaitingPrTitle`/`WaitingPrBody`/`WaitingPrBranch`/`WaitingPrSha`/`WaitingPrRemote`/`WaitingPrRunner`/`WaitingPrWhy`/`WaitingPrAt`
+(one [waiting pull request](#a-pull-request-waiting-to-be-opened), flat nullable columns, all set or all null),
 `ClosedAt`, `ModelOverride`, `EffortOverride`, `AssigneePersonId`/`AssigneeApiKeyId`,
 `CreatedBy`, `CreatedAt`, `UpdatedAt`.
 
@@ -2500,6 +2506,52 @@ whose destination is review or a column to its right, to declare it with
 told there is no pull request to open and nothing to declare, and to say what
 it found in the comment instead - there is no review column there to declare
 into. Either way the issue page shows the declaration and its reason.
+
+### A pull request waiting to be opened
+
+Work can be written and pushed where a pull request cannot be opened. The issue
+then carries the pull request itself, so a person or a later runner can find it:
+`PUT /api/issues/{key}/waiting-pull-request` with `{ title, body, branch, sha,
+remote, why }` stores it in the flat `WaitingPr*` columns of `EfHatchIssue`
+(`IssueWaitingPullRequestController`, with the rules beside it in
+`WaitingPullRequest`, copying the [no-code declaration](#finished-with-no-code)
+end to end). There is one per issue and a second write replaces it. `remote` is
+the checkout's origin, the value `hatch landed` sends, because a project can
+bind several repositories and whoever opens it has to know which one the branch
+is in. The runner is never a field: it is the caller's name, so the trail and
+the record cannot disagree.
+
+`hatch pr KEY --title T --body-file F [--repo P]` is what writes it
+(`IssueCommands.OpenPullRequestAsync`), and it tries the forge first. The
+refusals, all before anything is sent, are a url already recorded, a project
+that lands on the trunk, a task on its story's shared branch, a title that is
+not `KEY ` and a subject or is over 256 characters, a body over the forge's
+limit, a trunk or detached head, and a branch origin does not hold at HEAD after
+one fetch (`Workspace.CurrentBranch`, `Workspace.OriginBranchSha`). The body is
+the file as written, with the ticket link and a blank line put in front when its
+first line is not that link. `IForge.OpenPullRequestAsync` is `gh pr create
+--head --base --title --body-file` from a temporary file written without a
+byte-order mark; success is the last line of standard output, and a failure
+whose standard error says *already exists* answers the url it prints, so a retry
+records the existing pull request and leaves none waiting. Any other failure
+stores the pull request here, with `why` as gh's first line (a default sentence
+where it said none, cut to 500), prints that it is written and waits, and exits
+`0`: the prompt tells the session to carry on. A url recorded in between is the
+route's `409`, the program's ordinary error exit. The envelope write takes the
+checkout `--repo` names, not the working directory.
+
+It is not a pull request. It does not count as having one (`HasPr` is unchanged,
+so it blocks nobody), a conflict on its branch is still dispatched from the
+merge checks, and it is neither a `reviews` row, since those need a recorded
+url, nor part of `inReviewWithoutPullRequest`. `IssueDto.waitingPullRequest`
+carries it; the board card does not. Recording a pull request url by any route
+clears it in the same save - `PATCH` and the contribution route both call
+`WaitingPullRequest.ClearOnRecord` beside `NoCode.SetAside` - with a
+`waiting_pull_request_changed` event carrying the url as `pullRequest`. A move
+to a column left of review leaves it in place. The issue page draws a `pull
+request waiting` chip, and its Pull request field says *Written, waiting to be
+opened* with the runner, the reason and the time, and the title and body behind
+a `<details>`; there is nothing on the page to edit or delete it.
 
 ### WIP
 
@@ -3866,6 +3918,9 @@ set, cleared by hand, or cleared by a move left of review - payload `{ from, to 
 with `moved` naming the column on the last), `no_code_set_aside` (a branch or a
 pull request showed the issue did finish with code - payload `reason`, the
 declaration that was set aside, beside `remote` and `verdict` or `pullRequest`),
+`waiting_pull_request_changed` (an issue's [waiting pull request](#a-pull-request-waiting-to-be-opened)
+was written, replaced, removed, or cleared by recording a url - payload `{ from, to }`,
+each side `{ title, branch, sha }` or null, and `pullRequest` carrying the url on the last),
 `model_override_changed`, `effort_override_changed`, `assignee_changed`,
 `priority_changed`, `express_changed`, `question_level_changed` (a person set a
 question's level - payload `{ questionId, from, to }`, both by name), `wip_limit_changed` (an epic's [Stories
@@ -4482,7 +4537,8 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/statuses/{id}/agent-files` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ agentFiles }` — the column a program's issue is born in. Neither `POST /statuses` nor `PATCH /statuses/{id}` can set it |
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
-| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — except the one card the server itself withholds: a terminal card whose `ClosedAt` is older than `doneHorizonHours` (48 by default, off at `0`) is not handed over at all, and `doneHorizonHours` on the DTO says what that horizon is; stories the horizon withheld whose epic is still on the board are handed over in `pastHorizon` instead, as ordinary cards, so a client can count them; `issues` is unchanged — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
+| `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — except the one card the server itself withholds: a terminal card whose `ClosedAt` is older than `doneHorizonHours` (48 by default, off at `0`) is not handed over at all, and `doneHorizonHours` on the DTO says what that horizon is; stories the horizon withheld whose epic is still on the board are handed over in `pastHorizon` instead, as ordinary cards, so a client can count them; `issues` is unchanged — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) — and `normals`, `at`, and on each card `enteredColumnAt` and `aged`: how long a column's stays normally last and who is past it (see [the flow](#the-flow)) |
+| `/board/health` | GET | The board's health in one read for a program: 24 bars over a `window` of `2h`, `4h`, `8h` (default), `12h` or `24h` - moves right by the board, a runner and a person, the bands waiting, in flight and done, and what waits on a person, whose last bar is the attention control's own count. `project` (repeatable). Open to a key. `400` for another window or an unknown `project` - see [the board health read](#the-board-health-read) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, `filedFromKey` (`""` finds the issues filed from nothing), ANDed, all optional; POST takes `filedFromKey` |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `filedFromKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way, each issue keeping its parent unless `parentKey` says otherwise — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it, and keeping its parent unless `parentKey` names another or `""`; `400` on an unknown project, `403` from a key, `409` naming any issue in the moving set holding a live claim, or a one-PR story's tasks that the move would leave in another project |
@@ -4519,6 +4575,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
 | `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner, headBranch? }`; answers `204`. `headBranch` is the branch the pull request comes from, kept beside the state and cleared with the url; blank or absent leaves what is kept, and writes no event. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be, or a head branch longer than a contribution's can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
+| `/issues/{key}/waiting-pull-request` | PUT, DELETE | Keeps one [waiting pull request](#a-pull-request-waiting-to-be-opened) on an issue. **PUT** is open to a key: `{ title, body?, branch, sha, remote?, why }`, trimmed, answering the `IssueDto`; the caller's name is kept as its runner. Refused, in a sentence, with `400` for a blank title, branch, sha or why, a title over 256 characters, a why over 500 or a body over the forge's limit, `409` once a pull request url is recorded, and `404` on an unknown key. A second write replaces the first; one that changes nothing writes no event and does not move `UpdatedAt`. **DELETE** is a person's alone (a key gets `403`), answers `204`, and answers `204` with no event where nothing waits. The column is not checked. Each real change adds a `waiting_pull_request_changed` event |
 | `/issues/{key}/landing` | PUT | Keeps what a repository holds for an issue's branch — see [landing](#landing). `{ remote, sha, trunk?, containedBy?, runner? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an empty or non-hex sha, and `containedBy` given without a `trunk`; `404` on an unknown key. The column is not checked. A write that repeats the stored sha and `containedBy` writes no event |
 | `/questions` | GET | Every open question in the house |
 | `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
@@ -5112,6 +5169,11 @@ clearing a conflict on are both visible at once, without either shouting. A
 ticket with no pull request at all is never counted in `reviewsHeldBack`: that
 count is only ever about a pull request the loop is sitting on, not about a
 ticket with nowhere to review it in the first place.
+
+An issue with a [waiting pull request](#a-pull-request-waiting-to-be-opened) is
+not counted in `inReviewWithoutPullRequest` either: its pull request is written
+and only needs opening, which is a fact the issue page carries, not a thing
+forgotten. It is not a `reviews` row, because those need a recorded url.
 
 The control keeps itself current on a sixty-second poll and on
 `visibilitychange`, the way [the battery](#the-battery) does, and a read that
@@ -5987,6 +6049,71 @@ either; a script reaches the same answer with
 `hatch api GET /api/reports/cumulative-flow?...`, which is the
 [API surface](#api-surface)'s row for it.
 
+### The board health read
+
+```
+GET /api/board/health?window=&project=
+```
+
+The cumulative flow says how many issues stood in each column; the flow says
+what moved and how long it took. This read says **how the board is doing right
+now**, in one call and with no page: twenty-four equal bars across a window, so
+a program can tell a board that is moving from one that is stuck, and a board
+waiting on a person from one waiting on the loop. The route is open to a person
+or to a key, and nothing in the answer names an issue: counts and durations only.
+
+`window` is one of `2h`, `4h`, `8h`, `12h` or `24h`, and `8h` when absent; any
+other is a `400` naming the five. A bar is a twenty-fourth of it, so 20 minutes
+at the default. `project` narrows every count to those projects and repeats; one
+that names no project is a `400`.
+
+Bar boundaries are on the UTC clock: the last bar starts at now floored to a
+multiple of the bar's width, so a bar does not slide while now is inside it. The
+**last bar is read at now**, not at its end, which is still to come.
+
+It answers `{ from, to, barMinutes, bars, total, previousTotal, pastNormal,
+hasWorkColumn }`. `total` is the moves right in the window and `previousTotal`
+the same over the window before it, for comparison. `pastNormal` is how many
+issues with no children now stand in flight longer than their column's
+[normal](#the-flow). Each bar carries:
+
+- `start`, `end`;
+- `board`, `runner`, `person` and `moved` - the moves **right** made inside the
+  bar, split three ways and summing to `moved`. A move is the board's when it
+  carries a hop flag or a `merged`, `landed` or `pushback` flag; it is a runner's
+  when a claim was open on the issue and its holder made the move; everything
+  else is a person's;
+- `waiting`, `inFlight` and `done` - read at the bar's end. They are the
+  [cumulative flow](#the-cumulative-flow)'s own bands, cut from the same
+  stretches and so equal to it at every bar's end: before the implementation
+  column, from it up to a terminal column, and closed inside the window. They come
+  from the columns' flags, not their names. A board with no implementation column
+  has none of the three, and `hasWorkColumn` says so;
+- `waitingPullRequests` and `waitingQuestions` - what waited on a person at the
+  bar's end, and `oldestWaitSeconds` for the longest of either;
+- `oldestInFlightSeconds` - how long the oldest issue with no children had
+  stood in flight.
+
+**The last bar is the attention control's own count.** Its waiting pull requests
+and questions are what [the attention panel](#what-is-waiting-on-you) lists as
+reviews and questions, from the same code, so the number a program reads here is
+the number the control shows. Earlier bars are rebuilt from the trail and are
+exact except where it cannot be.
+
+**Known gaps in the past bars.** A check approving a merge, and a pull request
+held back by a conflict or a failed build, count as waiting on a person in a
+past bar; only the attention panel knows the difference today. Pre-approval is
+walked up the parents an issue has today and ignores the project line a level
+may not cross. A question of the merge level, or one awaiting its look back,
+ends at a terminal column in a past bar yet counts now. Whether an issue has
+children is today's answer, not the answer then. A parent in a project the
+caller cannot see carries no level into a past bar.
+
+The status history is never loaded whole. Status changes are read back to the
+start of the window before this one, and everything else from the start of this
+one; for each issue the newest event before that point is read too, since it
+says where a stretch began or whether a claim was open.
+
 ### The flow
 
 ```
@@ -6080,6 +6207,23 @@ session reads is the whole answer and cannot be widened by a parameter. There is
 **no page** and **no CLI subcommand**; a script reaches it with
 `hatch api GET /api/reports/flow?...`, which is the
 [API surface](#api-surface)'s row for it.
+
+**The board read borrows this fold** for how long a column's stays normally last.
+`GET /api/board` carries `normals`, one `{ statusId, seconds }` for every active
+column (after the first, not terminal, not deferred, by flag and never by name),
+and `at`, the instant the board was read at. `seconds` is the column's
+`p90DwellSeconds` from this very fold, over the last thirty days, over every
+project and over issues with no children at all, so the board and the flow page
+cannot disagree; it is null where the column has under ten stays. The fold is
+run by `ColumnNormals`, which keeps its answer for five minutes and recomputes at
+once when a column's flags or place change. It reads past project scope on
+purpose: a column is shared by every project, as its WIP count is, so a scoped
+reader gets the same normal, and what leaves is a duration and never a row. Each
+card carries `enteredColumnAt`, the instant of its newest `status_changed` event
+in the [issue event](#issue-event) trail (its creation where it has none; a rank
+move writes no such event), and `aged`: true when its column has a normal, the
+card has stood there strictly longer, and `FamilyGate.IsLeaf` says no child of it
+is open work. The family is read only when some card is past its column's normal.
 
 ### The changelog report
 
@@ -10004,8 +10148,8 @@ is a stash that would not go.
 **An increment that moved, resolved or fixed and ended in review is refused as
 unpublished** (`GoToWork.cs:1590-1596`, `Unpublished.RefuseAsync`; the same guard
 in `WorkCommand.cs:632-639` for `hatch work <key>`) on either of two arms: a
-branch left **unmerged on origin** (`left.BranchOnOrigin && !left.HasPullRequest`,
-where `BranchOnOrigin` is the merge check's verdict being anything but `none`, so
+branch left **unmerged on origin** (`left.BranchOnOrigin && !left.HasPullRequest &&
+!left.HasWaitingPullRequest`, where `BranchOnOrigin` is the merge check's verdict being anything but `none`, so
 a branch whose changes are all in the trunk counts as absent), or, in a
 trunk-landing project, **no landing recorded** (`Lifecycle.HasLandingAsync`,
 `LeaveOutcome.HasLanding`). The two call sites pick exactly one of those arms by
@@ -10025,6 +10169,13 @@ ticket`. For a trunk-landing project the comment says "no landing recorded" and
 names `hatch landed <key> <sha>`, the terminal line says "left no landing
 recorded", and the second occurrence asks whether the work has landed, with the
 options `landing recorded` and `no landing needed for this ticket`.
+
+An issue with a [waiting pull request](#a-pull-request-waiting-to-be-opened)
+is not refused: `LeaveOutcome.HasWaitingPullRequest` is read from the same
+issue read as `HasPullRequest` (`Lifecycle.PullRequestStateAsync`), and counts
+as published for this guard alone. It is never fed to `Workspace.Leave`'s
+`syncPullRequest`, so the trunk is merged forward into a branch only for a real
+pull request. A read that fails answers neither.
 
 **The runner never pushes to the trunk**, in any project. Landing is the
 session's own `git push`; `hatch landed` records it, the poll confirms it
@@ -11437,6 +11588,25 @@ commits*, *Does not sign its commits* and *Signing fails*, and the list marks
 only a runner whose signing fails. The board refuses work on what a
 runner said: a project that allows only signed commits is folded for a runner
 that has not said `works`, see [the dispatcher](#the-dispatcher), item 12c.
+
+**The board also keeps whether a loop can sign in to its forge.** This is the
+board's half only, and it changes no dispatch. A loop beat may carry `forge`
+(`works` or `fails`) and, beside `fails`, `forgeWhy`, and the board stores both
+on the session row (`EfHatchRunnerSession.Forge`, `ForgeWhy`) exactly as it
+stores signing: `SeedSession` writes them, and `TouchSession` rewrites both when
+a beat sends a `forge`, so a later check moves the answer and a `works` drops an
+old reason. A beat that sends none leaves them alone, and a word the board does
+not know is stored as no answer with the beat still accepted. `forgeWhy` is the
+first line of what the forge said, cut to 200 characters and kept only beside
+`fails`. A runner reads as the worst of its live loop sessions, `fails` then
+`works`, written once as `RunnerForge.Worst` in `Hatch.Contracts` for the loop
+and the board alike (`RunnerDeclaration.ForgeOf`, read in
+`RunnersController.ProjectAsync`); a session carries its own on
+`RunnerSessionDto`. A runner that never said reads null, and the legacy
+`POST /runners/{name}` route ignores both fields. Nothing on the dispatcher
+reads it, `ForgeOf` is not part of `RunnerDeclaration`, and the `/work` reads
+accept `?forge=` and `?forgeWhy=` from the loop and ignore them: the board
+stores nothing from a read.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:

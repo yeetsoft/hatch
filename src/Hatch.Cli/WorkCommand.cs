@@ -211,6 +211,7 @@ public sealed class WorkCommand(Runtime runtime)
 
         runtime = served;
         await runtime.SayCannotSignAsync(ct);
+        await runtime.SayCannotReachForgeAsync(ct);
         try { return await SpendAsync(key, under, mine, model, effort, attach, quiet, abortMerge, ct); }
         finally { held?.Dispose(); }
     }
@@ -227,6 +228,7 @@ public sealed class WorkCommand(Runtime runtime)
 
         // Asked before the first read, so the board is told what this machine signs.
         await runtime.AskSigningAsync(ct);
+        await runtime.AskForgesAsync(ct);
 
         WorkDto? work;
         try
@@ -654,6 +656,7 @@ public sealed class WorkCommand(Runtime runtime)
             // Before the branch is prepared, as the loop asks it: the merge of
             // the trunk into that branch is a commit.
             var signing = await runtime.CanSignAsync(chosen.Root, ct);
+            await runtime.AskForgeAsync(chosen.Root, Runtime.CanonicalOf(chosen, work.Repositories), ct);
             if (signing.State != Signing.Works && !work.AllowsUnsignedCommits)
             {
                 runtime.Say.Complain(
@@ -775,7 +778,7 @@ public sealed class WorkCommand(Runtime runtime)
                 if (report is not null
                     && (report.Moved || report.Resolved || report.FixPushed)
                     && report.EndedInReview
-                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest))
+                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest && !left.HasWaitingPullRequest))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
                         runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, runtime.Adapter, CancellationToken.None);

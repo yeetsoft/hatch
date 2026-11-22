@@ -626,3 +626,30 @@ Which epics are collapsed is remembered per browser, under the key
 kept, so expanded is the default and a browser that has never collapsed one
 holds nothing. A fresh browser, or one whose storage was cleared, sees every
 epic expanded.
+
+## Cards show their age
+
+A card that has sat in its column longer than is normal for that column wears a
+chip and a faint tint. The chip is a clock and the time in the column, such as
+`14h 20m`; the tint is a pale indigo over the whole card, with no change to its
+border. The chip carries the words, so the mark never rests on colour alone.
+Point at the chip for the sentence: "In In Progress for 14h 20m. Normal here is
+under 6h (p90, last 30 days)." It looks the same on the desk and on the phone,
+in the light and the dark theme, and stays readable under a flow band when the
+flow view is on.
+
+Only a column in the middle of the board ages its cards. The first column does
+not, a terminal column does not, and a deferred column does not: a card waiting
+in the inbox, or finished, or set aside, is not late.
+
+Normal is the 90th percentile of the stays that finished in that column over
+the last 30 days, taken over work with no children. A column shows it once it
+has ten such stays; before that its cards show nothing. A card is aged when its
+stay so far is longer than that.
+
+A parent waiting on its children shows nothing, since the time it sits in a
+column is the time its children take.
+
+A card that is also waiting on an answer keeps its own warm wash and border and
+still shows its chip. A card moved by hand loses its chip until the board is
+read again, which happens on the next poll or action.

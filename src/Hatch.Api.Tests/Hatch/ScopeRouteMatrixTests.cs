@@ -366,6 +366,8 @@ public class ScopeRouteMatrixTests
         ("IssuePreApprovalController.PutIssueExpress", Lookup(t => Put($"/api/issues/{t.Key}/express", new { express = false }))),
         ("IssueOnePrController.PutIssueOnePr", Lookup(t => Put($"/api/issues/{t.Key}/one-pr", new { value = "inherit" }))),
         ("IssueNoCodeController.PutIssueNoCode", Lookup(t => Put($"/api/issues/{t.Key}/no-code", new { reason = "" }))),
+        ("IssueWaitingPullRequestController.PutWaitingPullRequest", Lookup(t => Put($"/api/issues/{t.Key}/waiting-pull-request", new { title = "t", body = "b", branch = "ha-1-x", sha = "abc", remote = "r", why = "w" }))),
+        ("IssueWaitingPullRequestController.DeleteWaitingPullRequest", Lookup(t => Delete($"/api/issues/{t.Key}/waiting-pull-request")) with { Destructive = true }),
         ("IssueDangerousController.PutIssueDangerous", Lookup(t => Put($"/api/issues/{t.Key}/dangerous", new { reason = "" }))),
         ("IssueReleaseNoteController.PutIssueReleaseNote", Lookup(t => Put($"/api/issues/{t.Key}/release-note", new { note = "" }))),
         ("IssuePlaybookController.PatchIssuePlaybook", Lookup(t => Patch($"/api/issues/{t.Key}/playbook", new { model = (string?)null, effort = (string?)null }))),
@@ -400,6 +402,7 @@ public class ScopeRouteMatrixTests
         }))),
         ("DreamsController.AddDream", Lookup(t => Post("/api/dreams", new { body = "a dream", projectId = t.ProjectId }))),
         ("DreamWeaveController.PostWeave", Lookup(t => Post("/api/dreams/weave", new { projectId = t.ProjectId, mode = "common" }))),
+        ("DreamShapeController.PostShape", Lookup(t => Post("/api/dreams/shape", new { projectId = t.ProjectId, words = "a draft" }))),
         ("PlaybookProposalsController.SubmitProposal", Lookup(t => Post("/api/playbook-proposals", new
         {
             reason = "why", issueKey = t.Key, changes = new[] { new { playbookId = t.PlaybookId, prompt = "p" } },
@@ -407,6 +410,7 @@ public class ScopeRouteMatrixTests
 
         // A report that validates its project filter answers 400 "there is no
         // project N", for a hidden project as for one nothing has.
+        ("BoardHealthController.GetBoardHealth", Lookup(t => Get($"/api/board/health?project={t.ProjectKey}"))),
         ("ReportsController.GetCumulativeFlow", Lookup(t => Get($"/api/reports/cumulative-flow?project={t.ProjectKey}"))),
         ("ReportsController.GetChangelogReport", Lookup(t => Get($"/api/reports/changelog?projectId={t.ProjectId}"))),
         ("ReportsController.GetActivityReport", Lookup(t => Get($"/api/reports/activity?actor=someone&projectId={t.ProjectId}"))),

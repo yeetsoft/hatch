@@ -12,6 +12,9 @@ public sealed class WorkCommandTests
 {
     private const string Queue = "/api/work/queue";
 
+    /// <summary>The one read the start-up check of the forge makes, quietly, to learn each repository's identity. It reads no work and claims nothing.</summary>
+    private const string ProjectsRead = "/api/projects";
+
     /// <summary>Everything an increment reads and writes after the session ends.</summary>
     private static void Bookkeeping(Harness h, string key)
     {
@@ -770,7 +773,7 @@ public sealed class WorkCommandTests
 
         // Nothing was read and nothing was claimed - an increment that cannot
         // start should not take a ticket off the board to find that out.
-        Assert.Empty(h.Wire.Calls);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path != ProjectsRead);
     }
 
     [Fact]
@@ -814,7 +817,7 @@ public sealed class WorkCommandTests
         Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "grok", "AER-1"], default));
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_GROK_BIN is not there: {missing}", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path != ProjectsRead);
     }
 
     /// <summary>
@@ -833,7 +836,7 @@ public sealed class WorkCommandTests
         Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "codex", "AER-1"], default));
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path != ProjectsRead);
     }
 
     /// <summary>Ollama has no binary setting of its own - it spawns through the same codex harness, so the missing-CodexBin refusal is the one it hits.</summary>
@@ -847,7 +850,7 @@ public sealed class WorkCommandTests
         Assert.Equal(1, await new WorkCommand(runtime).RunAsync(["--agent", "ollama", "AER-1"], default));
 
         Assert.Contains(h.Say.Complained, l => l.Contains($"HATCH_CODEX_BIN is not there: {missing}", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.Calls);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path != ProjectsRead);
     }
 
     [Fact]
@@ -1898,7 +1901,7 @@ public sealed class WorkCommandTests
     /// <summary>The wiring one named increment needs: a dispatch in progress, a post-run read in review, and the branch and pull request the guard is judged by.</summary>
     private static void UnpublishedBoard(
         Harness h, string key = "AER-1", bool branchOnOrigin = true, string? pullRequest = null, int letGo = 0,
-        string? landing = null, IReadOnlyList<LandingDto>? landings = null)
+        string? landing = null, IReadOnlyList<LandingDto>? landings = null, bool waiting = false)
     {
         h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
         h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
@@ -1909,7 +1912,12 @@ public sealed class WorkCommandTests
                 Fixtures.Work(key, from: "In Progress", to: "In Review", letGo: letGo, landing: landing), Fixtures.Json));
         h.Wire.Json("GET", $"/api/work/{key}", Fixtures.Work(key, from: "In Review", to: "In Review", inReview: true));
 
-        h.Wire.Json("GET", $"/api/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings));
+        h.Wire.Json("GET", $"/api/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings) with
+        {
+            WaitingPullRequest = waiting
+                ? new WaitingPullRequestDto("AER-1 Pr: a thing", "body", "aer-1-thing", new string('b', 40), null, "a runner", "gh is signed out", DateTimeOffset.UnixEpoch)
+                : null,
+        });
         h.Wire.Json("POST", $"/api/issues/{key}/comments", Fixtures.Comment());
         h.Wire.Json("PUT", $"/api/issues/{key}/merge-check", Fixtures.MergeCheck());
         Bookkeeping(h, key);
@@ -1954,6 +1962,19 @@ public sealed class WorkCommandTests
 
         var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Hatch_work_counts_a_waiting_pull_request_as_published()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, waiting: true);
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        Assert.Empty(UnpublishedComments(h));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
     [Fact]

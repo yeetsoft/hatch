@@ -82,11 +82,25 @@ public sealed class IssueCommands(Cli cli)
     public static readonly string[] PrUsage =
     [
         "usage: hatch pr AER-12 [<url>|--clear|--none \"reason\"]",
+        "       hatch pr AER-12 --title \"AER-12 Area: what changed\" --body-file <path|-> [--repo <path>]",
         "",
         "  hatch pr AER-12                 where it is being reviewed, and nothing else",
         "  hatch pr AER-12 https://...     ...or say where, having opened one",
         "  hatch pr AER-12 --clear         ...or take it off the one it has",
         "  hatch pr AER-12 --none \"why\"   ...or declare it finished with no code",
+        "  hatch pr AER-12 --title ... --body-file ...",
+        "                                  ...or open the pull request from the branch pushed here",
+        "",
+        "  --title and --body-file open the pull request and record it. The title starts",
+        "  with the key and a space, then the subject. The body is read from the file, or",
+        "  from standard input for \"-\", and gets the link to the ticket put in front of it",
+        "  when its first line is not already that. The branch must be pushed. --repo is the",
+        "  checkout, where the working directory is not. They do not mix with a url,",
+        "  --clear or --none.",
+        "",
+        "  Where the forge cannot open it - gh is signed out, say - the pull request is",
+        "  written onto the ticket instead, waiting for a runner that can, and this exits 0:",
+        "  carry on. A pull request already open on the branch is recorded, not duplicated.",
         "",
         "  Recording a url also writes the ticket's chain into the pull request's",
         "  body, as an envelope; a failure to is one line, and the url is still",
@@ -462,7 +476,13 @@ public sealed class IssueCommands(Cli cli)
     public async Task<int> PrAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, PrUsage);
-        if (args.Length is 0 or > 3) return Usage.Refuse(cli.Say, "pr takes one issue key and one url", PrUsage);
+        if (args.Length is 0) return Usage.Refuse(cli.Say, "pr takes one issue key and one url", PrUsage);
+
+        // The reason after --none is free text, so it is never read as a flag.
+        var opening = args.Where((a, i) => OpenFlags.Contains(a) && !(i == 2 && args[1] == "--none")).Any();
+        if (opening) return await OpenPullRequestAsync(args, ct);
+
+        if (args.Length > 3) return Usage.Refuse(cli.Say, "pr takes one issue key and one url", PrUsage);
 
         var key = args[0];
 
@@ -527,6 +547,16 @@ public sealed class IssueCommands(Cli cli)
             return 1;
         }
 
+        await RecordPullRequestAsync(key, url, Directory.GetCurrentDirectory(), ct);
+        return 0;
+    }
+
+    /// <summary>
+    /// Records a url as the issue's pull request - or clears it, for an empty one - and prints the
+    /// result. Recording also writes the envelope, in the forge of <paramref name="root"/>.
+    /// </summary>
+    private async Task RecordPullRequestAsync(string key, string url, string root, CancellationToken ct)
+    {
         var patched = await cli.Board.PatchAsync(key, new IssuePatchRequest(
             Title: null, Description: null, Type: null, StatusId: null, ParentKey: null,
             ReadyAt: null, DueAt: null, PullRequestUrl: url, ProjectId: null, MoveDescendants: null), ct);
@@ -535,8 +565,168 @@ public sealed class IssueCommands(Cli cli)
             ? now
             : $"{patched?.Key ?? key} points at no pull request");
 
-        if (patched?.PullRequestUrl is { Length: > 0 } recorded) await WriteEnvelopeAsync(key, recorded, patched, ct);
+        if (patched?.PullRequestUrl is { Length: > 0 } recorded) await WriteEnvelopeAsync(key, recorded, patched, root, ct);
+    }
+
+    private static readonly string[] OpenFlags = ["--title", "--body-file", "--repo"];
+
+    /// <summary>
+    /// <c>hatch pr KEY --title T --body-file F</c>: opens the pull request from the branch checked out
+    /// here and records it, or - where the forge cannot - stores it on the ticket, waiting, and
+    /// still exits 0, since the session carries on either way.
+    /// </summary>
+    private async Task<int> OpenPullRequestAsync(string[] args, CancellationToken ct)
+    {
+        var positional = new List<string>();
+        string? title = null, bodyFile = null, repo = null;
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (!OpenFlags.Contains(args[i])) { positional.Add(args[i]); continue; }
+
+            if (i + 1 >= args.Length) return Usage.Refuse(cli.Say, $"pr {args[i]} takes a value", PrUsage);
+            var flag = args[i];
+            var value = args[++i];
+            switch (flag)
+            {
+                case "--title": title = value; break;
+                case "--body-file": bodyFile = value; break;
+                default: repo = value; break;
+            }
+        }
+
+        if (positional.Count != 1)
+            return Usage.Refuse(cli.Say, "pr --title and --body-file take the issue key alone, not a url, --clear or --none", PrUsage);
+        if (title is null) return Usage.Refuse(cli.Say, "pr --body-file needs a --title", PrUsage);
+        if (bodyFile is null) return Usage.Refuse(cli.Say, "pr --title needs a --body-file, or - for standard input", PrUsage);
+
+        var key = positional[0];
+        var root = repo ?? Directory.GetCurrentDirectory();
+
+        var issue = await cli.Board.IssueAsync(key, ct);
+        if (issue is null)
+        {
+            cli.Say.Complain($"hatch: {key} is not an issue here");
+            return 1;
+        }
+
+        if (issue.PullRequestUrl is { Length: > 0 } recorded)
+        {
+            cli.Say.Complain($"hatch: {key} already points at {recorded} - hatch pr {key} --clear first");
+            return 1;
+        }
+
+        var project = (await cli.Board.ProjectsAsync(ct)).FirstOrDefault(p => p.Key == issue.ProjectKey);
+        if (project?.Landing == Landings.Trunk)
+        {
+            cli.Say.Complain($"hatch: This project lands on the trunk, so there is no pull request to open for {key}.");
+            return 1;
+        }
+
+        if (issue.Type == "task" && issue.OnePr)
+        {
+            var story = await StoryOfAsync(issue, ct);
+            cli.Say.Complain(
+                $"hatch: {key} is on {story}'s branch, which carries every task's work, and one pull request - "
+                + "titled with the story's key, not this ticket's - is opened for it once its tasks are all pushed. "
+                + $"Do not open one for {key}.");
+            return 1;
+        }
+
+        title = title.Trim();
+        if (!title.StartsWith(key + " ", StringComparison.Ordinal) || title[(key.Length + 1)..].Trim().Length == 0)
+        {
+            cli.Say.Complain($"hatch: the title starts with the key, a space and then the subject - \"{key} Area: what changed\"");
+            return 1;
+        }
+        if (title.Length > WaitingPullRequestRequest.MaxTitleLength)
+        {
+            cli.Say.Complain($"hatch: the title is {title.Length} characters; the limit is {WaitingPullRequestRequest.MaxTitleLength}");
+            return 1;
+        }
+
+        string body;
+        try
+        {
+            body = bodyFile == "-" ? cli.In.ReadAll() : await File.ReadAllTextAsync(bodyFile, ct);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            cli.Say.Complain($"hatch: the body could not be read - {e.Message}");
+            return 1;
+        }
+
+        var link = $"[{key}]({cli.Board.Client.Origin}/issues/{key})";
+        var first = body.Split('\n', 2)[0].TrimEnd('\r');
+        if (first != link) body = $"{link}\n\n{body}";
+        if (body.Length > PullRequestEnvelopeWriter.GitHubBodyLimit)
+        {
+            cli.Say.Complain($"hatch: the body is {body.Length} characters; the limit is {PullRequestEnvelopeWriter.GitHubBodyLimit}");
+            return 1;
+        }
+
+        var workspace = new Workspace(root, null, cli.Say.Line, cli.Say.Complain);
+        if (Checkouts.Origin(root) is not { Length: > 0 } remote)
+        {
+            cli.Say.Complain($"hatch: {root} - has no origin remote, so there is nowhere to open a pull request");
+            return 1;
+        }
+        if (workspace.BaseBranch() is not { Length: > 0 } trunk)
+        {
+            cli.Say.Complain("hatch: cannot tell which branch is the trunk here - name it in HATCH_BASE_BRANCH");
+            return 1;
+        }
+        if (workspace.CurrentBranch() is not { Length: > 0 } branch)
+        {
+            cli.Say.Complain("hatch: HEAD is detached, so there is no branch to open a pull request from");
+            return 1;
+        }
+        if (branch == trunk)
+        {
+            cli.Say.Complain($"hatch: this is {trunk}, the trunk - a pull request is opened from the branch the work is on");
+            return 1;
+        }
+        if (workspace.Head() is not { Length: > 0 } sha)
+        {
+            cli.Say.Complain("hatch: nothing is committed here");
+            return 1;
+        }
+
+        workspace.Fetch();
+        if (workspace.OriginBranchSha(branch) != sha)
+        {
+            cli.Say.Complain($"hatch: push {branch} first - origin does not hold it at {sha[..7]}");
+            return 1;
+        }
+
+        var opened = await cli.Forge(root, null).OpenPullRequestAsync(branch, trunk, title, body, ct);
+        if (opened.Url is { Length: > 0 } url)
+        {
+            await RecordPullRequestAsync(key, url, root, ct);
+            return 0;
+        }
+
+        var why = opened.Why?.Trim() is { Length: > 0 } said ? said : "the pull request could not be opened";
+        if (why.Length > WaitingPullRequestRequest.MaxWhyLength) why = why[..WaitingPullRequestRequest.MaxWhyLength];
+
+        await cli.Board.PutWaitingPullRequestAsync(key, new WaitingPullRequestRequest(title, body, branch, sha, remote, why), ct);
+        cli.Say.Line($"{key}: the pull request is written and waits for a runner that can open it ({why})");
         return 0;
+    }
+
+    /// <summary>The nearest story or bug above a task, by its key; the parent's, or a plain word, where the chain runs out.</summary>
+    private async Task<string> StoryOfAsync(IssueDto task, CancellationToken ct)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { task.Key };
+        var at = task;
+        while (at.ParentKey is { Length: > 0 } parent && seen.Add(parent) && seen.Count <= MaxChain)
+        {
+            var above = await cli.Board.IssueAsync(parent, ct);
+            if (above is null) return parent;
+            if (above.Type is "story" or "bug") return above.Key;
+            at = above;
+        }
+
+        return task.ParentKey is { Length: > 0 } direct ? direct : "its story";
     }
 
     /// <summary>The most parents one envelope's chain climbs - a backstop to the cycle guard, far deeper than any tree.</summary>
@@ -546,12 +736,12 @@ public sealed class IssueCommands(Cli cli)
     /// Writes the ticket's chain into the pull request's body, for a board that receives the pull
     /// request. The record has already been made, so a failure here costs one line and nothing else.
     /// </summary>
-    private async Task WriteEnvelopeAsync(string key, string url, IssueDto own, CancellationToken ct)
+    private async Task WriteEnvelopeAsync(string key, string url, IssueDto own, string root, CancellationToken ct)
     {
         string? why;
         try
         {
-            why = await TryWriteEnvelopeAsync(url, own, ct);
+            why = await TryWriteEnvelopeAsync(url, own, root, ct);
         }
         catch (HatchException e)
         {
@@ -563,7 +753,7 @@ public sealed class IssueCommands(Cli cli)
     }
 
     /// <summary>The reason the envelope was not written, or null where it was - or where it was already there.</summary>
-    private async Task<string?> TryWriteEnvelopeAsync(string url, IssueDto own, CancellationToken ct)
+    private async Task<string?> TryWriteEnvelopeAsync(string url, IssueDto own, string root, CancellationToken ct)
     {
         var names = (await cli.Board.StatusesAsync(ct)).ToDictionary(s => s.Id, s => s.Name);
         var origin = cli.Board.Client.Origin;
@@ -584,7 +774,7 @@ public sealed class IssueCommands(Cli cli)
 
         var envelope = new PullRequestEnvelope(PullRequestEnvelope.CurrentVersion, origin, own.ProjectKey, chain);
 
-        var forge = cli.Forge(Directory.GetCurrentDirectory(), null);
+        var forge = cli.Forge(root, null);
         var read = await forge.ReadBodyAsync(url, ct);
         if (read.Body is not { } body) return read.Why ?? "the body could not be read";
 

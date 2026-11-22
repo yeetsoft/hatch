@@ -272,6 +272,10 @@ public class RunnersController(
             RunnerDeclaration.SigningOf(runner.Name, loop) is { State: { } signingState } signing)
             dto = dto with { Signing = signingState, SigningWhy = signing.Why };
 
+        // The forge sign-in reads the same way: the worst of the live loops.
+        if (dto.Forge is null && RunnerDeclaration.ForgeOf(loop) is { } forge)
+            dto = dto with { Forge = forge.State, ForgeWhy = forge.Why };
+
         // A keyed runner with no legacy row has no row-level accelerator fact
         // at all, so the newest live loop session's own carries it - the same
         // fallback PutRefusedModels makes for the agent alone.
@@ -2112,6 +2116,8 @@ public class RunnersController(
             AcceleratorBackend = Fits(request.AcceleratorBackend, EfHatchRunner.MaxAcceleratorBackendLength),
             Signing = NormaliseSigning(request.Signing),
             SigningWhy = SigningWhy(request.Signing, request.SigningWhy),
+            Forge = NormaliseForge(request.Forge),
+            ForgeWhy = ForgeWhy(request.Forge, request.ForgeWhy),
             Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength),
             Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength),
             AgentVersion = Fits(request.AgentVersion, EfHatchRunnerSession.MaxAgentVersionLength),
@@ -2176,6 +2182,13 @@ public class RunnersController(
         {
             session.Signing = NormaliseSigning(request.Signing);
             session.SigningWhy = SigningWhy(request.Signing, request.SigningWhy);
+        }
+
+        // The forge sign-in is written on the same terms.
+        if (request.Forge is not null)
+        {
+            session.Forge = NormaliseForge(request.Forge);
+            session.ForgeWhy = ForgeWhy(request.Forge, request.ForgeWhy);
         }
 
         if (request.Os is not null) session.Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength);
@@ -2346,6 +2359,23 @@ public class RunnersController(
     internal static string? SigningWhy(string? word, string? why) =>
         NormaliseSigning(word) == RunnerSigning.Fails
             ? Fits(why?.Split('\n', 2)[0], EfHatchRunner.MaxSigningWhyLength)
+            : null;
+
+    /// <summary>
+    /// A forge word the board keeps: trimmed, lowercased, and one of
+    /// <see cref="RunnerForge.Words"/> - anything else is no answer, and the
+    /// heartbeat that sent it is still accepted.
+    /// </summary>
+    internal static string? NormaliseForge(string? word)
+    {
+        var normal = word?.Trim().ToLowerInvariant();
+        return normal is not null && Array.IndexOf(RunnerForge.Words, normal) >= 0 ? normal : null;
+    }
+
+    /// <summary>What the forge said, kept only beside <see cref="RunnerForge.Fails"/> and cut to one line that fits.</summary>
+    internal static string? ForgeWhy(string? word, string? why) =>
+        NormaliseForge(word) == RunnerForge.Fails
+            ? Fits(why?.Split('\n', 2)[0], EfHatchRunner.MaxForgeWhyLength)
             : null;
 
     /// <summary>

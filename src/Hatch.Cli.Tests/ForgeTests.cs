@@ -308,6 +308,86 @@ public sealed class ForgeTests
         Assert.False(File.Exists(Assert.Single(runs.Calls).Args[^1]));
     }
 
+    [Fact]
+    public async Task Opening_a_pull_request_runs_gh_pr_create_from_a_body_file_and_answers_the_last_line()
+    {
+        string? file = null;
+        byte[]? bytes = null;
+        var runs = new Runs
+        {
+            Answer = args =>
+            {
+                file = args[^1];
+                bytes = File.ReadAllBytes(file);
+                return new GhForge.Ran(0, "Creating pull request for ha-1 into main\nhttps://forge.example/o/r/pull/9\n", "");
+            },
+        };
+        const string body = "intro é\n\nsecond\n";
+
+        var answer = await runs.Forge().OpenPullRequestAsync("ha-1-a-branch", "main", "AER-1 Area: a thing", body, default);
+
+        Assert.Equal("https://forge.example/o/r/pull/9", answer.Url);
+        Assert.Null(answer.Why);
+        var args = Assert.Single(runs.Calls).Args;
+        Assert.Equal(
+            ["pr", "create", "--head", "ha-1-a-branch", "--base", "main", "--title", "AER-1 Area: a thing", "--body-file", file], args);
+        Assert.Equal(System.Text.Encoding.UTF8.GetBytes(body), bytes);
+        Assert.False(File.Exists(file));
+    }
+
+    [Fact]
+    public async Task A_pull_request_that_already_stands_on_the_branch_answers_its_url()
+    {
+        var runs = new Runs
+        {
+            Answer = _ => new GhForge.Ran(1, "",
+                "a pull request for branch \"ha-1-a-branch\" into branch \"main\" already exists:\nhttps://forge.example/o/r/pull/4\n"),
+        };
+
+        var answer = await runs.Forge().OpenPullRequestAsync("ha-1-a-branch", "main", "AER-1 Area: a thing", "body", default);
+
+        Assert.Equal("https://forge.example/o/r/pull/4", answer.Url);
+        Assert.Null(answer.Why);
+        Assert.False(File.Exists(Assert.Single(runs.Calls).Args[^1]));
+    }
+
+    [Fact]
+    public async Task A_pull_request_gh_cannot_open_says_the_first_line_and_removes_the_file()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(4, "", "\nTo get started with GitHub CLI, please run:  gh auth login\nmore\n") };
+
+        var answer = await runs.Forge().OpenPullRequestAsync("ha-1-a-branch", "main", "AER-1 Area: a thing", "body", default);
+
+        Assert.Null(answer.Url);
+        Assert.Equal("To get started with GitHub CLI, please run:  gh auth login", answer.Why);
+        Assert.False(File.Exists(Assert.Single(runs.Calls).Args[^1]));
+    }
+
+    [Fact]
+    public async Task A_gh_that_opens_nothing_it_can_name_is_a_reason_and_not_a_url()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "done\n", "") };
+
+        var answer = await runs.Forge().OpenPullRequestAsync("ha-1-a-branch", "main", "AER-1 Area: a thing", "body", default);
+
+        Assert.Null(answer.Url);
+        Assert.NotNull(answer.Why);
+    }
+
+    [Theory]
+    [InlineData("/srv/repo.git")]
+    [InlineData("./repo")]
+    public async Task A_local_path_has_no_forge_to_open_a_pull_request_on(string canonical)
+    {
+        var runs = new Runs();
+
+        var answer = await runs.Forge(canonical: canonical).OpenPullRequestAsync("b", "main", "AER-1 t", "body", default);
+
+        Assert.Null(answer.Url);
+        Assert.NotNull(answer.Why);
+        Assert.Empty(runs.Calls);
+    }
+
     [Theory]
     [InlineData("/srv/repo.git")]
     [InlineData("./repo")]

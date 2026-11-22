@@ -279,6 +279,10 @@ public class HatchContext : DbContext, IModuleContext
             // same reason as AnswersQuestions above.
             e.Property(p => p.WorksOutChanges).HasDefaultValue(false);
 
+            // Matches AddPlaybookShapesAmbition's own defaultValue, for the
+            // same reason as WorksOutChanges above.
+            e.Property(p => p.ShapesAmbition).HasDefaultValue(false);
+
             // jsonb rather than text, the same reason EfHatchComment.Options is:
             // the stored shape is a list, not a scalar, and the day somebody
             // asks "which rows deny Bash" that is a query against this column
