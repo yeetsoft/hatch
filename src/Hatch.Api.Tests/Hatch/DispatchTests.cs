@@ -2105,12 +2105,13 @@ public class DispatchTests
 
     // ---- A row that shapes an ambition is never matched ----
 
-    private static EfHatchPlaybook ShapesAmbitionRow(int id, string types, bool shapesAmbition, int fromSort = 30) => new()
+    private static EfHatchPlaybook ShapesAmbitionRow(int id, string types, bool shapesAmbition, int fromSort = 30, int? toSort = null, int? projectId = null) => new()
     {
         Id = id,
         FromStatusId = fromSort,
         FromStatus = new EfHatchStatus { Name = $"c{fromSort}", SortOrder = fromSort },
-        ToStatusId = fromSort,
+        ToStatusId = toSort ?? fromSort,
+        ProjectId = projectId,
         Types = types,
         Shape = EfHatchPlaybook.AnyShape,
         Prompt = "do the thing",
@@ -3205,6 +3206,185 @@ public class DispatchTests
         Assert.Equal(WorkKinds.Advance, row.Kind);
     }
 
+    // ---- An ambition's draft is matched to the row that shapes it ----
+
+    [Theory]
+    [InlineData("ambition")]
+    [InlineData("")]
+    public void MatchShaping_MatchesAnAmbitionOnItsOwnEdge(string types)
+    {
+        var rows = new List<EfHatchPlaybook> { ShapesAmbitionRow(1, types, shapesAmbition: true, fromSort: 30, toSort: 40) };
+
+        Assert.Equal(1, Dispatch.MatchShaping(rows, 30, 40, "ambition", isParent: false, projectId: 1)!.Id);
+    }
+
+    [Theory]
+    [InlineData("epic")]
+    [InlineData("story")]
+    [InlineData("task")]
+    [InlineData("bug")]
+    public void MatchShaping_NeverMatchesAnotherType_EvenWithItsTypesLeftEmpty(string type)
+    {
+        var rows = new List<EfHatchPlaybook> { ShapesAmbitionRow(1, "", shapesAmbition: true, fromSort: 30, toSort: 40) };
+
+        Assert.Null(Dispatch.MatchShaping(rows, 30, 40, type, isParent: false, projectId: 1));
+    }
+
+    [Fact]
+    public void MatchShaping_ReturnsNothing_OnAnotherEdgeOrForAnUnflaggedRow()
+    {
+        var flagged = ShapesAmbitionRow(1, "ambition", shapesAmbition: true, fromSort: 30, toSort: 40);
+        var plain = ShapesAmbitionRow(2, "ambition", shapesAmbition: false, fromSort: 30, toSort: 40);
+
+        Assert.Null(Dispatch.MatchShaping([flagged], 20, 40, "ambition", isParent: false, projectId: 1));
+        Assert.Null(Dispatch.MatchShaping([flagged], 30, 50, "ambition", isParent: false, projectId: 1));
+        Assert.Null(Dispatch.MatchShaping([plain], 30, 40, "ambition", isParent: false, projectId: 1));
+    }
+
+    [Fact]
+    public void MatchShaping_PrefersTheProjectsRowToTheBoards()
+    {
+        var board = ShapesAmbitionRow(1, "ambition", shapesAmbition: true, fromSort: 30, toSort: 40);
+        var project = ShapesAmbitionRow(2, "ambition", shapesAmbition: true, fromSort: 30, toSort: 40, projectId: 1);
+        var other = ShapesAmbitionRow(3, "ambition", shapesAmbition: true, fromSort: 30, toSort: 40, projectId: 2);
+
+        Assert.Equal(2, Dispatch.MatchShaping([board, project, other], 30, 40, "ambition", isParent: false, projectId: 1)!.Id);
+        Assert.Equal(1, Dispatch.MatchShaping([board, other], 30, 40, "ambition", isParent: false, projectId: 1)!.Id);
+    }
+
+    [Fact]
+    public void Match_SkipsTheShapingRowOnTheSameEdge()
+    {
+        var rows = new List<EfHatchPlaybook>
+        {
+            ShapesAmbitionRow(1, "ambition", shapesAmbition: true, fromSort: 30, toSort: 40),
+            ShapesAmbitionRow(2, "epic", shapesAmbition: false, fromSort: 30, toSort: 40),
+        };
+
+        Assert.Equal(2, Dispatch.Match(rows, 30, 40, "epic", isParent: false, projectId: 1)!.Id);
+        Assert.Null(Dispatch.Match(rows, 30, 40, "ambition", isParent: false, projectId: 1));
+    }
+
+    private const string Waits = "waits for a person to start it - move it into \"in progress\"";
+
+    /// <summary>
+    /// A board whose shaping row runs from inbox to todo, an ordinary row for epics on the same
+    /// edge, and the pass row. The implementation column is in progress.
+    /// </summary>
+    private static async Task<Harness> ShapingAsync(bool flaggedRow = true)
+    {
+        var (h, _) = await PassAsync(null, 0);
+        if (flaggedRow) await h.AddPlaybookAsync(h.Inbox, h.Todo, types: "ambition", model: "opus", shapes: true);
+        await h.AddPlaybookAsync(h.Inbox, h.Todo, types: "epic", model: "haiku");
+        return h;
+    }
+
+    [Fact]
+    public async Task ScanAsync_ADraftInTheFromColumn_IsAimedAtTheShapingRowAndIsClear()
+    {
+        var h = await ShapingAsync();
+        var draft = await h.FileAsync("ambition", "D", h.Inbox);
+
+        var row = await PassRowForAsync(h, draft);
+
+        Assert.Null(row.Blocked);
+        Assert.Equal("opus", row.Model);
+        Assert.Equal(h.Inbox, row.From.Id);
+        Assert.Equal(h.Todo, row.To!.Id);
+        Assert.False(row.Hop);
+        Assert.Equal(WorkKinds.Advance, row.Kind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ADraftInTheToColumn_NamesNoPlaybookAndWaitsForAPerson()
+    {
+        var h = await ShapingAsync();
+        var draft = await h.FileAsync("ambition", "D", h.Todo);
+
+        var row = await PassRowForAsync(h, draft);
+
+        Assert.Equal(Waits, row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+        var statuses = await h.Db.Statuses.OrderBy(s => s.SortOrder).ToListAsync();
+        Assert.False(Dispatch.PassStands(draft, statuses.Single(s => s.Id == h.Todo), Columns.Implementation(statuses)));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnAmbitionInTheImplementationColumn_IsThePassesAsToday()
+    {
+        var h = await ShapingAsync();
+        var ambition = await h.FileAsync("ambition", "A", h.InProgress);
+
+        var row = await PassRowForAsync(h, ambition);
+
+        Assert.Null(row.Blocked);
+        Assert.Equal("sonnet", row.Model);
+        Assert.Equal(h.InProgress, row.To!.Id);
+        Assert.Equal(row.From.Id, row.To!.Id);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnEpicOnTheSameEdge_GetsItsOwnRowAndNeverTheFlaggedOne()
+    {
+        var h = await ShapingAsync();
+        var epic = await h.FileAsync("epic", "E", h.Inbox);
+
+        var row = await PassRowForAsync(h, epic);
+
+        Assert.Null(row.Blocked);
+        Assert.Equal("haiku", row.Model);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ADraftOnABoardWithNoFlaggedRow_WaitsForAPersonNotForAPlaybook()
+    {
+        var h = await ShapingAsync(flaggedRow: false);
+        var draft = await h.FileAsync("ambition", "D", h.Inbox);
+
+        var row = await PassRowForAsync(h, draft);
+
+        Assert.Equal(Waits, row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_EveryOtherTypeWithNoRow_KeepsTheNoPlaybookSentence()
+    {
+        var h = await ShapingAsync();
+        var story = await h.FileAsync("story", "S", h.Inbox);
+
+        var row = await PassRowForAsync(h, story);
+
+        Assert.StartsWith("no playbook covers", row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnOpenQuestionOnADraft_FoldsItAsItFoldsAnyIssue()
+    {
+        var h = await ShapingAsync();
+        var draft = await h.FileAsync("ambition", "D", h.Inbox);
+        await QuestionAsync(h, draft, QuestionLevels.HoldName);
+
+        var row = await PassRowForAsync(h, draft);
+
+        Assert.Equal("1 unanswered question - it is waiting on a person, not on an agent", row.Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ADraftPutBackInTheFromColumn_IsAimedAtTheShapingRowAgain()
+    {
+        var h = await ShapingAsync();
+        var draft = await h.FileAsync("ambition", "D", h.Todo);
+        Assert.Equal(Waits, (await PassRowForAsync(h, draft)).Blocked);
+
+        draft.StatusId = h.Inbox;
+        await h.Db.SaveChangesAsync();
+
+        var row = await PassRowForAsync(h, draft);
+        Assert.Null(row.Blocked);
+        Assert.Equal("opus", row.Model);
+    }
+
     // ---- An ambition's pass runs once on the same room ----
 
     private const string Settled = "a pass ran on it 2 hours ago and nothing has opened room since - the next runs when an epic under it closes or a person changes it";
@@ -4274,7 +4454,7 @@ public class DispatchTests
 
         public async Task AddPlaybookAsync(
             int from, int to, string types = "", string model = "sonnet", string shape = "any",
-            int? briefLimit = null, int? projectId = null, bool isCheck = false, bool answers = false, bool worksOut = false)
+            int? briefLimit = null, int? projectId = null, bool isCheck = false, bool answers = false, bool worksOut = false, bool shapes = false)
         {
             Db.Playbooks.Add(new EfHatchPlaybook
             {
@@ -4290,6 +4470,7 @@ public class DispatchTests
                 IsCheck = isCheck,
                 AnswersQuestions = answers,
                 WorksOutChanges = worksOut,
+                ShapesAmbition = shapes,
                 CreatedAt = Now,
                 UpdatedAt = Now,
             });
