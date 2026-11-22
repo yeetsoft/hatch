@@ -64,7 +64,24 @@ public static class ReviewWork
     /// </param>
     /// <param name="Fold">Null when there is something for an agent to do.</param>
     /// <param name="Work">What the agent would be asked to do, as a sentence, where <paramref name="Fold"/> is null; null where it is not.</param>
-    public readonly record struct Judgement(string Kind, string? Fold, string? Work = null);
+    /// <param name="DeadEnd">
+    /// True where the row is folded and nothing will ever carry it past review:
+    /// see <see cref="Carry"/>. Its <paramref name="Fold"/> then says so.
+    /// </param>
+    public readonly record struct Judgement(string Kind, string? Fold, string? Work = null, bool DeadEnd = false);
+
+    /// <summary>
+    /// What a caller knows about an issue in review that the branch's own facts do
+    /// not say: whether either hop that carries an issue out of review could. It
+    /// is how a clean, pre-approved row learns it is a dead end - the approve hop
+    /// needs a pull request and a merge column, the close hop needs children or a
+    /// no-code declaration - rather than waiting on someone who is not coming.
+    /// </summary>
+    /// <param name="Key">The issue's key, which the sentence names in <c>hatch pr</c>.</param>
+    /// <param name="HasPullRequest">A pull request is recorded on the issue.</param>
+    /// <param name="HasChildren">The issue has children, which the close hop carries it on.</param>
+    /// <param name="MergeColumnAfterReview">The column after review merges a pull request, so recording one would move the issue.</param>
+    public readonly record struct Carry(string Key, bool HasPullRequest, bool HasChildren, bool MergeColumnAfterReview);
 
     /// <summary>
     /// The sentence for a review row held back because its branch is a
@@ -93,8 +110,8 @@ public static class ReviewWork
 
     public static Judgement Judge(
         EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
-        string? recordedBranch = null, int preApproval = PreApprovalLevels.PreApproved) =>
-        Judge(issue.NoCode, issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merges, builds, recordedBranch, preApproval);
+        string? recordedBranch = null, int preApproval = PreApprovalLevels.PreApproved, Carry? carry = null) =>
+        Judge(issue.NoCode, issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merges, builds, recordedBranch, preApproval, carry);
 
     /// <summary>
     /// The judgement from the facts alone, for a caller that has projected rows
@@ -107,10 +124,17 @@ public static class ReviewWork
     /// nothing: a caller that reads only <see cref="Judgement.Fold"/> or
     /// <see cref="Judgement.Kind"/> need not say.
     /// </param>
+    /// <param name="carry">
+    /// What the caller knows of the hops that carry an issue out of review. Given,
+    /// it lets a clean, pre-approved row with no pull request, no children and a
+    /// merge column after review say it is a dead end; left out, every row keeps
+    /// the plain sentence, which is right for a caller that reads only
+    /// <see cref="Judgement.Fold"/> or <see cref="Judgement.Kind"/>.
+    /// </param>
     public static Judgement Judge(
         string? noCode, IReadOnlyList<EfHatchProjectRepository> bound,
         IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
-        string? recordedBranch = null, int preApproval = PreApprovalLevels.PreApproved)
+        string? recordedBranch = null, int preApproval = PreApprovalLevels.PreApproved, Carry? carry = null)
     {
         if (NoCode.Declared(noCode)) return Fold(NoCode.Sentence);
 
@@ -151,13 +175,37 @@ public static class ReviewWork
             return Fold($"no runner has read its build on {Short(read)} yet");
         }
 
-        if (builtAt.Count == 0)
-            return Fold($"its branch merges cleanly with {trunk} - nothing for an agent to do{WaitsOnApprover(preApproval)}");
+        var deadEnd = IsDeadEnd(preApproval, carry);
 
-        return about.All(b => b.Verdict == BuildVerdicts.Passed)
-            ? Fold($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do{WaitsOnApprover(preApproval)}")
-            : Fold($"its branch merges cleanly with {trunk} and no checks ran on it");
+        if (builtAt.Count == 0)
+            return deadEnd
+                ? DeadEnd($"its branch merges cleanly with {trunk}", carry!.Value.Key)
+                : Fold($"its branch merges cleanly with {trunk} - nothing for an agent to do{WaitsOnApprover(preApproval)}");
+
+        if (!about.All(b => b.Verdict == BuildVerdicts.Passed))
+            return Fold($"its branch merges cleanly with {trunk} and no checks ran on it");
+
+        return deadEnd
+            ? DeadEnd($"its branch merges cleanly with {trunk} and its build passes", carry!.Value.Key)
+            : Fold($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do{WaitsOnApprover(preApproval)}");
     }
+
+    /// <summary>
+    /// Whether a pre-approved row the judge folds as clean has no hop to carry it:
+    /// no pull request for the approve hop, no children for the close hop, and a
+    /// merge column for the approve hop to carry a recorded one into. A declared
+    /// no-code issue never gets here - it folds first. Below pre-approved the row
+    /// waits on a person, which <see cref="WaitsOnApprover"/> says.
+    /// </summary>
+    private static bool IsDeadEnd(int preApproval, Carry? carry) =>
+        preApproval >= PreApprovalLevels.PreApproved
+        && carry is { HasPullRequest: false, HasChildren: false, MergeColumnAfterReview: true };
+
+    private static Judgement DeadEnd(string state, string key) =>
+        new(WorkKinds.Conflicts,
+            $"{state}, but it is pre-approved with no pull request recorded, so nothing carries it past review - " +
+            $"record its pull request with `hatch pr {key} <url>`",
+            DeadEnd: true);
 
     /// <summary>The merge verdicts for repositories the project still binds - every one, if it binds none.</summary>
     public static IReadOnlyList<EfHatchMergeCheck> Counted(

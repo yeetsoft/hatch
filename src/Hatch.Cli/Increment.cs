@@ -46,6 +46,22 @@ public sealed class IncrementReport
     public string? AnsweringKey { get; init; }
 
     /// <summary>
+    /// The id of the change this increment was dispatched to work out, or null
+    /// on every other increment. A change session moves nothing, so the column
+    /// cannot say it worked: the outcomes it recorded do.
+    /// </summary>
+    public long? ChangeId { get; init; }
+
+    /// <summary>How many epics the dispatch named, each of which wants an outcome. Zero where there is no change.</summary>
+    public int ChangeEpics { get; init; }
+
+    /// <summary>Every epic the dispatch named has an outcome recorded for the change.</summary>
+    public bool ChangeWorkedOut { get; set; }
+
+    /// <summary>The epics the dispatch named that still have no outcome for the change, once the session was over.</summary>
+    public IReadOnlyList<string> ChangeMissing { get; set; } = [];
+
+    /// <summary>
     /// The repo copy of the playbook file had moved, or gone missing, since this
     /// dispatch was judged - caught just before the spawn, in time to refuse it
     /// rather than run a session against a stale brief. Not a stall: the ticket
@@ -421,6 +437,7 @@ public sealed class IncrementReport
             if (Ended != From) pieces.Add($"moved it from \"{From}\" to \"{Ended}\"");
             if (Filed.Count > 0) pieces.Add($"filed {Filed.Count} under it");
             if (Judged.Count > 0) pieces.Add($"judged {Judged.Count} {(Judged.Count == 1 ? "capability" : "capabilities")}");
+            if (ChangeWorkedOut) pieces.Add($"recorded outcomes on {ChangeEpics} {(ChangeEpics == 1 ? "epic" : "epics")}");
             return string.Join(" and ", pieces);
         }
     }
@@ -457,6 +474,9 @@ public sealed class IncrementReport
         : (NoWorkLog || ResultErrored) && Done.Length > 0 ? $"the session {Cause}, and it {Done}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Judged.Count > 0 ? $"judged {Judged.Count} {(Judged.Count == 1 ? "capability" : "capabilities")}, "
             + (Filed.Count > 0 ? $"filed {Filed.Count} under it" : "carved nothing")
+        : ChangeWorkedOut ? $"change {ChangeId} worked out, outcomes recorded on {ChangeEpics} {(ChangeEpics == 1 ? "epic" : "epics")}"
+        : Stalled && ChangeMissing.Count > 0
+            ? $"change {ChangeId} still has no outcome for {string.Join(", ", ChangeMissing)}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
         : Recused && Stalled ? $"recused itself ({RecusedReason ?? "no reason given"})"
         : Stalled && StillFailing.Count > 0
@@ -605,6 +625,8 @@ public sealed class Increment(
             To = work.ToStatus?.Name ?? "?",
             ConflictTrunk = conflict is null ? null : conflict.Found.Trunk ?? Conflicts.Trunk(work.Issue),
             AnsweringKey = work.Answering?.IssueKey,
+            ChangeId = work.Changing?.Id,
+            ChangeEpics = work.Changing?.Epics.Count ?? 0,
         };
         report.Ended = report.From;
         report.StartedAt = DateTimeOffset.UtcNow;
@@ -629,7 +651,7 @@ public sealed class Increment(
             // capability, read now and again once the session ends. A read
             // that fails is not known, and not known is never a stall.
             var judging = work.Issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id
-                && work.Kind != WorkKinds.Answer;
+                && work.Kind != WorkKinds.Answer && work.Changing is null;
             var verdictsBefore = judging ? await ReadVerdictsAsync(board, report.Key, ct) : null;
 
             var facts = new RunFacts();
@@ -965,7 +987,7 @@ public sealed class Increment(
                     // review, so "did not move" is what success looks like. The
                     // column is still read and still reported.
                     if (report.Ended != report.From) report.Moved = true;
-                    else if (conflict is null && build is null && work.Answering is null && report.Filed.Count == 0 && report.Judged.Count == 0) report.Stalled = true;
+                    else if (conflict is null && build is null && work.Answering is null && work.Changing is null && report.Filed.Count == 0 && report.Judged.Count == 0) report.Stalled = true;
                 }
                 catch (HatchException e)
                 {
@@ -989,6 +1011,14 @@ public sealed class Increment(
                 // did is on origin's branch. Whether that fixed the build is the
                 // board's to say, later, when the build on the new tip has run.
                 if (build is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.AuthFailed && !report.Preempted) await JudgeBuildAsync(report, build, ct);
+
+                // The verdict on a change increment: the outcomes on the board,
+                // read again. A change session moves nothing, so the column
+                // above could not say whether it worked. Same guards as the
+                // others, plus HardLimited: a session stopped for crossing its
+                // hard limit has no finished outcomes to count.
+                if (work.Changing is { } changing && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.AuthFailed && !report.Preempted && !report.HardLimited)
+                    await JudgeChangeAsync(report, changing, ct);
 
                 // The verdict on a check increment: the tree first - a check
                 // that left anything uncommitted or moved HEAD is not one
@@ -1186,7 +1216,7 @@ public sealed class Increment(
                 // limit, and the "not known" reads above never reach a verdict
                 // at all.
                 if (report.Preempted) report.ReleaseOutcome = ClaimOutcomes.Preempted;
-                else if (!report.Unservable && (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0 || report.Judged.Count > 0)) report.ReleaseOutcome = ClaimOutcomes.Worked;
+                else if (!report.Unservable && (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0 || report.Judged.Count > 0 || report.ChangeWorkedOut)) report.ReleaseOutcome = ClaimOutcomes.Worked;
                 // An answering session moves nothing and files nothing whether
                 // it answered or declined, and the board skips a question only
                 // once a worked row names it - so a normal end is worked, and
@@ -1271,6 +1301,54 @@ public sealed class Increment(
         report.Resolved = true;
         say.Line("");
         say.Line($"hatch: {report.Key} conflicts with {report.ConflictTrunk} resolved");
+    }
+
+    /// <summary>
+    /// What became of a change, asked of the board and not of the column: every
+    /// epic the dispatch named has an outcome recorded for it, or one does not.
+    /// </summary>
+    /// <remarks>
+    /// Two answers, and only one of them is a stall. Every outcome is there:
+    /// worked out. Some are missing: a stall, with the epics named. A read that
+    /// failed, or a change the board no longer lists, is neither - not knowing
+    /// is not the same as knowing nothing was recorded, which is the rule the
+    /// column read follows too.
+    /// </remarks>
+    private async Task JudgeChangeAsync(IncrementReport report, WorkChangeDto changing, CancellationToken ct)
+    {
+        ChangeDto? change;
+        try
+        {
+            change = (await board.ChangesAsync(report.Key, ct)).FirstOrDefault(c => c.Id == changing.Id);
+        }
+        catch (HatchException e)
+        {
+            say.Complain($"hatch: {report.Key} - could not read the outcomes on change {changing.Id} - {e.Message}");
+            report.Flag ??= "whether the change was worked out is not known - the board did not answer";
+            return;
+        }
+
+        if (change is null)
+        {
+            say.Complain($"hatch: {report.Key} - change {changing.Id} is no longer on the board");
+            report.Flag ??= "whether the change was worked out is not known - the board no longer lists it";
+            return;
+        }
+
+        var recorded = change.Outcomes.Select(o => o.EpicKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = changing.Epics.Select(e => e.Key).Where(k => !recorded.Contains(k)).ToList();
+        if (missing.Count == 0)
+        {
+            report.ChangeWorkedOut = true;
+            say.Line("");
+            say.Line($"hatch: {report.Key} change {changing.Id} worked out - an outcome on each of {changing.Epics.Count} epic(s)");
+            return;
+        }
+
+        report.ChangeMissing = missing;
+        report.Stalled = true;
+        say.Line("");
+        say.Line($"hatch: {report.Key} change {changing.Id} still has no outcome for {string.Join(", ", missing)}");
     }
 
     /// <summary>
@@ -2006,6 +2084,7 @@ public sealed class Increment(
             Agent = adapter.Id,
             PlaybookKey = PlaybookKeyOf(work.Playbook),
             QuestionId = work.Answering?.QuestionId,
+            ChangeEventId = work.Changing?.Id,
             PlaybookFromStatusId = work.Playbook?.FromStatusId,
             PlaybookToStatusId = work.Playbook?.ToStatusId,
             IssueType = work.Issue.Type,
