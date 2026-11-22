@@ -66,6 +66,7 @@ import type { BoardView } from '../lib/phoneBoard';
 import { CLOUD, columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
 import { columnBlocked, confirmMove } from '../lib/protectedColumns';
+import { cardAge } from '../lib/cardAge';
 import { flowBand, flowSentence } from '../lib/queue';
 import { chains } from '../lib/chains';
 import { spotlight } from '../lib/spotlight';
@@ -94,7 +95,7 @@ import { overridden, wipRefusal } from '../lib/wipOverride';
 import { meterText, preview, runs, tightest } from '../lib/wip';
 import type { Tightness } from '../lib/wip';
 import { WipBands } from '../components/WipBands';
-import type { AssigneeDirectory, Board, IssueCard, Project, Status, Wip } from '../types';
+import type { AssigneeDirectory, Board, ColumnNormal, IssueCard, Project, Status, Wip } from '../types';
 import { ScopeGate } from '../components/ScopeGate';
 
 /** The URL's whole vocabulary here: which project, by key - the same param
@@ -959,6 +960,8 @@ function BoardContent() {
                 projectsByKey={projectsByKey}
                 showProjectMark={showProjectMark}
                 doneHorizonHours={board.doneHorizonHours ?? null}
+                normals={board.normals ?? []}
+                at={board.at}
                 statuses={board.statuses}
                 stories={storiesByEpic}
                 collapsedEpics={collapsedEpics}
@@ -1012,6 +1015,8 @@ function BoardContent() {
                   projectsByKey={projectsByKey}
                   showProjectMark={showProjectMark}
                   doneHorizonHours={board.doneHorizonHours ?? null}
+                  normals={board.normals ?? []}
+                  at={board.at}
                   rows={rows}
                   spots={spots}
                   statuses={board.statuses}
@@ -1151,7 +1156,7 @@ const terminalOf = (statuses: Status[], statusId: number) =>
  * The fold is the browser's alone. The API hands over every card (BoardDto), so
  * a script - or Claude - sees the whole board and does its own filtering.
  */
-function Column({
+export function Column({
   status,
   narrow,
   cards,
@@ -1166,6 +1171,8 @@ function Column({
   projectsByKey,
   showProjectMark,
   doneHorizonHours,
+  normals,
+  at,
   rows,
   spots,
   statuses,
@@ -1202,6 +1209,10 @@ function Column({
   showProjectMark: boolean;
   /** The board's done-fold horizon, or null where the fold is off. */
   doneHorizonHours: number | null;
+  /** Each column's normal stay, for the chip on a card the server calls aged. */
+  normals: ColumnNormal[];
+  /** The server's clock at the read, which the time in a column is worked out against. */
+  at: string | undefined;
   /** Flow-viz's own queue, keyed by issue key - null while it is off. See
       lib/queue.ts's `flowBand`. */
   rows: Map<string, QueueEntry> | null;
@@ -1271,6 +1282,7 @@ function Column({
                 depth={card.depth}
                 waiting={waiting.includes(card)}
                 terminal={status.isTerminal}
+                age={cardAge(card, status, normals, at)}
                 found={found === card.key}
                 onPeek={onPeek}
                 project={project}
@@ -1318,7 +1330,7 @@ function Column({
  * target in this layout (AC3), only a reorder within one column's own
  * `SortableContext`.
  */
-function PhoneColumn({
+export function PhoneColumn({
   status,
   cards,
   hidden,
@@ -1330,6 +1342,8 @@ function PhoneColumn({
   projectsByKey,
   showProjectMark,
   doneHorizonHours,
+  normals,
+  at,
   statuses,
   stories,
   collapsedEpics,
@@ -1354,6 +1368,10 @@ function PhoneColumn({
   showProjectMark: boolean;
   /** The board's done-fold horizon, or null where the fold is off. */
   doneHorizonHours: number | null;
+  /** Each column's normal stay, for the chip on a card the server calls aged. */
+  normals: ColumnNormal[];
+  /** The server's clock at the read, which the time in a column is worked out against. */
+  at: string | undefined;
   /** Every status, for the colour and name of each story dot an epic carries. */
   statuses: Status[];
   /** Each epic's carried stories by epic key; an epic with none has no entry. */
@@ -1406,6 +1424,7 @@ function PhoneColumn({
                 depth={card.depth}
                 waiting={waiting.includes(card)}
                 terminal={status.isTerminal}
+                age={cardAge(card, status, normals, at)}
                 found={found === card.key}
                 project={project}
                 statuses={statuses}

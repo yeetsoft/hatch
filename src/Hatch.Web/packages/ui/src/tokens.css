@@ -173,6 +173,19 @@
   --warn-ground: color-mix(in srgb, var(--warn) 8%, var(--bg));
   --warn-ink: #8a5200;
 
+  /* Sat in its column longer than is normal for it: a chip and a faint tint on the
+     card. Indigo, hue about 240, the one gap at least 30 degrees from --primary
+     (210), --flow-person (291) and every other fill - so it is not read as the
+     selection blue nor as a band. Contrast is WCAG, ink on --aged-ground (the
+     tint laid over --bg):
+       --aged-ink   8.1:1 light, 9.6:1 dark
+     --aged-bg is translucent, so a card lays it over its own surface; the ground
+     is that result, for what a tile draws its outline against. */
+  --aged: #4f46c8;
+  --aged-bg: rgba(79, 70, 200, 0.08);
+  --aged-ground: color-mix(in srgb, var(--aged) 8%, var(--bg));
+  --aged-ink: #3730a3;
+
   /* The work-queue bands of the flow-viz: eight kinds, four of which already
      have an accent - clear is --success, working --primary, wip --warn,
      dependency --danger, each with --on-accent laid on it. The other four have
@@ -368,6 +381,11 @@
   --warn-ground: color-mix(in srgb, var(--warn) 14%, var(--bg));
     --warn-ink: #ffd08a;
 
+    --aged: #a5a6ff;
+    --aged-bg: rgba(165, 166, 255, 0.14);
+    --aged-ground: color-mix(in srgb, var(--aged) 14%, var(--bg));
+    --aged-ink: #d6d7ff;
+
     --flow-turn: #fff176;
     --on-flow-turn: #1a1a1a;
     --flow-family: #4dd0c4;
@@ -445,6 +463,11 @@
   --warn-bg: rgba(255, 183, 77, 0.14);
   --warn-ground: color-mix(in srgb, var(--warn) 14%, var(--bg));
   --warn-ink: #ffd08a;
+
+  --aged: #a5a6ff;
+  --aged-bg: rgba(165, 166, 255, 0.14);
+  --aged-ground: color-mix(in srgb, var(--aged) 14%, var(--bg));
+  --aged-ink: #d6d7ff;
 
   --flow-turn: #fff176;
   --on-flow-turn: #1a1a1a;

@@ -580,6 +580,72 @@ const anchorSpans = (html: string): Array<[number, number]> => {
   return spans;
 };
 
+describe('BoardCard, aged', () => {
+  const age = {
+    words: '14h 20m',
+    title: 'In In Progress for 14h 20m. Normal here is under 6h (p90, last 30 days).',
+  };
+  const board = (over: Partial<IssueCard>, withAge: typeof age | null) =>
+    renderSortable(<BoardCard card={card(over)} age={withAge} />, ['AER-1']);
+
+  it('draws the chip with its words and its tooltip, and tints the card', () => {
+    const html = board({}, age);
+
+    expect(html).toContain('hatch-card-age');
+    expect(html).toContain('14h 20m');
+    expect(html).toContain(`title="${age.title}"`);
+    expect(html).toMatch(/class="hatch-card[^"]* aged/);
+    expect(html).toContain('hatch-card-marks');
+  });
+
+  it('draws the clock as a glyph hidden from a screen reader, the words doing the saying', () => {
+    expect(board({}, age)).toMatch(/<svg[^>]*aria-hidden="true"/);
+  });
+
+  it('draws neither chip nor tint with no age', () => {
+    for (const none of [null, undefined]) {
+      const html = renderSortable(<BoardCard card={card()} age={none} />, ['AER-1']);
+
+      expect(html).not.toContain('hatch-card-age');
+      expect(html).not.toMatch(/class="hatch-card[^"]* aged/);
+      expect(html).not.toContain('hatch-card-marks');
+    }
+  });
+
+  it('keeps the asking wash and still shows the chip', () => {
+    const html = board({ openQuestions: 1 }, age);
+
+    expect(html).toMatch(/class="hatch-card[^"]* asking[^"]* aged|class="hatch-card[^"]* aged[^"]* asking/);
+    expect(html).toContain('hatch-card-asking');
+    expect(html).toContain('hatch-card-age');
+  });
+
+  it('draws the chip after a stall mark and before the assignee', () => {
+    const html = board({ stalledAt: '2026-11-22T00:00:00Z', assignee: { kind: 'person', id: '1', name: 'Ada' } }, age);
+
+    expect(html.indexOf('hatch-card-stalled')).toBeLessThan(html.indexOf('hatch-card-age'));
+    expect(html.indexOf('hatch-card-age')).toBeLessThan(html.indexOf('hatch-card-assignee'));
+  });
+
+  it('draws it on a card carrying stories, on the face', () => {
+    const html = renderSortable(
+      <BoardCard card={card({ type: 'epic' })} age={age} stories={[card({ key: 'AER-2', parentKey: 'AER-1', type: 'story' })]} statuses={[status(1, 0)]} />,
+      ['AER-1'],
+    );
+
+    expect(html).toContain('hatch-card-age');
+    expect(html).toMatch(/class="hatch-card[^"]* aged/);
+  });
+
+  it('tints the card under the cursor too', () => {
+    const html = renderToStaticMarkup(<CardPreview card={card()} age={age} />);
+
+    expect(html).toContain('hatch-card-preview');
+    expect(html).toMatch(/class="hatch-card[^"]* aged/);
+    expect(html).toContain('14h 20m');
+  });
+});
+
 describe('BoardCard CardFace, a contribution', () => {
   const record: ContributionRecord = {
     pullRequestUrl: null,
