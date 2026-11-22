@@ -782,6 +782,7 @@ before 409ing.
 | GET | `/issues/{key}/dreams` | The dreams this issue drew on, newest first |
 | POST | `/issues/{key}/remand` | Shelves this issue and the open work under it into a deferred column, and posts a dream from it |
 | POST | `/dreams/weave` | Files an epic in the breakdown column, briefed to be woven from the dreams (a person's, not a key's) |
+| POST | `/dreams/shape` | Files a draft ambition from words, dreams and uploaded files, in the column of the row that shapes one (a person's, not a key's) |
 
 A dream is a line somebody wanted said - leaning toward a project, or loose.
 `/dreams` takes `q` (any word, not every word - unlike `/search`), a repeatable
@@ -863,6 +864,30 @@ given under any other mode; a missing `ProjectId`; and the first id in
 `DreamIds` naming no dream, in the wording `PUT /issues/{key}/dreams` uses.
 `404`s an unknown `ProjectId`. `400`s with no playbook row covering `epic`
 on the project, naming the project's key and the Playbooks page.
+
+`POST /dreams/shape` files a draft ambition - a person's, never a key's. Its
+body is `DreamShapeRequest(ProjectId?, Words?, DreamIds?, AttachmentIds?)`;
+at least one of `Words`, `DreamIds` and `AttachmentIds` is needed. The draft
+is an `ambition` with no parent, at normal priority and with no pre-approval,
+born in the from-column of the playbook row flagged as shaping an ambition
+(a project's own row ahead of the board's, then specificity, then id). Its
+title is the first line of `Words`, on one line and cut to the title's
+length, or `Draft ambition` with no words. Its description opens by saying the
+ambition is a draft that has not been shaped yet, quotes the words, and links
+each file as `![name](/api/images/<id>)` for an image or
+`[name](/api/attachments/<id>)` for anything else, in the order sent
+(`AmbitionShape.Title`/`Describe`). The dreams are not copied in: they are
+recorded on the draft as `PUT /issues/{key}/dreams` records them, so each shows
+its woven-into chip. It answers `201` with the resulting `IssueDto`.
+
+**Refusals.** `403`s a key outright, and a keyless runner that named itself,
+with one sentence: shaping an ambition is a person's to press. `400`s a missing
+`ProjectId`; no words, no dream and no file; the first id in `DreamIds` naming
+no dream, in the weave's wording; the first id in `AttachmentIds` naming no
+file (`there is no file <id>`) or a file linked to another project (`file <id>
+belongs to another project`); and a project with no playbook row that shapes
+an ambition, naming the project's key and the Playbooks page. `404`s an unknown
+`ProjectId`, or one the person cannot see.
 
 ## Capabilities
 

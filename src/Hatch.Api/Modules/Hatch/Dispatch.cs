@@ -3702,6 +3702,25 @@ public sealed class Dispatch(
             .ThenBy(p => p.Id)
             .FirstOrDefault();
 
+    /// <summary>
+    /// The playbook row a shaping press files its draft ambition into the
+    /// from-column of: the rows that <see cref="EfHatchPlaybook.ShapesAmbition"/>
+    /// and cover <c>ambition</c> (types left empty, or naming it), on this
+    /// project or the board. A project's own row comes first, then the more
+    /// specific, then the lower id - as <see cref="MatchShaping"/> ranks them.
+    /// No edge is pinned, since filing is not a transition, and shape is not
+    /// checked, as <see cref="MatchWeave"/> does not. Null where none.
+    /// </summary>
+    public static EfHatchPlaybook? MatchShapingPress(List<EfHatchPlaybook> playbooks, int projectId) =>
+        playbooks
+            .Where(p => p.ShapesAmbition
+                        && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("ambition"))
+                        && (p.ProjectId == null || p.ProjectId == projectId))
+            .OrderByDescending(p => p.ProjectId is not null)
+            .ThenByDescending(p => p.Specificity)
+            .ThenBy(p => p.Id)
+            .FirstOrDefault();
+
     // ---- Dates ----
 
     /// <summary>

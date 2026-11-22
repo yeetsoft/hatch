@@ -726,6 +726,10 @@ public class AdminSurfaceTests
         // a person's to press, not an agent's. See DreamWeaveController.
         "DreamWeaveController.PostWeave",
 
+        // A shaping press files a draft ambition and spends a shaping session
+        // on it - a person's to press, not an agent's. See DreamShapeController.
+        "DreamShapeController.PostShape",
+
         // Hatch's own two settings - the Claude subscription token and what to
         // call whoever is sitting at this machine. Cut tighter than the module
         // around it: plain [RequireAdmin], no AcceptKey, so a key is refused
@@ -902,6 +906,10 @@ public class AdminSurfaceTests
         // A weave press spends a breakdown session at the largest model -
         // a person's to press, not an agent's. See DreamWeaveController.
         "DreamWeaveController.PostWeave",
+
+        // A shaping press files a draft ambition and spends a shaping session
+        // on it - a person's to press, not an agent's. See DreamShapeController.
+        "DreamShapeController.PostShape",
         "AttachmentsController.PostAttachment",
         "AttachmentsController.DeleteAttachment",
         "SettingsController.GetHatchSettings",

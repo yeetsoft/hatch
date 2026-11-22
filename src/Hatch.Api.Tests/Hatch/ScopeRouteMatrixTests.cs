@@ -402,6 +402,7 @@ public class ScopeRouteMatrixTests
         }))),
         ("DreamsController.AddDream", Lookup(t => Post("/api/dreams", new { body = "a dream", projectId = t.ProjectId }))),
         ("DreamWeaveController.PostWeave", Lookup(t => Post("/api/dreams/weave", new { projectId = t.ProjectId, mode = "common" }))),
+        ("DreamShapeController.PostShape", Lookup(t => Post("/api/dreams/shape", new { projectId = t.ProjectId, words = "a draft" }))),
         ("PlaybookProposalsController.SubmitProposal", Lookup(t => Post("/api/playbook-proposals", new
         {
             reason = "why", issueKey = t.Key, changes = new[] { new { playbookId = t.PlaybookId, prompt = "p" } },
