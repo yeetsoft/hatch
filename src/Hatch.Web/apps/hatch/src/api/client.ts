@@ -4,7 +4,10 @@ import { handledRefusal } from '../lib/signIn';
 import type {
   ActivityPage,
   ActivityReport,
+  AmbitionChange,
   AmbitionPass,
+  ChangeDecisionRequest,
+  ChangeOutcome,
   IssueBudget,
   CreateRunnerRequest,
   AssigneeDirectory,
@@ -735,6 +738,17 @@ export const getIssuePasses = (key: string) => fetchJson<AmbitionPass[]>(`/api/i
 /** What an ambition may cost and what it has cost. 400 off an ambition - see
     IssueBudgetController. */
 export const getIssueBudget = (key: string) => fetchJson<IssueBudget>(`/api/issues/${seg(key)}/budget`);
+/** An ambition's changes, newest first, each with what it did and the
+    outcomes recorded so far. 400 off an ambition - see
+    IssueChangesController. */
+export const getIssueChanges = (key: string) => fetchJson<AmbitionChange[]>(`/api/issues/${seg(key)}/changes`);
+/** A person's decision - shelve or keep running - on one recorded outcome.
+    The route refuses a key. */
+export const decideChangeOutcome = (key: string, outcomeId: number, request: ChangeDecisionRequest) =>
+  fetchJson<ChangeOutcome>(`/api/issues/${seg(key)}/changes/outcomes/${outcomeId}/decision`, {
+    method: 'POST',
+    ...asJson(request),
+  });
 /** Sets, changes or clears an ambition's budget: a blank amount clears it. A
     person's call - the route refuses a key. */
 export const setIssueBudget = (key: string, amount: string) =>

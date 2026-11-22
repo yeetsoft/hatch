@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Badge, Button, Card, Field, PageHeader, ProjectMark } from '@hatch/ui';
+import { Badge, Button, Card, Field, Modal, PageHeader, ProjectMark } from '@hatch/ui';
 import {
   addComment,
   addDependency,
@@ -13,6 +13,7 @@ import {
   getEvents,
   getIssueBudget,
   getIssueCapabilities,
+  getIssueChanges,
   getIssueDreams,
   getIssuePasses,
   getIssueQuestions,
@@ -86,8 +87,18 @@ import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, same
 import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
 import { originChain } from '../lib/contribution';
 import { confirmMove, moveBlocked } from '../lib/protectedColumns';
-import { closeOffer } from '../lib/closeSubtree';
+import { closeOffer, closeSubtree } from '../lib/closeSubtree';
 import type { CloseOffer } from '../lib/closeSubtree';
+import {
+  decideOutcome,
+  decisionWord,
+  entryLabel,
+  entryTone,
+  latestChange,
+  outcomeWord,
+  shelveSentence,
+  showsPresses,
+} from '../lib/latestChange';
 import { isObviated, isSettled, tileFill } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { filedFromCandidates } from '../lib/filedFrom';
@@ -122,12 +133,15 @@ import { wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
 import { LEGAL_PARENT_TYPES, PLAYBOOK_EFFORTS, PLAYBOOK_MODELS, RUNS_CHILDREN } from '../types';
 import type {
+  AmbitionChange,
   AmbitionPass,
   AmbitionPassVerdict,
   AssigneeDirectory,
   AssigneeRequest,
   Board,
   Capability,
+  ChangeEntry,
+  ChangeOutcome,
   IssueBudget,
   ChildRollup,
   Comment,
@@ -176,6 +190,8 @@ export function IssuePage() {
   const [capabilitiesError, setCapabilitiesError] = useState<string | null>(null);
   const [passes, setPasses] = useState<AmbitionPass[] | null>(null);
   const [passesError, setPassesError] = useState<string | null>(null);
+  const [changes, setChanges] = useState<AmbitionChange[] | null>(null);
+  const [changesError, setChangesError] = useState<string | null>(null);
   const [budget, setBudget] = useState<IssueBudget | null>(null);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [serves, setServes] = useState<ServedCapability[] | null>(null);
@@ -310,6 +326,14 @@ export function IssuePage() {
       () => [] as Question[],
     );
 
+    /* And the thirteenth: an ambition's changes, on the same tolerant terms
+       as the passes read - a non-ambition's 400 is caught here and left for
+       `LatestChange` to never draw. */
+    const changing = getIssueChanges(key).then(
+      (loaded) => ({ loaded, failure: null as string | null }),
+      (err: unknown) => ({ loaded: null, failure: message(err) }),
+    );
+
     try {
       const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams, loadedRemanded] = await Promise.all([
         getIssue(key),
@@ -357,6 +381,10 @@ export function IssuePage() {
     setPassesError(passed.failure);
 
     setAnswered(await answering);
+
+    const changed = await changing;
+    setChanges(changed.loaded);
+    setChangesError(changed.failure);
   }, [key]);
 
   useEffect(() => {
@@ -1187,6 +1215,8 @@ export function IssuePage() {
         onSave={saveBudget}
       />
 
+      <LatestChange issue={issue} board={board} changes={changes} error={changesError} onDecided={load} />
+
       <EpicsInFlight
         issue={issue}
         rollup={rollup}
@@ -1922,6 +1952,222 @@ function PassVerdictLine({ verdict, now }: { verdict: AmbitionPassVerdict; now: 
       <p className="text-muted">
         {verdict.lookedAt}, {shortSha(verdict.sha)}, by {verdict.author}, <DatedAt at={verdict.at} now={now} />
       </p>
+    </li>
+  );
+}
+
+/**
+ * What happened to an ambition's capabilities most recently, and what that
+ * does to each epic beneath it - see docs/hatch.md, "ChangeOutcome" and
+ * apps/hatch/docs/issues.md, "Changing an ambition". Omitted entirely off any
+ * type but an ambition, and off an ambition that was never changed.
+ *
+ * Reads `GET /issues/{key}/changes` on the same tolerant terms `Passes` reads
+ * its own route: a failure is a sentence in the section, not the page's
+ * error. `changes` answers newest first, so the section is only ever the
+ * first entry - an older change's own outcomes are never drawn here.
+ */
+export function LatestChange({
+  issue,
+  board,
+  changes,
+  error,
+  onDecided,
+}: {
+  issue: Issue;
+  board: Board;
+  changes: AmbitionChange[] | null;
+  error: string | null;
+  onDecided: () => Promise<void>;
+}) {
+  const [shelving, setShelving] = useState<ChangeOutcome | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [refusals, setRefusals] = useState<Record<number, string>>({});
+
+  if (issue.type !== 'ambition') return null;
+
+  const change = latestChange(changes);
+  if (!error && !change) return null;
+
+  const now = new Date();
+
+  const clearRefusal = (outcomeId: number) =>
+    setRefusals((prev) => {
+      if (!(outcomeId in prev)) return prev;
+      const next = { ...prev };
+      delete next[outcomeId];
+      return next;
+    });
+
+  const keep = async (outcome: ChangeOutcome) => {
+    setBusyId(outcome.id);
+    const refusal = await decideOutcome(issue.key, outcome.id, 'keep');
+    setBusyId(null);
+    if (refusal) {
+      setRefusals((prev) => ({ ...prev, [outcome.id]: refusal }));
+    } else {
+      clearRefusal(outcome.id);
+      await onDecided();
+    }
+  };
+
+  const confirmShelve = async () => {
+    if (!shelving) return;
+    const outcome = shelving;
+    setBusyId(outcome.id);
+    const refusal = await decideOutcome(issue.key, outcome.id, 'shelve');
+    setBusyId(null);
+    setShelving(null);
+    if (refusal) {
+      setRefusals((prev) => ({ ...prev, [outcome.id]: refusal }));
+    } else {
+      clearRefusal(outcome.id);
+      await onDecided();
+    }
+  };
+
+  const deferredColumn = board.statuses.find((s) => s.isDeferred);
+
+  return (
+    <IssueSection id="latest-change" title="Latest change">
+      {error && <p className="text-danger">{error}</p>}
+
+      {change && (
+        <>
+          <ul className="hatch-change-entries">
+            {change.entries.map((entry) => (
+              <ChangeEntryLine key={entry.eventId} entry={entry} />
+            ))}
+          </ul>
+
+          {!change.workedOut && (
+            <p className="text-muted">
+              This change has not been worked out yet. A session will work out what it does to each epic.
+            </p>
+          )}
+
+          {change.workedOut && change.outcomes.length > 0 && (
+            <ul className="hatch-progress-list">
+              {change.outcomes.map((outcome) => (
+                <ChangeOutcomeLine
+                  key={outcome.id}
+                  outcome={outcome}
+                  statuses={board.statuses}
+                  now={now}
+                  busy={busyId === outcome.id}
+                  refusal={refusals[outcome.id] ?? null}
+                  onKeep={() => void keep(outcome)}
+                  onShelve={() => setShelving(outcome)}
+                />
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      <Modal
+        open={shelving !== null}
+        onClose={() => setShelving(null)}
+        title="Shelve it?"
+      >
+        {shelving && (
+          <div className="hatch-change-shelve">
+            <p>
+              {shelveSentence(
+                shelving.epicKey,
+                closeSubtree(board.issues, shelving.epicKey, board.statuses).length,
+                deferredColumn?.name ?? 'the shelf',
+              )}
+            </p>
+
+            <div className="hatch-form-actions">
+              <Button onClick={() => setShelving(null)}>Leave it</Button>
+              <Button variant="primary" loading={busyId === shelving.id} onClick={() => void confirmShelve()}>
+                Shelve it
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </IssueSection>
+  );
+}
+
+/** One entry within the latest change: a badge for what happened, and the
+    words it changed - the old struck through beside the new, or alone on a
+    removal, or just the new words on an add. */
+function ChangeEntryLine({ entry }: { entry: ChangeEntry }) {
+  return (
+    <li className="hatch-change-entry">
+      <Badge tone={entryTone(entry.kind)}>{entryLabel(entry.kind)}</Badge>
+      <span className="hatch-change-entry-words">
+        {entry.statementBefore && <s>{entry.statementBefore}</s>}
+        {entry.statementAfter && <span>{entry.statementAfter}</span>}
+      </span>
+    </li>
+  );
+}
+
+/**
+ * One epic's outcome on the latest change: the key, the title and the
+ * outcome word with its why. An outcome that serves nothing and is still
+ * open and undecided gets the two presses; once decided, the decided line
+ * takes their place; an epic that has since closed or been deferred by
+ * another door shows its column instead.
+ */
+function ChangeOutcomeLine({
+  outcome,
+  statuses,
+  now,
+  busy,
+  refusal,
+  onKeep,
+  onShelve,
+}: {
+  outcome: ChangeOutcome;
+  statuses: Status[];
+  now: Date;
+  busy: boolean;
+  refusal: string | null;
+  onKeep: () => void;
+  onShelve: () => void;
+}) {
+  const column = statuses.find((s) => s.name === outcome.epicColumn);
+
+  return (
+    <li className="hatch-progress-row hatch-change-outcome">
+      <Link to={`/issues/${outcome.epicKey}`} className="hatch-plan-key">
+        {outcome.epicKey}
+      </Link>
+      <span className="hatch-progress-title">{outcome.epicTitle}</span>
+      <span className="hatch-change-outcome-meta">
+        <strong>{outcomeWord(outcome.outcome)}</strong>
+        <span className="text-muted">{outcome.why}</span>
+      </span>
+
+      {outcome.outcome === 'serves_nothing' && (
+        <div className="hatch-change-decision">
+          {outcome.decision ? (
+            <span className="text-muted">
+              {decisionWord(outcome.decision.decision)} by {outcome.decision.decidedBy},{' '}
+              <DatedAt at={outcome.decision.decidedAt} now={now} />
+            </span>
+          ) : showsPresses(outcome, statuses) ? (
+            <div className="hatch-change-presses">
+              <Button disabled={busy} onClick={onKeep}>
+                Keep it running
+              </Button>
+              <Button disabled={busy} onClick={onShelve}>
+                Shelve it
+              </Button>
+            </div>
+          ) : (
+            column && <StatusPill status={column} size="sm" />
+          )}
+
+          {refusal && <p className="text-danger">{refusal}</p>}
+        </div>
+      )}
     </li>
   );
 }
