@@ -242,6 +242,30 @@ verdict was not applied on a changed tree, that the session ended without one
 on no verdict, and says so on the terminal with no comment at all if the
 apply call itself fails.
 
+### A change increment
+
+A dispatch that carries a change ([The change to work out](what-a-session-is-told#the-change-to-work-out))
+moves nothing and files nothing, so neither the column nor the capabilities can
+say it worked. The runner reads the ambition's changes from
+`GET /issues/{key}/changes` once the session ends, finds the change the dispatch
+named by its id, and compares the epics that have an outcome recorded on it
+with the epics the dispatch listed.
+
+- **An outcome on every epic is worked.** The row is released `worked`, the
+  increment is no stall, and it stands even if the session wrote no work-log
+  title. The runner reads no capabilities for it.
+- **One outcome missing is a stall** ([Stalls](#stalls)). The epics without one
+  are named in the outcome, and the ticket is let go or flagged as any stall is.
+- **A read that fails, or a change the board no longer lists, counts no stall.**
+  The runner prints the error and says it does not know whether the change was
+  worked out.
+- **A lost lease, a usage limit, a preemption, a refused model, a signed-out
+  agent, a session that never started or a hard limit ends as it does today**,
+  and the outcomes are not read.
+
+The runner cuts no branch and opens no pull request, and the work-log row
+carries the change's id as `changeEventId`.
+
 ## The loop: `hatch go-to-work`
 
 `work` in a circle: the next actionable issue, one increment, ask again, until
