@@ -1761,6 +1761,65 @@ export interface ServedCapability {
   state: 'holds' | 'does_not_hold' | 'cannot_tell' | 'not_checked';
 }
 
+/** One event within a change: an added, changed or removed capability. The
+    before and after fields are null on the side that does not apply - an
+    add has no before, a removal no after - and both are null where the
+    payload will not parse, a tolerant read rather than a failed one. Mirrors
+    ChangeEntryDto. */
+export interface ChangeEntry {
+  eventId: number;
+  kind: 'added' | 'changed' | 'removed';
+  capabilityId: number | null;
+  position: number | null;
+  statementBefore: string | null;
+  howToTellBefore: string | null;
+  statementAfter: string | null;
+  howToTellAfter: string | null;
+  actor: string;
+  at: string;
+}
+
+/** A person's decision on a recorded outcome. Mirrors ChangeDecisionDto. */
+export interface ChangeDecision {
+  decision: 'shelve' | 'keep';
+  decidedBy: string;
+  decidedAt: string;
+}
+
+/** One epic's outcome on one change - whether its work carries on, was not
+    touched, or now serves nothing, and why. Mirrors ChangeOutcomeDto. */
+export interface ChangeOutcome {
+  id: number;
+  changeEventId: number;
+  epicKey: string;
+  epicTitle: string;
+  /** The epic's column now, by name - an outcome is a record; the column
+      stays the board's. */
+  epicColumn: string;
+  outcome: 'carries_on' | 'not_touched' | 'serves_nothing';
+  why: string;
+  recordedBy: string;
+  recordedAt: string;
+  decision: ChangeDecision | null;
+}
+
+/** One change to an ambition's capabilities: every added, edited or removed
+    event newer than the last change worked out, up to and including the
+    event that named it. Mirrors ChangeDto. */
+export interface AmbitionChange {
+  id: number;
+  savedAt: string;
+  workedOut: boolean;
+  workedOutAt: string | null;
+  entries: ChangeEntry[];
+  outcomes: ChangeOutcome[];
+}
+
+/** A person's decision on one outcome. Mirrors ChangeDecisionRequest. */
+export interface ChangeDecisionRequest {
+  decision: 'shelve' | 'keep';
+}
+
 /** What it takes to remand an issue to a dream. Mirrors DreamRemandRequest. */
 export interface DreamRemandRequest {
   /** The deferred column the issue, and whatever `keys` names, goes to. */
