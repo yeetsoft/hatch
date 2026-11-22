@@ -44,7 +44,7 @@ without the flag.
 | `start` | No | Yes: moves the ticket |
 | `move` | No | Yes: moves the ticket |
 | `comment` | No | Yes: adds a comment |
-| `pr` | No | Only with a `<url>`, `--clear` or `--none "reason"` |
+| `pr` | Only with `--title` | Only with a `<url>`, `--clear`, `--none "reason"` or `--title` |
 | `landed` | No: reads git where it stands, or where `--repo` says | Yes: records a sha |
 | `verdict` | No | Yes: records a verdict |
 | `depends` | No | Only with a second key |
@@ -838,6 +838,7 @@ branch is what makes that search short.
 
 ```
 hatch pr AER-12 [<url>|--clear|--none "reason"]
+hatch pr AER-12 --title "AER-12 Area: what changed" --body-file <path|-> [--repo <path>]
 ```
 
 With one argument it reads: it prints the URL where the ticket is being
@@ -854,6 +855,30 @@ that declaration instead. With two it writes.
   that is one line on standard error, `hatch: AER-12 - its pull request's body
   was not updated with the envelope - <why>`, with exit `0` and the URL still
   recorded.
+- `--title` and `--body-file` open the pull request, and record it as a url
+  does. The title starts with the key and a space, then the subject, and is at
+  most 256 characters. The body is read from the file, or from standard input
+  for `-`, and has `[AER-12](<origin>/issues/AER-12)` and a blank line put in
+  front of it when its first line is not already that line. `--repo` is the
+  checkout, where the working directory is not; the pull request is opened from
+  the branch checked out there, and the envelope is written through that
+  checkout's forge. The branch must be pushed: after one fetch, origin must hold
+  it at the commit checked out, or it is refused with `push <branch> first`. It
+  is also refused, with exit `1` and nothing sent, for a trunk or a detached
+  head, a ticket that already points at a pull request (`hatch pr AER-12
+  --clear` first), a project that lands on the trunk, a task on its story's
+  shared branch, a title that is not the key and a subject, and a title or body
+  over the limit. It does not mix with a url, `--clear` or `--none`, and takes
+  both `--title` and `--body-file`.
+
+  Where the forge cannot open it (no `gh`, not signed in, no write access) the
+  pull request is written onto the ticket instead, with the branch, the commit,
+  the checkout's origin and the forge's first line as the reason, and the
+  command prints `AER-12: the pull request is written and waits for a runner
+  that can open it (<why>)` and exits `0`: the session carries on either way.
+  A pull request already open on the branch is recorded, not duplicated, and
+  leaves none waiting. A `409` from the board, a url recorded meanwhile, is the
+  ordinary error exit.
 - `--clear` takes it off the one it has.
 - `--none "reason"` declares the ticket finished with no code, and prints
   `AER-12: finished with no code - reason`. The reason is required and at

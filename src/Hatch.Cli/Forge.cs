@@ -83,6 +83,11 @@ public sealed record PullRequestBodyAnswer(string? Body, string? Why);
 /// <param name="Why">One line, for a sentence. Null where <paramref name="Edited"/> is true.</param>
 public sealed record BodyEditAnswer(bool Edited, string? Why);
 
+/// <summary>What a forge answered about opening a pull request: where it is, or why it could not be opened.</summary>
+/// <param name="Url">The pull request's address - the new one, or the one that already stood on the branch. Null where none was opened.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Url"/> is set.</param>
+public sealed record PullRequestOpenAnswer(string? Url, string? Why);
+
 /// <summary>One of <see cref="UpdateOutcomes"/>, or the reason no outcome was reached - see <see cref="UpdateAnswer"/>.</summary>
 public static class UpdateOutcomes
 {
@@ -176,6 +181,12 @@ public interface IForge
 
     /// <summary>Replaces the body of the pull request at <paramref name="url"/> with <paramref name="body"/>.</summary>
     Task<BodyEditAnswer> EditBodyAsync(string url, string body, CancellationToken ct);
+
+    /// <summary>
+    /// Opens a pull request from <paramref name="head"/> into <paramref name="trunk"/>. A branch that
+    /// already has one answers with that one's url, so that asking again records it.
+    /// </summary>
+    Task<PullRequestOpenAnswer> OpenPullRequestAsync(string head, string trunk, string title, string body, CancellationToken ct);
 
     /// <summary>
     /// Brings pull request <paramref name="number"/>'s branch current with the
@@ -447,6 +458,54 @@ public sealed partial class GhForge(
             try { File.Delete(file); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         }
     }
+
+    /// <summary>
+    /// <c>gh pr create --body-file</c> from a temporary file, for the reason <see cref="EditBodyAsync"/> has.
+    /// When a pull request already stands on the branch, gh says so on stderr with its url and exits 1;
+    /// that url is the answer, so a retry records the one that exists.
+    /// </summary>
+    public async Task<PullRequestOpenAnswer> OpenPullRequestAsync(
+        string head, string trunk, string title, string body, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new PullRequestOpenAnswer(null, "its repository is a local path, so there is no forge to open a pull request on");
+
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, body, new UTF8Encoding(false), ct);
+            var ran = await _run(path, Env(), [
+                "pr", "create", "--head", head, "--base", trunk, "--title", title, "--body-file", file,
+            ], ct);
+
+            if (ran.Code == 0)
+            {
+                var url = LastLine(ran.Out);
+                return url is not null && url.StartsWith("http", StringComparison.Ordinal)
+                    ? new PullRequestOpenAnswer(url, null)
+                    : new PullRequestOpenAnswer(null, "gh answered with something that is not a pull request's address");
+            }
+
+            if (ran.Err.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                && ran.Err.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(l => l.Trim()).LastOrDefault(l => l.StartsWith("http", StringComparison.Ordinal)) is { } existing)
+                return new PullRequestOpenAnswer(existing, null);
+
+            return new PullRequestOpenAnswer(null, Why(ran));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return new PullRequestOpenAnswer(null, e.Message);
+        }
+        finally
+        {
+            try { File.Delete(file); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    private static string? LastLine(string text) =>
+        text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()).LastOrDefault(l => l.Length > 0);
 
     /// <summary>
     /// <c>gh pr update-branch</c> itself always reconciles against whichever
