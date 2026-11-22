@@ -43,6 +43,19 @@ public sealed class RunnerStateLog(Runners runners)
     }
 
     /// <summary>
+    /// The changes the clock alone has made since <paramref name="after"/>, up to
+    /// <paramref name="now"/>, judged from the facts as they stand. The read behind
+    /// the states route: it shows what <see cref="SettleAsync"/> would write, and
+    /// writes nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<RunnerStateRule.Change>> ClockTailAsync(
+        HatchContext db, IAuthService keys, string name, DateTimeOffset after, DateTimeOffset now, CancellationToken ct)
+    {
+        var sources = await SourcesAsync(db, keys, name, ct);
+        return RunnerStateRule.ClockChanges(sources, GoneAfter, after, now);
+    }
+
+    /// <summary>
     /// Settles, then appends one row at <paramref name="now"/> if the runner's
     /// state now differs from the last row, and saves. A runner with no heartbeat
     /// row and no session has no state and writes nothing; a beat that changed

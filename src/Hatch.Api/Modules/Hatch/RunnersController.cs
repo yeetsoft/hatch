@@ -122,6 +122,85 @@ public class RunnersController(
     }
 
     /// <summary>
+    /// The states one visible runner was in over a range, as stretches, oldest
+    /// first. <c>from</c> and <c>to</c> default to the last 24 hours; there is
+    /// no cap on a longer range.
+    /// </summary>
+    /// <remarks>
+    /// <para>A stretch is kept when it overlaps the range, and is not clipped to
+    /// it: the one already open at <c>from</c> starts where it began, and the
+    /// one still standing has a null <c>to</c>. Two adjacent rows in the same
+    /// state are one stretch.</para>
+    ///
+    /// <para>This read writes nothing. What the clock has ended since the last
+    /// row - an exhausted stretch that ran out, a runner gone quiet - is added
+    /// in memory by <see cref="RunnerStateLog.ClockTailAsync"/>, so a lapsed
+    /// stretch reads right with no sweep. The same name and visibility rules as
+    /// <see cref="GetRunner"/>, and <c>404</c> for a runner nobody has or this
+    /// caller may not see.</para>
+    /// </remarks>
+    [HttpGet("{name}/states")]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<ActionResult<IReadOnlyList<RunnerStateStretchDto>>> GetRunnerStates(
+        string name, CancellationToken ct, [FromQuery] string? from = null, [FromQuery] string? to = null)
+    {
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+
+        var now = time.GetUtcNow();
+        if (RangeBounds.Resolve(from, to, now, TimeSpan.FromHours(24), out var start, out var end) is { } refusal)
+            return BadRequest(refusal);
+
+        var (all, personId) = await VisibleAsync(ct);
+
+        var joined = await Runner.JoinAsync(db, keys, ct);
+        var found = joined.FirstOrDefault(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
+        if (found is null || !(all || found.OwnerPersonId == personId)) return NotFound();
+
+        var rows = await db.RunnerStates.AsNoTracking()
+            .Where(s => s.Runner == runner)
+            .OrderBy(s => s.At).ThenBy(s => s.Id)
+            .ToListAsync(ct);
+
+        var changes = rows.Select(r => (r.At, r.State, r.Kind)).ToList();
+        changes = Fold(changes);
+
+        // The clock's tail: what ran out since the last row, held in memory.
+        // It judges from the facts as they stand, so it can repeat the last
+        // state when a beat overwrote them after that row - hence the second fold.
+        if (rows.Count > 0)
+        {
+            var tail = await stateLog.ClockTailAsync(db, keys, runner, rows[^1].At, now, ct);
+            changes.AddRange(tail.Select(c => (c.At, c.State, c.Kind)));
+            changes = Fold(changes);
+        }
+
+        var stretches = new List<RunnerStateStretchDto>(changes.Count);
+        for (var i = 0; i < changes.Count; i++)
+        {
+            var (at, state, kind) = changes[i];
+            DateTimeOffset? until = i + 1 < changes.Count ? changes[i + 1].At : null;
+
+            if (at <= end && (until is null || until > start))
+                stretches.Add(new RunnerStateStretchDto(state, kind, at, until));
+        }
+
+        return stretches;
+    }
+
+    /// <summary>Adjacent changes into the same state and kind are one: two beats that raced write the same row twice.</summary>
+    private static List<(DateTimeOffset At, string State, string? Kind)> Fold(List<(DateTimeOffset At, string State, string? Kind)> changes)
+    {
+        var folded = new List<(DateTimeOffset At, string State, string? Kind)>(changes.Count);
+        foreach (var change in changes)
+        {
+            if (folded.Count > 0 && folded[^1].State == change.State && folded[^1].Kind == change.Kind) continue;
+            folded.Add(change);
+        }
+
+        return folded;
+    }
+
+    /// <summary>
     /// Mints a runner: a key and the config row beside it, answered once with
     /// the secret. A signed-in user may mint one for themselves and an admin
     /// for anyone; never a key - an agent that could mint runners could mint

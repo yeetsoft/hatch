@@ -11806,6 +11806,17 @@ that feeds the attention panel's dot, and
 [when an increment does nothing](#when-an-increment-does-nothing) for what
 sets this in the first place.
 
+**A runner's states are kept, and a script can read them.** The board writes
+a row each time a runner's state changes, and `GET /api/runners/{name}/states`
+answers the stretches that overlap `?from=`/`?to=` (default: the last 24 hours,
+no cap) as `[{ state, kind, from, to }]`, oldest first, not clipped to the
+range and with a null `to` on the one still standing. Six states are kept:
+`running`, `paused`, `stopping`, `exhausted`, `agent-down` (`kind` says why)
+and `gone`. Working and idle are not kept, and a runner held back by its hourly
+cap reads as `running`. The read writes nothing; what the clock ended since the
+last row is added in memory. A script reaches it with `hatch api GET`; there
+is no subcommand for it.
+
 Running two loops on one machine, each in its own checkout, is walked
 through in [Several runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#several-runners-on-one-machine).
 

@@ -1594,6 +1594,28 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or run it through
 `powershell -NoProfile -ExecutionPolicy Bypass -File`.
 
+## What states it was in
+
+The board keeps a record of every change in a runner's state, so a script or a
+page can ask what a runner was doing an hour ago, or last night. It keeps six
+states: `running`, `paused`, `stopping`, `exhausted` (out of Claude usage),
+`agent-down` (with its kind) and `gone`. Working and idle are not kept. They
+change with every ticket, and the board does not keep a record of that. A
+runner held back by its hourly token cap reads as `running`, since the cap only
+makes it wait.
+
+Ask for it with the states route, which answers the stretches that overlap a
+range, oldest first:
+
+```
+hatch api GET "/api/runners/<name>/states?from=2026-09-08T00:00:00Z&to=2026-09-09T00:00:00Z"
+```
+
+With no range it is the last 24 hours. A stretch that began before the range
+starts where it began, and the one still standing has no end. The read writes
+nothing: a stretch that ran out since the runner last spoke is worked out as it
+is read. See `GET /runners/{name}/states` in the API reference.
+
 ## When the board pauses a session
 
 A session that drops three tickets in a row without spending a token is stood

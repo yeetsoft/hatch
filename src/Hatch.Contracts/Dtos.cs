@@ -5931,6 +5931,15 @@ public record RunnerDto(
 }
 
 /// <summary>
+/// One stretch of a runner's record: the state it was in, from when to when.
+/// </summary>
+/// <param name="State">One of running, paused, stopping, exhausted, agent-down or gone.</param>
+/// <param name="Kind">Why the agent was down, on an agent-down stretch. Null on every other.</param>
+/// <param name="From">When the runner came to be in this state, even if that was before the range asked for.</param>
+/// <param name="To">When the next state began, or null while this one still stands.</param>
+public record RunnerStateStretchDto(string State, string? Kind, DateTimeOffset From, DateTimeOffset? To);
+
+/// <summary>
 /// One session an api key behind a runner has open, read beside the key's
 /// own fields on <see cref="RunnerDto"/>. The three accelerator fields are the
 /// facts this session's runner reports about itself on every beat, as on
