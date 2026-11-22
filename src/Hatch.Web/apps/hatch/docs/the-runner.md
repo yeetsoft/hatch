@@ -1020,6 +1020,12 @@ or `forge=fails`, with `forgeWhy=` beside `fails`, escaped; `hatch queue` and
 nothing answered sends no parameter. The board stores the beat's answer; it does
 not yet read it on a dispatch.
 
+The **Runners** page reads it on the runner's own page as *Signed in to its
+forge* or *Forge sign-in fails* with what `gh` said, and marks a runner whose
+forge sign-in fails with a **forge sign-in fails** badge in the list. `hatch
+runners` prints the same on the runner's line
+([`runners`](cli-reference#runners)). A runner that said nothing shows nothing.
+
 ## Preferred
 
 A key can also be marked **preferred**, which says its runner takes work before

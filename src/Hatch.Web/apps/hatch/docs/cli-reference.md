@@ -701,6 +701,13 @@ its worst: fails, then does not sign, then signs. One that never said, or said a
 word this `hatch` does not know, prints nothing extra
 ([the runner](the-runner#signing-commits)).
 
+A runner that reports whether it is signed in to its forge adds
+`  signed in to its forge` or `  forge sign-in fails: <what gh said>` after the
+signing words and before any projects. A runner serving several checkouts reads
+as its worst: fails, then signed in. One that never said, or said a word this
+`hatch` does not know, prints nothing extra
+([the runner](the-runner#forge-sign-in)).
+
 A runner that reports dependencies closes that part of its line with
 `  has dotnet 10.0.100, node 22.11.0, pwsh`, comma-separated, before any
 projects; one with none prints nothing extra.
