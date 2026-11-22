@@ -68,7 +68,13 @@ public static class ReviewWork
     /// True where the row is folded and nothing will ever carry it past review:
     /// see <see cref="Carry"/>. Its <paramref name="Fold"/> then says so.
     /// </param>
-    public readonly record struct Judgement(string Kind, string? Fold, string? Work = null, bool DeadEnd = false);
+    /// <param name="WaitsOnApprover">
+    /// True where the row is folded as clean and idle only because an owner or
+    /// approver has not approved it: its issue is below pre-approved, so the
+    /// approve hop is not armed. The sentence says the same in words; this is the
+    /// mark a caller reads instead of the words.
+    /// </param>
+    public readonly record struct Judgement(string Kind, string? Fold, string? Work = null, bool DeadEnd = false, bool WaitsOnApprover = false);
 
     /// <summary>
     /// What a caller knows about an issue in review that the branch's own facts do
@@ -180,14 +186,14 @@ public static class ReviewWork
         if (builtAt.Count == 0)
             return deadEnd
                 ? DeadEnd($"its branch merges cleanly with {trunk}", carry!.Value.Key)
-                : Fold($"its branch merges cleanly with {trunk} - nothing for an agent to do{WaitsOnApprover(preApproval)}");
+                : Idle($"its branch merges cleanly with {trunk} - nothing for an agent to do", preApproval);
 
         if (!about.All(b => b.Verdict == BuildVerdicts.Passed))
             return Fold($"its branch merges cleanly with {trunk} and no checks ran on it");
 
         return deadEnd
             ? DeadEnd($"its branch merges cleanly with {trunk} and its build passes", carry!.Value.Key)
-            : Fold($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do{WaitsOnApprover(preApproval)}");
+            : Idle($"its branch merges cleanly with {trunk} and its build passes - nothing for an agent to do", preApproval);
     }
 
     /// <summary>
@@ -235,6 +241,13 @@ public static class ReviewWork
         PreApprovalLevels.Express => "; express does not carry it past review, so it waits for an owner or approver to approve it",
         _ => "; it waits for an owner or approver to approve it",
     };
+
+    /// <summary>
+    /// A clean row with nothing for an agent to do, saying - and marking - that a
+    /// person has to approve it where its issue is below pre-approved.
+    /// </summary>
+    private static Judgement Idle(string state, int preApproval) =>
+        new(WorkKinds.Conflicts, state + WaitsOnApprover(preApproval), WaitsOnApprover: preApproval < PreApprovalLevels.PreApproved);
 
     /// <summary>A folded row, which keeps the conflicts kind it has always had.</summary>
     private static Judgement Fold(string why) => new(WorkKinds.Conflicts, why);
