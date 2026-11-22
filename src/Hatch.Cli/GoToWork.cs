@@ -1327,6 +1327,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // decide per ticket whether it matters.
             var signingAnswers = await runtime.SayCannotSignAsync(ct);
 
+            // Told beside it, and decides nothing: a forge that refuses this runner
+            // leaves tickets to be worked, but not their builds or pull requests to be
+            // read or merged here. The board is told on every beat from now on.
+            await runtime.SayCannotReachForgeAsync(ct);
+
             // Where git can never sign and no project allows it unsigned, every
             // ticket would be let go again: say so now, before a heartbeat, a
             // claim or anything an earlier session left to end. The finally
@@ -1771,6 +1776,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // The adapter's server-side list is re-read at the same moment, so
             // the beat and the picker both see what the server holds now.
             runtime.Adapter.Refresh();
+
+            // Before the beat, so it carries what each forge says now: a failing sign-in
+            // is asked every pass and a working one every thirty minutes, never twice in
+            // a minute. A once beat sends none, and the start has already asked.
+            if (!once) await runtime.AskForgesAsync(ct, passTop: true);
             var told = await BeatAsync(line, under, mine, tally, once, ct);
 
             if (told is { State: RunnerStates.Stopping })
@@ -2298,6 +2308,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // and the next beat must say so. A once beat shares the loop's row and
         // sends none, so it cannot blank or overwrite what the loop said.
         var signing = once ? null : runtime.SigningAnswer();
+        var forge = once ? null : runtime.ForgeAnswer();
 
         var request = runtime.Machine.Stamp(new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
@@ -2358,7 +2369,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UsageSource: usage.UsageReadAt is null ? null : usage.UsageSource,
                 UsageProbeOff: usage.UsageProbeOff,
                 Signing: signing?.State,
-                SigningWhy: signing?.Why));
+                SigningWhy: signing?.Why,
+                Forge: forge?.State,
+                ForgeWhy: forge?.State == RunnerForge.Fails ? forge?.Why : null));
 
         var beat = await runtime.Runners().BeatAsync(request, ct);
 
@@ -2966,6 +2979,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // before its branch is prepared - the merge of the trunk into that
             // branch is a commit, and is the first thing a signer can stop.
             var signing = await runtime.CanSignAsync(chosen.Root, ct);
+
+            // Asked of the same checkout, and it decides nothing: dispatch is the board's.
+            // The board hears the answer on the next beat and on every read from here.
+            await runtime.AskForgeAsync(chosen.Root, Runtime.CanonicalOf(chosen, work.Repositories), ct);
             if (signing.State != Signing.Works && !work.AllowsUnsignedCommits)
             {
                 // A project that allows only signed commits is never given an
@@ -3101,7 +3118,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var trunkLanding = work.Landing == Landings.Trunk;
                 if ((report.Moved || report.Resolved || report.FixPushed)
                     && report.EndedInReview
-                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest))
+                    && (trunkLanding ? !left.HasLanding : left.BranchOnOrigin && !left.HasPullRequest && !left.HasWaitingPullRequest))
                 {
                     releaseOutcome = await Unpublished.RefuseAsync(
                         runtime.Board, runtime.Say, report, entering.Entries, work.LetGo, trunkLanding, runtime.Adapter, ct);

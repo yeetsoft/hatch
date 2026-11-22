@@ -237,7 +237,9 @@ public sealed class RunnerSessions(Runners runners)
             AcceleratorMemoryBytes: session.AcceleratorMemoryBytes,
             AcceleratorDeviceCount: session.AcceleratorDeviceCount,
             AcceleratorBackend: session.AcceleratorBackend,
-            Pulling: session.Pulling);
+            Pulling: session.Pulling,
+            Forge: session.Forge,
+            ForgeWhy: session.ForgeWhy);
     }
 
     /// <summary>

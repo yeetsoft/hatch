@@ -771,6 +771,15 @@ public sealed class FakeForge
     /// <summary>When set, what every body edit answers instead of storing the body.</summary>
     public BodyEditAnswer? EditAnswer { get; set; }
 
+    /// <summary>Every pull request asked to be opened, in order.</summary>
+    public List<(string Path, string Head, string Trunk, string Title, string Body)> Opened { get; } = [];
+
+    /// <summary>What every attempt to open a pull request answers, unless <see cref="OpenFor"/> says otherwise. By default it opens one.</summary>
+    public PullRequestOpenAnswer OpenAnswer { get; set; } = new("https://forge.example.test/pull/1", null);
+
+    /// <summary>What opening from one head branch answers.</summary>
+    public Dictionary<string, PullRequestOpenAnswer> OpenFor { get; } = [];
+
     /// <summary>Every update asked for, with the number and sha it carried, in order.</summary>
     public List<(string Path, long Number, string Sha)> UpdateCalls { get; } = [];
 
@@ -797,6 +806,12 @@ public sealed class FakeForge
 
     /// <summary>What the link for one file path answers.</summary>
     public Dictionary<string, string?> FileUrlFor { get; } = [];
+
+    /// <summary>Every sign-in check asked for, as the path and the canonical identity it was given, in order.</summary>
+    public List<(string Path, string? Canonical)> SignInAsked { get; } = [];
+
+    /// <summary>What every sign-in check answers. By default no answer, so a test that is not about the forge hears nothing of it.</summary>
+    public ForgeSignInAnswer SignIn { get; set; } = new(null, null);
 
     public IForge For(string path, string? canonical)
     {
@@ -861,6 +876,13 @@ public sealed class FakeForge
             return Task.FromResult(new BodyEditAnswer(true, null));
         }
 
+        public Task<PullRequestOpenAnswer> OpenPullRequestAsync(
+            string head, string trunk, string title, string body, CancellationToken ct)
+        {
+            owner.Opened.Add((path, head, trunk, title, body));
+            return Task.FromResult(owner.OpenFor.GetValueOrDefault(head, owner.OpenAnswer));
+        }
+
         public Task<UpdateAnswer> UpdateAsync(long number, string sha, CancellationToken ct)
         {
             owner.UpdateCalls.Add((path, number, sha));
@@ -880,6 +902,8 @@ public sealed class FakeForge
             owner.FileUrlCalls.Add((path, filePath, trunk));
             return Task.FromResult(owner.FileUrlFor.GetValueOrDefault(filePath, owner.FileUrl));
         }
+
+        public Task<ForgeSignInAnswer> CheckSignInAsync(TimeSpan limit, CancellationToken ct) => Task.FromResult(owner.SignIn);
     }
 }
 
@@ -1039,7 +1063,12 @@ public sealed class Harness : IDisposable
             Heartbeat: heartbeat ?? Beat)
         {
             Workspace = (path, baseBranch) => Workspace.For(path, baseBranch),
-            Forge = (path, canonical) => Forge.For(path, canonical),
+            MakeForge = (path, canonical) => Forge.For(path, canonical),
+            ForgeProbe = (path, canonical, _) =>
+            {
+                Forge.SignInAsked.Add((path, canonical));
+                return Task.FromResult(Forge.SignIn);
+            },
             Self = () => Self,
             SourceRevision = () => SourceRevision,
             NewBoard = () => new Board(new HatchClient(settings, Wire, Clock), refusesDangerous: settings.RefusesDangerous)
@@ -1048,6 +1077,7 @@ public sealed class Harness : IDisposable
                 Tags = tags ?? [],
                 Models = () => Runtime.AdvertisedModels() ?? [],
                 Signing = () => Runtime.SigningAnswer(),
+                Forge = () => Runtime.ForgeAnswer(),
                 Agent = Runtime.Adapter.Id,
             },
             MakeClone = Clone.Factory,
@@ -1062,6 +1092,7 @@ public sealed class Harness : IDisposable
 
         Runtime.Board.Models = () => Runtime.AdvertisedModels() ?? [];
         Runtime.Board.Signing = () => Runtime.SigningAnswer();
+        Runtime.Board.Forge = () => Runtime.ForgeAnswer();
         Runtime.Board.Agent = Runtime.Adapter.Id;
     }
 

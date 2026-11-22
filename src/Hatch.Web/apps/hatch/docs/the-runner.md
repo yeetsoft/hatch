@@ -954,6 +954,72 @@ nothing. So a ticket in a project that allows only signed commits is left for a
 runner that signs, a runner that cannot sign is not held up waiting for its own
 beat, and `hatch queue` shows what the board would hand this machine.
 
+## Forge sign-in
+
+A runner reads builds and pull requests, and merges them, as the account its own
+`gh` is signed in as. A machine where `gh` is signed out, holds a token the forge
+has refused, or is not installed reads none of that, and nothing says so until a
+read fails. So the loop asks `gh` first, in each checkout it serves, and tells
+the board what it found. It decides nothing from the answer: dispatch is
+unchanged, and a ticket is worked whatever the forge said.
+
+**The check.** It runs `gh auth status --active` in the checkout, handed the
+board's own identity for the repository as `GH_REPO` and its host as `--hostname`
+where the project binds one, and never with `--show-token`. The answer is one of:
+
+- `works` - `gh` is signed in to that host.
+- `fails` - `gh` is not installed, or exited with a reason other than the host
+  being out of reach. It carries the first line of what `gh` said that says
+  something: the host on a line by itself is skipped, and a leading `X ` or `- `
+  is dropped. A key in it is masked, and it is cut to 200 characters.
+- no answer - the host could not be reached, or the check did not finish within
+  fifteen seconds. When the network is what failed, `gh` still prints `The token
+  in ... is invalid`, which would be wrong to repeat, so the check reads the
+  `Error:` line first and takes a connection fault there (no such host, a
+  refused or reset connection, a timeout, TLS, `EOF`, an `HTTP 5xx`, a proxy) as
+  no answer. The old answer stands: a `works` stays `works` and a `fails` stays
+  `fails` until the forge says otherwise. A repository that is a local path has
+  no forge and is never asked.
+
+It cannot prompt, since its input is closed, and it ends `gh` and anything it
+started when the time is up.
+
+**At the start.** `go-to-work`, `do-my-work` and `work` run the check in each
+checkout they serve, all at once. For one that answers `fails` they print one
+line: what `gh` said, and that builds and pull requests will not be read or
+merged there. `works`, and no answer, print nothing. The board is read once,
+quietly, for each repository's identity, and only when some checkout is due; a
+board that does not answer leaves `gh` to find the repository from the
+checkout's remotes.
+
+**Asked again.** The check runs again:
+
+- before each increment, in the checkout the session will run in, after the
+  signing check;
+- when a call to the forge comes back with a reason - a build that could not be
+  read, a pull request, a merge, an edit, an update, a re-run. A merge that took,
+  an update that found a conflict, and the reads of a log and of a file's link
+  carry no sign-in reason and do not ask;
+- at the top of each pass, before the heartbeat, in every checkout: a `fails`
+  every pass, and a `works` once it is thirty minutes old.
+
+A checkout is never asked twice in a minute, whoever asks: inside that minute
+the answer already held is the answer. A question that came back with no answer
+counts as asked, so a host that is down is not tried again on every beat.
+
+**What the board is told.** The loop says what it found on every heartbeat, as
+`forge` (`works` or `fails`) and, beside `fails`, `forgeWhy`. A runner serves
+several checkouts and the board keeps one answer for it, the worst of them:
+`fails`, then `works`. The answer is the latest one for each checkout, including
+any clone made under the workspace since the start, and a checkout not yet
+answered says nothing. A `hatch work` run sends none on a beat, since it shares
+the loop's own row. The CLI also puts the answer on every read a dispatch is
+judged on - `work/next`, `work/queue`, `work/KEY`, and a hop - as `forge=works`
+or `forge=fails`, with `forgeWhy=` beside `fails`, escaped; `hatch queue` and
+`hatch next` ask each checkout once, at once, before their read. A machine with
+nothing answered sends no parameter. The board stores the beat's answer; it does
+not yet read it on a dispatch.
+
 ## Preferred
 
 A key can also be marked **preferred**, which says its runner takes work before

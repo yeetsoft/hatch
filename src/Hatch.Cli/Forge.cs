@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Hatch.Cli;
 
@@ -82,6 +83,11 @@ public sealed record PullRequestBodyAnswer(string? Body, string? Why);
 /// <param name="Why">One line, for a sentence. Null where <paramref name="Edited"/> is true.</param>
 public sealed record BodyEditAnswer(bool Edited, string? Why);
 
+/// <summary>What a forge answered about opening a pull request: where it is, or why it could not be opened.</summary>
+/// <param name="Url">The pull request's address - the new one, or the one that already stood on the branch. Null where none was opened.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Url"/> is set.</param>
+public sealed record PullRequestOpenAnswer(string? Url, string? Why);
+
 /// <summary>One of <see cref="UpdateOutcomes"/>, or the reason no outcome was reached - see <see cref="UpdateAnswer"/>.</summary>
 public static class UpdateOutcomes
 {
@@ -111,6 +117,26 @@ public static class RerunOutcomes
 /// <param name="Outcome">One of <see cref="RerunOutcomes"/>, or null where it was not reached.</param>
 /// <param name="Why">One line, for a sentence. Null where <paramref name="Outcome"/> is <see cref="RerunOutcomes.Reran"/>.</param>
 public sealed record RerunAnswer(string? Outcome, string? Why);
+
+/// <summary>One of <see cref="RunnerForge.Words"/>, or no answer - see <see cref="ForgeSignInAnswer"/>.</summary>
+public static class ForgeSignInStates
+{
+    /// <summary>The forge accepted the runner's sign-in.</summary>
+    public const string Works = RunnerForge.Works;
+
+    /// <summary>The forge refused it, or there is no <c>gh</c> to ask.</summary>
+    public const string Fails = RunnerForge.Fails;
+}
+
+/// <summary>
+/// What a forge answered about whether this runner is signed in to it: <c>works</c>
+/// or <c>fails</c>, or nothing where the question could not be put - a host that
+/// cannot be reached, a check that ran out of time, a repository with no forge.
+/// A missing answer is weather, and leaves whatever was known before standing.
+/// </summary>
+/// <param name="State">One of <see cref="ForgeSignInStates"/>. Null is no answer.</param>
+/// <param name="Why">One line, masked and at most <see cref="RunnerForge.MaxWhyLength"/> characters, beside <c>fails</c> only.</param>
+public sealed record ForgeSignInAnswer(string? State, string? Why);
 
 /// <summary>
 /// Where a runner reads the build on a branch's tip from. A seam so a test can
@@ -157,6 +183,12 @@ public interface IForge
     Task<BodyEditAnswer> EditBodyAsync(string url, string body, CancellationToken ct);
 
     /// <summary>
+    /// Opens a pull request from <paramref name="head"/> into <paramref name="trunk"/>. A branch that
+    /// already has one answers with that one's url, so that asking again records it.
+    /// </summary>
+    Task<PullRequestOpenAnswer> OpenPullRequestAsync(string head, string trunk, string title, string body, CancellationToken ct);
+
+    /// <summary>
     /// Brings pull request <paramref name="number"/>'s branch current with the
     /// trunk by a merge commit, on the forge - provided its head is still
     /// <paramref name="sha"/>.
@@ -172,6 +204,13 @@ public interface IForge
     /// never a failure and is never complained about.
     /// </summary>
     Task<string?> FileUrlAsync(string filePath, string trunk, CancellationToken ct);
+
+    /// <summary>
+    /// Whether this runner is signed in to the checkout's forge, asked of <c>gh</c> with its input closed
+    /// and ended after <paramref name="limit"/>. No answer where the forge could not be reached, the
+    /// check ran out of time, or the repository is a local path.
+    /// </summary>
+    Task<ForgeSignInAnswer> CheckSignInAsync(TimeSpan limit, CancellationToken ct);
 }
 
 /// <summary>
@@ -200,7 +239,7 @@ public interface IForge
 /// <para>The binary is trimmed, so what <c>gh</c> prints is read with
 /// <see cref="JsonDocument"/> and not by reflection.</para>
 /// </remarks>
-public sealed class GhForge(
+public sealed partial class GhForge(
     string path, string? canonical,
     Func<string, IReadOnlyDictionary<string, string>, IReadOnlyList<string>, CancellationToken, Task<GhForge.Ran>>? run = null)
     : IForge
@@ -421,6 +460,54 @@ public sealed class GhForge(
     }
 
     /// <summary>
+    /// <c>gh pr create --body-file</c> from a temporary file, for the reason <see cref="EditBodyAsync"/> has.
+    /// When a pull request already stands on the branch, gh says so on stderr with its url and exits 1;
+    /// that url is the answer, so a retry records the one that exists.
+    /// </summary>
+    public async Task<PullRequestOpenAnswer> OpenPullRequestAsync(
+        string head, string trunk, string title, string body, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new PullRequestOpenAnswer(null, "its repository is a local path, so there is no forge to open a pull request on");
+
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, body, new UTF8Encoding(false), ct);
+            var ran = await _run(path, Env(), [
+                "pr", "create", "--head", head, "--base", trunk, "--title", title, "--body-file", file,
+            ], ct);
+
+            if (ran.Code == 0)
+            {
+                var url = LastLine(ran.Out);
+                return url is not null && url.StartsWith("http", StringComparison.Ordinal)
+                    ? new PullRequestOpenAnswer(url, null)
+                    : new PullRequestOpenAnswer(null, "gh answered with something that is not a pull request's address");
+            }
+
+            if (ran.Err.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                && ran.Err.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(l => l.Trim()).LastOrDefault(l => l.StartsWith("http", StringComparison.Ordinal)) is { } existing)
+                return new PullRequestOpenAnswer(existing, null);
+
+            return new PullRequestOpenAnswer(null, Why(ran));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return new PullRequestOpenAnswer(null, e.Message);
+        }
+        finally
+        {
+            try { File.Delete(file); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    private static string? LastLine(string text) =>
+        text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()).LastOrDefault(l => l.Length > 0);
+
+    /// <summary>
     /// <c>gh pr update-branch</c> itself always reconciles against whichever
     /// head it has just read, which leaves no room to name an older one - so
     /// this calls the REST route it wraps directly, with <paramref name="sha"/>
@@ -468,6 +555,60 @@ public sealed class GhForge(
         var ran = await _run(path, Env(), ["browse", "--no-browser", filePath, "-b", trunk], ct);
         return ran.Code == 0 && ran.Out.Trim() is { Length: > 0 } url ? url : null;
     }
+
+    /// <summary>How long a sign-in check may take before it is ended and counts as no answer.</summary>
+    public static readonly TimeSpan Limit = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// <c>gh auth status --active</c>, never with <c>--show-token</c>. Exit 0 is signed in. A host that
+    /// cannot be reached also exits 1, and then prints <c>- The token in ... is invalid.</c> above its
+    /// <c>Error:</c> line, which is wrong for a network fault - so the <c>Error:</c> line is judged first
+    /// and a network fault is no answer. Any other failure is <c>fails</c>, with the first line that says
+    /// something (the host alone on a line does not).
+    /// </summary>
+    public async Task<ForgeSignInAnswer> CheckSignInAsync(TimeSpan limit, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to sign in to.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.'))) return new ForgeSignInAnswer(null, null);
+
+        using var ending = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        ending.CancelAfter(limit);
+
+        Ran ran;
+        try
+        {
+            ran = await _run(path, Env(), ["auth", "status", "--active", .. HostArgs()], ending.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Ran out of its own time while the caller still wants an answer: weather.
+            return new ForgeSignInAnswer(null, null);
+        }
+
+        if (ran.Code == 0) return new ForgeSignInAnswer(ForgeSignInStates.Works, null);
+        if (ran.Code == -1 && ran.Err.Length == 0) return new ForgeSignInAnswer(ForgeSignInStates.Fails, Why(ran));
+
+        var lines = ran.Err.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).Select(StripMark).ToList();
+        if (lines.FirstOrDefault(l => l.StartsWith("Error:", StringComparison.Ordinal)) is { } error
+            && NetworkFault().IsMatch(error))
+            return new ForgeSignInAnswer(null, null);
+
+        var first = lines.FirstOrDefault(l => l.Contains(' '));
+        var why = first is null ? null : Scrub.Lines([first]).FirstOrDefault();
+
+        // Scrub appends an ellipsis past its own cap, which would make 201.
+        if (why is { Length: > RunnerForge.MaxWhyLength }) why = why[..RunnerForge.MaxWhyLength];
+        return new ForgeSignInAnswer(ForgeSignInStates.Fails, why ?? $"gh exited {ran.Code}");
+    }
+
+    /// <summary><c>X Failed to log in</c> and <c>- The token in ...</c> to the sentence after the mark.</summary>
+    private static string StripMark(string line) =>
+        line.StartsWith("X ", StringComparison.Ordinal) || line.StartsWith("- ", StringComparison.Ordinal) ? line[2..].TrimStart() : line;
+
+    /// <summary>What an <c>Error:</c> line says when the host could not be spoken to at all, and not when it refused.</summary>
+    [GeneratedRegex(@"dial tcp|no such host|timeout|timed out|connection refused|connection reset|\bTLS\b|\bEOF\b|HTTP 5\d\d|proxy",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex NetworkFault();
 
     /// <summary>One of <see cref="PullRequestStates"/>, matched case-insensitively against what <c>gh</c> prints (<c>OPEN</c>, <c>CLOSED</c>, <c>MERGED</c>).</summary>
     public static string ClassifyState(string? state) => state?.ToUpperInvariant() switch
@@ -666,6 +807,7 @@ public sealed class GhForge(
             WorkingDirectory = dir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             UseShellExecute = false,
         };
         foreach (var arg in args) start.ArgumentList.Add(arg);
@@ -675,6 +817,11 @@ public sealed class GhForge(
         {
             using var process = Process.Start(start);
             if (process is null) return new Ran(-1, "", "");
+
+            // Closed at once: a gh that asks something reads the end of its input
+            // and gives up, instead of waiting on a person who is not there.
+            // No call reads stdin - a body is handed over as --body-file.
+            try { process.StandardInput.Close(); } catch (IOException) { }
 
             // Both at once: a command with more to say on stderr than a pipe
             // holds would otherwise wait for a reader that is busy on stdout.

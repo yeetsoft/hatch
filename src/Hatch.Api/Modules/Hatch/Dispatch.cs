@@ -415,6 +415,14 @@ public sealed class Dispatch(
                         ? checkRow
                         : Match(candidatePlaybooks, status.Id, rowTarget.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
 
+                    // A draft ambition standing in the from-column of the row that
+                    // shapes it is aimed at that row. Where it stands is its state: once
+                    // it stands in the to-column nothing aims at it, and a person who
+                    // moves it back gets it shaped again.
+                    if (ShapeStands(issue, status, statuses)
+                        && MatchShaping(candidatePlaybooks, status.Id, rowTarget.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId) is { } shapingRow)
+                        playbook = shapingRow;
+
                     // An ambition with a change that qualifies is aimed at the row that
                     // works it out, ahead of a question and ahead of its pass. A board
                     // with no such row carries on as it always has.
@@ -2373,6 +2381,18 @@ public sealed class Dispatch(
         && implementation is not null && from.Id == implementation.Id;
 
     /// <summary>
+    /// Whether an ambition stands in a column left of the implementation column,
+    /// where a draft waits to be shaped and then to be started. The one question
+    /// the scan, a named dispatch and the waiting fold all ask. A deferred column
+    /// is nobody's to shape, and the implementation column onward is the pass's.
+    /// </summary>
+    public static bool ShapeStands(EfHatchIssue issue, EfHatchStatus from, List<EfHatchStatus> statuses) =>
+        issue.Type == "ambition"
+        && Columns.Implementation(statuses) is not null
+        && !from.IsDeferred
+        && !Columns.AtOrPastImplementation(statuses, from.Id);
+
+    /// <summary>
     /// Whether this move is an ambition's pass: <see cref="PassStands"/> and
     /// the target <see cref="ReviewTarget"/> gave is the column itself. The
     /// one question the self-move folds and kinds ask, so a pass is never read
@@ -3078,7 +3098,11 @@ public sealed class Dispatch(
         // sub-epic whose parent epic is not running never reads as merely
         // childless, and no epic is ever silently "no playbook covers
         // this" (HA-113, HA-202, HA-1069).
-        if (IssueTypeKinds.RunsChildren(issue.Type) && wip is not null && !Columns.AtOrPastImplementation(statuses, from.Id)
+        //
+        // Not a draft ambition: it has no epics under it yet because its pass
+        // carves them once a person starts it, so "nothing is filed under it"
+        // would be the wrong sentence. The waiting fold below speaks for it.
+        if (IssueTypeKinds.RunsChildren(issue.Type) && !ShapeStands(issue, from, statuses) && wip is not null && !Columns.AtOrPastImplementation(statuses, from.Id)
             && to is not null && Columns.AtOrPastImplementation(statuses, to.Id))
         {
             var epicParent = family.ParentOf(issue.Id);
@@ -3117,6 +3141,12 @@ public sealed class Dispatch(
                    $"and this move is spawned on at most {limit.ToString("N0", CultureInfo.InvariantCulture)} - cut it into tasks first", BlockedKinds.Other);
 
         if (repoSourced is { Fold: { } fold }) return new Blocking(fold, BlockedKinds.Other);
+
+        // A draft ambition with no row for its move is not missing a playbook:
+        // starting it is a person's move into the implementation column.
+        if (playbook is null && ShapeStands(issue, from, statuses) && implementation is { } start)
+            return new Blocking($"waits for a person to start it - move it into \"{start.Name}\"", BlockedKinds.Person);
+
         return playbook is null
             ? new Blocking(repoSourced is { Trunk: { } trunk }
                 ? $"no playbook covers \"{from.Name}\" to \"{to.Name}\" for {An(issue.Type)} - add one to .hatch/playbooks.yaml on {trunk}, or a board-wide one on the Playbooks page"
@@ -3478,8 +3508,19 @@ public sealed class Dispatch(
     }
 
     /// <summary>
-    /// The rows <see cref="MatchAsync"/>, <see cref="MatchAnsweringAsync"/> and
-    /// <see cref="MatchWorkingOutAsync"/>
+    /// <see cref="MatchWorkingOutAsync"/>'s twin for the row that shapes a draft
+    /// ambition: the flagged row on the edge from one column to the next.
+    /// </summary>
+    public async Task<PlaybookMatch?> MatchShapingAsync(int from, int to, string type, bool isParent, int projectId, CancellationToken ct)
+    {
+        var (rows, file) = await ReadRowsAsync(from, to, projectId, ct);
+        var playbook = MatchShaping(rows, from, to, type, isParent, projectId);
+        return new PlaybookMatch(playbook, SourceOf(playbook), file);
+    }
+
+    /// <summary>
+    /// The rows <see cref="MatchAsync"/>, <see cref="MatchAnsweringAsync"/>,
+    /// <see cref="MatchWorkingOutAsync"/> and <see cref="MatchShapingAsync"/>
     /// choose among: the project's file rows, then the table's rows for the edge.
     /// </summary>
     private async Task<(List<EfHatchPlaybook> Rows, PlaybookFileReference? File)> ReadRowsAsync(int from, int to, int projectId, CancellationToken ct)
@@ -3560,13 +3601,14 @@ public sealed class Dispatch(
     /// The same rule against rows already in hand, which is how a scan matches
     /// a whole board's worth of transitions without a query a row. The matrix
     /// is small enough to read whole and the tie-break is arithmetic. A row that
-    /// <see cref="EfHatchPlaybook.AnswersQuestions"/> is never returned: it is
+    /// <see cref="EfHatchPlaybook.AnswersQuestions"/>, <see cref="EfHatchPlaybook.WorksOutChanges"/>
+    /// or <see cref="EfHatchPlaybook.ShapesAmbition"/> is never returned: it is
     /// reached by name, not by matching, and an operator who leaves its types
     /// empty must not have it cover everything.
     /// </summary>
     public static EfHatchPlaybook? Match(List<EfHatchPlaybook> playbooks, int from, int to, string type, bool isParent, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges && p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges && !p.ShapesAmbition && p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderByDescending(p => p.ProjectId is not null)
             .ThenByDescending(p => p.Specificity)
@@ -3606,6 +3648,23 @@ public sealed class Dispatch(
             .FirstOrDefault();
 
     /// <summary>
+    /// The mirror of <see cref="MatchAnswering"/> for the row that shapes a draft
+    /// ambition: only rows that <see cref="EfHatchPlaybook.ShapesAmbition"/>, on
+    /// the edge from <paramref name="from"/> to <paramref name="to"/>, with the
+    /// same tie-break. It covers an ambition and nothing else, so a flagged row
+    /// with its types left empty never reaches an epic, a story, a task or a bug.
+    /// Null where the board has none.
+    /// </summary>
+    public static EfHatchPlaybook? MatchShaping(List<EfHatchPlaybook> playbooks, int from, int to, string type, bool isParent, int projectId) =>
+        type != "ambition" ? null : playbooks
+            .Where(p => p.ShapesAmbition && p.FromStatusId == from && p.ToStatusId == to && p.Covers(type, isParent)
+                        && (p.ProjectId == null || p.ProjectId == projectId))
+            .OrderByDescending(p => p.ProjectId is not null)
+            .ThenByDescending(p => p.Specificity)
+            .ThenBy(p => p.Id)
+            .FirstOrDefault();
+
+    /// <summary>
     /// The playbook that would run a reflection for this project, out of rows
     /// with no from/to to pin since filing is not a transition. Shape
     /// (<see cref="EfHatchPlaybook.Covers"/>'s <c>isParent</c> half) is not
@@ -3615,7 +3674,7 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? MatchReflection(List<EfHatchPlaybook> playbooks, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges && !p.ShapesAmbition
                         && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("reflection"))
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderByDescending(p => p.ProjectId is not null)
@@ -3634,11 +3693,30 @@ public sealed class Dispatch(
     /// </summary>
     public static EfHatchPlaybook? MatchWeave(List<EfHatchPlaybook> playbooks, int projectId) =>
         playbooks
-            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges
+            .Where(p => !p.AnswersQuestions && !p.WorksOutChanges && !p.ShapesAmbition
                         && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("epic"))
                         && (p.ProjectId == null || p.ProjectId == projectId))
             .OrderBy(p => p.FromStatus!.SortOrder)
             .ThenByDescending(p => p.ProjectId is not null)
+            .ThenByDescending(p => p.Specificity)
+            .ThenBy(p => p.Id)
+            .FirstOrDefault();
+
+    /// <summary>
+    /// The playbook row a shaping press files its draft ambition into the
+    /// from-column of: the rows that <see cref="EfHatchPlaybook.ShapesAmbition"/>
+    /// and cover <c>ambition</c> (types left empty, or naming it), on this
+    /// project or the board. A project's own row comes first, then the more
+    /// specific, then the lower id - as <see cref="MatchShaping"/> ranks them.
+    /// No edge is pinned, since filing is not a transition, and shape is not
+    /// checked, as <see cref="MatchWeave"/> does not. Null where none.
+    /// </summary>
+    public static EfHatchPlaybook? MatchShapingPress(List<EfHatchPlaybook> playbooks, int projectId) =>
+        playbooks
+            .Where(p => p.ShapesAmbition
+                        && (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("ambition"))
+                        && (p.ProjectId == null || p.ProjectId == projectId))
+            .OrderByDescending(p => p.ProjectId is not null)
             .ThenByDescending(p => p.Specificity)
             .ThenBy(p => p.Id)
             .FirstOrDefault();
@@ -5241,6 +5319,21 @@ public sealed class FamilyGate
     /// </summary>
     public IReadOnlyList<long> OpenWorkChildren(long issueId) =>
         OpenChildren(issueId).Where(id => !_waiting.Contains(id)).ToList();
+
+    /// <summary>
+    /// Whether no child of this issue is work the dispatcher counts as open: an
+    /// epic is read as <see cref="EpicOpenChildren"/> reads it, anything else as
+    /// <see cref="OpenWorkChildren"/> does. A task waiting on its story's pull
+    /// request is not a leaf, since it moves when the story does.
+    /// </summary>
+    public bool IsLeaf(long issueId, string type, List<EfHatchStatus> statuses)
+    {
+        if (IsWaiting(issueId)) return false;
+
+        return IssueTypeKinds.RunsChildren(type)
+            ? EpicOpenChildren(issueId, statuses).Count == 0
+            : OpenWorkChildren(issueId).Count == 0;
+    }
 
     /// <summary>The direct children of this issue, in board order.</summary>
     public IReadOnlyList<long> Children(long issueId) =>

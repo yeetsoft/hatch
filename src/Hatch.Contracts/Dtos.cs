@@ -559,6 +559,16 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// name. Null where the url was recorded before this was kept, or none is
 /// held.
 /// </param>
+/// <param name="EnteredColumnAt">
+/// When this card entered the column it stands in: the instant of its newest
+/// status change, else its creation. A rank move changes nothing. Set only on
+/// the board read; null elsewhere.
+/// </param>
+/// <param name="Aged">
+/// Whether this card has stood in its column longer than the column's normal
+/// (<see cref="ColumnNormalDto"/>) and has no open child. Set only on the
+/// board read; false elsewhere.
+/// </param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -615,7 +625,9 @@ public record IssueCardDto(
     bool ChildBeyondScope = false,
     IReadOnlyList<string> FromBeyondScope = null!,
     string? PullRequestRecordedBy = null,
-    string? PullRequestRecordedByKind = null)
+    string? PullRequestRecordedByKind = null,
+    DateTimeOffset? EnteredColumnAt = null,
+    bool Aged = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -904,6 +916,12 @@ public record IssueClaimDto(
 /// name. Null where the url was recorded before this was kept, or none is
 /// held.
 /// </param>
+/// <param name="WaitingPullRequest">
+/// A pull request that is written and waiting to be opened, or null where
+/// there is none - see <see cref="EfHatchIssue.WaitingPrTitle"/>. Gone once a
+/// pull request url is recorded. Trailing and defaulted for the reason
+/// <paramref name="PullRequestRecordedByKind"/> is.
+/// </param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -985,7 +1003,8 @@ public record IssueDto(
     string? PreApprovalPassedOverLevel = null,
     string? PriorityPassedOverLevel = null,
     string? PullRequestRecordedBy = null,
-    string? PullRequestRecordedByKind = null)
+    string? PullRequestRecordedByKind = null,
+    WaitingPullRequestDto? WaitingPullRequest = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -1690,6 +1709,17 @@ public record DreamCreateRequest(string Body, string? Source = null, int? Projec
 /// <param name="Seed">The free text behind mode <c>seed</c>; required there, and refused on every other mode.</param>
 /// <param name="DreamIds">The dreams the person had on screen when they pressed, if any.</param>
 public record DreamWeaveRequest(int? ProjectId, string? Mode, string? Seed = null, IReadOnlyList<long>? DreamIds = null);
+
+/// <summary>
+/// What a person sends to file a draft ambition - see
+/// <c>DreamShapeController</c> and <c>AmbitionShape</c>. At least one of
+/// <paramref name="Words"/>, <paramref name="DreamIds"/> and <paramref name="AttachmentIds"/> is needed.
+/// </summary>
+/// <param name="ProjectId">The project the draft is born in. Nullable so a missing one is a sentence ("an ambition needs a home"), not a bound default.</param>
+/// <param name="Words">What the person wrote, quoted into the draft's description. The first line becomes its title.</param>
+/// <param name="DreamIds">Dreams the draft is shaped from. They are recorded on the draft, not copied into it.</param>
+/// <param name="AttachmentIds">Uploaded files, linked from the draft's description. Each belongs to this project or to none.</param>
+public record DreamShapeRequest(int? ProjectId, string? Words = null, IReadOnlyList<long>? DreamIds = null, IReadOnlyList<Guid>? AttachmentIds = null);
 
 /// <summary>A page of dreams, and how many matched before paging.</summary>
 public record DreamsPageDto(IReadOnlyList<DreamDto> Dreams, int Total);
@@ -2456,9 +2486,23 @@ public record RunnerCapacityDto(string ProjectKey, int Steps, IReadOnlyList<stri
 /// and not deferred. Empty wherever the horizon is off; the server always
 /// sends the list, never null.
 /// </param>
+/// <param name="Normals">
+/// One entry for every active column - after the first, not terminal, not
+/// deferred - in board order. Null where the read worked none out.
+/// </param>
+/// <param name="At">The server's instant the board was read at, so a client ages a card against the same clock the server did.</param>
 public record BoardDto(
     IReadOnlyList<StatusDto> Statuses, IReadOnlyList<IssueCardDto> Issues, WipDto? Wip = null,
-    int? DoneHorizonHours = null, IReadOnlyList<IssueCardDto>? PastHorizon = null);
+    int? DoneHorizonHours = null, IReadOnlyList<IssueCardDto>? PastHorizon = null,
+    IReadOnlyList<ColumnNormalDto>? Normals = null, DateTimeOffset? At = null);
+
+/// <summary>
+/// How long a card normally stands in one column: the ninetieth percentile of
+/// the stays that ended over the last thirty days, across every project.
+/// </summary>
+/// <param name="StatusId">The column.</param>
+/// <param name="Seconds">The normal, in seconds, or null where the column has fewer than ten stays to go on.</param>
+public record ColumnNormalDto(int StatusId, long? Seconds);
 
 /// <summary>
 /// How full the WIP section is right now, the shape <c>GET /board</c> carries
@@ -2570,6 +2614,10 @@ public static class ClaudeTools
 /// A row a session runs on to work out what a change to an ambition does to its epics in flight. The ordinary
 /// match never returns it, and it is never also a check or a row that answers questions.
 /// </param>
+/// <param name="ShapesAmbition">
+/// A row a session runs on to shape a draft ambition: its title, its description and its capabilities. The ordinary
+/// match never returns it, and it is never also a check, a row that answers questions or a row that works out changes.
+/// </param>
 /// <param name="Source">
 /// Which layer the row that matched came from: <c>"board"</c>, <c>"project"</c>
 /// (today's own-project-row case) or <c>"file"</c>, a row read off a repo-sourced
@@ -2601,7 +2649,8 @@ public record PlaybookDto(
     int? MaxRunSeconds = null,
     string? LocalModel = null,
     bool AnswersQuestions = false,
-    bool WorksOutChanges = false);
+    bool WorksOutChanges = false,
+    bool ShapesAmbition = false);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
@@ -2659,12 +2708,16 @@ public record LocalModelCreateRequest(
 /// </param>
 /// <param name="IsCheck">Null means false (on create) or leaves it alone (on patch).</param>
 /// <param name="AnswersQuestions">
-/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions or works out
-/// changes - never more than one.
+/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions, works out
+/// changes or shapes an ambition - never more than one.
 /// </param>
 /// <param name="WorksOutChanges">
-/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions or works out
-/// changes - never more than one.
+/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions, works out
+/// changes or shapes an ambition - never more than one.
+/// </param>
+/// <param name="ShapesAmbition">
+/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions, works out
+/// changes or shapes an ambition - never more than one.
 /// </param>
 /// <param name="MaxRunSeconds">
 /// The seconds a session under this row may run before it is cut off. Null
@@ -2694,7 +2747,8 @@ public record PlaybookCreateRequest(
     string? MaxRunSeconds = null,
     string? LocalModel = null,
     bool? AnswersQuestions = null,
-    bool? WorksOutChanges = null);
+    bool? WorksOutChanges = null,
+    bool? ShapesAmbition = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="Prompt">
@@ -2723,10 +2777,16 @@ public record PlaybookCreateRequest(
 /// </param>
 /// <param name="IsCheck">Null leaves it alone.</param>
 /// <param name="AnswersQuestions">
-/// Null leaves it alone. A row is a check, answers questions or works out changes - never more than one.
+/// Null leaves it alone. A row is a check, answers questions, works out changes or shapes an ambition - never more
+/// than one.
 /// </param>
 /// <param name="WorksOutChanges">
-/// Null leaves it alone. A row is a check, answers questions or works out changes - never more than one.
+/// Null leaves it alone. A row is a check, answers questions, works out changes or shapes an ambition - never more
+/// than one.
+/// </param>
+/// <param name="ShapesAmbition">
+/// Null leaves it alone. A row is a check, answers questions, works out changes or shapes an ambition - never more
+/// than one.
 /// </param>
 /// <param name="MaxRunSeconds">
 /// The seconds a session under this row may run before it is cut off. Null
@@ -2755,7 +2815,8 @@ public record PlaybookPatchRequest(
     string? MaxRunSeconds = null,
     string? LocalModel = null,
     bool? AnswersQuestions = null,
-    bool? WorksOutChanges = null);
+    bool? WorksOutChanges = null,
+    bool? ShapesAmbition = null);
 
 /// <summary>
 /// One change in a proposal submission: the playbook, then every field
@@ -2777,7 +2838,8 @@ public record PlaybookProposalChangeRequest(
     bool? IsCheck = null,
     string? LocalModel = null,
     bool? AnswersQuestions = null,
-    bool? WorksOutChanges = null)
+    bool? WorksOutChanges = null,
+    bool? ShapesAmbition = null)
 {
     /// <summary>The fields alone, in <see cref="PlaybookPatchRequest"/>'s own shape.</summary>
     public PlaybookPatchRequest ToPatch() => new(
@@ -2795,14 +2857,16 @@ public record PlaybookProposalChangeRequest(
         IsCheck: IsCheck,
         LocalModel: LocalModel,
         AnswersQuestions: AnswersQuestions,
-        WorksOutChanges: WorksOutChanges);
+        WorksOutChanges: WorksOutChanges,
+        ShapesAmbition: ShapesAmbition);
 
-    /// <summary>Whether any of the fifteen patch fields is present - <c>""</c> and an empty list count.</summary>
+    /// <summary>Whether any of the sixteen patch fields is present - <c>""</c> and an empty list count.</summary>
     public bool NamesAField =>
         FromStatusId is not null || ToStatusId is not null || Types is not null || Prompt is not null ||
         Model is not null || Effort is not null || Budget is not null || BriefLimit is not null ||
         Shape is not null || DeniedTools is not null || ProjectId is not null || IsCheck is not null ||
-        LocalModel is not null || AnswersQuestions is not null || WorksOutChanges is not null;
+        LocalModel is not null || AnswersQuestions is not null || WorksOutChanges is not null ||
+        ShapesAmbition is not null;
 }
 
 /// <summary>A session's proposal: why, the ticket it was working, and the changes.</summary>
@@ -2815,7 +2879,7 @@ public record PlaybookProposalRequest(
 /// <param name="ChangedFields">
 /// Which fields differ between <paramref name="Before"/> and <paramref name="After"/>, from a fixed vocabulary
 /// in this order: <c>fromStatusId, toStatusId, types, shape, prompt, model, localModel, effort, budget, briefLimit,
-/// deniedTools, isCheck, answersQuestions, worksOutChanges, projectId</c>.
+/// deniedTools, isCheck, answersQuestions, worksOutChanges, shapesAmbition, projectId</c>.
 /// </param>
 /// <param name="OutOfDate">Whether the playbook has changed since the proposal was made.</param>
 public record PlaybookProposalChangeDto(
@@ -2996,6 +3060,35 @@ public record NoCodeRequest(string? Reason)
     /// </summary>
     public const int MaxLength = 200;
 }
+
+/// <summary>
+/// A pull request that is written and waiting to be opened, as an issue
+/// carries it. The runner that wrote it is the caller, so it is not here.
+/// </summary>
+/// <param name="Title">The pull request title; at most <see cref="WaitingPullRequestRequest.MaxTitleLength"/> characters.</param>
+/// <param name="Body">The pull request body; at most <see cref="PullRequestEnvelopeWriter.GitHubBodyLimit"/> characters. May be empty.</param>
+/// <param name="Branch">The branch it is to be opened from.</param>
+/// <param name="Sha">The commit the branch stood at.</param>
+/// <param name="Remote">The remote of the repository the branch is in - the checkout's origin, as <c>hatch landed</c> sends it. Null when the writer did not say.</param>
+/// <param name="Why">Why it could not be opened where it was written; at most <see cref="WaitingPullRequestRequest.MaxWhyLength"/> characters.</param>
+public record WaitingPullRequestRequest(
+    string? Title, string? Body, string? Branch, string? Sha, string? Remote, string? Why)
+{
+    public const int MaxTitleLength = 256;
+    public const int MaxWhyLength = 500;
+}
+
+/// <summary>A waiting pull request as an issue carries it - see <see cref="WaitingPullRequestRequest"/>.</summary>
+/// <param name="Title">The pull request title.</param>
+/// <param name="Body">The pull request body.</param>
+/// <param name="Branch">The branch it is to be opened from.</param>
+/// <param name="Sha">The commit the branch stood at.</param>
+/// <param name="Remote">The remote of the repository the branch is in, or null where it was not said.</param>
+/// <param name="Runner">The name that wrote it, a person's or an API key's.</param>
+/// <param name="Why">Why it could not be opened where it was written.</param>
+/// <param name="At">When it was last written or replaced.</param>
+public record WaitingPullRequestDto(
+    string Title, string Body, string Branch, string Sha, string? Remote, string Runner, string Why, DateTimeOffset At);
 
 /// <summary>
 /// The record that an issue came from outside, as stored - see
@@ -4092,6 +4185,58 @@ public record CumulativeFlowDto(
     IReadOnlyList<string> Projects,
     IReadOnlyList<CumulativeFlowPointDto> Points,
     int Unresolved);
+
+/// <summary>One bar of the board health read: a stretch of the window, what moved in it and where work stood at its end.</summary>
+/// <param name="Start">The bar's first instant.</param>
+/// <param name="End">The bar's end, exclusive. The last bar is read at the instant the answer was made, not here.</param>
+/// <param name="Board">Moves right the board made itself in the bar: a hop, a merge, a landing or a push back.</param>
+/// <param name="Runner">Moves right a runner made in the bar, under the claim it held.</param>
+/// <param name="Person">Moves right everyone else made in the bar.</param>
+/// <param name="Moved">The three above added up.</param>
+/// <param name="Waiting">Issues standing in a column before implementation at the bar's end.</param>
+/// <param name="InFlight">Issues standing from the implementation column up to, not into, a terminal one.</param>
+/// <param name="Done">Issues that closed inside the window and stood closed at the bar's end.</param>
+/// <param name="WaitingPullRequests">Pull requests in review waiting on a person at the bar's end.</param>
+/// <param name="WaitingQuestions">Questions waiting on a person at the bar's end.</param>
+/// <param name="OldestInFlightSeconds">How long the oldest issue with no children had stood in flight at the bar's end; null when none.</param>
+/// <param name="OldestWaitSeconds">How long the oldest pull request or question had waited on a person; null when none.</param>
+public record BoardHealthBarDto(
+    DateTimeOffset Start,
+    DateTimeOffset End,
+    int Board,
+    int Runner,
+    int Person,
+    int Moved,
+    int Waiting,
+    int InFlight,
+    int Done,
+    int WaitingPullRequests,
+    int WaitingQuestions,
+    long? OldestInFlightSeconds,
+    long? OldestWaitSeconds);
+
+/// <summary>
+/// The whole health of the board over a window in one read: twenty-four equal
+/// bars of what moved right and who moved it, where work stood and what waited on
+/// a person. Counts and durations only; nothing in the answer names an issue.
+/// </summary>
+/// <param name="From">The first bar's start, on the UTC clock.</param>
+/// <param name="To">The last bar's end.</param>
+/// <param name="BarMinutes">How wide a bar is: the window divided by twenty-four.</param>
+/// <param name="Bars">The twenty-four bars, oldest first; none when no issue is in scope yet.</param>
+/// <param name="Total">Moves right over the whole window.</param>
+/// <param name="PreviousTotal">Moves right over the window before it, for comparison.</param>
+/// <param name="PastNormal">Issues with no children standing in flight longer than their column's normal, now.</param>
+/// <param name="HasWorkColumn">Whether the board has an implementation column; without one no bar counts waiting, in flight or done.</param>
+public record BoardHealthDto(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    int BarMinutes,
+    IReadOnlyList<BoardHealthBarDto> Bars,
+    int Total,
+    int PreviousTotal,
+    int PastNormal,
+    bool HasWorkColumn);
 
 /// <summary>One board column's counts over a flow report's window.</summary>
 /// <param name="StatusId">The column's id.</param>
@@ -5428,6 +5573,46 @@ public static class RunnerSigning
 }
 
 /// <summary>
+/// Whether a runner's forge sign-in works, carried on
+/// <see cref="RunnerHeartbeatRequest.Forge"/> and read back off
+/// <see cref="RunnerDto.Forge"/>. The loop and the board both fold several
+/// answers into one through <see cref="Worst"/>, so the rule is written once.
+/// </summary>
+public static class RunnerForge
+{
+    /// <summary>The forge accepted the runner's sign-in.</summary>
+    public const string Works = "works";
+
+    /// <summary>The forge refused the runner's sign-in.</summary>
+    public const string Fails = "fails";
+
+    /// <summary>The two words the board keeps; anything else is stored as no answer.</summary>
+    public static readonly string[] Words = [Works, Fails];
+
+    /// <summary>The longest <see cref="RunnerHeartbeatRequest.ForgeWhy"/> the board keeps.</summary>
+    public const int MaxWhyLength = 200;
+
+    /// <summary>
+    /// The worst of several answers: <see cref="Fails"/> before <see cref="Works"/>,
+    /// with the reason of the first one that fails. A word that is not one of
+    /// <see cref="Words"/> counts as no answer; null when none of them said.
+    /// </summary>
+    public static (string State, string? Why)? Worst(IEnumerable<(string? State, string? Why)> answers)
+    {
+        (string State, string? Why)? worst = null;
+        foreach (var (state, why) in answers)
+        {
+            if (state is null || Array.IndexOf(Words, state) < 0)
+                continue;
+            if (state == Fails)
+                return (Fails, why);
+            worst ??= (Works, null);
+        }
+        return worst;
+    }
+}
+
+/// <summary>
 /// What a person is ordering a runner to do, from the Runners page's own
 /// <c>POST .../order</c>.
 /// </summary>
@@ -5649,6 +5834,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// <see cref="Models"/> and <see cref="Has"/> are. Null where it never said.
 /// </param>
 /// <param name="SigningWhy">What git said, where <paramref name="Signing"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
+/// <param name="Forge">
+/// Whether this runner can sign in to its forge - one of <see cref="RunnerForge.Words"/>,
+/// the worst over its live loop sessions, read as <see cref="Signing"/> is.
+/// Null where it never said.
+/// </param>
+/// <param name="ForgeWhy">What the forge said, where <paramref name="Forge"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -5723,7 +5914,9 @@ public record RunnerDto(
     bool LauncherBehind = false,
     bool Preferred = false,
     string? Signing = null,
-    string? SigningWhy = null)
+    string? SigningWhy = null,
+    string? Forge = null,
+    string? ForgeWhy = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -5743,6 +5936,11 @@ public record RunnerDto(
 /// facts this session's runner reports about itself on every beat, as on
 /// <see cref="RunnerDto"/>: memory is the total across its devices.
 /// </summary>
+/// <param name="Forge">
+/// Whether this session's loop can sign in to its forge - one of
+/// <see cref="RunnerForge.Words"/>, as its last beat said. Null where it never said.
+/// </param>
+/// <param name="ForgeWhy">What the forge said, where <paramref name="Forge"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
 public record RunnerSessionDto(
     int Id,
     string? Where,
@@ -5803,7 +6001,9 @@ public record RunnerSessionDto(
     int? AcceleratorDeviceCount = null,
     string? AcceleratorBackend = null,
     bool Pulling = false,
-    int? LauncherVersion = null)
+    int? LauncherVersion = null,
+    string? Forge = null,
+    string? ForgeWhy = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -6046,6 +6246,16 @@ public enum RunnerBoardDrift
 /// What git said, where <paramref name="Signing"/> is <c>fails</c> - the first line,
 /// scrubbed of keys and cut to 200 characters. Read only with that word.
 /// </param>
+/// <param name="Forge">
+/// Whether this loop can sign in to its forge - one of <see cref="RunnerForge.Words"/>.
+/// Written on every loop beat that sends it; a <c>once</c> beat and an older runner send none.
+/// Absent leaves a stored value alone; a word the board does not know is stored as no
+/// answer, and the beat is still accepted.
+/// </param>
+/// <param name="ForgeWhy">
+/// What the forge said, where <paramref name="Forge"/> is <c>fails</c> - the first line,
+/// scrubbed of keys and cut to 200 characters. Read only with that word.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -6103,7 +6313,9 @@ public record RunnerHeartbeatRequest(
     int? LauncherVersion = null,
     string? Rid = null,
     string? Signing = null,
-    string? SigningWhy = null);
+    string? SigningWhy = null,
+    string? Forge = null,
+    string? ForgeWhy = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

@@ -738,6 +738,68 @@ public class WorkControllerTests
         Assert.NotEqual("opus", work.Model);
     }
 
+    // ---- A draft ambition aimed at the row that shapes it ----
+
+    /// <summary>
+    /// A board with a flagged row from inbox to todo for ambitions, and a draft ambition standing in
+    /// <paramref name="column"/>. The implementation column is in progress.
+    /// </summary>
+    private static async Task<(Harness H, EfHatchIssue Draft, EfHatchPlaybook Flagged)> DraftAsync(Func<Harness, int> column)
+    {
+        var h = await NewAsync();
+        await h.TickWipAsync(h.InProgress, h.Review);
+        var flagged = Playbook(h.Inbox, h.Todo, "ambition", "opus");
+        flagged.Prompt = "shape the draft";
+        flagged.ShapesAmbition = true;
+        h.Db.Playbooks.Add(flagged);
+        await h.Db.SaveChangesAsync();
+        var draft = await h.FileAsync("ambition", "D", column(h));
+        return (h, draft, flagged);
+    }
+
+    [Fact]
+    public async Task Work_ADraftAmbitionInTheFromColumn_IsBriefedByTheShapingRowAndTheQueueAgrees()
+    {
+        var (h, draft, flagged) = await DraftAsync(x => x.Inbox);
+
+        var named = Value(await h.Work.GetWork(Key(draft), null, default));
+        var queue = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(draft));
+
+        Assert.Null(named.Blocked);
+        Assert.Equal(WorkKinds.Advance, named.Kind);
+        Assert.False(named.Hop);
+        Assert.Equal(h.Inbox, named.FromStatus.Id);
+        Assert.Equal(h.Todo, named.ToStatus!.Id);
+        Assert.Equal(flagged.Id, named.Playbook!.Id);
+        Assert.Equal("opus", named.Model);
+
+        Assert.Null(queue.Blocked);
+        Assert.Equal(WorkKinds.Advance, queue.Kind);
+        Assert.False(queue.Hop);
+        Assert.Equal(h.Inbox, queue.FromStatus.Id);
+        Assert.Equal(h.Todo, queue.ToStatus!.Id);
+        Assert.Equal(named.Model, queue.Model);
+    }
+
+    [Fact]
+    public async Task Work_ADraftAmbitionInTheToColumn_WaitsForAPersonToStartIt()
+    {
+        var (h, draft, _) = await DraftAsync(x => x.Todo);
+
+        // The harness board carries a row for any type from todo; this board has none for the draft's move.
+        h.Db.Playbooks.RemoveRange(h.Db.Playbooks.Where(p => p.FromStatusId == h.Todo));
+        await h.Db.SaveChangesAsync();
+
+        var named = Value(await h.Work.GetWork(Key(draft), null, default));
+        var queue = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(draft));
+
+        const string waits = "waits for a person to start it - move it into \"in progress\"";
+        Assert.Equal(waits, named.Blocked);
+        Assert.Equal(waits, queue.Blocked);
+        Assert.Equal(BlockedKinds.Person, queue.BlockedKind);
+        Assert.Null(named.Playbook);
+    }
+
     // ---- An ambition aimed at a question ----
 
     /// <summary>

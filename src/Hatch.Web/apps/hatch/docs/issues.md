@@ -92,7 +92,8 @@ column and badges stack under the title. No other type draws it.
 A pass is a session on an ambition standing in the implementation column, aimed
 at that column itself rather than the next one. A person starts the first one
 by moving the ambition into the implementation column; after that, a pass runs
-again on its own whenever the ambition has room.
+again on its own whenever the ambition has room. An ambition that has not been
+started yet is a [draft](#a-draft-ambition), and a pass never runs on one.
 
 It reads each capability against the trunk and records a verdict — holds, does
 not hold, cannot tell — with what it looked at and a sha, the same way any
@@ -131,6 +132,39 @@ own entry, "Recorded outside a pass", dated at the verdict's own time. The page
 works that out when it reads, and nothing is stored for it. Every entry's own
 comments follow, rendered the way the Comments section renders a body. The
 verdict lines sit in a grid on a desktop and stack one per line on a phone.
+
+## A draft ambition
+
+A draft ambition is one that stands left of the implementation column and has
+not been started. It is sent to the row that shapes it once, and then it waits
+for a person to start it.
+
+**Where it stands.** A draft stands in the from-column of the row that shapes
+ambitions, Breakdown on a stock board. A person files it into that column; no
+button does it for them yet.
+
+**The row that shapes it.** Hatch sends one session at a draft standing in that
+column, to the [row flagged as shaping an
+ambition](playbooks#rows-that-shape-ambitions). The session is an ordinary
+advance, so it ends with the draft in the row's to-column, Backlog on a stock
+board. Only a flagged row on that exact move is matched, and only for an
+ambition: an epic, a story, a task or a bug on the same move gets its own row,
+never this one. Where the project and the board each have one, the project's wins.
+
+**Where it stands after.** Once the draft stands in the to-column, nothing is
+aimed at it. It is not shaped again, and it is never sent to a pass.
+
+**What the queue says.** A draft with no row for its move reads
+`waits for a person to start it - move it into "<implementation column>"`,
+where the quoted name is the board's implementation column. It no longer asks
+for a playbook. Every other type with no row keeps the sentence it had.
+An open question on the draft holds it the way it holds any ticket, with the
+question's own sentence.
+
+**Starting it.** Starting an ambition is a person's move into the implementation
+column. From there [a pass](#passes) runs exactly as it does for any ambition.
+A person who moves a shaped draft back into the from-column gets it shaped
+again.
 
 ## Changing an ambition
 
@@ -665,6 +699,24 @@ a person's call, never a key's, the same reach as Local model. Setting the
 value a ticket already holds writes nothing. The issue page shows the live
 value, its own value and the ticket it was inherited from, beside Local
 model; a board card marked human carries the same source.
+
+## A pull request waiting to be opened
+
+Work can be written and pushed and still have no pull request, when the place
+it was written could not open one. The ticket then carries the pull request
+itself: its title, its body, the branch and sha, the repository's remote, the
+name that wrote it and why it was not opened. The issue page's facts panel
+shows its `Pull request` row reading `Written, waiting to be opened`, with the
+runner, the reason and when, and the title opens to the branch and the body as
+written. A `pull request waiting` chip sits under the title. A session writes it with
+`hatch pr KEY --title ... --body-file ...` when the forge cannot open the pull
+request from where it worked, and carries on; where the forge can, that call
+opens the pull request and records its url instead. The page has
+nothing to edit or delete it with: a person records the pull request's url, as
+they would any other, and that clears it. Until then the ticket still counts as
+having no pull request recorded, but the attention panel does not list it as
+in review with none, and the loop does not refuse an increment that ended in
+review with one waiting as unpublished.
 
 ## Finished with no code
 

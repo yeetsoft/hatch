@@ -23,7 +23,8 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/board")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class BoardController(
-    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time, DoneHorizon horizon) : ControllerBase
+    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time, DoneHorizon horizon,
+    ColumnNormals? normals = null) : ControllerBase
 {
     /// <summary>
     /// One row, shared by <see cref="GetBoard"/>'s two card queries - the board
@@ -60,7 +61,8 @@ public class BoardController(
         DateTimeOffset? ClosedAt,
         string? NoCode,
         ClaimSnapshot Claim,
-        string CreatedBy);
+        string CreatedBy,
+        DateTimeOffset CreatedAt);
 
     /// <summary>
     /// The projection itself, as an expression tree so it translates to SQL -
@@ -99,7 +101,8 @@ public class BoardController(
             i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
             i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
             i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
-        i.CreatedBy);
+        i.CreatedBy,
+        i.CreatedAt);
 
     [HttpGet]
     public async Task<ActionResult<BoardDto>> GetBoard(CancellationToken ct)
@@ -198,6 +201,30 @@ public class BoardController(
         var contributions = await IssueContributions.ForIssuesAsync(
             db, issues.Concat(past).Select(i => i.Id).ToList(), ct);
 
+        // When each card last changed column: its newest status change. A rank
+        // move writes no such event, so it changes nothing. One grouped read for
+        // the whole board; a card with no move entered at its creation.
+        var moved = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
+            .GroupBy(e => e.IssueId)
+            .Select(g => new { g.Key, At = g.Max(e => e.At) })
+            .ToDictionaryAsync(g => g.Key, g => g.At, ct);
+
+        DateTimeOffset EnteredAt(CardRow i) => moved.TryGetValue(i.Id, out var at) ? at : i.CreatedAt;
+
+        // The normals, over every project and at most once in five minutes. A
+        // card is a candidate for aged when its column has a normal and it has
+        // stood there strictly longer. Only then is the family read, which
+        // re-reads every issue, so a quiet board pays nothing for it.
+        IReadOnlyList<ColumnNormals.Normal> table = normals is null ? [] : await normals.ForAsync(db, statuses, now, ct);
+        var normalOf = table.Where(n => n.Seconds is not null).ToDictionary(n => n.StatusId, n => n.Seconds!.Value);
+
+        bool Candidate(CardRow i) => ColumnNormals.PastNormal(normalOf, i.StatusId, EnteredAt(i), now);
+
+        var gate = issues.Concat(past).Any(Candidate)
+            ? await FamilyGate.ForAsync(db, actors, statuses, ct)
+            : null;
+
         IssueCardDto Card(CardRow i)
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
@@ -259,13 +286,16 @@ public class BoardController(
                 ParentBeyondScope: disclosed.ParentBeyondScope,
                 ChildBeyondScope: disclosed.ChildBeyondScope,
                 FromBeyondScope: disclosed.FromBeyondScope,
-                ProjectPriority: priorities.ProjectLevel(i.Id));
+                ProjectPriority: priorities.ProjectLevel(i.Id),
+                EnteredColumnAt: EnteredAt(i),
+                Aged: gate is not null && Candidate(i) && gate.IsLeaf(i.Id, i.Type, statuses));
         }
 
         var cards = issues.Select(Card).ToList();
         var pastCards = past.Select(Card).ToList();
 
         return new BoardDto(
-            statusDtos, cards, wip?.ToDto(), horizon.Hours > 0 ? horizon.Hours : (int?)null, pastCards);
+            statusDtos, cards, wip?.ToDto(), horizon.Hours > 0 ? horizon.Hours : (int?)null, pastCards,
+            Normals: table.Select(n => new ColumnNormalDto(n.StatusId, n.Seconds)).ToList(), At: now);
     }
 }

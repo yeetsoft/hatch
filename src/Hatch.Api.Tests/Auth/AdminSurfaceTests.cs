@@ -79,6 +79,7 @@ public class AdminSurfaceTests
         // the operator is doing and every card title on it - not a fact about
         // the house that a hallway tablet has any business rendering.
         "BoardController.GetBoard",
+        "BoardHealthController.GetBoardHealth",
         "ProjectsController.GetProjects",
         "ProjectsController.CreateProject",
         "ProjectsController.PatchProject",
@@ -504,6 +505,10 @@ public class AdminSurfaceTests
         // See IssueWipLimitController.
         "IssueWipLimitController.PatchIssueWipLimit",
 
+        // Removing a waiting pull request is a person's alone; a key may only
+        // write one. See IssueWaitingPullRequestController and PersonOnly.
+        "IssueWaitingPullRequestController.DeleteWaitingPullRequest",
+
         // What an ambition may cost, cut the same way as the limit just above:
         // a key that could set its own ambition's budget could lift its own
         // ceiling. The read is open to a key - see AcceptsKey. See
@@ -619,6 +624,11 @@ public class AdminSurfaceTests
         // PATCH, which is key-open too. IssueNoCodeController.
         "IssueNoCodeController.PutIssueNoCode",
 
+        // That an issue's pull request is written and waiting to be opened -
+        // the same kind of statement, and a key may write it. Taking it away is
+        // a person's: see PersonOnly. IssueWaitingPullRequestController.
+        "IssueWaitingPullRequestController.PutWaitingPullRequest",
+
         // That an issue came from outside, which a runner is the one to see: the
         // pull request, its author and where it originated. Write-once, and no
         // power over the board. IssueContributionController.
@@ -717,6 +727,10 @@ public class AdminSurfaceTests
         // a person's to press, not an agent's. See DreamWeaveController.
         "DreamWeaveController.PostWeave",
 
+        // A shaping press files a draft ambition and spends a shaping session
+        // on it - a person's to press, not an agent's. See DreamShapeController.
+        "DreamShapeController.PostShape",
+
         // Hatch's own two settings - the Claude subscription token and what to
         // call whoever is sitting at this machine. Cut tighter than the module
         // around it: plain [RequireAdmin], no AcceptKey, so a key is refused
@@ -798,6 +812,7 @@ public class AdminSurfaceTests
         "PlaybookProposalsController.ApproveAll",
         "IssuePlaybookController.PatchIssuePlaybook",
         "IssueWipLimitController.PatchIssueWipLimit",
+        "IssueWaitingPullRequestController.DeleteWaitingPullRequest",
         "IssueBudgetController.PatchIssueBudget",
         "IssueChangeDecisionController.PostDecision",
         "RunnersController.PatchRunner",
@@ -892,6 +907,10 @@ public class AdminSurfaceTests
         // A weave press spends a breakdown session at the largest model -
         // a person's to press, not an agent's. See DreamWeaveController.
         "DreamWeaveController.PostWeave",
+
+        // A shaping press files a draft ambition and spends a shaping session
+        // on it - a person's to press, not an agent's. See DreamShapeController.
+        "DreamShapeController.PostShape",
         "AttachmentsController.DeleteAttachment",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
@@ -918,6 +937,7 @@ public class AdminSurfaceTests
         "BallotController.GetBallot",
         "AmbitionsController.GetAmbitions",
         "BoardController.GetBoard",
+        "BoardHealthController.GetBoardHealth",
         "BroughtCurrentController.PutBroughtCurrent",
         "BuildCheckController.PutBuildCheck",
         "ChangelogController.GetChangelog",
@@ -957,6 +977,7 @@ public class AdminSurfaceTests
         "IssueServesController.PutServes",
         "IssueMessagesController.Deliver",
         "IssueNoCodeController.PutIssueNoCode",
+        "IssueWaitingPullRequestController.PutWaitingPullRequest",
         "IssueOnePrController.PutIssueOnePr",
         "IssuePassesController.GetPasses",
         "IssueReleaseNoteController.PutIssueReleaseNote",

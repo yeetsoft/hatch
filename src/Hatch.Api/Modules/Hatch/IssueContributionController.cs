@@ -111,6 +111,10 @@ public class IssueContributionController(
             if (NoCode.Declared(issue))
                 issue.Events.Add(NoCode.SetAside(issue, new { pullRequest = recorded }, actor, now));
 
+            // The pull request is open now, so the waiting one is spent.
+            if (WaitingPullRequest.ClearOnRecord(issue, recorded, actor, now) is { } spent)
+                issue.Events.Add(spent);
+
             issue.PullRequestUrl = recorded;
             issue.PullRequestRecordedBy = actor;
             issue.PullRequestRecordedByKind = await caller.IsProgramAsync(ct) ? ActorKind.Key : ActorKind.Person;

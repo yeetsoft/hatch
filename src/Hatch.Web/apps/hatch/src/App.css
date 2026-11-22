@@ -3151,6 +3151,23 @@ button.hatch-card-stories:focus-visible {
   opacity: 0.75;
 }
 
+/* A waiting pull request, in the issue facts: the sentence, then the title that
+   opens to the branch and the body. The body is a pull request description
+   written for a forge, so it keeps its line breaks and wraps rather than
+   pushing the card wider than a phone. */
+.hatch-waiting-pr details {
+  margin-top: var(--sp-1);
+}
+
+.hatch-waiting-pr__body {
+  margin: 0;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--t-label);
+}
+
 /* Far enough off to be information rather than a warning - and every `Ready`
    chip, which has no ladder of its own. */
 .hatch-chip-later {
@@ -4182,8 +4199,8 @@ input.hatch-inline-title-input {
 .hatch-capability-badge {
   padding: 0 var(--sp-2);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 0.85em;
+  border-radius: var(--r-pill);
+  font-size: var(--t-label);
   white-space: nowrap;
 }
 
@@ -4256,14 +4273,14 @@ input.hatch-inline-title-input {
 
 .hatch-ambition-heading {
   margin: 0 0 var(--sp-2);
-  font-size: 1em;
+  font-size: var(--t-body);
 }
 
 .hatch-ambition-bar {
   display: flex;
-  height: 0.75rem;
+  height: 12px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 .hatch-ambition-segment {
@@ -4294,15 +4311,15 @@ input.hatch-inline-title-input {
   list-style: none;
   margin: var(--sp-2) 0 0;
   padding: 0;
-  font-size: 0.85em;
+  font-size: var(--t-label);
 }
 
 .hatch-ambition-swatch {
   display: inline-block;
-  width: 0.6rem;
-  height: 0.6rem;
+  width: 10px;
+  height: 10px;
   margin-right: var(--sp-1);
-  border-radius: 2px;
+  border-radius: var(--r-chip);
 }
 
 .hatch-ambition-epics {
@@ -4393,7 +4410,7 @@ input.hatch-inline-title-input {
 }
 
 .hatch-pass-changed {
-  font-size: 0.85em;
+  font-size: var(--t-label);
   color: var(--muted);
 }
 
@@ -6297,6 +6314,44 @@ input.hatch-inline-title-input {
    rule is below it: without this, hovering an asking card would do nothing. */
 .hatch-card.asking:hover {
   border-color: var(--primary);
+}
+
+/* Sat in its column longer than is normal for it (the server's call: see
+   lib/cardAge.ts). A faint indigo wash over the whole card and nothing on the
+   border, so it is seen from across the board without being mistaken for the
+   asking card, whose border it leaves alone. Laid over --bg as asking is, with
+   background-image over a pinned background-color. :not(.asking) is what lets
+   a card that is both keep the asking wash and border; its chip is drawn
+   either way. */
+.hatch-card.aged:not(.asking) {
+  --tile-ground: var(--aged-ground);
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--aged-bg), var(--aged-bg));
+}
+
+/* The flow band lies over the lower half of the card, and on a card with a one-line
+   title the marks row is in that half - the chip would be stamped over. An aged
+   card under a band is therefore tall enough that its marks row ends above the
+   half-way line: the head and the marks row take about 3.3rem, so twice that, and
+   a little over. Only an aged card is held to it; the flow view is the desk's. */
+.hatch-card.aged.banded {
+  min-height: 7rem;
+}
+
+/* The chip: a clock and the time in the column, in the stalled chip's shape.
+   Words as well as the tint, so the mark is not a colour alone. */
+.hatch-card-age {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--aged-bg);
+  color: var(--aged-ink);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
 .hatch-card-asking {

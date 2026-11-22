@@ -65,6 +65,10 @@ public static class HatchModule
         // The board's own horizon, on the same terms as Runners above it.
         services.AddSingleton<DoneHorizon>();
 
+        // What each column's stays normally last, kept five minutes so a board
+        // refetched after every action does not walk every issue each time.
+        services.AddSingleton<ColumnNormals>();
+
         // Scoped, the same reason as Dispatch beside it: it holds a scoped
         // HatchContext, taken through DI here rather than constructed, via the
         // Dispatch it decides alongside.

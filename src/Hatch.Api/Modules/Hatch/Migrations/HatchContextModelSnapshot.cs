@@ -1060,6 +1060,30 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("WaitingPrAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WaitingPrBody")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrBranch")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrRemote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrRunner")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrSha")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrTitle")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WaitingPrWhy")
+                        .HasColumnType("text");
+
                     b.Property<int?>("WipLimit")
                         .HasColumnType("integer");
 
@@ -1488,6 +1512,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
                         .HasDefaultValue("any");
+
+                    b.Property<bool>("ShapesAmbition")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<int>("ToStatusId")
                         .HasColumnType("integer");
@@ -2323,6 +2352,14 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<DateTimeOffset?>("ExhaustedUntil")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Forge")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("ForgeWhy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Has")
                         .HasColumnType("text");

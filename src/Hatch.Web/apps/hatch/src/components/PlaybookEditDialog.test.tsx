@@ -28,6 +28,7 @@ const BASE: Playbook = {
   isCheck: false,
   answersQuestions: false,
   worksOutChanges: false,
+  shapesAmbition: false,
   quietLimitSeconds: null,
   unreachableReason: null,
   maxRunSeconds: null,
@@ -152,9 +153,27 @@ describe('PlaybookEditDialog flag boxes', () => {
     expect(checkbox(html, 'Answers questions')).not.toContain('checked');
   });
 
-  it('opens a plain row and a new playbook with all three boxes unticked and enabled', () => {
+  it('opens a shapes-an-ambition row with the other three disabled and unticked', () => {
+    const html = render({ ...BASE, shapesAmbition: true });
+    expect(checkbox(html, 'Shapes an ambition')).toContain('checked');
+    expect(checkbox(html, 'Shapes an ambition')).not.toContain('disabled');
+    for (const label of ['Is check', 'Answers questions', 'Works out changes']) {
+      expect(checkbox(html, label)).toContain('disabled');
+      expect(checkbox(html, label)).not.toContain('checked');
+    }
+  });
+
+  it('disables Shapes an ambition on a row that is any of the other three', () => {
+    for (const flags of [{ isCheck: true }, { answersQuestions: true }, { worksOutChanges: true }]) {
+      const html = render({ ...BASE, ...flags });
+      expect(checkbox(html, 'Shapes an ambition')).toContain('disabled');
+      expect(checkbox(html, 'Shapes an ambition')).not.toContain('checked');
+    }
+  });
+
+  it('opens a plain row and a new playbook with all four boxes unticked and enabled', () => {
     for (const html of [render(BASE), render(null)]) {
-      for (const label of ['Is check', 'Answers questions', 'Works out changes']) {
+      for (const label of ['Is check', 'Answers questions', 'Works out changes', 'Shapes an ambition']) {
         expect(checkbox(html, label)).not.toContain('checked');
         expect(checkbox(html, label)).not.toContain('disabled');
       }
@@ -163,13 +182,19 @@ describe('PlaybookEditDialog flag boxes', () => {
 
   it('says what the Answers questions box is for', () => {
     expect(render(null)).toContain(
-      'The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this, a check or a row that works out changes - never more than one.',
+      'The row a session runs on to answer one question asked under an ambition. It edits nothing. A row is this, a check, a row that works out changes or a row that shapes an ambition - never more than one.',
     );
   });
 
   it('says what the Works out changes box is for', () => {
     expect(render(null)).toContain(
-      'The row a session runs on to work out what a change to an ambition does to its epics in flight. It edits nothing. A row is this, a check or a row that answers questions - never more than one.',
+      'The row a session runs on to work out what a change to an ambition does to its epics in flight. It edits nothing. A row is this, a check, a row that answers questions or a row that shapes an ambition - never more than one.',
+    );
+  });
+
+  it('says what the Shapes an ambition box is for', () => {
+    expect(render(null)).toContain(
+      'The row a session runs on to shape a draft ambition: its title, its description and its capabilities. It edits nothing in the tree. A row is this, a check, a row that answers questions or a row that works out changes - never more than one.',
     );
   });
 });

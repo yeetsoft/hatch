@@ -23,7 +23,10 @@ An issue holds one pull request address, and it does three jobs.
 - **Recording it is part of finishing.** An increment that ends in review
   having pushed a branch with no pull request recorded is refused as
   unpublished: a comment on the ticket says so, and the second time in a row
-  the board asks whether one has been opened.
+  the board asks whether one has been opened. A [pull request written and
+  waiting](issues#a-pull-request-waiting-to-be-opened), which `hatch pr KEY
+  --title ... --body-file ...` leaves when the forge cannot open it, counts as
+  published for this: the work is written down and only needs opening.
 - **The forge's own account of it is kept beside it.** Its merge state, its
   review decision and the head commit it was read at are stored with the
   address, and the merge train reads that.
@@ -92,7 +95,7 @@ Neither check costs an increment. The runner takes both on a clock between incre
 
 ## When review is a session's
 
-The review row and the ambition's pass row — [the thirteen rows Hatch seeds](playbooks#the-thirteen-rows-hatch-seeds) — are the only two rows whose two ends are the same column. What still tells them apart: the review row edits the tree, fixing a conflict or a failing build; the pass row is denied every tool that would let it. One playbook, at its own model and effort, answers both the conflict dispatch and the build dispatch.
+The review row and the ambition's pass row — [the fourteen rows Hatch seeds](playbooks#the-fourteen-rows-hatch-seeds) — are the only two rows whose two ends are the same column. What still tells them apart: the review row edits the tree, fixing a conflict or a failing build; the pass row is denied every tool that would let it. One playbook, at its own model and effort, answers both the conflict dispatch and the build dispatch.
 
 The runner adds one of two sections to the prompt depending on which; [what a session is told](what-a-session-is-told) has the fuller treatment of each. A conflict dispatch gets a `## The conflict` section — the branch, the trunk, both shas and the files that conflict — and the session starts on the branch with the trunk merge already in progress. A build dispatch gets a `## The failing build` section — the branch and its sha, each failing check named with its link, and up to 150 lines of its log ending at the last `##[error]` line, the lines leading up to the failure and not the cleanup that follows it — and the session starts with the trunk already merged in and no merge in progress.
 
