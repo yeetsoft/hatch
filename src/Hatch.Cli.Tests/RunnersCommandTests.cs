@@ -270,7 +270,7 @@ public sealed class RunnersCommandTests
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
-        var lines = h.Said.Split(n);
+        var lines = h.Said.Split('\n');
         string Row(string name) => lines.Single(l => l.StartsWith(name, StringComparison.Ordinal));
         Assert.EndsWith("  signed in to its forge", Row("in"));
         Assert.EndsWith("  forge sign-in fails: token expired", Row("locked"));
