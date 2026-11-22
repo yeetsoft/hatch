@@ -229,6 +229,18 @@ public class HatchOptions
     public int GooseQuestionHours { get; set; } = 24;
 
     /// <summary>
+    /// How many hours a ticket may stand in one column, with no runner on it and
+    /// nobody it is waiting for, before the <c>standing-still</c> check opens a
+    /// finding - see <see cref="StandingStillCheck"/>.
+    /// </summary>
+    /// <remarks>
+    /// Zero turns the check off, as <see cref="GooseTrainReadyMinutes"/>'s zero
+    /// does. A negative falls back to the default. The guard is
+    /// <see cref="GooseSettings.StandingBound"/>.
+    /// </remarks>
+    public int GooseStandingHours { get; set; } = 4;
+
+    /// <summary>
     /// Absolute base URL of this Hatch install as it should be *printed* -
     /// e.g. "https://home.example.com". Empty by default and supplied at
     /// deploy (compose.yaml passes <c>Hatch__PublicBaseUrl</c> from the

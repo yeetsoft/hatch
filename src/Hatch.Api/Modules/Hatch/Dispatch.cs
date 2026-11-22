@@ -552,7 +552,8 @@ public sealed class Dispatch(
                         ModelIsLocal: ResolveModel(issue, playbook, localLevel, models).Local,
                         Across: blocking.Across,
                         Answering: answering,
-                        DeadEnd: blocking.DeadEnd));
+                        DeadEnd: blocking.DeadEnd,
+                        WaitsOnApprover: sentence is not null && blocking.WaitsOnApprover));
                 }
             }
 
@@ -1159,9 +1160,12 @@ public sealed class Dispatch(
     /// <see cref="ReadyBoardAsync"/>'s answer: every ready step the board holds,
     /// who could take each, the live fleet those takers are drawn from, and
     /// every runner this Hatch has ever heard from - live or not, since
-    /// <c>ready-no-runner</c> names a quiet one too.
+    /// <c>ready-no-runner</c> names a quiet one too. <see cref="Scan"/> is the
+    /// whole scan the steps were kept from, folded rows included, so a check that
+    /// watches the rest of the board reads it rather than scanning again; null
+    /// where the scan failed.
     /// </summary>
-    public sealed record ReadyBoard(IReadOnlyList<ReadyStep> Steps, IReadOnlyList<ReadyPeer> LivePeers, IReadOnlyList<KnownRunner> KnownRunners);
+    public sealed record ReadyBoard(IReadOnlyList<ReadyStep> Steps, IReadOnlyList<ReadyPeer> LivePeers, IReadOnlyList<KnownRunner> KnownRunners, Scan? Scan = null);
 
     /// <summary>
     /// Every ready step on the whole board - HA-2497's own read, shared by
@@ -1214,7 +1218,7 @@ public sealed class Dispatch(
 
         var livePeers = fleet.Select(p => new ReadyPeer(p.Id, p.Name, p.Where, p.LastSeenAt)).ToList();
 
-        return new ReadyBoard(steps, livePeers, known);
+        return new ReadyBoard(steps, livePeers, known, board);
     }
 
     /// <summary>
@@ -3006,7 +3010,7 @@ public sealed class Dispatch(
                         ? $"add one to .hatch/playbooks.yaml on {checkTrunk}, or a board-wide one on the Playbooks page"
                         : "add one on the Playbooks page"),
                     BlockedKinds.Other)
-                : new Blocking(reviewBlock, BlockedKinds.Other, DeadEnd: judged is { DeadEnd: true });
+                : new Blocking(reviewBlock, BlockedKinds.Other, DeadEnd: judged is { DeadEnd: true }, WaitsOnApprover: judged is { WaitsOnApprover: true });
 
         // A contribution's branch the project has not asked a runner to work:
         // conflict or build work the judge would dispatch, held for a person.
@@ -3681,7 +3685,7 @@ public sealed record ScanRow(
     string? Model = null, IReadOnlyList<string>? DeniedTools = null,
     IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, bool Deadlocked = false,
     string? ProjectLevel = null, bool ModelIsLocal = false, AcrossLine? Across = null,
-    AnswerQuestions.Candidate? Answering = null, bool DeadEnd = false);
+    AnswerQuestions.Candidate? Answering = null, bool DeadEnd = false, bool WaitsOnApprover = false);
 
 /// <summary>A row <see cref="Dispatch.HeldAtProjectLineAsync"/> lists, and the line it stands at.</summary>
 public sealed record AcrossHold(ScanRow Row, AcrossLine Line);
@@ -3701,9 +3705,11 @@ public sealed record AcrossLine(string FromKey, bool IsLevel, int? Level = null)
 /// one of them leaving is enough (a WIP limit), false where all must (a
 /// dependency). <see cref="DeadEnd"/> is true for a review row that waits on no
 /// issue and never will be carried: <see cref="Deadlocks.Find"/> counts it as
-/// stuck, and so everything waiting on it.
+/// stuck, and so everything waiting on it. <see cref="WaitsOnApprover"/> is true
+/// for a review row that is clean and idle only until an owner or approver
+/// approves it - the review judge's own mark, so nothing reads the sentence.
 /// </summary>
-public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, AcrossLine? Across = null, bool DeadEnd = false)
+public sealed record Blocking(string? Sentence, string? Kind, IReadOnlyList<long>? WaitsOn = null, bool AnyOf = false, AcrossLine? Across = null, bool DeadEnd = false, bool WaitsOnApprover = false)
 {
     /// <summary>A fold on a list that could in principle be empty: empty means it waits on no issue, so null.</summary>
     public static Blocking Waiting(string sentence, string kind, IReadOnlyList<long> ids, bool anyOf = false) =>

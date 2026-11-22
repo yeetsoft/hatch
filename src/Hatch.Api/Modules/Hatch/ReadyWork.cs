@@ -13,10 +13,14 @@ public sealed record ReadyProject(
     int ProjectId, string ProjectKey, IReadOnlyList<Dispatch.ReadyStep> Steps,
     IReadOnlyList<Dispatch.ReadyPeer> IdlePeers, (long Id, string Key, DateTimeOffset At)? NewestClaim);
 
-/// <summary>A sweep's whole reading of the board's ready work - see <see cref="ReadyWork.ReadAsync"/>.</summary>
+/// <summary>
+/// A sweep's whole reading of the board's ready work - see <see cref="ReadyWork.ReadAsync"/>.
+/// <see cref="Board"/> is the scan it was read from, every row and not only the
+/// ready ones, for <see cref="StandingStillCheck"/>; null where the scan failed.
+/// </summary>
 public sealed record ReadySnapshot(
     IReadOnlyDictionary<string, ReadyProject> ByProject, IReadOnlyList<Dispatch.KnownRunner> KnownRunners,
-    int LiveRunnerCount, string Looked);
+    int LiveRunnerCount, string Looked, Scan? Board = null);
 
 /// <summary>
 /// The one read <see cref="ReadyUnclaimedCheck"/> and <see cref="ReadyNoRunnerCheck"/>
@@ -73,7 +77,7 @@ public sealed class ReadyWork(Dispatch dispatch, HatchContext db, Runners runner
         var liveRunnerCount = board.LivePeers.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count();
         var looked = $"{byProject.Count} projects, {ready.Count} steps ready, {liveRunnerCount} runners live";
 
-        snapshot = new ReadySnapshot(byProject, board.KnownRunners, liveRunnerCount, looked);
+        snapshot = new ReadySnapshot(byProject, board.KnownRunners, liveRunnerCount, looked, board.Scan);
         return snapshot;
     }
 

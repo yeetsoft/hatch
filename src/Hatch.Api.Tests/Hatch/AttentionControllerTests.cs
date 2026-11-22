@@ -3153,6 +3153,35 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Findings_OfStandingStill_LinkToTheIssueTheirSubjectNames_NotTheirToken()
+    {
+        var h = await NewAsync();
+        var finding = await AddFindingAsync(h, h.ProjectId, "3:41", Now.AddHours(-5), "AER-9 has stood");
+        finding.Check = "standing-still";
+        finding.Subject = "AER-9";
+        var other = await AddFindingAsync(h, h.ProjectId, "3:42", Now.AddHours(-4), "elsewhere");
+        other.Check = "standing-still";
+        other.Subject = "OTH-9";
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Attention.GetAttention(default)).Findings!;
+
+        Assert.Equal("AER-9", rows.Single(r => r.Id == finding.Id).IssueKey);
+        Assert.Null(rows.Single(r => r.Id == other.Id).IssueKey);
+    }
+
+    [Fact]
+    public async Task Findings_OfAnotherCheck_StillReadTheirToken_NotTheirSubject()
+    {
+        var h = await NewAsync();
+        var finding = await AddFindingAsync(h, h.ProjectId, "AER-9", Now.AddHours(-1));
+        finding.Subject = "AER-4";
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("AER-9", Assert.Single(Value(await h.Attention.GetAttention(default)).Findings!).IssueKey);
+    }
+
+    [Fact]
     public async Task Findings_NameNoIssue_WhenTheTokenBelongsToAnotherProject()
     {
         var h = await NewAsync();
