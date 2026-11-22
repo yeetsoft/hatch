@@ -1,0 +1,206 @@
+import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  bandPolygons,
+  barIndexAt,
+  momentX,
+  movedBars,
+  oldestLine,
+  stepMoment,
+  tileLabel,
+  waitingSteps,
+} from '../lib/boardHealth';
+import type { Tile, TileReadout } from '../lib/boardHealth';
+import type { BoardHealth } from '../types';
+
+/* The four tiles of the board health strip. Each draws from the read's answer
+   alone: nothing here knows the board page, the router's location or the scope
+   (only the In flight tile's `href`, handed in), so another page could draw the
+   same tile. Every number and every point of geometry comes from
+   lib/boardHealth; this file only draws. */
+
+/** The sparkline's own coordinate space. It is stretched to the tile's width
+    with `preserveAspectRatio="none"`, so strokes use `vectorEffect` to stay the
+    width they are given and a dot is a zero-length round-capped stroke, not a
+    circle that would stretch into an oval. */
+const WIDTH = 240;
+const HEIGHT = 40;
+
+interface TileProps {
+  answer: BoardHealth;
+  /** The marked bar, or null for the window at rest. */
+  index: number | null;
+  onIndex: (index: number | null) => void;
+  readout: TileReadout;
+}
+
+/** The glyph said in a word, so it is never the whole of a signal. */
+const GLYPH_WORD: Record<string, string> = { '▲': 'up', '▼': 'down', '–': 'unchanged', '⚠': 'warning' };
+
+const KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'];
+
+function HealthTile({
+  tile,
+  label,
+  readout,
+  answer,
+  index,
+  onIndex,
+  href,
+  onActivate,
+  children,
+}: TileProps & {
+  tile: Tile;
+  label: string;
+  href?: string;
+  /** What a click on the sparkline does, for a tile that leads somewhere. */
+  onActivate?: () => void;
+  /** The sparkline's marks, drawn in the box `WIDTH` by `HEIGHT`. */
+  children: ReactNode;
+}) {
+  const count = answer.bars.length;
+
+  const onMove = (event: PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    onIndex(barIndexAt(event.clientX - rect.left, rect.width));
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!KEYS.includes(event.key)) return;
+    event.preventDefault();
+    onIndex(stepMoment(index, event.key, count));
+  };
+
+  return (
+    <section
+      className={`hatch-health-tile hatch-health-tile--${readout.tone}`}
+      aria-label={tileLabel(tile, readout)}
+      data-tile={tile}
+    >
+      <h3 className="hatch-health-label">
+        {href ? (
+          <Link to={href} className="hatch-health-link">
+            {label}
+          </Link>
+        ) : (
+          label
+        )}
+      </h3>
+      <p className="hatch-health-value">
+        <span className="hatch-health-number" data-part="value">
+          {readout.value}
+        </span>
+        {readout.glyph && (
+          <span className="hatch-health-glyph" role="img" aria-label={GLYPH_WORD[readout.glyph] ?? ''}>
+            {readout.glyph}
+          </span>
+        )}
+      </p>
+      <p className="hatch-health-second" data-part="second" title={readout.second}>
+        {readout.second}
+      </p>
+      <p className="hatch-health-detail" data-part="detail" title={readout.detail || undefined}>
+        {readout.detail}
+      </p>
+      <div
+        className={`hatch-health-spark${onActivate ? ' hatch-health-spark--link' : ''}`}
+        data-part="spark"
+        tabIndex={0}
+        role="group"
+        aria-label={`${label} over the window. Arrow keys mark a moment.`}
+        onPointerMove={onMove}
+        onPointerLeave={() => onIndex(null)}
+        onKeyDown={onKeyDown}
+        onBlur={() => onIndex(null)}
+        onClick={onActivate}
+      >
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          preserveAspectRatio="none"
+          className="hatch-health-svg"
+          aria-hidden="true"
+          focusable="false"
+        >
+          {children}
+          {index !== null && (
+            <line
+              className="hatch-health-moment"
+              x1={momentX(index, WIDTH)}
+              x2={momentX(index, WIDTH)}
+              y1={0}
+              y2={HEIGHT}
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+        </svg>
+      </div>
+    </section>
+  );
+}
+
+/** A dot at `x, y`: a zero-length stroke with a round cap. */
+const dot = (x: number, y: number): string => `M ${x} ${y} h 0`;
+
+export function MovedTile({ answer, index, onIndex, readout }: TileProps) {
+  const latest = answer.bars.length - 1;
+
+  return (
+    <HealthTile tile="moved" label="Moved" readout={readout} answer={answer} index={index} onIndex={onIndex}>
+      {movedBars(answer, WIDTH, HEIGHT).map((rect) => (
+        <rect
+          key={rect.index}
+          className={`hatch-health-bar${rect.index === latest ? ' hatch-health-bar--latest' : ''}`}
+          x={rect.x}
+          y={rect.y}
+          width={rect.width}
+          height={rect.height}
+        />
+      ))}
+    </HealthTile>
+  );
+}
+
+export function InFlightTile({ answer, index, onIndex, readout, href }: TileProps & { href: string }) {
+  const navigate = useNavigate();
+  const bands = bandPolygons(answer, WIDTH, HEIGHT);
+
+  return (
+    <HealthTile
+      tile="inFlight"
+      label="In flight"
+      readout={readout}
+      answer={answer}
+      index={index}
+      onIndex={onIndex}
+      href={href}
+      onActivate={() => navigate(href)}
+    >
+      <polygon className="hatch-health-band hatch-health-band--done" points={bands.done} />
+      <polygon className="hatch-health-band hatch-health-band--inflight" points={bands.inFlight} />
+      <polygon className="hatch-health-band hatch-health-band--waiting" points={bands.waiting} />
+    </HealthTile>
+  );
+}
+
+export function OldestTile({ answer, index, onIndex, readout }: TileProps) {
+  const line = oldestLine(answer, WIDTH, HEIGHT);
+
+  return (
+    <HealthTile tile="oldest" label="Oldest in flight" readout={readout} answer={answer} index={index} onIndex={onIndex}>
+      <path className="hatch-health-line" d={line.path} vectorEffect="non-scaling-stroke" fill="none" />
+      {line.last && <path className="hatch-health-dot" d={dot(line.last.x, line.last.y)} vectorEffect="non-scaling-stroke" fill="none" />}
+    </HealthTile>
+  );
+}
+
+export function WaitingTile({ answer, index, onIndex, readout }: TileProps) {
+  const steps = waitingSteps(answer, WIDTH, HEIGHT);
+
+  return (
+    <HealthTile tile="waiting" label="Waiting on you" readout={readout} answer={answer} index={index} onIndex={onIndex}>
+      <path className="hatch-health-area" d={steps.area} />
+      <path className="hatch-health-line" d={steps.line} vectorEffect="non-scaling-stroke" fill="none" />
+      {steps.last && <path className="hatch-health-dot" d={dot(steps.last.x, steps.last.y)} vectorEffect="non-scaling-stroke" fill="none" />}
+    </HealthTile>
+  );
+}

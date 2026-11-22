@@ -7322,6 +7322,257 @@ public class WorkControllerTests
         Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
     }
 
+    // ---- Forge: a runner whose forge sign-in fails is never handed work that ends in a pull request ----
+
+    private static string ForgePrSentence(EfHatchIssue issue, string runner, string? why = null) =>
+        $"{Key(issue)} ends in a pull request - {runner} cannot reach its forge" + (why is null ? "" : $" (gh said: {why})");
+
+    private static string ForgeBuildSentence(EfHatchIssue issue, string runner, string? why = null) =>
+        $"{Key(issue)}'s failing build cannot be read by {runner} - it cannot reach its forge" + (why is null ? "" : $" (gh said: {why})");
+
+    private static async Task<(Harness H, EfHatchIssue Issue)> BuildingBoardAsync()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+
+        // Keyless unless a test says otherwise, the way the board's own scan is.
+        h.Caller.Key = null;
+        return (h, issue);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeFails_FoldsTheImplementationStep_OnTheSentence()
+    {
+        var (h, issue) = await BuildingBoardAsync();
+        var runner = RunnerName();
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, runner: runner, forge: "fails", forgeWhy: "not logged in"));
+
+        Assert.Equal(ForgePrSentence(issue, runner, "not logged in"), entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeFailsWithNoReason_HasNoParentheses()
+    {
+        var (h, issue) = await BuildingBoardAsync();
+        var runner = RunnerName();
+
+        Assert.Equal(
+            ForgePrSentence(issue, runner),
+            Only(await h.Work.GetQueue(0, null, default, runner: runner, forge: "fails")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeWorks_NoAnswerAndAWordOffTheList_FoldNothing()
+    {
+        var (h, _) = await BuildingBoardAsync();
+        var runner = RunnerName();
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: runner, forge: "works")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: runner)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: runner, forge: "perhaps")).Blocked);
+
+        // A keyed caller that never said is not judged either: only fails folds.
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one");
+        h.Caller.Key = key;
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeFails_InAProjectThatLandsOnItsTrunk_FoldsNothing()
+    {
+        var (h, _) = await BuildingBoardAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), forge: "fails")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeFails_ATaskOnItsStorysSharedBranch_IsNotFolded_ButTheStoryIs()
+    {
+        var h = await NewAsync();
+        h.Caller.Key = null;
+        var runner = RunnerName();
+        var (story, waiting) = await OnePrParentAsync(h, "story");
+        var building = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default, runner: runner, forge: "fails"));
+
+        // The task rides its story's one pull request and opens none. The story still has an open
+        // child, so it is not the work yet either.
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(building)).Blocked);
+        Assert.DoesNotContain("cannot reach its forge", queue.Single(e => e.Issue.Key == Key(story)).Blocked);
+
+        // With the task pushed and waiting, the story's own step opens the pull request.
+        building.StatusId = h.Review;
+        await h.Db.SaveChangesAsync();
+        queue = Value(await h.Work.GetQueue(0, null, default, runner: runner, forge: "fails"));
+        Assert.Equal(ForgePrSentence(story, runner), queue.Single(e => e.Issue.Key == Key(story)).Blocked);
+        Assert.DoesNotContain("cannot reach its forge", queue.Single(e => e.Issue.Key == Key(waiting)).Blocked);
+
+        // And a runner whose forge works is not held back from it.
+        Assert.Null(Value(await h.Work.GetQueue(0, null, default, runner: runner, forge: "works")).Single(e => e.Issue.Key == Key(story)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeFails_BuildWorkInReview_IsFoldedOnTheSecondSentence_AndConflictWorkIsNot()
+    {
+        var h = await NewAsync();
+        h.Caller.Key = null;
+        await h.ConflictPlaybookAsync();
+        var red = await h.FileAsync("story", "red build", h.Review);
+        await h.VerdictAsync(red, MergeVerdicts.Clean);
+        await h.BuildAsync(red, BuildVerdicts.Failed);
+        var conflicted = await h.FileAsync("story", "conflicted", h.Review);
+        await h.VerdictAsync(conflicted, MergeVerdicts.Conflicted, files: ["a.txt"]);
+        var runner = RunnerName();
+
+        var queue = Value(await h.Work.GetQueue(0, null, default, runner: runner, forge: "fails", forgeWhy: "HTTP 401"));
+
+        var build = queue.Single(e => e.Issue.Key == Key(red));
+        Assert.Equal(ForgeBuildSentence(red, runner, "HTTP 401"), build.Blocked);
+        Assert.Equal(BlockedKinds.Other, build.BlockedKind);
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(conflicted)).Blocked);
+
+        queue = Value(await h.Work.GetQueue(0, null, default, runner: runner, forge: "works"));
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(red)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeFails_AnExpressHop_IsNeverFolded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), forge: "fails"));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeFails_AnIdleReviewSelfMove_KeepsItsOwnSentence()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "up for review, clean", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean);
+
+        var blocked = Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), forge: "fails")).Blocked;
+
+        Assert.NotNull(blocked);
+        Assert.DoesNotContain("cannot reach its forge", blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ForgeFails_AColumnLeftOfImplementation_IsNotFolded()
+    {
+        var h = await NewAsync();
+        h.Caller.Key = null;
+        await h.FileAsync("task", "not started", h.Todo);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: RunnerName(), forge: "fails")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AKeyedCaller_IsJudgedOnItsLiveSessions_TheWorstForgeAnswerWinning()
+    {
+        var (h, issue) = await BuildingBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", forge: "works");
+        h.Caller.Key = key;
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+
+        await h.AddSessionAsync(key, "here:/two", forge: "fails", forgeWhy: "gh auth status failed");
+        Assert.Equal(
+            ForgePrSentence(issue, key.Name, "gh auth status failed"),
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+
+        // A sent word beats the sessions, and the runner parameter names whose sessions answer.
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, forge: "works")).Blocked);
+        var other = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(other, "here:/three", forge: "works");
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: other.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_ReadsTheRunnersOwnForgeAnswer_AndIgnoresTheSentWord()
+    {
+        var (h, issue) = await BuildingBoardAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", standing: true, forge: "fails", forgeWhy: "no token");
+
+        Assert.Equal(
+            ForgePrSentence(issue, key.Name, "no token"),
+            Only(await h.Work.GetQueue(asRunner: key.Name, forge: "works")).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_SkipsAnImplementationStepInSilence_ForARunnerWhoseForgeFails()
+    {
+        var (h, building) = await BuildingBoardAsync();
+        var todo = await h.FileAsync("task", "not started", h.Todo, rank: 2048);
+        var runner = RunnerName();
+
+        var work = Value(await h.Work.GetNextWork(0, null, null, default, runner: runner, forge: "fails"));
+
+        Assert.Equal(Key(todo), work.Issue.Key);
+        Assert.Equal(
+            Key(building),
+            Value(await h.Work.GetNextWork(0, null, null, default, runner: runner, forge: "works")).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Work_ANamedImplementationStep_IsRefusedWithTheSentence_ForARunnerWhoseForgeFails()
+    {
+        var (h, issue) = await BuildingBoardAsync();
+        var runner = RunnerName();
+
+        Assert.Equal(
+            ForgePrSentence(issue, runner, "no token"),
+            Value(await h.Work.GetWork(Key(issue), null, default, runner: runner, forge: "fails", forgeWhy: "no token")).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default, runner: runner, forge: "works")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_Takers_ARunnerWhoseForgeFails_IsUntaken_AndThePeerIsATaker()
+    {
+        var (h, issue) = await BuildingBoardAsync();
+        var failing = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(failing, "here:/one", standing: true, forge: "fails", forgeWhy: "no token");
+        var fine = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(fine, "here:/two", standing: true, forge: "works");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
+
+        Assert.Equal(new[] { fine.Name }, entry.Takers);
+        Assert.Equal(new RunnerReasonDto(failing.Name, ForgePrSentence(issue, failing.Name, "no token")), entry.Untaken!.Single());
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerWhoseForgeFails_IsNotOneThatCouldTakeTheStep()
+    {
+        var (h, issue) = await BuildingBoardAsync();
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        var b = await h.AddKeyAsync(RunnerName());
+        var session = await h.AddSessionAsync(b, "here:/one", standing: true, forge: "fails");
+
+        // Its only peer cannot open the pull request, so there is nobody to leave it for.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+
+        session.Forge = "works";
+        await h.Db.SaveChangesAsync();
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
     // ---- Refused columns: a runner never handed a move out of a column it does not work ----
 
     /// <summary>A key with a config row carrying the column rule <paramref name="mode"/> over <paramref name="ids"/>.</summary>
@@ -17808,7 +18059,7 @@ public class WorkControllerTests
             EfApiKey key, string? where = null, IReadOnlyList<string>? projects = null, bool? refusesDangerous = null,
             string? remotes = null, bool? mine = null, string? under = null, string? agent = null, DateTimeOffset? at = null,
             bool? standing = null, string? models = null, string? has = null, string? drivesTold = null,
-            string? signing = null, string? signingWhy = null)
+            string? signing = null, string? signingWhy = null, string? forge = null, string? forgeWhy = null)
         {
             var session = new EfHatchRunnerSession
             {
@@ -17830,6 +18081,8 @@ public class WorkControllerTests
                 DrivesTold = drivesTold,
                 Signing = signing,
                 SigningWhy = signingWhy,
+                Forge = forge,
+                ForgeWhy = forgeWhy,
             };
             Db.RunnerSessions.Add(session);
             await Db.SaveChangesAsync();

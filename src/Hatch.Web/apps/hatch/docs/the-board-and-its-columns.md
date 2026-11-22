@@ -627,6 +627,75 @@ kept, so expanded is the default and a browser that has never collapsed one
 holds nothing. A fresh browser, or one whose storage was cleared, sees every
 epic expanded.
 
+## The health strip
+
+Above the columns, under the filter bar, a strip of four tiles shows in one look
+whether work is moving, piling up, stuck or waiting on a person. It is drawn on
+a desk-width screen; a phone does not draw it yet.
+
+The strip has one window control: **2h**, **4h**, **8h**, **12h** or **24h**.
+It starts at 8h, and one choice sets every tile. Beside it a line says where the
+window ends and how wide a bar is, as "to 15:40 · 20 min bars". Every
+sparkline is cut into 24 bars on that one time axis, so the same bar is the
+same moment on all four.
+
+- **Moved** counts forward moves: the issues that went one column or more to
+  the right. The big number is the window's count, and under it is the change
+  from the window before, with an arrow: "16 vs prior 8h". More moves is green;
+  fewer is amber, never red.
+- **In flight** counts the issues in columns that hold work being done now. Its
+  sparkline is three stacked bands: waiting, in flight and done, each read from
+  the columns' flags rather than their names. The big number is the in-flight
+  count, with the other two beside it. Pressing the tile opens the [cumulative
+  flow](flow-wip-and-the-battery) report on the same window and the same projects.
+- **Oldest in flight** is the longest stay of an issue that has no children and
+  is in flight, as a time such as `14h 20m`. Under it is how many in-flight
+  cards are past normal for their column, in amber with a warning sign.
+- **Waiting on you** counts pull requests and questions waiting on a person. The
+  sparkline is steps. The big number is the count now, and under it is how long
+  the oldest has waited. At zero it says "nothing waiting".
+
+At rest the last three tiles show now, the bar still filling, and Moved shows
+the window's total. Point at any bar, on any tile, and every tile marks that
+same moment: each number becomes its value then, and the line under it says
+the time. On Moved the hovered bar's count is split by who moved: a runner, a
+person, or the board. Move off and the window's own numbers come back. From
+the keyboard, Tab to a sparkline and use the left and right arrows to step a
+bar, Home and End to jump, and Escape to clear. Every tile also reads
+sensibly from its text alone, with its arrow or warning said in words.
+
+Colour follows meaning, not direction, and no tile says anything by colour
+alone. Light and dark each have their own values.
+
+The strip refreshes with the board, every 30 seconds. A read that fails leaves
+the last answer drawn; it never blocks the board or puts an error over it.
+A board with no history shows no strip at all, with no placeholder and no error.
+
+The button at the right of the filter bar, beside the flow view, hides and
+shows the strip. While it is hidden nothing is read. Both choices, shown or
+hidden and the window, are remembered per browser, under `hatch.board.strip.shown`
+and `hatch.board.strip.window` in its local storage. A browser whose storage
+cannot be read opens with the strip shown at 8h.
+
+The strip follows the tab's [project scope](#scoping-a-tab-to-projects), as the
+cumulative flow report does. It does not follow the filter bar: narrowing the
+cards by assignee or type leaves the numbers alone.
+
+The bars are rebuilt from the status trail, and a few early ones are
+approximate:
+
+- A check approving a merge, and a pull request held back by a conflict or a
+  failed build, count as waiting on a person in an earlier bar. Only the
+  attention panel can tell the difference today.
+- Pre-approval is walked up the parents an issue has now, and ignores the
+  project line a level may not cross.
+- A question that went to the merge level, or one awaiting its look back, ends
+  at a terminal column in an earlier bar yet counts now.
+- Whether an issue has children is today's answer, not the answer then.
+- A parent in a project you cannot see adds no level to an earlier bar.
+
+The last bar is exact: it is the attention control's own count.
+
 ## Cards show their age
 
 A card that has sat in its column longer than is normal for that column wears a

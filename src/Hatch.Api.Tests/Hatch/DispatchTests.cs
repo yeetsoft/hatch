@@ -4747,6 +4747,103 @@ public class DispatchTests
         Assert.Null(Dispatch.SigningFold(SignedOnlyIssue(), null));
     }
 
+    // ---- Forge: a runner whose forge sign-in fails is not handed a move that ends in a pull request ----
+
+    private static readonly EfHatchStatus BuildingColumn = new() { Id = 2, Name = "building", SortOrder = 30 };
+    private static readonly EfHatchStatus ReviewColumn = new() { Id = 3, Name = "review", SortOrder = 40 };
+
+    private static EfHatchIssue ForgeIssue(string type = "task", string? landing = null)
+    {
+        var issue = ModelIssue();
+        issue.Type = type;
+        if (landing is not null) issue.Project!.Landing = landing;
+        return issue;
+    }
+
+    private static string? ForgeFoldFor(
+        string? state, string? why = null, string runner = "build-box", EfHatchIssue? issue = null, EfHatchStatus? from = null,
+        EfHatchStatus? to = null, bool hop = false, bool reviewBuild = false) =>
+        Dispatch.ForgeFold(
+            issue ?? ForgeIssue(), new ForgeDeclaration(runner, state, why), from ?? BuildingColumn, to ?? ReviewColumn, hop, reviewBuild,
+            BuildingColumn, DependencyGate.None, FamilyGate.None);
+
+    [Fact]
+    public void ForgeFold_Fails_AStepOutOfImplementation_SaysItEndsInAPullRequest() =>
+        Assert.Equal(
+            "AER-7 ends in a pull request - build-box cannot reach its forge (gh said: not logged in)",
+            ForgeFoldFor(RunnerForge.Fails, "not logged in"));
+
+    [Fact]
+    public void ForgeFold_Fails_BuildWorkInReview_SaysTheBuildCannotBeRead() =>
+        Assert.Equal(
+            "AER-7's failing build cannot be read by build-box - it cannot reach its forge (gh said: HTTP 401)",
+            ForgeFoldFor(RunnerForge.Fails, "HTTP 401", from: ReviewColumn, to: ReviewColumn, reviewBuild: true));
+
+    [Fact]
+    public void ForgeFold_FailsWithNoReason_HasNoParentheses()
+    {
+        Assert.Equal("AER-7 ends in a pull request - build-box cannot reach its forge", ForgeFoldFor(RunnerForge.Fails));
+        Assert.Equal("AER-7 ends in a pull request - build-box cannot reach its forge", ForgeFoldFor(RunnerForge.Fails, "  "));
+        Assert.Equal(
+            "AER-7's failing build cannot be read by build-box - it cannot reach its forge",
+            ForgeFoldFor(RunnerForge.Fails, from: ReviewColumn, to: ReviewColumn, reviewBuild: true));
+    }
+
+    [Fact]
+    public void ForgeFold_ARunnerWithNoName_IsThisRunner()
+    {
+        Assert.Equal("AER-7 ends in a pull request - this runner cannot reach its forge", ForgeFoldFor(RunnerForge.Fails, runner: ""));
+        Assert.Equal(
+            "AER-7's failing build cannot be read by this runner - it cannot reach its forge",
+            ForgeFoldFor(RunnerForge.Fails, runner: "", from: ReviewColumn, to: ReviewColumn, reviewBuild: true));
+    }
+
+    [Fact]
+    public void ForgeFold_WorksNoAnswerAWordOffTheListAndNoDeclaration_FoldNothing()
+    {
+        Assert.Null(ForgeFoldFor(RunnerForge.Works));
+        Assert.Null(ForgeFoldFor(null));
+        Assert.Null(ForgeFoldFor("maybe"));
+        Assert.Null(Dispatch.ForgeFold(ForgeIssue(), ForgeDeclaration.Unjudged, BuildingColumn, ReviewColumn, false, false, BuildingColumn, DependencyGate.None, FamilyGate.None));
+        Assert.Null(Dispatch.ForgeFold(ForgeIssue(), null, BuildingColumn, ReviewColumn, false, false, BuildingColumn, DependencyGate.None, FamilyGate.None));
+    }
+
+    [Fact]
+    public void ForgeFold_AProjectThatLandsOnItsTrunk_FoldsNothing()
+    {
+        Assert.Null(ForgeFoldFor(RunnerForge.Fails, issue: ForgeIssue(landing: Landings.Trunk)));
+        Assert.Null(ForgeFoldFor(RunnerForge.Fails, issue: ForgeIssue(landing: Landings.Trunk), from: ReviewColumn, to: ReviewColumn, reviewBuild: true));
+    }
+
+    [Fact]
+    public void ForgeFold_AHop_NeverFolds() =>
+        Assert.Null(ForgeFoldFor(RunnerForge.Fails, hop: true));
+
+    [Fact]
+    public void ForgeFold_AnEpicOrAnAmbition_FoldsNothing()
+    {
+        Assert.Null(ForgeFoldFor(RunnerForge.Fails, issue: ForgeIssue("epic")));
+        Assert.Null(ForgeFoldFor(RunnerForge.Fails, issue: ForgeIssue("ambition")));
+    }
+
+    [Fact]
+    public void ForgeFold_AMoveLeftOfImplementation_OrWithNoColumnAfter_FoldsNothing()
+    {
+        var todo = new EfHatchStatus { Id = 1, Name = "todo", SortOrder = 20 };
+        Assert.Null(ForgeFoldFor(RunnerForge.Fails, from: todo, to: BuildingColumn));
+        Assert.Null(ForgeFoldFor(RunnerForge.Fails, from: ReviewColumn, to: new EfHatchStatus { Id = 4, Name = "merge", SortOrder = 50 }));
+        Assert.Null(Dispatch.ForgeFold(
+            ForgeIssue(), new ForgeDeclaration("build-box", RunnerForge.Fails, null), BuildingColumn, null, false, false,
+            BuildingColumn, DependencyGate.None, FamilyGate.None));
+    }
+
+    [Fact]
+    public void ForgeFold_AReviewSelfMove_FoldsOnlyWhileItIsBuildWork()
+    {
+        Assert.Null(ForgeFoldFor(RunnerForge.Fails, from: ReviewColumn, to: ReviewColumn, reviewBuild: false));
+        Assert.NotNull(ForgeFoldFor(RunnerForge.Fails, from: ReviewColumn, to: ReviewColumn, reviewBuild: true));
+    }
+
     // ---- A preferred local model: the asker that can run it gets it, and the rest are left for a free one ----
 
     private static readonly EfHatchStatus TodoColumn = new() { Name = "todo", SortOrder = 20 };

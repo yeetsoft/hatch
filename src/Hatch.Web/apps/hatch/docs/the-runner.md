@@ -960,8 +960,8 @@ A runner reads builds and pull requests, and merges them, as the account its own
 `gh` is signed in as. A machine where `gh` is signed out, holds a token the forge
 has refused, or is not installed reads none of that, and nothing says so until a
 read fails. So the loop asks `gh` first, in each checkout it serves, and tells
-the board what it found. It decides nothing from the answer: dispatch is
-unchanged, and a ticket is worked whatever the forge said.
+the board what it found. The loop decides nothing from the answer itself; what the
+board does with it is said below.
 
 **The check.** It runs `gh auth status --active` in the checkout, handed the
 board's own identity for the repository as `GH_REPO` and its host as `--hostname`
@@ -1017,8 +1017,33 @@ the loop's own row. The CLI also puts the answer on every read a dispatch is
 judged on - `work/next`, `work/queue`, `work/KEY`, and a hop - as `forge=works`
 or `forge=fails`, with `forgeWhy=` beside `fails`, escaped; `hatch queue` and
 `hatch next` ask each checkout once, at once, before their read. A machine with
-nothing answered sends no parameter. The board stores the beat's answer; it does
-not yet read it on a dispatch.
+nothing answered sends no parameter. The board stores the beat's answer and reads
+it on a dispatch, as the next section says.
+
+**What the board does with the answer.** A runner whose forge `fails` is not
+handed a move that ends in a pull request, so it stops finishing work nobody can
+review. The board folds, for that runner alone:
+
+- a step out of the implementation column into another column, in a project that
+  lands by pull request, for a ticket that opens its own pull request. A task
+  that rides its story's one pull request opens none and is not folded; the
+  story whose own step opens that pull request is.
+- the review self-move while it is build work, since the runner reads the
+  failing check's log through `gh` before it spawns anything.
+
+The queue says which: *"HA-12 ends in a pull request - build-box cannot reach
+its forge (gh said: ...)"* or *"HA-12's failing build cannot be read by
+build-box - it cannot reach its forge (gh said: ...)"*, and the loop passes over
+the row in silence. Conflict work needs only git, so it is still handed over,
+and so are breakdown, analysis and a project that lands on its trunk: a runner
+whose forge fails keeps running.
+
+Only `fails` folds. A runner that has said nothing, which is every runner older
+than this check, is not judged and works as it always did. A runner that signs
+in again clears the fold within a pass: the next check says `works`, and the
+next beat carries it. The attention panel lists a step in *Waiting on a
+runner* as *no live runner can open a pull request* only when every live runner
+has said `fails`.
 
 The **Runners** page reads it on the runner's own page as *Signed in to its
 forge* or *Forge sign-in fails* with what `gh` said, and marks a runner whose
