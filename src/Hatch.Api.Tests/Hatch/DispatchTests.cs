@@ -2103,6 +2103,57 @@ public class DispatchTests
         Assert.Equal(2, Dispatch.MatchWeave([flagged, WorksOutChangesRow(2, "epic", worksOutChanges: false, fromSort: 20)], 1)!.Id);
     }
 
+    // ---- A row that shapes an ambition is never matched ----
+
+    private static EfHatchPlaybook ShapesAmbitionRow(int id, string types, bool shapesAmbition, int fromSort = 30) => new()
+    {
+        Id = id,
+        FromStatusId = fromSort,
+        FromStatus = new EfHatchStatus { Name = $"c{fromSort}", SortOrder = fromSort },
+        ToStatusId = fromSort,
+        Types = types,
+        Shape = EfHatchPlaybook.AnyShape,
+        Prompt = "do the thing",
+        Model = "sonnet",
+        Effort = "high",
+        ShapesAmbition = shapesAmbition,
+        CreatedAt = Now,
+        UpdatedAt = Now,
+    };
+
+    [Theory]
+    [InlineData("ambition")]
+    [InlineData("")]
+    public void Match_ReturnsNothing_WhenOnlyAShapesAmbitionRowCoversTheType(string types)
+    {
+        var rows = new List<EfHatchPlaybook> { ShapesAmbitionRow(1, types, shapesAmbition: true) };
+
+        Assert.Null(Dispatch.Match(rows, 30, 30, "ambition", isParent: false, projectId: 1));
+    }
+
+    [Theory]
+    [InlineData("reflection")]
+    [InlineData("")]
+    public void MatchReflection_SkipsAShapesAmbitionRow(string types)
+    {
+        var flagged = ShapesAmbitionRow(1, types, shapesAmbition: true);
+
+        Assert.Null(Dispatch.MatchReflection([flagged], 1));
+        Assert.Equal(2, Dispatch.MatchReflection([flagged, ShapesAmbitionRow(2, "reflection", shapesAmbition: false)], 1)!.Id);
+    }
+
+    [Theory]
+    [InlineData("epic")]
+    [InlineData("")]
+    public void MatchWeave_SkipsAShapesAmbitionRow(string types)
+    {
+        // Leftmost column, so only the flag keeps it from being picked.
+        var flagged = ShapesAmbitionRow(1, types, shapesAmbition: true, fromSort: 10);
+
+        Assert.Null(Dispatch.MatchWeave([flagged], 1));
+        Assert.Equal(2, Dispatch.MatchWeave([flagged, ShapesAmbitionRow(2, "epic", shapesAmbition: false, fromSort: 20)], 1)!.Id);
+    }
+
     // ---- StalledFold: SL-418's one shared held/stall rule ----
 
     [Fact]

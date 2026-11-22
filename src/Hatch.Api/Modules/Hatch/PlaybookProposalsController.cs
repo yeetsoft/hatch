@@ -262,6 +262,7 @@ public class PlaybookProposalsController(
             row.IsCheck = next.IsCheck;
             row.AnswersQuestions = next.AnswersQuestions;
             row.WorksOutChanges = next.WorksOutChanges;
+            row.ShapesAmbition = next.ShapesAmbition;
             row.ProjectId = next.ProjectId;
             row.UpdatedAt = now;
         }
