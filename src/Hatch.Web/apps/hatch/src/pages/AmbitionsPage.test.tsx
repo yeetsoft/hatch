@@ -128,6 +128,16 @@ describe('AmbitionList', () => {
 
     expect(html).toContain('<span class="text-muted">Gone</span>');
   });
+
+  it("draws a row as the app's card, and an epic's capability numbers in one cell after its column", () => {
+    const html = render(row('AER-1', { open: [epic('AER-7', { serves: [1, 3] }), epic('OPS-8')] }));
+
+    expect(html).toContain('<li class="hatch-card hatch-ambition-row">');
+    expect(html).toContain(
+      '<span class="hatch-ambition-serves"><span class="hatch-capability-badge">#1</span><span class="hatch-capability-badge">#3</span></span>',
+    );
+    expect(html).toContain('<span class="hatch-ambition-serves"><span class="text-muted">—</span></span>');
+  });
 });
 
 /* The strip above the rows: drawn from a ballot and a fixed clock. */
