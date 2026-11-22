@@ -111,12 +111,14 @@ public sealed class Dispatch(
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
         TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
         bool foldLetGo = true, ModelDeclaration? models = null, HasDeclaration? has = null,
-        RunnerRefusal? refusal = null, VisibleProjects? within = null, SigningDeclaration? signing = null)
+        RunnerRefusal? refusal = null, VisibleProjects? within = null, SigningDeclaration? signing = null,
+        ForgeDeclaration? forge = null)
     {
         tags ??= TagDeclaration.Unjudged;
         models ??= ModelDeclaration.Unjudged;
         has ??= HasDeclaration.Unjudged;
         signing ??= SigningDeclaration.Unjudged;
+        forge ??= ForgeDeclaration.Unjudged;
         refusal ??= await RefusedByAsync(asking?.Name, ct);
 
         // A runner marked preferred is never told a row is left for another
@@ -484,11 +486,12 @@ public sealed class Dispatch(
                         drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
                         has: has, requirement: requirement, refusal: refusal, leftFor: leftFor, answering: answering is not null || changing is not null,
-                        signing: signing);
+                        signing: signing, forge: forge);
                     if (!hop && (ModelFold(issue, status, playbook, models, localLevel, leftFor) is not null
                                   || RefusalFold(issue, status, playbook, refusal, localLevel, models) is not null
                                   || ColumnFold(issue, status, refusal, statuses) is not null
-                                  || SigningFold(issue, signing) is not null))
+                                  || SigningFold(issue, signing) is not null
+                                  || forge.Fails))
                         modelFolded = true;
                     if (requirement is not null && rowTo is not null
                         && CodeGated(issue, status, rowTo, hop, implementation, merged, built)
@@ -624,7 +627,7 @@ public sealed class Dispatch(
                     rows[i] = rows[i] with { Deadlocked = true, Blocked = $"deadlocked - {rows[i].Blocked}" };
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags, models, refusal, signing);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags, models, refusal, signing, forge);
     }
 
     /// <summary>
@@ -850,7 +853,7 @@ public sealed class Dispatch(
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
             has: declared.Has, refusal: declared.ToRefusal(),
-            within: await PeerWithinAsync(peer, ct), signing: declared.Signing);
+            within: await PeerWithinAsync(peer, ct), signing: declared.Signing, forge: declared.Forge);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -861,8 +864,8 @@ public sealed class Dispatch(
 
     /// <summary>
     /// <see cref="TakeableByAsync"/> with the peer's models and dependencies left
-    /// unjudged, and its signing with them: what it would take if it never folded
-    /// on any of the three. Every other
+    /// unjudged, and its signing and forge with them: what it would take if it never folded
+    /// on any of the four. Every other
     /// field stays the peer's own, its column rule included - a row stuck on
     /// columns is not stuck on a toolchain.
     /// </summary>
@@ -877,7 +880,8 @@ public sealed class Dispatch(
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: ModelDeclaration.Unjudged,
             has: HasDeclaration.Unjudged,
             refusal: new RunnerRefusal(peer.Name, [], declared.StatusMode, declared.StatusIds),
-            within: await PeerWithinAsync(peer, ct), signing: SigningDeclaration.Unjudged);
+            within: await PeerWithinAsync(peer, ct), signing: SigningDeclaration.Unjudged,
+            forge: ForgeDeclaration.Unjudged);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -905,9 +909,11 @@ public sealed class Dispatch(
         // issue is stuck on one - and an unprofiled fleet is spared the scans.
         // Signing is a third thing a row can be stuck on, but only where some
         // project allows only signed commits, so an install that never uses
-        // the setting reads nothing more than it did.
+        // the setting reads nothing more than it did. A forge that fails is a fourth, and
+        // a runner that says so cannot take a step that ends in a pull request.
         var signedOnly = await db.Projects.AnyAsync(p => !p.AllowsUnsignedCommits, ct);
         if (declared.Any(d => !d.Models.Judged && !d.Has.Judged && d.Refused.Count == 0
+                              && d.Forge.State != RunnerForge.Fails
                               && (!signedOnly || d.Signing.State == RunnerSigning.Works))) return [];
 
         HashSet<long>? stuck = null;
@@ -936,7 +942,7 @@ public sealed class Dispatch(
                      .ThenBy(r => r.Issue.Rank)
                      .ThenBy(r => r.Issue.Id))
         {
-            if (await MissingAcrossFleetAsync(row, declared, ct) is not { } missing) continue;
+            if (await MissingAcrossFleetAsync(row, declared, board, ct) is not { } missing) continue;
 
             listed.Add(new WaitingOnARunnerDto(
                 IssueKey.Format(row.Issue.Project!.Key, row.Issue.Number), row.Issue.Title, row.Issue.Type, row.From.Name, missing));
@@ -980,7 +986,7 @@ public sealed class Dispatch(
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
             has: declared.Has, refusal: declared.ToRefusal(),
-            within: await PeerWithinAsync(peer, ct), signing: declared.Signing);
+            within: await PeerWithinAsync(peer, ct), signing: declared.Signing, forge: declared.Forge);
     }
 
     private readonly Dictionary<Guid, VisibleProjects> peerScopes = [];
@@ -1277,12 +1283,14 @@ public sealed class Dispatch(
     /// <summary>
     /// What no live runner has, for one row: the model it runs on, and the
     /// development dependencies its project's repositories ask for, and a runner
-    /// that signs its commits where the project allows only signed ones. Each check
+    /// that signs its commits where the project allows only signed ones, and a runner whose
+    /// forge works where the move ends in a pull request. Each check
     /// reads only the declarations that judged that capability, and is skipped
     /// where none did. Null where one runner is short on one thing and another on
     /// another - a split fleet - since neither sentence is true of all of them.
     /// </summary>
-    private async Task<string?> MissingAcrossFleetAsync(ScanRow row, IReadOnlyList<RunnerDeclaration> declared, CancellationToken ct)
+    private async Task<string?> MissingAcrossFleetAsync(
+        ScanRow row, IReadOnlyList<RunnerDeclaration> declared, Scan board, CancellationToken ct)
     {
         var parts = new List<string>();
 
@@ -1332,6 +1340,14 @@ public sealed class Dispatch(
         // a project that allows only signed commits wants a runner known to sign.
         if (!row.Issue.Project!.AllowsUnsignedCommits && !declared.Any(d => d.Signing.State == RunnerSigning.Works))
             parts.Add("no live runner signs its commits");
+
+        // Unlike signing, a runner that never said is not judged here: only a fleet that
+        // has all said its forge fails has nobody who can open the pull request.
+        if (declared.All(d => d.Forge.Fails)
+            && ForgeNeed(
+                row.Issue, row.From, row.To, row.Hop, row.Kind == WorkKinds.Build,
+                Columns.Implementation(board.Statuses), board.Gate, board.Family) != ForgeNeeds.None)
+            parts.Add("no live runner can open a pull request");
 
         return parts.Count == 0 ? null : string.Join("; ", parts);
     }
@@ -2063,6 +2079,71 @@ public sealed class Dispatch(
         };
     }
 
+    /// <summary>What a move needs the forge for, as <see cref="ForgeNeed"/> judges it.</summary>
+    internal enum ForgeNeeds
+    {
+        /// <summary>Nothing the forge has to answer.</summary>
+        None,
+
+        /// <summary>The step ends in a pull request the runner has to open.</summary>
+        PullRequest,
+
+        /// <summary>The review self-move is build work, read from the failing check's log through <c>gh</c>.</summary>
+        Build,
+    }
+
+    /// <summary>
+    /// Whether a move needs the forge, and for what. A step out of the
+    /// implementation column into another one, in a project that lands by pull
+    /// request, for a ticket that opens its own pull request; or the review
+    /// self-move while it is build work. Never a hop, never a project that lands
+    /// on its trunk, never a ticket that rides its story's one pull request, and
+    /// never a story whose children are still the work.
+    /// </summary>
+    internal static ForgeNeeds ForgeNeed(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, bool hop, bool reviewBuild,
+        EfHatchStatus? implementation, DependencyGate gate, FamilyGate family)
+    {
+        if (hop || to is null) return ForgeNeeds.None;
+        if (issue.Project!.Landing == Landings.Trunk) return ForgeNeeds.None;
+
+        if (to.Id == from.Id)
+            return reviewBuild && !IsPass(issue, from, to, implementation) ? ForgeNeeds.Build : ForgeNeeds.None;
+
+        if (implementation is null || from.Id != implementation.Id) return ForgeNeeds.None;
+        if (IssueTypeKinds.RunsChildren(issue.Type) || gate.SharedStoryOf(issue.Id) is not null) return ForgeNeeds.None;
+
+        var leaf = family.Children(issue.Id).Count == 0
+            || (issue.Type is "story" or "bug"
+                && gate.EffectiveOnePr(issue.Id).OnePr
+                && family.OpenWorkChildren(issue.Id).Count == 0);
+        return leaf ? ForgeNeeds.PullRequest : ForgeNeeds.None;
+    }
+
+    /// <summary>
+    /// Why the asking runner is not handed a move that needs the forge: its forge
+    /// sign-in fails. Null for a caller that is not judged, for a runner that
+    /// said <c>works</c> or nothing - only <c>fails</c> folds, because every
+    /// runner in service was older than the check - and for a move that needs
+    /// no forge.
+    /// </summary>
+    internal static string? ForgeFold(
+        EfHatchIssue issue, ForgeDeclaration? forge, EfHatchStatus from, EfHatchStatus? to, bool hop, bool reviewBuild,
+        EfHatchStatus? implementation, DependencyGate gate, FamilyGate family)
+    {
+        if (forge is null || !forge.Fails) return null;
+
+        var need = ForgeNeed(issue, from, to, hop, reviewBuild, implementation, gate, family);
+        if (need == ForgeNeeds.None) return null;
+
+        var key = IssueKey.Format(issue.Project!.Key, issue.Number);
+        var runner = string.IsNullOrWhiteSpace(forge.Runner) ? "this runner" : forge.Runner;
+        var said = string.IsNullOrWhiteSpace(forge.Why) ? "" : $" (gh said: {forge.Why})";
+        return need == ForgeNeeds.PullRequest
+            ? $"{key} ends in a pull request - {runner} cannot reach its forge{said}"
+            : $"{key}'s failing build cannot be read by {runner} - it cannot reach its forge{said}";
+    }
+
     /// <summary>
     /// The models the key named <paramref name="name"/> refuses, read once for a
     /// pass. Null for no name, no key store, and a name no key answers to - a
@@ -2642,11 +2723,12 @@ public sealed class Dispatch(
         RunnerRefusal? refusal = null,
         (string Runner, string Model)? leftFor = null,
         bool answering = false,
-        SigningDeclaration? signing = null) =>
+        SigningDeclaration? signing = null,
+        ForgeDeclaration? forge = null) =>
         BlockedWithKind(
             issue, from, to, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
-            repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor, answering, signing).Sentence;
+            repoSourced, tags, projects, asking, models, has, requirement, refusal, leftFor, answering, signing, forge).Sentence;
 
     /// <summary>
     /// The hold for a child whose parent is in progress in another project but may not pull
@@ -2726,7 +2808,8 @@ public sealed class Dispatch(
         RunnerRefusal? refusal = null,
         (string Runner, string Model)? leftFor = null,
         bool answering = false,
-        SigningDeclaration? signing = null)
+        SigningDeclaration? signing = null,
+        ForgeDeclaration? forge = null)
     {
         var hop = hopKind is not null;
 
@@ -2968,6 +3051,14 @@ public sealed class Dispatch(
         // signs them, from any door.
         if (!hop && !reviewIdle && SigningFold(issue, signing) is { } signingBlock)
             return new Blocking(signingBlock, BlockedKinds.Other);
+
+        // After the signing fold: a runner whose forge sign-in fails is not handed
+        // a move that ends in a pull request, nor the build work in review that
+        // reads a failing check through gh. Never a hop, which runs no session.
+        if (!hop && !reviewIdle
+            && ForgeFold(
+                issue, forge, from, to, hop, judged is { Kind: WorkKinds.Build }, implementation, gate, family) is { } forgeBlock)
+            return new Blocking(forgeBlock, BlockedKinds.Other);
 
         // After the model and refusal folds, before the dependencies: a runner that cannot
         // build the ticket's code is not asked to wait on what blocks it. The
@@ -3855,7 +3946,7 @@ public sealed record Scan(
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
     IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null,
     TagDeclaration? Tags = null, ModelDeclaration? Models = null, RunnerRefusal? Refusal = null,
-    SigningDeclaration? Signing = null)
+    SigningDeclaration? Signing = null, ForgeDeclaration? Forge = null)
 {
     public static Scan Refused(string why) =>
         new(
@@ -4018,6 +4109,20 @@ public sealed record TagDeclaration(IReadOnlyList<string> Has, bool Judged, bool
 public sealed record SigningDeclaration(string Runner, string? State, string? Why, bool Judged)
 {
     public static readonly SigningDeclaration Unjudged = new("", null, null, false);
+}
+
+/// <summary>
+/// Whether the asking runner can reach its forge, as <see cref="Dispatch.ForgeFold"/> judges it.
+/// <see cref="State"/> is one of <see cref="RunnerForge.Words"/>, or null for a runner that has
+/// not said. Only <c>fails</c> folds anything: a runner that said nothing, and the board's own
+/// scan, are not judged, so every runner older than the check keeps working as it did.
+/// </summary>
+public sealed record ForgeDeclaration(string Runner, string? State, string? Why)
+{
+    public static readonly ForgeDeclaration Unjudged = new("", null, null);
+
+    /// <summary>Whether the runner said its forge sign-in fails.</summary>
+    public bool Fails => State == RunnerForge.Fails;
 }
 
 /// <summary>

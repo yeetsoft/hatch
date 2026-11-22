@@ -52,7 +52,8 @@ public sealed record RunnerDeclaration(
     string StatusMode = RunnerStatusMode.All,
     IReadOnlyList<int>? StatusIds = null,
     bool Preferred = false,
-    SigningDeclaration? SigningAnswer = null)
+    SigningDeclaration? SigningAnswer = null,
+    ForgeDeclaration? ForgeAnswer = null)
 {
     /// <summary>
     /// Whether the runner signs its commits, as <see cref="Dispatch.SigningFold"/> judges it. A
@@ -60,6 +61,13 @@ public sealed record RunnerDeclaration(
     /// no answer, and is held off a project that allows only signed commits.
     /// </summary>
     public SigningDeclaration Signing => SigningAnswer ?? new SigningDeclaration(Name, null, null, true);
+
+    /// <summary>
+    /// Whether the runner can reach its forge, as <see cref="Dispatch.ForgeFold"/> judges it. A
+    /// runner that never said, and every runner older than the check, reads as no answer, which
+    /// folds nothing.
+    /// </summary>
+    public ForgeDeclaration Forge => ForgeAnswer ?? new ForgeDeclaration(Name, null, null);
 
     /// <summary>What this runner refuses - models and columns - as a pass judges it.</summary>
     public RunnerRefusal ToRefusal() => new(Name, Refused, StatusMode, StatusIds);
@@ -170,7 +178,8 @@ public sealed record RunnerDeclaration(
             config?.StatusMode ?? RunnerStatusMode.All,
             config is null ? [] : RunnerStatusIdsColumn.Read(config.StatusIds),
             config?.Preferred ?? false,
-            SigningOf(runner.Name, live));
+            SigningOf(runner.Name, live),
+            ForgeDeclarationOf(runner.Name, live));
     }
 
     /// <summary>
@@ -188,11 +197,20 @@ public sealed record RunnerDeclaration(
     /// <summary>
     /// What a runner's live loop sessions say about its forge sign-in: the worst of their
     /// answers, see <see cref="RunnerForge.Worst"/>. Null when none said. Read by the
-    /// runners page alone; it is not part of <see cref="RunnerDeclaration"/>, and dispatch
-    /// does not read it.
+    /// runners page, and by dispatch through <see cref="ForgeDeclarationOf"/>.
     /// </summary>
     internal static (string State, string? Why)? ForgeOf(IEnumerable<EfHatchRunnerSession> live) =>
         RunnerForge.Worst(live.Where(s => s.Kind == EfHatchRunner.LoopKind).Select(s => (s.Forge, s.ForgeWhy)));
+
+    /// <summary>
+    /// <see cref="ForgeOf"/> as the declaration a pass judges: the runner's name, the worst
+    /// word and its reason. No answer is kept as none, which folds nothing.
+    /// </summary>
+    internal static ForgeDeclaration ForgeDeclarationOf(string runner, IEnumerable<EfHatchRunnerSession> live)
+    {
+        var worst = ForgeOf(live);
+        return new ForgeDeclaration(runner, worst?.State, worst?.Why);
+    }
 
     /// <summary>
     /// Per field, <c>has</c> and <c>models</c> alike: <paramref name="beatLines"/>
