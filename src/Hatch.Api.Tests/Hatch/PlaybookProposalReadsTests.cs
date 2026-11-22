@@ -113,6 +113,20 @@ public class PlaybookProposalReadsTests
     }
 
     [Fact]
+    public async Task AShapesAmbitionChange_IsTheOnlyChangedField_AndAnOldBeforeReadsAsFalse()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(
+            patch: new PlaybookPatchRequest(null, null, null, null, null, null, ShapesAmbition: true));
+
+        var change = Assert.Single((await h.ReadAsync(proposal.Id)).Changes);
+
+        Assert.Equal(new[] { "shapesAmbition" }, change.ChangedFields);
+        Assert.False(change.Before.ShapesAmbition);
+        Assert.True(change.After.ShapesAmbition);
+    }
+
+    [Fact]
     public async Task ALocalModelChange_IsTheOnlyChangedField_BeforeNoneAndAfterTheId()
     {
         var h = await NewAsync();

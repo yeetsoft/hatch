@@ -2570,6 +2570,10 @@ public static class ClaudeTools
 /// A row a session runs on to work out what a change to an ambition does to its epics in flight. The ordinary
 /// match never returns it, and it is never also a check or a row that answers questions.
 /// </param>
+/// <param name="ShapesAmbition">
+/// A row a session runs on to shape a draft ambition: its title, its description and its capabilities. The ordinary
+/// match never returns it, and it is never also a check, a row that answers questions or a row that works out changes.
+/// </param>
 /// <param name="Source">
 /// Which layer the row that matched came from: <c>"board"</c>, <c>"project"</c>
 /// (today's own-project-row case) or <c>"file"</c>, a row read off a repo-sourced
@@ -2601,7 +2605,8 @@ public record PlaybookDto(
     int? MaxRunSeconds = null,
     string? LocalModel = null,
     bool AnswersQuestions = false,
-    bool WorksOutChanges = false);
+    bool WorksOutChanges = false,
+    bool ShapesAmbition = false);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
@@ -2659,12 +2664,16 @@ public record LocalModelCreateRequest(
 /// </param>
 /// <param name="IsCheck">Null means false (on create) or leaves it alone (on patch).</param>
 /// <param name="AnswersQuestions">
-/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions or works out
-/// changes - never more than one.
+/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions, works out
+/// changes or shapes an ambition - never more than one.
 /// </param>
 /// <param name="WorksOutChanges">
-/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions or works out
-/// changes - never more than one.
+/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions, works out
+/// changes or shapes an ambition - never more than one.
+/// </param>
+/// <param name="ShapesAmbition">
+/// Null means false (on create) or leaves it alone (on patch). A row is a check, answers questions, works out
+/// changes or shapes an ambition - never more than one.
 /// </param>
 /// <param name="MaxRunSeconds">
 /// The seconds a session under this row may run before it is cut off. Null
@@ -2694,7 +2703,8 @@ public record PlaybookCreateRequest(
     string? MaxRunSeconds = null,
     string? LocalModel = null,
     bool? AnswersQuestions = null,
-    bool? WorksOutChanges = null);
+    bool? WorksOutChanges = null,
+    bool? ShapesAmbition = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="Prompt">
@@ -2723,10 +2733,16 @@ public record PlaybookCreateRequest(
 /// </param>
 /// <param name="IsCheck">Null leaves it alone.</param>
 /// <param name="AnswersQuestions">
-/// Null leaves it alone. A row is a check, answers questions or works out changes - never more than one.
+/// Null leaves it alone. A row is a check, answers questions, works out changes or shapes an ambition - never more
+/// than one.
 /// </param>
 /// <param name="WorksOutChanges">
-/// Null leaves it alone. A row is a check, answers questions or works out changes - never more than one.
+/// Null leaves it alone. A row is a check, answers questions, works out changes or shapes an ambition - never more
+/// than one.
+/// </param>
+/// <param name="ShapesAmbition">
+/// Null leaves it alone. A row is a check, answers questions, works out changes or shapes an ambition - never more
+/// than one.
 /// </param>
 /// <param name="MaxRunSeconds">
 /// The seconds a session under this row may run before it is cut off. Null
@@ -2755,7 +2771,8 @@ public record PlaybookPatchRequest(
     string? MaxRunSeconds = null,
     string? LocalModel = null,
     bool? AnswersQuestions = null,
-    bool? WorksOutChanges = null);
+    bool? WorksOutChanges = null,
+    bool? ShapesAmbition = null);
 
 /// <summary>
 /// One change in a proposal submission: the playbook, then every field
@@ -2777,7 +2794,8 @@ public record PlaybookProposalChangeRequest(
     bool? IsCheck = null,
     string? LocalModel = null,
     bool? AnswersQuestions = null,
-    bool? WorksOutChanges = null)
+    bool? WorksOutChanges = null,
+    bool? ShapesAmbition = null)
 {
     /// <summary>The fields alone, in <see cref="PlaybookPatchRequest"/>'s own shape.</summary>
     public PlaybookPatchRequest ToPatch() => new(
@@ -2795,14 +2813,16 @@ public record PlaybookProposalChangeRequest(
         IsCheck: IsCheck,
         LocalModel: LocalModel,
         AnswersQuestions: AnswersQuestions,
-        WorksOutChanges: WorksOutChanges);
+        WorksOutChanges: WorksOutChanges,
+        ShapesAmbition: ShapesAmbition);
 
-    /// <summary>Whether any of the fifteen patch fields is present - <c>""</c> and an empty list count.</summary>
+    /// <summary>Whether any of the sixteen patch fields is present - <c>""</c> and an empty list count.</summary>
     public bool NamesAField =>
         FromStatusId is not null || ToStatusId is not null || Types is not null || Prompt is not null ||
         Model is not null || Effort is not null || Budget is not null || BriefLimit is not null ||
         Shape is not null || DeniedTools is not null || ProjectId is not null || IsCheck is not null ||
-        LocalModel is not null || AnswersQuestions is not null || WorksOutChanges is not null;
+        LocalModel is not null || AnswersQuestions is not null || WorksOutChanges is not null ||
+        ShapesAmbition is not null;
 }
 
 /// <summary>A session's proposal: why, the ticket it was working, and the changes.</summary>
@@ -2815,7 +2835,7 @@ public record PlaybookProposalRequest(
 /// <param name="ChangedFields">
 /// Which fields differ between <paramref name="Before"/> and <paramref name="After"/>, from a fixed vocabulary
 /// in this order: <c>fromStatusId, toStatusId, types, shape, prompt, model, localModel, effort, budget, briefLimit,
-/// deniedTools, isCheck, answersQuestions, worksOutChanges, projectId</c>.
+/// deniedTools, isCheck, answersQuestions, worksOutChanges, shapesAmbition, projectId</c>.
 /// </param>
 /// <param name="OutOfDate">Whether the playbook has changed since the proposal was made.</param>
 public record PlaybookProposalChangeDto(

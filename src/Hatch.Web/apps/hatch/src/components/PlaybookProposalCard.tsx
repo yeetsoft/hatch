@@ -119,6 +119,8 @@ function fieldValue(field: string, p: Playbook, statuses: Status[]) {
       return p.answersQuestions ? 'yes' : 'no';
     case 'worksOutChanges':
       return p.worksOutChanges ? 'yes' : 'no';
+    case 'shapesAmbition':
+      return p.shapesAmbition ? 'yes' : 'no';
     case 'projectId':
       return projectLabel(p);
     default:

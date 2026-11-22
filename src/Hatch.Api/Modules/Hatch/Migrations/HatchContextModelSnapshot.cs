@@ -1489,6 +1489,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("character varying(10)")
                         .HasDefaultValue("any");
 
+                    b.Property<bool>("ShapesAmbition")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<int>("ToStatusId")
                         .HasColumnType("integer");
 
