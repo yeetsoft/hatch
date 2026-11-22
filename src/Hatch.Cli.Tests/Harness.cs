@@ -798,6 +798,12 @@ public sealed class FakeForge
     /// <summary>What the link for one file path answers.</summary>
     public Dictionary<string, string?> FileUrlFor { get; } = [];
 
+    /// <summary>Every sign-in check asked for, as the path and the canonical identity it was given, in order.</summary>
+    public List<(string Path, string? Canonical)> SignInAsked { get; } = [];
+
+    /// <summary>What every sign-in check answers. By default no answer, so a test that is not about the forge hears nothing of it.</summary>
+    public ForgeSignInAnswer SignIn { get; set; } = new(null, null);
+
     public IForge For(string path, string? canonical)
     {
         Canonicals.Add(canonical);
@@ -880,6 +886,8 @@ public sealed class FakeForge
             owner.FileUrlCalls.Add((path, filePath, trunk));
             return Task.FromResult(owner.FileUrlFor.GetValueOrDefault(filePath, owner.FileUrl));
         }
+
+        public Task<ForgeSignInAnswer> CheckSignInAsync(TimeSpan limit, CancellationToken ct) => Task.FromResult(owner.SignIn);
     }
 }
 
@@ -1039,7 +1047,12 @@ public sealed class Harness : IDisposable
             Heartbeat: heartbeat ?? Beat)
         {
             Workspace = (path, baseBranch) => Workspace.For(path, baseBranch),
-            Forge = (path, canonical) => Forge.For(path, canonical),
+            MakeForge = (path, canonical) => Forge.For(path, canonical),
+            ForgeProbe = (path, canonical, _) =>
+            {
+                Forge.SignInAsked.Add((path, canonical));
+                return Task.FromResult(Forge.SignIn);
+            },
             Self = () => Self,
             SourceRevision = () => SourceRevision,
             NewBoard = () => new Board(new HatchClient(settings, Wire, Clock), refusesDangerous: settings.RefusesDangerous)
@@ -1048,6 +1061,7 @@ public sealed class Harness : IDisposable
                 Tags = tags ?? [],
                 Models = () => Runtime.AdvertisedModels() ?? [],
                 Signing = () => Runtime.SigningAnswer(),
+                Forge = () => Runtime.ForgeAnswer(),
                 Agent = Runtime.Adapter.Id,
             },
             MakeClone = Clone.Factory,
@@ -1062,6 +1076,7 @@ public sealed class Harness : IDisposable
 
         Runtime.Board.Models = () => Runtime.AdvertisedModels() ?? [];
         Runtime.Board.Signing = () => Runtime.SigningAnswer();
+        Runtime.Board.Forge = () => Runtime.ForgeAnswer();
         Runtime.Board.Agent = Runtime.Adapter.Id;
     }
 

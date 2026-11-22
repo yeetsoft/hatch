@@ -452,6 +452,7 @@ try
 
         board.Models = () => runtime.AdvertisedModels() ?? [];
         board.Signing = () => runtime.SigningAnswer();
+        board.Forge = () => runtime.ForgeAnswer();
         board.Agent = adapter.Id;
 
         return command switch
@@ -502,6 +503,18 @@ try
         var checks = await Task.WhenAll(checkouts.Select(c => GitSigning.CheckAsync(c.Path, GitSigning.Limit, cancelling.Token)));
         var answer = Runtime.Fold(checks);
         board.Signing = () => answer;
+
+        // And the forge, the same way: once, at once. The board is read quietly for each
+        // repository's identity, and a board that cannot be read leaves gh to resolve it
+        // from the remotes. A host that cannot be reached is no answer, and sends nothing.
+        IReadOnlyList<ProjectDto> bound = [];
+        try { bound = await new Board(board.Client.Quiet()).ProjectsAsync(cancelling.Token); }
+        catch (HatchException) { }
+
+        var forges = await Task.WhenAll(checkouts.Select(c =>
+            new GhForge(c.Path, Runtime.CanonicalOf(c, bound)).CheckSignInAsync(GhForge.Limit, cancelling.Token)));
+        var forgeAnswer = Runtime.FoldForge(forges.Where(f => f.State is not null));
+        board.Forge = () => forgeAnswer;
     }
 
     var cli = new Cli(board, say, new Input(), settings, runnerName)
