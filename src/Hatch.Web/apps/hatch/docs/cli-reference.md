@@ -1158,6 +1158,8 @@ hatch api PATCH /api/issues/AER-12 '{"dueAt":"2026-10-01"}'
 ```
 
 - The method is upper-cased, and a path missing its leading `/` has one added.
+  A path Git Bash on Windows has rewritten to a drive path
+  (`C:/…/Git/api/board`) is read back as `/api/board`, query string kept.
 - The body is sent exactly as typed, so quote it for your shell.
 - A 2xx prints the body untouched, so it pipes to `jq`. A non-2xx exits 1 and
   prints the refusal, since here the refusal is the answer someone asked for.

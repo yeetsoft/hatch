@@ -32,7 +32,13 @@ public sealed class ApiCommand(Cli cli)
         if (args.Length is < 2 or > 3) return Usage.Refuse(cli.Say, "api takes a method, a path and a body", ApiUsage);
 
         var method = new HttpMethod(args[0].ToUpperInvariant());
-        var path = "/" + args[1].TrimStart('/');
+        var refusal = RoutePath.Read(args[1], out var path);
+        if (refusal is not null)
+        {
+            cli.Say.Complain(refusal);
+            return 1;
+        }
+
         object? body = args.Length == 3 && args[2].Length > 0 ? new RawJson(args[2]) : null;
 
         var answer = await cli.Board.Client.Send(method, path, body, ct);
