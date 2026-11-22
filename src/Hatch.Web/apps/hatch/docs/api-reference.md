@@ -853,6 +853,7 @@ on the project, naming the project's key and the Playbooks page.
 | GET | `/issues/{key}/passes` | An ambition's passes, with the verdicts and comments each gave |
 | GET | `/issues/{key}/changes` | An ambition's changes, newest first, with their outcomes |
 | POST | `/issues/{key}/changes/{eventId}/outcomes` | Records one epic's outcome on one change |
+| POST | `/issues/{key}/changes/outcomes/{id}/decision` | **person** - decides a serves-nothing outcome: shelve the epic and its open work, or keep it running |
 | GET | `/issues/{key}/budget` | An ambition's dollar budget, what it has spent, and whether that is spent |
 | PATCH | `/issues/{key}/budget` | **person** - sets, changes or clears the budget; answers the same body |
 
@@ -988,11 +989,11 @@ before and after lines are null on the side that does not apply - an add has
 no before, a removal no after - and both are null where the payload will not
 parse, a tolerant read rather than a failed one.
 
-`Outcomes` is one `ChangeOutcomeDto(ChangeEventId, EpicKey, EpicTitle,
+`Outcomes` is one `ChangeOutcomeDto(Id, ChangeEventId, EpicKey, EpicTitle,
 EpicColumn, Outcome, Why, RecordedBy, RecordedAt, Decision)` per epic that has
-one. `EpicColumn` is the epic's column now, by name - an outcome is a record;
+one. `Id` is the outcome's own, the one the decision route below is called with. `EpicColumn` is the epic's column now, by name - an outcome is a record;
 the column stays the board's. `Decision` is a `ChangeDecisionDto(Decision,
-DecidedBy, DecidedAt)` or null - nothing writes it yet.
+DecidedBy, DecidedAt)` or null until a person decides it - see below.
 
 POST `/issues/{key}/changes/{eventId}/outcomes` takes
 `ChangeOutcomeRequest(EpicKey, Outcome, Why)` and answers the
@@ -1020,6 +1021,33 @@ A write (new or replaced, never a no-op) writes one `change_outcome_recorded`
 event on the epic - not the ambition - payload `{ ambition, changeEventId,
 outcome, why }`, `ambition` the ambition's display key. See docs/hatch.md,
 "Issue event". It shows on the epic's own History.
+
+POST `/issues/{key}/changes/outcomes/{id}/decision` takes
+`ChangeDecisionRequest(Decision)`, `shelve` or `keep`, and answers the
+`ChangeOutcomeDto` with its `Decision` set. `key` is the ambition and `id` the
+outcome's own, as `GET .../changes` gives it. It is a person's only: a key is
+refused `403 key_not_accepted`, for both decisions. Each refusal below is a
+sentence and writes nothing:
+
+- `404`: `key` names no issue, or `id` is not an outcome of this ambition;
+- `400`: the issue is not an ambition; `Decision` is not `shelve` or `keep`;
+  the outcome is not `serves_nothing`; for `shelve`, the board has no
+  deferred column;
+- `409`: a person has already decided this outcome; for `shelve`, the epic is
+  no longer open, in a terminal or a deferred column;
+- `403`: for `shelve`, the first deferred column is protected and the caller
+  may not move work into it, as for any move into a protected column.
+
+`keep` records the decision, who made it and when, and moves nothing.
+`shelve` moves the epic and the open work under it into the first deferred
+column in board order, in one transaction with the decision. Work already in a
+terminal or a deferred column stays where it is. It writes what any deferral
+writes: a `status_changed` event on each issue moved, and a note on every
+issue that waits on one of them. No changelog task is filed - a deferred
+column is not a close. `keep` is not gated on the epic's column. Both decisions leave one
+`change_decided` event on the epic, payload
+`{ ambition, changeEventId, decision }`, which shows on its History as
+`change to AER-12: shelved` or `change to AER-12: kept running`.
 
 ## Budget
 

@@ -3211,18 +3211,23 @@ public record ChangeEntryDto(
     string Actor, DateTimeOffset At);
 
 /// <summary>One epic's outcome on one change - see <see cref="ChangeDto"/>.</summary>
+/// <param name="Id">The outcome's own id - what <c>POST /issues/{key}/changes/outcomes/{id}/decision</c> is called with.</param>
 /// <param name="EpicColumn">The epic's column now, by name - a change's outcome is a record; the column stays the board's.</param>
 /// <param name="Decision">A person's decision on this outcome, or null where none has been made - see <see cref="ChangeDecisionDto"/>.</param>
 public record ChangeOutcomeDto(
-    long ChangeEventId, string EpicKey, string EpicTitle, string EpicColumn,
+    long Id, long ChangeEventId, string EpicKey, string EpicTitle, string EpicColumn,
     string Outcome, string Why, string RecordedBy, DateTimeOffset RecordedAt, ChangeDecisionDto? Decision);
 
-/// <summary>A person's decision on a recorded outcome - see <see cref="ChangeOutcomeDto"/>. Nothing writes this yet.</summary>
+/// <summary>A person's decision on a recorded outcome - see <see cref="ChangeOutcomeDto"/>. <paramref name="Decision"/> is <c>shelve</c> or <c>keep</c>.</summary>
 public record ChangeDecisionDto(string Decision, string DecidedBy, DateTimeOffset DecidedAt);
 
 /// <summary>Records one epic's outcome on one change - see <c>POST /issues/{key}/changes/{eventId}/outcomes</c>.</summary>
 /// <param name="Outcome">One of <c>carries_on</c>, <c>not_touched</c> or <c>serves_nothing</c>.</param>
 public record ChangeOutcomeRequest(string EpicKey, string Outcome, string Why);
+
+/// <summary>A person's decision on one outcome - see <c>POST /issues/{key}/changes/outcomes/{id}/decision</c>.</summary>
+/// <param name="Decision">One of <c>shelve</c> or <c>keep</c>.</param>
+public record ChangeDecisionRequest(string Decision);
 
 /// <summary>Replaces the set of capabilities an epic serves, with the capability ids it should now carry.</summary>
 public record IssueServesWriteRequest(IReadOnlyList<long> CapabilityIds);

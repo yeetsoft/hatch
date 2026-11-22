@@ -344,6 +344,7 @@ public class ScopeRouteMatrixTests
         ("IssuePassesController.GetPasses", Lookup(t => Get($"/api/issues/{t.Key}/passes"))),
         ("IssueChangesController.GetChanges", Lookup(t => Get($"/api/issues/{t.Key}/changes"))),
         ("IssueChangesController.PostOutcome", Lookup(t => Post($"/api/issues/{t.Key}/changes/1/outcomes", new { epicKey = OtherIssue, outcome = "carries_on", why = "x" }))),
+        ("IssueChangeDecisionController.PostDecision", Lookup(t => Post($"/api/issues/{t.Key}/changes/outcomes/1/decision", new { decision = "keep" }))),
         ("IssueDependenciesController.AddDependency", Lookup(t => Post($"/api/issues/{t.Key}/dependencies", new { dependsOnKey = OtherIssue }))),
         ("IssueDependenciesController.RemoveDependency", Lookup(t => Delete($"/api/issues/{t.Key}/dependencies/{OtherIssue}")) with { Destructive = true }),
         ("IssueRunnerOmissionsController.PutOmittedRunner", Lookup(t => Put($"/api/issues/{t.Key}/omitted-runners/r", new { reason = "x" }))),
