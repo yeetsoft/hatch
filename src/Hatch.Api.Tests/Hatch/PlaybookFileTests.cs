@@ -611,6 +611,26 @@ public class PlaybookFileTests
         Assert.Contains("\"projectId\" is not a playbook field", problem);
     }
 
+    [Theory]
+    [InlineData("answersQuestions")]
+    [InlineData("worksOutChanges")]
+    [InlineData("shapesAmbition")]
+    public void AKindFlag_IsRefused_TheFileNeverFlagsARow(string key)
+    {
+        var yaml = $"""
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                prompt: hi
+                {key}: true
+            """;
+
+        var (rows, problem) = Parse(yaml);
+
+        Assert.Null(rows);
+        Assert.Contains($"\"{key}\" is not a playbook field", problem);
+    }
+
     // ---- The lifted field rules, wired through the file ----
 
     [Fact]

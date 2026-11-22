@@ -85,8 +85,9 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         var isCheck = request.IsCheck ?? false;
         var answersQuestions = request.AnswersQuestions ?? false;
         var worksOutChanges = request.WorksOutChanges ?? false;
-        if ((isCheck && answersQuestions) || (isCheck && worksOutChanges) || (answersQuestions && worksOutChanges))
-            return BadRequest(PlaybookPatches.CheckAndAnswersRefusal);
+        var shapesAmbition = request.ShapesAmbition ?? false;
+        if (PlaybookPatches.MoreThanOneKind(isCheck, answersQuestions, worksOutChanges, shapesAmbition))
+            return BadRequest(PlaybookPatches.OneKindRefusal);
 
         var prompt = request.Prompt?.Trim() ?? "";
         if (PlaybookFile.InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
@@ -157,6 +158,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
             IsCheck = request.IsCheck ?? false,
             AnswersQuestions = request.AnswersQuestions ?? false,
             WorksOutChanges = request.WorksOutChanges ?? false,
+            ShapesAmbition = shapesAmbition,
             ProjectId = projectId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -198,6 +200,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         playbook.IsCheck = next.IsCheck;
         playbook.AnswersQuestions = next.AnswersQuestions;
         playbook.WorksOutChanges = next.WorksOutChanges;
+        playbook.ShapesAmbition = next.ShapesAmbition;
         playbook.ProjectId = next.ProjectId;
         playbook.UpdatedAt = time.GetUtcNow();
 
@@ -279,5 +282,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         state.MaxRunSeconds,
         state.LocalModel,
         state.AnswersQuestions,
-        state.WorksOutChanges);
+        state.WorksOutChanges,
+        state.ShapesAmbition);
 }
