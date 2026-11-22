@@ -612,6 +612,46 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public async Task LeaveAsync_carries_the_entered_branchs_origin_tip_and_the_signing_to_leave()
+    {
+        using var h = new Harness();
+        Board(h);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+        var signing = new CommitSigning(Signing.Works, true);
+        var entered = new BranchEntry { Path = h.Root, Kind = BranchKind.Entered, Branch = "ha-31-thing", OriginSha = "deadbeef" };
+
+        await new Lifecycle(h.Runtime).LeaveAsync(Fixtures.Work("AER-1", from: "In Review"), chosen, ownsTicket: true, default, entered: [entered], signing: signing);
+
+        Assert.Equal(new Carrying("deadbeef", signing), Assert.Single(h.Workspace.LeftCarrying));
+    }
+
+    [Fact]
+    public async Task LeaveAsync_carries_no_origin_tip_for_a_checkout_that_had_no_branch_at_entry()
+    {
+        using var h = new Harness();
+        Board(h);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+        var signing = new CommitSigning(Signing.Off, true);
+        var entered = new BranchEntry { Path = h.Root, Kind = BranchKind.None, Cut = "ha-31-thing" };
+
+        await new Lifecycle(h.Runtime).LeaveAsync(Fixtures.Work("AER-1", from: "In Review"), chosen, ownsTicket: true, default, entered: [entered], signing: signing);
+
+        Assert.Equal(new Carrying(null, signing), Assert.Single(h.Workspace.LeftCarrying));
+    }
+
+    [Fact]
+    public async Task LeaveAsync_carries_nothing_without_an_entered_branch_or_signing()
+    {
+        using var h = new Harness();
+        Board(h);
+        var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
+
+        await new Lifecycle(h.Runtime).LeaveAsync(Fixtures.Work("AER-1", from: "In Review"), chosen, ownsTicket: true, default);
+
+        Assert.Null(Assert.Single(h.Workspace.LeftCarrying));
+    }
+
+    [Fact]
     public async Task LeaveAsync_with_no_branch_on_origin_reports_neither()
     {
         using var h = new Harness();

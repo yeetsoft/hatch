@@ -260,10 +260,17 @@ public sealed class Lifecycle(Runtime runtime)
     /// preemption take, for the same reason: the session did not get to say
     /// whether what it left is fit to publish, so the runner does not either.
     /// </param>
+    /// <param name="entered">
+    /// What <see cref="EnterAsync"/> found in each checkout, so the readme step
+    /// knows whether the branch is new and what origin had for it before the
+    /// trunk was merged in. Null skips the step - a check or an increment that
+    /// never entered a branch has nothing to carry.
+    /// </param>
+    /// <param name="signing">How this increment's own commits are signed, carried into the readme step's.</param>
     public async Task<LeaveOutcome> LeaveAsync(
         WorkDto work, Checkouts.Choice chosen, bool ownsTicket, CancellationToken ct,
         UsageLimitInfo? limit = null, PreemptionInfo? preempted = null, HardLimitInfo? hardLimit = null,
-        ModelRefusalInfo? modelRefusal = null)
+        ModelRefusalInfo? modelRefusal = null, IReadOnlyList<BranchEntry>? entered = null, CommitSigning? signing = null)
     {
         var key = work.Issue.Key;
         var branchKey = Branches.KeyOf(work);
@@ -295,7 +302,8 @@ public sealed class Lifecycle(Runtime runtime)
 
             foreach (var (path, baseBranch) in chosen.Resets)
             {
-                var left = runtime.Workspace(path, baseBranch).Leave(branchKey, pullRequest, Branches.RecordedFor(work));
+                var carry = Carry(entered, signing, path);
+                var left = runtime.Workspace(path, baseBranch).Leave(branchKey, pullRequest, Branches.RecordedFor(work), carry);
                 var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(path.TrimEnd('/', '\\'))}: " : "";
                 lines.AddRange(left.Notes.Select(n => $"- {where}{n}"));
 
@@ -350,6 +358,28 @@ public sealed class Lifecycle(Runtime runtime)
             runtime.Say.Complain($"hatch: {key} - the tree could not be left tidy, or the ticket told - {e.Message}");
             return new LeaveOutcome(false, false);
         }
+    }
+
+    /// <summary>
+    /// What the readme step is owed about one checkout: null where either half
+    /// is missing, since a caller that entered no branch and signs nothing has
+    /// said nothing about either. Otherwise origin's tip at entry - null for
+    /// <see cref="BranchKind.None"/> or <see cref="BranchKind.AlreadyMerged"/>,
+    /// since there was no branch to have a tip, and no carry at all for
+    /// <see cref="BranchKind.Several"/>, <see cref="BranchKind.Failed"/>, or a
+    /// checkout <paramref name="entered"/> says nothing about.
+    /// </summary>
+    private static Carrying? Carry(IReadOnlyList<BranchEntry>? entered, CommitSigning? signing, string path)
+    {
+        if (entered is null || signing is null) return null;
+
+        var entry = entered.FirstOrDefault(e => e.Path == path);
+        return entry switch
+        {
+            { Kind: BranchKind.Entered } e => new Carrying(e.OriginSha, signing),
+            { Kind: BranchKind.None or BranchKind.AlreadyMerged } => new Carrying(null, signing),
+            _ => null,
+        };
     }
 
     /// <summary>

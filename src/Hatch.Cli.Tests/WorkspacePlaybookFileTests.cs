@@ -43,6 +43,28 @@ public sealed class WorkspacePlaybookFileTests : RepoFixture
     }
 
     [Fact]
+    public void Absent_is_a_clean_answer_even_when_the_same_path_is_on_disk_from_a_different_ref()
+    {
+        // Git phrases this one differently - "exists on disk, but not in" -
+        // because the working tree, standing on main, happens to hold this
+        // exact path too. Still absence, not a failure: a trunk path on disk
+        // says nothing about what some other ref has.
+        Publish("ha-31-thing", "x.txt", "x");
+        Directory.CreateDirectory(Path.Combine(_work, "sub"));
+        File.WriteAllText(Path.Combine(_work, "sub", "only-on-trunk.txt"), "trunk\n");
+        Commit(_work, "Add sub/only-on-trunk.txt");
+        G(_work, "push", "--quiet", "origin", "main");
+        var ws = Ws();
+        ws.Fetch();
+
+        var read = ws.ReadBlob("ha-31-thing", "sub/only-on-trunk.txt");
+
+        Assert.Equal(BlobOutcome.Absent, read.Outcome);
+        Assert.Null(read.Content);
+        Assert.Null(read.Why);
+    }
+
+    [Fact]
     public void A_git_answer_that_is_not_about_absence_is_failed_with_its_first_line()
     {
         var ws = WithGitBytes((_, _) =>
