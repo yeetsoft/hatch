@@ -12605,6 +12605,42 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task MergeColumn_WhoseOnlyLiveRunnerSaysTheForgeFails_ReadsTheNoDriverSentence()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", standing: true, forge: RunnerForge.Fails, forgeWhy: "signed out");
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge, the only runner cannot reach the forge", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WhoseOnlyLiveRunnerSaysTheForgeWorks_IsDriven()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", standing: true, forge: RunnerForge.Works);
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge, the runner reaches the forge", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.NotEqual("no live runner is eligible to drive this project's merges", entry.Blocked);
+    }
+
+    [Fact]
     public async Task MergeColumn_WithNoEligibleLiveRunner_ReadsTheNoDriverSentence()
     {
         var h = await NewAsync();
@@ -17808,7 +17844,7 @@ public class WorkControllerTests
             EfApiKey key, string? where = null, IReadOnlyList<string>? projects = null, bool? refusesDangerous = null,
             string? remotes = null, bool? mine = null, string? under = null, string? agent = null, DateTimeOffset? at = null,
             bool? standing = null, string? models = null, string? has = null, string? drivesTold = null,
-            string? signing = null, string? signingWhy = null)
+            string? signing = null, string? signingWhy = null, string? forge = null, string? forgeWhy = null)
         {
             var session = new EfHatchRunnerSession
             {
@@ -17830,6 +17866,8 @@ public class WorkControllerTests
                 DrivesTold = drivesTold,
                 Signing = signing,
                 SigningWhy = signingWhy,
+                Forge = forge,
+                ForgeWhy = forgeWhy,
             };
             Db.RunnerSessions.Add(session);
             await Db.SaveChangesAsync();

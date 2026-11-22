@@ -188,8 +188,9 @@ public sealed record RunnerDeclaration(
     /// <summary>
     /// What a runner's live loop sessions say about its forge sign-in: the worst of their
     /// answers, see <see cref="RunnerForge.Worst"/>. Null when none said. Read by the
-    /// runners page alone; it is not part of <see cref="RunnerDeclaration"/>, and dispatch
-    /// does not read it.
+    /// runners page, and the merge train's driver election, which leaves out a runner
+    /// that says <see cref="RunnerForge.Fails"/> (<c>Runners.LiveCandidatesAsync</c>); it is
+    /// not part of <see cref="RunnerDeclaration"/>, and dispatch does not read it.
     /// </summary>
     internal static (string State, string? Why)? ForgeOf(IEnumerable<EfHatchRunnerSession> live) =>
         RunnerForge.Worst(live.Where(s => s.Kind == EfHatchRunner.LoopKind).Select(s => (s.Forge, s.ForgeWhy)));
