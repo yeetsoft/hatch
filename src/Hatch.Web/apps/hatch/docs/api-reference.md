@@ -1123,6 +1123,13 @@ question the session is to answer - `issueKey`, `issueTitle`, `questionId`,
 qualifies, is in [what a session may answer](questions-and-decisions#what-a-session-may-answer).
 Each row of `GET /work/queue` carries `answering` too, as one sentence naming the
 issue and the question, and null on every other row.
+The `WorkDto` also carries `changing`, null on every dispatch that is not for a
+change, and on an older board's answer. It names the change the session is to
+work out - `id`, the id a session gives `hatch change outcome` as `--change` -
+the `entries` that `GET /issues/{key}/changes` returns for it, and the `epics`
+to weigh, each with `key`, `title`, `column` and `serves`, the positions of the
+capabilities the epic serves. The work-log row the runner posts carries the same
+`id` as `changeEventId`.
 
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus

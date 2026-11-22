@@ -297,6 +297,109 @@ public sealed class PromptTests
         Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
     }
 
+    /// <summary>An ambition dispatched to work out a change: the pass shape, with one entry of each kind and two epics to weigh.</summary>
+    private static WorkDto ChangeWork() =>
+        Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", type: "ambition"),
+            ambition: new WorkAmbitionDto("AER-1", "The ambition", ["Small steps."]),
+            changing: new WorkChangeDto(
+                91,
+                [
+                    new ChangeEntryDto(
+                        1, "added", 11, 3, null, null, "People can pay by card.", "A card payment goes through.",
+                        "agent-one", DateTimeOffset.UnixEpoch),
+                    new ChangeEntryDto(
+                        2, "changed", 12, 2, "Receipts are\r\nemailed.", "An email arrives.",
+                        "Receipts are emailed at once.", "An email arrives in a minute.",
+                        "agent-one", DateTimeOffset.UnixEpoch),
+                    new ChangeEntryDto(
+                        3, "changed", 14, 4, "Reports exist.", "A report opens.", "Reports exist, by fund.", "A report opens.",
+                        "agent-one", DateTimeOffset.UnixEpoch),
+                    new ChangeEntryDto(
+                        4, "removed", 13, null, "Cash is counted by hand.", null, null, null,
+                        "agent-one", DateTimeOffset.UnixEpoch),
+                ],
+                [
+                    new WorkChangeEpicDto("AER-5", "Card payments", "In Progress", [1, 3]),
+                    new WorkChangeEpicDto("AER-6", "Old ledger", "Backlog", []),
+                ])) with
+        {
+            ToStatus = Fixtures.Status(3, "In Progress"),
+            Playbook = Fixtures.Playbook(deniedTools: ["Bash(git push *)"]),
+        };
+
+    [Fact]
+    public void A_change_dispatch_carries_the_change_after_the_principles_and_before_the_repositories()
+    {
+        var prompt = Prompt.Compose(
+            ChangeWork(),
+            repositories: [new Checkouts.RepositoryLine("C:/repo", "git@example.test:o/r.git", true, null)]);
+
+        var principles = prompt.IndexOf("## Principles", StringComparison.Ordinal);
+        var section = prompt.IndexOf("## The change to work out", StringComparison.Ordinal);
+        var repositories = prompt.IndexOf("## Repositories", StringComparison.Ordinal);
+        Assert.True(principles > 0 && section > principles && repositories > section);
+
+        var text = prompt[section..repositories];
+        Assert.Contains("- added capability 3: People can pay by card.\n  how to tell: A card payment goes through.", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "- changed capability 2:\n  was: Receipts are emailed.\n  now: Receipts are emailed at once.\n"
+            + "  how to tell was: An email arrives.\n  how to tell now: An email arrives in a minute.",
+            text, StringComparison.Ordinal);
+        Assert.Contains("- changed capability 4:\n  was: Reports exist.\n  now: Reports exist, by fund.\n- removed", text, StringComparison.Ordinal);
+        Assert.Contains("- removed capability #13: Cash is counted by hand.", text, StringComparison.Ordinal);
+        Assert.Contains("- [AER-5](https://hatch.example.test/issues/AER-5) Card payments (In Progress) serves capabilities 1, 3", text, StringComparison.Ordinal);
+        Assert.Contains("- [AER-6](https://hatch.example.test/issues/AER-6) Old ledger (Backlog) serves no capability", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("## The question to answer", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_epics_of_a_change_are_bare_keys_where_the_ambition_has_no_link_to_swap()
+    {
+        var prompt = Prompt.Compose(ChangeWork() with { IssueUrl = null });
+
+        var section = prompt[prompt.IndexOf("## The change to work out", StringComparison.Ordinal)..prompt.IndexOf("## Reaching Hatch", StringComparison.Ordinal)];
+        Assert.Contains("- AER-5 Card payments (In Progress)", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("](", section, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_change_dispatch_ends_with_an_outcome_command_for_each_epic_and_the_changes_id()
+    {
+        var prompt = Prompt.Compose(ChangeWork());
+
+        var closing = prompt[prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal)..];
+        Assert.Contains("hatch change outcome AER-12 AER-5 carries_on|not_touched|serves_nothing \"<why>\" --change 91", closing, StringComparison.Ordinal);
+        Assert.Contains("hatch change outcome AER-12 AER-6 carries_on|not_touched|serves_nothing \"<why>\" --change 91", closing, StringComparison.Ordinal);
+        Assert.Contains("hatch comment <epic> \"...\"", closing, StringComparison.Ordinal);
+        Assert.Contains("is shelved by a person, not by this session", closing, StringComparison.Ordinal);
+        Assert.Contains("Move nothing, file nothing, cut no branch, and open no pull request", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("should be in", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("stays in", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("judge", closing, StringComparison.Ordinal);
+        Assert.DoesNotContain("Claiming is the marker", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_change_dispatch_opens_no_pull_request_and_cuts_no_branch_even_on_an_edited_row()
+    {
+        var branches = new[] { new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x" } };
+        var prompt = Prompt.Compose(ChangeWork() with { Playbook = Fixtures.Playbook(deniedTools: []) }, branches: branches);
+
+        Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("cut `aer-12-x`", prompt, StringComparison.Ordinal);
+        Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_dispatch_with_no_change_has_no_such_section_and_no_outcome_command()
+    {
+        var prompt = Prompt.Compose(PassWork());
+
+        Assert.DoesNotContain("## The change to work out", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("hatch change outcome", prompt, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_dispatch_with_no_question_has_no_such_section()
     {
