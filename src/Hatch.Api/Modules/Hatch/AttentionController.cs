@@ -493,8 +493,11 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         {
             // The token is the subject's own handle. It names an issue only when it
             // parses as a key in the finding's own project - a token is never trusted
-            // to point across projects.
-            var issueKey = f.Project is { } p && IssueKey.TryParse(f.Token, out var tokenProject, out var number)
+            // to point across projects. A standing-still finding's subject is the
+            // issue's key and its token is a column and a claim, so it reads the
+            // subject, held to the same rule.
+            var handle = f.Check == StandingStillCheck.CheckName ? f.Subject : f.Token;
+            var issueKey = f.Project is { } p && IssueKey.TryParse(handle, out var tokenProject, out var number)
                 && string.Equals(tokenProject, p.Key, StringComparison.OrdinalIgnoreCase)
                 ? IssueKey.Format(p.Key, number)
                 : null;

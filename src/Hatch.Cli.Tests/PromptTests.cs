@@ -31,6 +31,16 @@ public sealed class PromptTests
         Assert.Contains("Never write a relative link.", prompt, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void A_pull_request_is_told_to_be_recorded_on_the_sessions_own_ticket_whatever_a_plan_says()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("Record it on this ticket's own key, `hatch pr AER-12 <url>`.", prompt, StringComparison.Ordinal);
+        Assert.Contains("A plan on the ticket that names", prompt, StringComparison.Ordinal);
+        Assert.Contains("does not change that.", prompt, StringComparison.Ordinal);
+    }
+
     private const string HowItShouldRead = "## How it should read";
 
     private static string WorkOf(string name) => name switch

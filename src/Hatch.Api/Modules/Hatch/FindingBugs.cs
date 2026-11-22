@@ -37,6 +37,10 @@ public static class FindingBugs
         ["questions-waiting"] = new(
             _ => "Questions waiting too long for an answer",
             o => Hours(GooseSettings.QuestionBound(o)), StoodThatLong),
+        [StandingStillCheck.CheckName] = new(
+            f => $"Ticket standing still: {f.Subject}",
+            o => Hours(GooseSettings.StandingBound(o)),
+            "it opens a finding once a ticket has stood in one column that long with nothing set to move it"),
     };
 
     /// <summary>Whether <paramref name="check"/> has its own entry, rather than the fallback title.</summary>

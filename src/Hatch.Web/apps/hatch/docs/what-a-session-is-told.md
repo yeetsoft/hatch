@@ -289,7 +289,10 @@ Where the work goes to review on a branch. It gives the title form (the key,
 then the subject as an area and a sentence) and the exact first line of the
 description, a link to the ticket, and ends with `hatch pr` to record the pull
 request on the ticket, which also writes the ticket's chain into the pull
-request's body. In a one-pull-request story it adds that the closeout
+request's body. For a ticket whose tasks do not share a branch it adds that the
+pull request is recorded on the session's own ticket, and that a plan written
+on the ticket naming another ticket for it, a parent story for instance, does
+not redirect that. In a one-pull-request story it adds that the closeout
 increment, once the tasks are all pushed, opens the one pull request for all of
 them.
 

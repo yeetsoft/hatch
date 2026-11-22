@@ -11,7 +11,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// The goose says what it saw and files nothing: the sweep, with all five real
+/// The goose says what it saw and files nothing: the sweep, with all six real
 /// checks over a board that gives them something to say, creates no issue,
 /// writes no issue event, moves no issue and stores no bug on a finding. Only a
 /// person's press on <see cref="GooseFindingBugController"/> does (HA-2516).
@@ -41,7 +41,7 @@ public class GooseNeverFilesTests
         Assert.Equal(before.Issues, after.Issues);
 
         // Every finding the sweeps opened or held, of every check, still has no bug.
-        Assert.Equal(5, after.Checks.Count);
+        Assert.Equal(6, after.Checks.Count);
         Assert.All(after.Bugs.Values, bug => Assert.Null(bug));
 
         // The sweeps really did read and refresh them: no check threw, and the
@@ -86,6 +86,7 @@ public class GooseNeverFilesTests
                 new ReadyNoRunnerCheck(Db, work, options, Time),
                 new RepeatClaimsCheck(Db, options, Time),
                 new QuestionsWaitingCheck(Db, options, Time),
+                new StandingStillCheck(Db, work, options, Time),
             ];
             Job = new GooseJob(Db, checks, new FreeLock(), options, Time, NullLogger<GooseJob>.Instance);
         }
@@ -93,7 +94,7 @@ public class GooseNeverFilesTests
         /// <summary>
         /// A board the two cheap checks have something to say about for real (an old
         /// question, a ticket claimed again and again), and a hand-written open
-        /// finding for each of the other three, so every check has one open.
+        /// finding for each of the other four, so every check has one open.
         /// </summary>
         public async Task SeedAsync()
         {
@@ -121,7 +122,7 @@ public class GooseNeverFilesTests
                 Db.IssueEvents.Add(Event(claimed.Id, EfHatchIssueEvent.ClaimReleased, new { from = holder, to = (string?)null }, at));
             }
 
-            foreach (var check in new[] { "train-ready", "ready-unclaimed", "ready-no-runner" })
+            foreach (var check in new[] { "train-ready", "ready-unclaimed", "ready-no-runner", "standing-still" })
             {
                 Db.GooseFindings.Add(new EfHatchGooseFinding
                 {
