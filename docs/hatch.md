@@ -9956,6 +9956,22 @@ last session left checked out.
   pull request**, so the step has nothing to bring up to date: `Lifecycle.cs:231-236`
   never asks the board for one, and `Workspace.Leave` is called with
   `syncPullRequest` false. The merge check below still runs.
+- **The repository's own `.hatch/README.md` is kept current on the issue's
+  branch**, when the increment moved it: the branch is new on `origin` or its
+  tip there has moved since the runner entered it — a session that only read
+  adds nothing, and neither does a checkout with no branch, or more than one,
+  on `origin`. Where it runs, the step reads the file at the branch's tip and
+  at the trunk's tip through git, and writes this build's text only when
+  **this build's version is newer than both** — the one rule in `ReadmeFile`.
+  The trunk already holding the current text and the branch lacking it is the
+  trunk's own merge forward above to settle, not a second write here to
+  conflict with it; a copy neither Hatch wrote is left alone, said once per
+  run. The commit is made the same way as the merge forward — no worktree, a
+  temporary index, a push that is a fast-forward or nothing — and signed the
+  way every other commit this increment makes is: unsigned only where the
+  project allows it, never a silent fallback when it does not. A refused push
+  is a line on the ticket, same as any other. One build per repository per
+  version of the text, plus whatever is open at the time.
 - **What origin's branch now looks like is reported to the board**, wherever the
   step fetched: a [merge check](#merge-check) for the branch, taken with the
   same `merge-tree` and put under the checkout's remote. That covers every

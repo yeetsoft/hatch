@@ -76,6 +76,14 @@ public sealed class BranchEntry
     /// <summary>Where the branch stood when it was entered, before the trunk was merged in.</summary>
     public string Sha { get; init; } = "";
 
+    /// <summary>
+    /// The full sha of <c>refs/remotes/origin/&lt;Branch&gt;</c> at entry, before
+    /// anything here moved it - <see cref="BranchKind.Entered"/> only, empty
+    /// otherwise. What <see cref="Leaving"/>'s readme step calls the branch's
+    /// base, so a session that only read adds nothing on top of a merge it never asked for.
+    /// </summary>
+    public string OriginSha { get; init; } = "";
+
     /// <summary>Where it stands now. Differs from <see cref="Sha"/> after a clean merge.</summary>
     public string Head { get; init; } = "";
 
@@ -164,6 +172,19 @@ public sealed class BranchEntry
 /// then and nothing is to be reported.
 /// </param>
 public sealed record Leaving(string Path, IReadOnlyList<string> Notes, Verdict? Found = null);
+
+/// <summary>
+/// What <see cref="IWorkspace.Leave"/>'s readme step needs about how the
+/// checkout was entered, so it can tell a session that only read from one that
+/// pushed - see <c>docs/hatch.md</c>'s "Leaving the tree".
+/// </summary>
+/// <param name="OriginTip">
+/// Origin's tip for the issue's branch at entry, before the trunk was merged
+/// into it - null where there was no branch at entry, so any branch found at
+/// leave is new and the whole of it counts as moved.
+/// </param>
+/// <param name="Signing">How this increment's commits are to be signed.</param>
+public sealed record Carrying(string? OriginTip, CommitSigning Signing);
 
 /// <summary>
 /// The rules about branch names, kept apart from git so they can be read - and

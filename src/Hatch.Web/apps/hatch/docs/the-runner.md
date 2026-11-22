@@ -640,6 +640,24 @@ carries its text, so the runner reads nothing from the board for it. A copy Hatc
 wrote at a lower version is replaced; a newer one, and a file Hatch did not
 write, are left. [`hatch readme`](cli-reference#readme) has the rule.
 
+### Keeping it current
+
+A repository's copy is also kept current without anybody filing a ticket for
+it: when a session's increment moves the issue's branch, the end of that
+increment writes or replaces `.hatch/README.md` there too, when this build's
+text is newer than both the branch's own copy and the trunk's — the trunk
+already ahead of the branch is left to the ordinary merge forward, not a
+second write that would only conflict with it. That costs one more build on
+the pull request, once per repository for each version of the text plus
+whatever else is open at the time — accepted, since the text changes rarely.
+**The merge train still holds a pull request for only two paths**,
+`.hatch/dependencies.json` and `.hatch/playbooks.yaml` (above); a branch
+whose only change is the readme merges on its own pre-approval like any
+other. The one known gap: two runners on two open branches, each starting
+from a different build, can each push a different version of the text -
+whichever merges first makes the other's pull request conflict on this one
+file, sent to a session as ordinary conflict work.
+
 ## What a repository needs
 
 **The file.** A repository says what a build of it needs in

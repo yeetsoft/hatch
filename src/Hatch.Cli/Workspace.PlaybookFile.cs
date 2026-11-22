@@ -23,7 +23,14 @@ public readonly record struct BlobRead(BlobOutcome Outcome, byte[]? Content, str
 /// </summary>
 public sealed partial class Workspace
 {
-    private const string PathNotFound = "does not exist in";
+    /// <summary>
+    /// What git says when the path is not at the ref: ordinarily, and - when
+    /// the working tree happens to hold the same path checked out from
+    /// whatever ref the tree is standing on, unrelated to the one just asked
+    /// about - this second wording instead. Either means the same thing: the
+    /// ref does not have it.
+    /// </summary>
+    private static readonly string[] PathNotFound = ["does not exist in", "exists on disk, but not in"];
 
     /// <summary>
     /// <c>git cat-file blob origin/&lt;trunk&gt;:&lt;path&gt;</c> - the plumbing
@@ -38,7 +45,7 @@ public sealed partial class Workspace
         var firstLine = err.Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0);
 
-        if (firstLine is not null && firstLine.Contains(PathNotFound, StringComparison.Ordinal))
+        if (firstLine is not null && PathNotFound.Any(p => firstLine.Contains(p, StringComparison.Ordinal)))
             return new BlobRead(BlobOutcome.Absent, null, null);
 
         return new BlobRead(BlobOutcome.Failed, null, Why(code, err, firstLine));

@@ -3083,7 +3083,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var modelRefusal = report.Unservable
                     ? new ModelRefusalInfo(report.UnservableModel!, report.UnservableUntil, report.SessionId)
                     : null;
-                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted, hardLimit, modelRefusal);
+                var left = await lifecycle.LeaveAsync(
+                    work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted, hardLimit, modelRefusal,
+                    entering.Entries, commitSigning);
 
                 // The session was killed before it could file anything itself -
                 // the filing above is the runner's, done after RunAsync already
