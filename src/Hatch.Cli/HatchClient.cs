@@ -111,6 +111,16 @@ public sealed class HatchException(string message, HttpStatusCode? status = null
 public readonly record struct RawJson(string Value);
 
 /// <summary>
+/// A file sent as the one multipart part named <c>file</c>, read from
+/// <paramref name="Path"/> each time the request is built - so a retry opens it
+/// afresh, and a file of the largest size allowed is never held in memory twice.
+/// </summary>
+public readonly record struct FileBody(string Path);
+
+/// <summary>A file fetched whole: its bytes, the type the server gave it, and the name it was stored under, where it said one.</summary>
+public readonly record struct FetchedFile(byte[] Bytes, string ContentType, string? FileName);
+
+/// <summary>
 /// What a binary download answered with: the status Hatch gave, the revision
 /// it reported (the literal <c>Hatch-Revision</c> header -
 /// <c>HatchRevisionMiddleware.HeaderName</c> on the server side), the sha256 of
@@ -306,6 +316,13 @@ public sealed partial class HatchClient : IDisposable
             using var request = new HttpRequestMessage(method, path.TrimStart('/'));
             if (body is RawJson raw)
                 request.Content = new StringContent(raw.Value, Encoding.UTF8, "application/json");
+            else if (body is FileBody file)
+            {
+                var form = new MultipartFormDataContent();
+                var stream = new FileStream(file.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                form.Add(new StreamContent(stream), "file", System.IO.Path.GetFileName(file.Path));
+                request.Content = form;
+            }
             else if (body is not null)
                 request.Content = new StringContent(
                     JsonSerializer.Serialize(body, TypeInfo(body.GetType())), Encoding.UTF8, "application/json");
@@ -425,6 +442,39 @@ public sealed partial class HatchClient : IDisposable
         catch (UnauthorizedAccessException e)
         {
             return new Download(null, null, null, 0, $"hatch: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// One <c>GET</c> that answers a file: never retried, as <see cref="DownloadAsync"/>
+    /// is not. The server caps a file at 25 MB, so the bytes are read whole.
+    /// A refusal is a <see cref="HatchException"/> carrying the status.
+    /// </summary>
+    public async Task<FetchedFile> GetFileAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, path.TrimStart('/'));
+            using var response = await _http.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                throw new HatchException(Refusal(new Answer(response.StatusCode, body), path), response.StatusCode);
+            }
+
+            var disposition = response.Content.Headers.ContentDisposition;
+            return new FetchedFile(
+                await response.Content.ReadAsByteArrayAsync(ct),
+                response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream",
+                disposition?.FileNameStar ?? disposition?.FileName);
+        }
+        catch (HttpRequestException e) when (!ct.IsCancellationRequested)
+        {
+            throw new HatchException(Refusal(new Answer(null, e.Message), path));
+        }
+        catch (TaskCanceledException e) when (!ct.IsCancellationRequested)
+        {
+            throw new HatchException(Refusal(new Answer(null, e.Message), path));
         }
     }
 
