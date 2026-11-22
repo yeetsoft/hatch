@@ -34,3 +34,8 @@
   background: var(--primary-bg);
   color: var(--primary-ink);
 }
+
+.hatch-badge--warn {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}

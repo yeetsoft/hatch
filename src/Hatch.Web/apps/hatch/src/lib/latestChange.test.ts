@@ -7,6 +7,7 @@ import {
   entryTone,
   epicIsOpen,
   latestChange,
+  outcomeTone,
   outcomeWord,
   shelveSentence,
   showsPresses,
@@ -98,6 +99,14 @@ describe('outcomeWord', () => {
     expect(outcomeWord('carries_on')).toBe('Carries on');
     expect(outcomeWord('not_touched')).toBe('Not touched');
     expect(outcomeWord('serves_nothing')).toBe('Serves nothing now');
+  });
+});
+
+describe('outcomeTone', () => {
+  it('tones each of the three outcomes', () => {
+    expect(outcomeTone('carries_on')).toBe('success');
+    expect(outcomeTone('not_touched')).toBe('muted');
+    expect(outcomeTone('serves_nothing')).toBe('warn');
   });
 });
 

@@ -81,7 +81,7 @@ import { onePrSaid } from '../lib/onePr';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
 import { repoSourcedOverrideHint, shortSha } from '../lib/playbookFiles';
-import { capabilityStateLabel } from '../lib/capabilities';
+import { capabilityStateLabel, capabilityStateTone } from '../lib/capabilities';
 import { submitOmission } from '../lib/runnerOmissions';
 import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, sameTags } from '../lib/runnerTags';
 import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
@@ -95,6 +95,7 @@ import {
   entryLabel,
   entryTone,
   latestChange,
+  outcomeTone,
   outcomeWord,
   shelveSentence,
   showsPresses,
@@ -1516,9 +1517,9 @@ export function Serves({ issue, serves }: { issue: Issue; serves: ServedCapabili
             </Link>
             <span className="text-muted">#{row.position}</span>
             <span className="hatch-progress-title">{row.statement}</span>
-            <span className={`hatch-capability-state hatch-capability-state-${row.state.replace(/_/g, '-')}`}>
+            <Badge tone={capabilityStateTone(row.state)} className="hatch-capability-state">
               {capabilityStateLabel(row.state)}
-            </span>
+            </Badge>
           </li>
         ))}
       </ul>
@@ -1944,10 +1945,10 @@ function PassVerdictLine({ verdict, now }: { verdict: AmbitionPassVerdict; now: 
         <span className="hatch-capability-badge" title={verdict.statement}>
           #{verdict.position}
         </span>
-        <span className={`hatch-capability-state hatch-capability-state-${verdict.verdict.replace(/_/g, '-')}`}>
+        <Badge tone={capabilityStateTone(verdict.verdict)} className="hatch-capability-state">
           {capabilityStateLabel(verdict.verdict)}
-        </span>
-        {verdict.changed && <span className="hatch-pass-changed">changed</span>}
+        </Badge>
+        {verdict.changed && <Badge className="hatch-pass-changed">changed</Badge>}
       </div>
       <p className="text-muted">
         {verdict.lookedAt}, {shortSha(verdict.sha)}, by {verdict.author}, <DatedAt at={verdict.at} now={now} />
@@ -2141,7 +2142,7 @@ function ChangeOutcomeLine({
       </Link>
       <span className="hatch-progress-title">{outcome.epicTitle}</span>
       <span className="hatch-change-outcome-meta">
-        <strong>{outcomeWord(outcome.outcome)}</strong>
+        <Badge tone={outcomeTone(outcome.outcome)}>{outcomeWord(outcome.outcome)}</Badge>
         <span className="text-muted">{outcome.why}</span>
       </span>
 
@@ -2190,9 +2191,9 @@ function CapabilityRow({ capability, board, now }: { capability: Capability; boa
       </div>
 
       <div>
-        <span className={`hatch-capability-state hatch-capability-state-${capability.state.replace(/_/g, '-')}`}>
+        <Badge tone={capabilityStateTone(capability.state)} className="hatch-capability-state">
           {capabilityStateLabel(capability.state)}
-        </span>
+        </Badge>
         {verdict && (
           <p className="text-muted">
             {verdict.lookedAt}, {shortSha(verdict.sha)}, by {verdict.author}, <DatedAt at={verdict.at} now={now} />

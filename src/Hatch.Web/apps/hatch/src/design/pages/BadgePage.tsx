@@ -8,14 +8,15 @@ export function BadgePage() {
       blurb="A pill stating one fact about the thing next to it: enabled, online, included. Most of admin's are a boolean rendered as Yes/No."
     >
       <GallerySection
-        title="The four tones"
-        note="Muted is the resting state — a fact about a row, not a warning about it. The three accents are for a badge with something to say. Each is an accent wash under the matching ink, which is the pairing to check when the ramp moves."
+        title="The five tones"
+        note="Muted is the resting state — a fact about a row, not a warning about it. The four accents are for a badge with something to say. Each is an accent wash under the matching ink, which is the pairing to check when the ramp moves."
       >
         <div className="design-row">
           <Badge>Disabled</Badge>
           <Badge tone="success">Online</Badge>
           <Badge tone="danger">Unreachable</Badge>
           <Badge tone="primary">Pending</Badge>
+          <Badge tone="warn">Stale</Badge>
         </div>
       </GallerySection>
 
