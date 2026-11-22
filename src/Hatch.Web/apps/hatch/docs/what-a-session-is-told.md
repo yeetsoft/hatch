@@ -283,6 +283,13 @@ train](review-pull-requests-and-the-merge-train)). There is no pull request:
 merge the trunk in, never rebase, push, never force, and record the landing
 with `hatch landed`. The increment is not done until it is recorded.
 
+When the trunk's own copy of `.hatch/README.md` is missing or older than the
+one this build ships, the section also asks the session to run `hatch readme
+--file` before its last commit, and to commit the file in that same commit if
+it printed `written` - never on its own. It is left out when the trunk's copy
+is current, newer, or not a file Hatch wrote. It is asked for, not guaranteed:
+a session that skips it is asked again the next time (see [the readme file](the-runner#the-readme-file)).
+
 ### Opening a pull request
 
 Where the work goes to review on a branch. It gives the title form (the key,

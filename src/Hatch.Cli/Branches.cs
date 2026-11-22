@@ -105,6 +105,12 @@ public sealed class BranchEntry
     /// <summary>This project lands work on the trunk rather than a branch per issue.</summary>
     public bool TrunkLanding { get; init; }
 
+    /// <summary>
+    /// Set only on a trunk-landing entry whose trunk copy of <c>.hatch/README.md</c>
+    /// is absent or older than the runner's own.
+    /// </summary>
+    public bool AsksReadme { get; init; }
+
     /// <summary>Where the local tip was kept, when it had diverged from origin's.</summary>
     public string KeptAs { get; init; } = "";
 

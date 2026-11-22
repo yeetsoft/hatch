@@ -263,7 +263,8 @@ public static class Prompt
             buildsPast: work.BuildPast is { Count: > 0 },
             staysPut: issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id && work.Answering is null
                 && work.Changing is null,
-            answering: work.Answering, changing: work.Changing));
+            answering: work.Answering, changing: work.Changing,
+            readmeAt: branches?.Where(b => b.TrunkLanding && b.AsksReadme).Select(b => b.Path).ToList()));
         return string.Join('\n', lines);
     }
 
@@ -846,7 +847,7 @@ public static class Prompt
         bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
         bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null,
         bool buildsPast = false, bool staysPut = false, WorkQuestionDto? answering = null,
-        WorkChangeDto? changing = null) =>
+        WorkChangeDto? changing = null, IReadOnlyList<string>? readmeAt = null) =>
     [
         "## Reaching Hatch",
         "",
@@ -902,7 +903,7 @@ public static class Prompt
         }),
         ..HowItShouldRead,
         ..(deniesGitWrites ? NoPullRequest(key)
-            : trunkLanding ? Landing(key)
+            : trunkLanding ? Landing(key, readmeAt)
             : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest ? issueType ?? "story" : null, offersNoCode)
             : SharedPullRequest(key, sharedStory, to, offersNoCode)),
         "## When you cannot decide",
@@ -1245,9 +1246,11 @@ public static class Prompt
     /// <summary>
     /// What a session is told in place of the pull request section, on a
     /// project that lands work straight on the trunk: never to open one, and
-    /// how the work gets there instead.
+    /// how the work gets there instead. <paramref name="readmeAt"/> names each
+    /// checkout whose trunk copy of <c>.hatch/README.md</c> is missing or old,
+    /// asking the session to bring it current in the same commit as its work.
     /// </summary>
-    private static string[] Landing(string key) =>
+    private static string[] Landing(string key, IReadOnlyList<string>? readmeAt = null) =>
     [
         "## Landing on the trunk",
         "",
@@ -1266,8 +1269,12 @@ public static class Prompt
         "```",
         "",
         "If the push is refused because somebody else landed first, pull and push again -",
-        "never force it. Once the work is on origin's trunk, for each repository:",
+        readmeAt is { Count: > 0 }
+            ? "never force it."
+            : "never force it. Once the work is on origin's trunk, for each repository:",
         "",
+        ..ReadmeParagraph(readmeAt),
+        ..(readmeAt is { Count: > 0 } ? new[] { "Once the work is on origin's trunk, for each repository:", "" } : Array.Empty<string>()),
         "```",
         $"hatch landed {key} <sha>",
         "```",
@@ -1277,6 +1284,46 @@ public static class Prompt
         $"increment ends\" below still names review as where {key} stops.",
         "",
     ];
+
+    /// <summary>
+    /// The paragraph asking a trunk-landing session to bring <c>.hatch/README.md</c>
+    /// current, before its last commit - empty where <paramref name="readmeAt"/>
+    /// names no checkout, so the surrounding prompt is unchanged.
+    /// </summary>
+    private static string[] ReadmeParagraph(IReadOnlyList<string>? readmeAt)
+    {
+        if (readmeAt is not { Count: > 0 }) return [];
+
+        var lines = new List<string>();
+
+        if (readmeAt.Count == 1)
+        {
+            lines.Add($"In {readmeAt[0]}, the trunk's copy of `.hatch/README.md` is missing or older than the");
+            lines.Add("one this build ships. Before your last commit there, run:");
+        }
+        else
+        {
+            lines.Add("In each of these checkouts, the trunk's copy of `.hatch/README.md` is missing or");
+            lines.Add("older than the one this build ships. Before your last commit in each, run:");
+            lines.Add("");
+            lines.AddRange(readmeAt.Select(path => $"- {path}"));
+        }
+
+        lines.Add("");
+        lines.Add("```");
+        lines.Add("hatch readme --file");
+        lines.Add("```");
+        lines.Add("");
+        lines.Add("It writes `.hatch/README.md`, a short note for an agent new to Hatch. If it prints");
+        lines.Add("`written .hatch/README.md`, commit that file in the same commit as your work. If it");
+        lines.Add("prints `unchanged .hatch/README.md`, there is nothing to commit.");
+        lines.Add("");
+        lines.Add("Never commit it on its own. With no other work to land, leave it out. This is asked");
+        lines.Add("for, not required: a session that skips it is asked again next time.");
+        lines.Add("");
+
+        return lines.ToArray();
+    }
 
     /// <summary>
     /// What a session on a row that denies git writes is told in place of the
