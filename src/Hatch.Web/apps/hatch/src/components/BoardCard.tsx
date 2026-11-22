@@ -9,6 +9,7 @@ import { MomentChip } from './MomentChip';
 import { ContributionBadge, ContributionMark } from './ContributionMark';
 import { TypeGlyph } from './TypeGlyph';
 import { statusVars } from '../lib/color';
+import type { CardAge } from '../lib/cardAge';
 import { dangerousTitle } from '../lib/dangerous';
 import { inheritedSentences } from '../lib/inherited';
 import { localModelLevel } from '../lib/localModel';
@@ -36,6 +37,9 @@ export interface CardProps {
   stories?: IssueCard[];
   /** Every column, for a story's own dot colour and title - absent only where `stories` is too. */
   statuses?: Status[];
+  /** How long it has sat in its column, when that is longer than normal - null or
+      absent for none. Worked out by the board (`cardAge`), which holds the normals. */
+  age?: CardAge | null;
 }
 
 interface BoardCardProps {
@@ -73,6 +77,10 @@ interface BoardCardProps {
 /** Owed an answer, and drawn as such wherever the card is drawn. */
 const askingClass = (card: IssueCard) => (card.openQuestions > 0 ? ' asking' : '');
 
+/** Sat in its column longer than is normal for it. A tint over the whole card, so it
+    is seen from across the board; the chip carries the words. */
+const agedClass = (age?: CardAge | null) => (age ? ' aged' : '');
+
 /** Somebody said this one first, or emergency-first. Wherever the card is
     drawn, including the preview under the cursor - a card being moved is
     exactly the card where knowing which one goes first matters. */
@@ -95,7 +103,8 @@ const APPROVAL_SENTENCE: Partial<Record<IssueCard['preApproval'], string>> = {
     assignee chip already used alone, now covering the whole row: a card
     with none of these carries no empty row. The tile draws priority above low
     and pre-approval, so neither is a mark. */
-const hasMarks = (card: IssueCard) =>
+const hasMarks = (card: IssueCard, age?: CardAge | null) =>
+  !!age ||
   card.priority === 'low' ||
   card.priority === 'paused' ||
   card.projectPriority === 'paused' ||
@@ -142,6 +151,7 @@ export function BoardCard({
   project = null,
   stories = [],
   statuses = [],
+  age = null,
   found = false,
   onPeek,
   depth = 0,
@@ -165,7 +175,7 @@ export function BoardCard({
   const storiesId = useId();
 
   const classes = (carrying: boolean) =>
-    `hatch-card${carrying ? ' hatch-card--carrying' : ''}${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}${spot ? ` hatch-spot-${spot}` : ''}`;
+    `hatch-card${carrying ? ' hatch-card--carrying' : ''}${isDragging ? ' dragging' : ''}${waiting ? ' waiting' : ''}${askingClass(card)}${agedClass(age)}${band ? ' banded' : ''}${priorityClass(card)}${found ? ' found' : ''}${nested ? ' nested' : ''}${spot ? ` hatch-spot-${spot}` : ''}`;
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -198,7 +208,7 @@ export function BoardCard({
         {...listeners}
         aria-describedby={describedBy}
       >
-        <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} linkRunner />
+        <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} age={age} linkRunner />
         <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
       </Link>
     );
@@ -229,6 +239,7 @@ export function BoardCard({
           stories={stories}
           statuses={statuses}
           showStrip={false}
+          age={age}
           linkRunner
         />
         <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
@@ -257,10 +268,10 @@ export function BoardCard({
  * understood the gesture. This is the same face, drawn in an overlay layer that
  * is positioned by the cursor rather than by the column it came from.
  */
-export function CardPreview({ card, waiting = false, terminal = false, project = null, stories = [], statuses = [] }: CardProps) {
+export function CardPreview({ card, waiting = false, terminal = false, project = null, stories = [], statuses = [], age = null }: CardProps) {
   return (
-    <div className={`hatch-card hatch-card-preview${askingClass(card)}${priorityClass(card)}`}>
-      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} />
+    <div className={`hatch-card hatch-card-preview${askingClass(card)}${agedClass(age)}${priorityClass(card)}`}>
+      <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} age={age} />
     </div>
   );
 }
@@ -280,9 +291,15 @@ function CardFace({
   project,
   stories,
   statuses,
+  age = null,
   showStrip = true,
   linkRunner = false,
-}: Required<Omit<CardProps, 'card'>> & { card: IssueCard; showStrip?: boolean; linkRunner?: boolean }) {
+}: Required<Omit<CardProps, 'card' | 'age'>> & {
+  card: IssueCard;
+  age?: CardAge | null;
+  showStrip?: boolean;
+  linkRunner?: boolean;
+}) {
   const { total, done } = storyCount(stories, statuses);
   const said = inheritedSentences(card, card.projectKey);
   // A passed-over level reads as none or normal on the card, so it draws no
@@ -349,7 +366,7 @@ function CardFace({
           <ContributionBadge contribution={card.contribution} inLink />
         </div>
       )}
-      {hasMarks(card) && (
+      {hasMarks(card, age) && (
         <div className="hatch-card-marks">
           {/* This one first - a fact about which card to read next. A card
               whose own priority is normal but whose project is paused wears
@@ -435,6 +452,17 @@ function CardFace({
           {!card.held && card.stalledAt && (
             <span className="hatch-card-stalled" title={`Stalled${card.stalledWhy ? ` - ${card.stalledWhy}` : ''}`}>
               ⏳
+            </span>
+          )}
+          {/* Words as well as the tint, since a tint alone is a colour some readers
+              cannot tell. Not drawn where the server did not call the card aged. */}
+          {age && (
+            <span className="hatch-card-age" title={age.title}>
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+                <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              {age.words}
             </span>
           )}
           {/* Nothing at all where there is no assignee - not an empty chip and

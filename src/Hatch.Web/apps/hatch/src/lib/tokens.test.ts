@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { parseTokenBlocks } from '@hatch/ui/palette';
 import { describe, expect, it } from 'vitest';
-import { luminance } from '@hatch/ui';
+import { channels, luminance } from '@hatch/ui';
 
 const { light, dark: darkAttr, darkMedia } = parseTokenBlocks(
   readFileSync(new URL('../../../../packages/ui/src/tokens.css', import.meta.url), 'utf8'),
@@ -136,6 +136,37 @@ describe('tokens.css', () => {
 
       expect(ratio, `--level-up on --card in ${name} is below 3:1`).toBeGreaterThanOrEqual(3);
     }
+  });
+
+  /* The chip on a card that has sat too long (lib/cardAge.ts): its ink reads on the
+     tint, which is --aged-bg laid over the block's own --bg. The ground is a
+     color-mix, so it is mixed here the way the browser does it. */
+  it('declares the aged tokens on :root and in both dark blocks, ink clearing 4.5:1 on the ground', () => {
+    const mixed = (ground: string, aged: string, bg: string): string => {
+      const match = /^color-mix\(in srgb, var\(--aged\) (\d+)%, var\(--bg\)\)$/.exec(ground);
+      expect(match, `--aged-ground is not a mix of --aged over --bg: ${ground}`).not.toBeNull();
+      const share = Number(match![1]) / 100;
+      const [a, b] = [channels(aged), channels(bg)];
+      return (
+        '#' +
+        a.map((c, i) => Math.round(c * share + b[i] * (1 - share)).toString(16).padStart(2, '0')).join('')
+      );
+    };
+    for (const [name, block] of [['light', light], ['dark', darkAttr], ['dark (media)', darkMedia]] as const) {
+      for (const prop of ['--aged', '--aged-bg', '--aged-ground', '--aged-ink']) {
+        expect(block, `${prop} is missing from ${name}`).toHaveProperty(prop);
+      }
+      const ground = mixed(block['--aged-ground'], block['--aged'], block['--bg']);
+      const inkLuminance = luminance(block['--aged-ink']);
+      const groundLuminance = luminance(ground);
+      const [hi, lo] =
+        inkLuminance >= groundLuminance ? [inkLuminance, groundLuminance] : [groundLuminance, inkLuminance];
+      const ratio = (hi + 0.05) / (lo + 0.05);
+
+      expect(ratio, `--aged-ink on --aged-ground in ${name} is below 4.5:1`).toBeGreaterThanOrEqual(4.5);
+    }
+    // Authored per theme, not inherited.
+    expect(darkAttr['--aged-ink']).not.toBe(light['--aged-ink']);
   });
 
   /* The gradient ink paints text straight on the page, so each stop is held

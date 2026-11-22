@@ -88,6 +88,11 @@ const FIXED = [
   '--type-epic',
   '--type-task',
   '--type-reflection',
+  // The aged chip and tint: authored once, so a re-themed palette cannot pull it
+  // toward the selection blue (see tokens.css, where its hue gap is argued).
+  '--aged',
+  '--aged-bg',
+  '--aged-ink',
   '--heat',
   '--heat-core',
   '--ramp-low',
