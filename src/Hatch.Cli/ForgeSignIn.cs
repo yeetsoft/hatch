@@ -124,6 +124,9 @@ internal sealed class WatchedForge(IForge inner, Runtime runtime, string path, s
     public async Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct) =>
         await Watch(await inner.MergeAsync(url, sha, ct), a => a.Why, ct);
 
+    public async Task<PullRequestOpenAnswer> OpenPullRequestAsync(string head, string trunk, string title, string body, CancellationToken ct) =>
+        await Watch(await inner.OpenPullRequestAsync(head, trunk, title, body, ct), a => a.Why, ct);
+
     public async Task<PullRequestBodyAnswer> ReadBodyAsync(string url, CancellationToken ct) =>
         await Watch(await inner.ReadBodyAsync(url, ct), a => a.Why, ct);
 

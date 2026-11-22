@@ -708,11 +708,15 @@ itself: its title, its body, the branch and sha, the repository's remote, the
 name that wrote it and why it was not opened. The issue page's facts panel
 shows its `Pull request` row reading `Written, waiting to be opened`, with the
 runner, the reason and when, and the title opens to the branch and the body as
-written. A `pull request waiting` chip sits under the title. The page has
+written. A `pull request waiting` chip sits under the title. A session writes it with
+`hatch pr KEY --title ... --body-file ...` when the forge cannot open the pull
+request from where it worked, and carries on; where the forge can, that call
+opens the pull request and records its url instead. The page has
 nothing to edit or delete it with: a person records the pull request's url, as
 they would any other, and that clears it. Until then the ticket still counts as
 having no pull request recorded, but the attention panel does not list it as
-in review with none.
+in review with none, and the loop does not refuse an increment that ended in
+review with one waiting as unpublished.
 
 ## Finished with no code
 

@@ -41,6 +41,31 @@ public sealed class PromptTests
         Assert.Contains("does not change that.", prompt, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void A_pull_request_is_opened_with_hatch_pr_and_one_that_waits_is_not_a_reason_to_stop()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", issueUrl: "https://hatch.example.test/issues/AER-12"));
+
+        Assert.Contains("hatch pr AER-12 --title \"AER-12 Area: what changed\" --body-file <path>", prompt, StringComparison.Ordinal);
+        Assert.Contains("or `-` for standard input", prompt, StringComparison.Ordinal);
+        Assert.Contains("When it says the pull request is written and waits", prompt, StringComparison.Ordinal);
+        Assert.Contains("carry on, move the ticket, and ask nothing.", prompt, StringComparison.Ordinal);
+        Assert.Contains("A pull request opened another way is recorded the same way, with `hatch pr AER-12 <url>`.", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Afterwards, record it", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_shared_closeout_is_told_the_same()
+    {
+        var prompt = string.Join('\n', Prompt.Tail(
+            "AER-12", "In Review", "https://hatch.example.test/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName,
+            sharesPullRequest: true, issueType: "story"));
+
+        Assert.Contains("hatch pr AER-12 --title", prompt, StringComparison.Ordinal);
+        Assert.Contains("When it says the pull request is written and waits", prompt, StringComparison.Ordinal);
+        Assert.Contains("A pull request opened another way is recorded with `hatch pr AER-12 <url>`.", prompt, StringComparison.Ordinal);
+    }
+
     private const string HowItShouldRead = "## How it should read";
 
     private static string WorkOf(string name) => name switch
@@ -1269,7 +1294,7 @@ public sealed class PromptTests
         Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51, and to 5,500 for the playbook-proposals call, HA-1644, and to 6,200 for how a ticket should read, HA-2327) ----
+    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51, and to 5,500 for the playbook-proposals call, HA-1644, and to 6,200 for how a ticket should read, HA-2327, and to 6,600 for opening the pull request with hatch pr, HA-2716) ----
 
     [Fact]
     public void The_fixed_part_of_the_prompt_stays_under_five_thousand_characters()
@@ -1277,8 +1302,8 @@ public sealed class PromptTests
         var fixedPart = string.Join('\n', Prompt.Tail(
             "AER-12", "In Review", "https://hatch.example.test/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
-        Assert.True(fixedPart.Length < 6200,
-            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 6,200.");
+        Assert.True(fixedPart.Length < 6600,
+            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 6,600.");
     }
 
     [Fact]

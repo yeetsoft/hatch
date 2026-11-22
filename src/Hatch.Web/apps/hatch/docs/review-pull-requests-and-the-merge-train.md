@@ -23,7 +23,10 @@ An issue holds one pull request address, and it does three jobs.
 - **Recording it is part of finishing.** An increment that ends in review
   having pushed a branch with no pull request recorded is refused as
   unpublished: a comment on the ticket says so, and the second time in a row
-  the board asks whether one has been opened.
+  the board asks whether one has been opened. A [pull request written and
+  waiting](issues#a-pull-request-waiting-to-be-opened), which `hatch pr KEY
+  --title ... --body-file ...` leaves when the forge cannot open it, counts as
+  published for this: the work is written down and only needs opening.
 - **The forge's own account of it is kept beside it.** Its merge state, its
   review decision and the head commit it was read at are stored with the
   address, and the merge train reads that.

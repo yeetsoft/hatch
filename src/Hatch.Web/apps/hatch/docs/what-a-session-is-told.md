@@ -294,9 +294,13 @@ a session that skips it is asked again the next time (see [the readme file](the-
 
 Where the work goes to review on a branch. It gives the title form (the key,
 then the subject as an area and a sentence) and the exact first line of the
-description, a link to the ticket, and ends with `hatch pr` to record the pull
-request on the ticket, which also writes the ticket's chain into the pull
-request's body. For a ticket whose tasks do not share a branch it adds that the
+description, a link to the ticket, and ends with the `hatch pr KEY --title ...
+--body-file ...` call that opens the pull request and records it on the ticket,
+which also writes the ticket's chain into the pull request's body. It says the
+branch is pushed first, and that when the answer is that the pull request is
+written and waits, the forge could not open it from there and a runner that can
+will: the session carries on, moves the ticket and asks nothing. A pull request
+opened another way is recorded with `hatch pr KEY <url>`. For a ticket whose tasks do not share a branch it adds that the
 pull request is recorded on the session's own ticket, and that a plan written
 on the ticket naming another ticket for it, a parent story for instance, does
 not redirect that. In a one-pull-request story it adds that the closeout
