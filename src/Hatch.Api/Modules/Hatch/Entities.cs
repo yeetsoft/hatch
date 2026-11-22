@@ -1137,6 +1137,22 @@ public class EfHatchIssue
     public string? PullRequestUrl { get; set; }
 
     /// <summary>
+    /// Who recorded <see cref="PullRequestUrl"/> - a person's or a key's name.
+    /// Null means recorded before this column existed, or no url held.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? PullRequestRecordedBy { get; set; }
+
+    /// <summary>
+    /// <see cref="Hatch.Api.Services.Auth.ActorKind.Person"/> or
+    /// <see cref="Hatch.Api.Services.Auth.ActorKind.Key"/>: which kind of
+    /// caller recorded <see cref="PullRequestUrl"/>. Null means recorded
+    /// before this column existed, or no url held.
+    /// </summary>
+    [MaxLength(EfHatchComment.MaxAuthorKindLength)]
+    public string? PullRequestRecordedByKind { get; set; }
+
+    /// <summary>
     /// When the pull request recorded on this issue was read as closed without
     /// merging, or null until it is. Set once and left alone - a runner's poll
     /// calls <c>/closed</c> every pass until a person acts, and the route that
