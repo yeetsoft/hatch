@@ -714,7 +714,7 @@ the list rather than 404ing, true of each id when several are given.
 |---|---|---|---|
 | GET | `/attachments` | key | Describes the files named in `ids`, in the order asked |
 | GET | `/attachments/{id}` | key | Downloads one, always as a file under its stored name |
-| POST | `/attachments` | **person** | Uploads one file (multipart `file`, up to 25 MB), linked to a project with `projectId` |
+| POST | `/attachments` | key | Uploads one file (multipart `file`, up to 25 MB), linked to a project with `projectId`; a key's upload must name one |
 | DELETE | `/attachments/{id}` | **person** | Removes one |
 | GET | `/images/{id}` | key | The inline view of an attachment that is an image |
 | POST | `/import/preview` | key | What uploaded `.md` files would become; reads/writes nothing |
@@ -730,12 +730,17 @@ is `ImportRequest(ProjectId, Docs)`, and its answer is
 `ImportResultDto(Epics, IssueCount)`, each epic an
 `ImportedEpicDto(Filename, Key, Title, StoryCount, TaskCount)`.
 
-**Refusals.** Attachment upload and delete 403 a program caller outright -
-files are attached by a person, not by an agent. Upload's `projectId` is
-optional, checked against the caller's scope, and 404s when it names no
-project the caller can see, before the file is read. Upload 400s a request with
+**Refusals.** Attachment delete 403 a program caller outright -
+files are removed by a person, not by an agent. Upload takes a key too.
+Upload's `projectId` is optional for a person and required of a key: a key's
+upload without it is a 400, "a key's upload names a project". It is checked
+against the caller's scope, and 404s when it names no project the caller can
+see, for a key as for a person, before the file is read. A key's upload
+records no uploader, since a key has no person to name. Upload 400s a request with
 no file, an empty file, and a file over 25 MB, and stores nothing; an image is
-stored under its detected type whatever its size, anything else under the
+stored under its detected type whatever its size, a video in MP4, QuickTime or
+WebM is stored as `video/mp4`, `video/quicktime` or `video/webm` whatever the
+client declared, and anything else under the
 type it was sent with, or `application/octet-stream` when that is missing or
 not a valid type. The name is the last path segment of the one sent, cut to
 255 characters, or `attachment` when nothing is left. `GET /attachments/{id}`
@@ -2211,7 +2216,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **49** person-only paths on this page,
+on this page with both) - there are **48** person-only paths on this page,
 across both halves together:
 
 ```
@@ -2253,7 +2258,6 @@ PUT    /issues/{key}/local-model
 PUT    /issues/{key}/human-work
 PUT    /issues/{key}/hold
 PATCH  /issues/{key}/playbook
-POST   /attachments
 DELETE /attachments/{id}
 PATCH  /runners/{name}
 POST   /runners/{name}/order
@@ -2267,8 +2271,8 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Thirty-nine belong to a project, a column, the WIP section, a ticket's own
-fields, or attachment upload and delete; the other ten are a runner's own record (now
+Thirty-eight belong to a project, a column, the WIP section, a ticket's own
+fields, or attachment delete; the other ten are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`),
 Hatch's settings on both verbs, the home screen, running a backup, and the
 three playbook writes.
