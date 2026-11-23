@@ -291,7 +291,10 @@ hatch go-to-work --workspace /clones           clone what the board binds, into 
 - `--interval` and `--merge-interval` take at least one second; anything else
   is refused with exit 1. The interval is only what to do when a pass found
   nothing. The merge train keeps its own clock, so approved pull requests merge
-  without waiting for it ([letting the loop merge for you](letting-the-loop-merge-for-you)).
+  without waiting for it ([letting the loop merge for you](letting-the-loop-merge-for-you)),
+  and the same clock opens a pull request a session left waiting because its
+  runner could not reach the forge, when this runner drives the project
+  ([a pull request that waits on its ticket](review-pull-requests-and-the-merge-train)).
 - `--quiet`, `--no-keys`, `--abort-merge`, `--repo` and `--workspace` are as
   for `work`, except that `--abort-merge` clears the merge with no banner and
   no wait - a runner nobody is watching is told the answer in advance.

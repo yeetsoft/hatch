@@ -2357,6 +2357,146 @@ button.hatch-card-stories:focus-visible {
     flex: 1 1 auto;
     min-width: 0;
   }
+
+  /* The strip on a phone: one row of the four numbers (BoardHealthRow), one
+     button, and under it - once tapped - the same tiles and window control
+     stacked in one column. Tokens only; 44px is a finger's height, the floor
+     the rest of this file holds a phone control to. */
+  .hatch-health-phone {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  /* Closed, the region holds nothing and must take no gap. */
+  .hatch-health-open:empty {
+    display: none;
+  }
+
+  .hatch-health-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .hatch-health-row:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  /* Four equal cells that may shrink below their text, which is cut rather
+     than wrapped, so the row never makes the page scroll sideways. */
+  .hatch-health-cell {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .hatch-health-cell-label,
+  .hatch-health-cell-second {
+    font-size: var(--t-label);
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .hatch-health-cell-number {
+    font-size: var(--t-heading);
+    font-weight: 600;
+    line-height: 1.1;
+  }
+
+  .hatch-health-cell--good .hatch-health-cell-second {
+    color: var(--success-ink);
+  }
+
+  .hatch-health-cell--warn .hatch-health-cell-second {
+    color: var(--warn-ink);
+  }
+
+  /* A chevron from two borders, so the row holds no SVG. It turns over when
+     the tiles are open. */
+  .hatch-health-chevron {
+    flex: none;
+    width: var(--sp-2);
+    height: var(--sp-2);
+    margin: 0 var(--sp-1) var(--sp-1);
+    border-right: 2px solid var(--muted);
+    border-bottom: 2px solid var(--muted);
+    transform: rotate(45deg);
+  }
+
+  .hatch-health-row.open .hatch-health-chevron {
+    margin-bottom: 0;
+    margin-top: var(--sp-1);
+    transform: rotate(-135deg);
+  }
+
+  /* Open: one column, the window control first, then a full-width tile each. */
+  .hatch-health-strip--stacked {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
+    gap: var(--sp-2);
+  }
+
+  .hatch-health-strip--stacked .hatch-health-window {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* A tile is its numbers on the left and the sparkline on the right, the
+     spark spanning every line of text. */
+  .hatch-health-strip--stacked .hatch-health-tile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'label spark'
+      'value spark'
+      'second spark'
+      'detail spark';
+    column-gap: var(--sp-3);
+  }
+
+  .hatch-health-strip--stacked .hatch-health-label {
+    grid-area: label;
+  }
+
+  .hatch-health-strip--stacked .hatch-health-value {
+    grid-area: value;
+  }
+
+  .hatch-health-strip--stacked .hatch-health-second {
+    grid-area: second;
+  }
+
+  .hatch-health-strip--stacked .hatch-health-detail {
+    grid-area: detail;
+  }
+
+  .hatch-health-strip--stacked .hatch-health-spark {
+    grid-area: spark;
+    align-self: center;
+    margin-top: 0;
+    min-width: 0;
+  }
+
+  /* Hide and show, inside Filters: the height its neighbours hold. */
+  .hatch-health-toggle {
+    height: var(--facet-h);
+  }
 }
 
 /* The Search page's own row: the box takes its own line, full width, and the
@@ -4416,24 +4556,9 @@ input.hatch-inline-title-input {
 /* ---- Capabilities, on an ambition's issue page ----
 
    One row per capability: its number, its statement and how to tell beneath
-   it, its state, and the epics serving it. The same wrapping Progress's rows
-   use, so a narrow screen stacks a row rather than cutting it off. */
-.hatch-capability-list {
-  list-style: none;
-  margin: var(--sp-4) 0 0;
-  padding: 0;
-}
-
-.hatch-capability-row {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  min-width: 0;
-  padding: var(--sp-2) 0;
-  border-top: 1px solid var(--line);
-}
-
+   it, its state, and the epics serving it. The list and the row are
+   Progress's own (.hatch-progress-list, .hatch-progress-row); the columns that
+   put the four pieces at one start on every row are in "One rhythm", below. */
 .hatch-capability-row > * {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -4712,20 +4837,9 @@ input.hatch-inline-title-input {
 
    One entry per work-log row from the implementation column: its title or
    the word Pass, its date and sha, one line per capability it judged, and
-   its comments. The verdict lines sit in a grid on a desk and stack on a
-   phone, the same break EpicsInFlight's meta uses. */
-.hatch-pass-list {
-  list-style: none;
-  margin: var(--sp-4) 0 0;
-  padding: 0;
-}
-
-.hatch-pass {
-  min-width: 0;
-  padding: var(--sp-3) 0;
-  border-top: 1px solid var(--line);
-}
-
+   its comments. The list and the entry are Progress's own, stacked by the
+   modifier in "One rhythm". The verdict lines sit in a grid on a desk and
+   stack on a phone, the same break EpicsInFlight's meta uses. */
 .hatch-pass-head {
   display: flex;
   align-items: center;
@@ -4774,26 +4888,10 @@ input.hatch-inline-title-input {
    What happened to the ambition's capabilities most recently: one line per
    entry with a badge for what happened to it, then one line per epic with an
    outcome - its word, its why, and either the two decision presses or the
-   line saying what was decided. Rows reuse .hatch-progress-row and
-   .hatch-progress-title; the outcome/why and the decision/presses stack under
-   the epic's title on a phone, the same break .hatch-epics-in-flight-meta
-   uses. */
-.hatch-change-entries {
-  list-style: none;
-  margin: var(--sp-4) 0 0;
-  padding: 0;
-}
-
-.hatch-change-entry {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  min-width: 0;
-  padding: var(--sp-2) 0;
-  border-top: 1px solid var(--line);
-}
-
+   line saying what was decided. Lists and rows are .hatch-progress-list and
+   .hatch-progress-row, with .hatch-progress-title; the outcome, why and
+   decision stack in one column at the right on a desk, and under the epic's
+   title on a phone, the same break .hatch-epics-in-flight-meta uses. */
 .hatch-change-entry-words {
   display: flex;
   flex-wrap: wrap;
@@ -4832,8 +4930,7 @@ input.hatch-inline-title-input {
 }
 
 @media (max-width: 40rem) {
-  .hatch-change-outcome-meta,
-  .hatch-change-decision {
+  .hatch-change-outcome-meta {
     flex: 1 0 100%;
     margin-left: 0;
   }
@@ -5127,6 +5224,96 @@ input.hatch-inline-title-input {
   .hatch-progress-row > .hatch-meter {
     flex: 1 1 auto;
     min-width: 0;
+    margin-left: 0;
+  }
+}
+
+/* ---- One rhythm, across an ambition's sections ----
+
+   Capabilities, Budget, Latest change, Epics in flight and Passes on an
+   ambition's page, and Serves on an epic's, lay out alike: the same gap under
+   the heading, the Progress list and row for every list, and one note for a
+   section that is loading, failed or empty. These rules come after the
+   Progress ones on purpose, so a modifier here wins at equal weight. */
+
+/* The first line under a heading, whatever it is: a list, the Budget bar or a
+   sentence. Selected by position, so the browser's own paragraph margin and
+   a list's own margin give way to it. */
+.hatch-ambition-section > summary + * {
+  margin-top: var(--sp-4);
+}
+
+/* A note is a paragraph with no margin of its own. Where it follows something
+   else in the section, or has something under it, it keeps the same gap. */
+.hatch-ambition-note {
+  margin: 0;
+  font-size: var(--t-body);
+}
+
+.hatch-ambition-section > * + .hatch-ambition-note,
+.hatch-ambition-section > .hatch-ambition-note + * {
+  margin-top: var(--sp-4);
+}
+
+/* Capabilities: four columns, so the number, the statement, the state and what
+   serves it start at one place on every row. The statement takes what the
+   others leave. A phone stacks them in the order they are drawn. No header row:
+   the pieces say what they are. */
+.hatch-progress-row.hatch-capability-row {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) minmax(12rem, 16rem) minmax(8rem, 14rem);
+  align-items: start;
+  column-gap: var(--sp-4);
+}
+
+/* .hatch-progress-row pushes a bare muted child to the right; the number stays
+   at the left of its column. */
+.hatch-progress-row.hatch-capability-row > .text-muted {
+  margin-left: 0;
+}
+
+/* The browser's paragraph margin would start the statement and the verdict
+   trail lower than the number and the state beside them. */
+.hatch-capability-row p {
+  margin: 0;
+}
+
+.hatch-capability-row p + p {
+  margin-top: var(--sp-1);
+}
+
+@media (max-width: 40rem) {
+  .hatch-progress-row.hatch-capability-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Passes: the row is Progress's, stacked: the head, the verdicts, the notes
+   and the comments one under another, the row's gap between them. No wrap: a
+   column that wraps stretches the verdict grid well past its content. */
+.hatch-progress-row.hatch-pass {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.hatch-progress-row.hatch-pass > * {
+  margin: 0;
+}
+
+/* The right-hand group of Epics in flight and of a change's outcomes: a fixed
+   width, so it starts at one place on every row on a desk, as the Progress
+   meter does. It drops under the title on a phone. Declared after the two
+   rules it refines: the Ambitions page draws .hatch-epics-in-flight-meta
+   without it and keeps its own. */
+.hatch-ambition-aside {
+  flex: 0 0 16rem;
+  margin-left: auto;
+}
+
+@media (max-width: 40rem) {
+  .hatch-ambition-aside {
+    flex: 1 0 100%;
     margin-left: 0;
   }
 }

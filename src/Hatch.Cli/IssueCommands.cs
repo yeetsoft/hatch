@@ -730,7 +730,7 @@ public sealed class IssueCommands(Cli cli)
     }
 
     /// <summary>The most parents one envelope's chain climbs - a backstop to the cycle guard, far deeper than any tree.</summary>
-    private const int MaxChain = 16;
+    private const int MaxChain = PullRequestEnvelopes.MaxChain;
 
     /// <summary>
     /// Writes the ticket's chain into the pull request's body, for a board that receives the pull
@@ -753,37 +753,8 @@ public sealed class IssueCommands(Cli cli)
     }
 
     /// <summary>The reason the envelope was not written, or null where it was - or where it was already there.</summary>
-    private async Task<string?> TryWriteEnvelopeAsync(string url, IssueDto own, string root, CancellationToken ct)
-    {
-        var names = (await cli.Board.StatusesAsync(ct)).ToDictionary(s => s.Id, s => s.Name);
-        var origin = cli.Board.Client.Origin;
-
-        var chain = new List<PullRequestEnvelopeIssue>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var issue = own; issue is not null && seen.Add(issue.Key) && chain.Count < MaxChain;)
-        {
-            chain.Add(new PullRequestEnvelopeIssue(
-                issue.Key, issue.Title, issue.Type, issue.Description,
-                names.GetValueOrDefault(issue.StatusId), issue.ParentKey,
-                $"{origin}/issues/{issue.Key}"));
-
-            issue = issue.ParentKey is { Length: > 0 } parent && !seen.Contains(parent)
-                ? await cli.Board.IssueAsync(parent, ct)
-                : null;
-        }
-
-        var envelope = new PullRequestEnvelope(PullRequestEnvelope.CurrentVersion, origin, own.ProjectKey, chain);
-
-        var forge = cli.Forge(root, null);
-        var read = await forge.ReadBodyAsync(url, ct);
-        if (read.Body is not { } body) return read.Why ?? "the body could not be read";
-
-        var replaced = PullRequestEnvelopeWriter.Replace(body, envelope, PullRequestEnvelopeWriter.GitHubBodyLimit);
-        if (replaced == body) return null;
-
-        var edit = await forge.EditBodyAsync(url, replaced, ct);
-        return edit.Edited ? null : edit.Why ?? "the body could not be written";
-    }
+    private async Task<string?> TryWriteEnvelopeAsync(string url, IssueDto own, string root, CancellationToken ct) =>
+        await PullRequestEnvelopes.TryWriteAsync(cli.Board, cli.Forge(root, null), url, own, ct);
 
     /// <summary>
     /// Records that an issue's work reached the trunk, in this checkout's

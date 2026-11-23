@@ -19,7 +19,7 @@ import { refusedModelsDraft, refusedModelsRequest } from './runnerModels';
 import { sameColumnIds, workableColumns } from './runnerColumns';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import { compactTokens, parseTokenCount, thousands, TOKEN_FIELD_HINT } from './workLog';
-import type { Runner, RunnerPatchRequest, RunnerSession, RunnerStatusMode, Status } from '../types';
+import type { Runner, RunnerFailure, RunnerPatchRequest, RunnerSession, RunnerStatusMode, Status } from '../types';
 
 /** The eight states a row can be in, in the order they are decided. */
 export type RunnerActivity = 'gone' | 'agent-down' | 'exhausted' | 'throttled' | 'paused' | 'stopping' | 'working' | 'idle';
@@ -541,6 +541,65 @@ export function signingWords(runner: Runner): string | null {
     default:
       return null;
   }
+}
+
+/** Whether a runner has anything it cannot do now. The row's one `failing` badge. */
+export const runnerFailing = (runner: Runner): boolean => (runner.failures?.length ?? 0) > 0;
+
+/** What a failure of this kind is, as a sentence's opening. A kind this build does not know is drawn as it came. */
+function failureKindWords(kind: string): string {
+  switch (kind) {
+    case 'forge':
+      return 'Cannot reach its forge';
+    case 'signing':
+      return 'Cannot sign its commits';
+    case 'agent-signed-out':
+      return 'Its agent is signed out';
+    case 'agent-not-starting':
+      return 'Its agent will not start';
+    case 'board-paused':
+      return 'Paused by the board';
+    default:
+      return kind;
+  }
+}
+
+/** Who said the reason: gh for the forge, git for signing, the agent for its own two, the board for its pause. */
+function failureWho(kind: string): string {
+  switch (kind) {
+    case 'forge':
+      return 'gh';
+    case 'signing':
+      return 'git';
+    case 'agent-signed-out':
+    case 'agent-not-starting':
+      return 'agent';
+    case 'board-paused':
+      return 'board';
+    default:
+      return 'it';
+  }
+}
+
+/** Whether a list needs to say where: a runner serves several checkouts and each has its own row, so only a repeated kind is ambiguous. */
+export function failuresNeedWhere(rows: RunnerFailure[]): boolean {
+  return new Set(rows.map((f) => f.kind)).size < rows.length;
+}
+
+const failureClock = (at: string | null, now: Date): string =>
+  (at === null ? null : resetClockWords(new Date(at), now)) ?? 'an unknown time';
+
+const failureAt = (f: RunnerFailure, withWhere: boolean): string => (withWhere && f.where ? ` at ${f.where}` : '');
+
+/** One current failure: `Cannot reach its forge since 7:40pm - gh said: token expired`. The reason is left off where the board kept none. */
+export function failureWords(f: RunnerFailure, now: Date, withWhere = false): string {
+  const line = `${failureKindWords(f.kind)}${failureAt(f, withWhere)} since ${failureClock(f.beganAt, now)}`;
+  return f.why ? `${line} - ${failureWho(f.kind)} said: ${f.why}` : line;
+}
+
+/** One ended failure: `Cannot sign its commits - began 7:40pm, ended 8:10pm`. */
+export function earlierWords(f: RunnerFailure, now: Date, withWhere = false): string {
+  return `${failureKindWords(f.kind)}${failureAt(f, withWhere)} - began ${failureClock(f.beganAt, now)}, ended ${failureClock(f.endedAt, now)}`;
 }
 
 /** Whether a runner's forge sign-in fails. A word this build does not know is no answer, so false. */

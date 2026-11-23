@@ -57,6 +57,7 @@ import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IssueFacts } from '../components/IssueFacts';
 import { IssuePicker } from '../components/IssuePicker';
 import { IssueSection } from '../components/IssueSection';
+import { SectionNote } from '../components/SectionNote';
 import { IssueSubheader } from '../components/IssueSubheader';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { MessageState } from '../components/MessageState';
@@ -1508,7 +1509,7 @@ export function Serves({ issue, serves }: { issue: Issue; serves: ServedCapabili
   if (issue.type !== 'epic' || !serves?.length) return null;
 
   return (
-    <IssueSection id="serves" title="Serves" count={serves.length}>
+    <IssueSection id="serves" title="Serves" count={serves.length} className="hatch-ambition-section">
       <ul className="hatch-progress-list">
         {serves.map((row) => (
           <li key={row.capabilityId} className="hatch-progress-row">
@@ -1627,19 +1628,19 @@ export function Capabilities({
   const now = new Date();
 
   return (
-    <IssueSection id="capabilities" title="Capabilities" count={capabilities ? capabilities.length : undefined}>
-      {error && <p className="text-danger">{error}</p>}
-      {!capabilities && !error && <p className="text-muted">Loading…</p>}
+    <IssueSection id="capabilities" title="Capabilities" count={capabilities ? capabilities.length : undefined} className="hatch-ambition-section">
+      {error && <SectionNote kind="failed">{error}</SectionNote>}
+      {!capabilities && !error && <SectionNote kind="loading">Loading…</SectionNote>}
 
       {capabilities && capabilities.length === 0 && (
         <>
-          <p className="text-muted">This ambition has no capabilities yet.</p>
+          <SectionNote kind="empty">This ambition has no capabilities yet.</SectionNote>
           <Command command={`hatch capability add ${issue.key} "<statement>" --how "<how to tell>"`} />
         </>
       )}
 
       {capabilities && capabilities.length > 0 && (
-        <ul className="hatch-capability-list">
+        <ul className="hatch-progress-list">
           {capabilities.map((capability) => (
             <CapabilityRow key={capability.id} capability={capability} board={board} now={now} />
           ))}
@@ -1695,9 +1696,9 @@ export function Budget({
   const amount = budgetRequest(draft);
 
   return (
-    <IssueSection id="budget" title="Budget">
-      {error && <p className="text-danger">{error}</p>}
-      {!budget && !error && <p className="text-muted">Loading…</p>}
+    <IssueSection id="budget" title="Budget" className="hatch-ambition-section">
+      {error && <SectionNote kind="failed">{error}</SectionNote>}
+      {!budget && !error && <SectionNote kind="loading">Loading…</SectionNote>}
 
       {budget && percent !== null && (
         <>
@@ -1795,11 +1796,11 @@ export function EpicsInFlight({
   const runs = issue.wipLimit ?? 1;
 
   return (
-    <IssueSection id="epics-in-flight" title="Epics in flight" count={rollup ? open.length : undefined}>
-      {error && <p className="text-danger">{error}</p>}
-      {!rollup && !error && <p className="text-muted">Loading…</p>}
+    <IssueSection id="epics-in-flight" title="Epics in flight" count={rollup ? open.length : undefined} className="hatch-ambition-section">
+      {error && <SectionNote kind="failed">{error}</SectionNote>}
+      {!rollup && !error && <SectionNote kind="loading">Loading…</SectionNote>}
 
-      {rollup && open.length === 0 && <p className="text-muted">No epic is open under this ambition.</p>}
+      {rollup && open.length === 0 && <SectionNote kind="empty">No epic is open under this ambition.</SectionNote>}
 
       {rollup && open.length > 0 && (
         <>
@@ -1818,7 +1819,7 @@ export function EpicsInFlight({
                     {card.key}
                   </Link>
                   <span className="hatch-progress-title">{card.title}</span>
-                  <span className="hatch-epics-in-flight-meta">
+                  <span className="hatch-epics-in-flight-meta hatch-ambition-aside">
                     <StatusPill status={status} size="sm" />
                     {served.length === 0 ? (
                       <span className="text-muted">&mdash;</span>
@@ -1859,14 +1860,14 @@ export function Passes({
   const now = new Date();
 
   return (
-    <IssueSection id="passes" title="Passes" count={passes ? passes.length : undefined}>
-      {error && <p className="text-danger">{error}</p>}
-      {!passes && !error && <p className="text-muted">Loading…</p>}
+    <IssueSection id="passes" title="Passes" count={passes ? passes.length : undefined} className="hatch-ambition-section">
+      {error && <SectionNote kind="failed">{error}</SectionNote>}
+      {!passes && !error && <SectionNote kind="loading">Loading…</SectionNote>}
 
-      {passes && passes.length === 0 && <p className="text-muted">This ambition has had no pass yet.</p>}
+      {passes && passes.length === 0 && <SectionNote kind="empty">This ambition has had no pass yet.</SectionNote>}
 
       {passes && passes.length > 0 && (
-        <ul className="hatch-pass-list">
+        <ul className="hatch-progress-list">
           {passes.map((pass, i) => (
             <PassEntry key={pass.rowId ?? `loose-${pass.verdicts[0]?.id ?? i}`} pass={pass} now={now} />
           ))}
@@ -1886,7 +1887,7 @@ function PassEntry({ pass, now }: { pass: AmbitionPass; now: Date }) {
   const loose = pass.rowId === null;
 
   return (
-    <li className="hatch-pass">
+    <li className="hatch-progress-row hatch-pass">
       <div className="hatch-pass-head">
         <strong>{pass.title ?? 'Pass'}</strong>
         <DatedAt at={pass.endedAt} now={now} />
@@ -2030,21 +2031,21 @@ export function LatestChange({
   const deferredColumn = board.statuses.find((s) => s.isDeferred);
 
   return (
-    <IssueSection id="latest-change" title="Latest change">
-      {error && <p className="text-danger">{error}</p>}
+    <IssueSection id="latest-change" title="Latest change" className="hatch-ambition-section">
+      {error && <SectionNote kind="failed">{error}</SectionNote>}
 
       {change && (
         <>
-          <ul className="hatch-change-entries">
+          <ul className="hatch-progress-list">
             {change.entries.map((entry) => (
               <ChangeEntryLine key={entry.eventId} entry={entry} />
             ))}
           </ul>
 
           {!change.workedOut && (
-            <p className="text-muted">
+            <SectionNote kind="empty">
               This change has not been worked out yet. A session will work out what it does to each epic.
-            </p>
+            </SectionNote>
           )}
 
           {change.workedOut && change.outcomes.length > 0 && (
@@ -2099,7 +2100,7 @@ export function LatestChange({
     removal, or just the new words on an add. */
 function ChangeEntryLine({ entry }: { entry: ChangeEntry }) {
   return (
-    <li className="hatch-change-entry">
+    <li className="hatch-progress-row hatch-change-entry">
       <Badge tone={entryTone(entry.kind)}>{entryLabel(entry.kind)}</Badge>
       <span className="hatch-change-entry-words">
         {entry.statementBefore && <s>{entry.statementBefore}</s>}
@@ -2141,34 +2142,34 @@ function ChangeOutcomeLine({
         {outcome.epicKey}
       </Link>
       <span className="hatch-progress-title">{outcome.epicTitle}</span>
-      <span className="hatch-change-outcome-meta">
+      <div className="hatch-change-outcome-meta hatch-ambition-aside">
         <Badge tone={outcomeTone(outcome.outcome)}>{outcomeWord(outcome.outcome)}</Badge>
         <span className="text-muted">{outcome.why}</span>
-      </span>
 
-      {outcome.outcome === 'serves_nothing' && (
-        <div className="hatch-change-decision">
-          {outcome.decision ? (
-            <span className="text-muted">
-              {decisionWord(outcome.decision.decision)} by {outcome.decision.decidedBy},{' '}
-              <DatedAt at={outcome.decision.decidedAt} now={now} />
-            </span>
-          ) : showsPresses(outcome, statuses) ? (
-            <div className="hatch-change-presses">
-              <Button disabled={busy} onClick={onKeep}>
-                Keep it running
-              </Button>
-              <Button disabled={busy} onClick={onShelve}>
-                Shelve it
-              </Button>
-            </div>
-          ) : (
-            column && <StatusPill status={column} size="sm" />
-          )}
+        {outcome.outcome === 'serves_nothing' && (
+          <div className="hatch-change-decision">
+            {outcome.decision ? (
+              <span className="text-muted">
+                {decisionWord(outcome.decision.decision)} by {outcome.decision.decidedBy},{' '}
+                <DatedAt at={outcome.decision.decidedAt} now={now} />
+              </span>
+            ) : showsPresses(outcome, statuses) ? (
+              <div className="hatch-change-presses">
+                <Button disabled={busy} onClick={onKeep}>
+                  Keep it running
+                </Button>
+                <Button disabled={busy} onClick={onShelve}>
+                  Shelve it
+                </Button>
+              </div>
+            ) : (
+              column && <StatusPill status={column} size="sm" />
+            )}
 
-          {refusal && <p className="text-danger">{refusal}</p>}
-        </div>
-      )}
+            {refusal && <p className="text-danger">{refusal}</p>}
+          </div>
+        )}
+      </div>
     </li>
   );
 }
@@ -2182,7 +2183,7 @@ function CapabilityRow({ capability, board, now }: { capability: Capability; boa
   const verdict = capability.newestVerdict;
 
   return (
-    <li className="hatch-capability-row">
+    <li className="hatch-progress-row hatch-capability-row">
       <span className="text-muted">#{capability.position}</span>
 
       <div className="hatch-progress-title">

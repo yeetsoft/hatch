@@ -14,6 +14,7 @@ import {
 import { useRunnersOutlet } from './RunnersLayout';
 import { RunnerBoundsForm } from './RunnerBoundsForm';
 import { RunnerKeyActions } from './RunnerKeyActions';
+import { RunnerFailures } from './RunnerFailures';
 import { RunnerSettingsForm } from './RunnerSettingsForm';
 import { SecretPanel } from './SecretPanel';
 import {
@@ -323,6 +324,7 @@ export function RunnerDetail() {
         </Button>
         <PageHeader title={name} actions={badges} level={1} />
         {secretPanel}
+        <RunnerFailures runner={runner} />
         <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey && isAdmin} />
         <RunnerConfigCards runner={runner} live={live} statuses={statuses} reload={reload} />
         <SessionsCards runner={runner} live={live} now={now} reload={reload} />
@@ -334,6 +336,7 @@ export function RunnerDetail() {
     <>
       <PageHeader title={name} actions={badges} level={2} />
       {secretPanel}
+      <RunnerFailures runner={runner} />
       <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey && isAdmin} />
       <RunnerConfigCards runner={runner} live={live} statuses={statuses} reload={reload} />
       <SessionsCards runner={runner} live={live} now={now} reload={reload} />

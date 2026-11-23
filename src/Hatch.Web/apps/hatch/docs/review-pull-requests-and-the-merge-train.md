@@ -56,6 +56,32 @@ branch or more than one, and it never touches an issue in the merges column, one
 that lands on the trunk, one with a no-code declaration, or one whose project
 the runner does not drive.
 
+### A pull request that waits on its ticket
+
+When the runner that wrote a branch could not open its pull request, `hatch pr`
+leaves the title and body on the ticket. The runner that drives the project
+opens it from there, within a minute, with no session and nobody asked. The
+ticket then carries the url, the waiting text is gone, the pull request's body
+holds the ticket's chain the way `hatch pr` writes it, and one comment names the
+runner that opened it, who left the text, and the url.
+
+Before it opens anything, the runner looks. A pull request already open from the
+ticket's branch is recorded instead, and none is opened. A branch that is gone
+from origin, or whose tip is neither the commit the text was written at nor a
+descendant of it, is left alone: the runner says so once on the ticket and once
+in its terminal, and the text stays. The title and body are opened exactly as
+written.
+
+A failed open or record is one line in the runner's terminal and is tried again
+on the next check; a forge that cannot be reached also makes the runner report
+its forge as failing, so another runner takes over driving. The runner does not
+touch a ticket outside the review column, one in a project that lands on the
+trunk, or one whose repository it holds no single checkout of. With no runner to
+drive the project, the text waits, nobody is asked anything, and the queue says
+that no live runner is eligible to drive it. Once the pull request is open it is
+an ordinary one in review: a pre-approved ticket is merged by the loop as any
+other.
+
 ## The build check and the merge check
 
 Code decides here, not a prompt. The runner asks git whether the branch merges with the trunk, asks the forge how the build on its tip came out, and writes each answer onto the issue; the board reads what the issue holds and applies one rule. Both answers are kept per repository, because a project may bind several and a passing one must not hide a failing one.

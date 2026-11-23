@@ -31,7 +31,9 @@ Each row opens that runner's detail, and has three lines:
 
 - The glyph, the runner's name, and on the right an `x2` badge (or `x3`, and so
   on) when more than one session is live, a `preferred` badge when the runner
-  carries the preferred mark, and a `revoked` badge when it is.
+  carries the preferred mark, a `revoked` badge when it is, and one `failing`
+  badge when it cannot do something now - never two, whatever the number of
+  things. What failed is on its page.
 - What it is doing: `Working HA-12 - <its last line>` (with `+1 more` when
   several sessions work), `Idle - seen 4 minutes ago`, `Paused`, `Stopping`,
   `Over 200k tokens/hour until 3:40am`, `Out of usage until …`, `Agent not
@@ -97,7 +99,12 @@ hold; it pulls nothing by itself.
 
 ### The detail
 
-Five cards, in this order.
+Five cards, in this order. Above them, a card with a **Failing** list and an
+**Earlier** list is drawn when there is anything to put in either. **Failing**
+has one line for each thing the runner cannot do now, `Cannot reach its forge
+since 7:40pm - gh said: token expired`; **Earlier** has one for each that ended,
+`Cannot sign its commits - began 7:40pm, ended 8:10pm`. A list with no rows draws
+no heading.
 
 **Identity and key.** Its name, the key's prefix, when it was created, when it
 was last used, and when it was rotated or revoked, where either has happened. The
