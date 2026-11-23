@@ -7,6 +7,7 @@ import {
   bandPolygons,
   barIndexAt,
   barSlots,
+  compactReadout,
   flowHref,
   hasStrip,
   momentX,
@@ -405,6 +406,65 @@ describe('readout at rest', () => {
     expect(empty.inFlight.value).toBe('0');
     expect(empty.oldest.value).toBe('none');
     expect(empty.waiting).toMatchObject({ value: '0', second: 'nothing waiting' });
+  });
+});
+
+describe('compactReadout', () => {
+  const full = readout(answer(), null);
+
+  it('gives the same four figures as the full tiles', () => {
+    const compact = compactReadout(answer());
+
+    expect(compact.moved.value).toBe(full.moved.value);
+    expect(compact.inFlight.value).toBe(full.inFlight.value);
+    expect(compact.oldest.value).toBe(full.oldest.value);
+    expect(compact.waiting.value).toBe(full.waiting.value);
+    expect(compact.oldest.tone).toBe(full.oldest.tone);
+  });
+
+  it('shortens each second line of a hand-built window', () => {
+    expect(compactReadout(answer())).toEqual({
+      moved: { value: String(TOTAL), second: '▲ 16', tone: 'good' },
+      inFlight: { value: '5', second: '23 done', tone: 'neutral' },
+      oldest: { value: '4h', second: '2 old', tone: 'warn' },
+      waiting: { value: '3', second: '2h 10m old', tone: 'neutral' },
+    });
+  });
+
+  it('moved: down keeps its glyph, flat says same', () => {
+    expect(compactReadout(answer({ previousTotal: TOTAL + 10 })).moved.second).toBe('▼ 10');
+    expect(compactReadout(answer({ previousTotal: TOTAL })).moved.second).toBe('– same');
+  });
+
+  it('oldest: none past normal is none old', () => {
+    expect(compactReadout(answer({ pastNormal: 0 })).oldest.second).toBe('none old');
+  });
+
+  it('oldest: a null oldest keeps the value none, as the full tile does', () => {
+    const last = answer({ bars: bars((i) => (i === 23 ? { oldestInFlightSeconds: null } : {})) });
+
+    expect(compactReadout(last).oldest.value).toBe('none');
+  });
+
+  it('waiting: zero waiting is none', () => {
+    const none = answer({
+      bars: bars((i) => (i === 23 ? { waitingPullRequests: 0, waitingQuestions: 0, oldestWaitSeconds: null } : {})),
+    });
+
+    expect(compactReadout(none).waiting).toMatchObject({ value: '0', second: 'none' });
+  });
+
+  it('waiting: an unknown oldest wait says unknown', () => {
+    const unknown = answer({ bars: bars((i) => (i === 23 ? { oldestWaitSeconds: null } : {})) });
+
+    expect(compactReadout(unknown).waiting.second).toBe('unknown');
+  });
+
+  it('is finite and honest with no bars at all', () => {
+    const empty = compactReadout(answer({ bars: [], total: 0, previousTotal: 0, pastNormal: 0 }));
+
+    expect(empty.oldest).toMatchObject({ value: 'none', second: 'none old' });
+    expect(empty.waiting).toMatchObject({ value: '0', second: 'none' });
   });
 });
 

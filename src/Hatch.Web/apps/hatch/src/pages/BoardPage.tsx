@@ -853,6 +853,19 @@ function BoardContent() {
   // there is a deferred column for it to go to.
   const cloud = dragging !== null && showCloud(board.statuses) ? <RemandCloud lit={overCloud} /> : null;
 
+  /* The hide button: in the header row off the phone, inside the Filters
+     disclosure on it, so the phone's header keeps its one line. */
+  const healthToggle = (
+    <BoardHealthToggle
+      on={stripShown}
+      onToggle={() => {
+        const next = !stripShown;
+        setStripShown(next);
+        writeStripShown(next);
+      }}
+    />
+  );
+
   return (
     <div className={`hatch-board-page${pinned ? ' hatch-board-page--pinned' : ''}`}>
       {/* The page names itself here rather than through PageHeader: the top bar
@@ -883,21 +896,13 @@ function BoardContent() {
             </Button>
           )
         }
+        inFilters={isPhone && healthToggle}
         trailing={
           <>
             <GoToWorkControl plan={goToWork} status={status} reload={reloadRunners} isPhone={isPhone} />
             <QueueControl cards={board.issues} runners={runners} onTake={onTake} handle={queue} />
             {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
-            {!isPhone && (
-              <BoardHealthToggle
-                on={stripShown}
-                onToggle={() => {
-                  const next = !stripShown;
-                  setStripShown(next);
-                  writeStripShown(next);
-                }}
-              />
-            )}
+            {!isPhone && healthToggle}
             {isPhone ? (
               <button
                 type="button"
@@ -926,7 +931,7 @@ function BoardContent() {
         }
       />
 
-      {stripShown && !isPhone && <BoardHealthStrip />}
+      {stripShown && <BoardHealthStrip />}
 
       {isPhone && goToWork.mode !== 'loading' && (
         <p className="hatch-go-to-work-note text-muted">
