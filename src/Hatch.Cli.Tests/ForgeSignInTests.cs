@@ -454,6 +454,7 @@ public sealed class ForgeSignInTests
         h.Forge.EditAnswer = new BodyEditAnswer(false, "no");
         h.Forge.UpdateAnswer = new UpdateAnswer(null, "no");
         h.Forge.RerunAnswer = new RerunAnswer(null, "no");
+        h.Forge.OpenAnswer = new PullRequestOpenAnswer(null, "no");
 
         async Task Asks(Func<IForge, Task> call)
         {
@@ -469,6 +470,7 @@ public sealed class ForgeSignInTests
         await Asks(f => f.MergeAsync("u", "s", default));
         await Asks(f => f.ReadBodyAsync("u", default));
         await Asks(f => f.EditBodyAsync("u", "b", default));
+        await Asks(f => f.OpenPullRequestAsync("h", "t", "ti", "b", default));
         await Asks(f => f.UpdateAsync(1, "s", default));
         await Asks(f => f.RerunAsync(new FailingCheck("CI", null, 1), default));
 

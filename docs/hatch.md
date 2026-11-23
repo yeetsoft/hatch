@@ -2554,6 +2554,16 @@ request waiting` chip, and its Pull request field says *Written, waiting to be
 opened* with the runner, the reason and the time, and the title and body behind
 a `<details>`; there is nothing on the page to edit or delete it.
 
+It rides on the review read as `ReviewCheckDto.WaitingPullRequest`
+(`WorkController.GetReview`, the same `WaitingPullRequest.ToDto` the issue
+carries), which is how the project's driver sees these rows at all; the queue
+words such a row's sentence the way the merges column's head has it - naming
+the driver that opens it, or saying no live runner is eligible to drive the
+project (`Dispatch.WaitingToBeOpened`) - and a waiting row counts as having a
+pull request for the judge's dead-end test, since something is about to open
+it. The driver opens it in the merge train's tick - see *A waiting pull request is opened by the
+driver* under [the merge train](#the-merge-train).
+
 ### WIP
 
 How full the [WIP section](#status) is right now — the read every later story
@@ -8278,6 +8288,49 @@ the next tick finishes. A person's record, one the board does not say who made,
 and a filed outsider's are never moved: the issue in review is told once per
 runner run which ticket holds it, and neither issue changes. The filer runs
 after, so it finds the pull request recorded and never files it as an outsider.
+
+**A waiting pull request is opened by the driver.** In the same tick,
+`WaitingPullRequestOpener` (`WaitingPullRequests.cs`) runs right after the
+repair and before the filer, handed the repair's own instance so what it has
+told a ticket is shared, and the tick's list of open pull requests. A row is
+the opener's only where the runner drives its project, it is in review (no
+`MergeWork`, no `LandingWork`), its project lands by pull request, no pull
+request is recorded, `ReviewCheckDto.WaitingPullRequest` is set and exactly one
+checkout of this runner's is the repository the text names (`Checkouts.ToPoll`
+narrowed to the entry whose remote equals the stored one, ignoring case; with
+none stored, the one entry). The trunk is the repository's base branch, else
+`HATCH_BASE_BRANCH`, else what origin calls its trunk. In order:
+
+1. An open pull request from the stored branch (the repair's own match: open,
+   head ordinal, not from a fork, base the trunk) is handed to
+   `PullRequestRepair.PutRightAsync` - recorded, as the repair records it, and
+   nothing is opened. Two such pull requests write nothing.
+2. The issue is read again; a url recorded or the text gone ends it. Then
+   `IWorkspace.BranchHolds(branch, sha)` asks origin: `Heads()` (one
+   `ls-remote`) says gone or equal, and only a tip that differs is fetched, so
+   that `git merge-base --is-ancestor` can tell a branch that moved on from one
+   rewritten. A branch gone, or whose tip is neither the stored sha nor a
+   descendant of it, is left alone: one terminal line and one comment on the
+   ticket, each once per run (keyed on the key, branch, sha and state, and let
+   go again if the comment fails). A fetch that does not answer says one line,
+   no comment, and the next tick asks again. This is the one place the tick
+   reads git, and it moves no branch and no tree.
+3. `OpenPullRequestAsync` on the watched forge, with the stored title and body
+   unchanged - so a refused sign-in feeds the forge check, and the next
+   heartbeat says `fails` and the election moves on. gh answering that the pull
+   request already exists returns its url, so a retry is safe. A failure is one
+   line, `hatch: KEY - could not open its pull request - why`, and the text
+   stays for the next tick.
+4. The url is recorded with a patch - which clears the text - and the ticket's
+   chain is written into the pull request's body by the code `hatch pr` shares
+   (`PullRequestEnvelopes.TryWriteAsync`); an envelope failure is one line.
+   A failed record leaves the text and the pull request open, and the next tick
+   finds it in the list and records it.
+5. One comment names the runner that opened it, who left the text, and the
+   url.
+
+It asks nothing of a person, edits neither the title nor the body, and with no
+driver the text waits.
 
 #### Landing on the trunk
 

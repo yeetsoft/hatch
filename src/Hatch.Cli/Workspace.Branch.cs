@@ -117,6 +117,25 @@ public sealed partial class Workspace
     }
 
     /// <summary>
+    /// Whether origin's <paramref name="branch"/> holds <paramref name="sha"/>: one <c>ls-remote</c> says gone
+    /// or equal, and only a tip that differs is fetched, so that <c>merge-base --is-ancestor</c> can tell a
+    /// branch that moved on from one that was rewritten. A fetch that does not answer is
+    /// <see cref="BranchHolding.Unknown"/>, so nothing is claimed of a branch nobody could read.
+    /// </summary>
+    public BranchHolding BranchHolds(string branch, string sha)
+    {
+        if (Heads() is not { } heads) return BranchHolding.Unknown;
+        if (!heads.Shas.TryGetValue(branch, out var tip)) return BranchHolding.Gone;
+        if (string.Equals(tip, sha, StringComparison.OrdinalIgnoreCase)) return BranchHolding.Holds;
+
+        if (!Fetch()) return BranchHolding.Unknown;
+
+        return Git("merge-base", "--is-ancestor", sha, $"refs/remotes/origin/{branch}").Ok
+            ? BranchHolding.Holds
+            : BranchHolding.Moved;
+    }
+
+    /// <summary>
     /// Whether a trunk-landing session should be asked to write
     /// <c>.hatch/README.md</c>: never off the trunk, and only when the trunk's own
     /// copy is absent or a version older than the one this build ships. Reading

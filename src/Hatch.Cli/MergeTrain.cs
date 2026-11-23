@@ -43,6 +43,7 @@ public sealed class MergeTrain : IAsyncDisposable
     private HashSet<string> _saidBefore = [];
     private readonly OutsideFiler _filer = new();
     private readonly PullRequestRepair _repair = new();
+    private readonly WaitingPullRequestOpener _opener = new();
 
     // The sentence a 409 from the merged route came back with, per issue: the
     // last tick's, and the one being built. One 409 is the race the walk-on
@@ -179,6 +180,10 @@ public sealed class MergeTrain : IAsyncDisposable
         // live check finds it recorded and never files it as an outsider. Only the project's driver does it.
         await RepairPullRequestsAsync(runtime, complain, review, lists, ct);
 
+        // A pull request left waiting on its ticket is opened, or - where one is already open from its branch -
+        // recorded, before the filer looks, for the same reason. Only the project's driver does it.
+        await OpenWaitingPullRequestsAsync(runtime, complain, review, lists, ct);
+
         // Right after it, so the list it read is the list this one files from: one read of a
         // path a tick. Only the project's driver files, and nothing here throws out of the tick.
         await FileOutsidePullRequestsAsync(runtime, complain, review, lists, ct);
@@ -186,7 +191,8 @@ public sealed class MergeTrain : IAsyncDisposable
         // Before the merge half, and on this clock rather than the poll's: the
         // poll waits on a runner between sessions, and a head whose build
         // passed a moment ago should not wait for one. It reads the forge and
-        // writes the board and touches no git, so it never overlaps a session.
+        // writes the board and touches no git but, rarely, one fetch of origin's refs (a waiting pull request
+        // whose branch moved on), which moves no branch and no tree, so it never overlaps a session's work.
         await ReadBuildsAsync(runtime, complain, review, ct);
 
         await MergeApprovedAsync(runtime, complain, review, ct);
@@ -401,6 +407,26 @@ public sealed class MergeTrain : IAsyncDisposable
         catch (Exception e) when (e is not OperationCanceledException)
         {
             complain($"hatch: could not put misplaced pull requests right - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The waiting pull request half: an issue in review whose pull request was written and left waiting is
+    /// opened by the project's driver - see <see cref="WaitingPullRequestOpener"/>. The outer try/catch
+    /// keeps anything unanticipated here from propagating into <see cref="TickAsync"/> and aborting the
+    /// halves that run after it.
+    /// </summary>
+    private async Task OpenWaitingPullRequestsAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review,
+        Dictionary<string, PullRequestListAnswer> lists, CancellationToken ct)
+    {
+        try
+        {
+            await _opener.OpenAsync(runtime, complain, review, lists, _repair, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not open waiting pull requests - {e.Message}");
         }
     }
 

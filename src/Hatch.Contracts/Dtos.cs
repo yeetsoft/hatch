@@ -3981,6 +3981,7 @@ public record RunnerReasonDto(string Runner, string Reason);
 /// <param name="PullRequestHeadSha">The head commit the board last read the pull request at, for the same comparison. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestHeadSince">The moment the board first saw the pull request at that head - when the forge's pull request reached the branch tip, as far as the board can tell. Null where none is held, and from a board that predates it.</param>
 /// <param name="Branch">The head branch of the issue's recorded pull request - from its contribution where it came from outside, else the one a runner read off the forge - which is the issue's change, and the only branch looked for in place of one named for the key. Null where no pull request is recorded, or none has been read yet, and from a board that predates it.</param>
+/// <param name="WaitingPullRequest">The pull request written on the issue and not yet opened, for the project's driver to open - null where there is none, and from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -3998,7 +3999,8 @@ public record ReviewCheckDto(
     string? PullRequestReviewDecision = null,
     string? PullRequestHeadSha = null,
     DateTimeOffset? PullRequestHeadSince = null,
-    string? Branch = null);
+    string? Branch = null,
+    WaitingPullRequestDto? WaitingPullRequest = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">

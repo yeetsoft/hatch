@@ -88,6 +88,13 @@ public interface IWorkspace
     bool Fetch();
 
     /// <summary>
+    /// Whether origin's <paramref name="branch"/> still holds <paramref name="sha"/>: at it, past it (a
+    /// descendant), gone, or moved off it. Reads origin with <c>ls-remote</c> and fetches only when the tip
+    /// differs, to tell a descendant from a rewrite. Moves no branch and no tree.
+    /// </summary>
+    BranchHolding BranchHolds(string branch, string sha);
+
+    /// <summary>
     /// Whether <paramref name="sha"/> is on origin's <paramref name="trunk"/>, read
     /// from the refs as they stand - a sha that does not resolve is
     /// <c>(null, false)</c>. Does not fetch.
@@ -169,6 +176,22 @@ public interface IWorkspace
     /// <see cref="Reset.Merging"/> - null on every other answer.
     /// </summary>
     MergeBlock? MergeBlocked { get; }
+}
+
+/// <summary>What <see cref="IWorkspace.BranchHolds"/> found of a branch on origin and the commit it was written at.</summary>
+public enum BranchHolding
+{
+    /// <summary>The branch is at the sha, or past it.</summary>
+    Holds,
+
+    /// <summary>Origin has no such branch.</summary>
+    Gone,
+
+    /// <summary>The branch is somewhere that does not contain the sha.</summary>
+    Moved,
+
+    /// <summary>Origin did not answer, so nothing is said.</summary>
+    Unknown,
 }
 
 /// <summary>What came of pushing a session's work after its account ran out of usage.</summary>

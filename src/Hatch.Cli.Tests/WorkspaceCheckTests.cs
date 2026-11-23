@@ -609,4 +609,61 @@ public sealed class WorkspaceCheckTests : RepoFixture
         G(_work, "remote", "set-url", "origin", Path.Combine(_temp, "nowhere.git"));
         Assert.Equal(MergeVerdicts.Clean, ws.Leave("HA-31", syncPullRequest: true).Found!.Kind);
     }
+
+    // ---- BranchHolds ----
+
+    [Fact]
+    public void A_branch_at_the_sha_holds_it_and_nothing_is_fetched()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var before = Refs(_work);
+
+        Assert.Equal(BranchHolding.Holds, Ws().BranchHolds("ha-31-thing", OriginTip("ha-31-thing")));
+        Assert.Equal(before, Refs(_work));
+    }
+
+    [Fact]
+    public void A_branch_that_has_moved_on_from_the_sha_still_holds_it()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var written = OriginTip("ha-31-thing");
+        Publish("ha-31-thing", "x2.txt", "x2", reset: false);
+
+        Assert.NotEqual(written, OriginTip("ha-31-thing"));
+        Assert.Equal(BranchHolding.Holds, Ws().BranchHolds("ha-31-thing", written));
+    }
+
+    [Fact]
+    public void A_branch_that_was_rewritten_has_moved_off_the_sha()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var written = OriginTip("ha-31-thing");
+
+        G(_other, "checkout", "--quiet", "-B", "ha-31-thing", "origin/main");
+        File.WriteAllText(Path.Combine(_other, "y.txt"), "y");
+        Commit(_other, "Change y.txt");
+        G(_other, "push", "--quiet", "--force", "origin", "ha-31-thing");
+
+        Assert.Equal(BranchHolding.Moved, Ws().BranchHolds("ha-31-thing", written));
+    }
+
+    [Fact]
+    public void A_branch_origin_does_not_have_is_gone()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var written = OriginTip("ha-31-thing");
+        G(_other, "push", "--quiet", "origin", "--delete", "ha-31-thing");
+
+        Assert.Equal(BranchHolding.Gone, Ws().BranchHolds("ha-31-thing", written));
+    }
+
+    [Fact]
+    public void An_origin_that_does_not_answer_says_nothing_of_the_branch()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var written = OriginTip("ha-31-thing");
+        G(_work, "remote", "set-url", "origin", Path.Combine(_temp, "nowhere.git"));
+
+        Assert.Equal(BranchHolding.Unknown, Ws().BranchHolds("ha-31-thing", written));
+    }
 }

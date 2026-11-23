@@ -12835,6 +12835,72 @@ public class WorkControllerTests
         Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
     }
 
+    private static void Wait(EfHatchIssue issue)
+    {
+        issue.WaitingPrTitle = "AER-1 Area: what changed";
+        issue.WaitingPrBody = "the body";
+        issue.WaitingPrBranch = "aer-1-a-thing";
+        issue.WaitingPrSha = new string('b', 40);
+        issue.WaitingPrRemote = "https://example.test/repo.git";
+        issue.WaitingPrRunner = "a runner";
+        issue.WaitingPrWhy = "the forge refused the push of a pull request";
+        issue.WaitingPrAt = DateTimeOffset.UnixEpoch;
+    }
+
+    [Fact]
+    public async Task ReviewRead_CarriesTheWaitingPullRequestOfARowThatHasOne_AndNullOnTheRest()
+    {
+        var h = await NewAsync();
+        var waiting = await h.FileAsync("story", "waits to be opened", h.Review, rank: 1024);
+        await h.FileAsync("story", "has nothing waiting", h.Review, rank: 2048);
+        Wait(waiting);
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        var written = Assert.IsType<WaitingPullRequestDto>(rows[0].WaitingPullRequest);
+        Assert.Equal("AER-1 Area: what changed", written.Title);
+        Assert.Equal("the body", written.Body);
+        Assert.Equal("aer-1-a-thing", written.Branch);
+        Assert.Equal(new string('b', 40), written.Sha);
+        Assert.Equal("https://example.test/repo.git", written.Remote);
+        Assert.Equal("a runner", written.Runner);
+        Assert.Null(rows[1].WaitingPullRequest);
+    }
+
+    [Fact]
+    public async Task ReviewQueue_ARowWithAWaitingPullRequestAndNoDriver_SaysNobodyIsEligibleToOpenIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "waits to be opened", h.Review);
+        Wait(issue);
+        await h.Db.SaveChangesAsync();
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "its pull request is written and waits, and no live runner is eligible to drive this project's merges",
+            entry.Blocked);
+    }
+
+    [Fact]
+    public async Task ReviewQueue_ARowWithAWaitingPullRequestAndALiveDriver_NamesTheDriverThatOpensIt()
+    {
+        var h = await NewAsync();
+        await AddLoopRunnerAsync(h, RunnerName(), row => row.Standing = true);
+        var issue = await h.FileAsync("story", "waits to be opened", h.Review);
+        Wait(issue);
+        await h.Db.SaveChangesAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.EndsWith(
+            " - its pull request is written and waits for the driver, last heard from 1 minute ago, to open it",
+            entry.Blocked);
+    }
+
     [Fact]
     public async Task MergeColumn_WithALiveStandingDriver_NamesItOnTheHeadsRow()
     {
