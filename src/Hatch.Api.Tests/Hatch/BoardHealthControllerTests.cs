@@ -4,6 +4,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Tests.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,10 @@ public class BoardHealthControllerTests
         public required BoardHealthController Health { get; init; }
         public required AttentionController Attention { get; init; }
         public required ReportsController Reports { get; init; }
+        public required global::Hatch.Api.Services.Auth.AuthOptions Auth { get; init; }
+        public required StubCallerIdentity Caller { get; init; }
+        public required StubActorDirectory Actors { get; init; }
+        public required AuthService Keys { get; init; }
         public required int ProjectId { get; init; }
         public required int Inbox { get; init; }
         public required int Todo { get; init; }
@@ -124,6 +129,16 @@ public class BoardHealthControllerTests
             await Db.SaveChangesAsync();
         }
 
+        /// <summary>A key by this name, owned by this person, which makes the runner it speaks for.</summary>
+        public async Task<EfApiKey> KeyAsync(string name, Guid? owner = null) =>
+            (await Keys.CreateApiKeyAsync(name, owner, default))!.Key;
+
+        public async Task StateAsync(string runner, DateTimeOffset at, string state, string? kind = null)
+        {
+            Db.RunnerStates.Add(new EfHatchRunnerState { Runner = runner, At = at, State = state, Kind = kind });
+            await Db.SaveChangesAsync();
+        }
+
         public async Task<int> AddProjectAsync(string key)
         {
             var project = new EfHatchProject { Key = key, Name = key, CreatedAt = At(1, 0) };
@@ -155,13 +170,15 @@ public class BoardHealthControllerTests
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
-        var authOptions = Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions());
+        var auth = new global::Hatch.Api.Services.Auth.AuthOptions();
+        var authOptions = Microsoft.Extensions.Options.Options.Create(auth);
         var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()), authOptions, new StubHatchRevision());
         var coreDb = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var keys = new AuthService(coreDb, authOptions, time, NullLogger<AuthService>.Instance);
         var sessions = new RunnerSessions(runners);
         var dispatch = new Dispatch(db, actors, TestClaims.With(), time, keys, sessions);
+        var caller = new StubCallerIdentity();
         var backup = new BackupService(
             Microsoft.Extensions.Options.Options.Create(new HatchOptions { BackupPath = "" }),
             new ConfigurationBuilder().Build(), new NoBackupProcess(), new BackupStatus(time), time, NullLogger<BackupService>.Instance);
@@ -169,11 +186,16 @@ public class BoardHealthControllerTests
         return new Harness
         {
             Db = db,
-            Health = new BoardHealthController(db, actors, runners, dispatch, time, new ColumnNormals()),
+            Health = new BoardHealthController(
+                db, actors, runners, dispatch, time, new ColumnNormals(), caller, authOptions, keys, new RunnerStateLog(runners), sessions),
             Attention = new AttentionController(
                 db, actors, runners, time, dispatch, backup, keys, new GooseWatch(time),
                 Microsoft.Extensions.Options.Options.Create(new HatchOptions())),
             Reports = new ReportsController(db, actors, TestClaims.With(), time),
+            Auth = auth,
+            Caller = caller,
+            Actors = actors,
+            Keys = keys,
             ProjectId = project.Id,
             Inbox = inbox.Id,
             Todo = todo.Id,
@@ -406,5 +428,215 @@ public class BoardHealthControllerTests
             Assert.Equal(Count(point, h.Doing, h.Review), bar.InFlight);
             Assert.Equal(Count(point, h.Done), bar.Done);
         }
+    }
+
+    // ---- The runners' lanes ----
+
+    private static BoardHealthLaneDto Lane(BoardHealthDto answer, string name) =>
+        answer.Runners.Lanes.Single(l => l.Name == name);
+
+    private static BoardHealthCellDto CellAt(BoardHealthLaneDto lane, DateTimeOffset at) =>
+        lane.Cells[(int)((at - At(4, 20)).TotalMinutes / 20)];
+
+    private static (string State, string? Why) Said(BoardHealthLaneDto lane, DateTimeOffset at) =>
+        (CellAt(lane, at).State, CellAt(lane, at).Why);
+
+    [Fact]
+    public async Task ARunnerThatIsUp_HasALane_OfTwentyFourCells_AndIsCounted()
+    {
+        var h = await NewAsync();
+        await h.KeyAsync("r1");
+        await h.StateAsync("r1", At(5, 0), "running");
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal((1, 0, 1), (answer.Runners.Up, answer.Runners.Paused, answer.Runners.WithLane));
+        var lane = Assert.Single(answer.Runners.Lanes);
+        Assert.Equal(("r1", true, false), (lane.Name, lane.Up, lane.Paused));
+        Assert.Equal(24, lane.Cells.Count);
+        Assert.Equal("blank", lane.Cells[0].State);
+        Assert.Equal("idle", CellAt(lane, At(5, 0)).State);
+        Assert.Equal("idle", lane.Cells[23].State);
+    }
+
+    [Fact]
+    public async Task NoRunners_NoLanes_AndTheBarsAreStillThere()
+    {
+        var h = await NewAsync();
+        await h.FileAsync(h.Todo);
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal((0, 0, 0), (answer.Runners.Up, answer.Runners.Paused, answer.Runners.WithLane));
+        Assert.Empty(answer.Runners.Lanes);
+        Assert.Equal(24, answer.Bars.Count);
+    }
+
+    [Fact]
+    public async Task AKeyThatSeesOnlyItsOwnRunner_GetsOneLane()
+    {
+        var h = await NewAsync();
+        var mine = Guid.NewGuid();
+        await h.KeyAsync("mine", mine);
+        await h.KeyAsync("theirs", Guid.NewGuid());
+        await h.StateAsync("mine", At(5, 0), "running");
+        await h.StateAsync("theirs", At(5, 0), "running");
+
+        h.Auth.Enabled = true;
+        h.Caller.ApiKey = new EfApiKey
+        {
+            Name = "caller", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now,
+            Owner = new EfPerson { Name = "Ann", Role = PersonRole.User, CreatedAt = default, UpdatedAt = default },
+        };
+        h.Actors.Principal = new Actor(ActorKind.Person, mine, "Ann");
+
+        var narrow = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(["mine"], narrow.Runners.Lanes.Select(l => l.Name));
+        Assert.Equal((1, 1), (narrow.Runners.Up, narrow.Runners.WithLane));
+
+        h.Auth.Enabled = false;
+        var wide = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(new[] { "mine", "theirs" }, wide.Runners.Lanes.Select(l => l.Name).Order());
+    }
+
+    [Fact]
+    public async Task AProject_LeavesTheLanesAlone_EvenForWorkInAnotherProject()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.FileAsync(h.Todo);
+        var theirs = await h.FileAsync(h.Doing, projectId: other);
+        await h.KeyAsync("r1");
+        await h.StateAsync("r1", At(4, 0), "running");
+        await h.EventAsync(theirs, EfHatchIssueEvent.ClaimTaken, null, At(6, 5), "r1");
+
+        var all = Value(await h.Health.GetBoardHealth(null, null, default));
+        var scoped = Value(await h.Health.GetBoardHealth(null, ["aer"], default));
+
+        Assert.Equal("working", CellAt(Lane(scoped, "r1"), At(6, 5)).State);
+        Assert.Equal(
+            Lane(all, "r1").Cells.Select(c => (c.State, c.Why)),
+            Lane(scoped, "r1").Cells.Select(c => (c.State, c.Why)));
+        Assert.Equal(all.Runners.WithLane, scoped.Runners.WithLane);
+    }
+
+    [Fact]
+    public async Task TheWindowOpensOnTheNewestRowBeforeIt_NotAnOlderOne()
+    {
+        var h = await NewAsync();
+        await h.KeyAsync("r1");
+        await h.StateAsync("r1", At(0, 30), "gone");
+        await h.StateAsync("r1", At(1, 0), "running");
+        await h.StateAsync("r1", At(3, 0), "paused");
+        await h.StateAsync("r1", At(6, 0), "running");
+
+        var lane = Lane(Value(await h.Health.GetBoardHealth(null, null, default)), "r1");
+
+        Assert.Equal("paused", lane.Cells[0].State);
+        Assert.Equal("paused", CellAt(lane, At(5, 40)).State);
+        Assert.Equal("idle", CellAt(lane, At(6, 0)).State);
+    }
+
+    [Fact]
+    public async Task ARunnerWhoseLastRowBeforeTheWindowIsGone_HasNoLane()
+    {
+        var h = await NewAsync();
+        await h.KeyAsync("r1");
+        await h.StateAsync("r1", At(1, 0), "running");
+        await h.StateAsync("r1", At(2, 0), "gone");
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Empty(answer.Runners.Lanes);
+    }
+
+    [Fact]
+    public async Task AClaimOpenFromBeforeTheWindow_IsWorking_ButOneClosedBeforeItIsNot()
+    {
+        var h = await NewAsync();
+        var open = await h.FileAsync(h.Doing);
+        var closed = await h.FileAsync(h.Doing);
+        await h.KeyAsync("open");
+        await h.KeyAsync("closed");
+        await h.StateAsync("open", At(1, 0), "running");
+        await h.StateAsync("closed", At(1, 0), "running");
+        await h.EventAsync(open, EfHatchIssueEvent.ClaimTaken, null, At(3, 0), "open");
+        await h.EventAsync(closed, EfHatchIssueEvent.ClaimTaken, null, At(3, 0), "closed");
+        await h.EventAsync(closed, EfHatchIssueEvent.ClaimReleased, "{\"outcome\":\"worked\"}", At(3, 30), "closed");
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.All(Lane(answer, "open").Cells, c => Assert.Equal("working", c.State));
+        Assert.All(Lane(answer, "closed").Cells, c => Assert.Equal("idle", c.State));
+    }
+
+    [Fact]
+    public async Task ADrop_ALapse_AStall_AndAnErroredSession_AreLetGos_OfTheRunnerThatOwnsEach()
+    {
+        var h = await NewAsync();
+        var a = await h.FileAsync(h.Doing);
+        var b = await h.FileAsync(h.Doing);
+        var c = await h.FileAsync(h.Doing);
+        var d = await h.FileAsync(h.Doing);
+        foreach (var name in new[] { "r1", "r2", "r3", "r4" })
+        {
+            await h.KeyAsync(name);
+            await h.StateAsync(name, At(4, 0), "running");
+        }
+
+        // r1 drops a; r2 lapses on b and r3 takes it over; r3 stalls c; r4's session on d errors.
+        await h.EventAsync(a, EfHatchIssueEvent.ClaimTaken, null, At(5, 0), "r1");
+        await h.EventAsync(a, EfHatchIssueEvent.ClaimReleased, "{\"outcome\":\"dropped\"}", At(5, 10), "r1");
+        await h.EventAsync(b, EfHatchIssueEvent.ClaimTaken, null, At(5, 0), "r2");
+        await h.EventAsync(b, EfHatchIssueEvent.ClaimLapsed, null, At(6, 0), "r3");
+        await h.EventAsync(b, EfHatchIssueEvent.ClaimTaken, null, At(6, 0), "r3");
+        await h.EventAsync(c, EfHatchIssueEvent.Stalled, null, At(7, 0), "r3");
+        await h.EventAsync(d, EfHatchIssueEvent.ClaimTaken, null, At(8, 0), "r4");
+        h.Db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = d.Id, SessionId = "s", StartedAt = At(8, 0), EndedAt = At(8, 5), DurationMs = 300_000, IsError = true, CreatedAt = At(8, 30),
+        });
+        await h.Db.SaveChangesAsync();
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(("let-go", "dropped"), Said(Lane(answer, "r1"), At(5, 10)));
+        Assert.Equal(("let-go", "lapsed"), Said(Lane(answer, "r2"), At(6, 0)));
+        Assert.Equal("working", CellAt(Lane(answer, "r3"), At(6, 20)).State);
+        Assert.Equal(("let-go", "stalled"), Said(Lane(answer, "r3"), At(7, 0)));
+        Assert.Equal(("let-go", "errored"), Said(Lane(answer, "r4"), At(8, 30)));
+    }
+
+    [Fact]
+    public async Task ARunnersForwardMove_IsDrawnWhereTheMovedTileCountsIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync(h.Todo);
+        await h.KeyAsync("r1");
+        await h.StateAsync("r1", At(4, 0), "running");
+        await h.EventAsync(issue, EfHatchIssueEvent.ClaimTaken, null, At(5, 0), "r1");
+        await h.MoveAsync(issue, h.Todo, h.Doing, At(5, 25), "r1");
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        var moved = answer.Bars.Select((b, k) => b.Runner > 0 ? k : -1).Where(k => k >= 0).ToList();
+        var drawn = Lane(answer, "r1").Cells.Select((c, k) => c.State == "moved" ? k : -1).Where(k => k >= 0).ToList();
+        Assert.Equal([3], moved);
+        Assert.Equal(moved, drawn);
+    }
+
+    [Fact]
+    public async Task TheLanesWriteNothing()
+    {
+        var h = await NewAsync();
+        await h.KeyAsync("r1");
+        await h.StateAsync("r1", At(4, 0), "running");
+        var rows = await h.Db.RunnerStates.CountAsync();
+
+        Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(rows, await h.Db.RunnerStates.CountAsync());
     }
 }

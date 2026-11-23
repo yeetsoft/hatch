@@ -196,18 +196,11 @@ public class RunnersController(
             .OrderBy(s => s.At).ThenBy(s => s.Id)
             .ToListAsync(ct);
 
-        var changes = rows.Select(r => (r.At, r.State, r.Kind)).ToList();
-        changes = Fold(changes);
-
         // The clock's tail: what ran out since the last row, held in memory.
-        // It judges from the facts as they stand, so it can repeat the last
-        // state when a beat overwrote them after that row - hence the second fold.
-        if (rows.Count > 0)
-        {
-            var tail = await stateLog.ClockTailAsync(db, keys, runner, rows[^1].At, now, ct);
-            changes.AddRange(tail.Select(c => (c.At, c.State, c.Kind)));
-            changes = Fold(changes);
-        }
+        var tail = rows.Count > 0
+            ? await stateLog.ClockTailAsync(db, keys, runner, rows[^1].At, now, ct)
+            : [];
+        var changes = RunnerStateRule.Timeline(rows.Select(r => new RunnerStateRule.Change(r.At, r.State, r.Kind)).ToList(), tail);
 
         var stretches = new List<RunnerStateStretchDto>(changes.Count);
         for (var i = 0; i < changes.Count; i++)
@@ -220,19 +213,6 @@ public class RunnersController(
         }
 
         return stretches;
-    }
-
-    /// <summary>Adjacent changes into the same state and kind are one: two beats that raced write the same row twice.</summary>
-    private static List<(DateTimeOffset At, string State, string? Kind)> Fold(List<(DateTimeOffset At, string State, string? Kind)> changes)
-    {
-        var folded = new List<(DateTimeOffset At, string State, string? Kind)>(changes.Count);
-        foreach (var change in changes)
-        {
-            if (folded.Count > 0 && folded[^1].State == change.State && folded[^1].Kind == change.Kind) continue;
-            folded.Add(change);
-        }
-
-        return folded;
     }
 
     /// <summary>
@@ -1074,26 +1054,11 @@ public class RunnersController(
 
     /// <summary>
     /// Whether <see cref="GetRunners"/> may answer with every row, or only the
-    /// ones <c>ForPersonId</c> ties to this caller: the wall off, a person
-    /// (cookie) calling, or a key whose owner is an admin all see everything;
-    /// anyone else sees only their own.
+    /// ones <c>ForPersonId</c> ties to this caller. The rule is
+    /// <see cref="RunnerReach"/>'s, which the board health read keeps too.
     /// </summary>
-    /// <remarks>
-    /// A positive "is a person" test, not <c>!IsProgramAsync</c>, so a caller
-    /// the wall somehow let through with no identity at all falls to the
-    /// narrow arm, never the wide one. <c>PersonAsync</c> and
-    /// <c>ApiKeyAsync</c> are memoized on <see cref="ICallerIdentity"/>, so
-    /// asking again here costs no extra query even though <see cref="GetRunners"/>
-    /// already reads <c>PersonAsync</c> for its own <c>callerPerson</c>.
-    /// </remarks>
-    private async Task<(bool All, Guid? PersonId)> VisibleAsync(CancellationToken ct)
-    {
-        if (!auth.Value.Enabled) return (true, null);
-        if (await caller.PersonAsync(ct) is not null) return (true, null);
-        if (await caller.ApiKeyAsync(ct) is { Owner.Role: >= PersonRole.Admin }) return (true, null);
-
-        return (false, (await actors.PrincipalAsync(ct))?.Id);
-    }
+    private Task<(bool All, Guid? PersonId)> VisibleAsync(CancellationToken ct) =>
+        RunnerReach.OfAsync(auth.Value.Enabled, caller, actors, ct);
 
     /// <summary>
     /// Keep going, pause, stop after this one - and the bounds that are flags
