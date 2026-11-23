@@ -262,3 +262,72 @@ describe('the Runners tile', () => {
     expect(html).toContain(`>${answer.runners.up} of ${answer.runners.withLane}<`);
   });
 });
+
+describe('the Waiting on you tile when clear', () => {
+  const clearHealth = (over: Partial<BoardHealth> = {}): BoardHealth => {
+    const base = sampleHealth();
+
+    return {
+      ...base,
+      bars: base.bars.map((bar) => ({ ...bar, waitingPullRequests: 0, waitingQuestions: 0, waiting: 0, oldestWaitSeconds: null })),
+      lastWaitedAt: new Date(Date.parse(base.to) - (3 * 3600 + 20 * 60) * 1000).toISOString(),
+      ...over,
+    };
+  };
+
+  const waitingTile = (answer: BoardHealth, index: number | null): string => {
+    const readouts = readout(answer, index);
+
+    return renderToStaticMarkup(
+      <MemoryRouter>
+        <WaitingTile answer={answer} index={index} onIndex={() => {}} onOpen={() => {}} readout={readouts.waiting} />
+      </MemoryRouter>,
+    );
+  };
+
+  it('takes the good tone, with a check mark said as clear, the time and the moves without a person', () => {
+    const html = waitingTile(clearHealth(), null);
+
+    expect(html).toContain('hatch-health-tile--good');
+    expect(html).toMatch(/aria-label="clear"[^>]*>✓</);
+    expect(html).toContain('clear for 3h 20m');
+    expect(html).toMatch(/\d+ moves? without you/);
+  });
+
+  it('draws bars in the good colour in place of the flat line', () => {
+    const html = waitingTile(clearHealth(), null);
+
+    expect(html).toContain('hatch-health-bar hatch-health-bar--clear');
+    expect(html).not.toContain('hatch-health-line');
+    expect(html).not.toContain('hatch-health-area');
+  });
+
+  it('marks a bar by its own count', () => {
+    expect(waitingTile(clearHealth(), 4)).toMatch(/\d+ moves? without you/);
+  });
+
+  it('draws the steps, and no bars, when some bar had something waiting', () => {
+    const base = clearHealth();
+    const bars = base.bars.map((bar, i) => (i === 3 ? { ...bar, waitingQuestions: 1 } : bar));
+    const html = waitingTile({ ...base, bars }, null);
+
+    expect(html).toContain('hatch-health-line');
+    expect(html).not.toContain('hatch-health-bar--clear');
+    expect(html).toContain('hatch-health-tile--good');
+  });
+
+  it('stays neutral, with the steps, while something waits', () => {
+    const html = waitingTile(sampleHealth(), null);
+
+    expect(html).not.toContain('hatch-health-tile--good');
+    expect(html).not.toContain('✓');
+    expect(html).toContain('hatch-health-line');
+  });
+
+  it('falls back to nothing waiting when the read has no clear time', () => {
+    const html = waitingTile(clearHealth({ lastWaitedAt: null }), null);
+
+    expect(html).toContain('nothing waiting');
+    expect(html).not.toContain('✓');
+  });
+});

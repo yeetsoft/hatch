@@ -378,6 +378,87 @@ public class BoardHealthDialogTests(ITestOutputHelper output)
         Assert.Equal(0, await page.Locator($"{Dialog} .hatch-health-dialog-line, {Dialog} .hatch-health-dialog-dot").CountAsync());
     }
 
+    /// <summary>
+    /// HA-2764's acceptance for the Waiting on you dialog at desktop width: with nothing waiting it gives how long
+    /// the board has been clear and since when, the window's moves by runners, the board and a person, the share
+    /// made without a person, and the issues done. With a question open it gives the oldest wait instead. Left as
+    /// screenshots in the light and the dark theme.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task TheWaitingDialog_SaysHowLongTheBoardHasBeenClear()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness("BoardHealthClearDialog");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline);
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            await deadline.BoundAsync("filing the issues", () => BoardHealthStripTests.SeedAsync(baseUrl));
+            var asked = await deadline.BoundAsync("moving an issue as a runner", () => BoardHealthStripTests.SeedRunnerMoveAsync(baseUrl));
+
+            await harness.OpenAsync(deadline, baseUrl, "/", reducedMotion: true);
+            await harness.WaitForTopBarAsync(deadline);
+            await harness.WaitForFirstColumnAsync(deadline);
+            var page = harness.Page!;
+            await harness.WaitForVisibleAsync(deadline, ".hatch-health-strip");
+
+            await harness.ClickAsync(deadline, Spark("waiting"));
+            await harness.WaitForVisibleAsync(deadline, $"{Dialog}[data-dialog='waiting']");
+            Assert.Equal("Waiting on you, last 8h", Assert.Single(await Texts(harness, deadline, "[role='dialog'] h3")));
+
+            var keys = await harness.EvaluateAsync<string[]>(
+                deadline, "reading the rows", $"() => [...document.querySelectorAll(\"{Dialog} [data-row]\")].map((e) => e.getAttribute('data-row'))");
+            Assert.Equal(["clear", "since", "runner", "board", "person", "without", "done"], keys);
+            Assert.Equal(0, await page.Locator($"{Dialog} .hatch-health-dialog-note").CountAsync());
+            Assert.Matches("^[0-9]+ of [0-9]+$", Assert.Single(await Texts(harness, deadline, $"{Dialog} [data-row='without'] dd")));
+            Assert.Matches("^[0-9]+$", Assert.Single(await Texts(harness, deadline, $"{Dialog} [data-row='done'] dd")));
+            Assert.False(string.IsNullOrWhiteSpace(Assert.Single(await Texts(harness, deadline, $"{Dialog} [data-row='since'] dd"))));
+            // The board is younger than the read's floor, so the first wait it could have had is the first issue's own.
+            Assert.Equal("Since at least", Assert.Single(await Texts(harness, deadline, $"{Dialog} [data-row='since'] dt")));
+            Assert.True(await page.Locator($"{Dialog} .hatch-health-dialog-svg").IsVisibleAsync());
+
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                await harness.EvaluateAsync<bool>(deadline, "setting the theme", $"() => {{ document.documentElement.setAttribute('data-theme', '{theme}'); return true; }}");
+                await Task.Delay(500);
+                await harness.ScreenshotAsync(deadline, $"board-health-clear-dialog-{theme}");
+            }
+
+            await deadline.BoundAsync("closing the dialog", () => page.Keyboard.PressAsync("Escape"));
+            await harness.WaitForHiddenAsync(deadline, Dialog);
+
+            // With a question open the clear rows give way to the oldest wait.
+            await deadline.BoundAsync("asking a question", () => BoardHealthStripTests.AskAsync(baseUrl, asked));
+            await deadline.BoundAsync("reloading", () => page.ReloadAsync());
+            await harness.WaitForVisibleAsync(deadline, ".hatch-health-strip");
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for the count",
+                "() => document.querySelector(\"[data-tile='waiting'] [data-part='value']\")?.textContent.trim() === '1'");
+            await harness.ClickAsync(deadline, Spark("waiting"));
+            await harness.WaitForVisibleAsync(deadline, $"{Dialog}[data-dialog='waiting']");
+            Assert.Equal(0, await page.Locator($"{Dialog} [data-row]").CountAsync());
+            Assert.Matches("^Now: oldest ", Assert.Single(await Texts(harness, deadline, $"{Dialog} .hatch-health-dialog-note")));
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
     private static async Task<string[]> Texts(E2eHarness harness, Deadline deadline, string selector) =>
         await harness.EvaluateAsync<string[]>(
             deadline, $"reading {selector}",

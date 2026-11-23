@@ -8,6 +8,7 @@ import {
   MARK_PATTERN,
   axisTicks,
   bandCounts,
+  clearSummary,
   dialogTitle,
   legend,
   markedWords,
@@ -440,7 +441,12 @@ export function BoardHealthDialog({
           </>
         )}
 
-        {tile === 'waiting' && <p className="hatch-health-dialog-note">Now: {oldestWaitWords(answer)}</p>}
+        {tile === 'waiting' &&
+          (clearSummary(answer).length > 0 ? (
+            <Rows rows={clearSummary(answer)} />
+          ) : (
+            <p className="hatch-health-dialog-note">Now: {oldestWaitWords(answer)}</p>
+          ))}
       </div>
     </Modal>
   );

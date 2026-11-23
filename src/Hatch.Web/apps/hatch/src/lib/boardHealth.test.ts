@@ -8,6 +8,7 @@ import {
   bandPolygons,
   barIndexAt,
   barSlots,
+  clearBars,
   compactReadout,
   flowHref,
   hasStrip,
@@ -20,7 +21,9 @@ import {
   splitSentence,
   stepMoment,
   tileLabel,
+  waitingClear,
   waitingSteps,
+  withoutPerson,
 } from './boardHealth';
 import { momentLabel } from './cumulativeFlow';
 import type {
@@ -791,5 +794,171 @@ describe('flowHref', () => {
 
     expect(href).toContain(`from=${encodeURIComponent('2026-11-22T10:00:00.000Z')}`);
     expect(href).toContain(`to=${encodeURIComponent('2026-11-22T18:00:00.000Z')}`);
+  });
+});
+
+// ---- The clear state of Waiting on you ----
+
+/** A window in which nothing waited at any bar, and the last wait ended `ago` seconds before it closed. */
+const clear = (ago: number | null, over: Partial<BoardHealth> = {}): BoardHealth =>
+  answer({
+    bars: bars(() => ({ waitingPullRequests: 0, waitingQuestions: 0, waiting: 0, oldestWaitSeconds: null })),
+    lastWaitedAt: ago === null ? null : new Date(TO - ago * 1000).toISOString(),
+    ...over,
+  });
+
+const HOURS_20M = 3 * 3600 + 20 * 60;
+const barsBy = (a: BoardHealth) => a.bars.reduce((sum, b) => sum + b.runner + b.board, 0);
+
+/** A window clear except at bar 10, which had a question open. */
+const clearedAfterWaiting = (): BoardHealth =>
+  clear(1800, {
+    bars: bars((i) => (i === 10 ? { waitingQuestions: 1 } : { waitingPullRequests: 0, waitingQuestions: 0 })),
+  });
+
+describe('waitingClear', () => {
+  it("says how long it has been clear, counted to the read's own end", () => {
+    expect(waitingClear(clear(HOURS_20M))).toEqual({
+      words: 'clear for 3h 20m',
+      span: '3h 20m',
+      since: new Date(TO - HOURS_20M * 1000).toISOString(),
+      floor: false,
+    });
+  });
+
+  it('says over at the floor', () => {
+    const floor = clear(30 * 86400, { lastWaitedIsFloor: true });
+
+    expect(waitingClear(floor)).toMatchObject({ words: 'clear for over 30d', span: 'over 30d', floor: true });
+  });
+
+  it('is null while the last bar waits, and when the read has no clear time', () => {
+    expect(waitingClear(answer({ lastWaitedAt: null }))).toBeNull();
+    expect(waitingClear(answer({ lastWaitedAt: new Date(TO - 1000).toISOString() }))).toBeNull();
+    expect(waitingClear(clear(null))).toBeNull();
+    expect(waitingClear(answer({ bars: [], lastWaitedAt: new Date(TO - 1000).toISOString() }))).toBeNull();
+  });
+
+  it('is still clear when an earlier bar waited', () => {
+    expect(waitingClear(clearedAfterWaiting())?.words).toBe('clear for 30m');
+  });
+});
+
+describe('withoutPerson', () => {
+  it("counts the runners' and the board's moves against all of them", () => {
+    const a = clear(60);
+    const { without, all } = withoutPerson(a);
+
+    expect(without).toBe(barsBy(a));
+    expect(all).toBe(TOTAL);
+    expect(without).toBeLessThan(all);
+  });
+});
+
+describe('the clear readout', () => {
+  const a = clear(HOURS_20M);
+  const n = barsBy(a);
+
+  it('is good, with a check mark, the time and the moves without a person', () => {
+    expect(readout(a, null).waiting).toEqual({
+      value: '0',
+      second: 'clear for 3h 20m',
+      detail: `${n} moves without you`,
+      tone: 'good',
+      glyph: '✓',
+      arrow: null,
+    });
+  });
+
+  it('says one move in the singular', () => {
+    const one = clear(60, {
+      bars: bars((i) => ({
+        waitingPullRequests: 0,
+        waitingQuestions: 0,
+        runner: i === 0 ? 1 : 0,
+        board: 0,
+        person: 0,
+        moved: i === 0 ? 1 : 0,
+      })),
+    });
+
+    expect(readout(one, null).waiting.detail).toBe('1 move without you');
+  });
+
+  it('says clear for over 30d at the floor', () => {
+    expect(readout(clear(30 * 86400, { lastWaitedIsFloor: true }), null).waiting.second).toBe('clear for over 30d');
+  });
+
+  it('falls back to nothing waiting with no clear time', () => {
+    expect(readout(clear(null), null).waiting).toMatchObject({
+      second: 'nothing waiting',
+      detail: '',
+      tone: 'neutral',
+      glyph: '',
+    });
+  });
+
+  it('stays neutral while something waits', () => {
+    expect(readout(answer(), null).waiting).toMatchObject({ tone: 'neutral', glyph: '', detail: '' });
+  });
+
+  it("says a marked bar's own moves without a person while the whole window is clear", () => {
+    const b = a.bars[4];
+    const own = b.runner + b.board;
+
+    expect(readout(a, 4).waiting).toMatchObject({
+      value: '0',
+      detail: `${own} ${own === 1 ? 'move' : 'moves'} without you`,
+      tone: 'neutral',
+    });
+  });
+
+  it('keeps nothing waiting on a marked bar once some bar waited', () => {
+    expect(readout(clearedAfterWaiting(), 3).waiting.detail).toBe('nothing waiting');
+  });
+});
+
+describe('clearBars', () => {
+  const W = 240;
+  const H = 40;
+
+  it('draws the moves made without a person, scaled to the tallest', () => {
+    const a = clear(60);
+    const rects = clearBars(a, W, H)!;
+    const counts = a.bars.map((b) => b.runner + b.board);
+    const tallest = Math.max(...counts);
+
+    expect(rects).toHaveLength(BARS);
+    rects.forEach((rect, i) => {
+      expect(rect.index).toBe(i);
+      expect(rect.height).toBeCloseTo(counts[i] > 0 ? Math.max(1, (counts[i] / tallest) * H) : 0, 1);
+      expect(rect.y + rect.height).toBeCloseTo(H, 1);
+    });
+  });
+
+  it('shares its slots with the moved bars', () => {
+    const a = clear(60);
+
+    expect(clearBars(a, W, H)!.map((r) => [r.x, r.width])).toEqual(movedBars(a, W, H).map((r) => [r.x, r.width]));
+  });
+
+  it('is null when any bar had something waiting, and with no bars', () => {
+    expect(clearBars(answer(), W, H)).toBeNull();
+    expect(clearBars(clearedAfterWaiting(), W, H)).toBeNull();
+    expect(clearBars(answer({ bars: [] }), W, H)).toBeNull();
+  });
+});
+
+describe('compactReadout when clear', () => {
+  it('shortens the time', () => {
+    expect(compactReadout(clear(HOURS_20M)).waiting).toEqual({ value: '0', second: 'clear 3h 20m', tone: 'good' });
+  });
+
+  it('shortens the floor to a plus', () => {
+    expect(compactReadout(clear(30 * 86400, { lastWaitedIsFloor: true })).waiting.second).toBe('clear 30d+');
+  });
+
+  it('keeps none with no clear time', () => {
+    expect(compactReadout(clear(null)).waiting).toMatchObject({ second: 'none', tone: 'neutral' });
   });
 });

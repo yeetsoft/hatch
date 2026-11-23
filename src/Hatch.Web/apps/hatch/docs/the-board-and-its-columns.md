@@ -672,7 +672,16 @@ same moment on all four.
   so no band is told by colour alone.
 - **Waiting on you** counts pull requests and questions waiting on a person. The
   sparkline is steps. The big number is the count now, and under it is how long
-  the oldest has waited. At zero it says "nothing waiting".
+  the oldest has waited. When nothing waits it takes the good tone, with a
+  check mark that is said as "clear", and it says how long the board has been
+  clear, as "clear for 3h 20m", or "clear for over 30d" when nothing has
+  waited in as long as the read looks back. The line under it says how many
+  moves were made in the window without a person, runners and the board
+  together, as "47 moves without you". When no bar in the window had anything
+  waiting, the sparkline is bars of those moves in the good colour instead of
+  a flat line, and pointing at one says its count and its time. If something
+  waited earlier in the window, the steps stay, so you can see when it
+  cleared. When the read has no clear time to give, it says "nothing waiting".
 - **Runners** draws one thin lane per runner that was up at any time in the
   window, at most eight, across the whole tile and without names: the hover
 (and each cell's own tooltip) names each runner. Up now first, then most recently heard from, and a
@@ -722,7 +731,11 @@ The dialog draws from the same read as the strip and redraws as it refreshes.
   scale is a count of issues, and a bar's sentence gives the oldest stay and the
   split by age.
 - **Waiting on you** draws pull requests and questions apart, as two stacked
-  areas, and says how long the oldest has waited now.
+  areas, and says how long the oldest has waited now. When nothing waits it
+  says instead how long the board has been clear and since when, as a date and
+  time ("since at least" when that is the read's own limit), the window's moves
+  by runners, by the board and by a person, the share made without a person as
+  "47 of 49", and how many issues were done in the window.
 - **Runners** draws every lane, not eight: one row for each runner the read
   answers, with its name, whether it is up, paused or not up now, and when it
   was last heard from ("last heard 3h 10m before 15:40"), then its 24 cells,

@@ -6,6 +6,7 @@ import {
   ageBandPolygons,
   bandPolygons,
   barIndexAt,
+  clearBars,
   issuePeek,
   momentX,
   movedBars,
@@ -42,7 +43,7 @@ interface TileProps {
 }
 
 /** The glyph said in a word, so it is never the whole of a signal. */
-const GLYPH_WORD: Record<string, string> = { '▲': 'up', '▼': 'down', '–': 'unchanged', '⚠': 'warning' };
+const GLYPH_WORD: Record<string, string> = { '▲': 'up', '▼': 'down', '–': 'unchanged', '⚠': 'warning', '✓': 'clear' };
 
 const KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'];
 
@@ -281,6 +282,7 @@ export function OldestTile({ answer, index, onIndex, readout, onOpen }: TileProp
 
 export function WaitingTile({ answer, index, onIndex, readout, onOpen }: TileProps) {
   const steps = waitingSteps(answer, WIDTH, HEIGHT);
+  const clear = clearBars(answer, WIDTH, HEIGHT);
 
   return (
     <HealthTile
@@ -292,9 +294,17 @@ export function WaitingTile({ answer, index, onIndex, readout, onOpen }: TilePro
       onIndex={onIndex}
       onOpen={onOpen}
     >
-      <path className="hatch-health-area" d={steps.area} />
-      <path className="hatch-health-line" d={steps.line} vectorEffect="non-scaling-stroke" fill="none" />
-      {steps.last && <path className="hatch-health-dot" d={dot(steps.last.x, steps.last.y)} vectorEffect="non-scaling-stroke" fill="none" />}
+      {clear ? (
+        clear.map((rect) => (
+          <rect key={rect.index} className="hatch-health-bar hatch-health-bar--clear" x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
+        ))
+      ) : (
+        <>
+          <path className="hatch-health-area" d={steps.area} />
+          <path className="hatch-health-line" d={steps.line} vectorEffect="non-scaling-stroke" fill="none" />
+          {steps.last && <path className="hatch-health-dot" d={dot(steps.last.x, steps.last.y)} vectorEffect="non-scaling-stroke" fill="none" />}
+        </>
+      )}
     </HealthTile>
   );
 }

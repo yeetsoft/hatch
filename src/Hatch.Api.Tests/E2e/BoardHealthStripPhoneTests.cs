@@ -307,6 +307,84 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
         public override string ToString() => read.ToString();
     }
 
+    /// <summary>
+    /// HA-2764's acceptance at the phone profile: with nothing waiting, the closed row's Waiting cell is 0 over the
+    /// clear time in a short form, "clear" and the span with no "for", and the stacked tile shows the same lines as
+    /// the desk. Left as screenshots of the row closed and open in the light and the dark theme.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task TheClosedRow_SaysHowLongTheBoardHasBeenClear()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
+
+        var harness = new E2eHarness("BoardHealthClearPhone");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline, DeviceProfile.IPhone14Pro);
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            await deadline.BoundAsync("filing the issues", () => BoardHealthStripTests.SeedAsync(baseUrl));
+            await deadline.BoundAsync("moving an issue as a runner", () => BoardHealthStripTests.SeedRunnerMoveAsync(baseUrl));
+
+            await harness.OpenAsync(deadline, baseUrl, "/", reducedMotion: true);
+            await harness.WaitForTopBarAsync(deadline);
+            await harness.WaitForFirstColumnAsync(deadline);
+            var page = harness.Page!;
+            await harness.WaitForVisibleAsync(deadline, Row);
+
+            // Closed: 0 over "clear" and the span, in the good tone, and the cell is not cut.
+            var cell = $"{Row} [data-tile='waiting']";
+            await harness.WaitForVisibleAsync(deadline, $"{cell}.hatch-health-cell--good");
+            Assert.Equal("0", Assert.Single(await Texts(harness, deadline, $"{cell} [data-part='value']")));
+            var second = Assert.Single(await Texts(harness, deadline, $"{cell} [data-part='second']"));
+            Assert.Matches("^clear [^ ]+( [^ ]+)?$", second);
+            Assert.DoesNotContain("for", second);
+            var cut = await harness.EvaluateAsync<bool>(
+                deadline, "measuring the cell",
+                "() => { const c = document.querySelector(\"" + cell + " [data-part='second']\"); return c.scrollWidth > c.clientWidth + 1; }");
+            Assert.False(cut, "the clear time is cut in the closed row");
+
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                await harness.EvaluateAsync<bool>(deadline, "setting the theme", $"() => {{ document.documentElement.setAttribute('data-theme', '{theme}'); return true; }}");
+                await Task.Delay(500);
+                await harness.ScreenshotAsync(deadline, $"board-health-clear-phone-closed-{theme}");
+            }
+
+            // Open: the stacked tile shows the same lines as the desk.
+            await harness.ClickAsync(deadline, Row);
+            await harness.WaitForVisibleAsync(deadline, ".hatch-health-strip--stacked");
+            var tile = ".hatch-health-strip--stacked [data-tile='waiting']";
+            Assert.Equal("0", Assert.Single(await Texts(harness, deadline, $"{tile} [data-part='value']")));
+            Assert.Matches("^clear for ", Assert.Single(await Texts(harness, deadline, $"{tile} [data-part='second']")));
+            Assert.Matches("^[0-9]+ moves? without you$", Assert.Single(await Texts(harness, deadline, $"{tile} [data-part='detail']")));
+            Assert.Equal(24, await page.Locator($"{tile} .hatch-health-bar--clear").CountAsync());
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                await harness.EvaluateAsync<bool>(deadline, "setting the theme", $"() => {{ document.documentElement.setAttribute('data-theme', '{theme}'); return true; }}");
+                await Task.Delay(500);
+                await harness.FullPageScreenshotAsync(deadline, $"board-health-clear-phone-open-{theme}");
+            }
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
     private static async Task<Reading> Measure(E2eHarness harness, Deadline deadline) =>
         new(await harness.EvaluateAsync<JsonElement>(
             deadline, "measuring the row",

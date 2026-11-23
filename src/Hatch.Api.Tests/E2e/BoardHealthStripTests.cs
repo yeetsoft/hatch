@@ -31,6 +31,7 @@ public class BoardHealthStripTests(ITestOutputHelper output)
 
     private const string Strip = ".hatch-health-strip";
     private const string Moved = "[data-tile='moved']";
+    private const string Waiting = "[data-tile='waiting']";
     private const string Oldest = "[data-tile='oldest']";
     private const string Runners = "[data-tile='runners']";
     private const string Toggle = "button[aria-label='Show the health strip above the board']";
@@ -275,6 +276,134 @@ public class BoardHealthStripTests(ITestOutputHelper output)
         {
             await harness.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// HA-2764's acceptance at desktop width, driven in Chromium: with nothing waiting, Waiting on you reads 0,
+    /// "clear for ...", and how many moves were made without a person, with a check mark and bars in the good
+    /// colour in place of the flat line. With one question open it reads 1 and the oldest wait in the neutral
+    /// tone, with no check mark and the steps. Left as screenshots of the tile in the light and the dark theme.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task WaitingOnYou_ShowsAClearBoard_AndStopsWhenAQuestionIsOpen()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness("BoardHealthStripClear");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline);
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            await deadline.BoundAsync("filing the issues", () => SeedAsync(baseUrl));
+            var asked = await deadline.BoundAsync("moving an issue as a runner", () => SeedRunnerMoveAsync(baseUrl));
+
+            await harness.OpenAsync(deadline, baseUrl, "/", reducedMotion: true);
+            await harness.WaitForTopBarAsync(deadline);
+            await harness.WaitForFirstColumnAsync(deadline);
+            var page = harness.Page!;
+            await harness.WaitForVisibleAsync(deadline, Strip);
+            await harness.WaitForVisibleAsync(deadline, $"{Waiting}.hatch-health-tile--good");
+
+            // Clear: 0, the check mark said as "clear", the time, and the moves made without a person.
+            Assert.Equal("0", Assert.Single(await Texts(harness, deadline, $"{Waiting} [data-part='value']")));
+            Assert.Matches("^clear for ", Assert.Single(await Texts(harness, deadline, $"{Waiting} [data-part='second']")));
+            Assert.Matches("^[0-9]+ moves? without you$", Assert.Single(await Texts(harness, deadline, $"{Waiting} [data-part='detail']")));
+            Assert.Equal("clear", await page.Locator($"{Waiting} .hatch-health-glyph").GetAttributeAsync("aria-label"));
+            Assert.Equal("✓", (await page.Locator($"{Waiting} .hatch-health-glyph").InnerTextAsync()).Trim());
+
+            // Bars in place of the line, and the runner's move gives one of them height.
+            Assert.Equal(24, await page.Locator($"{Waiting} .hatch-health-bar--clear").CountAsync());
+            Assert.Equal(0, await page.Locator($"{Waiting} .hatch-health-line").CountAsync());
+            var heights = await harness.EvaluateAsync<double[]>(
+                deadline, "measuring the clear bars",
+                "() => [...document.querySelectorAll(\"[data-tile='waiting'] .hatch-health-bar--clear\")].map((r) => Number(r.getAttribute('height')))");
+            Assert.Contains(heights, h => h > 0);
+
+            foreach (var theme in new[] { "light", "dark" })
+            {
+                await harness.EvaluateAsync<bool>(deadline, "setting the theme", $"() => {{ document.documentElement.setAttribute('data-theme', '{theme}'); return true; }}");
+                await Task.Delay(500);
+                await harness.ScreenshotAsync(deadline, $"board-health-clear-{theme}");
+            }
+
+            // Pointing at a bar says its own count and its time, and moves nothing.
+            var spark = await page.Locator($"{Waiting} [data-part='spark']").BoundingBoxAsync();
+            Assert.NotNull(spark);
+            await deadline.BoundAsync(
+                "hovering the last bar", () => page.Mouse.MoveAsync((float)(spark.X + spark.Width - 2), (float)(spark.Y + spark.Height / 2)));
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for the hover",
+                "() => /^[0-9]+ moves? without you$/.test(document.querySelector(\"[data-tile='waiting'] [data-part='detail']\").textContent.trim()) && !document.querySelector(\"[data-tile='waiting'] [data-part='second']\").textContent.startsWith('clear')");
+            await harness.ScreenshotAsync(deadline, "board-health-clear-hover");
+            await deadline.BoundAsync("leaving the sparkline", () => page.Mouse.MoveAsync(5, 5));
+
+            // A question opened on a person: 1, the oldest wait, the neutral tone, and the steps.
+            await deadline.BoundAsync("asking a question", () => AskAsync(baseUrl, asked));
+            await deadline.BoundAsync("reloading", () => page.ReloadAsync());
+            await harness.WaitForVisibleAsync(deadline, Strip);
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for the count",
+                "() => document.querySelector(\"[data-tile='waiting'] [data-part='value']\")?.textContent.trim() === '1'");
+            Assert.Matches("^oldest ", Assert.Single(await Texts(harness, deadline, $"{Waiting} [data-part='second']")));
+            Assert.Equal(0, await page.Locator($"{Waiting}.hatch-health-tile--good").CountAsync());
+            Assert.Equal(0, await page.Locator($"{Waiting} .hatch-health-glyph").CountAsync());
+            Assert.Equal(0, await page.Locator($"{Waiting} .hatch-health-bar--clear").CountAsync());
+            Assert.Equal(1, await page.Locator($"{Waiting} .hatch-health-line").CountAsync());
+            await harness.ScreenshotAsync(deadline, "board-health-waiting");
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Mints a second keyed runner, has it claim a fresh issue and move it one column right, so a move in the
+    /// window is a runner's and not a person's. Returns the key of the issue it moved.
+    /// </summary>
+    internal static async Task<string> SeedRunnerMoveAsync(string baseUrl)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+
+        var project = (await GetAsync<ProjectDto[]>(http, "/api/projects")).Single(p => p.Key == "HLT");
+        var statuses = (await GetAsync<StatusDto[]>(http, "/api/statuses")).OrderBy(s => s.SortOrder).ToList();
+        var target = statuses.Skip(1).First(s => !s.IsProtected && !s.IsTerminal && !s.IsDeferred);
+
+        var issue = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "task", "Moved by a runner", null, null, null, null));
+        var minted = await PostAsync<CreateRunnerRequest, RunnerMintedDto>(http, "/api/runners", new("clear-runner"));
+
+        using var asRunner = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        asRunner.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", minted.Secret);
+
+        await PostAsync<RunnerHeartbeatRequest, RunnerInstructionDto>(asRunner, "/api/runners/sessions", new(Kind: "loop", Where: Where));
+        await PostAsync<ClaimRequest, ClaimTakenDto>(asRunner, $"/api/issues/{issue.Key}/claim", new(Where));
+
+        using var response = await asRunner.PostAsJsonAsync($"/api/issues/{issue.Key}/move", new IssueMoveRequest(target.Id, null, null), Web);
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, $"POST /api/issues/{issue.Key}/move as a runner answered {(int)response.StatusCode}: {text}");
+
+        return issue.Key;
+    }
+
+    /// <summary>Opens a question on <paramref name="key"/>, the way a runner would ask for a decision.</summary>
+    internal static async Task AskAsync(string baseUrl, string key)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        await PostAsync<CommentCreateRequest, CommentDto>(http, $"/api/issues/{key}/comments", new("Keep it or drop it?", "question", null, null));
     }
 
     /// <summary>The Moved tile's big number and the line under it.</summary>
