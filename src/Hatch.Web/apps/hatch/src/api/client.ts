@@ -61,6 +61,8 @@ import type {
   Plan,
   Person,
   PersonSession,
+  ChatManifest,
+  ChatWorkspace,
   PersonCreateRequest,
   PersonScope,
   PersonScopeWriteRequest,
@@ -1194,6 +1196,20 @@ export const putScope = (personId: string, request: PersonScopeWriteRequest) =>
 export const getPersonSessions = (id: string) =>
   fetchJson<PersonSession[]>(`/api/people/${seg(id)}/sessions`);
 export const revokeGrant = (id: string) => fetchJson<void>(`/api/auth/grants/${seg(id)}`, { method: 'DELETE' });
+
+// ---- Chat ----
+//
+// Admin-only on the server, and person-only: a key is refused. A bot token goes
+// up in a body and is never sent back.
+
+export const getChatWorkspaces = () => fetchJson<ChatWorkspace[]>('/api/chat/workspaces');
+export const createChatWorkspace = (token: string) =>
+  fetchJson<ChatWorkspace>('/api/chat/workspaces', { method: 'POST', ...asJson({ token }) });
+export const replaceChatToken = (id: number, token: string) =>
+  fetchJson<ChatWorkspace>(`/api/chat/workspaces/${seg(String(id))}/token`, { method: 'PUT', ...asJson({ token }) });
+export const deleteChatWorkspace = (id: number) =>
+  fetchJson<void>(`/api/chat/workspaces/${seg(String(id))}`, { method: 'DELETE' });
+export const getChatManifest = () => fetchJson<ChatManifest>('/api/chat/manifest');
 
 /**
  * The grant this browser holds - how the Users page knows which session row is

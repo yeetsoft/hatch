@@ -240,16 +240,18 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// The real host on a loopback port of Kestrel's choosing - never its
     /// default port and never an inherited <c>ASPNETCORE_URLS</c> - serving
     /// the built SPA out of the repository's own <c>wwwroot</c>. Returns the
-    /// address it is listening on.
+    /// address it is listening on. <paramref name="services"/> replaces services
+    /// the host registered, for a case that needs a fake of something it reaches
+    /// out to.
     /// </summary>
-    public async Task<string> StartHostAsync(Deadline deadline)
+    public async Task<string> StartHostAsync(Deadline deadline, Action<IServiceCollection>? services = null)
     {
         // Quartz keeps its logging provider in a static bound to whichever
         // host built a scheduler first; see MinimalStartupTests for why it is
         // cleared on the way in and again on the way out.
         QuartzLogProvider.SetCurrentLogProvider(null);
 
-        factory = new MinimalFactory(hatch!, quartz!, logs, WebRoot());
+        factory = new MinimalFactory(hatch!, quartz!, logs, WebRoot(), services: services);
         factory.UseKestrel(o => o.Listen(IPAddress.Loopback, 0));
 
         // StartServer blocks, so Task.Run is what gives Deadline something to race.

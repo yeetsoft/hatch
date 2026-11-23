@@ -187,9 +187,9 @@ describe('navFor', () => {
     }
   });
 
-  it('ends Manage with Users for an Admin', () => {
+  it('ends Manage with Users, then Chat, for an Admin', () => {
     const rows = manage(navFor(true)).rows.map((row) => row.to);
-    expect(rows.slice(-1)).toEqual(['/users']);
+    expect(rows.slice(-2)).toEqual(['/users', '/chat']);
   });
 });
 

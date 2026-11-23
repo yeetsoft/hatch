@@ -4668,6 +4668,95 @@ button.hatch-chip {
   gap: var(--sp-2);
 }
 
+/* The Chat page. The manifest scrolls sideways inside its own box rather than
+   widen the page; a row's controls wrap inside the cell, so nothing runs off
+   a phone's edge. */
+.hatch-chat-heading {
+  margin: 0 0 var(--sp-2);
+}
+
+.hatch-chat-manifest {
+  overflow-x: auto;
+  max-width: 100%;
+  max-height: 20rem;
+  overflow-y: auto;
+  margin: var(--sp-3) 0;
+  padding: var(--sp-3);
+  box-sizing: border-box;
+  font-size: 0.8125rem;
+}
+
+.hatch-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.hatch-chat-replace {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hatch-chat-replace input {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.hatch-chat-replace__failure {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* On a phone a row is a small card, not a table row: the name, then the token
+   and when it was connected side by side, then the controls full width. A table
+   with an input in every row is wider than the screen, and scrolled sideways it
+   hides the very name the row is about. */
+@media (max-width: 40rem) {
+  .hatch-chat-table,
+  .hatch-chat-table tbody {
+    display: block;
+  }
+
+  .hatch-chat-table thead {
+    display: none;
+  }
+
+  .hatch-chat-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--sp-1) var(--sp-3);
+    padding: var(--sp-3) 0;
+  }
+
+  .hatch-chat-table td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .hatch-chat-name,
+  .hatch-chat-actions-cell {
+    grid-column: 1 / -1;
+  }
+
+  .hatch-chat-actions-cell {
+    margin-top: var(--sp-2);
+  }
+
+  .hatch-chat-actions,
+  .hatch-chat-replace {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hatch-chat-replace input {
+    width: 100%;
+  }
+}
+
 /* A runner row's controls, which run to five or six items once the Order
    control is drawn: they wrap inside the cell rather than push the table wider
    than the card. flex-shrink: 0 on the buttons so one is squeezed, wrapping

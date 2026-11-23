@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -23,7 +25,15 @@ namespace Hatch.Api.Tests.Hatch;
 /// true puts the wall up, which is how <see cref="WalledHost"/> reaches the
 /// Hatch routes as a scoped person or a key.
 /// </param>
-internal sealed class MinimalFactory(string hatch, string quartz, CapturedLogs logs, string? webRoot = null, bool walled = false)
+/// <param name="services">
+/// Applied after <c>Program.cs</c> has registered its own services, so what it
+/// registers replaces them: a case that needs a fake of something the host
+/// reaches out with (a chat service, say) removes the real registration and adds
+/// its own. Left out, the host is exactly the one that ships.
+/// </param>
+internal sealed class MinimalFactory(
+    string hatch, string quartz, CapturedLogs logs, string? webRoot = null, bool walled = false,
+    Action<IServiceCollection>? services = null)
     : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -36,5 +46,7 @@ internal sealed class MinimalFactory(string hatch, string quartz, CapturedLogs l
         builder.UseSetting("Auth:Enabled", walled ? "true" : "false");
 
         builder.ConfigureLogging(logging => logging.AddProvider(logs));
+
+        if (services is not null) builder.ConfigureTestServices(services);
     }
 }

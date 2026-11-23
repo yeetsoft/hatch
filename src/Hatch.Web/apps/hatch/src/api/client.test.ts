@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Issue, Runner, Status } from '../types';
 import {
+  createChatWorkspace,
   createRunner,
+  deleteChatWorkspace,
+  getChatManifest,
+  getChatWorkspaces,
+  replaceChatToken,
   getActivity,
   getAllRunners,
   getAttachments,
@@ -861,5 +866,65 @@ describe('setQuestionLevel', () => {
       expect.objectContaining({ method: 'PUT', body: '{"level":"build"}' }),
     );
     expect(result).toEqual(question);
+  });
+});
+
+describe('chat page calls', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const workspace = { id: 4, provider: 'slack', externalId: 'T1', name: 'Fellowship', hasToken: true, createdAt: '2026-01-01T00:00:00Z' };
+
+  it('getChatWorkspaces GETs the list', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([workspace]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getChatWorkspaces()).resolves.toEqual([workspace]);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/workspaces', expect.anything());
+  });
+
+  it('createChatWorkspace POSTs the token alone and returns the workspace', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(workspace), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createChatWorkspace('xoxb-a.b.c')).resolves.toEqual(workspace);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/chat/workspaces',
+      expect.objectContaining({ method: 'POST', body: '{"token":"xoxb-a.b.c"}' }),
+    );
+  });
+
+  it('replaceChatToken PUTs the token to the workspace', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(workspace), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(replaceChatToken(4, 'xoxb-d.e.f')).resolves.toEqual(workspace);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/chat/workspaces/4/token',
+      expect.objectContaining({ method: 'PUT', body: '{"token":"xoxb-d.e.f"}' }),
+    );
+  });
+
+  it('deleteChatWorkspace DELETEs the workspace and tolerates the empty answer', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(deleteChatWorkspace(4)).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/workspaces/4', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('getChatManifest GETs the manifest', async () => {
+    const manifest = { provider: 'slack', manifest: '{"display_information":{}}' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(manifest), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getChatManifest()).resolves.toEqual(manifest);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/manifest', expect.anything());
   });
 });

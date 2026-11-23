@@ -69,6 +69,9 @@ it had. The keys stay listed on **Runners** as revoked, with no owner, so an old
 event still has a name to point to. A delete that is refused, such as the last
 `admin`, revokes nothing.
 
+An admin also sees **Manage → Chat**, where a Slack workspace is connected. [Hatch in Slack](hatch-in-slack)
+has the steps.
+
 ## Owners and approvers
 
 A project carries a second permission beside the three roles above, held per
