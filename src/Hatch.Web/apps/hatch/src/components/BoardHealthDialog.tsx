@@ -1,0 +1,333 @@
+import { useId, useLayoutEffect, useRef, useState } from 'react';
+import type { KeyboardEvent, PointerEvent } from 'react';
+import { Link } from 'react-router-dom';
+import { Modal } from '@hatch/ui';
+import { axisSentence, bandPolygons, barIndexAt, momentX, oldestLine, stepMoment } from '../lib/boardHealth';
+import type { HealthWindow } from '../lib/boardHealth';
+import {
+  MARK_PATTERN,
+  axisTicks,
+  bandCounts,
+  dialogTitle,
+  legend,
+  markedWords,
+  movedSummary,
+  oldestWaitWords,
+  scaleTop,
+  stackedMovedBars,
+  waitingSplit,
+} from '../lib/boardHealthDialog';
+import type { DialogTile, MarkKey, SummaryRow } from '../lib/boardHealthDialog';
+import type { BoardHealth } from '../types';
+import { HealthWindowControl } from './HealthWindowControl';
+
+/* The dialog a health tile opens: the same window as the sparkline, drawn
+   large, with an axis, a legend and a sentence for the marked bar. It draws
+   from the read's answer alone and holds no state of its own beyond its size,
+   so a new answer redraws it in place.
+
+   The chart measures its own svg and draws at that size, as
+   CumulativeFlowChart does. It is never stretched with
+   `preserveAspectRatio="none"`: that would skew the fill patterns that tell
+   the stacked marks apart - stripes change angle, dots turn oval - worst at a
+   phone's width. */
+
+/** The size the svg takes before it has been measured, and in static markup. */
+const FALLBACK = { width: 480, height: 200 };
+
+const KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+
+/** The classes of the three band marks, which are the tile's own. */
+const BAND_CLASS: Partial<Record<MarkKey, string>> = { waiting: 'waiting', inFlight: 'inflight', done: 'done' };
+
+/** One fill pattern: a ground, and the stripes or dots over it. The colours
+    come from CSS classes on the mark, never from here. */
+function HealthPattern({ id, mark }: { id: string; mark: MarkKey }) {
+  const kind = MARK_PATTERN[mark];
+  if (!kind) return null;
+
+  return (
+    <pattern
+      id={id}
+      width={6}
+      height={6}
+      patternUnits="userSpaceOnUse"
+      patternTransform={kind === 'stripes' ? 'rotate(45)' : undefined}
+    >
+      <rect width={6} height={6} className={`hatch-health-dialog-ground hatch-health-dialog-ground--${mark}`} />
+      {kind === 'stripes' && <rect width={6} height={2.5} className={`hatch-health-dialog-ink hatch-health-dialog-ink--${mark}`} />}
+      {kind === 'dots' && <circle cx={3} cy={3} r={1.4} className={`hatch-health-dialog-ink hatch-health-dialog-ink--${mark}`} />}
+    </pattern>
+  );
+}
+
+/** A legend swatch drawn the way its mark is: the same pattern, band or line. */
+function Swatch({ base, mark }: { base: string; mark: MarkKey }) {
+  const id = `${base}-swatch-${mark}`;
+  const band = BAND_CLASS[mark];
+
+  return (
+    <svg className="hatch-health-dialog-swatch" width={22} height={14} viewBox="0 0 22 14" aria-hidden="true" focusable="false">
+      {MARK_PATTERN[mark] && (
+        <>
+          <defs>
+            <HealthPattern id={id} mark={mark} />
+          </defs>
+          <rect className={`hatch-health-dialog-seg hatch-health-dialog-seg--${mark}`} x={0.5} y={0.5} width={21} height={13} fill={`url(#${id})`} />
+        </>
+      )}
+      {band && <rect className={`hatch-health-band hatch-health-band--${band}`} x={0} y={0} width={22} height={14} />}
+      {mark === 'line' && <line className="hatch-health-dialog-line" x1={0} x2={22} y1={7} y2={7} />}
+      {mark === 'now' && <path className="hatch-health-dialog-dot" d="M 11 7 h 0" />}
+    </svg>
+  );
+}
+
+/** The Oldest in flight chart's own marks: the line and today's dot. Its own
+    component so the bands and the list of issues that come after extend it
+    without touching the chart around it. */
+export function OldestChart({ answer, width, height }: { answer: BoardHealth; width: number; height: number }) {
+  const line = oldestLine(answer, width, height);
+
+  return (
+    <>
+      <path className="hatch-health-dialog-line" d={line.path} fill="none" />
+      {line.last && <path className="hatch-health-dialog-dot" d={`M ${line.last.x} ${line.last.y} h 0`} fill="none" />}
+    </>
+  );
+}
+
+function Rows({ rows }: { rows: SummaryRow[] }) {
+  return (
+    <dl className="hatch-health-dialog-rows">
+      {rows.map((row) => (
+        <div key={row.key} className="hatch-health-dialog-row" data-row={row.key}>
+          <dt>{row.label}</dt>
+          <dd>{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function BoardHealthDialog({
+  tile,
+  answer,
+  index,
+  onIndex,
+  window: chosen,
+  onWindow,
+  onClose,
+  href,
+}: {
+  tile: DialogTile;
+  answer: BoardHealth;
+  /** The marked bar, or null for the window at rest. */
+  index: number | null;
+  onIndex: (index: number | null) => void;
+  window: HealthWindow;
+  onWindow: (choice: HealthWindow) => void;
+  onClose: () => void;
+  /** The cumulative flow report on the same window and projects, for In flight. */
+  href?: string;
+}) {
+  const base = `hd-${useId().replace(/:/g, '')}`;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState(FALLBACK);
+  const title = dialogTitle(tile, answer);
+  const marks = legend(tile);
+  const { width, height } = size;
+  const patternOf = (mark: MarkKey): string => `${base}-${mark}`;
+
+  useLayoutEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const measure = () => {
+      const rect = svg.getBoundingClientRect();
+      if (!(rect.width > 0) || !(rect.height > 0)) return;
+      setSize((current) =>
+        current.width === rect.width && current.height === rect.height ? current : { width: rect.width, height: rect.height },
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(svg);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const onPointer = (event: PointerEvent<HTMLDivElement>) => {
+    const rect = (svgRef.current ?? event.currentTarget).getBoundingClientRect();
+    onIndex(barIndexAt(event.clientX - rect.left, rect.width));
+  };
+
+  /* Escape is left to Modal, which closes the dialog on it. */
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!KEYS.includes(event.key)) return;
+    event.preventDefault();
+    onIndex(stepMoment(index, event.key, answer.bars.length));
+  };
+
+  return (
+    <Modal open onClose={onClose} title={title}>
+      <div className="hatch-health-dialog" data-dialog={tile}>
+        <div className="hatch-health-dialog-control">
+          <HealthWindowControl window={chosen} onWindow={onWindow} />
+          <p className="hatch-health-axis">{axisSentence(answer)}</p>
+        </div>
+
+        <div className="hatch-health-dialog-plot">
+          <div className="hatch-health-dialog-scale" aria-hidden="true">
+            <span data-part="scale-top">{scaleTop(tile, answer)}</span>
+            <span>0</span>
+          </div>
+
+          <div
+            className="hatch-health-dialog-chart"
+            data-part="chart"
+            tabIndex={0}
+            role="group"
+            aria-label={`${title}. Arrow keys mark a moment.`}
+            onPointerMove={onPointer}
+            onPointerDown={onPointer}
+            onPointerLeave={() => onIndex(null)}
+            onKeyDown={onKeyDown}
+          >
+            <svg
+              ref={svgRef}
+              className="hatch-health-dialog-svg"
+              viewBox={`0 0 ${width} ${height}`}
+              aria-hidden="true"
+              focusable="false"
+            >
+              <defs>
+                {marks.map((mark) => (
+                  <HealthPattern key={mark.key} id={patternOf(mark.key)} mark={mark.key} />
+                ))}
+              </defs>
+              <line className="hatch-health-dialog-floor" x1={0} x2={width} y1={height} y2={height} />
+
+              {tile === 'moved' &&
+                stackedMovedBars(answer, width, height).map((bar) => (
+                  <g key={bar.index} className="hatch-health-dialog-bar" data-bar={bar.index}>
+                    {bar.segments.map((segment) => (
+                      <rect
+                        key={segment.source}
+                        className={`hatch-health-dialog-seg hatch-health-dialog-seg--${segment.source}`}
+                        fill={`url(#${patternOf(segment.source)})`}
+                        x={bar.x}
+                        y={segment.y}
+                        width={bar.width}
+                        height={segment.height}
+                      />
+                    ))}
+                  </g>
+                ))}
+
+              {tile === 'inFlight' && <InFlightMarks answer={answer} width={width} height={height} />}
+
+              {tile === 'oldest' && <OldestChart answer={answer} width={width} height={height} />}
+
+              {tile === 'waiting' && <WaitingMarks answer={answer} width={width} height={height} pattern={patternOf} />}
+
+              {index !== null && (
+                <line
+                  className="hatch-health-dialog-moment"
+                  x1={momentX(index, width)}
+                  x2={momentX(index, width)}
+                  y1={0}
+                  y2={height}
+                />
+              )}
+            </svg>
+          </div>
+
+          <div className="hatch-health-dialog-ticks" aria-hidden="true">
+            {axisTicks(answer, 100).map((tick) => (
+              <span
+                key={tick.x}
+                className={`hatch-health-dialog-tick${tick.x === 0 ? ' hatch-health-dialog-tick--start' : ''}${tick.x === 100 ? ' hatch-health-dialog-tick--end' : ''}`}
+                style={{ left: `${tick.x}%` }}
+              >
+                {tick.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <ul className="hatch-health-dialog-legend" aria-label="Legend">
+          {marks.map((mark) => (
+            <li key={mark.key} data-mark={mark.key}>
+              <Swatch base={base} mark={mark.key} />
+              {mark.label}
+            </li>
+          ))}
+        </ul>
+
+        <p className="hatch-health-dialog-words" data-part="words" aria-live="polite">
+          {markedWords(tile, answer, index)}
+        </p>
+
+        {tile === 'moved' && <Rows rows={movedSummary(answer)} />}
+
+        {tile === 'inFlight' && (
+          <>
+            <Rows rows={bandCounts(answer, index)} />
+            {href && (
+              <Link to={href} className="hatch-health-dialog-link">
+                Open the cumulative flow report
+              </Link>
+            )}
+          </>
+        )}
+
+        {tile === 'waiting' && <p className="hatch-health-dialog-note">Now: {oldestWaitWords(answer)}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+function InFlightMarks({ answer, width, height }: { answer: BoardHealth; width: number; height: number }) {
+  const bands = bandPolygons(answer, width, height);
+
+  return (
+    <>
+      <polygon className="hatch-health-band hatch-health-band--done" points={bands.done} />
+      <polygon className="hatch-health-band hatch-health-band--inflight" points={bands.inFlight} />
+      <polygon className="hatch-health-band hatch-health-band--waiting" points={bands.waiting} />
+    </>
+  );
+}
+
+function WaitingMarks({
+  answer,
+  width,
+  height,
+  pattern,
+}: {
+  answer: BoardHealth;
+  width: number;
+  height: number;
+  pattern: (mark: MarkKey) => string;
+}) {
+  const split = waitingSplit(answer, width, height);
+
+  return (
+    <>
+      <path
+        className="hatch-health-dialog-seg hatch-health-dialog-seg--pullRequests"
+        fill={`url(#${pattern('pullRequests')})`}
+        d={split.pullRequests.area}
+      />
+      <path
+        className="hatch-health-dialog-seg hatch-health-dialog-seg--questions"
+        fill={`url(#${pattern('questions')})`}
+        d={split.questions.area}
+      />
+      <path className="hatch-health-dialog-edge" d={split.pullRequests.line} fill="none" />
+      <path className="hatch-health-dialog-edge" d={split.questions.line} fill="none" />
+    </>
+  );
+}

@@ -47,6 +47,12 @@ The health strip above the board is one row of five numbers on a phone: moved,
 in flight, oldest, waiting and runners, each with a short line under it and no
 charts. Tap the row and it opens into the full tiles, stacked one under another, with
 the window control (**2h** to **24h**) above them; tap it again and it closes.
+Tap a tile - on its chart or anywhere that is not a link - and the same
+dialog the desk opens covers the width of the screen, with the chart drawn
+large and its controls at least 44px tall; Moved, In flight, Oldest in flight
+and Waiting on you open one. Its **✕**, or a tap on the strip of page above it,
+closes it and puts you back on the tile. The dialog's window control is the
+strip's.
 It starts closed each time the board opens, and the window you pick is the
 same one the desk remembers. The button that hides the strip altogether is
 inside **Filters**, not in the header, so the header stays on one line.
