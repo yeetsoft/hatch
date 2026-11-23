@@ -3,6 +3,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Tests.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -1631,6 +1632,216 @@ public class AttentionControllerTests : IDisposable
         var exhausted = Value(await h.Attention.GetAttention(default)).ExhaustedRunners;
 
         Assert.Single(exhausted!);
+    }
+
+    // ---- Runners that are failing (HA-2706) ----
+
+    private static EfPerson APerson(Guid id, PersonRole role) =>
+        new() { Id = id, Name = "Ann", Role = role, CreatedAt = Now, UpdatedAt = Now };
+
+    /// <summary>The wall up, and a signed-in person calling.</summary>
+    private static void SignedInAs(Harness h, Guid id, PersonRole role)
+    {
+        h.Auth.Enabled = true;
+        h.Caller.Person = APerson(id, role);
+        h.Actors.Principal = new Actor(ActorKind.Person, id, "Ann");
+    }
+
+    /// <summary>The wall up, and a key calling - whose owner, if it has one, is who it is sent for.</summary>
+    private static void CallingAsKey(Harness h, Guid? owner, PersonRole ownerRole = PersonRole.User)
+    {
+        h.Auth.Enabled = true;
+        h.Caller.ApiKey = new EfApiKey
+        {
+            Id = Guid.NewGuid(), Name = "reader", Prefix = "p", Hash = [1], CreatedAt = Now,
+            OwnerPersonId = owner, Owner = owner is { } id ? APerson(id, ownerRole) : null,
+        };
+        h.Actors.Principal = owner is { } who ? new Actor(ActorKind.Person, who, "Ann") : null;
+    }
+
+    /// <summary>A live runner on a key held by <paramref name="owner"/>, with one open failure of <paramref name="kind"/>.</summary>
+    private static async Task<EfApiKey> FailingRunnerAsync(
+        Harness h, string name, Guid? owner, string kind = RunnerFailureKinds.Forge, string? why = "gh: not logged in",
+        TimeSpan? began = null, bool ended = false)
+    {
+        var key = await h.AddKeyAsync(name, owner);
+        var at = $"host:/checkouts/{name}";
+        await h.AddSessionAsync(key, at);
+        await h.FailAsync(key, at, kind, why, began ?? TimeSpan.FromMinutes(10), ended);
+        return key;
+    }
+
+    private static IReadOnlyList<AttentionRunnerFailureDto> Failures(ActionResult<AttentionDto> result) =>
+        Value(result).RunnerFailures!;
+
+    [Fact]
+    public async Task Attention_SendsTheOwnerTheirRunnersFailure()
+    {
+        var h = await NewAsync();
+        var ann = Guid.NewGuid();
+        await FailingRunnerAsync(h, "one", ann);
+        SignedInAs(h, ann, PersonRole.User);
+
+        var row = Assert.Single(Failures(await h.Attention.GetAttention(default)));
+
+        Assert.Equal("one", row.Name);
+        Assert.Equal("host:/checkouts/one", row.Where);
+        Assert.Equal(RunnerFailureKinds.Forge, row.Kind);
+        Assert.Equal("gh: not logged in", row.Why);
+        Assert.Equal(Now - TimeSpan.FromMinutes(10), row.BeganAt);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotSendAnotherPersonTheFailure()
+    {
+        var h = await NewAsync();
+        await FailingRunnerAsync(h, "one", Guid.NewGuid());
+        SignedInAs(h, Guid.NewGuid(), PersonRole.User);
+
+        Assert.Empty(Failures(await h.Attention.GetAttention(default)));
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotSendAnAdminAnotherPersonsRunner()
+    {
+        var h = await NewAsync();
+        await FailingRunnerAsync(h, "one", Guid.NewGuid());
+        SignedInAs(h, Guid.NewGuid(), PersonRole.Admin);
+
+        Assert.Empty(Failures(await h.Attention.GetAttention(default)));
+    }
+
+    [Fact]
+    public async Task Attention_SendsAnAdminAnOwnerlessRunnersFailure()
+    {
+        var h = await NewAsync();
+        await FailingRunnerAsync(h, "one", null);
+        SignedInAs(h, Guid.NewGuid(), PersonRole.Admin);
+
+        Assert.Equal("one", Assert.Single(Failures(await h.Attention.GetAttention(default))).Name);
+    }
+
+    [Fact]
+    public async Task Attention_DoesNotSendAnOrdinaryPersonAnOwnerlessRunner()
+    {
+        var h = await NewAsync();
+        await FailingRunnerAsync(h, "one", null);
+        SignedInAs(h, Guid.NewGuid(), PersonRole.User);
+
+        Assert.Empty(Failures(await h.Attention.GetAttention(default)));
+    }
+
+    [Fact]
+    public async Task Attention_SendsEverybodyEveryFailureWithTheWallOff()
+    {
+        var h = await NewAsync();
+        await FailingRunnerAsync(h, "owned", Guid.NewGuid());
+        await FailingRunnerAsync(h, "ownerless", null);
+
+        Assert.Equal(
+            ["owned", "ownerless"],
+            Failures(await h.Attention.GetAttention(default)).Select(r => r.Name).Order());
+    }
+
+    [Fact]
+    public async Task Attention_SendsNoneForARunnerThatWentQuiet()
+    {
+        var h = await NewAsync();
+        var ann = Guid.NewGuid();
+        await FailingRunnerAsync(h, "one", ann);
+        SignedInAs(h, ann, PersonRole.User);
+        Assert.Single(Failures(await h.Attention.GetAttention(default)));
+
+        h.Time.Advance(TimeSpan.FromDays(1));
+
+        Assert.Empty(Failures(await h.Attention.GetAttention(default)));
+    }
+
+    [Fact]
+    public async Task Attention_SendsNoneForAFailureThatEnded()
+    {
+        var h = await NewAsync();
+        var ann = Guid.NewGuid();
+        await FailingRunnerAsync(h, "one", ann, ended: true);
+        SignedInAs(h, ann, PersonRole.User);
+
+        Assert.Empty(Failures(await h.Attention.GetAttention(default)));
+    }
+
+    [Fact]
+    public async Task Attention_SendsAKeyWhatItsOwnerWouldBeSent()
+    {
+        var h = await NewAsync();
+        var ann = Guid.NewGuid();
+        await FailingRunnerAsync(h, "mine", ann);
+        await FailingRunnerAsync(h, "theirs", Guid.NewGuid());
+        await FailingRunnerAsync(h, "nobodys", null);
+        CallingAsKey(h, ann);
+
+        Assert.Equal(["mine"], Failures(await h.Attention.GetAttention(default)).Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task Attention_SendsAKeyWhoseOwnerIsAnAdminTheOwnerlessToo()
+    {
+        var h = await NewAsync();
+        var ann = Guid.NewGuid();
+        await FailingRunnerAsync(h, "mine", ann);
+        await FailingRunnerAsync(h, "theirs", Guid.NewGuid());
+        await FailingRunnerAsync(h, "nobodys", null);
+        CallingAsKey(h, ann, PersonRole.Admin);
+
+        Assert.Equal(
+            ["mine", "nobodys"],
+            Failures(await h.Attention.GetAttention(default)).Select(r => r.Name).Order());
+    }
+
+    [Fact]
+    public async Task Attention_SendsAKeyThatBelongsToNobodyOnlyTheOwnerlessRunners()
+    {
+        var h = await NewAsync();
+        await FailingRunnerAsync(h, "mine", Guid.NewGuid());
+        await FailingRunnerAsync(h, "nobodys", null);
+        CallingAsKey(h, null);
+
+        Assert.Equal(["nobodys"], Failures(await h.Attention.GetAttention(default)).Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task Attention_AnswersAnEmptyListNotNullWhenNothingFails()
+    {
+        var h = await NewAsync();
+
+        var none = Failures(await h.Attention.GetAttention(default));
+
+        Assert.NotNull(none);
+        Assert.Empty(none);
+    }
+
+    [Fact]
+    public async Task Attention_SendsFailuresEvenOnABoardWithNoReviewColumn()
+    {
+        var h = await OneColumnAsync();
+        await FailingRunnerAsync(h, "one", null);
+
+        Assert.Single(Failures(await h.Attention.GetAttention(default)));
+    }
+
+    [Fact]
+    public async Task Attention_ListsSeveralFailuresLongestStandingFirst()
+    {
+        var h = await NewAsync();
+        var ann = Guid.NewGuid();
+        var key = await FailingRunnerAsync(h, "one", ann, RunnerFailureKinds.Signing, "no key", TimeSpan.FromMinutes(5));
+        await h.FailAsync(key, "host:/checkouts/one", RunnerFailureKinds.Forge, "not logged in", TimeSpan.FromHours(3), false);
+        await FailingRunnerAsync(h, "two", ann, RunnerFailureKinds.AgentSignedOut, null, TimeSpan.FromHours(1));
+        SignedInAs(h, ann, PersonRole.User);
+
+        var rows = Failures(await h.Attention.GetAttention(default));
+
+        Assert.Equal(
+            [("one", RunnerFailureKinds.Forge), ("two", RunnerFailureKinds.AgentSignedOut), ("one", RunnerFailureKinds.Signing)],
+            rows.Select(r => (r.Name, r.Kind)));
     }
 
     // ---- A move no live runner can take (HA-2013) ----
@@ -3403,6 +3614,12 @@ public class AttentionControllerTests : IDisposable
         public required GooseWatch Watch { get; init; }
         public required DbContextOptions<HatchContext> Options { get; init; }
         public required StubActorDirectory Actors { get; init; }
+
+        /// <summary>Who is calling. Nobody, with the wall off, until a test says otherwise.</summary>
+        public required StubCallerIdentity Caller { get; init; }
+
+        /// <summary>The wall's switch, read on every call: a test turns it on by setting <c>Enabled</c>.</summary>
+        public required global::Hatch.Api.Services.Auth.AuthOptions Auth { get; init; }
         public required Runners RunnerList { get; init; }
         public required RunnerSessions Sessions { get; init; }
         public required int ProjectId { get; init; }
@@ -3477,14 +3694,26 @@ public class AttentionControllerTests : IDisposable
         public AttentionController AttentionFor(params int[] projects)
         {
             var scoped = ScopeSeed.Request(Options, ScopeSeed.Only(projects));
-            return new AttentionController(scoped, Actors, RunnerList, Time, new Dispatch(scoped, Actors, TestClaims.With(), Time, Keys, Sessions), Backup, Keys, Watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions()));
+            return new AttentionController(scoped, Actors, RunnerList, Time, new Dispatch(scoped, Actors, TestClaims.With(), Time, Keys, Sessions), Backup, Keys, Watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions()), Caller, Sessions, Microsoft.Extensions.Options.Options.Create(Auth));
         }
 
         /// <summary>A live key with no beat of its own, minted through <see cref="Keys"/> - the identity a session is held against.</summary>
-        public async Task<EfApiKey> AddKeyAsync(string name)
+        public async Task<EfApiKey> AddKeyAsync(string name, Guid? owner = null)
         {
-            var created = await Keys.CreateApiKeyAsync(name, null, default);
+            var created = await Keys.CreateApiKeyAsync(name, owner, default);
             return created!.Key;
+        }
+
+        /// <summary>A failure row, placed directly: <paramref name="began"/> is how long before now it began.</summary>
+        public async Task FailAsync(EfApiKey key, string where, string kind, string? why, TimeSpan began, bool ended)
+        {
+            Db.RunnerFailures.Add(new EfHatchRunnerFailure
+            {
+                ApiKeyId = key.Id, Where = where, Kind = kind, Why = why,
+                BeganAt = Time.GetUtcNow() - began, LastReportedAt = Time.GetUtcNow(),
+                EndedAt = ended ? Time.GetUtcNow() : null,
+            });
+            await Db.SaveChangesAsync();
         }
 
         /// <summary>A live loop session for a key, placed directly - the session-carrying counterpart to <see cref="RunnerAsync"/>.</summary>
@@ -3810,6 +4039,8 @@ public class AttentionControllerTests : IDisposable
         var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         var db = new HatchContext(options);
         var actors = new StubActorDirectory();
+        var caller = new StubCallerIdentity();
+        var auth = new global::Hatch.Api.Services.Auth.AuthOptions();
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var inbox = new EfHatchStatus { Name = "inbox", SortOrder = 10 };
@@ -3835,7 +4066,9 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, claims ?? TestClaims.With(), time, keys, sessions), backup, keys, watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions())),
+            Caller = caller,
+            Auth = auth,
+            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, claims ?? TestClaims.With(), time, keys, sessions), backup, keys, watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions()), caller, sessions, Microsoft.Extensions.Options.Options.Create(auth)),
             Options = options,
             Actors = actors,
             RunnerList = runners,
@@ -3864,6 +4097,8 @@ public class AttentionControllerTests : IDisposable
         var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         var db = new HatchContext(options);
         var actors = new StubActorDirectory();
+        var caller = new StubCallerIdentity();
+        var auth = new global::Hatch.Api.Services.Auth.AuthOptions();
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var done = new EfHatchStatus { Name = "done", SortOrder = 10, IsTerminal = true };
@@ -3885,7 +4120,9 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, TestClaims.With(), time, keys, sessions), backup, keys, watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions())),
+            Caller = caller,
+            Auth = auth,
+            Attention = new AttentionController(db, actors, runners, time, new Dispatch(db, actors, TestClaims.With(), time, keys, sessions), backup, keys, watch, Microsoft.Extensions.Options.Options.Create(new HatchOptions()), caller, sessions, Microsoft.Extensions.Options.Options.Create(auth)),
             Options = options,
             Actors = actors,
             RunnerList = runners,

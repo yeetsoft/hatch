@@ -8503,7 +8503,7 @@ public class RunnersControllerTests
             BuildRunners = BuildRunners,
             BuildProjects = BuildProjects,
             BuildAttention = () => new AttentionController(
-                db, actors, runners, time, new Dispatch(db, actors, claims, time, keys, sessions), NewBackup(time), keys, new GooseWatch(time), Options.Create(new HatchOptions())),
+                db, actors, runners, time, new Dispatch(db, actors, claims, time, keys, sessions), NewBackup(time), keys, new GooseWatch(time), Options.Create(new HatchOptions()), caller, sessions, Options.Create(new AuthOptions { Enabled = wall })),
             BuildGooseCheck = () => new TrainReadyCheck(
                 db, new Dispatch(db, actors, claims, time, keys, sessions), runners, keys, Options.Create(new HatchOptions()), time),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),

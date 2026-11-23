@@ -2215,6 +2215,14 @@ public record ReviewDto(
 /// whether it has stopped. Answered on every board shape, and to every reader
 /// whatever their scope. Defaults to null so an older client still reads.
 /// </param>
+/// <param name="RunnerFailures">
+/// One entry per current runner failure - see <see cref="RunnerFailureDto"/> -
+/// for the runners this reader is sent: a person's own, an admin's also those
+/// that belong to nobody, and everybody's where the wall is off. Longest-standing
+/// first. Counted towards the badge, one for each entry: unlike a runner out of
+/// usage, a failing runner is a thing a person fixes. Empty, not null, whatever
+/// the board's shape. Defaults to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -2238,7 +2246,19 @@ public record AttentionDto(
     IReadOnlyList<ContributionHeldDto>? ContributionsHeld = null,
     IReadOnlyList<ProjectLineHeldDto>? HeldAtProjectLine = null,
     IReadOnlyList<AttentionFindingDto>? Findings = null,
-    AttentionGooseDto? Goose = null);
+    AttentionGooseDto? Goose = null,
+    IReadOnlyList<AttentionRunnerFailureDto>? RunnerFailures = null);
+
+/// <summary>
+/// One thing a runner cannot do right now, for the attention panel - see
+/// <see cref="AttentionDto.RunnerFailures"/>.
+/// </summary>
+/// <param name="Name">What the runner calls itself - the same string the Runners page keys on.</param>
+/// <param name="Where">The checkout it is at, <c>host:/path</c>, or null where none was named.</param>
+/// <param name="Kind">One of <see cref="RunnerFailureKinds.All"/>.</param>
+/// <param name="Why">What the tool said, one line, or null where it said nothing.</param>
+/// <param name="BeganAt">When a beat first found it failing.</param>
+public record AttentionRunnerFailureDto(string Name, string? Where, string Kind, string? Why, DateTimeOffset BeganAt);
 
 /// <summary>
 /// One open goose finding, as the attention panel draws it - see

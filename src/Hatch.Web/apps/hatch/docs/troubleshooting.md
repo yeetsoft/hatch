@@ -245,6 +245,9 @@ run](the-runner#when-it-will-not-run).
   the wait. How the wait works: [stalls](one-increment-and-the-loop#stalls).
 - **How much it cost.** The closing tally says how many runs never started
   and how long the runner was paused for it.
+- **It shows in the attention panel.** The runner's owner is told: read what the agent said, on the runner's page. A **Failing runners** row on the
+  control names the runner and links to its page, and goes by itself when the
+  runner is well again or has gone quiet.
 
 ## The runner says its agent needs signing in
 
@@ -262,6 +265,25 @@ run](the-runner#when-it-will-not-run).
   check starts and answers. A later run that starts clears the pause too.
 - **Want it sooner.** The same as the agent not starting: stop the loop and
   start it again by hand once signed in.
+- **It shows in the attention panel.** Sign the agent in on that machine. A **Failing runners** row on the
+  control names the runner and links to its page, and goes by itself when the
+  runner is well again or has gone quiet.
+
+## The runner says it cannot reach its forge
+
+- **The runner's `gh` sign-in fails.** The runner reports it on every beat, with
+  what `gh` said, and the board stops handing it a step that would push a branch
+  and then be unable to open the pull request. Breakdown, analysis, conflict work
+  and a project that lands on its trunk are still handed to it.
+- **Sign `gh` in on that machine.** Run `gh auth login`, or give it a token the
+  forge accepts. The runner reports again within a pass and the failure ends
+  with no restart.
+- **It shows in the attention panel.** A **Failing runners** row names the runner,
+  says it cannot reach its forge since when, repeats what `gh` said and links to
+  the runner's page. It is sent to the runner's owner, and to an admin where the
+  runner belongs to nobody. The row goes by itself once `gh` works; nothing is
+  pressed. If a ticket is listed under **Waiting on a runner** as *no live runner
+  can open a pull request*, every live runner has this failure.
 
 ## A session asked whether it may commit unsigned
 
@@ -296,6 +318,11 @@ run](the-runner#when-it-will-not-run).
   If **Waiting on a runner** lists the ticket as *no live runner signs its commits*,
   no runner anywhere can take it: fix one, or an owner can allow unsigned
   commits in the project dialog.
+- **A runner whose signing fails is in the attention panel.** A **Failing
+  runners** row says it cannot sign its commits, repeats what git said and
+  links to the runner's page; it tells the owner to fix signing on that
+  machine, or allow unsigned commits on the project. It goes by itself once
+  signing works.
 - **A ticket reads "ends in a pull request" in the queue, and the runner passes
   over it.** The runner's forge sign-in fails, so the board does not hand it a
   step that would push a branch and then not be able to open the pull request.
@@ -355,6 +382,9 @@ run](the-runner#when-it-will-not-run).
   started again in the same checkout inherits the board's pause until it
   passes. A session under the same key at another checkout is not paused.
   A ticket the session already held keeps its claim and is released as usual.
+- **It shows in the attention panel.** Read why on the runner's page, where the pause can be lifted. A **Failing runners** row on the
+  control names the runner and links to its page, and goes by itself when the
+  runner is well again or has gone quiet.
 
 ## A session is still running in the checkout after the loop died
 
