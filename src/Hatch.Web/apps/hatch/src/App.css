@@ -5011,6 +5011,16 @@ input.hatch-inline-title-input {
   margin-left: 0;
 }
 
+/* The browser's paragraph margin would start the statement and the verdict
+   trail lower than the number and the state beside them. */
+.hatch-capability-row p {
+  margin: 0;
+}
+
+.hatch-capability-row p + p {
+  margin-top: var(--sp-1);
+}
+
 @media (max-width: 40rem) {
   .hatch-progress-row.hatch-capability-row {
     grid-template-columns: minmax(0, 1fr);
@@ -5018,9 +5028,11 @@ input.hatch-inline-title-input {
 }
 
 /* Passes: the row is Progress's, stacked: the head, the verdicts, the notes
-   and the comments one under another, the row's gap between them. */
+   and the comments one under another, the row's gap between them. No wrap: a
+   column that wraps stretches the verdict grid well past its content. */
 .hatch-progress-row.hatch-pass {
   flex-direction: column;
+  flex-wrap: nowrap;
   align-items: stretch;
 }
 
