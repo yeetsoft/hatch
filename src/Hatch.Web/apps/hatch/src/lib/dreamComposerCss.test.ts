@@ -105,8 +105,11 @@ describe('the weave section', () => {
   it('wears the dream box rule: faint at rest, full on focus, the ink pair, Highlight when forced', () => {
     expect(Number(declarationsOf('.hatch-dream-weave__seed::after')['opacity'])).toBeLessThan(1);
     expect(declarationsOf('.hatch-dream-weave__seed:focus-within::after')['opacity']).toBe('1');
-    expect(css).toMatch(/\.hatch-dream-weave__seed::after,\s*\.hatch-dream-composer__box::after\s*\{[^}]*linear-gradient\(90deg, var\(--gradient-ink-from\), var\(--gradient-ink-to\)\)/);
+    expect(css).toMatch(/\.hatch-dream-weave__seed::after,\s*\.hatch-dream-shape__words::after,\s*\.hatch-dream-composer__box::after\s*\{[^}]*linear-gradient\(90deg, var\(--gradient-ink-from\), var\(--gradient-ink-to\)\)/);
     expect(declarationsOf('.hatch-dream-weave__seed::after', '@media (forced-colors: active)')['background']).toBe('Highlight');
+    // The shaping section's words box wears the same rule, in the same lists.
+    expect(declarationsOf('.hatch-dream-shape__words:focus-within::after')['opacity']).toBe('1');
+    expect(declarationsOf('.hatch-dream-shape__words::after', '@media (forced-colors: active)')['background']).toBe('Highlight');
   });
 
   it("moves the heading's gradient, forever, while a weave is being filed", () => {
