@@ -6,16 +6,19 @@ using Microsoft.Extensions.Logging;
 
 namespace Hatch.Api.Services.Settings;
 
-/// <summary>Typed snapshot of the SiteSetting table.</summary>
+/// <summary>
+/// Typed snapshot of the SiteSetting table. The five secrets are <see cref="OpenedSecret"/>s, so a
+/// snapshot that is printed, logged or serialized shows <c>[secret]</c> and never a value.
+/// </summary>
 public record SiteSettingsSnapshot(
     string TimeZone,
     string? GoogleClientId,
-    string? GoogleClientSecret,
+    OpenedSecret? GoogleClientSecret,
     string? GoogleOAuthRedirectUri,
-    string? AnthropicApiKey,
-    string? ClaudeSubscriptionToken,
-    string? CodexApiKey,
-    string? XaiApiKey,
+    OpenedSecret? AnthropicApiKey,
+    OpenedSecret? ClaudeSubscriptionToken,
+    OpenedSecret? CodexApiKey,
+    OpenedSecret? XaiApiKey,
     string? LocalPersonName,
     long? RunnerDefaultMaxTokens,
     long? RunnerDefaultMaxTokensPerHour,
@@ -89,15 +92,15 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
                 TimeZone: values.GetValueOrDefault(SiteSettingKeys.TimeZone, "America/New_York"),
                 GoogleClientId: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.GoogleClientId)),
                 // The read side has to hand back something usable, so the
-                // client secret is deobfuscated here.
-                GoogleClientSecret: Deobfuscated(SiteSettingKeys.GoogleClientSecret, values, unreadable),
+                // client secret is opened here.
+                GoogleClientSecret: Opened(SiteSettingKeys.GoogleClientSecret, values, unreadable),
                 GoogleOAuthRedirectUri: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.GoogleOAuthRedirectUri)),
-                // Deobfuscated for the same reason as the Google secret above:
+                // Opened for the same reason as the Google secret above:
                 // the game module has to hand it to an SDK, not display it.
-                AnthropicApiKey: Deobfuscated(SiteSettingKeys.AnthropicApiKey, values, unreadable),
-                ClaudeSubscriptionToken: Deobfuscated(SiteSettingKeys.ClaudeSubscriptionToken, values, unreadable),
-                CodexApiKey: Deobfuscated(SiteSettingKeys.CodexApiKey, values, unreadable),
-                XaiApiKey: Deobfuscated(SiteSettingKeys.XaiApiKey, values, unreadable),
+                AnthropicApiKey: Opened(SiteSettingKeys.AnthropicApiKey, values, unreadable),
+                ClaudeSubscriptionToken: Opened(SiteSettingKeys.ClaudeSubscriptionToken, values, unreadable),
+                CodexApiKey: Opened(SiteSettingKeys.CodexApiKey, values, unreadable),
+                XaiApiKey: Opened(SiteSettingKeys.XaiApiKey, values, unreadable),
                 // No default: "nobody has said" is a distinct answer from any
                 // name, and it is what tells the nav strip to explain how to
                 // set one. LocalCaller decides what unset means.
@@ -134,7 +137,7 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
     /// <paramref name="unreadable"/> and warned about by name, once until the
     /// stored text changes. Neither the stored text nor any plaintext reaches the log.
     /// </summary>
-    private string? Deobfuscated(string key, IReadOnlyDictionary<string, string> values, ISet<string> unreadable)
+    private OpenedSecret? Opened(string key, IReadOnlyDictionary<string, string> values, ISet<string> unreadable)
     {
         var stored = values.GetValueOrDefault(key);
         var plaintext = protector.Unprotect(stored, SecretStores.SiteSetting(key));

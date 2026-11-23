@@ -44,7 +44,7 @@ public class SecretProtectorTests
     {
         var protector = WithKey();
 
-        Assert.Equal("hunter2", protector.Unprotect(Sealed(protector, "hunter2"), Row));
+        Assert.Equal("hunter2", (protector.Unprotect(Sealed(protector, "hunter2"), Row))?.Reveal());
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class SecretProtectorTests
     {
         var protector = WithKey();
 
-        Assert.Equal(Awkward, protector.Unprotect(Sealed(protector, Awkward), Row));
+        Assert.Equal(Awkward, (protector.Unprotect(Sealed(protector, Awkward), Row))?.Reveal());
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class SecretProtectorTests
 
         var rotated = WithKey(NewKey(), oldKey);
 
-        Assert.Equal("hunter2", rotated.Unprotect(stored, Row));
+        Assert.Equal("hunter2", (rotated.Unprotect(stored, Row))?.Reveal());
         Assert.NotEqual(stored.Split(':')[1].Split('.')[0], Sealed(rotated, "hunter2").Split(':')[1].Split('.')[0]);
     }
 
@@ -114,8 +114,8 @@ public class SecretProtectorTests
         var legacy = SecretObfuscator.Obfuscate("legacy-token");
         var protector = WithNoKey();
 
-        Assert.Equal("legacy-token", protector.Unprotect($"v1:{legacy}", Row));
-        Assert.Equal("legacy-token", protector.Unprotect(legacy, Row));
+        Assert.Equal("legacy-token", (protector.Unprotect($"v1:{legacy}", Row))?.Reveal());
+        Assert.Equal("legacy-token", (protector.Unprotect(legacy, Row))?.Reveal());
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class SecretProtectorTests
         // v1 never carried a row name, so none can be checked.
         var legacy = SecretObfuscator.Obfuscate("legacy-token");
 
-        Assert.Equal("legacy-token", WithKey().Unprotect($"v1:{legacy}", "chat-workspace/slack/T1"));
+        Assert.Equal("legacy-token", (WithKey().Unprotect($"v1:{legacy}", "chat-workspace/slack/T1"))?.Reveal());
     }
 
     [Fact]
