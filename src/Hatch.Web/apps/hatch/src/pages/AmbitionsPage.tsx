@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, PageHeader } from '@hatch/ui';
+import { Card, EmptyState, PageHeader } from '@hatch/ui';
 import { getAmbitions, getBallot, getStatuses } from '../api/client';
 import { ScopeGate } from '../components/ScopeGate';
 import { StatusPill } from '../components/StatusPill';
@@ -133,15 +133,15 @@ export function WaitingStrip({
   now: Date;
 }) {
   if (error || !ballot) {
-    return <p className="text-danger">What is waiting on you could not be read: {error ?? 'no answer'}</p>;
+    return <p className="text-danger hatch-ambition-failure">What is waiting on you could not be read: {error ?? 'no answer'}</p>;
   }
 
   const lines = holdQuestions(ballot);
-  if (lines.length === 0) return <p className="text-muted">Nothing is waiting on you.</p>;
+  if (lines.length === 0) return <EmptyState message="Nothing is waiting on you." />;
 
   return (
-    <section className="hatch-ambition-strip">
-      <h2>
+    <Card as="section" className="hatch-ambition-strip">
+      <h2 className="hatch-section-title">
         {lines.length} {lines.length === 1 ? 'decision' : 'decisions'} waiting on you
       </h2>
       <ul className="hatch-ambition-strip-lines">
@@ -156,13 +156,13 @@ export function WaitingStrip({
           </li>
         ))}
       </ul>
-    </section>
+    </Card>
   );
 }
 
 /** The rows, or the one sentence saying there are none in scope. */
 export function AmbitionList({ ambitions, statuses }: { ambitions: AmbitionRow[]; statuses: Status[] }) {
-  if (ambitions.length === 0) return <p className="text-muted">No ambition in scope.</p>;
+  if (ambitions.length === 0) return <EmptyState message="No ambition in scope." />;
 
   return (
     <ul className="hatch-ambition-list">
@@ -209,7 +209,7 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
           {row.capabilities} {row.capabilities === 1 ? 'capability' : 'capabilities'}
         </h3>
         {drawn.length === 0 ? (
-          <p className="text-muted">This ambition has no capabilities yet.</p>
+          <EmptyState message="This ambition has no capabilities yet." />
         ) : (
           <>
             {/* Widths are the counts in proportion: flex-grow carries the count
@@ -240,10 +240,10 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
           In flight, {row.open.length} of {row.limit}
         </h3>
         {row.open.length === 0 ? (
-          <p className="text-muted">No epic is open under this ambition.</p>
+          <EmptyState message="No epic is open under this ambition." />
         ) : (
           <>
-            <p className="text-muted">
+            <p className="hatch-ambition-note">
               {row.open.length} open, runs {row.limit} at once
             </p>
             <ul className="hatch-progress-list hatch-ambition-epics">
