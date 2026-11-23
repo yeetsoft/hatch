@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionPanel } from './AttentionPanel';
 import { reviewEmptyWords } from '../lib/attention';
-import type { Attention, Conflict, ExhaustedRunner } from '../types';
+import type { Attention, AttentionRunnerFailure, Conflict, ExhaustedRunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    AttentionHuman.test.tsx reads - and a press cannot be made: only the
@@ -36,6 +36,15 @@ const exhausted = (over: Partial<ExhaustedRunner> = {}): ExhaustedRunner => ({
   name: 'runner-a',
   where: null,
   exhaustedUntil: new Date(Date.now() + 3_600_000).toISOString(),
+  ...over,
+});
+
+const failing = (over: Partial<AttentionRunnerFailure> = {}): AttentionRunnerFailure => ({
+  name: 'runner-a',
+  where: 'host:/checkouts/a',
+  kind: 'forge',
+  why: null,
+  beganAt: new Date(Date.now() - 600_000).toISOString(),
   ...over,
 });
 
@@ -73,6 +82,58 @@ describe('AttentionPanel', () => {
     expect(buttons(html, false)).toBe(2);
     expect(html).toContain(plainH3('Out of usage'));
     expect(html).toContain('runner-a');
+  });
+
+  it('draws no Failing runners section when none is failing, absent or empty', () => {
+    expect(render(attention())).not.toContain('Failing runners');
+    expect(render(attention({ runnerFailures: [] }))).not.toContain('Failing runners');
+  });
+
+  it('draws Failing runners beside the group buttons, above Out of usage, when a runner fails', () => {
+    const html = render(attention({ runnerFailures: [failing()], exhaustedRunners: [exhausted()] }));
+
+    expect(buttons(html, false)).toBe(2);
+    expect(html).toContain(plainH3('Failing runners'));
+    expect(html.indexOf('Failing runners')).toBeLessThan(html.indexOf('Out of usage'));
+    expect(html.indexOf('Out of usage')).toBeLessThan(html.indexOf('>Human<'));
+  });
+
+  it('draws a row for each failure with the runner, its checkout, what it cannot do and what the tool said', () => {
+    const html = render(attention({
+      runnerFailures: [
+        failing({ why: 'token expired' }),
+        failing({ name: 'runner-b', where: null, kind: 'signing' }),
+      ],
+    }));
+
+    expect((html.match(/<li>/g) ?? []).length).toBe(2);
+    expect(html).toContain('runner-a');
+    expect(html).toContain('host:/checkouts/a');
+    expect(html).toContain('Cannot reach its forge since');
+    expect(html).toContain('gh said: token expired');
+    expect(html).toContain('runner-b');
+    expect(html).toContain('Cannot sign its commits since');
+  });
+
+  it('gives each kind its own advice', () => {
+    const advice: [string, string][] = [
+      ['forge', 'Sign gh in on that machine.'],
+      ['signing', 'Fix signing on that machine, or allow unsigned commits on the project.'],
+      ['agent-signed-out', 'Sign the agent in on that machine.'],
+      ['agent-not-starting', 'Read what the agent said, on the runner&#x27;s page.'],
+      ['board-paused', 'Read why on the runner&#x27;s page, where the pause can be lifted.'],
+    ];
+    for (const [kind, words] of advice) {
+      expect(render(attention({ runnerFailures: [failing({ kind })] }))).toContain(words);
+    }
+  });
+
+  it('makes the whole row a link to that runner\'s page', () => {
+    const html = render(attention({ runnerFailures: [failing({ name: 'a runner' })] }));
+
+    const anchor = (html.match(/<a [^>]*>/g) ?? []).find((a) => a.includes("href=\"/runners/a%20runner\""));
+    expect(anchor).toContain("hatch-attention-row");
+    expect(html).toContain('href="/runners/a%20runner"');
   });
 
   it('draws Agent plain, its conflicts open and its other section folded, when a branch conflicts', () => {

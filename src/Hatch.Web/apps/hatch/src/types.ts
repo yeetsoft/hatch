@@ -2395,6 +2395,35 @@ export interface BoardHealth {
   previousTotal: number;
   pastNormal: number;
   hasWorkColumn: boolean;
+  runners: BoardHealthRunners;
+}
+
+/** The states a runner lane's cell can draw, in the order a cell picks among
+    them. Mirrors RunnerLanes' own constants. */
+export type BoardHealthCellState = 'let-go' | 'down' | 'moved' | 'working' | 'idle' | 'paused' | 'off' | 'blank';
+
+/** What a runner was doing in one bar. Mirrors BoardHealthCellDto. */
+export interface BoardHealthCell {
+  state: BoardHealthCellState;
+  why: string | null;
+}
+
+/** One runner's lane over the window: who it is, how it stands now, and a
+    cell for each of the read's bars. Mirrors BoardHealthLaneDto. */
+export interface BoardHealthLane {
+  name: string;
+  up: boolean;
+  paused: boolean;
+  lastSeenAt: string;
+  cells: BoardHealthCell[];
+}
+
+/** The runners' half of the board health read. Mirrors BoardHealthRunnersDto. */
+export interface BoardHealthRunners {
+  up: number;
+  paused: number;
+  withLane: number;
+  lanes: BoardHealthLane[];
 }
 
 // ---- Changelog report ----
@@ -2814,6 +2843,11 @@ export interface Attention {
       reset first. Not counted towards the badge - it lights a dot instead, see
       `attentionCount`'s remarks. Absent from a board that predates it. */
   exhaustedRunners?: ExhaustedRunner[];
+  /** One entry per current failure of a runner this reader is sent - their own
+      runners', and an admin's also those that belong to nobody - longest-standing
+      first. Counted towards the badge, one each: unlike out of usage, a failing
+      runner is a thing a person fixes. Absent from a board that predates it. */
+  runnerFailures?: AttentionRunnerFailure[];
   /** The merge column's issues that are stuck, with the judge's own sentence
       saying why - a person's to fix, every time. Absent from a board that
       predates them. */
@@ -2880,6 +2914,20 @@ export interface ExhaustedRunner {
   where: string | null;
   /** When it expects to reset. */
   exhaustedUntil: string;
+}
+
+/** One thing a runner cannot do now, for the attention panel. Mirrors AttentionRunnerFailureDto. */
+export interface AttentionRunnerFailure {
+  /** What the runner calls itself - the same string the Runners page keys on. */
+  name: string;
+  /** The checkout it is at, `host:/path`, or null where none was named. */
+  where: string | null;
+  /** `forge`, `signing`, `agent-signed-out`, `agent-not-starting` or `board-paused`. */
+  kind: string;
+  /** What the tool said, one line, or null where it said nothing. */
+  why: string | null;
+  /** When a beat first found it failing. */
+  beganAt: string;
 }
 
 // ---- Who is sitting here ----

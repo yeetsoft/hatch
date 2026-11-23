@@ -32,7 +32,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/attention")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class AttentionController(HatchContext db, IActorDirectory actors, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup, IAuthService keys, GooseWatch gooseWatch, IOptions<HatchOptions> options) : ControllerBase
+public class AttentionController(HatchContext db, IActorDirectory actors, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup, IAuthService keys, GooseWatch gooseWatch, IOptions<HatchOptions> options, ICallerIdentity caller, RunnerSessions sessions, IOptions<AuthOptions> auth) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AttentionDto>> GetAttention(CancellationToken ct)
@@ -47,6 +47,9 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         var questions = await Questions.ProjectAsync(db, Questions.Waiting(db), ct);
 
         var exhausted = await ExhaustedRunnersAsync(ct);
+
+        // What is wrong with the runners this reader is sent - whatever the board's shape.
+        var runnerFailures = await RunnerFailuresAsync(ct);
 
         // Only the ancestor walk MergeWork.Judge needs below, for a
         // pre-approved review row - not the full DependencyGate, which this
@@ -137,7 +140,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity, Stalled: stalled, StallResumeSeconds: dispatch.StallResumeSeconds, HeldAtProjectLine: heldAtProjectLine, Findings: findings, Goose: goose);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity, Stalled: stalled, StallResumeSeconds: dispatch.StallResumeSeconds, HeldAtProjectLine: heldAtProjectLine, Findings: findings, Goose: goose, RunnerFailures: runnerFailures);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -252,7 +255,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
             approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity, stalled, dispatch.StallResumeSeconds,
-            ContributionsHeld: contributionsHeld, HeldAtProjectLine: heldAtProjectLine, Findings: findings, Goose: goose);
+            ContributionsHeld: contributionsHeld, HeldAtProjectLine: heldAtProjectLine, Findings: findings, Goose: goose, RunnerFailures: runnerFailures);
     }
 
     /// <summary>
@@ -327,6 +330,52 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
             .Select(r => new ExhaustedRunnerDto(r.Name, r.Where, r.ExhaustedUntil!.Value))
             .ToList();
     }
+
+    /// <summary>
+    /// Every current failure of the runners this reader is sent, longest-standing
+    /// first. What is current is <see cref="RunnerFailures.Current"/>'s - an
+    /// ended row and a runner gone quiet are simply not in it - so this writes
+    /// no second rule, and nothing sweeps.
+    /// </summary>
+    /// <remarks>
+    /// Narrower than the Runners page, where any signed-in person sees every
+    /// runner: a failure is a thing the person who can fix it is told, so an
+    /// owned runner is sent to its owner, and one that belongs to nobody to an
+    /// admin. The wall off sends all, since nobody there is anybody in particular.
+    /// A key is sent what its owner would be.
+    /// </remarks>
+    private async Task<IReadOnlyList<AttentionRunnerFailureDto>> RunnerFailuresAsync(CancellationToken ct)
+    {
+        var open = await db.RunnerFailures.AsNoTracking()
+            .Where(f => f.EndedAt == null)
+            .ToListAsync(ct);
+        if (open.Count == 0) return [];
+
+        var now = time.GetUtcNow();
+        var wallOff = !auth.Value.Enabled;
+        var principal = wallOff ? null : (await actors.PrincipalAsync(ct))?.Id;
+        var admin = !wallOff && await IsAdminAsync(ct);
+
+        var failures = new List<AttentionRunnerFailureDto>();
+        foreach (var runner in await Runner.JoinAsync(db, keys, ct))
+        {
+            var sent = wallOff
+                || (runner.OwnerPersonId is { } owner ? principal == owner : admin || principal is null);
+            if (!sent) continue;
+
+            failures.AddRange(RunnerFailures.Current(open, runner, sessions, now)
+                .Select(f => new AttentionRunnerFailureDto(runner.Name, f.Where, f.Kind, f.Why, f.BeganAt)));
+        }
+
+        return failures
+            .OrderBy(f => f.BeganAt).ThenBy(f => f.Name, StringComparer.Ordinal).ThenBy(f => f.Kind, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>Whether the reader is an admin: a person's own role, or the calling key's owner's.</summary>
+    private async Task<bool> IsAdminAsync(CancellationToken ct) =>
+        await caller.PersonAsync(ct) is { Role: >= PersonRole.Admin }
+        || await caller.ApiKeyAsync(ct) is { Owner.Role: >= PersonRole.Admin };
 
     /// <summary>
     /// Every project whose merge train has passed over every runner that could

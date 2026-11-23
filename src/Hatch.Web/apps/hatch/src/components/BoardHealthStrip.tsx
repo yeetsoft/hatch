@@ -7,7 +7,7 @@ import { useScope } from '../lib/useScope';
 import { usePhone } from '../lib/viewport';
 import type { BoardHealth } from '../types';
 import { BoardHealthRow } from './BoardHealthRow';
-import { InFlightTile, MovedTile, OldestTile, WaitingTile } from './BoardHealthTiles';
+import { InFlightTile, MovedTile, OldestTile, RunnersTile, WaitingTile } from './BoardHealthTiles';
 
 /* The four tiles above the board, one window and one hovered moment between
    them. Two parts: the view is pure - its answer, window and marked bar come in
@@ -61,6 +61,7 @@ export function BoardHealthStripView({
       <InFlightTile {...tile} readout={readouts.inFlight} href={flowHref(answer, scopeKeys)} />
       <OldestTile {...tile} readout={readouts.oldest} />
       <WaitingTile {...tile} readout={readouts.waiting} />
+      <RunnersTile {...tile} readout={readouts.runners} />
     </div>
   );
 }

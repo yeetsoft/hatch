@@ -4645,7 +4645,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/goose/runs` | GET | The goose's runs, newest first by last sweep, without the per-check detail but with `checks` and `checksFailed` counts; `limit` 1-200, default 50. Empty for a caller whose scope is not every project — see [the goose](#the-goose) |
 | `/goose/runs/{id}` | GET | One run with its per-check entries; `404` for a missing id and for every id to a caller whose scope is not every project — see [the goose](#the-goose) |
 | `/goose/findings/{id}/bug` | POST | `[RequireRole(PersonRole.User)]` on the method with no `AcceptKey`, so a key is refused. Files a bug from a goose finding and stores it on the finding - expedited, no pre-approval and the leftmost column unless the optional body (`priority`, `statusId`, `preApproval`, `projectKey`) says otherwise. A `projectKey` naming another project than the finding's is `400`; a finding naming none needs one the caller can see. A second call, or one at the same moment, answers the bug already filed - see [the goose](#the-goose) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus every issue whose next move no live runner can take for want of a model or a development dependency (`waitingOnARunner`, see [a move no live runner can take](#a-move-no-live-runner-can-take)), plus every project whose clear implementation steps no live runner, or only one, can take (`runnerCapacity`, see [runner capacity](#runner-capacity)), plus every issue held or marked stalled, in board order, with who it waits on (`stalled`, `stallResumeSeconds`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every current failure of a runner this reader is sent (`runnerFailures`, counted, unlike the line above - see [runners that are failing](#runners-that-are-failing)), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus every issue whose next move no live runner can take for want of a model or a development dependency (`waitingOnARunner`, see [a move no live runner can take](#a-move-no-live-runner-can-take)), plus every project whose clear implementation steps no live runner, or only one, can take (`runnerCapacity`, see [runner capacity](#runner-capacity)), plus every issue held or marked stalled, in board order, with who it waits on (`stalled`, `stallResumeSeconds`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it. It also carries the site's default token caps, `defaultMaxTokens` and `defaultMaxTokensPerHour` (`500k`, `2M`, a whole number; zero or junk is a `400` that writes nothing) — **admin-only to write** inside this person-only route: a `403` for a person who is not an admin with the wall up, and for a key, but only when either default is present in the body. Runners with no cap of their own run under them — see [Runners on the board](#runners-on-the-board) |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set. Kept for an older container; new callers use `/settings/credentials/{agent}` below |
@@ -4948,6 +4948,10 @@ answer worth having, and it is the one it gives most of the time.
   "exhaustedRunners": [
     { "name": "host:/checkouts/one", "where": "host:/checkouts/one", "exhaustedUntil": "2026-09-28T23:40:00Z" }
   ],
+  "runnerFailures": [
+    { "name": "build-box", "where": "host:/checkouts/one", "kind": "forge",
+      "why": "gh: token expired", "beganAt": "2026-09-28T19:40:00Z" }
+  ],
   "approvedHeld": [
     { "key": "AER-15", "title": "A story stuck in the merge column", "type": "story",
       "pullRequestUrl": "https://forge.example/pulls/15",
@@ -5245,6 +5249,54 @@ heartbeat that says it is not clears the board's record at once - which is how
 a person overrides the wait: restarting the loop by hand starts a fresh night
 that carries nothing forward, and its first heartbeat clears whatever the
 board remembered.
+
+### Runners that are failing
+
+`runnerFailures` lists what a runner cannot do right now, for the person who
+can fix it. Each entry is the runner's `name`, its `where` (the checkout, or
+null where none was named), the `kind`, the `why` (what the tool said, or
+null) and when it `beganAt`. The kinds are the five a runner keeps (see
+[failures on a runner](#runners-on-the-board)): `forge`, `signing`,
+`agent-signed-out`, `agent-not-starting` and `board-paused`. It is read the
+way the Runners page reads a runner's current failures, so there is one
+definition of current: an ended failure, and a runner that has gone quiet,
+are simply not in the list at the next poll. Nothing is pressed, nothing is
+written, and nothing sweeps. Longest-standing first, then by name, then by kind.
+The list is empty, never absent, and is read whatever the board's shape.
+
+Who is sent an entry is narrower than who may see the runner on the Runners
+page, where any signed-in person sees every runner:
+
+- A person is sent the failures of runners whose key is theirs.
+- An admin is also sent those of runners whose key belongs to nobody.
+- Where the wall is off, everybody is sent all of them.
+- A key reading the route is sent what its owner would be. A key that belongs
+  to nobody is sent those of runners that belong to nobody.
+- Nobody else is sent the row at all. The Runners page still shows every
+  runner's failures to whoever may read that runner.
+
+Unlike a runner out of usage, a failure is a thing to fix, so each entry
+counts towards `attentionCount` and lights the control. The accessible name
+says `1 runner is failing`: it counts runners, not entries, so two failures on
+one runner are two in the count and one runner in the sentence. There is no new
+pill, and `hatch board` does not change.
+
+The panel draws a **Failing runners** section above **Out of usage** and above
+*Human*, only when it has rows. A row names the runner and its checkout, says
+what it cannot do and since when in the viewer's own time zone, and what the
+tool said, then what a person does about it:
+
+| Kind | What a person does |
+| --- | --- |
+| `forge` | Sign `gh` in on that machine. |
+| `signing` | Fix signing on that machine, or allow unsigned commits on the project. |
+| `agent-signed-out` | Sign the agent in on that machine. |
+| `agent-not-starting` | Read what the agent said, on the runner's page. |
+| `board-paused` | Read why on the runner's page, where the pause can be lifted. |
+
+A click anywhere on a row opens that runner's page. There is no way to dismiss
+or snooze a row: it goes when the runner is well again. The
+[troubleshooting](troubleshooting) page has an entry for each kind.
 
 ### A move no live runner can take
 
