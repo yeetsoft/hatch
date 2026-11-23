@@ -651,8 +651,24 @@ same moment on all four.
   count, with the other two beside it. Pressing the tile opens the [cumulative
   flow](flow-wip-and-the-battery) report on the same window and the same projects.
 - **Oldest in flight** is the longest stay of an issue that has no children and
-  is in flight, as a time such as `14h 20m`. Under it is how many in-flight
-  cards are past normal for their column, in amber with a warning sign.
+  is in flight, as a time such as `14h 20m`, or "none". Under it is how many
+  in-flight cards are past normal for their column, in amber with a warning
+  sign, or "none past normal". The line under that names the oldest issue by key
+  and column, as "AER-12 · In Review", and is a link that opens it. Point at the
+  number or at that line, or focus either, and a note shows the issue's key and
+  title, how long it has stood in its column, and that column's normal.
+
+  The sparkline is stacked bands of the in-flight issues by age, across the 24
+  bars: **past normal** at the bottom, **aging** above it and **healthy** above
+  that, in red, amber and green. An issue is healthy for under half of its
+  column's normal, aging from half up to the normal, and past normal beyond it.
+  Past normal sits on the baseline because it is the band that matters. A fourth,
+  grey band tops the stack, and only when an issue stands in a column that has no
+  normal yet. The bands are scaled to the tallest bar, and a bar with nothing in
+  flight draws nothing. On a bar the number becomes the oldest stay then, the
+  second line says the time, and the line under it says the split, as "2 past
+  normal · 3 aging · 9 healthy". The split is also in the tile's spoken label,
+  so no band is told by colour alone.
 - **Waiting on you** counts pull requests and questions waiting on a person. The
   sparkline is steps. The big number is the count now, and under it is how long
   the oldest has waited. At zero it says "nothing waiting".

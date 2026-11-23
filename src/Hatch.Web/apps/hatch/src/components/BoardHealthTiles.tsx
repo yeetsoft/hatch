@@ -3,16 +3,18 @@ import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'reac
 import { Link, useNavigate } from 'react-router-dom';
 import {
   BARS,
+  ageBandPolygons,
   bandPolygons,
   barIndexAt,
+  issuePeek,
   momentX,
   movedBars,
-  oldestLine,
+  oldestIssue,
   stepMoment,
   tileLabel,
   waitingSteps,
 } from '../lib/boardHealth';
-import type { Tile, TileReadout } from '../lib/boardHealth';
+import type { IssuePeek, Tile, TileReadout } from '../lib/boardHealth';
 import { LANE_LEGEND, cellWords, drawnLanes, hoverList } from '../lib/boardHealthLanes';
 import type { BoardHealth, BoardHealthCell } from '../types';
 
@@ -57,6 +59,8 @@ function HealthTile({
   legend,
   popover,
   hover,
+  detailHref,
+  peek,
 }: TileProps & {
   tile: Tile;
   label: string;
@@ -76,8 +80,13 @@ function HealthTile({
   popover?: ReactNode;
   /** The hover list, said last in the tile's spoken label. */
   hover?: string;
+  /** Makes the detail line a link to this path - set only while no bar is marked. */
+  detailHref?: string;
+  /** A note shown on pointing at, or focusing, the number or the detail line. */
+  peek?: IssuePeek;
 }) {
   const count = answer.bars.length;
+  const peekId = useId();
 
   const onMove = (event: PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -106,7 +115,11 @@ function HealthTile({
         )}
       </h3>
       {keyButton}
-      <p className="hatch-health-value">
+      <p
+        className="hatch-health-value"
+        tabIndex={peek ? 0 : undefined}
+        aria-describedby={peek ? peekId : undefined}
+      >
         <span className="hatch-health-number" data-part="value">
           {readout.value}
         </span>
@@ -120,8 +133,22 @@ function HealthTile({
         {readout.second}
       </p>
       <p className="hatch-health-detail" data-part="detail" title={readout.detail || undefined}>
-        {readout.detail}
+        {detailHref && readout.detail ? (
+          <Link to={detailHref} className="hatch-health-detail-link">
+            {readout.detail}
+          </Link>
+        ) : (
+          readout.detail
+        )}
       </p>
+      {peek && (
+        <div id={peekId} className="hatch-health-peek" role="tooltip">
+          <p className="hatch-health-peek-title">{peek.heading}</p>
+          <p>
+            {peek.stood} · {peek.normal}
+          </p>
+        </div>
+      )}
       <div
         className={`hatch-health-spark${onActivate ? ' hatch-health-spark--link' : ''}`}
         data-part="spark"
@@ -207,12 +234,24 @@ export function InFlightTile({ answer, index, onIndex, readout, href }: TileProp
 }
 
 export function OldestTile({ answer, index, onIndex, readout }: TileProps) {
-  const line = oldestLine(answer, WIDTH, HEIGHT);
+  const bands = ageBandPolygons(answer, WIDTH, HEIGHT);
+  const issue = index === null ? oldestIssue(answer) : null;
 
   return (
-    <HealthTile tile="oldest" label="Oldest in flight" readout={readout} answer={answer} index={index} onIndex={onIndex}>
-      <path className="hatch-health-line" d={line.path} vectorEffect="non-scaling-stroke" fill="none" />
-      {line.last && <path className="hatch-health-dot" d={dot(line.last.x, line.last.y)} vectorEffect="non-scaling-stroke" fill="none" />}
+    <HealthTile
+      tile="oldest"
+      label="Oldest in flight"
+      readout={readout}
+      answer={answer}
+      index={index}
+      onIndex={onIndex}
+      detailHref={issue ? `/issues/${encodeURIComponent(issue.key)}` : undefined}
+      peek={issue ? issuePeek(issue) : undefined}
+    >
+      <polygon className="hatch-health-band hatch-health-band--healthy" points={bands.healthy} />
+      <polygon className="hatch-health-band hatch-health-band--aging" points={bands.aging} />
+      <polygon className="hatch-health-band hatch-health-band--past" points={bands.pastNormal} />
+      {bands.noNormal && <polygon className="hatch-health-band hatch-health-band--nonormal" points={bands.noNormal} />}
     </HealthTile>
   );
 }

@@ -91,7 +91,7 @@ describe('BoardHealthPhoneView', () => {
   it('says the full sentence for each number and shows the short pair', () => {
     const html = phone(sampleHealth(), false);
 
-    expect(html).toContain('aria-label="Oldest in flight: 4h, 2 past normal"');
+    expect(html).toContain('aria-label="Oldest in flight: 4h, 2 past normal, HA-101 · In Progress, 2 past normal · 1 aging · 2 healthy"');
     expect(html).toContain('>2 old<');
     expect(html).not.toContain('>2 past normal<');
   });

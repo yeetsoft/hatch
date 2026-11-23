@@ -3,6 +3,7 @@ import {
   BARS,
   DEFAULT_HEALTH_WINDOW,
   HEALTH_WINDOWS,
+  ageBandPolygons,
   axisSentence,
   bandPolygons,
   barIndexAt,
@@ -10,17 +11,26 @@ import {
   compactReadout,
   flowHref,
   hasStrip,
+  issuePeek,
   momentX,
   movedBars,
-  oldestLine,
+  oldestIssue,
   parseHealthWindow,
   readout,
+  splitSentence,
   stepMoment,
   tileLabel,
   waitingSteps,
 } from './boardHealth';
 import { momentLabel } from './cumulativeFlow';
-import type { BoardHealth, BoardHealthBar, BoardHealthCell, BoardHealthLane, BoardHealthRunners } from '../types';
+import type {
+  BoardHealth,
+  BoardHealthBar,
+  BoardHealthCell,
+  BoardHealthIssue,
+  BoardHealthLane,
+  BoardHealthRunners,
+} from '../types';
 
 const TO = Date.parse('2026-11-22T15:40:00.000Z');
 const BAR_MS = 20 * 60_000;
@@ -137,6 +147,19 @@ const quiet = (): BoardHealth =>
     previousTotal: 0,
     pastNormal: 0,
   });
+
+/** One in-flight issue: HA-101 in In Progress for 4h 10m, whose normal is 2h. */
+const issue = (over: Partial<BoardHealthIssue> = {}): BoardHealthIssue => ({
+  key: 'HA-101',
+  title: 'The oldest one',
+  statusId: 3,
+  statusName: 'In Progress',
+  enteredAt: new Date(TO - 15_000_000).toISOString(),
+  seconds: 15_000,
+  normalSeconds: 7200,
+  band: 'pastNormal',
+  ...over,
+});
 
 const pairs = (points: string): [number, number][] =>
   points.split(' ').map((p) => p.split(',').map(Number) as [number, number]);
@@ -281,45 +304,103 @@ describe('bandPolygons', () => {
   });
 });
 
-describe('oldestLine', () => {
+describe('ageBandPolygons', () => {
   const W = 240;
-  const H = 40;
+  const H = 100;
+  /** Bar 4 holds 1 past normal, 2 aging and 3 healthy; bar 9 holds 1 aging only; the rest are as `bar` makes them. */
+  const ages = (i: number) =>
+    i === 4
+      ? { healthy: 3, aging: 2, pastNormal: 1, noNormal: 0 }
+      : i === 9
+        ? { healthy: 0, aging: 1, pastNormal: 0, noNormal: 0 }
+        : { healthy: 1, aging: 1, pastNormal: 0, noNormal: 0 };
+  const known = answer({ bars: bars((i) => ({ ages: ages(i) })) });
+  const polygons = ageBandPolygons(known, W, H);
+  const valueOf = (y: number) => ((H - y) / H) * 6;
 
-  it('breaks into separate segments where nothing was in flight, never drawing to zero', () => {
-    const { path } = oldestLine(answer(), W, H);
-
-    // Bars 6, 13 and 20 have none in flight: four runs, 24 - 3 points.
-    expect(path.match(/M/g)).toHaveLength(4);
-    const points = [...path.matchAll(/[ML] (\S+) (\S+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
-    expect(points).toHaveLength(21);
-    const xs = points.map(([x]) => x);
-    for (const gap of [6, 13, 20]) expect(xs).not.toContain(momentX(gap, W));
-    expect(points.every(([, y]) => y < H)).toBe(true);
+  it('writes each band as its upper edge left to right then its own lower edge back', () => {
+    for (const band of [polygons.pastNormal, polygons.aging, polygons.healthy]) {
+      const points = pairs(band);
+      expect(points).toHaveLength(48);
+      points.slice(0, 24).forEach(([x], i) => expect(x).toBe(momentX(i, W)));
+      points.slice(24).forEach(([x], i) => expect(x).toBe(momentX(23 - i, W)));
+    }
   });
 
-  it('scales to the oldest and gives the last bar as the dot', () => {
-    const { last } = oldestLine(answer(), W, H);
+  it('stacks past normal lowest, aging above it, healthy above that, at a bar with known ages', () => {
+    const past = pairs(polygons.pastNormal).slice(0, 24)[4][1];
+    const aging = pairs(polygons.aging).slice(0, 24)[4][1];
+    const healthy = pairs(polygons.healthy).slice(0, 24)[4][1];
 
-    expect(last).toEqual({ x: momentX(23, W), y: 0 });
+    expect(valueOf(past)).toBeCloseTo(1, 1);
+    expect(valueOf(aging)).toBeCloseTo(3, 1);
+    expect(valueOf(healthy)).toBeCloseTo(6, 1);
+    // Past normal's upper edge is aging's lower edge, and it rests on the floor.
+    expect(pairs(polygons.aging).slice(24)).toEqual(pairs(polygons.pastNormal).slice(0, 24).reverse());
+    expect(pairs(polygons.healthy).slice(24)).toEqual(pairs(polygons.aging).slice(0, 24).reverse());
+    expect(pairs(polygons.pastNormal).slice(24).every(([, y]) => y === H)).toBe(true);
   });
 
-  it('has no dot when the last bar has nothing in flight', () => {
-    const open = answer({ bars: bars((i) => (i === 23 ? { oldestInFlightSeconds: null } : {})) });
+  it('scales to the tallest bar, which touches the top', () => {
+    const tops = pairs(polygons.healthy).slice(0, 24).map(([, y]) => y);
 
-    expect(oldestLine(open, W, H).last).toBeNull();
-    expect(oldestLine(open, W, H).path).toContain('M');
+    expect(Math.min(...tops)).toBe(0);
+    expect(tops[4]).toBe(0);
+    expect(tops[0]).toBeGreaterThan(0);
   });
 
-  it('draws a lone point as a zero-length line so a round cap shows it', () => {
-    const lone = answer({ bars: bars((i) => ({ oldestInFlightSeconds: i === 5 ? 600 : null })) });
-    const x = momentX(5, W);
+  it('draws a bar with nothing in flight flat', () => {
+    const empty = answer({ bars: bars((i) => ({ ages: i === 9 ? { healthy: 0, aging: 0, pastNormal: 0, noNormal: 0 } : ages(i) })) });
+    const drawn = ageBandPolygons(empty, W, H);
 
-    expect(oldestLine(lone, W, H).path).toBe(`M ${x} 0 L ${x} 0`);
+    for (const band of [drawn.pastNormal, drawn.aging, drawn.healthy]) {
+      const points = pairs(band);
+      expect(points[9][1]).toBe(points[47 - 9][1]);
+    }
   });
 
-  it('is an empty path and no dot with no bars, or none in flight at all', () => {
-    expect(oldestLine(answer({ bars: [] }), W, H)).toEqual({ path: '', last: null });
-    expect(oldestLine(quiet(), W, H)).toEqual({ path: '', last: null });
+  it('leaves the neutral band empty unless some bar has an issue with no normal', () => {
+    expect(polygons.noNormal).toBe('');
+
+    const some = answer({ bars: bars((i) => ({ ages: { ...ages(i), noNormal: i === 12 ? 2 : 0 } })) });
+    const drawn = ageBandPolygons(some, W, H);
+
+    expect(drawn.noNormal).not.toBe('');
+    // It sits on top of healthy.
+    expect(pairs(drawn.noNormal).slice(24)).toEqual(pairs(drawn.healthy).slice(0, 24).reverse());
+  });
+
+  it('is four empty strings with no bars', () => {
+    expect(ageBandPolygons(answer({ bars: [] }), W, H)).toEqual({ pastNormal: '', aging: '', healthy: '', noNormal: '' });
+  });
+
+  it('stays finite when nothing is in flight anywhere', () => {
+    const strings = Object.values(ageBandPolygons(quiet(), W, H)).join(' ');
+
+    expect(strings).not.toMatch(/NaN|Infinity/);
+  });
+});
+
+describe('the oldest issue in words', () => {
+  it('is the first of the first in the list, or null with none', () => {
+    expect(oldestIssue(answer({ inFlightIssues: [issue(), issue({ key: 'HA-102' })] }))?.key).toBe('HA-101');
+    expect(oldestIssue(answer())).toBeNull();
+  });
+
+  it('says the split from past normal down, and a column with no normal only when there is one', () => {
+    expect(splitSentence({ healthy: 9, aging: 3, pastNormal: 2, noNormal: 0 })).toBe('2 past normal · 3 aging · 9 healthy');
+    expect(splitSentence({ healthy: 9, aging: 3, pastNormal: 2, noNormal: 1 })).toBe(
+      '2 past normal · 3 aging · 9 healthy · 1 no normal yet',
+    );
+  });
+
+  it('says the key and title, how long it stood in its column, and the normal of the column', () => {
+    expect(issuePeek(issue())).toEqual({
+      heading: 'HA-101 The oldest one',
+      stood: 'Stood 4h 10m in In Progress',
+      normal: 'normal 2h',
+    });
+    expect(issuePeek(issue({ normalSeconds: null })).normal).toBe('no normal yet');
   });
 });
 
@@ -356,7 +437,7 @@ describe('an all-zero answer', () => {
     const q = quiet();
     const strings = [
       ...Object.values(bandPolygons(q, 240, 40)),
-      oldestLine(q, 240, 40).path,
+      ...Object.values(ageBandPolygons(q, 240, 40)),
       waitingSteps(q, 240, 40).line,
       waitingSteps(q, 240, 40).area,
     ].join(' ');
@@ -411,6 +492,19 @@ describe('readout at rest', () => {
 
   it('oldest in flight: the last bar span, and how many are past normal', () => {
     expect(rest.oldest).toMatchObject({ value: '4h', second: '2 past normal', tone: 'warn', glyph: '⚠' });
+  });
+
+  it('oldest in flight: the detail line names the oldest issue by key and column, and the split is spoken', () => {
+    const named = readout(answer({ inFlightIssues: [issue(), issue({ key: 'HA-102' })] }), null).oldest;
+
+    expect(named.detail).toBe('HA-101 · In Progress');
+    expect(named.spoken).toBe('0 past normal · 1 aging · 1 healthy');
+    expect(named).toMatchObject({ value: '4h', second: '2 past normal', tone: 'warn', glyph: '⚠' });
+  });
+
+  it('oldest in flight: no issue leaves the detail empty', () => {
+    expect(rest.oldest.detail).toBe('');
+    expect(readout(answer({ inFlightIssues: [], bars: [] }), null).oldest.detail).toBe('');
   });
 
   it('oldest in flight: nothing past normal is plain, and none in flight says none', () => {
@@ -568,6 +662,14 @@ describe('readout on a bar', () => {
     expect(readout(answer(), 6).oldest.value).toBe('none');
   });
 
+  it('oldest in flight: the detail on a bar is the split at that bar, and nothing is added to say aloud', () => {
+    const withIssue = answer({ inFlightIssues: [issue()], bars: bars((i) => ({ ages: { healthy: 9, aging: 3, pastNormal: i === 8 ? 2 : 0, noNormal: 0 } })) });
+    const on = readout(withIssue, 8).oldest;
+
+    expect(on.detail).toBe('2 past normal · 3 aging · 9 healthy');
+    expect(on.spoken).toBeUndefined();
+  });
+
   it('waiting on you: the bar count, its moment, and what kind', () => {
     expect(readout(answer(), 8).waiting).toMatchObject({
       value: '2',
@@ -606,7 +708,7 @@ describe('tileLabel', () => {
 
   it('names the other tiles', () => {
     expect(tileLabel('inFlight', rest.inFlight)).toBe('In flight: 5, 2 waiting · 23 done');
-    expect(tileLabel('oldest', rest.oldest)).toBe('Oldest in flight: 4h, 2 past normal');
+    expect(tileLabel('oldest', rest.oldest)).toBe('Oldest in flight: 4h, 2 past normal, 0 past normal · 1 aging · 1 healthy');
     expect(tileLabel('waiting', rest.waiting)).toBe('Waiting on you: 3, oldest 2h 10m');
     expect(tileLabel('runners', rest.runners)).toBe('Runners: 3 of 4, up · 1 paused');
   });

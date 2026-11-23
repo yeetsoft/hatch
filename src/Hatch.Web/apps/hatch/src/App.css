@@ -2297,6 +2297,28 @@ button.hatch-card-stories:focus-visible {
   opacity: 0.55;
 }
 
+/* The oldest tile's age bands: past normal on the baseline, aging above it,
+   healthy above that. The split is always in words beside them too. */
+.hatch-health-band--healthy {
+  fill: var(--success-fill);
+  opacity: 0.55;
+}
+
+.hatch-health-band--aging {
+  fill: var(--warn);
+  opacity: 0.6;
+}
+
+.hatch-health-band--past {
+  fill: var(--danger);
+  opacity: 0.7;
+}
+
+.hatch-health-band--nonormal {
+  fill: var(--muted);
+  opacity: 0.3;
+}
+
 .hatch-health-line {
   stroke: var(--ink);
   stroke-width: 1.5;
@@ -2377,6 +2399,58 @@ button.hatch-card-stories:focus-visible {
 
 .hatch-health-legend p + p {
   margin-top: var(--sp-1);
+}
+
+/* The oldest issue's detail line is a link to it: it keeps the line's colour
+   and underlines on hover, as the tile's own label link does. */
+.hatch-health-detail-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.hatch-health-detail-link:hover {
+  text-decoration: underline;
+}
+
+.hatch-health-value:focus-visible,
+.hatch-health-detail-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* The oldest issue's peek: its key and title, how long it has stood and the
+   column's normal. Hidden until the number or the detail line is pointed at or
+   focused; it never takes a pointer, so it cannot steal the hover it draws from. */
+.hatch-health-peek {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  top: 100%;
+  left: 0;
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--t-label);
+  pointer-events: none;
+  max-width: 100%;
+}
+
+.hatch-health-peek p {
+  margin: 0;
+}
+
+.hatch-health-peek-title {
+  font-weight: 600;
+}
+
+.hatch-health-value:hover ~ .hatch-health-peek,
+.hatch-health-value:focus ~ .hatch-health-peek,
+.hatch-health-detail:hover ~ .hatch-health-peek,
+.hatch-health-detail:focus-within ~ .hatch-health-peek {
+  display: block;
 }
 
 /* The hover popover: who held the bar marked on every tile, in words. It sits
@@ -2663,7 +2737,8 @@ button.hatch-card-stories:focus-visible {
      named areas - they span both columns rather than crowd one. */
   .hatch-health-strip--stacked .hatch-health-key,
   .hatch-health-strip--stacked .hatch-health-legend,
-  .hatch-health-strip--stacked .hatch-health-lane-hover {
+  .hatch-health-strip--stacked .hatch-health-lane-hover,
+  .hatch-health-strip--stacked .hatch-health-peek {
     grid-column: 1 / -1;
   }
 
