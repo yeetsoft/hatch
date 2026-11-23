@@ -175,20 +175,39 @@ public sealed class PostgresGooseLock : IGooseLock
     /// <summary>The lock's key, arbitrary but fixed - "goose" in ASCII. Advisory locks are per database.</summary>
     private const long Key = 0x676F6F7365;
 
-    public async Task<IAsyncDisposable?> TryAcquireAsync(HatchContext db, CancellationToken ct)
+    public Task<IAsyncDisposable?> TryAcquireAsync(HatchContext db, CancellationToken ct)
     {
         var connectionString = db.Database.GetConnectionString()
             ?? throw new InvalidOperationException("The Hatch context has no connection string to take the sweep lock on");
 
+        return PostgresAdvisoryLock.TryAcquireAsync(connectionString, Key, ct);
+    }
+}
+
+/// <summary>
+/// The one way Hatch takes a Postgres session advisory lock: on a connection
+/// of its own, without waiting. Whatever holds it keeps that connection open
+/// until it is disposed, and a process that dies drops the lock with its
+/// session. Keys are per database, and each caller has one of its own.
+/// </summary>
+internal static class PostgresAdvisoryLock
+{
+    /// <summary>
+    /// Takes the lock <paramref name="key"/> on a new connection to
+    /// <paramref name="connectionString"/>, or returns null when another
+    /// session holds it. Disposing what is returned releases it.
+    /// </summary>
+    public static async Task<IAsyncDisposable?> TryAcquireAsync(string connectionString, long key, CancellationToken ct)
+    {
         var connection = new NpgsqlConnection(connectionString);
         try
         {
             await connection.OpenAsync(ct);
 
             await using var command = new NpgsqlCommand("SELECT pg_try_advisory_lock(@key)", connection);
-            command.Parameters.AddWithValue("key", Key);
+            command.Parameters.AddWithValue("key", key);
 
-            if ((bool)(await command.ExecuteScalarAsync(ct))!) return new Held(connection);
+            if ((bool)(await command.ExecuteScalarAsync(ct))!) return new Held(connection, key);
         }
         catch
         {
@@ -200,14 +219,14 @@ public sealed class PostgresGooseLock : IGooseLock
         return null;
     }
 
-    private sealed class Held(NpgsqlConnection connection) : IAsyncDisposable
+    private sealed class Held(NpgsqlConnection connection, long key) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()
         {
             try
             {
                 await using var command = new NpgsqlCommand("SELECT pg_advisory_unlock(@key)", connection);
-                command.Parameters.AddWithValue("key", Key);
+                command.Parameters.AddWithValue("key", key);
                 await command.ExecuteScalarAsync();
             }
             catch

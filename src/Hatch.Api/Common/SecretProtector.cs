@@ -2,7 +2,7 @@ namespace Hatch.Api.Common;
 
 /// <summary>
 /// The one way a secret is written to Hatch's database, and the one way it is
-/// read back.
+/// read back (docs/secrets-architecture.md).
 ///
 /// Every protected value carries the scheme that produced it, as
 /// <c>&lt;scheme&gt;:&lt;payload&gt;</c>.
@@ -33,6 +33,36 @@ public sealed class SecretProtector(SecretCipher cipher)
 
     /// <summary>Whether there is a key to seal with. Without one, <see cref="TrySeal"/> refuses.</summary>
     public bool CanSeal => cipher.CanSeal;
+
+    /// <summary>
+    /// Whether <paramref name="stored"/> is already as a save would write it
+    /// now: <c>v2</c>, under the current key. False for everything else,
+    /// including a value that cannot be opened - it says nothing of whether
+    /// the value is readable. Never throws.
+    /// </summary>
+    internal bool IsCurrent(string? stored)
+    {
+        var current = cipher.CurrentKeyId;
+        return current is not null && KeyIdOf(stored) == current;
+    }
+
+    /// <summary>
+    /// The key id a <c>v2</c> value names: the text between <c>v2:</c> and the
+    /// first <c>.</c>, if that is shaped like one (<see cref="SecretKeys.KeyId"/>:
+    /// eight lower-case hex characters). Null for <c>v1</c>, an untagged value,
+    /// or anything else, so a hand-edited value never comes back out of here
+    /// as an "id" to be logged. Never throws.
+    /// </summary>
+    internal static string? KeyIdOf(string? stored)
+    {
+        var prefix = $"{CurrentScheme}{SchemeSeparator}";
+        const int idLength = 8;
+        if (stored is null || !stored.StartsWith(prefix, StringComparison.Ordinal)) return null;
+        if (stored.Length <= prefix.Length + idLength || stored[prefix.Length + idLength] != '.') return null;
+
+        var id = stored.Substring(prefix.Length, idLength);
+        return id.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f')) ? id : null;
+    }
 
     /// <summary>
     /// Seals <paramref name="plaintext"/> for the row named <paramref name="rowName"/>.

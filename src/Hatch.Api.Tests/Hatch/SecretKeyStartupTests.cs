@@ -2,7 +2,10 @@ using System.Security.Cryptography;
 using Hatch.Api.Common;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Quartz;
 using QuartzLogProvider = Quartz.Logging.LogProvider;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -155,6 +158,62 @@ public class SecretKeyStartupTests
         Assert.DoesNotContain(logs.Messages, m => m.Contains(current) || m.Contains(previous));
     }
 
+    /// <summary>
+    /// Rotation end to end (HA-2749). Values sealed under one key, a start with a
+    /// second current and the first previous leaves every value under the second;
+    /// a start with the second alone still opens every one.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs * 2)]
+    public async Task A_rotated_key_reseals_every_stored_secret_at_start_and_the_old_key_can_then_go()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var first = NewKey();
+        var second = NewKey();
+        SecretKeys.TryParse(first, out var firstBytes);
+        SecretKeys.TryParse(second, out var secondBytes);
+
+        Dictionary<string, string> plaintexts = [];
+        var databases = await MinimalDatabases.CreateAsync();
+        try
+        {
+            await MinimalDatabases.MigrateAsync(databases.Hatch);
+            plaintexts = await SecretResealTests.SeedForRotationAsync(databases.Hatch, firstBytes!);
+
+            var rotated = await BootAsync(second, first, services => AssertEveryValueIsUnderAsync(services, secondBytes!, plaintexts), existingHatch: databases.Hatch);
+            Assert.Null(rotated.Failure);
+            Assert.Single(rotated.Logs.Messages, m => m.Contains($"Resealed {plaintexts.Count} stored secrets under key {SecretKeys.KeyId(secondBytes!)}; 0 could not be opened."));
+            Assert.DoesNotContain(rotated.Logs.Messages, m => m.Contains(first) || m.Contains(second));
+
+            var alone = await BootAsync(second, null, services => AssertEveryValueIsUnderAsync(services, secondBytes!, plaintexts), existingHatch: databases.Hatch);
+            Assert.Null(alone.Failure);
+            Assert.Single(alone.Logs.Messages, m => m.Contains("Resealed 0 stored secrets"));
+        }
+        finally
+        {
+            await MinimalDatabases.DropAsync(databases.Hatch, databases.Quartz);
+        }
+    }
+
+    private static async Task AssertEveryValueIsUnderAsync(IServiceProvider services, byte[] key, Dictionary<string, string> plaintexts)
+    {
+        // Stopping a host while its Quartz scheduler is still starting can hang the stop for a
+        // minute. The other cases here stop theirs about as fast, but they have less to do.
+        var scheduler = await services.GetRequiredService<ISchedulerFactory>().GetScheduler();
+        for (var waited = 0; !scheduler.IsStarted && waited < 100; waited++) await Task.Delay(50);
+
+        var connectionString = services.GetRequiredService<IConfiguration>().GetConnectionString("Hatch")!;
+        var protector = new SecretProtector(new SecretCipher(key, null));
+
+        var stored = await SecretResealTests.ReadAsync(connectionString);
+        Assert.Equal(plaintexts.Keys.Order(), stored.Keys.Order());
+        foreach (var (row, value) in stored)
+        {
+            Assert.True(protector.IsCurrent(value), $"{row} is not under the current key");
+            Assert.Equal(plaintexts[row], protector.Unprotect(value, row)?.Reveal());
+        }
+    }
+
     private static void AssertStoppedNaming(string variable, string value, CapturedLogs logs, Exception? failure)
     {
         Assert.NotNull(failure);
@@ -194,12 +253,17 @@ public class SecretKeyStartupTests
     /// databases and Quartz's static are handled as MinimalStartupTests handles them.
     /// </summary>
     private static async Task<(CapturedLogs Logs, Exception? Failure)> BootAsync(
-        string? current, string? previous, Func<IServiceProvider, Task>? whenUp, string? contentRoot = null)
+        string? current, string? previous, Func<IServiceProvider, Task>? whenUp, string? contentRoot = null,
+        string? existingHatch = null)
     {
         var logs = new CapturedLogs();
         var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), () => string.Join(Environment.NewLine, logs.Messages));
 
-        var (hatch, quartz) = await deadline.BoundAsync("creating the scratch databases", MinimalDatabases.CreateAsync);
+        // A Hatch database passed in belongs to the caller, who has seeded it and drops it. The
+        // Quartz one is always fresh: two hosts one after the other on one Quartz database
+        // leave the first's scheduler thread logging into a host that has gone.
+        var (made, quartz) = await deadline.BoundAsync("creating the scratch databases", MinimalDatabases.CreateAsync);
+        var hatch = existingHatch ?? made;
 
         // See MinimalStartupTests: Quartz binds its logging to the first host
         // that builds a scheduler, so it is cleared on the way in and out.
@@ -212,6 +276,10 @@ public class SecretKeyStartupTests
         {
             derived = factory.WithWebHostBuilder(builder =>
             {
+                // Only the captured logs. A Quartz job can fire as the host stops, and its failure is
+                // logged through every provider; the Windows event log's is already disposed by then
+                // and throws out of the scheduler thread into whichever test is running.
+                builder.ConfigureLogging(logging => logging.ClearProviders().AddProvider(logs));
                 if (contentRoot is not null) builder.UseContentRoot(contentRoot);
                 if (current is not null) builder.UseSetting("Hatch:SecretKey", current);
                 if (previous is not null) builder.UseSetting("Hatch:PreviousSecretKey", previous);
@@ -235,7 +303,7 @@ public class SecretKeyStartupTests
             await deadline.BoundAsync("stopping the host", () => factory.DisposeAsync().AsTask());
             QuartzLogProvider.SetCurrentLogProvider(null);
 
-            await deadline.BoundAsync("dropping the scratch databases", () => MinimalDatabases.DropAsync(hatch, quartz));
+            await deadline.BoundAsync("dropping the scratch databases", () => MinimalDatabases.DropAsync(made, quartz));
         }
 
         return (logs, failure);

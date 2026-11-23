@@ -59,6 +59,8 @@ public static class HatchModule
         });
         services.AddSingleton<SecretProtector>();
         services.AddHostedService<SecretKeyWarning>();
+        // With a key set, brings every stored secret under it at start (SecretReseal).
+        services.AddHostedService<SecretReseal>();
         services.AddSingleton<IssueClaims>();
 
         // The one list of model families a pinned id is judged against - a
