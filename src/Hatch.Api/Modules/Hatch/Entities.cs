@@ -5399,3 +5399,107 @@ public class EfHatchChatRoomProject
 
     public int ProjectId { get; set; }
 }
+
+/// <summary>
+/// A thing Hatch has announced, whether or not any room heard it. The queue
+/// method reads it to tell a first call from a change: without it, a room added
+/// after a first call that found no room would be sent the later edit as a
+/// fresh post, which a change must never be.
+/// </summary>
+[Table("ChatSubjects")]
+[Index(nameof(Kind), nameof(Subject), IsUnique = true)]
+public class EfHatchChatSubject
+{
+    public const int MaxKindLength = 24;
+    public const int MaxSubjectLength = 64;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>The message kind, lower case: <c>changelog</c>, <c>question</c> or <c>problem</c>.</summary>
+    [MaxLength(MaxKindLength)]
+    public required string Kind { get; set; }
+
+    /// <summary>The caller's stable id for the thing: <c>issue:12</c>, <c>comment:7</c>, <c>finding:3</c>.</summary>
+    [MaxLength(MaxSubjectLength)]
+    public required string Subject { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// One message queued for one room, written in the same save as the change that
+/// caused it, so the row lands or fails with that write. A later change to the
+/// same thing edits this row instead of adding another.
+/// </summary>
+/// <remarks>
+/// <para>Waiting is <see cref="DroppedAt"/> null and <see cref="SentRevision"/>
+/// below <see cref="Revision"/>. Sent is the two equal. Dropped is
+/// <see cref="DroppedAt"/> set.</para>
+///
+/// <para>The two sides write disjoint columns, so neither needs a concurrency
+/// token and a board write never fails on a send. A caller writes
+/// <see cref="Content"/>, <see cref="Revision"/> and <see cref="PendingSince"/>,
+/// and resets the send's columns; the sender writes <see cref="ExternalId"/>,
+/// <see cref="SentRevision"/>, <see cref="Attempts"/>, <see cref="NextAttemptAt"/>,
+/// <see cref="LastRefusal"/> and <see cref="DroppedAt"/>.</para>
+///
+/// <para>The pair <c>(WorkspaceId, ProjectId)</c> is a composite foreign key into
+/// <see cref="EfHatchChatWorkspaceProject"/>'s own pair, cascading: unbinding the
+/// project removes what is waiting about it in that workspace. A null
+/// <see cref="ProjectId"/> skips the key, so a project-less message survives.</para>
+/// </remarks>
+[Table("ChatMessages")]
+[Index(nameof(RoomId), nameof(Kind), nameof(Subject), IsUnique = true)]
+public class EfHatchChatMessage
+{
+    public const int MaxKindLength = EfHatchChatSubject.MaxKindLength;
+    public const int MaxSubjectLength = EfHatchChatSubject.MaxSubjectLength;
+    public const int MaxExternalIdLength = 64;
+    public const int MaxRefusalLength = 500;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public int RoomId { get; set; }
+    public EfHatchChatRoom? Room { get; set; }
+
+    /// <summary>Copied from the room by the queue method, never set by a caller.</summary>
+    public int WorkspaceId { get; set; }
+
+    /// <summary>The project the message is about, or null for a problem that belongs to none.</summary>
+    public int? ProjectId { get; set; }
+
+    [MaxLength(MaxKindLength)]
+    public required string Kind { get; set; }
+
+    [MaxLength(MaxSubjectLength)]
+    public required string Subject { get; set; }
+
+    /// <summary>A <c>ChatMessageContent</c> as JSON.</summary>
+    public required string Content { get; set; }
+
+    /// <summary>Starts at 1; each change to <see cref="Content"/> adds one.</summary>
+    public int Revision { get; set; } = 1;
+
+    /// <summary>The revision last delivered, 0 for none.</summary>
+    public int SentRevision { get; set; }
+
+    /// <summary>The chat service's id for the delivered message, so an edit can find it.</summary>
+    [MaxLength(MaxExternalIdLength)]
+    public string? ExternalId { get; set; }
+
+    public DateTimeOffset QueuedAt { get; set; }
+
+    /// <summary>When the revision now waiting was queued. A change to a message still waiting keeps it.</summary>
+    public DateTimeOffset PendingSince { get; set; }
+
+    public DateTimeOffset? NextAttemptAt { get; set; }
+    public int Attempts { get; set; }
+
+    /// <summary>Set when the sender gave up on the message. A dropped row is left alone.</summary>
+    public DateTimeOffset? DroppedAt { get; set; }
+
+    [MaxLength(MaxRefusalLength)]
+    public string? LastRefusal { get; set; }
+}

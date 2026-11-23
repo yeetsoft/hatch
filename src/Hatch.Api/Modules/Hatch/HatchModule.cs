@@ -1,5 +1,6 @@
 using Hatch.Api.Common;
 using Hatch.Api.Jobs;
+using Hatch.Api.Services.Chat;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -25,6 +26,12 @@ public static class HatchModule
         // every other consumer of "what would a pass do" that takes it through
         // ordinary DI instead.
         services.AddScoped<Dispatch>();
+
+        // Scoped, because it adds rows to the request's own context and never saves:
+        // a queued message lands or fails with the write that caused it. Its links
+        // read an options value and hold nothing, so they are a singleton.
+        services.AddScoped<ChatOutbox>();
+        services.AddSingleton<ChatLinks>();
 
         // Singleton, because it is a pure function with a class around it: it
         // reads a string and returns a tree, and touches neither the database
