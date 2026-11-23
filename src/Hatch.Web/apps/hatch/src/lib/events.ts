@@ -15,6 +15,15 @@ export function describe(event: IssueEvent): string {
   /* A delivery names the runner it was handed to and nothing it changed from. */
   if (event.kind === 'message_delivered') return to === undefined ? '' : `to ${short(to)}`;
 
+  /* A release that carried the failure the increment ended on: { failure,
+     failureWhy }. The words naming the runner and the kind are drawn by
+     releaseFailureWords beside the link to the runner, which needs JSX; this is
+     what follows them, what the tool said. */
+  if (event.kind === 'claim_released' && typeof event.payload?.failure === 'string') {
+    const why = event.payload.failureWhy;
+    return typeof why === 'string' && why !== '' ? `the tool said: ${why}` : '';
+  }
+
   /* The hop: a move the loop made itself, with nobody reading the ticket
      first - see docs/hatch.md, "The hop". Six kinds now carry it: express,
      a child its parent pulled (HA-149's `pulled`, never rendered before this -

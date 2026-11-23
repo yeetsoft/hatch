@@ -1059,6 +1059,12 @@ same two lists carry a signed-out or non-starting agent and a pause by the
 board. A list with nothing in it draws no heading, and a runner with neither
 draws nothing.
 
+Each failure also lists the tickets it cost an increment, by key, each a link to
+the issue, after its words in both lists: *Its agent is signed out since 7:40pm
+- cost HA-12, HA-15*. A failure that cost none draws as before. The issue page's
+History draws the other side of it
+([One increment and the loop](one-increment-and-the-loop)).
+
 ## Preferred
 
 A key can also be marked **preferred**, which says its runner takes work before

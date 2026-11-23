@@ -12,6 +12,17 @@ const event = (over: Partial<IssueEvent> = {}): IssueEvent => ({
 });
 
 describe('describe', () => {
+  it('says what the tool said on a release that carried a failure', () => {
+    expect(
+      describeEvent(event({ kind: 'claim_released', payload: { failure: 'agent-signed-out', failureWhy: 'please log in' } })),
+    ).toBe('the tool said: please log in');
+    expect(describeEvent(event({ kind: 'claim_released', payload: { failure: 'signing' } }))).toBe('');
+  });
+
+  it('draws a release with no failure as it always was', () => {
+    expect(describeEvent(event({ kind: 'claim_released', payload: { from: 'a', to: 'b' } }))).toBe('a → b');
+  });
+
   it('marks a hop with express, after the ordinary from/to', () => {
     expect(
       describeEvent(

@@ -547,7 +547,7 @@ export function signingWords(runner: Runner): string | null {
 export const runnerFailing = (runner: Runner): boolean => (runner.failures?.length ?? 0) > 0;
 
 /** What a failure of this kind is, as a sentence's opening. A kind this build does not know is drawn as it came. */
-function failureKindWords(kind: string): string {
+export function failureKindWords(kind: string): string {
   switch (kind) {
     case 'forge':
       return 'Cannot reach its forge';
@@ -565,7 +565,7 @@ function failureKindWords(kind: string): string {
 }
 
 /** Who said the reason: gh for the forge, git for signing, the agent for its own two, the board for its pause. */
-function failureWho(kind: string): string {
+export function failureWho(kind: string): string {
   switch (kind) {
     case 'forge':
       return 'gh';
@@ -579,6 +579,28 @@ function failureWho(kind: string): string {
     default:
       return 'it';
   }
+}
+
+/** Why a release could not go on, by failure kind, as the end of a sentence. A kind this build does not know has no reason of its own. */
+function releaseReason(kind: string): string | null {
+  switch (kind) {
+    case 'agent-signed-out':
+      return 'its agent is signed out';
+    case 'agent-not-starting':
+      return 'its agent would not start';
+    case 'signing':
+      return 'it cannot sign commits';
+    case 'forge':
+      return 'it could not open a pull request';
+    default:
+      return null;
+  }
+}
+
+/** The line a release that carried a failure draws on a ticket: `build-box could not go on - its agent is signed out`. A kind this build does not know is drawn as it came. */
+export function releaseFailureWords(kind: string, runnerName: string): string {
+  const reason = releaseReason(kind);
+  return reason === null ? `${runnerName} hit a failure (${kind})` : `${runnerName} could not go on - ${reason}`;
 }
 
 /** Whether a list needs to say where: a runner serves several checkouts and each has its own row, so only a repeated kind is ambiguous. */
