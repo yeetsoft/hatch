@@ -139,9 +139,8 @@ the next heading of the same level and stop.
   - [What it stops for](#what-it-stops-for) - What ends a run, and which
     stops are asked for?
   - [Runners on the board](#runners-on-the-board) - How does a runner
-    announce itself and get paused or ended from a browser?
-    - [Failures](#failures) - What does the board keep of what a runner could
-      not do, and when is a failure current?
+    announce itself, get paused or ended from a browser, and what does the
+    board keep of what it could not do?
   - [The console](#the-console) - What do the banners and pinned readout
     show during an increment?
 - [The level above the board](#the-level-above-the-board) - Which running
