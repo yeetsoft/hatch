@@ -2,7 +2,7 @@ namespace Hatch.Api.Common;
 
 /// <summary>
 /// The one way a secret is written to Hatch's database, and the one way it is
-/// read back.
+/// read back (docs/secrets-architecture.md).
 ///
 /// Every protected value carries the scheme that produced it, as
 /// <c>&lt;scheme&gt;:&lt;payload&gt;</c>.

@@ -5,8 +5,8 @@ using Hatch.Api.Common;
 namespace Hatch.Api.Tests.Common;
 
 /// <summary>
-/// The protector over a real cipher, no host. Every key is made here at run
-/// time: no key, real or example, goes in a tracked file (docs/ethos.md).
+/// The protector over a real cipher, no host (docs/secrets-architecture.md).
+/// Every key is made here at run time: no key, real or example, goes in a tracked file (docs/ethos.md).
 ///
 /// The property these tests exist to pin is that the *format* can change under
 /// the callers: a value written by any scheme this build knows reads back,
