@@ -294,6 +294,11 @@ public class BoardHealthDialogTests(ITestOutputHelper output)
             // box's own top, so a scroll of the page behind it does not count; the axis stays where it was.
             for (var press = 0; press < 3; press++)
                 await deadline.BoundAsync("scrolling the lanes", () => page.Keyboard.PressAsync("ArrowDown"));
+            // A key scrolls with an animation: wait for it to start, then to come to rest, before measuring.
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for the lanes to scroll",
+                "() => document.querySelector(\"[role='dialog'] .hatch-health-dialog-lanes\").scrollTop > 0");
+            await Task.Delay(500);
             var after = await harness.EvaluateAsync<double[]>(
                 deadline, "measuring the box again",
                 """
