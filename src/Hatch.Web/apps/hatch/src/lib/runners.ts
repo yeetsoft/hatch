@@ -589,10 +589,10 @@ export function failuresNeedWhere(rows: RunnerFailure[]): boolean {
 const failureClock = (at: string | null, now: Date): string =>
   (at === null ? null : resetClockWords(new Date(at), now)) ?? 'an unknown time';
 
-const failureAt = (f: RunnerFailure, withWhere: boolean): string => (withWhere && f.where ? ` at ${f.where}` : '');
+const failureAt = (f: Pick<RunnerFailure, 'where'>, withWhere: boolean): string => (withWhere && f.where ? ` at ${f.where}` : '');
 
 /** One current failure: `Cannot reach its forge since 7:40pm - gh said: token expired`. The reason is left off where the board kept none. */
-export function failureWords(f: RunnerFailure, now: Date, withWhere = false): string {
+export function failureWords(f: Pick<RunnerFailure, 'kind' | 'where' | 'why' | 'beganAt'>, now: Date, withWhere = false): string {
   const line = `${failureKindWords(f.kind)}${failureAt(f, withWhere)} since ${failureClock(f.beganAt, now)}`;
   return f.why ? `${line} - ${failureWho(f.kind)} said: ${f.why}` : line;
 }

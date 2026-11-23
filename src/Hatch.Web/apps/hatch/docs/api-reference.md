@@ -2172,7 +2172,13 @@ saying what is wrong, and the `originInstance` and `originKey` it was mirrored
 from, null for one filed here) - listed there and not under `conflicts`,
 `failingBuilds` or `reviewsHeldBack`, since a person acts on it - the
 merge column's own held-back and still-progressing rows, trunk-landing rows
-the judge holds, failing trunk builds, exhausted runners, and the
+the judge holds, failing trunk builds, exhausted runners, the current failures of the runners
+the caller is sent (`runnerFailures`: `name`, `where`, `kind`, `why` and `beganAt`,
+longest-standing first, `[]` when there is none and whatever the board's shape - a
+person is sent those of runners whose key is theirs, an admin also those of runners
+whose key belongs to nobody, everybody all of them where the wall is off, and a key
+what its owner would be, one that belongs to nobody only those of runners that do;
+unlike an exhausted runner, each counts towards the badge), and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly
 or through a chain, on something itself waiting on it, or a pre-approved issue
 in review that no hop will carry because it has no pull request recorded (its

@@ -8,7 +8,9 @@ import {
   resetWords,
 } from '../lib/attention';
 import { buildWords } from '../lib/buildCheck';
+import { runnerPath } from '../lib/claim';
 import { conflictWords } from '../lib/mergeCheck';
+import { runnerFailureAdvice, runnerFailureRowWords } from '../lib/runnerFailureRows';
 import { AttentionGroup, AttentionSection } from './AttentionFold';
 import { AttentionHuman } from './AttentionHuman';
 import type { Attention } from '../types';
@@ -43,9 +45,35 @@ export function AttentionPanel({
   const conflicts = attention?.conflicts ?? [];
   const failingBuilds = attention?.failingBuilds ?? [];
   const exhaustedRunners = attention?.exhaustedRunners ?? [];
+  const runnerFailures = attention?.runnerFailures ?? [];
 
   return (
     <div className="hatch-attention-panel">
+      {/* A failure a person fixes, so counted towards the badge - unlike the
+          section below, which is a dot. Drawn only when it has rows, and gone
+          at the next poll once the runner is well again or has gone quiet:
+          nothing here is pressed away. */}
+      {runnerFailures.length > 0 && (
+        <section className="hatch-attention-section hatch-attention-section-failing">
+          <h3 className="hatch-attention-heading">Failing runners</h3>
+
+          <ul className="hatch-attention-rows">
+            {runnerFailures.map((f) => (
+              <li key={`${f.name}\n${f.where ?? ''}\n${f.kind}`}>
+                <Link className="hatch-attention-row" to={runnerPath(f.name)}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{f.name}</span>
+                    {f.where && <span className="hatch-attention-title">{f.where}</span>}
+                  </span>
+                  <span className="hatch-attention-files">{runnerFailureRowWords(f, now)}</span>
+                  <span className="hatch-attention-files">{runnerFailureAdvice(f.kind)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Unlike the sections below, which fold when empty, drawn only when it has
           rows: this is an alert about a condition that ends by itself, and
           nothing has to be pressed for it to disappear - see runners.ts and

@@ -77,7 +77,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
                 const first = row.querySelector('.hatch-ambition-epics > li');
                 return first ? parseFloat(getComputedStyle(first).borderTopWidth) : null;
               })(),
-              note: texts(row, 'p.text-muted').find((t) => t.includes('open, runs')) ?? '',
+              note: texts(row, 'p.hatch-ambition-note').find((t) => t.includes('open, runs')) ?? '',
               epics: [...row.querySelectorAll('.hatch-ambition-epics li')].map((li) => ({
                 key: li.querySelector('.hatch-plan-key')?.textContent?.trim() ?? '',
                 title: li.querySelector('.hatch-progress-title')?.textContent?.trim() ?? '',

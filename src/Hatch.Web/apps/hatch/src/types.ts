@@ -2843,6 +2843,11 @@ export interface Attention {
       reset first. Not counted towards the badge - it lights a dot instead, see
       `attentionCount`'s remarks. Absent from a board that predates it. */
   exhaustedRunners?: ExhaustedRunner[];
+  /** One entry per current failure of a runner this reader is sent - their own
+      runners', and an admin's also those that belong to nobody - longest-standing
+      first. Counted towards the badge, one each: unlike out of usage, a failing
+      runner is a thing a person fixes. Absent from a board that predates it. */
+  runnerFailures?: AttentionRunnerFailure[];
   /** The merge column's issues that are stuck, with the judge's own sentence
       saying why - a person's to fix, every time. Absent from a board that
       predates them. */
@@ -2909,6 +2914,20 @@ export interface ExhaustedRunner {
   where: string | null;
   /** When it expects to reset. */
   exhaustedUntil: string;
+}
+
+/** One thing a runner cannot do now, for the attention panel. Mirrors AttentionRunnerFailureDto. */
+export interface AttentionRunnerFailure {
+  /** What the runner calls itself - the same string the Runners page keys on. */
+  name: string;
+  /** The checkout it is at, `host:/path`, or null where none was named. */
+  where: string | null;
+  /** `forge`, `signing`, `agent-signed-out`, `agent-not-starting` or `board-paused`. */
+  kind: string;
+  /** What the tool said, one line, or null where it said nothing. */
+  why: string | null;
+  /** When a beat first found it failing. */
+  beganAt: string;
 }
 
 // ---- Who is sitting here ----

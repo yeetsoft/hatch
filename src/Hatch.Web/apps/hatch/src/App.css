@@ -4952,8 +4952,13 @@ input.hatch-inline-title-input {
   overflow-wrap: anywhere;
 }
 
-.hatch-ambition-part > p {
+.hatch-ambition-part > p,
+.hatch-ambition-part > .hatch-empty {
   margin: var(--sp-2) 0 0;
+}
+
+.hatch-ambition-failure {
+  margin: 0;
 }
 
 .hatch-ambition-title,
@@ -4999,7 +5004,12 @@ input.hatch-inline-title-input {
   list-style: none;
   margin: var(--sp-2) 0 0;
   padding: 0;
+}
+
+.hatch-ambition-legend,
+.hatch-ambition-tally {
   font-size: var(--t-label);
+  color: var(--muted);
 }
 
 .hatch-ambition-swatch {
@@ -5048,18 +5058,42 @@ input.hatch-inline-title-input {
   min-width: 0;
 }
 
-/* What is waiting on the reader, above the rows: one line per hold question,
-   each a link to the ballot. A line wraps rather than scrolls. */
+/* What is waiting on the reader, above the rows: a card like a row, one line
+   per hold question, each a link to the ballot. The lines sit on four
+   columns - ambition, key, question, wait - so two lines read as a table; a
+   subgrid on the list and on each line keeps the columns aligned. The card
+   rule is prefixed as .hatch-ambition-row's is, for the same reason: the
+   board's tile also wears .hatch-card and a bare class would only tie with
+   it. */
+.hatch-page > .hatch-ambition-strip {
+  padding: var(--sp-4);
+  background: var(--card);
+  cursor: default;
+}
+
+.hatch-page > .hatch-ambition-strip:hover {
+  border-color: var(--line);
+}
+
 .hatch-ambition-strip-lines {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content minmax(0, 2fr) max-content;
+  column-gap: var(--sp-3);
   list-style: none;
   margin: var(--sp-2) 0 0;
   padding: 0;
 }
 
+.hatch-ambition-strip-lines li {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+}
+
 .hatch-ambition-strip-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1) var(--sp-3);
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   min-width: 0;
   padding: var(--sp-1) 0;
   overflow-wrap: anywhere;
@@ -5092,8 +5126,18 @@ input.hatch-inline-title-input {
     flex: 1 0 100%;
   }
 
+  .hatch-ambition-strip-lines {
+    display: block;
+  }
+
+  .hatch-ambition-strip-lines li {
+    display: block;
+  }
+
   .hatch-ambition-strip-line {
+    display: flex;
     flex-direction: column;
+    grid-column: auto;
   }
 }
 
