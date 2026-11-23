@@ -5315,3 +5315,87 @@ public class EfHatchChatWorkspace
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// A project a chat workspace is bound to. A room may choose only from this
+/// set - see <see cref="EfHatchChatRoomProject"/>.
+/// </summary>
+[Table("ChatWorkspaceProjects")]
+public class EfHatchChatWorkspaceProject
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int WorkspaceId { get; set; }
+    public EfHatchChatWorkspace? Workspace { get; set; }
+
+    /// <summary>A bare foreign key, no inverse navigation, as <see cref="EfHatchProjectMember.ProjectId"/> is.</summary>
+    public int ProjectId { get; set; }
+    public EfHatchProject? Project { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A Slack channel set up to receive Hatch's changelog, its open questions, its
+/// problems, or all three. Belongs to a workspace; names no project directly -
+/// what it carries is <see cref="EfHatchChatRoomProject"/>.
+/// </summary>
+[Table("ChatRooms")]
+[Index(nameof(WorkspaceId), nameof(ExternalId), IsUnique = true)]
+public class EfHatchChatRoom
+{
+    public const int MaxExternalIdLength = 64;
+    public const int MaxNameLength = 200;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int WorkspaceId { get; set; }
+    public EfHatchChatWorkspace? Workspace { get; set; }
+
+    /// <summary>The Slack channel id.</summary>
+    [MaxLength(MaxExternalIdLength)]
+    public required string ExternalId { get; set; }
+
+    /// <summary>The channel's name, as last seen from Slack.</summary>
+    [MaxLength(MaxNameLength)]
+    public required string Name { get; set; }
+
+    public bool Changelog { get; set; }
+    public bool Questions { get; set; }
+    public bool Problems { get; set; }
+    public bool UnownedProblems { get; set; }
+
+    /// <summary>
+    /// True carries every project. False with no <see cref="EfHatchChatRoomProject"/>
+    /// row means the room carries none - never a fallback to every project.
+    /// </summary>
+    public bool AllProjects { get; set; } = true;
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// One project a room is scoped to, when <see cref="EfHatchChatRoom.AllProjects"/>
+/// is false. The pair <c>(WorkspaceId, ProjectId)</c> is a foreign key into
+/// <see cref="EfHatchChatWorkspaceProject"/>'s own pair, cascading: unbinding a
+/// project from the workspace takes it out of every room that had chosen it, so
+/// a race cannot leave a chosen project that is not bound.
+/// </summary>
+[Table("ChatRoomProjects")]
+[Index(nameof(RoomId), nameof(ProjectId), IsUnique = true)]
+public class EfHatchChatRoomProject
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int RoomId { get; set; }
+    public EfHatchChatRoom? Room { get; set; }
+
+    /// <summary>Set by the controller from the room, never from the request body.</summary>
+    public int WorkspaceId { get; set; }
+
+    public int ProjectId { get; set; }
+}

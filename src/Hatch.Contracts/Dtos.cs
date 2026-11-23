@@ -145,15 +145,44 @@ public record PersonScopeWriteRequest(string? Mode, IReadOnlyList<int>? ProjectI
 /// <summary>
 /// A chat workspace Hatch is connected to. There is no token field: the bot
 /// token goes in and never comes back out, <c>HasToken</c> says only that one
-/// is held.
+/// is held. <c>ProjectIds</c> is the caller's own view: a project hidden from
+/// a scoped admin is not counted here either.
 /// </summary>
-public record ChatWorkspaceDto(int Id, string Provider, string ExternalId, string Name, bool HasToken, DateTimeOffset CreatedAt);
+public record ChatWorkspaceDto(
+    int Id, string Provider, string ExternalId, string Name, bool HasToken, DateTimeOffset CreatedAt, IReadOnlyList<int> ProjectIds);
 
 /// <summary>A bot token to connect a workspace with, or to replace its token with.</summary>
 public record ChatTokenRequest(string? Token);
 
 /// <summary>The app manifest a chat service's own screen takes, as the JSON text it wants pasted.</summary>
 public record ChatManifestDto(string Provider, string Manifest);
+
+/// <summary>The projects to bind a workspace to, replacing the set it carries now.</summary>
+public record ChatProjectsRequest(IReadOnlyList<int>? ProjectIds);
+
+/// <summary>One channel a workspace's token can see.</summary>
+public record ChatChannelDto(string Id, string Name, bool IsPrivate, bool IsMember);
+
+/// <summary>
+/// A channel set up as a room: which of the four kinds of message it takes, and
+/// which projects it carries. <c>ProjectIds</c> is empty under
+/// <c>AllProjects</c>, and is the caller's own visible set otherwise.
+/// </summary>
+public record ChatRoomDto(
+    int Id, int WorkspaceId, string ChannelId, string ChannelName, bool Changelog, bool Questions, bool Problems,
+    bool UnownedProblems, bool AllProjects, IReadOnlyList<int> ProjectIds);
+
+/// <summary>A channel to set up as a room, or the switches and project list it starts with.</summary>
+public record ChatRoomCreateRequest(
+    string ChannelId, string ChannelName, bool Changelog, bool Questions, bool Problems, bool UnownedProblems,
+    bool AllProjects, IReadOnlyList<int>? ProjectIds);
+
+/// <summary>A change to a room. A field left null leaves it as it was.</summary>
+public record ChatRoomPatchRequest(
+    bool? Changelog, bool? Questions, bool? Problems, bool? UnownedProblems, bool? AllProjects, IReadOnlyList<int>? ProjectIds);
+
+/// <summary>Whether a test message was delivered, and the sentence if it was not.</summary>
+public record ChatTestResultDto(bool Delivered, string? Reason);
 
 /// <summary>A write to a project's landing settings - <c>null</c> on a field leaves it alone.</summary>
 /// <param name="Landing">One of <see cref="Landings"/>.</param>

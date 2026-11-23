@@ -128,6 +128,134 @@ public class SlackChatProviderTests
         Assert.DoesNotContain(token, check.Refusal);
     }
 
+    [Fact]
+    public async Task ListChannelsAsync_SendsTheTokenAsABearerHeader_AndExcludesArchivedChannels()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":true,"channels":[]}"""));
+
+        await NewProvider(handler).ListChannelsAsync(Token, default);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("GET", request.Method);
+        Assert.StartsWith("https://slack.com/api/conversations.list?", request.Url);
+        Assert.Contains("types=public_channel,private_channel", request.Url);
+        Assert.Contains("exclude_archived=true", request.Url);
+        Assert.Equal($"Bearer {Token}", Assert.Single(handler.AuthorizationHeaders));
+        Assert.DoesNotContain("secret-value", request.Url);
+    }
+
+    [Fact]
+    public async Task ListChannelsAsync_ReadsEveryChannelsField()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, """
+            {"ok":true,"channels":[
+                {"id":"C1","name":"general","is_private":false,"is_member":true},
+                {"id":"C2","name":"secret","is_private":true,"is_member":false}
+            ]}
+            """));
+
+        var list = await NewProvider(handler).ListChannelsAsync(Token, default);
+
+        Assert.Null(list.Refusal);
+        Assert.Equal(
+            [new ChatChannel("C1", "general", false, true), new ChatChannel("C2", "secret", true, false)],
+            list.Channels);
+    }
+
+    [Fact]
+    public async Task ListChannelsAsync_FollowsTheCursor_UntilItIsEmpty()
+    {
+        var handler = new StubHttpMessageHandler(
+            StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":true,"channels":[{"id":"C1","name":"one"}],"response_metadata":{"next_cursor":"page2"}}"""),
+            StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":true,"channels":[{"id":"C2","name":"two"}],"response_metadata":{"next_cursor":""}}"""));
+
+        var list = await NewProvider(handler).ListChannelsAsync(Token, default);
+
+        Assert.Equal(["C1", "C2"], list.Channels!.Select(c => c.Id));
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Contains("cursor=page2", handler.Requests[1].Url);
+    }
+
+    [Fact]
+    public async Task ListChannelsAsync_StopsIfACursorRepeats()
+    {
+        var handler = new StubHttpMessageHandler(
+            StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":true,"channels":[{"id":"C1","name":"one"}],"response_metadata":{"next_cursor":"again"}}"""),
+            StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":true,"channels":[{"id":"C2","name":"two"}],"response_metadata":{"next_cursor":"again"}}"""));
+
+        var list = await NewProvider(handler).ListChannelsAsync(Token, default);
+
+        Assert.Equal(["C1", "C2"], list.Channels!.Select(c => c.Id));
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Theory]
+    [InlineData("not_in_channel", "invited")]
+    [InlineData("channel_not_found", "could not be found")]
+    [InlineData("is_archived", "archived")]
+    [InlineData("missing_scope", "permission")]
+    [InlineData("ratelimited", "could not be reached")]
+    public async Task ListChannelsAsync_EachKnownError_GivesItsOwnPlainSentence(string code, string fragment)
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, $$"""{"ok":false,"error":"{{code}}"}"""));
+
+        var list = await NewProvider(handler).ListChannelsAsync(Token, default);
+
+        Assert.Null(list.Channels);
+        Assert.Contains(fragment, list.Refusal);
+        Assert.DoesNotContain(code, list.Refusal);
+    }
+
+    [Fact]
+    public async Task ListChannelsAsync_AnUnknownError_NamesTheCodeWithoutTheWordToken()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":false,"error":"something_else"}"""));
+
+        var list = await NewProvider(handler).ListChannelsAsync(Token, default);
+
+        Assert.Equal("Slack refused: something_else", list.Refusal);
+    }
+
+    [Fact]
+    public async Task ListChannelsAsync_TooManyRequests_IsCouldNotBeReached_NotAnException()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json((HttpStatusCode)429, """{"ok":false,"error":"ratelimited"}"""));
+
+        var list = await NewProvider(handler).ListChannelsAsync(Token, default);
+
+        Assert.Equal("Slack could not be reached; try again", list.Refusal);
+    }
+
+    [Fact]
+    public async Task PostMessageAsync_SendsAFormPost_WithTheChannelAndTextAlone_AndTheTokenOnlyAsABearerHeader()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":true}"""));
+
+        var result = await NewProvider(handler).PostMessageAsync(Token, "C1", "hello room", default);
+
+        Assert.True(result.Posted);
+        Assert.Null(result.Refusal);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("POST", request.Method);
+        Assert.Equal("https://slack.com/api/chat.postMessage", request.Url);
+        Assert.Equal($"Bearer {Token}", Assert.Single(handler.AuthorizationHeaders));
+        Assert.Equal(new Dictionary<string, string> { ["channel"] = "C1", ["text"] = "hello room" }, handler.LastForm);
+        Assert.DoesNotContain("secret-value", request.Url);
+        Assert.DoesNotContain("secret-value", request.Body);
+    }
+
+    [Fact]
+    public async Task PostMessageAsync_ARefusal_AnswersFalse_NotAnException()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":false,"error":"not_in_channel"}"""));
+
+        var result = await NewProvider(handler).PostMessageAsync(Token, "C1", "hello room", default);
+
+        Assert.False(result.Posted);
+        Assert.Contains("invited", result.Refusal);
+        Assert.DoesNotContain("not_in_channel", result.Refusal);
+    }
+
     private static SlackChatProvider NewProvider(HttpMessageHandler handler) =>
         new(new StubHttpClientFactory(handler), NullLogger<SlackChatProvider>.Instance);
 

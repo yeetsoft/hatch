@@ -12,16 +12,19 @@ using Microsoft.AspNetCore.Mvc.Routing;
 namespace Hatch.Api.Tests.Chat;
 
 /// <summary>
-/// A key never reaches a chat workspace: a bot token can speak for the install,
-/// so the five routes are an admin's and a person's alone. The first test needs
-/// no database and holds every action, so a sixth cannot be added open to a key;
-/// the second asks the real wall.
+/// A key never reaches a chat workspace or a room: a bot token can speak for
+/// the install, so every route is an admin's and a person's alone. The first
+/// test needs no database and holds every action, so a route cannot be added
+/// open to a key unnoticed; the second asks the real wall.
 /// </summary>
 [Collection(global::Hatch.Api.Tests.Jobs.QuartzSchedulerCollection.Name)]
 public class ChatKeyRefusalTests
 {
     private static readonly string[] Actions =
-        ["ConnectWorkspace", "GetManifest", "GetWorkspaces", "RemoveWorkspace", "ReplaceToken"];
+    [
+        "ConnectWorkspace", "CreateRoom", "GetChannels", "GetManifest", "GetRooms", "GetWorkspaces",
+        "PatchRoom", "PostTestMessage", "PutProjects", "RemoveRoom", "RemoveWorkspace", "ReplaceToken",
+    ];
 
     [Fact]
     public void EveryChatAction_RequiresAnAdmin_AndAcceptsNoKey()
@@ -44,7 +47,7 @@ public class ChatKeyRefusalTests
     }
 
     [SkippableFact(Timeout = 120_000)]
-    public async Task AKey_IsRefused_OnEachOfTheFiveRoutes_ButAnAdminReadsTheManifest()
+    public async Task AKey_IsRefused_OnEveryRoute_ButAnAdminReadsTheManifest()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset - the wall runs on the real host over Postgres. Run `make test-api-db`.");
 
@@ -63,6 +66,13 @@ public class ChatKeyRefusalTests
             (HttpMethod.Put, "/api/chat/workspaces/1/token", """{"token":"xoxb-1-not-sent-anywhere"}"""),
             (HttpMethod.Delete, "/api/chat/workspaces/1", null),
             (HttpMethod.Get, "/api/chat/manifest", null),
+            (HttpMethod.Put, "/api/chat/workspaces/1/projects", """{"projectIds":[]}"""),
+            (HttpMethod.Get, "/api/chat/workspaces/1/channels", null),
+            (HttpMethod.Get, "/api/chat/workspaces/1/rooms", null),
+            (HttpMethod.Post, "/api/chat/workspaces/1/rooms", """{"channelId":"C1","channelName":"general","changelog":false,"questions":false,"problems":false,"unownedProblems":false,"allProjects":true}"""),
+            (HttpMethod.Patch, "/api/chat/rooms/1", """{}"""),
+            (HttpMethod.Delete, "/api/chat/rooms/1", null),
+            (HttpMethod.Post, "/api/chat/rooms/1/test", null),
         };
 
         var failures = new List<string>();

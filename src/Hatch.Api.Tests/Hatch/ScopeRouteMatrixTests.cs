@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Hatch.Api.Common;
+using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
@@ -78,6 +79,8 @@ public class ScopeRouteMatrixTests
     private const string LocalModelsAreTheHouses = "the local-models table is the house's, board-wide; no project owns a row";
     private const string ScopeWriting = "what each person may see; an admin's, never a project's";
     private const string ChatWorkspaces = "a workspace names no project";
+    private const string ChatBoundIdsPinned = "bound ids come through the query filter; pinned in ChatControllerTests";
+    private const string ChatRoomRoutesNameNoProject = "channels, test and DELETE room read no project";
     private const string HouseSettings = "house settings and the agent credentials; no project";
     private const string HouseBackup = "the house backup; no project";
     private const string RunnerBinary = "the runner binary; no project";
@@ -102,11 +105,14 @@ public class ScopeRouteMatrixTests
         ("AttachmentsController.PostAttachment", Ha2388),
         ("BackupController.GetBackup", HouseBackup),
         ("BackupController.PostBackupRun", HouseBackup),
-        ("ChatController.ConnectWorkspace", ChatWorkspaces),
+        ("ChatController.ConnectWorkspace", ChatBoundIdsPinned),
         ("ChatController.GetManifest", ChatWorkspaces),
-        ("ChatController.GetWorkspaces", ChatWorkspaces),
+        ("ChatController.GetWorkspaces", ChatBoundIdsPinned),
         ("ChatController.RemoveWorkspace", ChatWorkspaces),
-        ("ChatController.ReplaceToken", ChatWorkspaces),
+        ("ChatController.ReplaceToken", ChatBoundIdsPinned),
+        ("ChatController.GetChannels", ChatRoomRoutesNameNoProject),
+        ("ChatController.PostTestMessage", ChatRoomRoutesNameNoProject),
+        ("ChatController.RemoveRoom", ChatRoomRoutesNameNoProject),
         ("ImagesController.GetImage", Ha2388),
         ("ImportController.Preview", "parses the files it is sent and reads no project"),
         ("ImportController.PreviewText", "parses the text it is sent and reads no project"),
@@ -169,7 +175,7 @@ public class ScopeRouteMatrixTests
     /// <summary>What a request is about, built three ways from the seed: B's, A's, and one nothing has.</summary>
     private sealed record Target(
         string ProjectKey, int ProjectId, long DreamId, int PlaybookId, int[] ProposalIds, long TrunkBuildId, long FindingId,
-        string Remote, int StatusId, int OtherStatusId, Guid PersonId)
+        string Remote, int StatusId, int OtherStatusId, Guid PersonId, int ChatWorkspaceId, int ChatRoomId)
     {
         public string Key => $"{ProjectKey}-1";
     }
@@ -203,6 +209,13 @@ public class ScopeRouteMatrixTests
 
         /// <summary>A person is refused here before scope is read: the route is a key's alone.</summary>
         public bool RefusesPerson { get; init; }
+
+        /// <summary>
+        /// The route is admin-only, so a person who is not an admin - <c>host.None</c> -
+        /// is refused before scope is read, the same way a key is. <c>host.Some</c>
+        /// is the admin, so the scope itself is still exercised there.
+        /// </summary>
+        public bool AdminOnly { get; init; }
 
         /// <summary>The write is held to the answer an unbound remote gets: the same status and the same body shape.</summary>
         public bool LikeUnbound { get; init; }
@@ -475,6 +488,22 @@ public class ScopeRouteMatrixTests
         ("ProjectsController.PutNoCodeCloses", Lookup(t => Put($"/api/projects/{t.ProjectId}/no-code-closes", new { noCodeCloses = false }))),
         ("ProjectsController.PutOnePrPolicy", Lookup(t => Put($"/api/projects/{t.ProjectId}/one-pr-policy", new { policy = "optional" }))),
         ("ProjectsController.PutPriority", Lookup(t => Put($"/api/projects/{t.ProjectId}/priority", new { priority = "normal" }))),
+
+        // ---- Chat: a project named in the body, against the seed's fixed
+        // workspace and room (both bound to A and B). Missing and hidden
+        // answer the same 400 "unknown project"; the visible twin succeeds,
+        // and PutProjects is destructive - it replaces the workspace's whole
+        // bound set - so it is held off until every other twin has run. Every
+        // chat route is admin-only, so AdminOnly is set: host.None (scoped to
+        // nothing) is also not an admin, and is refused before scope is read.
+        ("ChatController.GetRooms", Rows(false, t => Get($"/api/chat/workspaces/{t.ChatWorkspaceId}/rooms")) with { AdminOnly = true }),
+        ("ChatController.CreateRoom", Lookup(t => Post($"/api/chat/workspaces/{t.ChatWorkspaceId}/rooms", new
+        {
+            channelId = $"probe-room-{t.ProjectKey}", channelName = "probe room", changelog = false, questions = false,
+            problems = false, unownedProblems = false, allProjects = false, projectIds = new[] { t.ProjectId },
+        })) with { AdminOnly = true }),
+        ("ChatController.PatchRoom", Lookup(t => Patch($"/api/chat/rooms/{t.ChatRoomId}", new { projectIds = new[] { t.ProjectId } })) with { AdminOnly = true }),
+        ("ChatController.PutProjects", Lookup(t => Put($"/api/chat/workspaces/{t.ChatWorkspaceId}/projects", new { projectIds = new[] { t.ProjectId } })) with { Destructive = true, AdminOnly = true }),
     ];
 
     // ---- The lists are held to the code ----
@@ -579,7 +608,9 @@ public class ScopeRouteMatrixTests
         }
 
         bool Refused(string name, Probe probe) =>
-            probe.RefusesPerson ? !isKey : isKey && (!acceptsKey[name] || probe.RefusesKey);
+            probe.RefusesPerson ? !isKey
+            : isKey ? !acceptsKey[name] || probe.RefusesKey
+            : probe.AdminOnly && owner.Role != PersonRole.Admin;
 
         string Say(string name, Req req, HttpStatusCode status) => $"{caller}: {name} {req.Method} {req.Path} answered {(int)status}";
 
@@ -743,9 +774,9 @@ public class ScopeRouteMatrixTests
 
         return new Dictionary<Who, Target>
         {
-            [Who.Hidden] = new("BBB", seed.ProjectB, seed.DreamB, ids.PlaybookB, ids.ProposalsB, ids.TrunkBuildB, ids.FindingB, ScopeSeed.CanonicalB, ids.Todo, ids.Done, host.Some.Id),
-            [Who.Visible] = new("AAA", seed.ProjectA, seed.DreamA, ids.PlaybookA, ids.ProposalsA, ids.TrunkBuildA, ids.FindingA, ScopeSeed.CanonicalA, ids.Todo, ids.Done, host.Some.Id),
-            [Who.Missing] = new("ZZZ", 999_999, 999_999, 999_999, [999_999], 999_999, 999_999, "host/zzz", ids.Todo, ids.Done, host.Some.Id),
+            [Who.Hidden] = new("BBB", seed.ProjectB, seed.DreamB, ids.PlaybookB, ids.ProposalsB, ids.TrunkBuildB, ids.FindingB, ScopeSeed.CanonicalB, ids.Todo, ids.Done, host.Some.Id, ids.ChatWorkspaceId, ids.ChatRoomId),
+            [Who.Visible] = new("AAA", seed.ProjectA, seed.DreamA, ids.PlaybookA, ids.ProposalsA, ids.TrunkBuildA, ids.FindingA, ScopeSeed.CanonicalA, ids.Todo, ids.Done, host.Some.Id, ids.ChatWorkspaceId, ids.ChatRoomId),
+            [Who.Missing] = new("ZZZ", 999_999, 999_999, 999_999, [999_999], 999_999, 999_999, "host/zzz", ids.Todo, ids.Done, host.Some.Id, ids.ChatWorkspaceId, ids.ChatRoomId),
         };
     }
 }

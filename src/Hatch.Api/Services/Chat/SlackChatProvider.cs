@@ -20,6 +20,10 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
 
     public const string AuthTestEndpoint = "https://slack.com/api/auth.test";
 
+    public const string ConversationsListEndpoint = "https://slack.com/api/conversations.list";
+
+    public const string PostMessageEndpoint = "https://slack.com/api/chat.postMessage";
+
     /// <summary>A bot token's prefix. A user token (<c>xoxp-</c>) would act as a person, which is not what is wanted.</summary>
     public const string BotTokenPrefix = "xoxb-";
 
@@ -48,6 +52,11 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
         ["token_revoked"] = "That token has been revoked in Slack; install the app again for a new one",
         ["token_expired"] = "That token has expired; install the app again for a new one",
         ["account_inactive"] = "The Slack account that token belongs to is no longer active",
+        ["not_in_channel"] = "the app has not been invited to that channel; in Slack, add Hatch to it",
+        ["channel_not_found"] = "that channel could not be found",
+        ["is_archived"] = "that channel is archived",
+        ["missing_scope"] = "the app is missing a permission it needs; install it again",
+        ["ratelimited"] = TransportSentence,
     };
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -100,12 +109,12 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
-                return Unreachable($"Slack auth.test answered {(int)response.StatusCode} with no object");
+                return ChatTokenCheck.Refused(Unreachable($"Slack auth.test answered {(int)response.StatusCode} with no object"));
 
             if (root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True)
             {
                 var id = Str(root, "team_id");
-                if (id is null) return Unreachable("Slack auth.test accepted the token but named no workspace");
+                if (id is null) return ChatTokenCheck.Refused(Unreachable("Slack auth.test accepted the token but named no workspace"));
 
                 return ChatTokenCheck.Workspace(id, Str(root, "team") ?? id);
             }
@@ -114,9 +123,7 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
             // The code, never the body.
             logger.LogWarning("Slack auth.test refused a token: {Code}", code);
 
-            return Refusals.TryGetValue(code, out var sentence)
-                ? ChatTokenCheck.Refused(sentence)
-                : ChatTokenCheck.Refused($"Slack refused the token: {code}");
+            return ChatTokenCheck.Refused(RefusalSentenceFor(code, "Slack refused the token"));
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException && !ct.IsCancellationRequested)
         {
@@ -126,14 +133,119 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
         }
     }
 
-    private ChatTokenCheck Unreachable(string why)
+    public async Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct)
+    {
+        var channels = new List<ChatChannel>();
+        var seenCursors = new HashSet<string>();
+        string? cursor = null;
+
+        while (true)
+        {
+            var url = $"{ConversationsListEndpoint}?types=public_channel,private_channel&exclude_archived=true&limit=200"
+                + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+
+            try
+            {
+                var client = httpClientFactory.CreateClient(HttpClientName);
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                using var response = await client.SendAsync(request, ct);
+
+                if ((int)response.StatusCode == 429)
+                {
+                    logger.LogWarning("Slack conversations.list was throttled");
+                    return ChatChannelList.Refused(TransportSentence);
+                }
+
+                var body = await response.Content.ReadAsStringAsync(ct);
+                using var document = JsonDocument.Parse(body);
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                    return ChatChannelList.Refused(Unreachable($"Slack conversations.list answered {(int)response.StatusCode} with no object"));
+
+                if (!(root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True))
+                {
+                    var code = Str(root, "error") ?? $"http_{(int)response.StatusCode}";
+                    logger.LogWarning("Slack conversations.list was refused: {Code}", code);
+                    return ChatChannelList.Refused(RefusalSentenceFor(code, "Slack refused"));
+                }
+
+                if (root.TryGetProperty("channels", out var list) && list.ValueKind == JsonValueKind.Array)
+                    foreach (var item in list.EnumerateArray())
+                    {
+                        var id = Str(item, "id");
+                        if (id is null) continue;
+
+                        channels.Add(new ChatChannel(id, Str(item, "name") ?? id, Bool(item, "is_private"), Bool(item, "is_member")));
+                    }
+
+                var next = root.TryGetProperty("response_metadata", out var meta) ? Str(meta, "next_cursor") : null;
+                if (string.IsNullOrEmpty(next) || !seenCursors.Add(next)) break;
+
+                cursor = next;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException && !ct.IsCancellationRequested)
+            {
+                logger.LogWarning("Slack conversations.list could not be completed: {Kind}", ex.GetType().Name);
+                return ChatChannelList.Refused(TransportSentence);
+            }
+        }
+
+        return ChatChannelList.Of(channels);
+    }
+
+    public async Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct)
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient(HttpClientName);
+            using var request = new HttpRequestMessage(HttpMethod.Post, PostMessageEndpoint)
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["channel"] = channelId, ["text"] = text }),
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await client.SendAsync(request, ct);
+
+            if ((int)response.StatusCode == 429)
+            {
+                logger.LogWarning("Slack chat.postMessage was throttled");
+                return ChatPostResult.Refused(TransportSentence);
+            }
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return ChatPostResult.Refused(Unreachable($"Slack chat.postMessage answered {(int)response.StatusCode} with no object"));
+
+            if (root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True) return ChatPostResult.Delivered();
+
+            var code = Str(root, "error") ?? $"http_{(int)response.StatusCode}";
+            logger.LogWarning("Slack chat.postMessage was refused: {Code}", code);
+
+            return ChatPostResult.Refused(RefusalSentenceFor(code, "Slack refused"));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            logger.LogWarning("Slack chat.postMessage could not be completed: {Kind}", ex.GetType().Name);
+            return ChatPostResult.Refused(TransportSentence);
+        }
+    }
+
+    private string Unreachable(string why)
     {
         logger.LogWarning("{Why}", why);
-        return ChatTokenCheck.Refused(TransportSentence);
+        return TransportSentence;
     }
+
+    private static string RefusalSentenceFor(string code, string fallbackPrefix) =>
+        Refusals.TryGetValue(code, out var sentence) ? sentence : $"{fallbackPrefix}: {code}";
 
     private static string? Str(JsonElement root, string name) =>
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
             ? value.GetString()
             : null;
+
+    private static bool Bool(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
 }
