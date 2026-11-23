@@ -1,6 +1,6 @@
-import { useId, useState } from 'react';
-import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useId, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BARS,
   bandPolygons,
@@ -35,12 +35,18 @@ interface TileProps {
   index: number | null;
   onIndex: (index: number | null) => void;
   readout: TileReadout;
+  /** Opens this tile's dialog. Left off, the tile only marks a moment. */
+  onOpen?: () => void;
 }
 
 /** The glyph said in a word, so it is never the whole of a signal. */
 const GLYPH_WORD: Record<string, string> = { '▲': 'up', '▼': 'down', '–': 'unchanged', '⚠': 'warning' };
 
 const KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'];
+
+/** What a press on a tile leaves to the thing pressed: a link, a button, or anything a tile marks as its own
+    control with `data-tile-control`. */
+const OWN_CONTROL = 'a, button, [data-tile-control]';
 
 function HealthTile({
   tile,
@@ -50,7 +56,7 @@ function HealthTile({
   index,
   onIndex,
   href,
-  onActivate,
+  onOpen,
   children,
   body,
   keyButton,
@@ -61,8 +67,9 @@ function HealthTile({
   tile: Tile;
   label: string;
   href?: string;
-  /** What a click on the sparkline does, for a tile that leads somewhere. */
-  onActivate?: () => void;
+  /** Opens the tile's dialog. A press on the tile anywhere but a control of its own, or Enter or Space on the
+      focused sparkline, calls it. A tile without one - Runners, until its dialog lands - only marks. */
+  onOpen?: () => void;
   /** The sparkline's marks, drawn in the box `WIDTH` by `HEIGHT`. Ignored when `body` is given. */
   children?: ReactNode;
   /** Replaces the svg sparkline outright - the Runners tile's HTML lanes, which draw their own moment
@@ -78,6 +85,7 @@ function HealthTile({
   hover?: string;
 }) {
   const count = answer.bars.length;
+  const sparkRef = useRef<HTMLDivElement>(null);
 
   const onMove = (event: PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -85,9 +93,23 @@ function HealthTile({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (onOpen && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      onOpen();
+      return;
+    }
     if (!KEYS.includes(event.key)) return;
     event.preventDefault();
     onIndex(stepMoment(index, event.key, count));
+  };
+
+  /* Focus goes to the sparkline first, so the dialog's Modal records it as the opener and hands focus back to
+     it on close - a press on a blank part of the tile has focused nothing of its own. */
+  const onPress = (event: MouseEvent<HTMLElement>) => {
+    if (!onOpen) return;
+    if (event.target instanceof Element && event.target.closest(OWN_CONTROL)) return;
+    sparkRef.current?.focus();
+    onOpen();
   };
 
   return (
@@ -95,6 +117,7 @@ function HealthTile({
       className={`hatch-health-tile hatch-health-tile--${readout.tone}`}
       aria-label={tileLabel(tile, readout, hover)}
       data-tile={tile}
+      onClick={onPress}
     >
       <h3 className="hatch-health-label">
         {href ? (
@@ -123,7 +146,8 @@ function HealthTile({
         {readout.detail}
       </p>
       <div
-        className={`hatch-health-spark${onActivate ? ' hatch-health-spark--link' : ''}`}
+        ref={sparkRef}
+        className={`hatch-health-spark${onOpen ? ' hatch-health-spark--open' : ''}`}
         data-part="spark"
         tabIndex={0}
         role="group"
@@ -132,7 +156,6 @@ function HealthTile({
         onPointerLeave={() => onIndex(null)}
         onKeyDown={onKeyDown}
         onBlur={() => onIndex(null)}
-        onClick={onActivate}
       >
         {body ?? (
           <svg
@@ -165,11 +188,11 @@ function HealthTile({
 /** A dot at `x, y`: a zero-length stroke with a round cap. */
 const dot = (x: number, y: number): string => `M ${x} ${y} h 0`;
 
-export function MovedTile({ answer, index, onIndex, readout }: TileProps) {
+export function MovedTile({ answer, index, onIndex, readout, onOpen }: TileProps) {
   const latest = answer.bars.length - 1;
 
   return (
-    <HealthTile tile="moved" label="Moved" readout={readout} answer={answer} index={index} onIndex={onIndex}>
+    <HealthTile tile="moved" label="Moved" readout={readout} answer={answer} index={index} onIndex={onIndex} onOpen={onOpen}>
       {movedBars(answer, WIDTH, HEIGHT).map((rect) => (
         <rect
           key={rect.index}
@@ -184,8 +207,7 @@ export function MovedTile({ answer, index, onIndex, readout }: TileProps) {
   );
 }
 
-export function InFlightTile({ answer, index, onIndex, readout, href }: TileProps & { href: string }) {
-  const navigate = useNavigate();
+export function InFlightTile({ answer, index, onIndex, readout, href, onOpen }: TileProps & { href: string }) {
   const bands = bandPolygons(answer, WIDTH, HEIGHT);
 
   return (
@@ -197,7 +219,7 @@ export function InFlightTile({ answer, index, onIndex, readout, href }: TileProp
       index={index}
       onIndex={onIndex}
       href={href}
-      onActivate={() => navigate(href)}
+      onOpen={onOpen}
     >
       <polygon className="hatch-health-band hatch-health-band--done" points={bands.done} />
       <polygon className="hatch-health-band hatch-health-band--inflight" points={bands.inFlight} />
@@ -206,22 +228,38 @@ export function InFlightTile({ answer, index, onIndex, readout, href }: TileProp
   );
 }
 
-export function OldestTile({ answer, index, onIndex, readout }: TileProps) {
+export function OldestTile({ answer, index, onIndex, readout, onOpen }: TileProps) {
   const line = oldestLine(answer, WIDTH, HEIGHT);
 
   return (
-    <HealthTile tile="oldest" label="Oldest in flight" readout={readout} answer={answer} index={index} onIndex={onIndex}>
+    <HealthTile
+      tile="oldest"
+      label="Oldest in flight"
+      readout={readout}
+      answer={answer}
+      index={index}
+      onIndex={onIndex}
+      onOpen={onOpen}
+    >
       <path className="hatch-health-line" d={line.path} vectorEffect="non-scaling-stroke" fill="none" />
       {line.last && <path className="hatch-health-dot" d={dot(line.last.x, line.last.y)} vectorEffect="non-scaling-stroke" fill="none" />}
     </HealthTile>
   );
 }
 
-export function WaitingTile({ answer, index, onIndex, readout }: TileProps) {
+export function WaitingTile({ answer, index, onIndex, readout, onOpen }: TileProps) {
   const steps = waitingSteps(answer, WIDTH, HEIGHT);
 
   return (
-    <HealthTile tile="waiting" label="Waiting on you" readout={readout} answer={answer} index={index} onIndex={onIndex}>
+    <HealthTile
+      tile="waiting"
+      label="Waiting on you"
+      readout={readout}
+      answer={answer}
+      index={index}
+      onIndex={onIndex}
+      onOpen={onOpen}
+    >
       <path className="hatch-health-area" d={steps.area} />
       <path className="hatch-health-line" d={steps.line} vectorEffect="non-scaling-stroke" fill="none" />
       {steps.last && <path className="hatch-health-dot" d={dot(steps.last.x, steps.last.y)} vectorEffect="non-scaling-stroke" fill="none" />}
