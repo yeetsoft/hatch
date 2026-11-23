@@ -164,6 +164,22 @@ A runner's `Under` is checked the same way: it must name an issue the caller
 can see, so a hidden issue and a missing one both answer `404`.
 `ScopeRouteMatrixTests` asks every Hatch route this, as a person and as a key.
 
+## Chat
+
+The chat workspaces Hatch is connected to, and the app manifest to create the
+app from. All five are an admin's and a person's alone: a key is refused with
+`403`, since a bot token can speak for the install. The token goes in and never
+comes back out: a workspace reads as `hasToken`, with no token field at all, and
+it is stored protected, never as written.
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/chat/workspaces` | **admin** | Every connected workspace, oldest first, `[{ id, provider, externalId, name, hasToken, createdAt }]` |
+| POST | `/chat/workspaces` | **admin** | Connects the workspace a bot token belongs to; body `{ token }`. The token is checked with the chat service first, and the service names the workspace. `400` for a blank token or one the service refuses, with its sentence; `409` for a workspace already connected |
+| PUT | `/chat/workspaces/{id}/token` | **admin** | Replaces a workspace's token with one for the same workspace, and refreshes its name; body `{ token }`. `400` as for connecting, `404` for an unknown id, `409` for a token that belongs to another workspace, which keeps the old one |
+| DELETE | `/chat/workspaces/{id}` | **admin** | Removes a workspace, and in the database whatever hangs off it; `204`, or `404` for an unknown id |
+| GET | `/chat/manifest` | **admin** | `{ provider, manifest }`: the app manifest as the JSON text to paste into the chat service's own screen |
+
 ## Columns
 
 | Method | Path | Who | What it does |

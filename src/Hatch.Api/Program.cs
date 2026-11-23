@@ -6,6 +6,7 @@ using Hatch.Api.Modules;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
 using Hatch.Api.Services.Settings;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -127,6 +128,13 @@ builder.Services.AddSingleton<ISiteSettingsService, SiteSettingsService>();
 // with an error, it never stalls a request.
 builder.Services.AddHttpClient(GoogleOAuthService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<IGoogleOAuthService, GoogleOAuthService>();
+
+// Chat workspaces. Slack's one endpoint, auth.test, is called with an absolute
+// URL, so the named client carries no BaseAddress. Same timeout and the same
+// fail-soft convention as Google's: a slow Slack leaves the admin with a
+// sentence, it never stalls a request.
+builder.Services.AddHttpClient(SlackChatProvider.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddScoped<IChatProvider, SlackChatProvider>();
 
 // Auth (docs/auth-architecture.md). AuthMiddleware and AuthController both run
 // unconditionally, and both no-op or allow until Auth:Enabled becomes true -
