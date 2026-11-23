@@ -183,6 +183,50 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
     }
 
     [SkippableFact]
+    public async Task An_ordinary_setting_is_never_opened_as_a_secret()
+    {
+        Skip.IfNot(HatchDatabase.Available, SkipReason);
+        var connectionString = await EmptyAsync();
+
+        // LocalPersonName here happens to decode as base64; RunnerDefaultMaxTokens and TimeZone do not.
+        await UpsertSettingAsync(connectionString, SiteSettingKeys.LocalPersonName, "Mike");
+        await UpsertSettingAsync(connectionString, SiteSettingKeys.RunnerDefaultMaxTokens, "1234");
+        await UpsertSettingAsync(connectionString, SiteSettingKeys.TimeZone, "UTC");
+
+        var logs = new CapturedLogs();
+        await Service(KeyB, KeyA, connectionString, logs).StartAsync(CancellationToken.None);
+
+        Assert.Equal("Mike", await ReadRawSettingAsync(connectionString, SiteSettingKeys.LocalPersonName));
+        Assert.Equal("1234", await ReadRawSettingAsync(connectionString, SiteSettingKeys.RunnerDefaultMaxTokens));
+        Assert.Equal("UTC", await ReadRawSettingAsync(connectionString, SiteSettingKeys.TimeZone));
+
+        Assert.Contains(logs.Messages, m => m.Contains($"Resealed 0 stored secrets under key {SecretKeys.KeyId(KeyB)}; 0 could not be opened."));
+        Assert.DoesNotContain(logs.Messages, m => m.Contains("site-setting/"));
+    }
+
+    [SkippableFact]
+    public async Task A_real_secret_is_still_resealed_alongside_an_untouched_ordinary_setting()
+    {
+        Skip.IfNot(HatchDatabase.Available, SkipReason);
+        var connectionString = await EmptyAsync();
+
+        await UpsertSettingAsync(connectionString, SiteSettingKeys.LocalPersonName, "Mike");
+        var row = SecretStores.SiteSetting(SiteSettingKeys.AnthropicApiKey);
+        await UpsertSettingAsync(connectionString, SiteSettingKeys.AnthropicApiKey, "v1:" + SecretObfuscator.Obfuscate("the old secret"));
+
+        var logs = new CapturedLogs();
+        await Service(KeyB, KeyA, connectionString, logs).StartAsync(CancellationToken.None);
+
+        Assert.Equal("Mike", await ReadRawSettingAsync(connectionString, SiteSettingKeys.LocalPersonName));
+        var protector = new SecretProtector(new SecretCipher(KeyB, KeyA));
+        var resealedValue = (await ReadAsync(connectionString))[row];
+        Assert.True(protector.IsCurrent(resealedValue));
+        Assert.Equal("the old secret", protector.Unprotect(resealedValue, row)?.Reveal());
+
+        Assert.Contains(logs.Messages, m => m.Contains($"Resealed 1 stored secrets under key {SecretKeys.KeyId(KeyB)}; 0 could not be opened."));
+    }
+
+    [SkippableFact]
     public async Task A_secret_saved_after_it_was_read_is_not_overwritten()
     {
         Skip.IfNot(HatchDatabase.Available, SkipReason);
@@ -302,12 +346,12 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
             LoggerFactory.Create(b => b.AddProvider(logs)).CreateLogger<SecretReseal>());
     }
 
-    /// <summary>The shared database with both secret tables emptied, and its connection string.</summary>
+    /// <summary>The shared database with ChatWorkspaces and all of SiteSettings emptied, and its connection string.</summary>
     private async Task<string> EmptyAsync()
     {
         var connectionString = scratch.Hatch ?? throw new InvalidOperationException("The scratch database was not made");
         await ExecuteAsync(connectionString, "DELETE FROM hatch.\"ChatWorkspaces\"");
-        await ExecuteAsync(connectionString, "DELETE FROM \"SiteSettings\" WHERE \"Key\" = ANY(@keys)", ("keys", SiteSettingKeys.Secrets.ToArray()));
+        await ExecuteAsync(connectionString, "DELETE FROM \"SiteSettings\"");
         return connectionString;
     }
 
@@ -360,6 +404,16 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
         var stored = await ReadAsync(connectionString);
         return new Seeded(plaintexts, stored,
             [SecretStores.SiteSetting(SiteSettingKeys.GoogleClientSecret), SecretStores.ChatWorkspace("slack", "T3")]);
+    }
+
+    /// <summary>The raw value of one SiteSettings row, whether or not its key is a secret.</summary>
+    private static async Task<string?> ReadRawSettingAsync(string connectionString, string key)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("SELECT \"Value\" FROM \"SiteSettings\" WHERE \"Key\" = @k", connection);
+        command.Parameters.AddWithValue("k", key);
+        return (string?)await command.ExecuteScalarAsync();
     }
 
     private static Task UpsertSettingAsync(string connectionString, string key, string value) =>
