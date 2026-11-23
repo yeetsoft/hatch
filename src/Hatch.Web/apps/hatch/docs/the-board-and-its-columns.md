@@ -715,7 +715,12 @@ The dialog draws from the same read as the strip and redraws as it refreshes.
 - **In flight** draws the three bands, with each band's count at the marked bar
   (the last bar, now, at rest), and a link, "Open the cumulative flow report",
   to the report on the same window and projects.
-- **Oldest in flight** draws the tile's line large, with a dot for now.
+- **Oldest in flight** draws the tile's age bands large: past normal at the
+  bottom, then aging and healthy, and a grey band on top only when an issue
+  stands in a column with no normal yet. Each band is a different pattern as
+  well as a different shade, and the legend names every band drawn. The side
+  scale is a count of issues, and a bar's sentence gives the oldest stay and the
+  split by age.
 - **Waiting on you** draws pull requests and questions apart, as two stacked
   areas, and says how long the oldest has waited now.
 - **Runners** draws every lane, not eight: one row for each runner the read

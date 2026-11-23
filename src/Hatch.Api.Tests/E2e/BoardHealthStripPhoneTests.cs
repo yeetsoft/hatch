@@ -195,6 +195,24 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
                 Assert.True(sheet.N("scrollWidth") <= sheet.N("innerWidth"), $"the page scrolls sideways under the dialog: {sheet}");
                 await harness.ScreenshotAsync(deadline, $"board-health-phone-dialog-{tile}");
 
+                // HA-2769: the Oldest dialog draws age bands; look at it in both themes, then put the theme back.
+                if (tile == "oldest")
+                {
+                    await BoardHealthDialogTests.AssertOldestBandsAsync(harness, deadline, page);
+                    var found = await harness.EvaluateAsync<string?>(deadline, "reading the theme", "() => document.documentElement.getAttribute('data-theme')");
+                    foreach (var theme in new[] { "light", "dark" })
+                    {
+                        await harness.EvaluateAsync<bool>(deadline, "setting the theme", $"() => {{ document.documentElement.setAttribute('data-theme', '{theme}'); return true; }}");
+                        await Task.Delay(300);
+                        await harness.ScreenshotAsync(deadline, $"board-health-phone-dialog-oldest-{theme}");
+                    }
+                    await harness.EvaluateAsync<bool>(
+                        deadline, "restoring the theme",
+                        found is null
+                            ? "() => { document.documentElement.removeAttribute('data-theme'); return true; }"
+                            : $"() => {{ document.documentElement.setAttribute('data-theme', '{found}'); return true; }}");
+                }
+
                 await harness.ClickAsync(deadline, "[role='dialog'] .hatch-modal__close");
                 await harness.WaitForHiddenAsync(deadline, "[role='dialog']");
             }

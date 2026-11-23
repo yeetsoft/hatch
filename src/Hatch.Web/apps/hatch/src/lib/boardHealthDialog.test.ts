@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BARS, momentX, waitingSteps } from './boardHealth';
+import { BARS, momentX, splitSentence, waitingSteps } from './boardHealth';
 import {
   MARK_PATTERN,
   axisTicks,
@@ -16,6 +16,7 @@ import {
 } from './boardHealthDialog';
 import type { Tile } from './boardHealth';
 import { sampleBar, sampleHealth } from './boardHealthSample';
+import { formatSpan } from './cardAge';
 import { momentLabel } from './cumulativeFlow';
 import type { BoardHealth, BoardHealthBar } from '../types';
 
@@ -225,8 +226,12 @@ describe('scaleTop', () => {
     expect(scaleTop('inFlight', answer)).toBe(String(tallest));
   });
 
-  it('is the oldest age as a span, for Oldest in flight', () => {
-    expect(scaleTop('oldest', sampleHealth())).toBe('4h'); // 600s * 24 = 14,400s
+  it('is the tallest stack of age bands, a count of issues, for Oldest in flight', () => {
+    expect(scaleTop('oldest', sampleHealth())).toBe('5'); // each bar totals 2 + i % 4
+  });
+
+  it('counts the grey band in the scale, as the bands do', () => {
+    expect(scaleTop('oldest', withBar(sampleHealth(), 2, { ages: { pastNormal: 1, aging: 1, healthy: 1, noNormal: 6 } }))).toBe('9');
   });
 
   it('is the tallest waiting count, for Waiting on you', () => {
@@ -260,8 +265,17 @@ describe('legend', () => {
     expect(legend('inFlight').map((entry) => entry.label)).toEqual(['Waiting', 'In flight', 'Done']);
   });
 
-  it('names the line and its dot for Oldest in flight', () => {
-    expect(legend('oldest').map((entry) => entry.key)).toEqual(['line', 'now']);
+  it('names Oldest\'s three age bands, top to bottom, with no answer or none grey', () => {
+    expect(legend('oldest').map((entry) => entry.key)).toEqual(['healthy', 'aging', 'pastNormal']);
+    expect(legend('oldest', sampleHealth()).map((entry) => entry.key)).toEqual(['healthy', 'aging', 'pastNormal']);
+    expect(legend('oldest', sampleHealth()).map((entry) => entry.label)).toEqual(['Healthy', 'Aging', 'Past normal']);
+  });
+
+  it('adds the grey band on top only when some bar has an issue with no normal yet', () => {
+    const grey = withBar(sampleHealth(), 4, { ages: { pastNormal: 0, aging: 0, healthy: 1, noNormal: 2 } });
+
+    expect(legend('oldest', grey).map((entry) => entry.key)).toEqual(['noNormal', 'healthy', 'aging', 'pastNormal']);
+    expect(legend('oldest', grey)[0].label).toBe('No normal yet');
   });
 
   it('names Waiting\'s two areas, top to bottom', () => {
@@ -273,8 +287,10 @@ describe('legend', () => {
   });
 
   it('tells the stacked marks of one chart apart by pattern, not shade alone', () => {
-    for (const tile of ['moved', 'waiting'] as Tile[]) {
-      const patterns = legend(tile).map((entry) => MARK_PATTERN[entry.key]);
+    const grey = withBar(sampleHealth(), 4, { ages: { pastNormal: 0, aging: 0, healthy: 1, noNormal: 2 } });
+
+    for (const [tile, answer] of [['moved'], ['waiting'], ['oldest', grey]] as [Tile, BoardHealth?][]) {
+      const patterns = legend(tile, answer).map((entry) => MARK_PATTERN[entry.key]);
 
       expect(patterns.every(Boolean)).toBe(true);
       expect(new Set(patterns).size).toBe(patterns.length);
@@ -351,13 +367,31 @@ describe('markedWords', () => {
     );
   });
 
-  it('gives the age of the oldest, or says nothing is in flight', () => {
+  it('gives the age of the oldest and the split by age, in the tile\'s words', () => {
+    const answer = sampleHealth();
+    const last = answer.bars[BARS - 1];
+
+    expect(markedWords('oldest', answer, 5, locale)).toContain('the oldest has been in flight 1h, ');
+    expect(markedWords('oldest', answer, 5, locale)).toContain(splitSentence(answer.bars[5].ages));
+    expect(markedWords('oldest', answer, null, locale)).toBe(
+      `Now: the oldest has been in flight ${formatSpan(last.oldestInFlightSeconds!)}, ${splitSentence(last.ages)}`,
+    );
+    expect(markedWords('oldest', answer, null, locale)).toMatch(/2 past normal · 1 aging · 2 healthy$/);
+  });
+
+  it('adds issues in a column with no normal yet to the split', () => {
+    const answer = withBar(sampleHealth(), 5, { ages: { pastNormal: 1, aging: 0, healthy: 2, noNormal: 3 } });
+
+    expect(markedWords('oldest', answer, 5, locale)).toMatch(/1 past normal · 0 aging · 2 healthy · 3 no normal yet$/);
+  });
+
+  it('says nothing in flight, with no split, when the oldest is null', () => {
     const answer = sampleHealth();
 
-    expect(markedWords('oldest', answer, 5, locale)).toContain('the oldest has been in flight 1h');
-    expect(markedWords('oldest', withBar(answer, 5, { oldestInFlightSeconds: null }), 5, locale)).toContain(
-      'nothing in flight',
-    );
+    const none = markedWords('oldest', withBar(answer, 5, { oldestInFlightSeconds: null }), 5, locale);
+
+    expect(none).toContain('nothing in flight');
+    expect(none).not.toContain('past normal');
   });
 
   it('gives pull requests and questions apart, and how long the oldest waited', () => {

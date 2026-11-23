@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { BARS, flowHref } from '../lib/boardHealth';
+import { BARS, flowHref, splitSentence } from '../lib/boardHealth';
 import type { HealthWindow } from '../lib/boardHealth';
 import { dialogTitle, legend, markedWords, movedSummary } from '../lib/boardHealthDialog';
 import type { Tile } from '../lib/boardHealth';
@@ -167,13 +167,80 @@ describe('the In flight dialog', () => {
   });
 });
 
-describe('the Oldest in flight dialog', () => {
-  it('draws the line across 24 bars and a dot for today', () => {
-    const html = dialog('oldest', sampleHealth());
-    const path = /hatch-health-dialog-line" d="([^"]*)"/.exec(html)?.[1] ?? '';
+/** The `<polygon>`s the chart draws, by mark. */
+const polygons = (html: string): { mark: string; points: string }[] =>
+  [...html.matchAll(/<polygon class="hatch-health-dialog-seg hatch-health-dialog-seg--(\w+)"[^>]*? points="([^"]*)"/g)].map((m) => ({
+    mark: m[1],
+    points: m[2],
+  }));
 
-    expect(path.match(/[ML] /g)).toHaveLength(BARS);
-    expect(html).toContain('hatch-health-dialog-dot');
+/** The sample with some bar holding issues in a column with no normal yet. */
+const withGrey = (): BoardHealth => {
+  const answer = sampleHealth();
+  const bars = answer.bars.map((bar, i) => (i === 4 ? { ...bar, ages: { ...bar.ages, noNormal: 2 } } : bar));
+
+  return { ...answer, bars };
+};
+
+describe('the Oldest in flight dialog', () => {
+  it('draws the tile\'s three age bands, each a polygon over every bar, and no grey band without a use for it', () => {
+    const html = dialog('oldest', sampleHealth());
+    const drawn = polygons(html);
+
+    expect(drawn.map((p) => p.mark)).toEqual(['healthy', 'aging', 'pastNormal']);
+    for (const p of drawn) expect(p.points.split(' ')).toHaveLength(BARS * 2);
+    expect(html).not.toContain('hatch-health-dialog-seg--noNormal');
+    expect(html).not.toContain('>No normal yet<');
+    expect(html).not.toMatch(/<pattern id="hd-[^"-]+-noNormal"/);
+  });
+
+  it('fills each band with its own pattern, so the pattern shows rather than a flat colour', () => {
+    const html = dialog('oldest', withGrey());
+
+    for (const mark of ['healthy', 'aging', 'pastNormal', 'noNormal']) {
+      expect(html).toMatch(new RegExp(`<pattern id="hd-[^"-]+-${mark}"`));
+      expect(html).toMatch(new RegExp(`seg--${mark}" fill="url\\(#hd-[^"-]+-${mark}\\)"`));
+    }
+    expect(html).not.toContain('hatch-health-band');
+  });
+
+  it('adds the grey band, its legend entry and its pattern when a bar has an issue with no normal yet', () => {
+    const html = dialog('oldest', withGrey());
+
+    expect(polygons(html).map((p) => p.mark)).toEqual(['healthy', 'aging', 'pastNormal', 'noNormal']);
+    expect(html).toContain('>No normal yet<');
+    expect(html).toContain('data-mark="noNormal"');
+  });
+
+  it('names every band it draws in the legend, no more and no fewer', () => {
+    for (const answer of [sampleHealth(), withGrey()]) {
+      const html = dialog('oldest', answer);
+
+      expect(html.match(/<li data-mark=/g)).toHaveLength(polygons(html).length);
+      expect(html.match(/<li data-mark=/g)).toHaveLength(legend('oldest', answer).length);
+    }
+  });
+
+  it('reads the side scale as a count of issues', () => {
+    expect(dialog('oldest', sampleHealth())).toContain('<span data-part="scale-top">5</span>');
+  });
+
+  it('has no line and no dot any more', () => {
+    for (const answer of [sampleHealth(), withGrey()]) {
+      const html = dialog('oldest', answer, 5);
+
+      expect(html).not.toContain('hatch-health-dialog-line');
+      expect(html).not.toContain('hatch-health-dialog-dot');
+    }
+  });
+
+  it('says the oldest stay and the split for a marked bar', () => {
+    const answer = withGrey();
+    const words = /data-part="words"[^>]*>([^<]*)</.exec(dialog('oldest', answer, 4))?.[1] ?? '';
+
+    expect(words).toBe(escape(markedWords('oldest', answer, 4)));
+    expect(words).toContain(splitSentence(answer.bars[4].ages));
+    expect(words).toContain('2 no normal yet');
   });
 });
 

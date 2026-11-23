@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Modal } from '@hatch/ui';
-import { BARS, axisSentence, bandPolygons, barIndexAt, momentX, oldestLine, plural, stepMoment } from '../lib/boardHealth';
+import { BARS, axisSentence, ageBandPolygons, bandPolygons, barIndexAt, momentX, plural, stepMoment } from '../lib/boardHealth';
 import type { HealthWindow, Tile } from '../lib/boardHealth';
 import {
   MARK_PATTERN,
@@ -54,16 +54,22 @@ function HealthPattern({ id, mark }: { id: string; mark: MarkKey }) {
       width={6}
       height={6}
       patternUnits="userSpaceOnUse"
-      patternTransform={kind === 'stripes' ? 'rotate(45)' : undefined}
+      patternTransform={kind === 'stripes' || kind === 'cross' ? 'rotate(45)' : undefined}
     >
       <rect width={6} height={6} className={`hatch-health-dialog-ground hatch-health-dialog-ground--${mark}`} />
       {kind === 'stripes' && <rect width={6} height={2.5} className={`hatch-health-dialog-ink hatch-health-dialog-ink--${mark}`} />}
+      {kind === 'cross' && (
+        <>
+          <rect width={6} height={1.5} className={`hatch-health-dialog-ink hatch-health-dialog-ink--${mark}`} />
+          <rect width={1.5} height={6} className={`hatch-health-dialog-ink hatch-health-dialog-ink--${mark}`} />
+        </>
+      )}
       {kind === 'dots' && <circle cx={3} cy={3} r={1.4} className={`hatch-health-dialog-ink hatch-health-dialog-ink--${mark}`} />}
     </pattern>
   );
 }
 
-/** A legend swatch drawn the way its mark is: the same pattern, band or line. */
+/** A legend swatch drawn the way its mark is: the same pattern or band. */
 function Swatch({ base, mark }: { base: string; mark: MarkKey }) {
   const id = `${base}-swatch-${mark}`;
   const band = BAND_CLASS[mark];
@@ -79,22 +85,46 @@ function Swatch({ base, mark }: { base: string; mark: MarkKey }) {
         </>
       )}
       {band && <rect className={`hatch-health-band hatch-health-band--${band}`} x={0} y={0} width={22} height={14} />}
-      {mark === 'line' && <line className="hatch-health-dialog-line" x1={0} x2={22} y1={7} y2={7} />}
-      {mark === 'now' && <path className="hatch-health-dialog-dot" d="M 11 7 h 0" />}
     </svg>
   );
 }
 
-/** The Oldest in flight chart's own marks: the line and today's dot. Its own
-    component so the bands and the list of issues that come after extend it
-    without touching the chart around it. */
-export function OldestChart({ answer, width, height }: { answer: BoardHealth; width: number; height: number }) {
-  const line = oldestLine(answer, width, height);
+/** The Oldest in flight chart's own marks: the tile's four age bands, drawn
+    large and told apart by pattern as well as shade. Past normal is on the
+    baseline, aging above it, healthy above that, and a grey band on top only
+    when an issue stands in a column with no normal yet. Their own classes, not
+    the tile's `hatch-health-band` ones: those set a CSS fill that would beat the
+    pattern's fill attribute. Its own component so the list of issues that comes
+    after extends it without touching the chart around it. */
+export function OldestChart({
+  answer,
+  width,
+  height,
+  pattern,
+}: {
+  answer: BoardHealth;
+  width: number;
+  height: number;
+  pattern: (mark: MarkKey) => string;
+}) {
+  const bands = ageBandPolygons(answer, width, height);
+  const drawn: [MarkKey, string][] = [
+    ['healthy', bands.healthy],
+    ['aging', bands.aging],
+    ['pastNormal', bands.pastNormal],
+  ];
+  if (bands.noNormal) drawn.push(['noNormal', bands.noNormal]);
 
   return (
     <>
-      <path className="hatch-health-dialog-line" d={line.path} fill="none" />
-      {line.last && <path className="hatch-health-dialog-dot" d={`M ${line.last.x} ${line.last.y} h 0`} fill="none" />}
+      {drawn.map(([mark, points]) => (
+        <polygon
+          key={mark}
+          className={`hatch-health-dialog-seg hatch-health-dialog-seg--${mark}`}
+          fill={`url(#${pattern(mark)})`}
+          points={points}
+        />
+      ))}
     </>
   );
 }
@@ -260,7 +290,7 @@ export function BoardHealthDialog({
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState(FALLBACK);
   const title = dialogTitle(tile, answer);
-  const marks = legend(tile);
+  const marks = legend(tile, answer);
   const { width, height } = size;
   const patternOf = (mark: MarkKey): string => `${base}-${mark}`;
 
@@ -356,7 +386,7 @@ export function BoardHealthDialog({
 
               {tile === 'inFlight' && <InFlightMarks answer={answer} width={width} height={height} />}
 
-              {tile === 'oldest' && <OldestChart answer={answer} width={width} height={height} />}
+              {tile === 'oldest' && <OldestChart answer={answer} width={width} height={height} pattern={patternOf} />}
 
               {tile === 'waiting' && <WaitingMarks answer={answer} width={width} height={height} pattern={patternOf} />}
 
