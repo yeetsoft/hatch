@@ -197,3 +197,53 @@ route is refused. Pressing also does nothing if nobody has told the board
 which column an epic is born in - a weave is refused outright where no
 playbook row covers the `epic` type. See the
 [API reference](api-reference) for the route and its refusals.
+
+## Shaping an ambition
+
+**Shape an ambition** is a section of the page under **Weave an epic**. Its
+heading matches that section's, with a line under it saying what a press does:
+it files a draft ambition and takes you to it. It has no project control of
+its own: it uses the picker above the composer, and files into the project
+that picker names - or the one project, when the board runs only one.
+
+**The box.** A box takes the words, typed at the same size as the dream box
+and the **Seed** box, over the same rule, which goes full while it has focus.
+
+**The dreams.** The section reads the **Choose the dreams** switch in the weave
+section above it and has none of its own. On, a press sends the dreams listed,
+in the order shown. Off, it sends none. A line in the section says which: "The
+dreams listed go in, in the order shown." or "No dreams go in."
+
+**The picker.** **Add images or videos** takes several files at once, from the
+file chooser or by dropping them on the section; a "Drop to attach" overlay
+shows while a file is held over it. It needs a picked project, because each
+file is uploaded to that project. An image over 2 MB is redrawn smaller before
+it is sent, as a dropped image on a description is; a video is sent as it is.
+Each file added is a row with its name, its size and **Take off**, which
+removes it before the press. A file the server refuses - or one that is not an
+image or a video - adds no row: the server's own sentence shows beside the
+picker, naming the file, and the others still go up. Changing the project takes
+the files off, with a line saying so, because a file belongs to the project it
+was uploaded to and the route refuses one linked to another.
+
+**The press.** **Shape**, a pill in the top bar's gradient, takes the full
+width on a phone, where the file rows stack. While it cannot be pressed, a
+line beside it says why: there is no project to shape into, no project is
+picked, a file is still uploading, or nothing was given - no words, no dream
+sent and no file. Pressing it files the draft and takes you to its page. A
+refusal shows beside the pill and leaves every control as it was. While the
+draft is being filed the heading's gradient moves, as the weave's does, and
+under reduced motion it does not move at all.
+
+**On the draft's page** the words are in the description, quoted, and each file
+is linked from it, so the files are in the list of attachments under it. A
+video is a download row there: no player is built for it.
+
+What happens next happens off this page: the loop's shaping session is told
+what the draft was given, reads the words, the dreams and the files, and shapes
+the ambition from them. Nothing on the Dream Board itself is edited by that
+session. It is a person's press, not a key's: shaping spends a session, which is
+a person's call to spend, so an agent calling the route is refused.
+The press also does nothing where no playbook row shapes an ambition: the
+project's key and the Playbooks page are named in the refusal. See the
+[API reference](api-reference) for the route and its refusals.

@@ -312,6 +312,11 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public Task SelectOptionAsync(Deadline deadline, string selector, string value) =>
         deadline.BoundAsync($"choosing {value} in {selector}", () => page!.Locator(selector).First.SelectOptionAsync(value));
 
+    /// <summary>Hands the first file input matching <paramref name="selector"/> one file of <paramref name="bytes"/>, firing the <c>change</c> a person's pick from the file chooser would.</summary>
+    public Task SetInputFilesAsync(Deadline deadline, string selector, string name, string mime, byte[] bytes) =>
+        deadline.BoundAsync($"choosing {name} in {selector}", () => page!.Locator(selector).First.SetInputFilesAsync(
+            new FilePayload { Name = name, MimeType = mime, Buffer = bytes }));
+
     /// <summary>Selects everything in whichever element holds the page's focus.</summary>
     public Task SelectAllAsync(Deadline deadline) =>
         deadline.BoundAsync("selecting all", () => page!.Keyboard.PressAsync("ControlOrMeta+A"));

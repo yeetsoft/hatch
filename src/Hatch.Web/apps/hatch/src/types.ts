@@ -1896,6 +1896,16 @@ export interface DreamWeaveRequest {
   dreamIds?: number[];
 }
 
+/** What it takes to press a shaping: words, the dreams it is shaped from and
+    the uploaded files it links. Mirrors DreamShapeRequest, which answers the
+    draft ambition as an Issue. */
+export interface DreamShapeRequest {
+  projectId: number;
+  words?: string;
+  dreamIds?: number[];
+  attachmentIds?: string[];
+}
+
 /** What it takes to edit a dream. Every field is independently
     present-or-absent - DreamsController.EditDream reads a raw JsonElement,
     so there is no server-side DTO this mirrors. */

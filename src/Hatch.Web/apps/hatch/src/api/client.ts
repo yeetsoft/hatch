@@ -29,6 +29,7 @@ import type {
   DreamCreateRequest,
   DreamPatchRequest,
   DreamsPage,
+  DreamShapeRequest,
   DreamWeaveRequest,
   HatchSettings,
   HatchSettingsWriteRequest,
@@ -759,6 +760,11 @@ export const putIssueDreams = (key: string, dreamIds: number[]) =>
 /** Files the epic a weave press asks for - see DreamWeaveController.PostWeave. */
 export const weaveDreams = (request: DreamWeaveRequest) =>
   fetchJson<Issue>('/api/dreams/weave', { method: 'POST', ...asJson(request) });
+
+/** Files the draft ambition a shaping press asks for - see
+    DreamShapeController.PostShape. A person's press: the route refuses a key. */
+export const shapeAmbition = (request: DreamShapeRequest) =>
+  fetchJson<Issue>('/api/dreams/shape', { method: 'POST', ...asJson(request) });
 
 /** The trail across every issue, newest first, a page at a time. `limit` is
     left at the server's own default when absent. */

@@ -2723,6 +2723,7 @@ button.hatch-card-stories:focus-visible {
    section's seed box wears the same one; the composer's own selector stays
    last in each list. */
 .hatch-dream-weave__seed::after,
+.hatch-dream-shape__words::after,
 .hatch-dream-composer__box::after {
   content: "";
   position: absolute;
@@ -2737,12 +2738,14 @@ button.hatch-card-stories:focus-visible {
 }
 
 .hatch-dream-weave__seed:focus-within::after,
+.hatch-dream-shape__words:focus-within::after,
 .hatch-dream-composer__box:focus-within::after {
   opacity: 1;
 }
 
 @media (forced-colors: active) {
   .hatch-dream-weave__seed::after,
+  .hatch-dream-shape__words::after,
   .hatch-dream-composer__box::after {
     background: Highlight;
   }
@@ -3007,6 +3010,116 @@ button.hatch-card-stories:focus-visible {
   .hatch-dream-weave__title--filing {
     background-image: none;
     animation: none;
+  }
+}
+
+/* Shape an ambition: the weave section's own column, so its title, lede,
+   dreams line and pill are the weave section's rules. What is new is the
+   words box - the seed box's size and rule, over a few lines - the picker, the
+   file rows and the drop overlay. Nothing here moves: the filing title is the
+   weave section's, which already stands down for reduced motion and forced
+   colours. */
+.hatch-dream-shape {
+  position: relative;
+}
+
+.hatch-dream-shape__words {
+  position: relative;
+  padding-bottom: var(--sp-2);
+}
+
+.hatch-dream-shape__words .hatch-dream-shape__input {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+  padding-block: var(--sp-2);
+  font: inherit;
+  font-size: var(--t-subhead);
+  resize: vertical;
+}
+
+.hatch-dream-shape__picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1-5);
+  min-width: 0;
+}
+
+.hatch-dream-shape__picker input[type="file"] {
+  max-width: 100%;
+  font-size: var(--t-label);
+}
+
+.hatch-dream-shape__refusal {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-dream-shape__files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-dream-shape__file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hatch-dream-shape__file-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-dream-shape__file-size {
+  font-size: var(--t-label);
+}
+
+.hatch-dream-shape__file-off {
+  margin-inline-start: auto;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--primary);
+  font: inherit;
+  font-size: var(--t-label);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.hatch-dream-shape__file-off:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* The section is the drop target, so the overlay covers it whole. */
+.hatch-dream-shape__overlay {
+  border-radius: var(--r-ctl);
+}
+
+/* On a phone each row stacks - name, then size, then the control - so a long
+   name never pushes the row past the screen. The pill spans through
+   .hatch-dream-weave__actions above. */
+@media (max-width: 40rem) {
+  .hatch-dream-shape__file {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-1);
+  }
+
+  .hatch-dream-shape__file-off {
+    margin-inline-start: 0;
   }
 }
 
