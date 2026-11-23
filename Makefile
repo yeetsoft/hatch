@@ -4,8 +4,24 @@
 # work development steps here. A tool or version this file starts needing
 # moves there in the same change.
 
+# A development secret key for the one machine `make run` and `make up` start
+# Hatch on (HA-2747). scripts/dev-key.cs makes src/Hatch.Api/.env.json hold one
+# at Hatch:SecretKey if it holds none, and never replaces one. Hatch itself
+# makes no key (HA-2721); this is the build's convenience, so build and the
+# test targets neither need the file nor make it. It is a single-file C# app,
+# not node, because node is often not on PATH in Git Bash (nvm is sourced only
+# inside the recipes below). The first run compiles it, about 25 s; later runs
+# take half a second.
+#
+# Exit 10 means the file changed, 0 means a key was already there, anything
+# else (a directory with files in it, a file that is not JSON) stops the target.
+# `up` recreates its containers on 10: one made by an earlier `docker compose
+# up -d` still has the empty directory Docker made at that path mounted, and
+# compose sees no config change, so without a recreate the key never arrives.
+DEV_KEY = dotnet run ./scripts/dev-key.cs ./src/Hatch.Api/.env.json; 	changed=$$?; 	[ $$changed -eq 0 ] || [ $$changed -eq 10 ] || exit $$changed
+
 up:
-	docker compose up -d --build
+	@$(DEV_KEY); 	if [ $$changed -eq 10 ]; then docker compose up -d --build --force-recreate; 	else docker compose up -d --build; fi
 
 db:
 	docker compose up -d db
@@ -20,6 +36,7 @@ build:
 	bash -c 'export NVM_DIR="$$HOME/.nvm"; [ -s "$$NVM_DIR/nvm.sh" ] && \. "$$NVM_DIR/nvm.sh"; dotnet build ./src/Hatch.Api/Hatch.Api.csproj'
 
 run:
+	@$(DEV_KEY)
 	dotnet run --project ./src/Hatch.Api/Hatch.Api.csproj
 
 test: test-api test-hatch test-web

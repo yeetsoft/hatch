@@ -133,6 +133,9 @@ nothing to set for that one.
   (`compose.yaml:80`) and git-ignored (`.gitignore:12`). It loads after the
   environment, so it wins (`Program.cs:56-62`). A board needs nothing
   from it: it is a place for operator secrets in local development.
+  `make run` and `make up` make a development secret key there, at
+  `Hatch:SecretKey`, if it holds none, and never replace one. An install made
+  any other way sets `HATCH_SECRET_KEY` itself.
 - **Never the repository**, a commit, an issue or a plan (`docs/ethos.md`).
 - **In a cluster, a Secret:** see [Kubernetes](kubernetes).
 
