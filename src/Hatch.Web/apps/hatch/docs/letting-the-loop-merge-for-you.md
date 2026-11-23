@@ -145,6 +145,10 @@ is up, or the only ones that are up cannot reach the forge (their sign-in has
 failed), the project reads `driving nothing` on the **Agents → Runners** page
 and the work queue says "no runner is driving it", and its approved pull
 requests wait for one rather than pass to a runner that cannot merge them.
+The driver also opens a pull request that was written and left waiting on its
+ticket because the runner that wrote it could not reach the forge
+([a pull request that waits on its ticket](review-pull-requests-and-the-merge-train)),
+so a project with no driver leaves those waiting too, and the queue says so.
 Only the train's own acting waits, though: a pull request somebody merged by
 hand closes its ticket with no driver, on any runner holding a checkout of the
 repository, whether or not the branch is still on origin.
