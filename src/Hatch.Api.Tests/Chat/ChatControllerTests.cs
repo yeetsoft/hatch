@@ -4,6 +4,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Chat;
+using Hatch.Api.Tests.Hatch;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -105,7 +106,7 @@ public class ChatControllerTests
         Assert.Equal("TACME", row.ExternalId);
         Assert.Equal("fake", row.Provider);
         Assert.Equal(Now, row.CreatedAt);
-        Assert.Equal(new ChatWorkspaceDto(acme.Id, "fake", "TACME", "Acme Renamed", true, Now), replaced);
+        AssertWorkspace(new ChatWorkspaceDto(acme.Id, "fake", "TACME", "Acme Renamed", true, Now, []), replaced);
     }
 
     [Fact]
@@ -240,6 +241,287 @@ public class ChatControllerTests
         Assert.DoesNotContain(typeof(ChatWorkspaceDto).GetProperties(), p => p.Name.Contains("Token") && p.Name != "HasToken");
     }
 
+    [Fact]
+    public async Task PutProjects_BindsAndReplacesTheWholeSet()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        var b = await AddProjectAsync(h.Db, "BBB");
+
+        var bound = Value(await h.Chat.PutProjects(acme.Id, new ChatProjectsRequest([a, b]), default));
+        Assert.Equal([a, b], bound.Order());
+
+        var replaced = Value(await h.Chat.PutProjects(acme.Id, new ChatProjectsRequest([b]), default));
+        Assert.Equal([b], replaced);
+
+        var listed = Value(await h.Chat.GetWorkspaces(default));
+        Assert.Equal([b], Assert.Single(listed).ProjectIds);
+    }
+
+    [Fact]
+    public async Task PutProjects_AnUnknownId_IsBadRequest_AndChangesNothing()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        Value(await h.Chat.PutProjects(acme.Id, new ChatProjectsRequest([a]), default));
+
+        var result = await h.Chat.PutProjects(acme.Id, new ChatProjectsRequest([a, 999_999]), default);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal([a], await h.Db.ChatWorkspaceProjects.AsNoTracking().Select(p => p.ProjectId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PutProjects_AnUnknownWorkspace_IsNotFound()
+    {
+        var h = NewHarness();
+
+        var result = await h.Chat.PutProjects(404, new ChatProjectsRequest([]), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task PutProjects_AHiddenBinding_SurvivesAScopedReplace()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        var b = await AddProjectAsync(h.Db, "BBB");
+        Value(await h.Chat.PutProjects(acme.Id, new ChatProjectsRequest([a, b]), default));
+
+        var scoped = h.ScopedChat(new VisibleProjects(false, new HashSet<int> { a }));
+        var bound = Value(await scoped.PutProjects(acme.Id, new ChatProjectsRequest([a]), default));
+        Assert.Equal([a], bound);
+
+        var everything = (await h.Db.ChatWorkspaceProjects.AsNoTracking().Select(p => p.ProjectId).ToListAsync()).Order();
+        Assert.Equal([a, b], everything);
+    }
+
+    [Fact]
+    public async Task PutProjects_AHiddenId_IsUnknownProject_AndNeverSaysHiddenOrCarriesNone()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        var b = await AddProjectAsync(h.Db, "BBB");
+
+        var scoped = h.ScopedChat(new VisibleProjects(false, new HashSet<int> { a }));
+        var result = await scoped.PutProjects(acme.Id, new ChatProjectsRequest([b]), default);
+
+        var refusal = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("unknown project", refusal.Value);
+    }
+
+    [Fact]
+    public async Task GetChannels_ListsFromTheProvider()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        h.Provider.Channels[AcmeToken] = [new ChatChannel("C1", "general", false, true)];
+
+        var channels = Value(await h.Chat.GetChannels(acme.Id, default));
+
+        Assert.Equal([new ChatChannelDto("C1", "general", false, true)], channels);
+    }
+
+    [Fact]
+    public async Task GetChannels_AnUnknownWorkspace_IsNotFound()
+    {
+        var h = NewHarness();
+
+        Assert.IsType<NotFoundResult>((await h.Chat.GetChannels(404, default)).Result);
+    }
+
+    [Fact]
+    public async Task GetChannels_AProviderRefusal_Is502WithTheSentence()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        h.Provider.Workspaces.Remove(AcmeToken); // the fake refuses a token it does not know
+
+        var result = await h.Chat.GetChannels(acme.Id, default);
+
+        var bad = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status502BadGateway, bad.StatusCode);
+        Assert.Equal(FakeChatProvider.RefusalSentence, bad.Value);
+    }
+
+    [Fact]
+    public async Task CreateRoom_SetsUpAChannel_AndItIsListed()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        Value(await h.Chat.PutProjects(acme.Id, new ChatProjectsRequest([a]), default));
+
+        var room = Value(await h.Chat.CreateRoom(acme.Id, new ChatRoomCreateRequest(
+            "C1", "general", Changelog: true, Questions: false, Problems: true, UnownedProblems: false,
+            AllProjects: false, ProjectIds: [a]), default));
+
+        Assert.Equal(acme.Id, room.WorkspaceId);
+        Assert.Equal("C1", room.ChannelId);
+        Assert.Equal("general", room.ChannelName);
+        Assert.True(room.Changelog);
+        Assert.False(room.Questions);
+        Assert.True(room.Problems);
+        Assert.False(room.AllProjects);
+        Assert.Equal([a], room.ProjectIds);
+
+        var rooms = Value(await h.Chat.GetRooms(acme.Id, default));
+        AssertRoom(room, Assert.Single(rooms));
+    }
+
+    [Fact]
+    public async Task CreateRoom_AChannelAlreadyARoom_IsAConflict()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        Value(await h.Chat.CreateRoom(acme.Id, NewRoomRequest("C1"), default));
+
+        var result = await h.Chat.CreateRoom(acme.Id, NewRoomRequest("C1"), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("already a room", (string)conflict.Value!);
+    }
+
+    [Fact]
+    public async Task CreateRoom_AChosenProjectNotBoundToTheWorkspace_IsBadRequest()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+
+        var result = await h.Chat.CreateRoom(acme.Id, NewRoomRequest("C1") with { AllProjects = false, ProjectIds = [a] }, default);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Empty(await h.Db.ChatRooms.ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateRoom_AnUnknownWorkspace_IsNotFound()
+    {
+        var h = NewHarness();
+
+        Assert.IsType<NotFoundResult>((await h.Chat.CreateRoom(404, NewRoomRequest("C1"), default)).Result);
+    }
+
+    [Fact]
+    public async Task PatchRoom_ChangesSwitchesAllProjectsAndChosenProjects_LeavingOutAFieldLeavesItAlone()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        var b = await AddProjectAsync(h.Db, "BBB");
+        Value(await h.Chat.PutProjects(acme.Id, new ChatProjectsRequest([a, b]), default));
+        var room = Value(await h.Chat.CreateRoom(acme.Id, NewRoomRequest("C1") with { AllProjects = false, ProjectIds = [a] }, default));
+
+        var patched = Value(await h.Chat.PatchRoom(room.Id, new ChatRoomPatchRequest(
+            Changelog: true, Questions: null, Problems: null, UnownedProblems: null, AllProjects: null, ProjectIds: [a, b]), default));
+
+        Assert.True(patched.Changelog);
+        Assert.False(patched.AllProjects);
+        Assert.Equal([a, b], patched.ProjectIds.Order());
+
+        // Switching to every project clears what was chosen.
+        var cleared = Value(await h.Chat.PatchRoom(room.Id, new ChatRoomPatchRequest(null, null, null, null, true, null), default));
+        Assert.True(cleared.AllProjects);
+        Assert.Empty(cleared.ProjectIds);
+        Assert.Empty(await h.Db.ChatRoomProjects.Where(p => p.RoomId == room.Id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PatchRoom_AChosenProjectNotBoundToTheWorkspace_IsBadRequest()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var room = Value(await h.Chat.CreateRoom(acme.Id, NewRoomRequest("C1"), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+
+        var result = await h.Chat.PatchRoom(room.Id, new ChatRoomPatchRequest(null, null, null, null, false, [a]), default);
+
+        var refusal = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("unknown project", refusal.Value);
+    }
+
+    [Fact]
+    public async Task PatchRoom_AnUnknownRoom_IsNotFound()
+    {
+        var h = NewHarness();
+
+        Assert.IsType<NotFoundResult>((await h.Chat.PatchRoom(404, new ChatRoomPatchRequest(null, null, null, null, null, null), default)).Result);
+    }
+
+    [Fact]
+    public async Task RemoveRoom_DeletesIt_AndAnUnknownIdIsNotFound()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var room = Value(await h.Chat.CreateRoom(acme.Id, NewRoomRequest("C1"), default));
+
+        Assert.IsType<NoContentResult>(await h.Chat.RemoveRoom(room.Id, default));
+        Assert.IsType<NotFoundResult>(await h.Chat.RemoveRoom(room.Id, default));
+        Assert.Empty(await h.Db.ChatRooms.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PostTestMessage_Delivered()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var room = Value(await h.Chat.CreateRoom(acme.Id, NewRoomRequest("C1"), default));
+
+        var result = Value(await h.Chat.PostTestMessage(room.Id, default));
+
+        Assert.True(result.Delivered);
+        Assert.Null(result.Reason);
+        var post = Assert.Single(h.Provider.Posts);
+        Assert.Equal(AcmeToken, post.Token);
+        Assert.Equal("C1", post.ChannelId);
+        Assert.Contains("test message from Hatch", post.Text);
+    }
+
+    [Fact]
+    public async Task PostTestMessage_ARefusal_Answers200WithDeliveredFalse()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var room = Value(await h.Chat.CreateRoom(acme.Id, NewRoomRequest("C1"), default));
+        h.Provider.PostRefusals["C1"] = "the fake refuses to post there";
+
+        var result = Value(await h.Chat.PostTestMessage(room.Id, default));
+
+        Assert.False(result.Delivered);
+        Assert.Equal("the fake refuses to post there", result.Reason);
+    }
+
+    [Fact]
+    public async Task PostTestMessage_AnUnknownRoom_IsNotFound()
+    {
+        var h = NewHarness();
+
+        Assert.IsType<NotFoundResult>((await h.Chat.PostTestMessage(404, default)).Result);
+    }
+
+    private static ChatRoomCreateRequest NewRoomRequest(string channelId) =>
+        new(channelId, "general", Changelog: false, Questions: false, Problems: false, UnownedProblems: false, AllProjects: true, ProjectIds: null);
+
+    /// <summary>A record compares its list by reference, so compare the parts.</summary>
+    private static void AssertWorkspace(ChatWorkspaceDto expected, ChatWorkspaceDto actual)
+    {
+        Assert.Equal(expected with { ProjectIds = [] }, actual with { ProjectIds = [] });
+        Assert.Equal(expected.ProjectIds, actual.ProjectIds);
+    }
+
+    /// <summary>A record compares its list by reference, so compare the parts.</summary>
+    private static void AssertRoom(ChatRoomDto expected, ChatRoomDto actual)
+    {
+        Assert.Equal(expected with { ProjectIds = [] }, actual with { ProjectIds = [] });
+        Assert.Equal(expected.ProjectIds, actual.ProjectIds);
+    }
+
     /// <summary>Every run of eight characters, so "any part of it" means a part long enough to be the token and not a prefix like <c>xoxb-</c>.</summary>
     private static IEnumerable<string> Parts(string token) =>
         Enumerable.Range(0, token.Length - 7).Select(i => token.Substring(i, 8));
@@ -267,12 +549,20 @@ public class ChatControllerTests
         public required FakeChatProvider Provider { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required CapturingLogger Log { get; init; }
+        public required DbContextOptions<HatchContext> Options { get; init; }
+
+        /// <summary>A second controller over the same database, scoped as <paramref name="visible"/> sees it.</summary>
+        public ChatController ScopedChat(VisibleProjects visible) =>
+            new(ScopeSeed.Request(Options, visible), Provider, new StubCaller("Root"), Time, Log)
+            {
+                ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+            };
     }
 
     private static Harness NewHarness()
     {
-        var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var db = new HatchContext(options);
         var provider = new FakeChatProvider();
         var time = new FakeTimeProvider(Now);
         var log = new CapturingLogger();
@@ -287,7 +577,16 @@ public class ChatControllerTests
             Provider = provider,
             Time = time,
             Log = log,
+            Options = options,
         };
+    }
+
+    private static async Task<int> AddProjectAsync(HatchContext db, string key)
+    {
+        var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+        db.Projects.Add(project);
+        await db.SaveChangesAsync();
+        return project.Id;
     }
 
     private sealed class CapturingLogger : ILogger<ChatController>

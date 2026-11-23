@@ -874,7 +874,7 @@ describe('chat page calls', () => {
     vi.unstubAllGlobals();
   });
 
-  const workspace = { id: 4, provider: 'slack', externalId: 'T1', name: 'Fellowship', hasToken: true, createdAt: '2026-01-01T00:00:00Z' };
+  const workspace = { id: 4, provider: 'slack', externalId: 'T1', name: 'Fellowship', hasToken: true, createdAt: '2026-01-01T00:00:00Z', projectIds: [] };
 
   it('getChatWorkspaces GETs the list', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify([workspace]), { status: 200 }));

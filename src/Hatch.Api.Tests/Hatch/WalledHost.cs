@@ -28,7 +28,7 @@ internal sealed record WalledKey(string Name, Guid? OwnerId, string Secret);
 /// </param>
 internal sealed record WalledIds(
     int PlaybookA, int PlaybookB, int[] ProposalsA, int[] ProposalsB, long TrunkBuildA, long TrunkBuildB,
-    long FindingA, long FindingB, int Todo, int Done);
+    long FindingA, long FindingB, int Todo, int Done, int ChatWorkspaceId, int ChatRoomId);
 
 /// <summary>
 /// The real host with the wall up, over a migrated scratch database that holds
@@ -161,13 +161,44 @@ internal sealed class WalledHost : IAsyncDisposable
 
         var trunkBuilds = await db.TrunkBuilds.AsNoTracking().ToListAsync();
         var findings = await db.GooseFindings.AsNoTracking().ToListAsync();
+
+        // A workspace bound to both A and B, with one room chosen to both -
+        // what ScopeRouteMatrixTests probes the chat project-naming routes
+        // with. The context here reads and writes unbounded, as the rest of
+        // this seed does.
+        var chatNow = DateTimeOffset.UtcNow;
+        var chatWorkspace = new EfHatchChatWorkspace
+        {
+            Provider = "fake", ExternalId = "T-MATRIX", Name = "matrix", Token = SecretProtector.Protect("xoxb-matrix-seed"),
+            CreatedAt = chatNow, UpdatedAt = chatNow,
+        };
+        db.ChatWorkspaces.Add(chatWorkspace);
+        await db.SaveChangesAsync();
+
+        db.ChatWorkspaceProjects.AddRange(
+            new EfHatchChatWorkspaceProject { WorkspaceId = chatWorkspace.Id, ProjectId = seed.ProjectA, CreatedAt = chatNow },
+            new EfHatchChatWorkspaceProject { WorkspaceId = chatWorkspace.Id, ProjectId = seed.ProjectB, CreatedAt = chatNow });
+
+        var chatRoom = new EfHatchChatRoom
+        {
+            WorkspaceId = chatWorkspace.Id, ExternalId = "C-MATRIX", Name = "matrix-room", AllProjects = false,
+            CreatedAt = chatNow, UpdatedAt = chatNow,
+        };
+        db.ChatRooms.Add(chatRoom);
+        await db.SaveChangesAsync();
+
+        db.ChatRoomProjects.AddRange(
+            new EfHatchChatRoomProject { RoomId = chatRoom.Id, WorkspaceId = chatWorkspace.Id, ProjectId = seed.ProjectA },
+            new EfHatchChatRoomProject { RoomId = chatRoom.Id, WorkspaceId = chatWorkspace.Id, ProjectId = seed.ProjectB });
+        await db.SaveChangesAsync();
+
         var ids = new WalledIds(
             playbookA.Id, playbookB.Id, proposalsA, proposalsB,
             trunkBuilds.Single(t => t.Canonical == ScopeSeed.CanonicalA).Id,
             trunkBuilds.Single(t => t.Canonical == ScopeSeed.CanonicalB).Id,
             findings.Single(f => f.ProjectId == seed.ProjectA).Id,
             findings.Single(f => f.ProjectId == seed.ProjectB).Id,
-            todo.Id, done.Id);
+            todo.Id, done.Id, chatWorkspace.Id, chatRoom.Id);
 
         // People straight in the database. A grant and a key are made later,
         // through the services, once the host is up.

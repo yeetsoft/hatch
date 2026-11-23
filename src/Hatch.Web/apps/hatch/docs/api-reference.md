@@ -166,19 +166,32 @@ can see, so a hidden issue and a missing one both answer `404`.
 
 ## Chat
 
-The chat workspaces Hatch is connected to, and the app manifest to create the
-app from. All five are an admin's and a person's alone: a key is refused with
-`403`, since a bot token can speak for the install. The token goes in and never
-comes back out: a workspace reads as `hasToken`, with no token field at all, and
-it is stored protected, never as written.
+The chat workspaces Hatch is connected to, the projects each is bound to, the
+channels set up as rooms, and a test message to one. Every route is an admin's
+and a person's alone: a key is refused with `403`, since a bot token can speak
+for the install. The token goes in and never comes back out: a workspace reads
+as `hasToken`, with no token field at all, and it is stored protected, never as
+written.
+
+A workspace names no project of its own, but can be bound to several; a room
+takes its chosen projects from that bound set. `projectIds` on a workspace or a
+room is always the caller's own view - a project outside their scope is never
+listed, counted or touched.
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/chat/workspaces` | **admin** | Every connected workspace, oldest first, `[{ id, provider, externalId, name, hasToken, createdAt }]` |
+| GET | `/chat/workspaces` | **admin** | Every connected workspace, oldest first, `[{ id, provider, externalId, name, hasToken, createdAt, projectIds }]` |
 | POST | `/chat/workspaces` | **admin** | Connects the workspace a bot token belongs to; body `{ token }`. The token is checked with the chat service first, and the service names the workspace. `400` for a blank token or one the service refuses, with its sentence; `409` for a workspace already connected |
 | PUT | `/chat/workspaces/{id}/token` | **admin** | Replaces a workspace's token with one for the same workspace, and refreshes its name; body `{ token }`. `400` as for connecting, `404` for an unknown id, `409` for a token that belongs to another workspace, which keeps the old one |
 | DELETE | `/chat/workspaces/{id}` | **admin** | Removes a workspace, and in the database whatever hangs off it; `204`, or `404` for an unknown id |
 | GET | `/chat/manifest` | **admin** | `{ provider, manifest }`: the app manifest as the JSON text to paste into the chat service's own screen |
+| PUT | `/chat/workspaces/{id}/projects` | **admin** | Replaces the set of projects a workspace is bound to, with what the caller can see; body `{ projectIds }`. Answers the bound ids. A hidden binding survives untouched. `400` "unknown project" for an id that is unknown or hidden, `404` for an unknown workspace |
+| GET | `/chat/workspaces/{id}/channels` | **admin** | Every channel the workspace's token can see, read from the chat service each time, `[{ id, name, isPrivate, isMember }]`. `404` for an unknown workspace, `409` if the token cannot be read, `502` with the service's sentence for a refusal |
+| GET | `/chat/workspaces/{id}/rooms` | **admin** | Every room set up on the workspace, oldest first. `404` for an unknown workspace |
+| POST | `/chat/workspaces/{id}/rooms` | **admin** | Sets a channel up as a room; body `{ channelId, channelName, changelog, questions, problems, unownedProblems, allProjects, projectIds }`. `404` for an unknown workspace, `409` for a channel already a room there, `400` "unknown project" for a chosen id not bound to the workspace |
+| PATCH | `/chat/rooms/{id}` | **admin** | Changes a room's switches, its `allProjects` flag, or its chosen projects; a field left out of the body leaves it as it was. `404` for an unknown room, `400` "unknown project" for a chosen id not bound to the room's workspace |
+| DELETE | `/chat/rooms/{id}` | **admin** | Removes a room, and in the database whatever it chose; `204`, or `404` for an unknown id |
+| POST | `/chat/rooms/{id}/test` | **admin** | Sends one fixed, anonymous test message to the room's channel, `{ delivered, reason }`. `404` for an unknown room, `409` if the token cannot be read; a service refusal answers `200` with `delivered: false` and the sentence |
 
 ## Columns
 

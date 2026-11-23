@@ -19,6 +19,18 @@ public interface IChatProvider
     /// an unreachable service, and never puts the token in what it returns.
     /// </summary>
     Task<ChatTokenCheck> CheckTokenAsync(string token, CancellationToken ct);
+
+    /// <summary>
+    /// Every channel the token can see, archived ones excluded. Fail-soft like
+    /// <see cref="CheckTokenAsync"/>: never throws for a refusal, a throttle or
+    /// a dead network.
+    /// </summary>
+    Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct);
+
+    /// <summary>
+    /// Posts one message to a channel. Fail-soft like <see cref="CheckTokenAsync"/>.
+    /// </summary>
+    Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct);
 }
 
 /// <summary>
@@ -32,4 +44,23 @@ public record ChatTokenCheck(string? WorkspaceId, string? WorkspaceName, string?
     public static ChatTokenCheck Refused(string sentence) => new(null, null, sentence);
 
     public bool Accepted => Refusal is null && !string.IsNullOrEmpty(WorkspaceId);
+}
+
+/// <summary>One channel the token can see.</summary>
+public record ChatChannel(string Id, string Name, bool IsPrivate, bool IsMember);
+
+/// <summary>Every channel, or one plain sentence saying why not. Exactly one side is set.</summary>
+public record ChatChannelList(IReadOnlyList<ChatChannel>? Channels, string? Refusal)
+{
+    public static ChatChannelList Of(IReadOnlyList<ChatChannel> channels) => new(channels, null);
+
+    public static ChatChannelList Refused(string sentence) => new(null, sentence);
+}
+
+/// <summary>Whether a message was posted, or one plain sentence saying why not.</summary>
+public record ChatPostResult(bool Posted, string? Refusal)
+{
+    public static ChatPostResult Delivered() => new(true, null);
+
+    public static ChatPostResult Refused(string sentence) => new(false, sentence);
 }

@@ -129,6 +129,80 @@ public class ChatWorkspaceCascadeDatabaseTests
         Assert.Single(await read.ChatWorkspaces.ToListAsync());
     }
 
+    [SkippableFact]
+    public async Task RemovingAWorkspace_RemovesItsBindingsAndRooms_AndARoomsChosenProjects()
+    {
+        var connection = await PrepareAsync();
+        await using var db = Open(connection);
+        var chat = NewController(db);
+
+        var acme = (await chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default)).Value!;
+        var a = await AddProjectAsync(db, "AAA");
+        Assert.NotNull((await chat.PutProjects(acme.Id, new ChatProjectsRequest([a]), default)).Value);
+        var room = (await chat.CreateRoom(acme.Id, NewRoomRequest("C1", a), default)).Value!;
+
+        Assert.IsType<NoContentResult>(await chat.RemoveWorkspace(acme.Id, default));
+
+        await using var read = Open(connection);
+        Assert.Empty(await read.ChatWorkspaces.ToListAsync());
+        Assert.Empty(await read.ChatWorkspaceProjects.ToListAsync());
+        Assert.Empty(await read.ChatRooms.ToListAsync());
+        Assert.Empty(await read.ChatRoomProjects.Where(p => p.RoomId == room.Id).ToListAsync());
+    }
+
+    [SkippableFact]
+    public async Task RemovingAProject_RemovesItsBindingsAndChosenRows_AndLeavesTheRoomAndWorkspace()
+    {
+        var connection = await PrepareAsync();
+        await using var db = Open(connection);
+        var chat = NewController(db);
+
+        var acme = (await chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default)).Value!;
+        var a = await AddProjectAsync(db, "AAA");
+        Assert.NotNull((await chat.PutProjects(acme.Id, new ChatProjectsRequest([a]), default)).Value);
+        var room = (await chat.CreateRoom(acme.Id, NewRoomRequest("C1", a), default)).Value!;
+
+        db.Projects.Remove(await db.Projects.SingleAsync(p => p.Id == a));
+        await db.SaveChangesAsync();
+
+        await using var read = Open(connection);
+        Assert.Empty(await read.ChatWorkspaceProjects.ToListAsync());
+        Assert.Empty(await read.ChatRoomProjects.Where(p => p.RoomId == room.Id).ToListAsync());
+        Assert.NotNull(await read.ChatWorkspaces.SingleOrDefaultAsync(w => w.Id == acme.Id));
+        Assert.NotNull(await read.ChatRooms.SingleOrDefaultAsync(r => r.Id == room.Id));
+    }
+
+    [SkippableFact]
+    public async Task UnbindingAProjectFromTheWorkspace_RemovesItFromTheRoomThatChoseIt()
+    {
+        var connection = await PrepareAsync();
+        await using var db = Open(connection);
+        var chat = NewController(db);
+
+        var acme = (await chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default)).Value!;
+        var a = await AddProjectAsync(db, "AAA");
+        var b = await AddProjectAsync(db, "BBB");
+        Assert.NotNull((await chat.PutProjects(acme.Id, new ChatProjectsRequest([a, b]), default)).Value);
+        var room = (await chat.CreateRoom(acme.Id, NewRoomRequest("C1", a, b), default)).Value!;
+
+        Assert.NotNull((await chat.PutProjects(acme.Id, new ChatProjectsRequest([b]), default)).Value);
+
+        await using var read = Open(connection);
+        Assert.Equal([b], await read.ChatRoomProjects.Where(p => p.RoomId == room.Id).Select(p => p.ProjectId).ToListAsync());
+    }
+
+    private static async Task<int> AddProjectAsync(HatchContext db, string key)
+    {
+        var project = new EfHatchProject { Key = key, Name = key, CreatedAt = DateTimeOffset.UtcNow };
+        db.Projects.Add(project);
+        await db.SaveChangesAsync();
+        return project.Id;
+    }
+
+    private static ChatRoomCreateRequest NewRoomRequest(string channelId, params int[] projectIds) =>
+        new(channelId, "general", Changelog: false, Questions: false, Problems: false, UnownedProblems: false,
+            AllProjects: projectIds.Length == 0, ProjectIds: projectIds.Length == 0 ? null : projectIds);
+
     private static async Task<string> PrepareAsync()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset - the foreign keys and the unique index are the database's. Run `make test-api-db`.");
@@ -153,6 +227,12 @@ public class ChatWorkspaceCascadeDatabaseTests
 
         public Task<ChatTokenCheck> CheckTokenAsync(string token, CancellationToken ct) =>
             Task.FromResult(ChatTokenCheck.Workspace("TACME", "Acme"));
+
+        public Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct) =>
+            Task.FromResult(ChatChannelList.Of([]));
+
+        public Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct) =>
+            Task.FromResult(ChatPostResult.Delivered());
     }
 
     /// <summary>Inserts the same workspace through a connection of its own, once, just before the first save lands.</summary>

@@ -5,7 +5,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, thirty-nine tables.
+/// migration history, fifty tables.
 /// </summary>
 public class HatchContext : DbContext, IModuleContext
 {
@@ -125,6 +125,15 @@ public class HatchContext : DbContext, IModuleContext
 
     /// <summary>The chat workspaces Hatch is connected to - see <see cref="EfHatchChatWorkspace"/>.</summary>
     public DbSet<EfHatchChatWorkspace> ChatWorkspaces => Set<EfHatchChatWorkspace>();
+
+    /// <summary>The projects a chat workspace is bound to - see <see cref="EfHatchChatWorkspaceProject"/>.</summary>
+    public DbSet<EfHatchChatWorkspaceProject> ChatWorkspaceProjects => Set<EfHatchChatWorkspaceProject>();
+
+    /// <summary>The channels set up as rooms - see <see cref="EfHatchChatRoom"/>.</summary>
+    public DbSet<EfHatchChatRoom> ChatRooms => Set<EfHatchChatRoom>();
+
+    /// <summary>The projects a room is scoped to - see <see cref="EfHatchChatRoomProject"/>.</summary>
+    public DbSet<EfHatchChatRoomProject> ChatRoomProjects => Set<EfHatchChatRoomProject>();
 
     /// <summary>
     /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
@@ -540,6 +549,50 @@ public class HatchContext : DbContext, IModuleContext
             .HasForeignKey(m => m.ProjectId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // A workspace's bound projects: cascades off the workspace and off the
+        // project, the same reasoning as PersonScopeProjects. The pair is also
+        // an alternate key, which ChatRoomProjects' composite foreign key below
+        // points at.
+        modelBuilder.Entity<EfHatchChatWorkspaceProject>(e =>
+        {
+            e.HasAlternateKey(p => new { p.WorkspaceId, p.ProjectId });
+
+            e.HasOne(p => p.Workspace)
+                .WithMany()
+                .HasForeignKey(p => p.WorkspaceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(p => p.Project)
+                .WithMany()
+                .HasForeignKey(p => p.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EfHatchChatRoom>()
+            .HasOne(r => r.Workspace)
+            .WithMany()
+            .HasForeignKey(r => r.WorkspaceId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // A room's chosen projects: RoomId cascades off the room, and the pair
+        // (WorkspaceId, ProjectId) is a composite foreign key into
+        // ChatWorkspaceProjects' own pair, cascading - unbinding a project from
+        // the workspace takes it out of every room that had chosen it, so a
+        // race cannot leave a chosen project that is not bound.
+        modelBuilder.Entity<EfHatchChatRoomProject>(e =>
+        {
+            e.HasOne(p => p.Room)
+                .WithMany()
+                .HasForeignKey(p => p.RoomId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<EfHatchChatWorkspaceProject>()
+                .WithMany()
+                .HasForeignKey(p => new { p.WorkspaceId, p.ProjectId })
+                .HasPrincipalKey(w => new { w.WorkspaceId, w.ProjectId })
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // A verdict is about an issue and means nothing without it, the same
         // as its events: deleting the issue takes them.
         modelBuilder.Entity<EfHatchMergeCheck>(e =>
@@ -786,14 +839,16 @@ public class HatchContext : DbContext, IModuleContext
         // it.
         //
         // Deliberately unfiltered: Statuses, WipLimits, PersonHomes,
-        // the runner tables (RunnerFailures among them), ChatWorkspaces (it names no
-        // project), PersonScopes and PersonScopeProjects
-        // (the resolver reads them), and the core schema.
+        // the runner tables (RunnerFailures among them), ChatWorkspaces and
+        // ChatRooms (neither names a project), PersonScopes and
+        // PersonScopeProjects (the resolver reads them), and the core schema.
         modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
         modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
         modelBuilder.Entity<EfHatchProjectRepository>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
         modelBuilder.Entity<EfHatchProjectMember>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
         modelBuilder.Entity<EfHatchProjectLogo>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
+        modelBuilder.Entity<EfHatchChatWorkspaceProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
+        modelBuilder.Entity<EfHatchChatRoomProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
 
         // A global playbook, a dream leaning toward no project, and an
         // unlinked attachment are visible to everyone.

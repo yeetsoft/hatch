@@ -3895,6 +3895,7 @@ export interface ChatWorkspace {
   name: string;
   hasToken: boolean;
   createdAt: string;
+  projectIds: number[];
 }
 
 /** The app manifest to create the chat app from. Mirrors ChatManifestDto. */
