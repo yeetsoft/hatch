@@ -5,6 +5,7 @@ using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -28,12 +29,15 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/board/health")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class BoardHealthController(
-    HatchContext db, IActorDirectory actors, Runners runners, Dispatch dispatch, TimeProvider time, ColumnNormals normals) : ControllerBase
+    HatchContext db, IActorDirectory actors, Runners runners, Dispatch dispatch, TimeProvider time, ColumnNormals normals,
+    ICallerIdentity caller, IOptions<AuthOptions> auth, IAuthService keys, RunnerStateLog stateLog, RunnerSessions sessions) : ControllerBase
 {
     private const string DefaultWindow = "8h";
 
     private static readonly string[] ClaimKinds =
-        [EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimReleased, EfHatchIssueEvent.ClaimCleared];
+    [
+        EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimReleased, EfHatchIssueEvent.ClaimCleared, EfHatchIssueEvent.ClaimLapsed,
+    ];
 
     /// <summary>One event, as the fold's inputs are cut from it.</summary>
     private sealed record Ev(long IssueId, long Id, string Kind, DateTimeOffset At, string Actor, string? Payload);
@@ -102,14 +106,12 @@ public class BoardHealthController(
             .Select(e => new BoardHealthReport.Move(e.IssueId, e.Id, e.At, e.Actor, e.Payload))
             .ToList();
 
-        // The ones that moved inside the window are the only issues a claim can
-        // matter for: it is read to tell a runner's move from a person's.
-        var moved = moveRows.Where(e => e.At >= axis.From && e.At < axis.To).Select(e => e.IssueId).Distinct().ToList();
-        var claims = moved.Count == 0
-            ? []
-            : (await ReadTrailAsync(ClaimKinds, axis.From, scope, moved, ct))
-                .Select(e => new BoardHealthReport.ClaimEvent(e.IssueId, e.Id, e.Kind, e.At, e.Actor))
-                .ToList();
+        // Every claim of every issue, whatever the project scope: the lanes read
+        // them all, and the Moved fold takes the ones it needs. Of what came
+        // before the window, only an open claim (a take) is kept.
+        var claims = (await ReadTrailAsync(ClaimKinds, axis.From, null, null, ct, olderOnlyIf: EfHatchIssueEvent.ClaimTaken))
+            .Select(e => new BoardHealthReport.ClaimEvent(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
+            .ToList();
 
         var levels = new List<BoardHealthReport.PreApprovalChange>();
         foreach (var e in await ReadTrailAsync([EfHatchIssueEvent.PreApprovalChanged], axis.From, null, null, ct))
@@ -152,13 +154,91 @@ public class BoardHealthController(
             issues, moves, claims, levels, records, questions, statuses,
             hours, now, scope, leaves, normalOf, attention);
 
+        var lanes = await LanesAsync(
+            statuses, scope is null ? moves : await UnscopedMovesAsync(axis, ct), claims, axis, now, ct);
+
         return new BoardHealthDto(
             result.From, result.To, result.BarMinutes,
             result.Bars.Select(b => new BoardHealthBarDto(
                 b.Start, b.End, b.Board, b.Runner, b.Person, b.Moved, b.Waiting, b.InFlight, b.Done,
                 b.WaitingPullRequests, b.WaitingQuestions, b.OldestInFlightSeconds, b.OldestWaitSeconds)).ToList(),
-            result.Total, result.PreviousTotal, result.PastNormal, result.HasWorkColumn);
+            result.Total, result.PreviousTotal, result.PastNormal, result.HasWorkColumn,
+            new BoardHealthRunnersDto(
+                lanes.Up, lanes.Paused, lanes.Lanes.Count,
+                lanes.Lanes.Select(l => new BoardHealthLaneDto(
+                    l.Name, l.Up, l.Paused, l.LastSeenAt,
+                    l.Cells.Select(c => new BoardHealthCellDto(c.State, c.Why)).ToList())).ToList()));
     }
+
+    /// <summary>
+    /// The runners' lanes: the runners <c>GET /api/runners</c> would show this
+    /// caller, whatever the project scope, with their state record, claims,
+    /// stalls and failed sessions folded by <see cref="RunnerLanes"/>. Writes
+    /// nothing - unlike the Runners page it does not sweep sessions gone, since
+    /// <see cref="RunnerSessions.IsLive"/> is time-based already.
+    /// </summary>
+    private async Task<RunnerLanes.Result> LanesAsync(
+        List<EfHatchStatus> statuses, List<BoardHealthReport.Move> moves, List<BoardHealthReport.ClaimEvent> claims,
+        BoardHealthReport.Axis axis, DateTimeOffset now, CancellationToken ct)
+    {
+        var (all, personId) = await RunnerReach.OfAsync(auth.Value.Enabled, caller, actors, ct);
+        var visible = (await Runner.JoinAsync(db, keys, ct))
+            .Where(r => all || r.OwnerPersonId == personId)
+            .ToList();
+        if (visible.Count == 0) return new RunnerLanes.Result(0, 0, []);
+
+        // Each name's rows from the window's start, and the newest before it.
+        var names = visible.Select(r => r.Name).ToList();
+        var rows = (await db.RunnerStates.AsNoTracking()
+                .Where(s => names.Contains(s.Runner))
+                .Where(s => s.At >= axis.From
+                    || s.Id == db.RunnerStates
+                        .Where(x => x.Runner == s.Runner && x.At < axis.From)
+                        .OrderByDescending(x => x.At).ThenByDescending(x => x.Id)
+                        .Select(x => (long?)x.Id)
+                        .FirstOrDefault())
+                .OrderBy(s => s.At).ThenBy(s => s.Id)
+                .ToListAsync(ct))
+            .ToLookup(s => s.Runner, StringComparer.Ordinal);
+
+        var inputs = new List<RunnerLanes.RunnerInput>(visible.Count);
+        foreach (var r in visible)
+        {
+            var recorded = rows[r.Name].Select(s => new RunnerStateRule.Change(s.At, s.State, s.Kind)).ToList();
+            var tail = recorded.Count > 0
+                ? stateLog.ClockTail(RunnerStateLog.SourcesOf(r), recorded[^1].At, now)
+                : [];
+            inputs.Add(new RunnerLanes.RunnerInput(
+                r.Name, r.LastSeenAt, r.IsLive(runners, sessions, now), RunnerStateRule.Timeline(recorded, tail)));
+        }
+
+        var stalls = (await ReadSinceAsync(EfHatchIssueEvent.Stalled, axis.From, ct))
+            .Select(e => new RunnerLanes.Stall(e.IssueId, e.At, e.Actor))
+            .ToList();
+
+        var failed = (await db.WorkLog.AsNoTracking()
+                .Where(w => w.IsError && w.CreatedAt >= axis.From)
+                .Select(w => new { w.IssueId, w.CreatedAt })
+                .ToListAsync(ct))
+            .Select(w => new RunnerLanes.FailedSession(w.IssueId, w.CreatedAt))
+            .ToList();
+
+        var forward = BoardHealthReport.ForwardMoves(moves, claims, statuses, axis);
+        return RunnerLanes.Fold(inputs, claims, forward, stalls, failed, axis, now);
+    }
+
+    /// <summary>Every status change from the start of the window, in every project: the lanes ignore the project scope.</summary>
+    private async Task<List<BoardHealthReport.Move>> UnscopedMovesAsync(BoardHealthReport.Axis axis, CancellationToken ct) =>
+        (await ReadTrailAsync([EfHatchIssueEvent.StatusChanged], axis.From, null, null, ct))
+            .Select(e => new BoardHealthReport.Move(e.IssueId, e.Id, e.At, e.Actor, e.Payload))
+            .ToList();
+
+    /// <summary>The events of one kind at or after <paramref name="since"/>, and nothing before it.</summary>
+    private async Task<List<Ev>> ReadSinceAsync(string kind, DateTimeOffset since, CancellationToken ct) =>
+        await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == kind && e.At >= since)
+            .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
+            .ToListAsync(ct);
 
     /// <summary>
     /// What waits on a person at this instant: the attention panel's own pull
@@ -211,15 +291,22 @@ public class BoardHealthController(
     /// window opens on. Bounded in the query, so history older than that is
     /// never loaded.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="olderOnlyIf"/> keeps that older one only when it is of
+    /// this kind. The newest is still found over every kind asked for, so a
+    /// take that a later release closed before the window is not read as open.
+    /// </remarks>
     private async Task<List<Ev>> ReadTrailAsync(
-        string[] kinds, DateTimeOffset since, HashSet<string>? scope, List<long>? issueIds, CancellationToken ct)
+        string[] kinds, DateTimeOffset since, HashSet<string>? scope, List<long>? issueIds, CancellationToken ct,
+        string? olderOnlyIf = null)
     {
         var events = db.IssueEvents.AsNoTracking()
             .Where(e => kinds.Contains(e.Kind))
             .Where(e => e.At >= since
-                || e.Id == db.IssueEvents
-                    .Where(x => x.IssueId == e.IssueId && kinds.Contains(x.Kind) && x.At < since)
-                    .Max(x => (long?)x.Id));
+                || ((olderOnlyIf == null || e.Kind == olderOnlyIf)
+                    && e.Id == db.IssueEvents
+                        .Where(x => x.IssueId == e.IssueId && kinds.Contains(x.Kind) && x.At < since)
+                        .Max(x => (long?)x.Id)));
 
         if (scope is not null)
         {

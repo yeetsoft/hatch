@@ -4545,7 +4545,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — except the one card the server itself withholds: a terminal card whose `ClosedAt` is older than `doneHorizonHours` (48 by default, off at `0`) is not handed over at all, and `doneHorizonHours` on the DTO says what that horizon is; stories the horizon withheld whose epic is still on the board are handed over in `pastHorizon` instead, as ordinary cards, so a client can count them; `issues` is unchanged — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) — and `normals`, `at`, and on each card `enteredColumnAt` and `aged`: how long a column's stays normally last and who is past it (see [the flow](#the-flow)) |
-| `/board/health` | GET | The board's health in one read for a program: 24 bars over a `window` of `2h`, `4h`, `8h` (default), `12h` or `24h` - moves right by the board, a runner and a person, the bands waiting, in flight and done, and what waits on a person, whose last bar is the attention control's own count. `project` (repeatable). Open to a key. `400` for another window or an unknown `project` - see [the board health read](#the-board-health-read) |
+| `/board/health` | GET | The board's health in one read for a program: 24 bars over a `window` of `2h`, `4h`, `8h` (default), `12h` or `24h` - moves right by the board, a runner and a person, the bands waiting, in flight and done, and what waits on a person, whose last bar is the attention control's own count, and a lane for each runner the caller may see (`runners`). `project` (repeatable), which the lanes ignore. Open to a key. `400` for another window or an unknown `project` - see [the board health read](#the-board-health-read) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, `filedFromKey` (`""` finds the issues filed from nothing), ANDed, all optional; POST takes `filedFromKey` |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `filedFromKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way, each issue keeping its parent unless `parentKey` says otherwise — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it, and keeping its parent unless `parentKey` names another or `""`; `400` on an unknown project, `403` from a key, `409` naming any issue in the moving set holding a live claim, or a one-PR story's tasks that the move would leave in another project |
@@ -6086,7 +6086,8 @@ multiple of the bar's width, so a bar does not slide while now is inside it. The
 **last bar is read at now**, not at its end, which is still to come.
 
 It answers `{ from, to, barMinutes, bars, total, previousTotal, pastNormal,
-hasWorkColumn }`. `total` is the moves right in the window and `previousTotal`
+hasWorkColumn, runners }`. `runners` is [the runner lanes](#runner-lanes), below.
+`total` is the moves right in the window and `previousTotal`
 the same over the window before it, for comparison. `pastNormal` is how many
 issues with no children now stand in flight longer than their column's
 [normal](#the-flow). Each bar carries:
@@ -6127,6 +6128,60 @@ The status history is never loaded whole. Status changes are read back to the
 start of the window before this one, and everything else from the start of this
 one; for each issue the newest event before that point is read too, since it
 says where a stretch began or whether a claim was open.
+
+#### Runner lanes
+
+`runners` is `{ up, paused, withLane, lanes }`: one lane for each runner that
+was up at any time in the window, on the same 24 bars as `bars`, and the counts
+a Runners tile heads itself with. `up` counts the lanes whose runner is not gone
+now, `paused` those of them paused now (a pause the board imposed counts), and
+`withLane` is the number of lanes. **The server caps nothing**: the lanes come
+sorted up now first, then heard from most recently (`lastSeenAt`), then by name,
+and a page that draws fewer says how many it left out.
+
+A lane is `{ name, up, paused, lastSeenAt, cells }`, and `cells` has 24 entries,
+oldest first, one for each bar. A cell is `{ state, why }`, `state` being the
+first of these that holds in its bar:
+
+| `state` | When | `why` |
+|---|---|---|
+| `let-go` | a claim of the runner's was released as `dropped`, lapsed, or was marked stalled, or a work-log session under its claim ended in error | `dropped`, `lapsed`, `stalled` or `errored`; the first of them in that order when a bar holds several |
+| `down` | the [state record](#runners-on-the-board) has the runner out of usage or its agent down | `out-of-usage`; `not-starting` or `signed-out`; `agent-down` for a kind not known. An agent down beats out of usage |
+| `moved` | the runner made a forward move under its own claim | none |
+| `working` | the runner held a claim at any time in the bar | none |
+| `idle` | the runner was up and running (stopping counts) and held nothing | none |
+| `paused` | the record has the runner paused | `board` when the board imposed it (stored as an agent down of kind `board-paused`), else none |
+| `off` | the record covers the bar and the runner was gone for all of it | none |
+| `blank` | the record began after the bar ended, or never began, and nothing else shows | none |
+
+A release the board ordered (`preempted`) and one the session chose
+(`recused`) are not let-gos: their bars read as working. A drop and a stall
+belong to the runner that made them. A lapse belongs to the holder it lapsed,
+not to the runner that took over, since the lapse is written under the taker's
+name. A failed work-log session belongs to the holder open when its row
+reached the board.
+
+**One rule each, shared with what draws it.** `moved` is the Moved count's own
+rule for a runner's share, from the same function, so a bar the lanes draw as
+moved is a bar the `runner` count includes: they differ only in scope. A
+runner's timeline is the one `GET /api/runners/{name}/states` answers, rows and
+the clock's tail folded the same way. The runners are the ones `GET /api/runners`
+shows this caller and no others, by the same reach rule, and **the lanes ignore
+`project`**, as the Runners page does. Nothing new is stored for them, and the
+read writes nothing - it does not sweep sessions gone, since whether a session
+is live is judged by the clock.
+
+**Limits of the lanes.**
+
+- A runner's work in a project the caller cannot see reads as idle: the claims
+  of an issue the caller cannot see are not read.
+- A bar before a runner's state record began draws from its claims alone, and is
+  `blank` where it holds none. A runner that never had a row has a lane only for
+  what its claims show.
+- A claim left open, or ended by a lapse, reads as working only until the record
+  says the runner went gone; a claim cannot make a gone stretch working.
+- A work-log row carries no runner. A lease lost to another runner puts a failed
+  session on the new holder.
 
 ### The flow
 

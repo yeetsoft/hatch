@@ -266,4 +266,47 @@ public class RunnerStateRuleTests
     [Fact]
     public void ClockChanges_ForNoSources_IsEmpty() =>
         Assert.Empty(RunnerStateRule.ClockChanges([], Limit, T0, T0.AddHours(1)));
+
+    // ---- The timeline ----
+
+    private static RunnerStateRule.Change C(int seconds, string state, string? kind = null) =>
+        new(T0.AddSeconds(seconds), state, kind);
+
+    [Fact]
+    public void Timeline_FoldsAdjacentRowsIntoTheSameStateAndKind()
+    {
+        var rows = new[] { C(0, "running"), C(5, "running"), C(10, "agent-down", "signed-out"), C(15, "agent-down", "not-starting"), C(20, "agent-down", "not-starting") };
+
+        var timeline = RunnerStateRule.Timeline(rows, []);
+
+        Assert.Equal([0, 10, 15], timeline.Select(c => (int)(c.At - T0).TotalSeconds));
+    }
+
+    [Fact]
+    public void Timeline_AppendsTheClockTail_AndFoldsAgain_WhenItRepeatsTheLastState()
+    {
+        var rows = new[] { C(0, "running"), C(10, "exhausted") };
+        var tail = new[] { C(10, "exhausted"), C(30, "running"), C(90, "gone") };
+
+        var timeline = RunnerStateRule.Timeline(rows, tail);
+
+        Assert.Equal(["running", "exhausted", "running", "gone"], timeline.Select(c => c.State));
+        Assert.Equal(T0.AddSeconds(10), timeline[1].At);
+    }
+
+    [Fact]
+    public void Timeline_WithNoRows_HasNoTail()
+    {
+        Assert.Empty(RunnerStateRule.Timeline([], [C(30, "gone")]));
+    }
+
+    [Fact]
+    public void Timeline_DoesNotChangeTheListsItWasGiven()
+    {
+        var rows = new[] { C(0, "running"), C(5, "running") };
+
+        RunnerStateRule.Timeline(rows, [C(9, "gone")]);
+
+        Assert.Equal(2, rows.Length);
+    }
 }

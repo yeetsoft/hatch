@@ -56,6 +56,41 @@ public sealed class RunnerStateLog(Runners runners)
     }
 
     /// <summary>
+    /// The changes the clock alone has made since <paramref name="after"/>, up to
+    /// <paramref name="now"/>, from sources already in hand: the same judgement
+    /// as <see cref="ClockTailAsync"/>, with no query. The lanes on the board
+    /// health read use it once for each runner.
+    /// </summary>
+    public IReadOnlyList<RunnerStateRule.Change> ClockTail(
+        IReadOnlyList<RunnerStateRule.Source> sources, DateTimeOffset after, DateTimeOffset now) =>
+        RunnerStateRule.ClockChanges(sources, GoneAfter, after, now);
+
+    /// <summary>
+    /// The sources of a runner already joined: the heartbeat row and every
+    /// session of its key, as <see cref="SourcesAsync"/> builds them from the
+    /// store. <see cref="Runner.JoinAsync"/> matches the heartbeat to the key by
+    /// name and groups the sessions by key, so the two agree.
+    /// </summary>
+    public static IReadOnlyList<RunnerStateRule.Source> SourcesOf(Runner runner)
+    {
+        var sources = new List<RunnerStateRule.Source>();
+
+        if (runner.Beat is { } beat)
+        {
+            sources.Add(new RunnerStateRule.Source(
+                beat.LastSeenAt, null, beat.RetiredAt is not null, beat.State, beat.ExhaustedUntil, beat.AgentDownUntil, beat.AgentDownKind));
+        }
+
+        foreach (var s in runner.Sessions ?? [])
+        {
+            sources.Add(new RunnerStateRule.Source(
+                s.LastSeenAt, s.EndedAt, false, s.State, s.ExhaustedUntil, s.AgentDownUntil, s.AgentDownKind));
+        }
+
+        return sources;
+    }
+
+    /// <summary>
     /// Settles, then appends one row at <paramref name="now"/> if the runner's
     /// state now differs from the last row, and saves. A runner with no heartbeat
     /// row and no session has no state and writes nothing; a beat that changed

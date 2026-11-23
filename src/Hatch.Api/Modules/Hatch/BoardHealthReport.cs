@@ -25,8 +25,8 @@ public static class BoardHealthReport
     /// <summary>One <c>status_changed</c> event, with who made it.</summary>
     public sealed record Move(long IssueId, long EventId, DateTimeOffset At, string Actor, string? Payload);
 
-    /// <summary>One claim event: <see cref="EfHatchIssueEvent.ClaimTaken"/>, <see cref="EfHatchIssueEvent.ClaimReleased"/> or <see cref="EfHatchIssueEvent.ClaimCleared"/>.</summary>
-    public sealed record ClaimEvent(long IssueId, long EventId, string Kind, DateTimeOffset At, string Actor);
+    /// <summary>One claim event: <see cref="EfHatchIssueEvent.ClaimTaken"/>, <see cref="EfHatchIssueEvent.ClaimReleased"/>, <see cref="EfHatchIssueEvent.ClaimCleared"/> or <see cref="EfHatchIssueEvent.ClaimLapsed"/>. The Moved fold ignores a lapse; the runners' lanes read it.</summary>
+    public sealed record ClaimEvent(long IssueId, long EventId, string Kind, DateTimeOffset At, string Actor, string? Payload = null);
 
     /// <summary>One change of an issue's own pre-approval, both ends named by <see cref="PreApprovalLevels"/>.</summary>
     public sealed record PreApprovalChange(long IssueId, long EventId, DateTimeOffset At, string From, string To);
@@ -133,12 +133,10 @@ public static class BoardHealthReport
         var everyone = rows.GroupBy(r => r.Row.Id).ToDictionary(g => g.Key, g => g.First());
 
         var movesByIssue = moves.ToLookup(m => m.IssueId);
-        var claimsByIssue = claims.ToLookup(c => c.IssueId);
         var levelsByIssue = levels.ToLookup(c => c.IssueId);
         var recordsByIssue = prRecords.ToLookup(c => c.IssueId);
         var questionsByIssue = questions.ToLookup(q => q.IssueId);
 
-        var previousFrom = axis.From - width * BarCount;
         var starts = Enumerable.Range(0, BarCount).Select(k => axis.From + width * k).ToList();
         var reads = starts.Select((s, k) => k == BarCount - 1 ? now : s + width).ToList();
 
@@ -155,6 +153,23 @@ public static class BoardHealthReport
         var waitingQuestions = new int[BarCount];
         var oldestWait = new long?[BarCount];
         var pastNormal = 0;
+
+        // Moved right: the scoped issues' own forward moves, by the rule the
+        // runners' lanes read too.
+        var scopedIds = scoped.Select(r => r.Row.Id).ToHashSet();
+        foreach (var m in ForwardMoves(moves.Where(m => scopedIds.Contains(m.IssueId)).ToList(), claims, statuses, axis))
+        {
+            if (m.At < axis.From)
+            {
+                previousTotal++;
+                continue;
+            }
+
+            var bar = (int)((m.At - axis.From).Ticks / width.Ticks);
+            if (m.Kind == MoveKind.Board) movedBoard[bar]++;
+            else if (m.Kind == MoveKind.Runner) movedRunner[bar]++;
+            else movedPerson[bar]++;
+        }
 
         void Longest(long?[] into, int bar, DateTimeOffset since, DateTimeOffset read)
         {
@@ -180,30 +195,6 @@ public static class BoardHealthReport
 
             bool Reads((int Id, DateTimeOffset Opens, DateTimeOffset? To) s, DateTimeOffset r) =>
                 s.Opens <= r && (s.To is null || s.To > r);
-
-            // Moved right.
-            var claimTrail = claimsByIssue[row.Id].OrderBy(c => c.EventId).ToList();
-            foreach (var move in movesByIssue[row.Id])
-            {
-                if (move.At < previousFrom || move.At >= axis.To) continue;
-                if (TimelineReport.ParseChange(move.IssueId, move.EventId, move.At, move.Payload) is not { } change) continue;
-                if (TimelineReport.Resolve(change.From, change.FromId, index) is not ({ } fromId, true)
-                    || TimelineReport.Resolve(change.To, change.ToId, index) is not ({ } toId, true)
-                    || !slot.TryGetValue(fromId, out var fromSlot) || !slot.TryGetValue(toId, out var toSlot)
-                    || toSlot <= fromSlot)
-                    continue;
-
-                if (move.At < axis.From)
-                {
-                    previousTotal++;
-                    continue;
-                }
-
-                var bar = (int)((move.At - axis.From).Ticks / width.Ticks);
-                if (IsBoard(move.Payload, index)) movedBoard[bar]++;
-                else if (OpenClaimActor(claimTrail, move.At) == move.Actor) movedRunner[bar]++;
-                else movedPerson[bar]++;
-            }
 
             // Bands, and the oldest in flight.
             var isLeaf = leaves.Contains(row.Id);
@@ -294,6 +285,60 @@ public static class BoardHealthReport
         }
 
         return new Result(axis.From, axis.To, axis.BarMinutes, bars, bars.Sum(b => b.Moved), previousTotal, pastNormal, hasWork);
+    }
+
+    /// <summary>Who made a move right: the board itself, the runner holding the claim, or anybody else.</summary>
+    public enum MoveKind { Board, Runner, Person }
+
+    /// <summary>One move right, with who made it. <see cref="Actor"/> is the event's own actor.</summary>
+    public sealed record ForwardMove(long IssueId, long EventId, DateTimeOffset At, MoveKind Kind, string Actor);
+
+    /// <summary>
+    /// Every move right made from the start of the window before
+    /// <paramref name="axis"/>'s to its end, each with its kind. The one rule
+    /// behind the Moved tile's counts and the runners' <c>moved</c> cells, so
+    /// the two cannot disagree: a move is the board's when it is a hop, a
+    /// merge, a landing or a push back; a runner's when the actor is the one
+    /// holding the issue's claim at that instant; a person's otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Takes any moves and claims, not only a scope's: the Moved tile hands it
+    /// the scoped issues' moves and the lanes hand it everyone's. A column the
+    /// board does not have, or a move between columns it cannot resolve, is
+    /// not a move right.
+    /// </remarks>
+    public static IReadOnlyList<ForwardMove> ForwardMoves(
+        IReadOnlyList<Move> moves, IReadOnlyList<ClaimEvent> claims, IReadOnlyList<EfHatchStatus> statuses, Axis axis)
+    {
+        var width = TimeSpan.FromMinutes(axis.BarMinutes);
+        var previousFrom = axis.From - width * BarCount;
+
+        var board = Columns.Board(statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList());
+        var index = TimelineReport.IndexOf(statuses);
+        var slot = new Dictionary<int, int>();
+        for (var i = 0; i < board.Count; i++) slot[board[i].Id] = i;
+
+        var claimTrails = claims.GroupBy(c => c.IssueId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(c => c.EventId).ToList());
+
+        var forward = new List<ForwardMove>();
+        foreach (var move in moves)
+        {
+            if (move.At < previousFrom || move.At >= axis.To) continue;
+            if (TimelineReport.ParseChange(move.IssueId, move.EventId, move.At, move.Payload) is not { } change) continue;
+            if (TimelineReport.Resolve(change.From, change.FromId, index) is not ({ } fromId, true)
+                || TimelineReport.Resolve(change.To, change.ToId, index) is not ({ } toId, true)
+                || !slot.TryGetValue(fromId, out var fromSlot) || !slot.TryGetValue(toId, out var toSlot)
+                || toSlot <= fromSlot)
+                continue;
+
+            var kind = IsBoard(move.Payload, index) ? MoveKind.Board
+                : claimTrails.TryGetValue(move.IssueId, out var trail) && OpenClaimActor(trail, move.At) == move.Actor ? MoveKind.Runner
+                : MoveKind.Person;
+            forward.Add(new ForwardMove(move.IssueId, move.EventId, move.At, kind, move.Actor));
+        }
+
+        return forward;
     }
 
     /// <summary>A move the board made itself: a hop, or a merge, a landing or a push back.</summary>
