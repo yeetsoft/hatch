@@ -1866,6 +1866,91 @@ public class AttentionControllerTests : IDisposable
         Assert.Equal("no live runner offers fable", row.Missing);
     }
 
+    // ---- ... and one whose forge works, where a step ends in a pull request ----
+
+    private static async Task ForgeRunnerAsync(Harness h, string name, string? forge, string? forgeWhy = null, string? models = null)
+    {
+        var key = await h.AddKeyAsync(name);
+        await h.AddSessionAsync(key, $"host:/{name}", agent: models is null ? null : "claude", forge: forge, forgeWhy: forgeWhy, models: models);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_AStepEveryLiveRunnerFailsItsForgeFor_SaysSo_UntilOneWorks()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var issue = await h.FileAsync("task", "ends in a pull request", h.InProgress);
+        await ForgeRunnerAsync(h, "gh-out-one", "fails", "not logged in");
+        await ForgeRunnerAsync(h, "gh-out-two", "fails");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(
+            new WaitingOnARunnerDto(Key(issue), "ends in a pull request", "task", "in progress", "no live runner can open a pull request"), row);
+
+        await ForgeRunnerAsync(h, "gh-fine", "works");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ARunnerThatNeverSaidItsForge_EmptiesTheList()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        await h.FileAsync("task", "ends in a pull request", h.InProgress);
+        await ForgeRunnerAsync(h, "gh-out", "fails");
+
+        Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+
+        // Every runner in service is older than the check: silence is not a failure.
+        await h.RunnerAsync("host:/older", null);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_AForgeGapJoinsAModelGap_WithASemicolon()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        await h.FileAsync("task", "needs sonnet and a forge", h.InProgress);
+        await ForgeRunnerAsync(h, "gh-out", "fails", models: "haiku");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal("no live runner offers sonnet; no live runner can open a pull request", row.Missing);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_AProjectThatLandsOnItsTrunk_NeverNamesTheForge()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        foreach (var project in await h.Db.Projects.ToListAsync())
+            project.Landing = Landings.Trunk;
+        await h.Db.SaveChangesAsync();
+        await h.FileAsync("task", "lands on the trunk", h.InProgress);
+        await ForgeRunnerAsync(h, "gh-out", "fails");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_ARunnerWhoseForgeFails_IsNotATaker_AndItsReasonIsTheForgeSentence()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var issue = await h.FileAsync("task", "one", h.InProgress);
+        await ForgeRunnerAsync(h, "gh-out", "fails", "not logged in");
+        await ForgeRunnerAsync(h, "gh-fine", "works");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+
+        Assert.Equal(["gh-fine"], row.Takers);
+        Assert.Equal(
+            [new RunnerReasonDto("gh-out", $"{Key(issue)} ends in a pull request - gh-out cannot reach its forge (gh said: not logged in)")],
+            row.Reasons);
+    }
+
     [Fact]
     public async Task WaitingOnARunner_AnEmptyFleetAnswersEmpty_AndSoDoesABoardWhereEveryGapIsMet()
     {
@@ -3404,7 +3489,8 @@ public class AttentionControllerTests : IDisposable
 
         /// <summary>A live loop session for a key, placed directly - the session-carrying counterpart to <see cref="RunnerAsync"/>.</summary>
         public async Task AddSessionAsync(
-            EfApiKey key, string? where = null, string? agent = null, bool standing = true, string? signing = null)
+            EfApiKey key, string? where = null, string? agent = null, bool standing = true, string? signing = null,
+            string? forge = null, string? forgeWhy = null, string? models = null)
         {
             Db.RunnerSessions.Add(new EfHatchRunnerSession
             {
@@ -3417,6 +3503,9 @@ public class AttentionControllerTests : IDisposable
                 Standing = standing,
                 Agent = agent,
                 Signing = signing,
+                Forge = forge,
+                ForgeWhy = forgeWhy,
+                Models = models,
             });
             await Db.SaveChangesAsync();
         }

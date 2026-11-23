@@ -449,6 +449,14 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// runs on every heartbeat, and a project whose only owner was deleted stays
     /// owned here, which errs toward nobody driving rather than anybody.
     ///
+    /// A runner whose live loop sessions say its forge fails is not a candidate
+    /// either - it can merge nothing, and electing it would hold the project up
+    /// until the stall watch passed it over, again for every pull request. One
+    /// failing session leaves the whole runner out; a runner that has said
+    /// nothing, or said it works, is elected as before. The word is read on
+    /// each call, so a runner moves out on the beat that says it fails and back
+    /// on the beat that says it works.
+    ///
     /// The tie-break - oldest <c>FirstSeenAt</c> first, then <c>Name</c>
     /// ordinally - is what makes the election stable: the longest-running
     /// eligible runner keeps a project for as long as it keeps heartbeating,
@@ -599,7 +607,23 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 && (s.AgentDownUntil == null || s.AgentDownUntil <= now))
             .ToListAsync(ct);
 
-        if (liveSessions.Count > 0)
+        // A runner whose forge fails is left out, whatever else it is: it can
+        // merge nothing, and electing it holds the project up until the stall
+        // watch passes it over. The runner is the unit, as on the runners page
+        // (RunnerForge.Worst): one failing live session leaves the whole name
+        // out, since every session of a key is told the same answer. This read
+        // does not apply the agent-down filter - a paused agent that says the
+        // forge fails still fails. A beat row has no forge column, so it is
+        // left out only through a session under the same key name. No word at
+        // all is no objection.
+        var failingKeyIds = await db.RunnerSessions.AsNoTracking()
+            .Where(s => s.EndedAt == null && s.LastSeenAt >= cutoff && s.Kind == EfHatchRunner.LoopKind
+                && s.Forge == RunnerForge.Fails)
+            .Select(s => s.ApiKeyId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (liveSessions.Count > 0 || failingKeyIds.Count > 0)
         {
             var keysById = (await keys.ListApiKeysAsync(ct)).ToDictionary(k => k.Id);
 
@@ -611,6 +635,12 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                     return (key.Name, s.StartedAt, s.LastSeenAt, key.OwnerPersonId, Repos: RepositoryDeclaration.From(
                         s.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), s.Standing, null));
                 }));
+
+            var failing = failingKeyIds
+                .Where(keysById.ContainsKey)
+                .Select(id => keysById[id].Name)
+                .ToHashSet(StringComparer.Ordinal);
+            if (failing.Count > 0) candidates.RemoveAll(c => failing.Contains(c.Name));
         }
 
         // Who a merge belongs to, per project, for the projects that have an
