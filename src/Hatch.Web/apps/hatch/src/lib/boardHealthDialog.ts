@@ -28,9 +28,6 @@ import { formatSpan } from './cardAge';
 import { momentLabel } from './cumulativeFlow';
 import type { BoardHealth, BoardHealthBar } from '../types';
 
-/** The four tiles that open a dialog. */
-export type DialogTile = Exclude<Tile, 'runners'>;
-
 /** The dialog's title: the tile's own label and the window, `Moved, last 8h`.
     It follows the answer's window, not the button that was pressed, so the
     chart and its title agree while a new window loads. */
@@ -70,8 +67,9 @@ export interface LegendEntry {
   label: string;
 }
 
-/** Every mark of a tile's chart, top to bottom as it is drawn. Runners' own
-    legend is the next dialog's. */
+/** Every mark of a tile's chart, top to bottom as it is drawn. Runners has none
+    here: its legend is the seven lane states, `LANE_LEGEND`, which swatch with
+    cells rather than the chart's marks. */
 export function legend(tile: Tile): LegendEntry[] {
   switch (tile) {
     case 'moved':

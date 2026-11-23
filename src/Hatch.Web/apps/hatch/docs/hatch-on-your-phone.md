@@ -49,8 +49,8 @@ charts. Tap the row and it opens into the full tiles, stacked one under another,
 the window control (**2h** to **24h**) above them; tap it again and it closes.
 Tap a tile - on its chart or anywhere that is not a link - and the same
 dialog the desk opens covers the width of the screen, with the chart drawn
-large and its controls at least 44px tall; Moved, In flight, Oldest in flight
-and Waiting on you open one. Its **✕**, or a tap on the strip of page above it,
+large and its controls at least 44px tall; all five tiles open one, Runners
+included, whose dialog lists every runner's lane and scrolls when there are many. Its **✕**, or a tap on the strip of page above it,
 closes it and puts you back on the tile. The dialog's window control is the
 strip's.
 It starts closed each time the board opens, and the window you pick is the

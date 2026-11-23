@@ -674,11 +674,13 @@ same moment on all four.
   board follows, but not the caller's own visibility: a runner's work in a
   project the caller cannot see reads as idle. A **Key** button at the tile's
   top right opens a legend naming all seven cells; press it, or hover or focus
-  the tile.
+  the tile. Press the lanes, or anywhere else on the tile that is not the Key,
+  and its dialog opens, which draws every lane rather than eight.
 
-Press the sparkline of **Moved**, **In flight**, **Oldest in flight** or
-**Waiting on you**, or anywhere else on the tile that is not a link or a button,
-and a dialog opens with that tile's window drawn large. From the keyboard, focus
+Press the sparkline of **Moved**, **In flight**, **Oldest in flight**,
+**Waiting on you** or **Runners**, or anywhere else on the tile that is not a link or a button,
+and a dialog opens with that tile's window drawn large. On Runners, **Key** still
+opens its own key, not the dialog. From the keyboard, focus
 the sparkline and press Enter or Space; the arrow keys still mark a bar and do
 not open it. Escape or a click outside closes the dialog and puts focus back on
 the sparkline. Pointing at a tile only marks a moment, as before. Every dialog
@@ -700,6 +702,15 @@ The dialog draws from the same read as the strip and redraws as it refreshes.
 - **Oldest in flight** draws the tile's line large, with a dot for now.
 - **Waiting on you** draws pull requests and questions apart, as two stacked
   areas, and says how long the oldest has waited now.
+- **Runners** draws every lane, not eight: one row for each runner the read
+  answers, with its name, whether it is up, paused or not up now, and when it
+  was last heard from ("last heard 3h 10m before 15:40"), then its 24 cells,
+  larger than the tile's, each with its own tooltip. The legend's seven lines show
+  in the dialog with no button press, each beside a swatch of its cell. A side
+  note says how many lanes there are. Point at a bar, or step with the arrow
+  keys, and a line marks it across every row and one sentence names each runner's
+  state there. With many lanes the rows scroll inside a box while the time axis
+  stays in view; Up and Down scroll it when it has focus.
 
 At rest the last three tiles show now, the bar still filling, Moved shows
 the window's total, and Runners shows how many are up now. Point at any bar,

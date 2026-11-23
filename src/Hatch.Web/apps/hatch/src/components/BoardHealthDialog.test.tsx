@@ -4,17 +4,18 @@ import { MemoryRouter } from 'react-router-dom';
 import { BARS, flowHref } from '../lib/boardHealth';
 import type { HealthWindow } from '../lib/boardHealth';
 import { dialogTitle, legend, markedWords, movedSummary } from '../lib/boardHealthDialog';
-import type { DialogTile } from '../lib/boardHealthDialog';
+import type { Tile } from '../lib/boardHealth';
+import { LANE_LEGEND } from '../lib/boardHealthLanes';
 import { sampleHealth } from '../lib/boardHealthSample';
-import type { BoardHealth } from '../types';
+import type { BoardHealth, BoardHealthLane } from '../types';
 import { BoardHealthDialog } from './BoardHealthDialog';
 
 const escape = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const TILES: DialogTile[] = ['moved', 'inFlight', 'oldest', 'waiting'];
+const TILES: Tile[] = ['moved', 'inFlight', 'oldest', 'waiting'];
 
 /** One open dialog over `answer`, as the strip mounts it. */
-function dialog(tile: DialogTile, answer: BoardHealth, index: number | null = null, window: HealthWindow = '8h', href?: string) {
+function dialog(tile: Tile, answer: BoardHealth, index: number | null = null, window: HealthWindow = '8h', href?: string) {
   return renderToStaticMarkup(
     <MemoryRouter>
       <BoardHealthDialog
@@ -195,5 +196,122 @@ describe('the Waiting on you dialog', () => {
     );
 
     expect(dialog('waiting', { ...answer, bars })).toContain('Now: oldest waited 2h 10m');
+  });
+});
+
+const lane = (name: string, over: Partial<BoardHealthLane> = {}): BoardHealthLane => ({
+  name,
+  up: true,
+  paused: false,
+  lastSeenAt: '2026-11-22T15:40:00.000Z',
+  cells: Array.from({ length: BARS }, () => ({ state: 'working', why: null })),
+  ...over,
+});
+
+/** Twelve lanes - four more than the tile draws - with each standing among them. */
+function twelve(): BoardHealth {
+  const lanes = Array.from({ length: 12 }, (_, i) => lane(`runner-${i}`, { paused: i === 1, up: i !== 2 }));
+
+  return sampleHealth({ runners: { up: 11, paused: 1, withLane: 12, lanes } });
+}
+
+describe('the Runners dialog', () => {
+  it('opens as a modal titled with the tile and the window, with the window control', () => {
+    const answer = twelve();
+    const html = dialog('runners', answer);
+
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain(`>${escape(dialogTitle('runners', answer))}</h3>`);
+    expect(html).toContain('>Runners, last 8h</h3>');
+    expect(html).toContain('data-dialog="runners"');
+    expect(html.match(/<button[^>]*hatch-health-window[^>]*>/g)).toHaveLength(5);
+  });
+
+  it('draws a row for every lane, with no cap of eight', () => {
+    const html = dialog('runners', twelve());
+
+    expect(html.match(/class="hatch-health-dialog-lane"/g)).toHaveLength(12);
+    expect(html.match(/class="hatch-health-dialog-lane-cells"/g)).toHaveLength(12);
+    for (let i = 0; i < 12; i++) expect(html).toContain(`>runner-${i}</strong>`);
+    expect(html).not.toContain('not drawn');
+  });
+
+  it('gives each row 24 cells, each titled with whose it is', () => {
+    const html = dialog('runners', twelve());
+
+    expect(html.match(/hatch-health-lane-cell /g)).toHaveLength(12 * BARS + LANE_LEGEND.length);
+    expect(html.match(/title="runner-3: working"/g)).toHaveLength(BARS);
+  });
+
+  it("says each runner's standing and when it was last heard from", () => {
+    const html = dialog('runners', twelve());
+
+    expect(html).toContain('data-part="standing">up<');
+    expect(html).toContain('data-part="standing">paused<');
+    expect(html).toContain('data-part="standing">not up<');
+    expect(html.match(/data-part="heard">last heard at /g)).toHaveLength(12);
+  });
+
+  it('shows all seven legend lines at once, each with a swatch and its words', () => {
+    const html = dialog('runners', twelve());
+
+    for (const line of LANE_LEGEND) {
+      expect(html).toContain(`<strong>${escape(line.title)}</strong>`);
+      expect(html).toContain(escape(line.body));
+      expect(html).toContain(`hatch-health-lane-cell--${line.state}`);
+    }
+    expect(html.match(/hatch-health-dialog-lane-swatch/g)).toHaveLength(LANE_LEGEND.length);
+  });
+
+  it('says how many lanes there are at the side', () => {
+    expect(dialog('runners', twelve())).toContain('hatch-health-dialog-note">12 lanes<');
+    expect(dialog('runners', sampleHealth())).toContain('hatch-health-dialog-note">3 lanes<');
+  });
+
+  it('scrolls in a box that is the focusable chart, with the axis as its last child', () => {
+    const html = dialog('runners', twelve());
+
+    expect(html).toContain('class="hatch-health-dialog-lanes" data-part="chart" tabindex="0" role="group"');
+    expect(html.indexOf('hatch-health-dialog-lane-axis')).toBeGreaterThan(html.lastIndexOf('class="hatch-health-dialog-lane"'));
+    expect(html.match(/class="hatch-health-dialog-tick[ "]/g)).toHaveLength(5);
+  });
+
+  it("is no tile and draws no svg chart, so the strip's own selectors leave it alone", () => {
+    for (const index of [null, 3]) {
+      const html = dialog('runners', twelve(), index);
+
+      expect(html).not.toContain('data-tile');
+      expect(html).not.toContain('hatch-health-moment');
+      expect(html).not.toContain('<svg');
+      expect(html).not.toContain('data-part="scale-top"');
+    }
+  });
+
+  it("draws the marked line only when a bar is marked, over the cells' column", () => {
+    expect(dialog('runners', twelve())).not.toContain('hatch-health-dialog-lane-moment');
+
+    const html = dialog('runners', twelve(), 5);
+
+    expect(html.match(/hatch-health-dialog-lane-moment/g)).toHaveLength(1);
+    expect(html).toContain(`* (5 + 0.5) / ${BARS})`);
+    expect(html).toContain('var(--hatch-lane-name)');
+  });
+
+  it("says each runner's state at the marked bar, and counts them at rest", () => {
+    const answer = twelve();
+    const marked = dialog('runners', answer, 5);
+
+    expect(dialog('runners', answer)).toContain('12 runners, 11 up, 1 paused');
+    for (let i = 0; i < 12; i++) expect(marked).toContain(`runner-${i} working`);
+  });
+
+  it('says so in one line when no runner was up, and draws no marker', () => {
+    const none = sampleHealth({ runners: { up: 0, paused: 0, withLane: 0, lanes: [] } });
+    const html = dialog('runners', none, 5);
+
+    expect(html).toContain('No runner was up in this window');
+    expect(html).not.toContain('hatch-health-dialog-lane-moment');
+    expect(html).not.toContain('class="hatch-health-dialog-lane"');
+    expect(html).toContain('0 lanes');
   });
 });

@@ -2,8 +2,8 @@ import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Modal } from '@hatch/ui';
-import { axisSentence, bandPolygons, barIndexAt, momentX, oldestLine, stepMoment } from '../lib/boardHealth';
-import type { HealthWindow } from '../lib/boardHealth';
+import { BARS, axisSentence, bandPolygons, barIndexAt, momentX, oldestLine, plural, stepMoment } from '../lib/boardHealth';
+import type { HealthWindow, Tile } from '../lib/boardHealth';
 import {
   MARK_PATTERN,
   axisTicks,
@@ -17,8 +17,10 @@ import {
   stackedMovedBars,
   waitingSplit,
 } from '../lib/boardHealthDialog';
-import type { DialogTile, MarkKey, SummaryRow } from '../lib/boardHealthDialog';
+import type { MarkKey, SummaryRow } from '../lib/boardHealthDialog';
+import { LANE_LEGEND, allLanes, cellWords, laneStanding, lanesMarkedWords, lastHeardWords } from '../lib/boardHealthLanes';
 import type { BoardHealth } from '../types';
+import { LaneCell } from './BoardHealthTiles';
 import { HealthWindowControl } from './HealthWindowControl';
 
 /* The dialog a health tile opens: the same window as the sparkline, drawn
@@ -97,6 +99,129 @@ export function OldestChart({ answer, width, height }: { answer: BoardHealth; wi
   );
 }
 
+/** The time labels along the bottom of a chart, placed by percentage of the width they sit in. */
+function TimeAxis({ answer }: { answer: BoardHealth }) {
+  return (
+    <div className="hatch-health-dialog-ticks" aria-hidden="true">
+      {axisTicks(answer, 100).map((tick) => (
+        <span
+          key={tick.x}
+          className={`hatch-health-dialog-tick${tick.x === 0 ? ' hatch-health-dialog-tick--start' : ''}${tick.x === 100 ? ' hatch-health-dialog-tick--end' : ''}`}
+          style={{ left: `${tick.x}%` }}
+        >
+          {tick.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** The Runners dialog's chart: a row of 24 cells for every lane the read answers,
+    none left out. The box scrolls when there are many. The time axis is the
+    box's last child and sticks to its bottom, so it stays in view and, sharing
+    the box with the cells, cannot drift from them when a scrollbar takes some of
+    the width. The box is the focusable group the other dialogs' charts are, so
+    Up and Down scroll it as the browser does and only the four mark keys are
+    taken. */
+function LanesChart({
+  answer,
+  index,
+  onIndex,
+  label,
+}: {
+  answer: BoardHealth;
+  index: number | null;
+  onIndex: (index: number | null) => void;
+  label: string;
+}) {
+  const lanes = allLanes(answer);
+
+  /* Every row's cells share one x-range, so the first row's stands for all. Off
+     the cells - over the names, say - there is no bar, and the mark clears. */
+  const onPointer = (event: PointerEvent<HTMLDivElement>) => {
+    const cells = event.currentTarget.querySelector('.hatch-health-dialog-lane-cells');
+    if (!cells) {
+      onIndex(null);
+      return;
+    }
+    const rect = cells.getBoundingClientRect();
+    onIndex(barIndexAt(event.clientX - rect.left, rect.width));
+  };
+
+  /* Escape is left to Modal, which closes the dialog on it. */
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!KEYS.includes(event.key)) return;
+    event.preventDefault();
+    onIndex(stepMoment(index, event.key, answer.bars.length));
+  };
+
+  return (
+    <div
+      className="hatch-health-dialog-lanes"
+      data-part="chart"
+      tabIndex={0}
+      role="group"
+      aria-label={label}
+      onPointerMove={onPointer}
+      onPointerDown={onPointer}
+      onPointerLeave={() => onIndex(null)}
+      onKeyDown={onKeyDown}
+    >
+      {lanes.length === 0 ? (
+        <p className="hatch-health-dialog-empty">No runner was up in this window</p>
+      ) : (
+        <>
+          <div className="hatch-health-dialog-lane-rows">
+            {lanes.map((lane) => (
+              <div key={lane.name} className="hatch-health-dialog-lane" data-lane={lane.name}>
+                <div className="hatch-health-dialog-lane-name">
+                  <strong title={lane.name}>{lane.name}</strong>
+                  <span data-part="standing">{laneStanding(lane)}</span>
+                  <span data-part="heard">{lastHeardWords(lane, answer)}</span>
+                </div>
+                <div className="hatch-health-dialog-lane-cells">
+                  {lane.cells.map((cell, i) => (
+                    <LaneCell key={i} cell={cell} title={`${lane.name}: ${cellWords(cell)}`} />
+                  ))}
+                </div>
+              </div>
+            ))}
+            {index !== null && (
+              <span
+                className="hatch-health-dialog-lane-moment"
+                style={{
+                  left: `calc(var(--hatch-lane-name) + var(--sp-2) + (100% - var(--hatch-lane-name) - var(--sp-2)) * (${index} + 0.5) / ${BARS})`,
+                }}
+              />
+            )}
+          </div>
+          <div className="hatch-health-dialog-lane-axis">
+            <TimeAxis answer={answer} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The seven lane states, each a swatch drawn as the cell itself, then its words. */
+function LaneLegend() {
+  return (
+    <ul className="hatch-health-dialog-legend" aria-label="Legend">
+      {LANE_LEGEND.map((line) => (
+        <li key={line.title} data-state={line.state}>
+          <span className="hatch-health-dialog-lane-swatch" aria-hidden="true">
+            <LaneCell cell={{ state: line.state, why: null }} />
+          </span>
+          <span>
+            <strong>{line.title}</strong>: {line.body}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Rows({ rows }: { rows: SummaryRow[] }) {
   return (
     <dl className="hatch-health-dialog-rows">
@@ -120,7 +245,7 @@ export function BoardHealthDialog({
   onClose,
   href,
 }: {
-  tile: DialogTile;
+  tile: Tile;
   answer: BoardHealth;
   /** The marked bar, or null for the window at rest. */
   index: number | null;
@@ -178,6 +303,9 @@ export function BoardHealthDialog({
           <p className="hatch-health-axis">{axisSentence(answer)}</p>
         </div>
 
+        {tile === 'runners' ? (
+          <LanesChart answer={answer} index={index} onIndex={onIndex} label={`${title}. Arrow keys mark a moment.`} />
+        ) : (
         <div className="hatch-health-dialog-plot">
           <div className="hatch-health-dialog-scale" aria-hidden="true">
             <span data-part="scale-top">{scaleTop(tile, answer)}</span>
@@ -244,31 +372,30 @@ export function BoardHealthDialog({
             </svg>
           </div>
 
-          <div className="hatch-health-dialog-ticks" aria-hidden="true">
-            {axisTicks(answer, 100).map((tick) => (
-              <span
-                key={tick.x}
-                className={`hatch-health-dialog-tick${tick.x === 0 ? ' hatch-health-dialog-tick--start' : ''}${tick.x === 100 ? ' hatch-health-dialog-tick--end' : ''}`}
-                style={{ left: `${tick.x}%` }}
-              >
-                {tick.label}
-              </span>
-            ))}
-          </div>
+          <TimeAxis answer={answer} />
         </div>
+        )}
 
-        <ul className="hatch-health-dialog-legend" aria-label="Legend">
-          {marks.map((mark) => (
-            <li key={mark.key} data-mark={mark.key}>
-              <Swatch base={base} mark={mark.key} />
-              {mark.label}
-            </li>
-          ))}
-        </ul>
+        {tile === 'runners' ? (
+          <LaneLegend />
+        ) : (
+          <ul className="hatch-health-dialog-legend" aria-label="Legend">
+            {marks.map((mark) => (
+              <li key={mark.key} data-mark={mark.key}>
+                <Swatch base={base} mark={mark.key} />
+                {mark.label}
+              </li>
+            ))}
+          </ul>
+        )}
 
         <p className="hatch-health-dialog-words" data-part="words" aria-live="polite">
-          {markedWords(tile, answer, index)}
+          {tile === 'runners' ? lanesMarkedWords(answer, index) : markedWords(tile, answer, index)}
         </p>
+
+        {tile === 'runners' && (
+          <p className="hatch-health-dialog-note">{plural(allLanes(answer).length, 'lane', 'lanes')}</p>
+        )}
 
         {tile === 'moved' && <Rows rows={movedSummary(answer)} />}
 

@@ -22,7 +22,7 @@ function tiles(answer: BoardHealth, index: number | null, href = '/reports/cumul
       <InFlightTile {...props} {...open} readout={readouts.inFlight} href={href} />
       <OldestTile {...props} {...open} readout={readouts.oldest} />
       <WaitingTile {...props} {...open} readout={readouts.waiting} />
-      <RunnersTile {...props} readout={readouts.runners} />
+      <RunnersTile {...props} {...open} readout={readouts.runners} />
     </MemoryRouter>,
   );
 }
@@ -76,12 +76,12 @@ describe('the five health tiles', () => {
     expect(html).not.toContain('hatch-health-spark--link');
   });
 
-  it('says the four tiles open a dialog when pressed, and Runners does not yet', () => {
+  it('says all five tiles open a dialog when pressed', () => {
     const html = tiles(sampleHealth(), null);
     const sparks = html.split('<section ').slice(1).map((tile) => tile.includes('hatch-health-spark--open'));
 
     // moved, inFlight, oldest, waiting, runners - in the order they are drawn.
-    expect(sparks).toEqual([true, true, true, true, false]);
+    expect(sparks).toEqual([true, true, true, true, true]);
   });
 
   it('draws the marked line on every tile only when a bar is marked', () => {

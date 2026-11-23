@@ -86,6 +86,8 @@ describe('the board health strip stylesheet', () => {
     for (const token of used) {
       // Spacing, type, radius and the filter bar's row height do not change with the theme.
       if (/^--(sp|t|r|facet-h)(-|$)/.test(token)) continue;
+      // A property this section sets for itself, like the Runners dialog's name column, is no theme token.
+      if (token.startsWith('--hatch-')) continue;
       for (const block of darkBlocks) expect(block, token).toContain(`${token}:`);
     }
   });
@@ -196,7 +198,7 @@ describe('the board health strip on a phone', () => {
 });
 
 describe('the dialog a health tile opens', () => {
-  it('says a tile with a dialog is pressable, and leaves Runners its crosshair', () => {
+  it('says a tile with a dialog is pressable - Runners too - while a bare sparkline keeps its crosshair', () => {
     expect(declarationsOf('.hatch-health-spark--open')['cursor']).toBe('pointer');
     expect(declarationsOf('.hatch-health-spark')['cursor']).toBe('crosshair');
     expect(section).not.toContain('hatch-health-spark--link');
@@ -231,6 +233,56 @@ describe('the dialog a health tile opens', () => {
     expect(declarationsOf('.hatch-health-dialog-link')['min-height']).toBe('44px');
     expect(declarationsOf('.hatch-modal__panel:has(.hatch-health-dialog) .hatch-modal__close')['min-height']).toBe('44px');
     expect(declarationsOf('.hatch-modal__panel:has(.hatch-health-dialog) .hatch-modal__close')['min-width']).toBe('44px');
+  });
+
+  it('scrolls the Runners lanes inside a box, which a vertical drag still scrolls', () => {
+    const box = declarationsOf('.hatch-health-dialog-lanes');
+
+    expect(box['max-height']).toBe('18rem');
+    expect(box['overflow-y']).toBe('auto');
+    expect(box['touch-action']).toBe('pan-y');
+    expect(box['cursor']).toBe('crosshair');
+    expect(declarationsOf('.hatch-health-dialog-lanes:focus-visible')['outline']).toBe('2px solid var(--primary)');
+  });
+
+  it('sets the name column to 11rem, and 8rem on a phone', () => {
+    const widths = [...section.matchAll(/\.hatch-health-dialog-lanes\s*\{[^{}]*--hatch-lane-name:\s*([^;]+);/g)].map((m) => m[1]);
+
+    // The base rule comes first, the phone block after it.
+    expect(widths).toEqual(['11rem', '8rem']);
+  });
+
+  it('lays each lane out as a name and then a row of cells', () => {
+    expect(declarationsOf('.hatch-health-dialog-lane')['grid-template-columns']).toBe('var(--hatch-lane-name) 1fr');
+    expect(declarationsOf('.hatch-health-dialog-lane-cells')['height']).toBe('1.25rem');
+    expect(declarationsOf('.hatch-health-dialog-lane-cells')['gap']).toBe('1px');
+  });
+
+  it('keeps the time axis at the bottom of the scroll box, on the card', () => {
+    const axis = declarationsOf('.hatch-health-dialog-lane-axis');
+
+    expect(axis['position']).toBe('sticky');
+    expect(axis['bottom']).toBe('0');
+    expect(axis['background']).toBe('var(--card)');
+    expect(axis['padding-left']).toBe('calc(var(--hatch-lane-name) + var(--sp-2))');
+  });
+
+  it('draws the Runners marker over the rows, never under the pointer, from a token', () => {
+    const marker = declarationsOf('.hatch-health-dialog-lane-moment');
+
+    expect(marker['position']).toBe('absolute');
+    expect(marker['top']).toBe('0');
+    expect(marker['bottom']).toBe('0');
+    expect(marker['pointer-events']).toBe('none');
+    expect(marker['background']).toBe('var(--ink)');
+    expect(declarationsOf('.hatch-health-dialog-lane-rows')['position']).toBe('relative');
+  });
+
+  it('swatches each legend line in a fixed box', () => {
+    const swatch = declarationsOf('.hatch-health-dialog-lane-swatch');
+
+    expect(swatch['width']).toBe('22px');
+    expect(swatch['height']).toBe('14px');
   });
 
   it('leaves Modal\'s own stylesheet to every other dialog', () => {

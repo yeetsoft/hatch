@@ -2,6 +2,7 @@
    same split lib/boardHealth.ts makes for the other four tiles. Everything
    here reads a `BoardHealth` answer's `runners` block and nothing else. */
 
+import { formatSpan } from './cardAge';
 import { momentLabel } from './cumulativeFlow';
 import type { BoardHealth, BoardHealthCell, BoardHealthLane } from '../types';
 
@@ -22,6 +23,31 @@ export function drawnLanes(answer: BoardHealth): DrawnLanes {
   const lanes = answer.runners.lanes;
 
   return { lanes: lanes.slice(0, MAX_LANES), omitted: Math.max(0, lanes.length - MAX_LANES) };
+}
+
+/** Every lane the read answers, whole: the dialog draws them all, where the
+    tile caps them at `MAX_LANES`. */
+export const allLanes = (answer: BoardHealth): BoardHealthLane[] => answer.runners.lanes;
+
+/** Where a runner stands now, in a word: paused beats up, and a runner that is
+    neither is "not up". */
+export function laneStanding(lane: BoardHealthLane): string {
+  if (lane.paused) return 'paused';
+  return lane.up ? 'up' : 'not up';
+}
+
+const clockTime = (at: string, locale?: string): string =>
+  new Date(at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+
+/** When a runner was last heard from, against the window's end, written as the
+    axis writes the time. Under a minute (or a last-seen after the end) it says
+    "at"; otherwise how long before. Reads no clock. */
+export function lastHeardWords(lane: BoardHealthLane, answer: BoardHealth, locale?: string): string {
+  const end = new Date(answer.to).getTime();
+  const gap = Math.floor((end - new Date(lane.lastSeenAt).getTime()) / 1000);
+  const time = clockTime(answer.to, locale);
+
+  return gap < 60 ? `last heard at ${time}` : `last heard ${formatSpan(gap)} before ${time}`;
 }
 
 const LET_GO_WORDS: Record<string, string> = {
@@ -109,12 +135,28 @@ export function hoverList(answer: BoardHealth, index: number): HoverList {
 }
 
 /** The legend's seven lines, the mock-up's own words. */
-export const LANE_LEGEND: { title: string; body: string }[] = [
-  { title: 'Moved a ticket', body: 'an increment ended with a move' },
-  { title: 'Working', body: 'in an increment, or ended one without a move' },
-  { title: 'Let go or errored', body: 'a stall, a drop or a failed session' },
-  { title: 'Out of usage or agent down', body: 'from the state record' },
-  { title: 'Idle', body: 'up, nothing it could take' },
-  { title: 'Paused', body: 'from the state record' },
-  { title: 'Off', body: 'no session open' },
+export const LANE_LEGEND: { title: string; body: string; state: BoardHealthCell['state'] }[] = [
+  { title: 'Moved a ticket', body: 'an increment ended with a move', state: 'moved' },
+  { title: 'Working', body: 'in an increment, or ended one without a move', state: 'working' },
+  { title: 'Let go or errored', body: 'a stall, a drop or a failed session', state: 'let-go' },
+  { title: 'Out of usage or agent down', body: 'from the state record', state: 'down' },
+  { title: 'Idle', body: 'up, nothing it could take', state: 'idle' },
+  { title: 'Paused', body: 'from the state record', state: 'paused' },
+  { title: 'Off', body: 'no session open', state: 'off' },
 ];
+
+/** The Runners dialog's sentence for the marked bar: each runner's state there,
+    opening on the bar's time. At rest it counts the runners instead. Every lane
+    is named - none is "not drawn". */
+export function lanesMarkedWords(answer: BoardHealth, index: number | null, locale?: string): string {
+  const { up, paused, withLane, lanes } = answer.runners;
+  const bar = index === null ? null : (answer.bars[index] ?? null);
+
+  if (bar === null || index === null) {
+    return `${withLane} ${withLane === 1 ? 'runner' : 'runners'}, ${up} up, ${paused} paused`;
+  }
+
+  const states = lanes.map((lane) => `${lane.name} ${cellWords(lane.cells[index])}`).join(', ');
+
+  return `${momentLabel(bar.start, answer.barMinutes, locale)}: ${states}`;
+}
