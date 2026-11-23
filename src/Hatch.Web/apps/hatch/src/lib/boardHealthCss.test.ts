@@ -230,3 +230,48 @@ describe('the board health strip on a phone', () => {
     expect(window['min-width']).toBe('44px');
   });
 });
+
+describe('the dialog a health tile opens', () => {
+  it('says a tile with a dialog is pressable, and leaves Runners its crosshair', () => {
+    expect(declarationsOf('.hatch-health-spark--open')['cursor']).toBe('pointer');
+    expect(declarationsOf('.hatch-health-spark')['cursor']).toBe('crosshair');
+    expect(section).not.toContain('hatch-health-spark--link');
+  });
+
+  it('gives the chart a fixed height and the full width, so its svg can measure itself', () => {
+    expect(declarationsOf('.hatch-health-dialog-chart')['height']).toBe('14rem');
+    expect(declarationsOf('.hatch-health-dialog-svg')['width']).toBe('100%');
+    expect(declarationsOf('.hatch-health-dialog-svg')['height']).toBe('100%');
+  });
+
+  it('lets a sideways drag mark a bar and a vertical one scroll', () => {
+    expect(declarationsOf('.hatch-health-dialog-chart')['touch-action']).toBe('pan-y');
+  });
+
+  it('paints each patterned mark from its own ground, so a pattern is told apart by more than shade', () => {
+    for (const mark of ['runner', 'person', 'board', 'pullRequests', 'questions']) {
+      expect(declarationsOf(`.hatch-health-dialog-ground--${mark}`)['fill'], mark).toMatch(/^var\(--[\w-]+\)$/);
+    }
+    for (const mark of ['person', 'board', 'questions']) {
+      expect(declarationsOf(`.hatch-health-dialog-ink--${mark}`)['fill'], mark).toMatch(/^var\(--[\w-]+\)$/);
+    }
+  });
+
+  it('keeps the dialog\'s own marked line apart from the one the tiles count', () => {
+    expect(declarationsOf('.hatch-health-dialog-moment')['stroke']).toBe('var(--ink)');
+    expect(section).not.toMatch(/\.hatch-health-dialog[^{]*\.hatch-health-moment\b/);
+  });
+
+  it('holds every control in the dialog to a finger high on a phone', () => {
+    expect(declarationsOf('.hatch-health-dialog .hatch-health-window')['min-height']).toBe('44px');
+    expect(declarationsOf('.hatch-health-dialog-link')['min-height']).toBe('44px');
+    expect(declarationsOf('.hatch-modal__panel:has(.hatch-health-dialog) .hatch-modal__close')['min-height']).toBe('44px');
+    expect(declarationsOf('.hatch-modal__panel:has(.hatch-health-dialog) .hatch-modal__close')['min-width']).toBe('44px');
+  });
+
+  it('leaves Modal\'s own stylesheet to every other dialog', () => {
+    const modal = readFileSync(new URL('../../../../packages/ui/src/components/Modal.css', import.meta.url), 'utf8');
+
+    expect(modal).not.toContain('health');
+  });
+});

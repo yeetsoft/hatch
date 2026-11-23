@@ -304,7 +304,7 @@ public class BoardHealthStripTests(ITestOutputHelper output)
     /// A fifth issue is claimed by a keyed, heartbeating runner and left unmoved, as
     /// <see cref="QueueRunnerStripTests.SeedAsync"/> does, so its lane reads working rather than moved.
     /// </summary>
-    private static async Task SeedAsync(string baseUrl)
+    internal static async Task SeedAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 

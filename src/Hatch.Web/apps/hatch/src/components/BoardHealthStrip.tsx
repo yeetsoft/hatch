@@ -1,18 +1,25 @@
 import { useId, useState } from 'react';
-import { HEALTH_WINDOWS, axisSentence, flowHref, hasStrip, readout } from '../lib/boardHealth';
+import { axisSentence, flowHref, hasStrip, readout } from '../lib/boardHealth';
 import type { HealthWindow } from '../lib/boardHealth';
 import { readStripWindow, writeStripWindow } from '../lib/boardStrip';
 import { useBoardHealth } from '../lib/useBoardHealth';
 import { useScope } from '../lib/useScope';
 import { usePhone } from '../lib/viewport';
+import type { DialogTile } from '../lib/boardHealthDialog';
 import type { BoardHealth } from '../types';
+import { BoardHealthDialog } from './BoardHealthDialog';
 import { BoardHealthRow } from './BoardHealthRow';
 import { InFlightTile, MovedTile, OldestTile, RunnersTile, WaitingTile } from './BoardHealthTiles';
+import { HealthWindowControl } from './HealthWindowControl';
 
 /* The four tiles above the board, one window and one hovered moment between
    them. Two parts: the view is pure - its answer, window and marked bar come in
    as props - so it can be read as static markup; the container owns what the
-   view is handed. */
+   view is handed.
+
+   Pressing one of the four tiles opens its dialog. Which one is open is the
+   view's own state - the marked bar and the window it shares with the dialog
+   are the container's, so a refresh redraws the dialog in place. */
 
 export function BoardHealthStripView({
   answer,
@@ -33,36 +40,46 @@ export function BoardHealthStripView({
   /** The phone's open strip: the same control and tiles, in one column. */
   stacked?: boolean;
 }) {
+  /* Declared above the early return, so the hooks run in the same order whether or not there is a strip. */
+  const [open, setOpen] = useState<DialogTile | null>(null);
+
   /* No history, nothing drawn: no placeholder, no error. */
   if (!hasStrip(answer)) return null;
 
   const readouts = readout(answer, index);
   const tile = { answer, index, onIndex };
+  const opener = (which: DialogTile) => () => setOpen(which);
+  const href = flowHref(answer, scopeKeys);
 
   return (
-    <div className={`hatch-health-strip${stacked ? ' hatch-health-strip--stacked' : ''}`}>
-      <div className="hatch-health-control">
-        <div className="hatch-health-windows" role="group" aria-label="Window">
-          {HEALTH_WINDOWS.map((choice) => (
-            <button
-              key={choice}
-              type="button"
-              className={`hatch-health-window${choice === chosen ? ' active' : ''}`}
-              aria-pressed={choice === chosen}
-              onClick={() => onWindow(choice)}
-            >
-              {choice}
-            </button>
-          ))}
+    <>
+      <div className={`hatch-health-strip${stacked ? ' hatch-health-strip--stacked' : ''}`}>
+        <div className="hatch-health-control">
+          <HealthWindowControl window={chosen} onWindow={onWindow} />
+          <p className="hatch-health-axis">{axisSentence(answer)}</p>
         </div>
-        <p className="hatch-health-axis">{axisSentence(answer)}</p>
+        <MovedTile {...tile} readout={readouts.moved} onOpen={opener('moved')} />
+        <InFlightTile {...tile} readout={readouts.inFlight} href={href} onOpen={opener('inFlight')} />
+        <OldestTile {...tile} readout={readouts.oldest} onOpen={opener('oldest')} />
+        <WaitingTile {...tile} readout={readouts.waiting} onOpen={opener('waiting')} />
+        <RunnersTile {...tile} readout={readouts.runners} />
       </div>
-      <MovedTile {...tile} readout={readouts.moved} />
-      <InFlightTile {...tile} readout={readouts.inFlight} href={flowHref(answer, scopeKeys)} />
-      <OldestTile {...tile} readout={readouts.oldest} />
-      <WaitingTile {...tile} readout={readouts.waiting} />
-      <RunnersTile {...tile} readout={readouts.runners} />
-    </div>
+      {open && (
+        <BoardHealthDialog
+          tile={open}
+          answer={answer}
+          index={index}
+          onIndex={onIndex}
+          window={chosen}
+          onWindow={onWindow}
+          onClose={() => {
+            setOpen(null);
+            onIndex(null);
+          }}
+          href={href}
+        />
+      )}
+    </>
   );
 }
 

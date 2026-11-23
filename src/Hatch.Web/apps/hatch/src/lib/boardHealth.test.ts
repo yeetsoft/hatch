@@ -15,6 +15,7 @@ import {
   momentX,
   movedBars,
   oldestIssue,
+  oldestLine,
   parseHealthWindow,
   readout,
   splitSentence,
@@ -404,6 +405,48 @@ describe('the oldest issue in words', () => {
   });
 });
 
+describe('oldestLine', () => {
+  const W = 240;
+  const H = 40;
+
+  it('breaks into separate segments where nothing was in flight, never drawing to zero', () => {
+    const { path } = oldestLine(answer(), W, H);
+
+    // Bars 6, 13 and 20 have none in flight: four runs, 24 - 3 points.
+    expect(path.match(/M/g)).toHaveLength(4);
+    const points = [...path.matchAll(/[ML] (\S+) (\S+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    expect(points).toHaveLength(21);
+    const xs = points.map(([x]) => x);
+    for (const gap of [6, 13, 20]) expect(xs).not.toContain(momentX(gap, W));
+    expect(points.every(([, y]) => y < H)).toBe(true);
+  });
+
+  it('scales to the oldest and gives the last bar as the dot', () => {
+    const { last } = oldestLine(answer(), W, H);
+
+    expect(last).toEqual({ x: momentX(23, W), y: 0 });
+  });
+
+  it('has no dot when the last bar has nothing in flight', () => {
+    const open = answer({ bars: bars((i) => (i === 23 ? { oldestInFlightSeconds: null } : {})) });
+
+    expect(oldestLine(open, W, H).last).toBeNull();
+    expect(oldestLine(open, W, H).path).toContain('M');
+  });
+
+  it('draws a lone point as a zero-length line so a round cap shows it', () => {
+    const lone = answer({ bars: bars((i) => ({ oldestInFlightSeconds: i === 5 ? 600 : null })) });
+    const x = momentX(5, W);
+
+    expect(oldestLine(lone, W, H).path).toBe(`M ${x} 0 L ${x} 0`);
+  });
+
+  it('is an empty path and no dot with no bars, or none in flight at all', () => {
+    expect(oldestLine(answer({ bars: [] }), W, H)).toEqual({ path: '', last: null });
+    expect(oldestLine(quiet(), W, H)).toEqual({ path: '', last: null });
+  });
+});
+
 describe('waitingSteps', () => {
   const W = 240;
   const H = 40;
@@ -438,6 +481,7 @@ describe('an all-zero answer', () => {
     const strings = [
       ...Object.values(bandPolygons(q, 240, 40)),
       ...Object.values(ageBandPolygons(q, 240, 40)),
+      oldestLine(q, 240, 40).path,
       waitingSteps(q, 240, 40).line,
       waitingSteps(q, 240, 40).area,
     ].join(' ');
