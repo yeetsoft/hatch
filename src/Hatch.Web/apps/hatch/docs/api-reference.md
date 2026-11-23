@@ -245,8 +245,17 @@ has stood there longer than the column's normal with no open child. There is no 
 beyond the standard ones.
 
 `/board/health` answers a `BoardHealthDto` - `From`, `To`, `BarMinutes`, `Bars` (each a
-`BoardHealthBarDto`), `Total`, `PreviousTotal`, `PastNormal`, `HasWorkColumn` and `Runners` -
-with counts and durations only: no issue is named. The last bar's waiting pull requests and
+`BoardHealthBarDto`), `Total`, `PreviousTotal`, `PastNormal`, `HasWorkColumn`, `Runners` and `InFlightIssues` -
+counts and durations, and one list that names the issues in flight now. That is safe because the
+route is open only to a caller who may see them and `project` narrows the list as it narrows every
+count. Each bar also carries `Ages`, a `BoardHealthAgesDto` (`Healthy`, `Aging`, `PastNormal`,
+`NoNormal`): the in-flight issues with no children at the bar's end, by age against their column's
+normal, which add up to those issues and not to `InFlight`. `InFlightIssues` is a list of
+`BoardHealthIssueDto` - `Key`, `Title`, `StatusId`, `StatusName`, `EnteredAt`, `Seconds`,
+`NormalSeconds` (null without a normal) and `Band` (`healthy`, `aging`, `pastNormal` or
+`noNormal`) - longest stay first, capped by nothing, so a page that draws fewer says how many it
+left out. An earlier bar is judged against today's normals, and whether an issue has children is
+today's answer. The last bar's waiting pull requests and
 questions are the attention control's own count. `Runners` is a `BoardHealthRunnersDto`: `Up`
 (lanes whose runner is not gone now), `Paused` (of those, paused now, the board's pauses
 included), `WithLane` and `Lanes`. A `BoardHealthLaneDto` holds `Name`, `Up`, `Paused`,

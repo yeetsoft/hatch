@@ -118,6 +118,7 @@ describe('the five health tiles', () => {
         waitingPullRequests: 0,
         waitingQuestions: 0,
         oldestWaitSeconds: null,
+        ages: { healthy: 0, aging: 0, pastNormal: 0, noNormal: 0 },
       })),
     };
 

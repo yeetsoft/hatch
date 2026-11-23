@@ -283,6 +283,7 @@ const NONE: BoardHealthBar = {
   waitingQuestions: 0,
   oldestInFlightSeconds: null,
   oldestWaitSeconds: null,
+  ages: { healthy: 0, aging: 0, pastNormal: 0, noNormal: 0 },
 };
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
