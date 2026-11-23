@@ -50,6 +50,11 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         () => {
           const texts = (root, selector) => [...root.querySelectorAll(selector)].map((e) => (e.textContent ?? '').trim());
           const strip = document.querySelector('.hatch-ambition-strip');
+          const place = (e) => {
+            if (!e) return null;
+            const r = e.getBoundingClientRect();
+            return { left: r.left, top: r.top };
+          };
           return {
             strip: strip
               ? {
@@ -65,6 +70,13 @@ public class AmbitionsPageTests(ITestOutputHelper output)
               project: row.querySelector('.hatch-plan-project')?.textContent?.trim() ?? '',
               headings: texts(row, 'h3'),
               legend: texts(row, '.hatch-ambition-legend li'),
+              parts: [...row.querySelectorAll(':scope > .hatch-ambition-part')].map(place),
+              firstLines: [row.querySelector('.hatch-ambition-title'), ...row.querySelectorAll('h3')].map(place),
+              pills: [...row.querySelectorAll('.hatch-ambition-epics .hatch-epics-in-flight-meta > :first-child')].map(place),
+              firstEpicBorderTop: (() => {
+                const first = row.querySelector('.hatch-ambition-epics > li');
+                return first ? parseFloat(getComputedStyle(first).borderTopWidth) : null;
+              })(),
               note: texts(row, 'p.text-muted').find((t) => t.includes('open, runs')) ?? '',
               epics: [...row.querySelectorAll('.hatch-ambition-epics li')].map((li) => ({
                 key: li.querySelector('.hatch-plan-key')?.textContent?.trim() ?? '',
@@ -118,8 +130,14 @@ public class AmbitionsPageTests(ITestOutputHelper output)
 
             var rows = measured.GetProperty("rows").EnumerateArray().ToList();
             Assert.Equal(2, rows.Count);
-            AssertRowA(rows.Single(r => r.GetProperty("title").GetString() == seeded.TitleA), seeded);
-            AssertRowB(rows.Single(r => r.GetProperty("title").GetString() == seeded.TitleB), seeded);
+            var rowA = rows.Single(r => r.GetProperty("title").GetString() == seeded.TitleA);
+            var rowB = rows.Single(r => r.GetProperty("title").GetString() == seeded.TitleB);
+            AssertRowA(rowA, seeded);
+            AssertRowB(rowB, seeded);
+            if (profile is null)
+                AssertRowsLineUp(rowA, rowB);
+            else
+                AssertRowsStack(rowA, rowB);
             AssertStrip(measured.GetProperty("strip"), seeded);
             AssertFits(measured, profile is not null);
 
@@ -168,6 +186,62 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         Assert.StartsWith("AMA-", epic.GetProperty("key").GetString());
         AssertEpic(epic, s.EpicTitle3, s.EpicColumn3, "#2");
     }
+
+    /// <summary>
+    /// HA-2701 at the desktop profile: each part starts at the same left on
+    /// both rows, the three first lines share a top within a row, the column
+    /// pills of one row's epics share a left, and the first epic line draws no
+    /// rule above it. The numbers go to the output so a reader sees them.
+    /// </summary>
+    private void AssertRowsLineUp(JsonElement rowA, JsonElement rowB)
+    {
+        var partsA = Places(rowA, "parts");
+        var partsB = Places(rowB, "parts");
+        Assert.Equal(3, partsA.Count);
+        Assert.Equal(3, partsB.Count);
+        output.WriteLine($"part lefts, row A: {string.Join(", ", partsA.Select(p => p.Left))}; row B: {string.Join(", ", partsB.Select(p => p.Left))}");
+
+        for (var i = 0; i < 3; i++)
+            Assert.True(
+                Math.Abs(partsA[i].Left - partsB[i].Left) <= Tolerance,
+                $"part {i} starts at {partsA[i].Left} on the first row and {partsB[i].Left} on the second");
+        Assert.True(partsA[0].Left < partsA[1].Left && partsA[1].Left < partsA[2].Left, "the three parts do not sit side by side");
+
+        foreach (var (name, row) in new[] { ("A", rowA), ("B", rowB) })
+        {
+            var tops = Places(row, "firstLines");
+            Assert.Equal(3, tops.Count);
+            output.WriteLine($"first line tops, row {name}: {string.Join(", ", tops.Select(p => p.Top))}");
+            Assert.All(tops, p => Assert.True(Math.Abs(p.Top - tops[0].Top) <= Tolerance, $"the first lines of row {name} are not level: {string.Join(", ", tops.Select(t => t.Top))}"));
+
+            Assert.Equal(0, row.GetProperty("firstEpicBorderTop").GetDouble());
+        }
+
+        var pills = Places(rowA, "pills");
+        Assert.Equal(2, pills.Count);
+        output.WriteLine($"pill lefts, row A: {string.Join(", ", pills.Select(p => p.Left))}");
+        Assert.All(pills, p => Assert.True(Math.Abs(p.Left - pills[0].Left) <= Tolerance, $"the column pills of row A start at {string.Join(", ", pills.Select(t => t.Left))}"));
+    }
+
+    /// <summary>HA-2701 at the phone profile: head, capabilities, epics in flight, each below the one before and at the same left.</summary>
+    private void AssertRowsStack(JsonElement rowA, JsonElement rowB)
+    {
+        foreach (var (name, row) in new[] { ("A", rowA), ("B", rowB) })
+        {
+            var parts = Places(row, "parts");
+            Assert.Equal(3, parts.Count);
+            output.WriteLine($"part places, row {name}: {string.Join("; ", parts.Select(p => $"({p.Left}, {p.Top})"))}");
+            Assert.True(parts[1].Top > parts[0].Top && parts[2].Top > parts[1].Top, $"the parts of row {name} do not stack head, capabilities, epics");
+            Assert.All(parts, p => Assert.True(Math.Abs(p.Left - parts[0].Left) <= Tolerance, $"the parts of row {name} do not share a left"));
+        }
+    }
+
+    private readonly record struct Place(double Left, double Top);
+
+    private static List<Place> Places(JsonElement row, string property) =>
+        row.GetProperty(property).EnumerateArray()
+            .Select(e => new Place(e.GetProperty("left").GetDouble(), e.GetProperty("top").GetDouble()))
+            .ToList();
 
     private static void AssertEpic(JsonElement epic, string title, string column, string badge)
     {

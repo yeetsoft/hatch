@@ -337,7 +337,11 @@ its key, title and column, with the numbers of the capabilities it serves as
 badges, or a dash where it serves none. With no epic open the third part
 says so instead: "No epic is open under this ambition." Rows come in board
 order: by column, then by rank, then by id. With no ambition in the tab's scope, the
-page says "No ambition in scope." On a phone the three parts of a row, and
+page says "No ambition in scope." Each row is a card, and its three parts sit
+on three columns set once for the whole list, so the head, the capabilities
+and the epics start at the same place on every row, with their first lines
+level; in the epics, the column and the capability numbers also line up from
+one epic to the next. On a phone the three parts of a row, and
 the words of a strip line, stack one above the other instead of running side
 by side.
 
