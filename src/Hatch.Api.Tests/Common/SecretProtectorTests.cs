@@ -27,6 +27,28 @@ public class SecretProtectorTests
 
     private static SecretProtector WithNoKey() => new(new SecretCipher(null, null));
 
+    [Fact]
+    public void TryUnprotect_Says_Whether_The_Stored_Value_Opened()
+    {
+        var protector = WithKey();
+
+        Assert.True(protector.TryUnprotect(Sealed(protector, "hunter2"), Row, out var secret));
+        Assert.Equal("hunter2", secret?.Reveal());
+
+        // Nothing stored, or a stored plaintext that is only whitespace: nothing
+        // to open and nothing wrong - the same as unset, never unreadable.
+        Assert.True(protector.TryUnprotect(null, Row, out secret));
+        Assert.Null(secret);
+        Assert.True(protector.TryUnprotect(Sealed(protector, "   "), Row, out secret));
+        Assert.Null(secret);
+
+        // Stored but not openable: false, so a caller can say so.
+        Assert.False(protector.TryUnprotect(Sealed(protector, "hunter2"), "site-setting/Other", out secret));
+        Assert.Null(secret);
+        Assert.False(protector.TryUnprotect("v9:whatever", Row, out secret));
+        Assert.Null(secret);
+    }
+
     private static string Sealed(SecretProtector protector, string plaintext, string row = Row)
     {
         Assert.True(protector.TrySeal(plaintext, row, out var stored));

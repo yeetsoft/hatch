@@ -130,8 +130,8 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
     /// so a value that isn't readable - hand-edited in the DB, or written by a
     /// newer Hatch under a scheme this one doesn't know, or sealed under a key
     /// that is gone - degrades to "unset"
-    /// rather than throwing out of the snapshot. SecretProtector.Unprotect
-    /// already answers null for all of them, which is why this does not catch.
+    /// rather than throwing out of the snapshot. SecretProtector.TryUnprotect
+    /// already answers false for all of them, which is why this does not catch.
     ///
     /// A stored value that is not blank but does not open is recorded in
     /// <paramref name="unreadable"/> and warned about by name, once until the
@@ -140,9 +140,9 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
     private OpenedSecret? Opened(string key, IReadOnlyDictionary<string, string> values, ISet<string> unreadable)
     {
         var stored = values.GetValueOrDefault(key);
-        var plaintext = protector.Unprotect(stored, SecretStores.SiteSetting(key));
+        var opened = protector.TryUnprotect(stored, SecretStores.SiteSetting(key), out var secret);
 
-        if (plaintext is null && !string.IsNullOrWhiteSpace(stored))
+        if (!opened)
         {
             unreadable.Add(key);
             if (!warnedAbout.TryGetValue(key, out var warned) || warned != stored)
@@ -156,7 +156,7 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
             warnedAbout.Remove(key);
         }
 
-        return plaintext;
+        return secret;
     }
 
     private static long? ParseTokens(IReadOnlyDictionary<string, string> values, string key) =>
