@@ -45,8 +45,11 @@ public class PlaybooksAmbitionPassTests(ITestOutputHelper output)
                 "reading the ambition row",
                 """
                 () => {
+                    // Two stock rows are typed ambition: the pass, and the one that shapes an ambition
+                    // from Breakdown to Backlog. The pass is the one that starts in In Progress.
                     const row = [...document.querySelectorAll('tbody tr')]
-                        .find((r) => /ambition/i.test(r.querySelectorAll('td')[1]?.textContent ?? ''));
+                        .find((r) => /ambition/i.test(r.querySelectorAll('td')[1]?.textContent ?? '')
+                            && /In Progress/.test(r.querySelectorAll('td')[0]?.textContent ?? ''));
                     return row ? [...row.querySelectorAll('td')].map((td) => td.textContent.trim()) : [];
                 }
                 """);

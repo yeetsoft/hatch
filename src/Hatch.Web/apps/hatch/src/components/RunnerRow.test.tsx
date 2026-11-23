@@ -139,32 +139,27 @@ describe('RunnerRow', () => {
     expect(draw(runner({ sessions: [session()] }))).not.toContain('revoked');
   });
 
-  it('badges a runner whose signing fails, in the danger tone and with no title inside the link, and no other', () => {
-    const failing = draw(runner({ signing: 'fails', signingWhy: 'no secret key', sessions: [session()] }));
-    expect(failing).toContain('>signing fails</span>');
-    expect(failing).toContain('hatch-badge--danger');
-    expect(failing).not.toContain('no secret key');
-
-    for (const signing of ['works', 'off', null] as const)
-      expect(draw(runner({ signing, sessions: [session()] }))).not.toContain('signing fails');
-    expect(draw(runner({ sessions: [session()] }))).not.toContain('signing fails');
-  });
-
-  it('badges a runner whose forge sign-in fails, in the danger tone and with no reason inside the link, and no other', () => {
-    const failing = draw(runner({ forge: 'fails', forgeWhy: 'token expired', sessions: [session()] }));
-    expect(failing).toContain('>forge sign-in fails</span>');
+  it('badges a runner with a current failure once, in the danger tone and with no reason inside the link, and no other', () => {
+    const failing = draw(
+      runner({
+        failures: [{ kind: 'forge', where: null, why: 'token expired', beganAt: at(-1000), lastReportedAt: at(0), endedAt: null }],
+        sessions: [session()],
+      }),
+    );
+    expect(failing).toContain('>failing</span>');
     expect(failing).toContain('hatch-badge--danger');
     expect(failing).not.toContain('token expired');
 
-    for (const forge of ['works', null] as const)
-      expect(draw(runner({ forge, sessions: [session()] }))).not.toContain('forge sign-in fails');
-    expect(draw(runner({ sessions: [session()] }))).not.toContain('forge sign-in fails');
+    expect(draw(runner({ failures: [], sessions: [session()] }))).not.toContain('failing');
+    expect(draw(runner({ sessions: [session()] }))).not.toContain('failing');
   });
 
-  it('draws both badges for a runner whose signing and forge sign-in both fail', () => {
-    const html = draw(runner({ signing: 'fails', forge: 'fails', sessions: [session()] }));
-    expect(html).toContain('>signing fails</span>');
-    expect(html).toContain('>forge sign-in fails</span>');
+  it('draws one failing badge, never two, for a runner failing on both signing and forge', () => {
+    const row = (kind: string) => ({ kind, where: null, why: null, beganAt: at(-1000), lastReportedAt: at(0), endedAt: null });
+    const html = draw(runner({ failures: [row('signing'), row('forge')], sessions: [session()] }));
+    expect(html.match(/>failing<\/span>/g)).toHaveLength(1);
+    expect(html).not.toContain('signing fails');
+    expect(html).not.toContain('forge sign-in fails');
   });
 
   it('labels the glyph with what the speaking session is doing', () => {

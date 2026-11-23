@@ -59,6 +59,20 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
                   })),
                 }))
               : [],
+            columns: section
+              ? [...section.querySelectorAll('.hatch-capability-row')].map((row) =>
+                  [...row.children].map((c) => {
+                    const box = c.getBoundingClientRect();
+                    return { left: box.left, top: box.top };
+                  }))
+              : [],
+            asides: section
+              ? [...section.querySelectorAll('.hatch-ambition-aside')].map((a) => {
+                  const box = a.getBoundingClientRect();
+                  const title = a.closest('li')?.querySelector('.hatch-progress-title')?.getBoundingClientRect();
+                  return { left: box.left, top: box.top, titleBottom: title ? title.bottom : 0 };
+                })
+              : [],
             innerWidth: window.innerWidth,
             scrollWidth: document.documentElement.scrollWidth,
           };
@@ -111,6 +125,7 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
             Assert.Equal(4, measured.GetProperty("rows").GetInt32());
             Assert.Contains(epic, text);
             AssertDated(measured);
+            AssertColumns(measured, profile is not null);
             AssertFits(measured, profile is not null);
 
             // The epics under it: both open, each with the capabilities it serves,
@@ -130,6 +145,7 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
             Assert.Contains("#1", inFlightText);
             Assert.Contains("#2", inFlightText);
             Assert.Contains("#3", inFlightText);
+            AssertAside(inFlight, 2, profile is not null);
             AssertFits(inFlight, profile is not null);
 
             // The epic: the Serves section names the ambition and the capability it serves.
@@ -193,6 +209,57 @@ public class AmbitionCapabilitiesPageTests(ITestOutputHelper output)
                 Assert.False(
                     string.IsNullOrWhiteSpace(times[0].GetProperty(field).GetString()),
                     $"the \"{state}\" row's time has an empty {field}: {row}");
+        }
+    }
+
+    /// <summary>
+    /// HA-2703: on a desk the number, the statement, the state and what serves it start at
+    /// one place on every row; on a phone each row stacks them in that order.
+    /// </summary>
+    private void AssertColumns(JsonElement measured, bool phone)
+    {
+        var rows = measured.GetProperty("columns").EnumerateArray()
+            .Select(row => row.EnumerateArray().Select(c => (Left: c.GetProperty("left").GetDouble(), Top: c.GetProperty("top").GetDouble())).ToList())
+            .ToList();
+        Assert.Equal(4, rows.Count);
+        foreach (var row in rows)
+            Assert.True(row.Count == 4, $"a capability row holds {row.Count} pieces, not four: {measured.GetProperty("columns")}");
+
+        output.WriteLine($"capability pieces, left then top, per row: {string.Join(" | ", rows.Select(r => string.Join(", ", r.Select(c => $"{c.Left:0.#}/{c.Top:0.#}"))))}");
+
+        if (phone)
+        {
+            foreach (var row in rows)
+                for (var i = 1; i < row.Count; i++)
+                    Assert.True(row[i].Top > row[i - 1].Top + Tolerance, $"piece {i + 1} does not sit under piece {i} on the phone: {measured.GetProperty("columns")}");
+            return;
+        }
+
+        for (var piece = 0; piece < 4; piece++)
+            foreach (var row in rows.Skip(1))
+                Assert.True(
+                    Math.Abs(row[piece].Left - rows[0][piece].Left) <= Tolerance,
+                    $"piece {piece + 1} starts in a different place on two rows: {measured.GetProperty("columns")}");
+    }
+
+    /// <summary>
+    /// HA-2703: the right-hand group starts at one place on every row on a desk, and drops
+    /// under the title on a phone.
+    /// </summary>
+    private void AssertAside(JsonElement measured, int expected, bool phone)
+    {
+        var asides = measured.GetProperty("asides").EnumerateArray()
+            .Select(a => (Left: a.GetProperty("left").GetDouble(), Top: a.GetProperty("top").GetDouble(), TitleBottom: a.GetProperty("titleBottom").GetDouble()))
+            .ToList();
+        Assert.Equal(expected, asides.Count);
+        output.WriteLine($"right-hand groups, left/top: {string.Join(", ", asides.Select(a => $"{a.Left:0.#}/{a.Top:0.#}"))}");
+
+        foreach (var a in asides)
+        {
+            if (phone)
+                Assert.True(a.Top >= a.TitleBottom - Tolerance, $"the right-hand group does not drop under the title on the phone: {measured.GetProperty("asides")}");
+            else
+                Assert.True(Math.Abs(a.Left - asides[0].Left) <= Tolerance, $"the right-hand group starts in a different place on two rows: {measured.GetProperty("asides")}");
         }
     }
 
