@@ -675,6 +675,18 @@ endpoint answers under each session - `os`, `arch`, `agentVersion`,
 own reading of the connection, never sent by the CLI) - where the table above
 prints only `os`.
 
+A runner's row is also followed, after its session lines, by one `failing` line
+for each failure the board lists for it now, in the order the board sent them
+(newest began first): `  failing  <what>  <where>  <how long ago>`, aligned the
+same way. `<what>` is `cannot reach its forge`, `cannot sign its commits`,
+`agent is signed out`, `agent will not start` or `paused by the board`; a kind
+this `hatch` does not know prints as it came. `<where>` is the checkout, or `-`
+where none was named. Where the tool said why, one more line follows:
+`  gh said: <why>`, `git said:`, `agent said:` or `board said:` by kind, or a bare
+`  said:` for an unknown kind. A runner with no failure prints no line, and an
+older board, which sends none, leaves the output as it was. `--json` carries
+`failures` on every row.
+
 A runner that has reported its own process adds `  on HOST`, `N runs` and
 `$X.XX` (the machine, the increments run and the dollars spent), then the
 tokens, before any projects, each only where it has said so. The tokens read

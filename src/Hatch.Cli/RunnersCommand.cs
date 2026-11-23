@@ -27,8 +27,9 @@ public sealed class RunnersCommand(Cli cli)
         "  it is bound to, the models it advertises and, where it refuses any, the",
         "  models it refuses and, where it is marked to take work first, the word",
         "  preferred. The row is followed by one indented line per live session",
-        "  beneath it: where, agent, OS, state. A caller with nothing to see",
-        "  prints one sentence saying so.",
+        "  beneath it: where, agent, OS, state. A runner's current failures follow",
+        "  as `failing` lines. A caller with nothing to see prints one sentence",
+        "  saying so.",
         "",
         "  --json           the endpoint's own answer, and nothing else",
         "",
@@ -182,7 +183,11 @@ public sealed class RunnersCommand(Cli cli)
         {
             var r = table[i];
             lines.Add(r.Runner.PadRight(runnerWidth) + "  " + r.State.PadRight(stateWidth) + "  " + r.Ticket.PadRight(ticketWidth) + "  " + r.Heard);
-            if (i > 0) lines.AddRange(SessionLines(rows[i - 1], now));
+            if (i > 0)
+            {
+                lines.AddRange(SessionLines(rows[i - 1], now));
+                lines.AddRange(FailureLines(rows[i - 1], now));
+            }
         }
 
         return lines;
@@ -212,6 +217,50 @@ public sealed class RunnersCommand(Cli cli)
         foreach (var s in live)
             yield return "  " + s.Where.PadRight(whereWidth) + "  " + s.Agent.PadRight(agentWidth) + "  " + s.Os.PadRight(osWidth) + "  " + s.State;
     }
+
+    /// <summary>
+    /// One <c>failing</c> line per current failure beneath a runner's own row,
+    /// after its sessions, in the order the board sent them: what, where, how
+    /// long ago. A failure that carries a reason gets one more line naming who
+    /// said it. An older board sends none, so the row reads as it always has.
+    /// </summary>
+    private static IEnumerable<string> FailureLines(RunnerDto row, DateTimeOffset now)
+    {
+        if (row.Failures.Count == 0) yield break;
+
+        var failures = row.Failures
+            .Select(f => (Words: FailureWords(f.Kind), Where: f.Where is { Length: > 0 } w ? w : "-", Ago: Format.Ago(now - f.BeganAt), f.Kind, f.Why))
+            .ToList();
+
+        var wordsWidth = failures.Max(f => f.Words.Length);
+        var whereWidth = failures.Max(f => f.Where.Length);
+
+        foreach (var f in failures)
+        {
+            yield return "  failing  " + f.Words.PadRight(wordsWidth) + "  " + f.Where.PadRight(whereWidth) + "  " + f.Ago;
+            if (f.Why is { Length: > 0 } why)
+                yield return FailureWho(f.Kind) is { } who ? $"  {who} said: {why}" : $"  said: {why}";
+        }
+    }
+
+    private static string FailureWords(string kind) => kind switch
+    {
+        RunnerFailureKinds.Forge => "cannot reach its forge",
+        RunnerFailureKinds.Signing => "cannot sign its commits",
+        RunnerFailureKinds.AgentSignedOut => "agent is signed out",
+        RunnerFailureKinds.AgentNotStarting => "agent will not start",
+        RunnerFailureKinds.BoardPaused => "paused by the board",
+        _ => kind,
+    };
+
+    private static string? FailureWho(string kind) => kind switch
+    {
+        RunnerFailureKinds.Forge => "gh",
+        RunnerFailureKinds.Signing => "git",
+        RunnerFailureKinds.AgentSignedOut or RunnerFailureKinds.AgentNotStarting => "agent",
+        RunnerFailureKinds.BoardPaused => "board",
+        _ => null,
+    };
 
     /// <summary>
     /// What a runner reports about its own process - the machine, the increments
