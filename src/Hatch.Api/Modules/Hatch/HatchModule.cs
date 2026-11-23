@@ -73,6 +73,7 @@ public static class HatchModule
         // What each column's stays normally last, kept five minutes so a board
         // refetched after every action does not walk every issue each time.
         services.AddSingleton<ColumnNormals>();
+        services.AddSingleton<WaitHistory>();
 
         // Scoped, the same reason as Dispatch beside it: it holds a scoped
         // HatchContext, taken through DI here rather than constructed, via the

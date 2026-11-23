@@ -141,6 +141,8 @@ export function sampleHealth(over: Partial<BoardHealth> = {}): BoardHealth {
     hasWorkColumn: true,
     runners: sampleRunners(),
     inFlightIssues: sampleIssues(),
+    lastWaitedAt: null,
+    lastWaitedIsFloor: false,
     ...over,
   };
 }

@@ -4321,6 +4321,8 @@ public record BoardHealthIssueDto(
 /// <param name="HasWorkColumn">Whether the board has an implementation column; without one no bar counts waiting, in flight or done.</param>
 /// <param name="Runners">A lane for each runner the caller may see, on the same bars, and how many are up now.</param>
 /// <param name="InFlightIssues">Every issue with no children standing in flight now, longest stay first. The server caps nothing: a page that draws fewer says how many it left out.</param>
+/// <param name="LastWaitedAt">The instant the latest wait on a person ended, so a page can say how long nothing has waited. Null while anything waits now, and when no issue is in scope. Looks back thirty days at most; see <paramref name="LastWaitedIsFloor"/>.</param>
+/// <param name="LastWaitedIsFloor">True when nothing waited in the thirty days and <paramref name="LastWaitedAt"/> is a floor, not an event: now minus thirty days, or on a board younger than that the earliest issue in scope's creation. A page says "over" the age it gives.</param>
 public record BoardHealthDto(
     DateTimeOffset From,
     DateTimeOffset To,
@@ -4331,7 +4333,9 @@ public record BoardHealthDto(
     int PastNormal,
     bool HasWorkColumn,
     BoardHealthRunnersDto Runners,
-    IReadOnlyList<BoardHealthIssueDto> InFlightIssues);
+    IReadOnlyList<BoardHealthIssueDto> InFlightIssues,
+    DateTimeOffset? LastWaitedAt,
+    bool LastWaitedIsFloor);
 
 /// <summary>
 /// The runners' half of the board health read: one lane for each runner up at

@@ -2432,6 +2432,10 @@ export interface BoardHealth {
   /** Every issue with no children in flight now, longest stay first. The server
       caps nothing: a page that draws fewer says how many it left out. */
   inFlightIssues: BoardHealthIssue[];
+  /** When the latest wait on a person ended; null while anything waits now. */
+  lastWaitedAt: string | null;
+  /** True when nothing waited in 30 days and lastWaitedAt is a floor, not an event. */
+  lastWaitedIsFloor: boolean;
 }
 
 /** The states a runner lane's cell can draw, in the order a cell picks among
