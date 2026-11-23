@@ -24,7 +24,7 @@ public class AgentCredentialTests
     {
         var credential = new SiteSettingAgentCredential(Holding(agent, "sk-abc"));
 
-        Assert.Equal("sk-abc", await credential.GetAsync(agent, CancellationToken.None));
+        Assert.Equal("sk-abc", (await credential.GetAsync(agent, CancellationToken.None))?.Reveal());
     }
 
     [Theory]
@@ -53,7 +53,7 @@ public class AgentCredentialTests
     {
         var credential = new SiteSettingAgentCredential(Holding(agent, stored));
 
-        Assert.Equal(expected, await credential.GetAsync(agent, CancellationToken.None));
+        Assert.Equal(expected, (await credential.GetAsync(agent, CancellationToken.None))?.Reveal());
     }
 
     /// <summary>Every credential set, and still nothing for a name that is not an agent.</summary>

@@ -56,7 +56,8 @@ public sealed class SecretProtector(SecretCipher cipher)
     }
 
     /// <summary>
-    /// The plaintext behind a stored value, or null when there isn't one -
+    /// The secret behind a stored value, held as an <see cref="OpenedSecret"/> so
+    /// it prints as <c>[secret]</c>, or null when there isn't one -
     /// absent, blank, sealed for another row, under a key this Hatch does not
     /// hold, or damaged past reading.
     ///
@@ -65,7 +66,32 @@ public sealed class SecretProtector(SecretCipher cipher)
     /// one setting it belongs to a re-entry, not throw out of every operation
     /// that happens to touch the row.
     /// </summary>
-    public string? Unprotect(string? stored, string rowName)
+    public OpenedSecret? Unprotect(string? stored, string rowName)
+    {
+        TryUnprotect(stored, rowName, out var secret);
+        return secret;
+    }
+
+    /// <summary>
+    /// <see cref="Unprotect"/>, and whether the stored value opened. False means
+    /// something is stored that could not be opened. A blank stored value, or one
+    /// that opens to a blank plaintext, is true with a null <paramref name="secret"/>:
+    /// there is nothing to open, and nothing is wrong.
+    /// </summary>
+    public bool TryUnprotect(string? stored, string rowName, out OpenedSecret? secret)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            secret = null;
+            return true;
+        }
+
+        var plaintext = UnprotectText(stored, rowName);
+        secret = OpenedSecret.From(plaintext);
+        return plaintext is not null;
+    }
+
+    private string? UnprotectText(string? stored, string rowName)
     {
         if (string.IsNullOrWhiteSpace(stored)) return null;
 

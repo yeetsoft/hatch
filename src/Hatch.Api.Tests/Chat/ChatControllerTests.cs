@@ -589,7 +589,7 @@ public class ChatControllerTests
             };
 
         /// <summary>The plaintext of a stored token, opened for the Acme workspace's row.</summary>
-        public string? Open(string stored) => Protector.Unprotect(stored, SecretStores.ChatWorkspace("fake", "TACME"));
+        public string? Open(string stored) => Protector.Unprotect(stored, SecretStores.ChatWorkspace("fake", "TACME"))?.Reveal();
     }
 
     private static Harness NewHarness(bool withKey = true)

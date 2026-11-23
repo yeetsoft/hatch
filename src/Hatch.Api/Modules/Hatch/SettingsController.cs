@@ -127,7 +127,7 @@ public class SettingsController(
         var credential = await credentials.GetAsync(agent, ct);
         if (credential is null) return NoContent();
 
-        return new CredentialDto(CredentialWire.Wrap(credential));
+        return new CredentialDto(CredentialWire.Wrap(credential.Reveal()));
     }
 
     /// <summary>
@@ -286,9 +286,9 @@ public class SettingsController(
         var settings = await siteSettings.GetAsync(ct);
 
         return new HatchSettingsDto(
-            // The snapshot has already deobfuscated the token, so "is it set"
-            // is asked of the plaintext rather than of the stored form. Same
-            // answer, and the value itself never leaves this method.
+            // The snapshot holds each secret opened, so "is it set" is asked of
+            // the secret itself (null when there is none) rather than of the
+            // stored form. Same answer, and the value is never read out here.
             ClaudeSubscriptionToken: RedactedIfSet(settings.ClaudeSubscriptionToken),
             LocalPersonNameApplies: !authOptions.Value.Enabled,
             LocalPersonName: settings.LocalPersonName ?? "",
@@ -303,14 +303,14 @@ public class SettingsController(
                 XaiApiKey: StateOf(settings, SiteSettingKeys.XaiApiKey, settings.XaiApiKey)));
     }
 
-    private static string RedactedIfSet(string? secret) => string.IsNullOrWhiteSpace(secret) ? "" : Redacted;
+    private static string RedactedIfSet(OpenedSecret? secret) => secret is null ? "" : Redacted;
 
     /// <summary>
-    /// Set when the plaintext is there; unreadable when something is stored that
+    /// Set when the secret is there; unreadable when something is stored that
     /// did not open; unset otherwise. The plaintext is asked about and never returned.
     /// </summary>
-    private static string StateOf(SiteSettingsSnapshot settings, string key, string? plaintext) =>
-        !string.IsNullOrWhiteSpace(plaintext) ? SecretStates.Set
+    private static string StateOf(SiteSettingsSnapshot settings, string key, OpenedSecret? secret) =>
+        secret is not null ? SecretStates.Set
         : settings.IsUnreadable(key) ? SecretStates.Unreadable
         : SecretStates.Unset;
 }

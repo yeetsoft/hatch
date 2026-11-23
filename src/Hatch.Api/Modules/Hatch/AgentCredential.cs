@@ -1,3 +1,4 @@
+using Hatch.Api.Common;
 using Hatch.Api.Services.Settings;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -20,7 +21,7 @@ public interface IAgentCredential
     /// null when there is none - and null for an agent this Hatch does not know
     /// too. Never throws, and never distinguishes "not set" from "set to blank".
     /// </summary>
-    Task<string?> GetAsync(string agent, CancellationToken ct);
+    Task<OpenedSecret?> GetAsync(string agent, CancellationToken ct);
 }
 
 /// <summary>
@@ -30,16 +31,18 @@ public interface IAgentCredential
 /// page while the app runs, and an OAuth token that expires is pasted in again
 /// far more often than the process restarts.
 ///
-/// They are stored obfuscated and redacted on read like every other
-/// secret-valued setting - see SettingsController's <c>IsSecret</c>, which is
-/// the whole of that job - so the plaintext reaches this class and nothing else.
+/// They are stored sealed by <see cref="SecretProtector"/> and opened by
+/// <see cref="ISiteSettingsService"/>, which hands over an <see cref="OpenedSecret"/>
+/// that prints as <c>[secret]</c>. This class passes it on without reading it;
+/// <see cref="OpenedSecret.Reveal"/> is called only by SettingsController's
+/// handoff to the container runner.
 /// </summary>
 public class SiteSettingAgentCredential(ISiteSettingsService siteSettings) : IAgentCredential
 {
     /// <summary>The agent ids a credential can be asked for: the route segment, lower-case by contract.</summary>
     public static readonly string[] Agents = ["claude", "codex", "grok"];
 
-    public async Task<string?> GetAsync(string agent, CancellationToken ct)
+    public async Task<OpenedSecret?> GetAsync(string agent, CancellationToken ct)
     {
         if (!Agents.Contains(agent, StringComparer.Ordinal)) return null;
 
@@ -50,6 +53,6 @@ public class SiteSettingAgentCredential(ISiteSettingsService siteSettings) : IAg
             "codex" => settings.CodexApiKey,
             _ => settings.XaiApiKey,
         };
-        return string.IsNullOrWhiteSpace(credential) ? null : credential.Trim();
+        return credential?.Trim();
     }
 }
