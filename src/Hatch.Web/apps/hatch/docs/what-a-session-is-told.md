@@ -356,6 +356,13 @@ so nothing more is spawned at it until someone answers ([questions and
 decisions](questions-and-decisions)). What the repository can answer, the
 session answers by reading it.
 
+A tool or a sign-in this runner lacks is not a decision, so the session is told
+not to ask about it. Where *Opening a pull request* is in the prompt, it is told
+to use `hatch pr` with a title and a body: where this runner cannot open the
+pull request, the text is left on the ticket and another runner opens it. Where
+the work itself needs something this runner lacks, it uses `hatch recuse` with
+the reason. `hatch ask` stays for a choice between named things.
+
 ### This ticket is express
 
 Only on an express ticket ([issues](issues) has the levels). The loop carries

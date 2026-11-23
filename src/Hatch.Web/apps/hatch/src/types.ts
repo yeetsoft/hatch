@@ -3658,6 +3658,8 @@ export interface RunnerFailure {
   beganAt: string;
   lastReportedAt: string;
   endedAt: string | null;
+  /** Keys of the issues a release linked to this failure, newest first, at most twenty. Absent from an older board: read it as none. */
+  tickets?: string[];
 }
 
 /** What GET /api/runners/{name}/failures answers. Mirrors RunnerFailuresDto. */

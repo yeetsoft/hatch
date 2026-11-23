@@ -139,6 +139,8 @@ public sealed class GoToWorkSigningTests
 
         var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+        Assert.Contains("failure=signing", released.Query, StringComparison.Ordinal);
+        Assert.Contains($"failureWhy={Uri.EscapeDataString("error: gpg failed to sign the data: no secret key")}", released.Query, StringComparison.Ordinal);
         Assert.False(h.Runtime.Unsigned.On);
     }
 

@@ -1157,6 +1157,7 @@ public sealed class IncrementTests
         Assert.Equal("boom", report.KeptLast);
         Assert.True(report.Unstarted);
         Assert.Equal(ClaimOutcomes.Unstarted, report.ReleaseOutcome);
+        Assert.Equal(new ReleaseFailure(RunnerFailureKinds.AgentNotStarting, "boom"), report.ReleaseFailure);
         Assert.False(report.LetGo);
         Assert.Null(report.Flag);
 
@@ -1201,6 +1202,7 @@ public sealed class IncrementTests
         using var _ = h;
 
         Assert.True(report.Unstarted);
+        Assert.Equal(new ReleaseFailure(RunnerFailureKinds.AgentNotStarting, "the agent started no session"), report.ReleaseFailure);
         Assert.Equal("the agent never started", report.Outcome);
         Assert.DoesNotContain("```", CommentBody(h), StringComparison.Ordinal);
     }
@@ -1358,6 +1360,7 @@ public sealed class IncrementTests
         Assert.False(report.LetGo);
         Assert.Null(report.Flag);
         Assert.Equal(ClaudeSignedOutSentence, report.AuthFailedLine);
+        Assert.Equal(new ReleaseFailure(RunnerFailureKinds.AgentSignedOut, ClaudeSignedOutSentence), report.ReleaseFailure);
 
         var body = CommentBody(h);
         Assert.Contains("signed out", body, StringComparison.Ordinal);

@@ -171,6 +171,24 @@ public static class RunnerFailures
         }
     }
 
+    /// <summary>
+    /// Links a ticket to the open row of this kind a runner has at a checkout,
+    /// <em>without saving</em>: the release's own save carries it. One link per
+    /// row and issue; no open row links nothing.
+    /// </summary>
+    public static async Task LinkIssueAsync(
+        HatchContext db, Guid apiKeyId, string? where, string kind, long issueId, DateTimeOffset now, CancellationToken ct)
+    {
+        var at = where ?? "";
+        var row = await db.RunnerFailures.AsNoTracking().FirstOrDefaultAsync(
+            f => f.ApiKeyId == apiKeyId && f.Where == at && f.Kind == kind && f.EndedAt == null, ct);
+        if (row is null) return;
+
+        if (await db.RunnerFailureIssues.AnyAsync(l => l.FailureId == row.Id && l.IssueId == issueId, ct)) return;
+
+        db.RunnerFailureIssues.Add(new EfHatchRunnerFailureIssue { FailureId = row.Id, IssueId = issueId, At = now });
+    }
+
     private static EfHatchRunnerFailure Open(Guid apiKeyId, string where, string kind, string? why, DateTimeOffset now) => new()
     {
         ApiKeyId = apiKeyId,
@@ -202,8 +220,10 @@ public static class RunnerFailures
     /// session, means none - a runner gone quiet shows no current failure.
     /// </summary>
     /// <param name="open">Open rows, of any key; only this runner's are read.</param>
+    /// <param name="tickets">The linked issue keys by row id, as <see cref="TicketsAsync"/> reads them; none where null.</param>
     public static IReadOnlyList<RunnerFailureDto> Current(
-        IEnumerable<EfHatchRunnerFailure> open, Runner runner, RunnerSessions sessions, DateTimeOffset now)
+        IEnumerable<EfHatchRunnerFailure> open, Runner runner, RunnerSessions sessions, DateTimeOffset now,
+        IReadOnlyDictionary<long, IReadOnlyList<string>>? tickets = null)
     {
         if (runner.Key is not { } key || runner.Sessions is not { Count: > 0 } own) return [];
 
@@ -216,21 +236,53 @@ public static class RunnerFailures
         return open
             .Where(f => f.ApiKeyId == key.Id && f.EndedAt is null && here.Contains(f.Where))
             .OrderByDescending(f => f.BeganAt).ThenByDescending(f => f.Id)
-            .Select(Project)
+            .Select(f => Project(f, tickets))
             .ToList();
     }
 
     /// <summary>The key's ended rows, newest ended first, at most <see cref="EfHatchRunnerFailure.History"/>.</summary>
-    public static async Task<IReadOnlyList<RunnerFailureDto>> EarlierAsync(HatchContext db, Guid apiKeyId, CancellationToken ct) =>
-        (await db.RunnerFailures.AsNoTracking()
+    public static async Task<IReadOnlyList<RunnerFailureDto>> EarlierAsync(HatchContext db, Guid apiKeyId, CancellationToken ct)
+    {
+        var rows = await db.RunnerFailures.AsNoTracking()
             .Where(f => f.ApiKeyId == apiKeyId && f.EndedAt != null)
             .OrderByDescending(f => f.EndedAt).ThenByDescending(f => f.Id)
             .Take(EfHatchRunnerFailure.History)
-            .ToListAsync(ct))
-        .Select(Project)
-        .ToList();
+            .ToListAsync(ct);
+
+        var tickets = await TicketsAsync(db, rows.Select(r => r.Id).ToList(), ct);
+        return rows.Select(f => Project(f, tickets)).ToList();
+    }
+
+    /// <summary>The most issue keys one row carries on the wire.</summary>
+    public const int MaxTickets = 20;
+
+    /// <summary>
+    /// The keys of the issues linked to each of these rows, newest link first,
+    /// at most <see cref="MaxTickets"/> a row. One query; a row with none is
+    /// not in the answer.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<long, IReadOnlyList<string>>> TicketsAsync(
+        HatchContext db, IReadOnlyCollection<long> failureIds, CancellationToken ct)
+    {
+        if (failureIds.Count == 0) return new Dictionary<long, IReadOnlyList<string>>();
+
+        var links = await db.RunnerFailureIssues.AsNoTracking()
+            .Where(l => failureIds.Contains(l.FailureId))
+            .OrderByDescending(l => l.At).ThenByDescending(l => l.Id)
+            .Select(l => new { l.FailureId, ProjectKey = l.Issue!.Project!.Key, l.Issue.Number })
+            .ToListAsync(ct);
+
+        return links
+            .GroupBy(l => l.FailureId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<string>)g.Take(MaxTickets).Select(l => IssueKey.Format(l.ProjectKey, l.Number)).ToList());
+    }
 
     /// <summary>One row as the wire shape; the empty checkout is none.</summary>
-    private static RunnerFailureDto Project(EfHatchRunnerFailure f) =>
-        new(f.Kind, f.Where.Length == 0 ? null : f.Where, f.Why, f.BeganAt, f.LastReportedAt, f.EndedAt);
+    private static RunnerFailureDto Project(EfHatchRunnerFailure f, IReadOnlyDictionary<long, IReadOnlyList<string>>? tickets) =>
+        new(f.Kind, f.Where.Length == 0 ? null : f.Where, f.Why, f.BeganAt, f.LastReportedAt, f.EndedAt)
+        {
+            Tickets = tickets is not null && tickets.TryGetValue(f.Id, out var keys) ? keys : [],
+        };
 }

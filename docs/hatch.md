@@ -2916,6 +2916,22 @@ only then. A `sessionId` naming no row, or given with no outcome, stamps
 nothing and is never refused for it: the row the CLI posts before it releases
 is what the stamp looks for, and a mismatch is not a failure.
 
+**A release may also name the runner failure the increment ended on**, with
+`failure` (a kind from `RunnerFailureKinds.All`) and `failureWhy` (what the tool
+said). Both are read only with a token and an outcome, as `reason` is. A kind the
+board does not know is dropped without a `400`: the release goes through and
+writes no failure. With a failure, the `claim_released` payload gains `failure`
+and `failureWhy` (cut to the failure row's own length), beside `outcome`,
+`reason` and `sessionId`, which are untouched, and so is the let-go count. Where
+the releasing key has an open failure row of that kind at the
+claim's checkout, the board also links the row to the issue, once per row and
+issue, in the same save; with no open row the event is written alone. The loop
+sends a kind when an increment ended on a signed-out agent (`agent-signed-out`),
+an agent that never started (`agent-not-starting`), a ticket let go for want of a
+signer (`signing`), or a pull request this increment left waiting (`forge`). The
+failure rows then carry `tickets`: the keys of the issues linked, newest first, at
+most twenty, on `current` and `earlier` alike.
+
 **A heartbeat may answer that this runner has been preempted.** Ordinarily a
 heartbeat that refreshed the lease answers `204`. Where the board has chosen
 this runner's issue to make room for an emergency one — see
@@ -3972,7 +3988,8 @@ had already gone quiet past its terms and is taking it over — payload
 written immediately before the `claim_taken` for the runner taking over),
 `claim_released` (payload `{ from, to, outcome }`, `outcome` left out entirely
 rather than serialized as null where the release named none; `spentNothing:
-true` is added on a `dropped` release whose claim spent nothing), `claim_cleared`,
+true` is added on a `dropped` release whose claim spent nothing; `failure` and
+`failureWhy` are added where the release named a runner failure), `claim_cleared`,
 `stalled` (an increment left the ticket where it found it - payload `{ why }`),
 `stall_declined` (the board left a stall mark off because the claim spent
 nothing - payload `{ why, because }`, `because` being `spent_nothing`, the actor
@@ -10941,6 +10958,16 @@ stop for quiet or run time, a lost lease, a put-down ticket and a skip keep
 their own verdicts. The night's tally lists it under **interrupted** as
 `unstarted`, and it neither resets nor advances the three failures that end a
 night.
+
+**A fault of the runner's own machine is named on the release.** When an
+increment ends on a signed-out agent, an agent that never started, a ticket let
+go for want of a signer, or a pull request it left written and waiting, the loop
+sends the matching failure kind and what the tool said with the release (see
+*Claim*), and the board writes it on the `claim_released` event and links the
+runner's open failure row to the ticket. A waiting pull request is named only
+where this runner wrote it since the session began, so an old one is never named
+twice. The session is told the same thing in advance: a tool or a sign-in this
+runner lacks is not a decision to ask about.
 
 **A mark rather than a question that waits on a person forever, which is what
 this used to be.** Most of the time whatever happened is weather, and a ticket

@@ -268,10 +268,18 @@ public class IssueClaimController(
     /// event carries the session id too. Absent, or matching no row, writes the event alone: a
     /// release is never refused for it.
     /// </param>
+    /// <param name="failure">
+    /// The runner failure the increment ended on - one of <see cref="RunnerFailureKinds.All"/>,
+    /// read only where <paramref name="token"/> and <paramref name="outcome"/> are given, as
+    /// <paramref name="reason"/> is. A kind the board does not know is dropped, not refused: the
+    /// release goes through and writes no failure.
+    /// </param>
+    /// <param name="failureWhy">What the tool said, cut to <see cref="EfHatchRunnerFailure.MaxWhyLength"/>. Rides with a valid <paramref name="failure"/> only.</param>
     [HttpDelete]
     public async Task<IActionResult> ReleaseClaim(
         string key, [FromQuery] Guid? token, [FromQuery] string? outcome, [FromQuery] string? reason = null,
-        [FromQuery] string? sessionId = null, CancellationToken ct = default)
+        [FromQuery] string? sessionId = null, [FromQuery] string? failure = null, [FromQuery] string? failureWhy = null,
+        CancellationToken ct = default)
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
 
@@ -297,6 +305,13 @@ public class IssueClaimController(
                     $"\"{ClaimLostReasons.RunTime}\", \"{ClaimLostReasons.Error}\", or nothing at all");
             why = reason;
         }
+
+        // Never a 400: a board that knows fewer kinds than the loop sends is still
+        // owed its release.
+        var failed = given is not null && failure is not null && RunnerFailureKinds.All.Contains(failure, StringComparer.Ordinal)
+            ? failure
+            : null;
+        var failedWhy = failed is not null ? RunnersController.Fits(failureWhy, EfHatchRunnerFailure.MaxWhyLength) : null;
 
         var now = time.GetUtcNow();
         var claim = ClaimSnapshot.Of(issue);
@@ -355,7 +370,12 @@ public class IssueClaimController(
             claim.Runner,
             why,
             session,
-            spentNothing);
+            spentNothing,
+            failed,
+            failedWhy);
+
+        if (failed is not null && await caller.ApiKeyAsync(ct) is { } releasing)
+            await RunnerFailures.LinkIssueAsync(db, releasing.Id, claim.Runner, failed, issue.Id, now, ct);
 
         var paused = token is not null && given == ClaimOutcomes.Dropped
             ? await CountForPauseAsync(issue, claim, verdict, now, ct)
@@ -689,7 +709,8 @@ public class IssueClaimController(
     /// writes the same payload it always has.
     /// </summary>
     private static string ReleasePayload(
-        string? from, string? to, string? outcome, string? runner, string? reason, string? sessionId, bool spentNothing)
+        string? from, string? to, string? outcome, string? runner, string? reason, string? sessionId, bool spentNothing,
+        string? failure = null, string? failureWhy = null)
     {
         var payload = new Dictionary<string, object?> { ["from"] = from, ["to"] = to };
         if (outcome is null) return JsonSerializer.Serialize(payload);
@@ -699,6 +720,11 @@ public class IssueClaimController(
         if (reason is not null) payload["reason"] = reason;
         if (sessionId is not null) payload["sessionId"] = sessionId;
         if (spentNothing) payload[SpentNothing.Marker] = true;
+        if (failure is not null)
+        {
+            payload["failure"] = failure;
+            if (failureWhy is not null) payload["failureWhy"] = failureWhy;
+        }
         return JsonSerializer.Serialize(payload);
     }
 
@@ -711,7 +737,7 @@ public class IssueClaimController(
     private void Log(
         EfHatchIssue issue, string actor, string kind, string? from, string? to, DateTimeOffset at,
         string? outcome = null, string? runner = null, string? reason = null, string? sessionId = null,
-        bool spentNothing = false)
+        bool spentNothing = false, string? failure = null, string? failureWhy = null)
     {
         issue.Events.Add(new EfHatchIssueEvent
         {
@@ -723,7 +749,7 @@ public class IssueClaimController(
             // outcome only: "from" says "<who> on <runner>" and cannot be
             // split back apart, and LetGo.By needs the runner by itself. The
             // reason and the session id ride with an outcome too, and are left out the same way.
-            Payload = ReleasePayload(from, to, outcome, runner, reason, sessionId, spentNothing),
+            Payload = ReleasePayload(from, to, outcome, runner, reason, sessionId, spentNothing, failure, failureWhy),
             At = at,
         });
 

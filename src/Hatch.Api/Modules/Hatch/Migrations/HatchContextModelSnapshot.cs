@@ -2336,6 +2336,33 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("RunnerFailures", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchRunnerFailureIssue", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("FailureId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueId");
+
+                    b.HasIndex("FailureId", "IssueId")
+                        .IsUnique();
+
+                    b.ToTable("RunnerFailureIssues", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchRunnerSession", b =>
                 {
                     b.Property<int>("Id")
@@ -3399,6 +3426,23 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchRunnerFailureIssue", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchRunnerFailure", null)
+                        .WithMany()
+                        .HasForeignKey("FailureId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchTrunkBuild", b =>

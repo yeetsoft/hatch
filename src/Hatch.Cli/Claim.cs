@@ -496,7 +496,13 @@ public sealed class Claim : IAsyncDisposable
     /// The session the work-log row being stamped is keyed on. Sent only
     /// alongside an outcome, and only when given, the way the reason is.
     /// </param>
-    public async Task ReleaseAsync(string? outcome = null, string? reason = null, string? sessionId = null)
+    /// <param name="failure">
+    /// The runner failure the increment ended on - see <see cref="ReleaseFailure"/>. Sent only
+    /// alongside an outcome, and only on the first attempt: the retries below stay as they were,
+    /// since a board too old to know the keys ignores them.
+    /// </param>
+    public async Task ReleaseAsync(
+        string? outcome = null, string? reason = null, string? sessionId = null, ReleaseFailure? failure = null)
     {
         if (Interlocked.Exchange(ref _released, 1) == 1) return;
 
@@ -542,6 +548,13 @@ public sealed class Claim : IAsyncDisposable
             {
                 path += $"&sessionId={Uri.EscapeDataString(sessionId)}";
                 outcomePath += $"&sessionId={Uri.EscapeDataString(sessionId)}";
+            }
+
+            if (failure is { Kind.Length: > 0 })
+            {
+                path += $"&failure={Uri.EscapeDataString(failure.Kind)}";
+                if (string.Join(" ", failure.Why.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) is { Length: > 0 } line)
+                    path += $"&failureWhy={Uri.EscapeDataString(line)}";
             }
         }
 
