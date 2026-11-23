@@ -211,7 +211,7 @@ public class ChatController(
         var token = protector.Unprotect(workspace.Token, SecretStores.ChatWorkspace(workspace.Provider, workspace.ExternalId));
         if (token is null) return Conflict(TokenUnreadable);
 
-        var channels = await provider.ListChannelsAsync(token, ct);
+        var channels = await provider.ListChannelsAsync(token.Reveal(), ct);
         if (channels.Refusal is not null) return StatusCode(StatusCodes.Status502BadGateway, channels.Refusal);
 
         return channels.Channels!.Select(c => new ChatChannelDto(c.Id, c.Name, c.IsPrivate, c.IsMember)).ToList();
@@ -370,7 +370,7 @@ public class ChatController(
         var token = protector.Unprotect(room.Token, SecretStores.ChatWorkspace(room.Provider, room.WorkspaceExternalId));
         if (token is null) return Conflict(TokenUnreadable);
 
-        var result = await provider.PostMessageAsync(token, room.ExternalId, TestMessage, ct);
+        var result = await provider.PostMessageAsync(token.Reveal(), room.ExternalId, TestMessage, ct);
 
         logger.LogInformation("Chat room {RoomId} sent a test message by {Actor}: delivered={Delivered}",
             id, await caller.ActorNameAsync(ct), result.Posted);
