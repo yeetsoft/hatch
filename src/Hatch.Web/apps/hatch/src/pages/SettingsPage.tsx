@@ -10,7 +10,8 @@ import type { Lifetime } from '../lib/confirmationLifetime';
 import { message } from '../lib/errors';
 import {
   credentialClear,
-  credentialIsSet,
+  credentialIsRemovable,
+  credentialIsUnreadable,
   credentialPlaceholder,
   credentialSave,
   defaultTokensChanged,
@@ -21,6 +22,7 @@ import {
   SECRETS_BLOCKED_WORDS,
   secretsBlocked,
   tokenBudgetEditable,
+  UNREADABLE_WORDS,
 } from '../lib/hatchSettings';
 import type { CredentialField, DefaultTokenField } from '../lib/hatchSettings';
 import { chooseHome, homeCardApplies, homeOf, HOME_CHOICES } from '../lib/homeScreen';
@@ -410,6 +412,11 @@ export function CredentialCard({
           onChange={(e) => onDraft(e.target.value)}
         />
       </Field>
+      {credentialIsUnreadable(settings, c.field) && (
+        <p className="text-muted">
+          {UNREADABLE_WORDS} <Link to="/docs/troubleshooting">Troubleshooting</Link>
+        </p>
+      )}
       {blocked && (
         <p className="text-muted">
           {SECRETS_BLOCKED_WORDS} <Link to="/docs/environment-variables">Environment variables</Link>
@@ -428,7 +435,7 @@ export function CredentialCard({
             cannot be removed by tabbing through a form and pressing Save. */}
         <Button
           variant="danger"
-          disabled={busy !== null || !credentialIsSet(settings, c.field)}
+          disabled={busy !== null || !credentialIsRemovable(settings, c.field)}
           onClick={onClear}
         >
           Remove {c.noun}

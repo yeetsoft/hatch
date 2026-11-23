@@ -530,6 +530,39 @@ board answered it is a normal end, and ends the loop as it always has.
 - Deleting `versions/` in the per-user folder is safe at any time. The next start
   runs the downloaded file itself.
 
+## The Settings page says a secret cannot be opened
+
+Beside the Claude token, Codex API key or Grok Build API key on the
+**Settings** page, you see: *This is saved, but it cannot be opened. Enter it
+again, or remove it.* Something is stored under that setting, and this Hatch
+cannot read it. Everything that uses the secret treats it as not set, so a runner
+that needs it will say it has no credential.
+
+It comes about three ways:
+
+- **The key is wrong.** `HATCH_SECRET_KEY` is set, but it is not the key the
+  value was saved under. This is usual after the key was changed without
+  `HATCH_PREVIOUS_SECRET_KEY` keeping the old one for the change-over.
+- **The key is lost.** `HATCH_SECRET_KEY` is not set at all now, for instance in
+  a `.env` that was not carried over. Set it back to the key the value was saved
+  under and the sentence goes. See [Environment variables](environment-variables).
+- **The stored text is damaged.** The value was edited in the database, cut short,
+  copied from another setting's row, or written by a newer Hatch under a scheme
+  this one does not know.
+
+The API log says which setting, once until the stored value changes. It never
+prints the value:
+
+```
+docker compose logs api
+```
+
+Look for `Site setting ClaudeSubscriptionToken is stored but cannot be opened`.
+
+To fix it, either restore the right key and reload the page, or give up on the old
+value: type the secret again and press Save, which replaces it, or press Remove to
+clear it. Saving needs `HATCH_SECRET_KEY` to be set.
+
 ## A psql shell
 
 For looking at the database by hand:
