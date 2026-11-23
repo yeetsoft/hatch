@@ -237,8 +237,9 @@ function cellClass(cell: BoardHealthCell): string {
 }
 
 /**
- * The Runners tile: a thin lane per runner, at most eight, with a hover list
- * under it and a legend one press away. Its body replaces the svg sparkline
+ * The Runners tile: a thin lane per runner, at most eight, drawn the full width
+ * of the tile with no names - the hover list and each cell's title name them -
+ * and a legend one press away. Its body replaces the svg sparkline
  * with 24 HTML cells a row - the svg would stretch hollow and striped cells
  * into a skew - so its moment marker is its own, `hatch-health-lane-moment`,
  * not the shared `hatch-health-moment` the other four tiles count on.
@@ -297,18 +298,11 @@ export function RunnersTile({ answer, index, onIndex, readout }: TileProps) {
 
   const body = (
     <div className="hatch-health-lanes" style={{ '--hatch-lanes': lanes.length } as CSSProperties}>
-      <div className="hatch-health-lane-names">
-        {lanes.map((lane) => (
-          <span key={lane.name} className="hatch-health-lane-name" title={lane.name}>
-            {lane.name}
-          </span>
-        ))}
-      </div>
       <div className="hatch-health-lane-grid">
         {lanes.map((lane) => (
           <div className="hatch-health-lane-cells" key={lane.name}>
             {lane.cells.map((cell, i) => (
-              <span key={i} className={cellClass(cell)} title={cellWords(cell)} />
+              <span key={i} className={cellClass(cell)} title={`${lane.name}: ${cellWords(cell)}`} />
             ))}
           </div>
         ))}
