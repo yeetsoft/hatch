@@ -35,6 +35,7 @@ public class BoardHealthControllerTests
         public required DbContextOptions<HatchContext> Options { get; init; }
         public required BoardHealthController Health { get; init; }
         public required Func<HatchContext, BoardHealthController> HealthOn { get; init; }
+        public required FakeTimeProvider Time { get; init; }
         public required AttentionController Attention { get; init; }
         public required ReportsController Reports { get; init; }
         public required global::Hatch.Api.Services.Auth.AuthOptions Auth { get; init; }
@@ -204,14 +205,17 @@ public class BoardHealthControllerTests
             new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var keys = new AuthService(coreDb, authOptions, time, NullLogger<AuthService>.Instance);
         var sessions = new RunnerSessions(runners);
-        var dispatch = new Dispatch(db, actors, TestClaims.With(), time, keys, sessions);
         var caller = new StubCallerIdentity();
+        var waits = new WaitHistory();
+
+        BoardHealthController HealthOn(HatchContext on) => new(
+            on, actors, runners, new Dispatch(on, actors, TestClaims.With(), time, keys, sessions), time, new ColumnNormals(), waits,
+            caller, authOptions, keys, new RunnerStateLog(runners), sessions);
+
+        var dispatch = new Dispatch(db, actors, TestClaims.With(), time, keys, sessions);
         var backup = new BackupService(
             Microsoft.Extensions.Options.Options.Create(new HatchOptions { BackupPath = "" }),
             new ConfigurationBuilder().Build(), new NoBackupProcess(), new BackupStatus(time), time, NullLogger<BackupService>.Instance);
-
-        BoardHealthController HealthOn(HatchContext on) => new(
-            on, actors, runners, dispatch, time, new ColumnNormals(), caller, authOptions, keys, new RunnerStateLog(runners), sessions);
 
         return new Harness
         {
@@ -219,6 +223,7 @@ public class BoardHealthControllerTests
             Options = options,
             HealthOn = HealthOn,
             Health = HealthOn(db),
+            Time = time,
             Attention = new AttentionController(
                 db, actors, runners, time, dispatch, backup, keys, new GooseWatch(time),
                 Microsoft.Extensions.Options.Options.Create(new HatchOptions()), caller, sessions, authOptions),
@@ -776,5 +781,158 @@ public class BoardHealthControllerTests
         Value(await h.Health.GetBoardHealth(null, null, default));
 
         Assert.Equal(rows, await h.Db.RunnerStates.CountAsync());
+    }
+
+    // ---- When anything last waited ----
+
+    private static async Task<EfHatchIssue> AnsweredAsync(
+        Harness h, DateTimeOffset asked, DateTimeOffset answered, DateTimeOffset createdAt, int? projectId = null)
+    {
+        var issue = await h.FileAsync(h.Doing, createdAt: createdAt, projectId: projectId);
+        var question = await h.AskAsync(issue, asked);
+        await h.AnswerAsync(issue, question, answered);
+        return issue;
+    }
+
+    [Fact]
+    public async Task WhileSomethingWaits_NothingSaysWhenItLastDid()
+    {
+        var h = await NewAsync();
+        await AnsweredAsync(h, At(5, 0), At(6, 10), At(2, 0));
+        var waiting = await h.FileAsync(h.Doing);
+        await h.AskAsync(waiting, At(8, 0));
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Null(answer.LastWaitedAt);
+        Assert.False(answer.LastWaitedIsFloor);
+    }
+
+    [Fact]
+    public async Task AQuestionAnsweredInTheWindow_IsTheAnswersOwnInstant()
+    {
+        var h = await NewAsync();
+        await AnsweredAsync(h, At(5, 0), At(6, 10), At(2, 0));
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(At(6, 10), answer.LastWaitedAt);
+        Assert.False(answer.LastWaitedIsFloor);
+    }
+
+    [Fact]
+    public async Task AQuestionAnsweredThreeDaysAgo_IsFoundByTheKeptRead()
+    {
+        var h = await NewAsync();
+        await AnsweredAsync(h, Now.AddDays(-3).AddHours(-1), Now.AddDays(-3), Now.AddDays(-9));
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(Now.AddDays(-3), answer.LastWaitedAt);
+        Assert.False(answer.LastWaitedIsFloor);
+    }
+
+    [Fact]
+    public async Task APullRequestThatLeftReview_IsAWaitThatEnded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync(h.Doing, createdAt: Now.AddDays(-9), pullRequestUrl: "https://forge.example/pulls/9");
+        await h.MoveAsync(issue, h.Doing, h.Review, Now.AddDays(-2).AddHours(-3));
+        await h.MoveAsync(issue, h.Review, h.Done, Now.AddDays(-2));
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(Now.AddDays(-2), answer.LastWaitedAt);
+        Assert.False(answer.LastWaitedIsFloor);
+    }
+
+    [Fact]
+    public async Task NothingInFortyDays_IsTheThirtyDayFloor()
+    {
+        var h = await NewAsync();
+        await AnsweredAsync(h, Now.AddDays(-40).AddHours(-1), Now.AddDays(-40), Now.AddDays(-50));
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(Now.AddDays(-30), answer.LastWaitedAt);
+        Assert.True(answer.LastWaitedIsFloor);
+    }
+
+    [Fact]
+    public async Task ABoardYoungerThanThirtyDays_AnswersItsFirstIssue_AsAFloor()
+    {
+        var h = await NewAsync();
+        await h.FileAsync(h.Todo, createdAt: Now.AddDays(-2));
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(Now.AddDays(-2), answer.LastWaitedAt);
+        Assert.True(answer.LastWaitedIsFloor);
+    }
+
+    [Fact]
+    public async Task NoIssues_IsNullAndNotAFloor()
+    {
+        var h = await NewAsync();
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Null(answer.LastWaitedAt);
+        Assert.False(answer.LastWaitedIsFloor);
+    }
+
+    [Fact]
+    public async Task AProject_LeavesOutAnotherProjectsWait()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.FileAsync(h.Todo, createdAt: At(2, 0));
+        await AnsweredAsync(h, At(5, 0), At(6, 10), At(2, 0), projectId: other);
+
+        var mine = Value(await h.Health.GetBoardHealth(null, ["AER"], default));
+        var theirs = Value(await h.Health.GetBoardHealth(null, ["OTH"], default));
+        var both = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal((At(2, 0), true), (mine.LastWaitedAt, mine.LastWaitedIsFloor));
+        Assert.Equal((At(6, 10), false), (theirs.LastWaitedAt, theirs.LastWaitedIsFloor));
+        Assert.Equal((At(6, 10), false), (both.LastWaitedAt, both.LastWaitedIsFloor));
+    }
+
+    [Fact]
+    public async Task ACallerWhoCannotSeeAProject_NeverLearnsItsInstant_FromTheKeptRead()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await AnsweredAsync(h, Now.AddDays(-4).AddHours(-1), Now.AddDays(-4), Now.AddDays(-9));
+        await AnsweredAsync(h, Now.AddDays(-3).AddHours(-1), Now.AddDays(-3), Now.AddDays(-9), projectId: other);
+
+        // The one who sees everything fills the kept read first, for both projects.
+        var everyone = Value(await h.Health.GetBoardHealth(null, null, default));
+        Assert.Equal(Now.AddDays(-3), everyone.LastWaitedAt);
+
+        // A second controller shares the kept read but its context hides the other project.
+        var narrow = h.HealthOn(ScopeSeed.Request(h.Options, ScopeSeed.Only(h.ProjectId)));
+        var seen = Value(await narrow.GetBoardHealth(null, null, default));
+
+        Assert.Equal(Now.AddDays(-4), seen.LastWaitedAt);
+        Assert.False(seen.LastWaitedIsFloor);
+    }
+
+    [Fact]
+    public async Task AKeptRead_IsReusedForUnderFiveMinutes_AndRefreshedAfter()
+    {
+        var h = await NewAsync();
+        await AnsweredAsync(h, Now.AddDays(-3).AddHours(-1), Now.AddDays(-3), Now.AddDays(-9));
+
+        Assert.Equal(Now.AddDays(-3), Value(await h.Health.GetBoardHealth(null, null, default)).LastWaitedAt);
+
+        // A later wait, ended two days ago: only a fresh read can see it.
+        await AnsweredAsync(h, Now.AddDays(-2).AddHours(-1), Now.AddDays(-2), Now.AddDays(-9));
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        Assert.Equal(Now.AddDays(-3), Value(await h.Health.GetBoardHealth(null, null, default)).LastWaitedAt);
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        Assert.Equal(Now.AddDays(-2), Value(await h.Health.GetBoardHealth(null, null, default)).LastWaitedAt);
     }
 }

@@ -245,7 +245,7 @@ has stood there longer than the column's normal with no open child. There is no 
 beyond the standard ones.
 
 `/board/health` answers a `BoardHealthDto` - `From`, `To`, `BarMinutes`, `Bars` (each a
-`BoardHealthBarDto`), `Total`, `PreviousTotal`, `PastNormal`, `HasWorkColumn`, `Runners` and `InFlightIssues` -
+`BoardHealthBarDto`), `Total`, `PreviousTotal`, `PastNormal`, `HasWorkColumn`, `Runners`, `InFlightIssues`, `LastWaitedAt` and `LastWaitedIsFloor` -
 counts and durations, and one list that names the issues in flight now. That is safe because the
 route is open only to a caller who may see them and `project` narrows the list as it narrows every
 count. Each bar also carries `Ages`, a `BoardHealthAgesDto` (`Healthy`, `Aging`, `PastNormal`,
@@ -256,7 +256,11 @@ normal, which add up to those issues and not to `InFlight`. `InFlightIssues` is 
 `noNormal`) - longest stay first, capped by nothing, so a page that draws fewer says how many it
 left out. An earlier bar is judged against today's normals, and whether an issue has children is
 today's answer. The last bar's waiting pull requests and
-questions are the attention control's own count. `Runners` is a `BoardHealthRunnersDto`: `Up`
+questions are the attention control's own count. `LastWaitedAt` is the instant the latest wait on a
+person ended: null while anything waits now or when no issue is in scope, and never older than 30 days.
+When nothing waited in 30 days it is now minus 30 days (or, on a board younger than that, the
+earliest issue's creation) and `LastWaitedIsFloor` is true, so a page can say "over 30d". It keeps to
+`project` and to the projects the caller may see. `Runners` is a `BoardHealthRunnersDto`: `Up`
 (lanes whose runner is not gone now), `Paused` (of those, paused now, the board's pauses
 included), `WithLane` and `Lanes`. A `BoardHealthLaneDto` holds `Name`, `Up`, `Paused`,
 `LastSeenAt` and `Cells`: 24 `BoardHealthCellDto`, oldest first, one for each bar, each a
