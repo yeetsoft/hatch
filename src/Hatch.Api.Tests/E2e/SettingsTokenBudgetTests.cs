@@ -31,8 +31,10 @@ public class SettingsTokenBudgetTests(ITestOutputHelper output)
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    private static readonly HatchSettingsDto Seeded = new("", false, "", "", "", 2_000_000, 200_000, true);
-    private static readonly HatchSettingsDto Saved = new("", false, "", "", "", 5_000_000, 500_000, true);
+    private static readonly SecretStatesDto Unset = new("unset", "unset", "unset");
+
+    private static readonly HatchSettingsDto Seeded = new("", false, "", "", "", 2_000_000, 200_000, true, Unset);
+    private static readonly HatchSettingsDto Saved = new("", false, "", "", "", 5_000_000, 500_000, true, Unset);
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public async Task TheRunnerTokenBudgetSection_RendersForAnAdmin()
