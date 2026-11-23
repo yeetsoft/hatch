@@ -2395,6 +2395,35 @@ export interface BoardHealth {
   previousTotal: number;
   pastNormal: number;
   hasWorkColumn: boolean;
+  runners: BoardHealthRunners;
+}
+
+/** The states a runner lane's cell can draw, in the order a cell picks among
+    them. Mirrors RunnerLanes' own constants. */
+export type BoardHealthCellState = 'let-go' | 'down' | 'moved' | 'working' | 'idle' | 'paused' | 'off' | 'blank';
+
+/** What a runner was doing in one bar. Mirrors BoardHealthCellDto. */
+export interface BoardHealthCell {
+  state: BoardHealthCellState;
+  why: string | null;
+}
+
+/** One runner's lane over the window: who it is, how it stands now, and a
+    cell for each of the read's bars. Mirrors BoardHealthLaneDto. */
+export interface BoardHealthLane {
+  name: string;
+  up: boolean;
+  paused: boolean;
+  lastSeenAt: string;
+  cells: BoardHealthCell[];
+}
+
+/** The runners' half of the board health read. Mirrors BoardHealthRunnersDto. */
+export interface BoardHealthRunners {
+  up: number;
+  paused: number;
+  withLane: number;
+  lanes: BoardHealthLane[];
 }
 
 // ---- Changelog report ----

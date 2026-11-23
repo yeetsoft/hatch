@@ -43,9 +43,9 @@ button, with the columns stacked one under another instead of side by side. A
 **Full board** toggle, remembered per browser, brings the columns back side by
 side.
 
-The health strip above the board is one row of four numbers on a phone: moved,
-in flight, oldest and waiting, each with a short line under it and no charts.
-Tap the row and it opens into the full tiles, stacked one under another, with
+The health strip above the board is one row of five numbers on a phone: moved,
+in flight, oldest, waiting and runners, each with a short line under it and no
+charts. Tap the row and it opens into the full tiles, stacked one under another, with
 the window control (**2h** to **24h**) above them; tap it again and it closes.
 It starts closed each time the board opens, and the window you pick is the
 same one the desk remembers. The button that hides the strip altogether is

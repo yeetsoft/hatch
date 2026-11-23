@@ -38,10 +38,10 @@ describe('BoardHealthStripView', () => {
     expect(view(answer)).toContain(axisSentence(answer).replace(/&/g, '&amp;'));
   });
 
-  it('draws the four tiles after the control', () => {
+  it('draws the five tiles after the control', () => {
     const html = view(sampleHealth());
 
-    expect(html.match(/<section /g)).toHaveLength(4);
+    expect(html.match(/<section /g)).toHaveLength(5);
     expect(html.indexOf('hatch-health-control')).toBeLessThan(html.indexOf('data-tile="moved"'));
   });
 
@@ -77,13 +77,13 @@ function phone(answer: BoardHealth, open: boolean, window: HealthWindow = '8h') 
 }
 
 describe('BoardHealthPhoneView', () => {
-  it('closed, is one button of four numbers with no chart and no tiles', () => {
+  it('closed, is one button of five numbers with no chart and no tiles', () => {
     const html = phone(sampleHealth(), false);
 
     expect(html.match(/<button/g)).toHaveLength(1);
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain('aria-controls="health-open"');
-    expect(html.match(/data-part="value"/g)).toHaveLength(4);
+    expect(html.match(/data-part="value"/g)).toHaveLength(5);
     expect(html).not.toContain('<svg');
     expect(html).not.toContain('<section');
   });
@@ -96,12 +96,12 @@ describe('BoardHealthPhoneView', () => {
     expect(html).not.toContain('>2 past normal<');
   });
 
-  it('open, puts the window control above four stacked tiles', () => {
+  it('open, puts the window control above five stacked tiles', () => {
     const html = phone(sampleHealth(), true);
 
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain('hatch-health-strip--stacked');
-    expect(html.match(/<section /g)).toHaveLength(4);
+    expect(html.match(/<section /g)).toHaveLength(5);
     expect(html.indexOf('hatch-health-control')).toBeLessThan(html.indexOf('<section'));
   });
 

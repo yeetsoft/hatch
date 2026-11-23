@@ -91,6 +91,49 @@ describe('the board health strip stylesheet', () => {
   });
 });
 
+describe('the Runners tile', () => {
+  it('caps a lane at half a rem, over the lane count the body sets', () => {
+    expect(declarationsOf('.hatch-health-lane-cells')['height']).toBe('min(0.5rem, calc(100% / var(--hatch-lanes, 1)))');
+  });
+
+  it('draws idle and off short, paused hollow, down striped - no state by colour alone', () => {
+    const idle = declarationsOf('.hatch-health-lane-cell--idle');
+    const off = declarationsOf('.hatch-health-lane-cell--off');
+    const paused = declarationsOf('.hatch-health-lane-cell--paused');
+    const down = declarationsOf('.hatch-health-lane-cell--down');
+
+    expect(Number.parseInt(idle['height'], 10)).toBeLessThan(100);
+    expect(Number.parseInt(off['height'], 10)).toBeLessThan(100);
+    expect(paused['background']).toBe('transparent');
+    expect(paused['border']).toContain('solid');
+    expect(down['background-image']).toContain('repeating-linear-gradient');
+  });
+
+  it('marks a dotted let-go and a full moved and working, told apart by shade', () => {
+    const letGo = declarationsOf('.hatch-health-lane-cell--let-go');
+    const moved = declarationsOf('.hatch-health-lane-cell--moved');
+    const working = declarationsOf('.hatch-health-lane-cell--working');
+
+    expect(letGo['border-bottom']).toContain('dotted');
+    expect(moved['background']).not.toBe(working['background']);
+  });
+
+  it('shows the legend on hover, focus-within or a pressed Key, and otherwise hides it', () => {
+    expect(declarationsOf('.hatch-health-legend')['display']).toBe('none');
+    for (const selector of [
+      '.hatch-health-tile:hover .hatch-health-legend',
+      '.hatch-health-tile:focus-within .hatch-health-legend',
+      ".hatch-health-key[aria-expanded='true'] ~ .hatch-health-legend",
+    ]) {
+      expect(declarationsOf(selector)['display']).toBe('block');
+    }
+  });
+
+  it('never lets the hover popover take a pointer, so it cannot steal the hover it draws from', () => {
+    expect(declarationsOf('.hatch-health-lane-hover')['pointer-events']).toBe('none');
+  });
+});
+
 describe('the board health strip on a phone', () => {
   it('holds the closed row to a finger-high, full-width button', () => {
     const row = declarationsOf('.hatch-health-row');
@@ -100,10 +143,15 @@ describe('the board health strip on a phone', () => {
     expect(row['display']).toBe('flex');
   });
 
-  it('lets each of the four cells shrink and cuts its text rather than wrapping it', () => {
+  it('lets each of the five cells shrink and cuts its text rather than wrapping it', () => {
     expect(declarationsOf('.hatch-health-cell')['min-width']).toBe('0');
     expect(declarationsOf('.hatch-health-cell')['flex']).toBe('1 1 0');
     expect(declarationsOf('.hatch-health-cell-second')['white-space']).toBe('nowrap');
+  });
+
+  it('cuts the fifth cell, Runners, the same way rather than wrapping it', () => {
+    expect(declarationsOf('.hatch-health-cell-number')['overflow']).toBe('hidden');
+    expect(declarationsOf('.hatch-health-cell-number')['text-overflow']).toBe('ellipsis');
   });
 
   it('draws the chevron from borders, with no image', () => {
