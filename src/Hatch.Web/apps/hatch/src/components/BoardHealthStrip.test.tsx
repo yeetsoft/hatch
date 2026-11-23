@@ -5,7 +5,7 @@ import { HEALTH_WINDOWS, axisSentence } from '../lib/boardHealth';
 import type { HealthWindow } from '../lib/boardHealth';
 import { sampleHealth } from '../lib/boardHealthSample';
 import type { BoardHealth } from '../types';
-import { BoardHealthStripView } from './BoardHealthStrip';
+import { BoardHealthPhoneView, BoardHealthStripView } from './BoardHealthStrip';
 
 function view(answer: BoardHealth, window: HealthWindow = '8h', scopeKeys: string[] = []) {
   return renderToStaticMarkup(
@@ -55,5 +55,61 @@ describe('BoardHealthStripView', () => {
 
   it('carries the scope into the report link', () => {
     expect(view(sampleHealth(), '8h', ['AER', 'FIL'])).toContain('scope=AER,FIL');
+  });
+});
+
+function phone(answer: BoardHealth, open: boolean, window: HealthWindow = '8h') {
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <BoardHealthPhoneView
+        answer={answer}
+        open={open}
+        onOpen={() => {}}
+        controls="health-open"
+        window={window}
+        onWindow={() => {}}
+        index={null}
+        onIndex={() => {}}
+        scopeKeys={[]}
+      />
+    </MemoryRouter>,
+  );
+}
+
+describe('BoardHealthPhoneView', () => {
+  it('closed, is one button of four numbers with no chart and no tiles', () => {
+    const html = phone(sampleHealth(), false);
+
+    expect(html.match(/<button/g)).toHaveLength(1);
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-controls="health-open"');
+    expect(html.match(/data-part="value"/g)).toHaveLength(4);
+    expect(html).not.toContain('<svg');
+    expect(html).not.toContain('<section');
+  });
+
+  it('says the full sentence for each number and shows the short pair', () => {
+    const html = phone(sampleHealth(), false);
+
+    expect(html).toContain('aria-label="Oldest in flight: 4h, 2 past normal"');
+    expect(html).toContain('>2 old<');
+    expect(html).not.toContain('>2 past normal<');
+  });
+
+  it('open, puts the window control above four stacked tiles', () => {
+    const html = phone(sampleHealth(), true);
+
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('hatch-health-strip--stacked');
+    expect(html.match(/<section /g)).toHaveLength(4);
+    expect(html.indexOf('hatch-health-control')).toBeLessThan(html.indexOf('<section'));
+  });
+
+  it('always holds the region the row controls', () => {
+    expect(phone(sampleHealth(), false)).toContain('id="health-open"');
+  });
+
+  it('draws nothing for an answer with no bars', () => {
+    expect(phone(sampleHealth({ bars: [] }), false)).toBe('');
   });
 });
