@@ -568,7 +568,7 @@ public class SettingsControllerTests
     /// openssl.
     /// </summary>
     [Fact]
-    public async Task TheTokenRoute_AnswersItWrappedTheWayTheStoreWrapsIt()
+    public async Task TheTokenRoute_AnswersItOnTheV1Wire()
     {
         var fixture = NewFixture();
         await fixture.PutAsync(new(ClaudeSubscriptionToken: "sk-ant-oat-1", null));
@@ -577,7 +577,8 @@ public class SettingsControllerTests
 
         var dto = Assert.IsType<CredentialDto>(answer.Value);
         Assert.DoesNotContain("sk-ant-oat-1", dto.ProtectedToken);
-        Assert.Equal("sk-ant-oat-1", SecretProtector.Unprotect(dto.ProtectedToken));
+        Assert.Equal("v1:OwpZAgZafgYVEX5U", dto.ProtectedToken);
+        Assert.Equal("sk-ant-oat-1", CredentialWire.Unwrap(dto.ProtectedToken));
     }
 
     /// <summary>
@@ -639,7 +640,7 @@ public class SettingsControllerTests
     [InlineData("claude")]
     [InlineData("codex")]
     [InlineData("grok")]
-    public async Task TheCredentialRoute_AnswersItWrappedTheWayTheStoreWrapsIt(string agent)
+    public async Task TheCredentialRoute_AnswersItOnTheV1Wire(string agent)
     {
         var fixture = NewFixture();
         await fixture.PutAsync(WriteAgent(agent, "sk-secret-1"));
@@ -648,7 +649,8 @@ public class SettingsControllerTests
 
         var dto = Assert.IsType<CredentialDto>(answer.Value);
         Assert.DoesNotContain("sk-secret-1", dto.ProtectedToken);
-        Assert.Equal("sk-secret-1", SecretProtector.Unprotect(dto.ProtectedToken));
+        Assert.Equal(CredentialWire.Wrap("sk-secret-1"), dto.ProtectedToken);
+        Assert.Equal("sk-secret-1", CredentialWire.Unwrap(dto.ProtectedToken));
     }
 
     [Theory]

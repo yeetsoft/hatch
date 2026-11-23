@@ -136,12 +136,12 @@ public sealed class CredentialCommand(Cli cli)
 }
 
 /// <summary>
-/// The other half of <c>SecretProtector</c>, on this side of the wire.
+/// The other half of <c>CredentialWire</c>, on this side of the wire. The wire
+/// is <c>v1</c> on purpose and is not how Hatch stores anything.
 /// </summary>
 /// <remarks>
 /// <para>A copy of about fifteen lines of
-/// <c>src/Hatch.Api/Common/SecretObfuscator.cs</c> and its
-/// <c>SecretProtector</c> wrapper, rather than a reference to
+/// <c>src/Hatch.Api/Common/CredentialWire.cs</c>, rather than a reference to
 /// <c>Hatch.Api.Common</c>: the API and this CLI ship as separate,
 /// independently-trimmed binaries onto different machines, and one of them is a
 /// container that pulls the other over HTTP. The scheme tag is what makes the
@@ -149,16 +149,15 @@ public sealed class CredentialCommand(Cli cli)
 /// heard of comes back null and says so, rather than decoding into
 /// nonsense.</para>
 ///
-/// <para>The same "one symbol to change" note that class carries applies here
-/// too, and doubled: when the protection becomes real crypto, this is the
-/// second place a scheme has to be taught. It is obfuscation and not encryption
+/// <para>Storage may change its scheme; this wire does not, because every
+/// container image already built reads it. It is obfuscation and not encryption
 /// - a fixed key, in the open, on both sides - and it is honestly labelled as
 /// such in docs/secrets-architecture.md. What keeps a token off the wire in
 /// clear is TLS, which is the operator's to put in front of Hatch.</para>
 /// </remarks>
 internal static class Secret
 {
-    /// <summary>Byte for byte <c>SecretObfuscator.Key</c>, and it has to stay that way.</summary>
+    /// <summary>Byte for byte <c>CredentialWire.Key</c>, and it has to stay that way.</summary>
     private static readonly byte[] Key = "Hatch.SiteSettings.Obfuscation.v1"u8.ToArray();
 
     /// <summary>

@@ -31,6 +31,17 @@ public sealed class CredentialCommandTests
     }
 
     /// <summary>
+    /// The wire, pinned by a string written out in full. The API's own test
+    /// (<c>CredentialWireTests</c>) pins the same literal, which is how two
+    /// binaries that share no code agree.
+    /// </summary>
+    [Fact]
+    public void The_pinned_v1_wire_string_reveals_the_credential()
+    {
+        Assert.Equal("sk-ant-oat-1", Secret.Reveal("v1:OwpZAgZafgYVEX5U"));
+    }
+
+    /// <summary>
     /// The untagged form <c>SecretProtector.Unprotect</c> still reads - a value
     /// written before the scheme tag existed. Read the same way here, so a
     /// container is not the one caller that a data migration would have broken.
