@@ -122,7 +122,7 @@ public class SettingsController(
         var credential = await credentials.GetAsync(agent, ct);
         if (credential is null) return NoContent();
 
-        return new CredentialDto(SecretProtector.Protect(credential));
+        return new CredentialDto(CredentialWire.Wrap(credential));
     }
 
     /// <summary>

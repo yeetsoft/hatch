@@ -8,7 +8,9 @@ namespace Hatch.Api.Common;
 ///
 /// This is scheme <c>v1</c>, and it is an implementation detail of
 /// <see cref="SecretProtector"/>: call that instead. Everything stored goes
-/// through the protector so that the day this is replaced with real crypto,
+/// through the protector - the one exception is the credential handoff to the
+/// container runner, <see cref="CredentialWire"/>, which is <c>v1</c> on
+/// purpose and keeps its own copy - so that the day this is replaced with real crypto,
 /// the replacement is a new scheme beside this one rather than an edit to
 /// every call site that ever wrote a secret.
 /// </summary>
