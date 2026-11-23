@@ -3,13 +3,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { flowHref, readout, tileLabel } from '../lib/boardHealth';
 import type { Tile } from '../lib/boardHealth';
-import { sampleBar, sampleHealth } from '../lib/boardHealthSample';
-import type { BoardHealth } from '../types';
-import { InFlightTile, MovedTile, OldestTile, WaitingTile } from './BoardHealthTiles';
+import { LANE_LEGEND, MAX_LANES, drawnLanes, hoverList } from '../lib/boardHealthLanes';
+import { sampleBar, sampleHealth, sampleRunners } from '../lib/boardHealthSample';
+import type { BoardHealth, BoardHealthLane } from '../types';
+import { InFlightTile, MovedTile, OldestTile, RunnersTile, WaitingTile } from './BoardHealthTiles';
 
 const escape = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** All four tiles over one answer, as the strip draws them. */
+/** All five tiles over one answer, as the strip draws them. */
 function tiles(answer: BoardHealth, index: number | null, href = '/reports/cumulative-flow') {
   const readouts = readout(answer, index);
   const props = { answer, index, onIndex: () => {} };
@@ -20,16 +21,17 @@ function tiles(answer: BoardHealth, index: number | null, href = '/reports/cumul
       <InFlightTile {...props} readout={readouts.inFlight} href={href} />
       <OldestTile {...props} readout={readouts.oldest} />
       <WaitingTile {...props} readout={readouts.waiting} />
+      <RunnersTile {...props} readout={readouts.runners} />
     </MemoryRouter>,
   );
 }
 
-describe('the four health tiles', () => {
-  it('draws four tiles', () => {
+describe('the five health tiles', () => {
+  it('draws five tiles', () => {
     const html = tiles(sampleHealth(), null);
 
-    expect(html.match(/<section /g)).toHaveLength(4);
-    for (const tile of ['moved', 'inFlight', 'oldest', 'waiting']) expect(html).toContain(`data-tile="${tile}"`);
+    expect(html.match(/<section /g)).toHaveLength(5);
+    for (const tile of ['moved', 'inFlight', 'oldest', 'waiting', 'runners']) expect(html).toContain(`data-tile="${tile}"`);
   });
 
   it('gives each tile the sentence tileLabel writes for it, at rest and on a bar', () => {
@@ -103,8 +105,8 @@ describe('the four health tiles', () => {
   it('reads real text, not drawing, for every number', () => {
     const html = tiles(sampleHealth(), null);
 
-    expect(html.match(/data-part="value"/g)).toHaveLength(4);
-    expect(html.match(/data-part="second"/g)).toHaveLength(4);
+    expect(html.match(/data-part="value"/g)).toHaveLength(5);
+    expect(html.match(/data-part="second"/g)).toHaveLength(5);
   });
 
   it('says nothing waiting when nothing waits', () => {
@@ -120,5 +122,71 @@ describe('the four health tiles', () => {
     };
 
     expect(tiles(quiet, null)).toContain('nothing waiting');
+  });
+});
+
+function runnersTile(answer: BoardHealth, index: number | null) {
+  const readouts = readout(answer, index);
+
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <RunnersTile answer={answer} index={index} onIndex={() => {}} readout={readouts.runners} />
+    </MemoryRouter>,
+  );
+}
+
+const lane = (name: string, over: Partial<BoardHealthLane> = {}): BoardHealthLane => ({
+  name,
+  up: true,
+  paused: false,
+  lastSeenAt: '2026-11-22T15:40:00.000Z',
+  cells: Array.from({ length: 24 }, () => ({ state: 'idle', why: null })),
+  ...over,
+});
+
+describe('the Runners tile', () => {
+  it('draws a lane row for every runner, up to the cap, and says how many are not drawn', () => {
+    const lanes = Array.from({ length: 10 }, (_, i) => lane(`r${i}`));
+    const answer = sampleHealth({ runners: { up: 10, paused: 0, withLane: 10, lanes } });
+
+    const html = runnersTile(answer, null);
+    expect(html.match(/hatch-health-lane-cells/g)).toHaveLength(MAX_LANES);
+    expect(html).toContain('2 not drawn');
+  });
+
+  it('names each drawn runner', () => {
+    const html = runnersTile(sampleHealth(), null);
+
+    for (const lane of drawnLanes(sampleHealth()).lanes) expect(html).toContain(lane.name);
+  });
+
+  it('lists the hover words only while a bar is marked', () => {
+    const rest = runnersTile(sampleHealth(), null);
+    const onBar = runnersTile(sampleHealth(), 7);
+
+    expect(rest).not.toContain('hatch-health-lane-hover');
+    expect(onBar).toContain('hatch-health-lane-hover');
+    const list = hoverList(sampleHealth(), 7);
+    for (const line of list.lines) expect(onBar).toContain(line.words);
+  });
+
+  it('marks the moment with its own class, not the one the other four tiles count', () => {
+    expect(runnersTile(sampleHealth(), null)).not.toContain('hatch-health-lane-moment');
+    expect(runnersTile(sampleHealth(), 7)).toContain('hatch-health-lane-moment');
+  });
+
+  it('always carries the legend, the mock-up\'s seven lines, closed until pressed', () => {
+    const html = runnersTile(sampleHealth(), null);
+
+    expect(html).toContain('aria-expanded="false"');
+    for (const line of LANE_LEGEND) expect(html).toContain(line.title);
+    expect(LANE_LEGEND).toHaveLength(7);
+  });
+
+  it('reads "N of M" over "up · P paused" in its own value and second line', () => {
+    const answer = sampleHealth({ runners: sampleRunners() });
+    const html = runnersTile(answer, null);
+
+    expect(html).toContain(`>${answer.runners.up} of ${answer.runners.withLane}<`);
   });
 });

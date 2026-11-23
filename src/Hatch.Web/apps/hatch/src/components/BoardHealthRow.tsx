@@ -15,6 +15,7 @@ const CELLS: { tile: Tile; label: string }[] = [
   { tile: 'inFlight', label: 'In flight' },
   { tile: 'oldest', label: 'Oldest' },
   { tile: 'waiting', label: 'Waiting' },
+  { tile: 'runners', label: 'Runners' },
 ];
 
 export function BoardHealthRow({

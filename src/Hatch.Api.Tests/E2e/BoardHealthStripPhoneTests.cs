@@ -8,9 +8,10 @@ using Xunit.Abstractions;
 namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
-/// HA-2733's acceptance at the phone profile, driven in WebKit at <c>iPhone 14 Pro</c>: the strip is one row of four
-/// numbers with no chart, tapping it opens the four tiles stacked with the window control above them, and tapping
-/// again closes it. The window chosen in the open strip survives a reload, and the row starts closed again.
+/// HA-2733's and HA-2739's acceptance at the phone profile, driven in WebKit at <c>iPhone 14 Pro</c>: the strip is
+/// one row of five numbers with no chart, tapping it opens the five tiles stacked with the window control above
+/// them, and tapping again closes it. The window chosen in the open strip survives a reload, and the row starts
+/// closed again.
 ///
 /// <para>The row must sit inside the viewport and the page must not scroll sideways. The hide button is inside
 /// Filters, so the header row keeps its one line. Screenshots of the row closed and open are left in the artifact
@@ -57,8 +58,8 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
             var page = harness.Page!;
             await harness.WaitForVisibleAsync(deadline, Row);
 
-            // Closed: four numbers, no chart, no tiles, and the row says it can be opened.
-            Assert.Equal(4, (await Texts(harness, deadline, $"{Row} [data-part='value']")).Length);
+            // Closed: five numbers, no chart, no tiles, and the row says it can be opened.
+            Assert.Equal(5, (await Texts(harness, deadline, $"{Row} [data-part='value']")).Length);
             Assert.Equal(Titles.Length.ToString(), (await Texts(harness, deadline, $"{Row} [data-tile='moved'] [data-part='value']"))[0]);
             Assert.Equal(0, await page.Locator($"{Phone} svg").CountAsync());
             Assert.Equal(0, await page.Locator("section[data-tile]").CountAsync());
@@ -77,12 +78,12 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
             Assert.Equal(0, await page.Locator($".hatch-filter-trailing {Toggle}").CountAsync());
             await harness.ScreenshotAsync(deadline, "board-health-phone-closed");
 
-            // Tapping opens four stacked tiles, the window control above them.
+            // Tapping opens five stacked tiles, the window control above them.
             await harness.ClickAsync(deadline, Row);
             await harness.WaitForVisibleAsync(deadline, ".hatch-health-strip--stacked");
             Assert.Equal("true", await page.Locator(Row).GetAttributeAsync("aria-expanded"));
             Assert.Equal(
-                ["Moved", "In flight", "Oldest in flight", "Waiting on you"],
+                ["Moved", "In flight", "Oldest in flight", "Waiting on you", "Runners"],
                 await Texts(harness, deadline, ".hatch-health-strip--stacked section[data-tile] h3"));
             var layout = new Reading(await harness.EvaluateAsync<JsonElement>(
                 deadline, "measuring the open strip",

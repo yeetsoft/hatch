@@ -20,7 +20,7 @@ import {
   waitingSteps,
 } from './boardHealth';
 import { momentLabel } from './cumulativeFlow';
-import type { BoardHealth, BoardHealthBar } from '../types';
+import type { BoardHealth, BoardHealthBar, BoardHealthCell, BoardHealthLane, BoardHealthRunners } from '../types';
 
 const TO = Date.parse('2026-11-22T15:40:00.000Z');
 const BAR_MS = 20 * 60_000;
@@ -61,6 +61,44 @@ const bars = (over: (i: number) => Partial<BoardHealthBar> = () => ({})): BoardH
 
 const TOTAL = bars().reduce((sum, b) => sum + b.moved, 0);
 
+/** Bar `i` of a hand-built lane, cycling through every cell state and every
+    `why` a cell can carry, offset so the four lanes below never agree. */
+const CELL_CYCLE: BoardHealthCell[] = [
+  { state: 'moved', why: null },
+  { state: 'working', why: null },
+  { state: 'idle', why: null },
+  { state: 'off', why: null },
+  { state: 'paused', why: null },
+  { state: 'paused', why: 'board' },
+  { state: 'down', why: 'out-of-usage' },
+  { state: 'down', why: 'not-starting' },
+  { state: 'down', why: 'signed-out' },
+  { state: 'down', why: null },
+  { state: 'let-go', why: 'dropped' },
+  { state: 'let-go', why: 'lapsed' },
+  { state: 'let-go', why: 'stalled' },
+  { state: 'let-go', why: 'errored' },
+  { state: 'blank', why: null },
+];
+
+function lane(name: string, offset: number, over: Partial<BoardHealthLane> = {}): BoardHealthLane {
+  return {
+    name,
+    up: true,
+    paused: false,
+    lastSeenAt: new Date(TO).toISOString(),
+    cells: Array.from({ length: BARS }, (_, i) => CELL_CYCLE[(i + offset) % CELL_CYCLE.length]),
+    ...over,
+  };
+}
+
+/** Four lanes: alpha and bravo up, charlie up and paused, delta gone - "3 of 4" up, one paused. */
+function runners(over: Partial<BoardHealthRunners> = {}): BoardHealthRunners {
+  const lanes = [lane('alpha', 0), lane('bravo', 1), lane('charlie', 2, { paused: true }), lane('delta', 3, { up: false })];
+
+  return { up: 3, paused: 1, withLane: lanes.length, lanes, ...over };
+}
+
 function answer(over: Partial<BoardHealth> = {}): BoardHealth {
   return {
     from: new Date(FROM).toISOString(),
@@ -71,6 +109,7 @@ function answer(over: Partial<BoardHealth> = {}): BoardHealth {
     previousTotal: TOTAL - 16,
     pastNormal: 2,
     hasWorkColumn: true,
+    runners: runners(),
     ...over,
   };
 }
@@ -394,6 +433,18 @@ describe('readout at rest', () => {
     expect(readout(none, null).waiting).toMatchObject({ value: '0', second: 'nothing waiting' });
   });
 
+  it('runners: how many are up of how many have a lane, and how many are paused', () => {
+    expect(rest.runners).toMatchObject({ value: '3 of 4', second: 'up · 1 paused', detail: '', tone: 'neutral', glyph: '' });
+  });
+
+  it('runners: "up" alone with none paused, "none up" with no lanes', () => {
+    expect(readout(answer({ runners: runners({ paused: 0 }) }), null).runners.second).toBe('up');
+    expect(readout(answer({ runners: { up: 0, paused: 0, withLane: 0, lanes: [] } }), null).runners).toMatchObject({
+      value: '0 of 0',
+      second: 'none up',
+    });
+  });
+
   it('reads an index with no bar behind it as rest', () => {
     expect(readout(answer(), 99)).toEqual(rest);
     expect(readout(answer(), -1)).toEqual(rest);
@@ -428,6 +479,7 @@ describe('compactReadout', () => {
       inFlight: { value: '5', second: '23 done', tone: 'neutral' },
       oldest: { value: '4h', second: '2 old', tone: 'warn' },
       waiting: { value: '3', second: '2h 10m old', tone: 'neutral' },
+      runners: { value: '3', second: 'of 4', tone: 'neutral' },
     });
   });
 
@@ -465,6 +517,14 @@ describe('compactReadout', () => {
 
     expect(empty.oldest).toMatchObject({ value: 'none', second: 'none old' });
     expect(empty.waiting).toMatchObject({ value: '0', second: 'none' });
+  });
+
+  it('runners: splits "N of M" into the value and the second line', () => {
+    expect(compactReadout(answer({ runners: { up: 0, paused: 0, withLane: 0, lanes: [] } })).runners).toEqual({
+      value: '0',
+      second: 'of 0',
+      tone: 'neutral',
+    });
   });
 });
 
@@ -516,6 +576,16 @@ describe('readout on a bar', () => {
     expect(readout(answer(), 5).waiting.detail).toBe('2 pull requests · 1 question');
     expect(readout(answer(), 0).waiting).toMatchObject({ value: '0', detail: 'nothing waiting' });
   });
+
+  it('runners: lanes neither off nor blank, of all lanes, with the moment and how many are paused', () => {
+    // At bar 3: alpha (offset 0) is off, bravo (offset 1) and charlie (offset 2) are paused, delta (offset 3) is down.
+    expect(readout(answer(), 3).runners).toMatchObject({ value: '3 of 4', second: at(3), detail: '2 paused' });
+  });
+
+  it('runners: no detail when nothing is paused at the bar', () => {
+    // At bar 8, every lane is down or let-go: all four count as active, none paused.
+    expect(readout(answer(), 8).runners).toMatchObject({ value: '4 of 4', detail: '' });
+  });
 });
 
 describe('tileLabel', () => {
@@ -535,6 +605,12 @@ describe('tileLabel', () => {
     expect(tileLabel('inFlight', rest.inFlight)).toBe('In flight: 5, 2 waiting · 23 done');
     expect(tileLabel('oldest', rest.oldest)).toBe('Oldest in flight: 4h, 2 past normal');
     expect(tileLabel('waiting', rest.waiting)).toBe('Waiting on you: 3, oldest 2h 10m');
+    expect(tileLabel('runners', rest.runners)).toBe('Runners: 3 of 4, up · 1 paused');
+  });
+
+  it('says the hover list last, only when one is given', () => {
+    expect(tileLabel('runners', rest.runners)).not.toContain('kestrel');
+    expect(tileLabel('runners', rest.runners, 'kestrel idle')).toBe('Runners: 3 of 4, up · 1 paused, kestrel idle');
   });
 
   it('adds the hover line on a bar', () => {

@@ -2114,9 +2114,9 @@ button.hatch-card-stories:focus-visible {
 
 /* ---- The board health strip ----
 
-   Four tiles above the columns: moved, in flight, oldest in flight and waiting
-   on you, sharing one window control and one marked moment. Tokens only, so
-   both themes follow without a value of their own here.
+   Five tiles above the columns: moved, in flight, oldest in flight, waiting
+   on you and runners, sharing one window control and one marked moment.
+   Tokens only, so both themes follow without a value of their own here.
 
    The page is a flex column and .hatch-board takes what is left (flex: 1,
    min-height: 0), so the strip is flex: none - it keeps its own height and the
@@ -2179,6 +2179,7 @@ button.hatch-card-stories:focus-visible {
 }
 
 .hatch-health-tile {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -2319,6 +2320,186 @@ button.hatch-card-stories:focus-visible {
   pointer-events: none;
 }
 
+/* The Runners tile's Key: a sibling of the label, top right of the tile. */
+.hatch-health-key {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  padding: 0 var(--sp-1-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+
+.hatch-health-key:hover,
+.hatch-health-key[aria-expanded='true'] {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.hatch-health-key:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* The legend: always in the markup, shown on hover, focus-within or a pressed
+   Key - never display:none under those, so a screen reader with no hover can
+   still reach it by pressing Key. */
+.hatch-health-legend {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  top: 100%;
+  right: 0;
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--t-label);
+  white-space: nowrap;
+}
+
+.hatch-health-tile:hover .hatch-health-legend,
+.hatch-health-tile:focus-within .hatch-health-legend,
+.hatch-health-key[aria-expanded='true'] ~ .hatch-health-legend {
+  display: block;
+}
+
+.hatch-health-legend p {
+  margin: 0;
+}
+
+.hatch-health-legend p + p {
+  margin-top: var(--sp-1);
+}
+
+/* The hover popover: who held the bar marked on every tile, in words. It sits
+   over the columns below, never under the pointer. */
+.hatch-health-lane-hover {
+  position: absolute;
+  z-index: 1;
+  top: 100%;
+  right: 0;
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--t-label);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.hatch-health-lane-hover p {
+  margin: 0;
+}
+
+/* The lanes: a fixed name column, then a grid of equal cells, one row per
+   runner, capped at eight and at most 0.5rem tall each - set by
+   --hatch-lanes, the lane count, on the body's own style attribute. */
+.hatch-health-lanes {
+  display: flex;
+  height: 100%;
+  gap: var(--sp-1-5);
+}
+
+.hatch-health-lane-names {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  flex: none;
+  max-width: 5rem;
+}
+
+.hatch-health-lane-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-health-lane-grid {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+}
+
+.hatch-health-lane-cells {
+  display: flex;
+  height: min(0.5rem, calc(100% / var(--hatch-lanes, 1)));
+  gap: 1px;
+}
+
+.hatch-health-lane-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  align-self: center;
+  border-radius: 1px;
+}
+
+.hatch-health-lane-cell--moved {
+  height: 100%;
+  background: var(--primary);
+}
+
+.hatch-health-lane-cell--working {
+  height: 100%;
+  background: color-mix(in srgb, var(--primary) 40%, var(--card));
+}
+
+.hatch-health-lane-cell--let-go {
+  height: 100%;
+  background: var(--danger);
+  border-bottom: 2px dotted var(--card);
+}
+
+.hatch-health-lane-cell--down {
+  height: 100%;
+  background-image: repeating-linear-gradient(45deg, var(--warn), var(--warn) 2px, var(--warn-bg) 2px, var(--warn-bg) 4px);
+}
+
+.hatch-health-lane-cell--idle {
+  height: 40%;
+  background: var(--line-strong);
+}
+
+.hatch-health-lane-cell--off {
+  height: 40%;
+  background: var(--muted);
+  opacity: 0.5;
+}
+
+.hatch-health-lane-cell--paused {
+  height: 100%;
+  background: transparent;
+  border: 1px solid var(--ink);
+}
+
+.hatch-health-lane-cell--blank {
+  height: 100%;
+  background: transparent;
+}
+
+.hatch-health-lane-moment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ink);
+  pointer-events: none;
+}
+
 /* The hide and show button, framed as .hatch-flow-viz-control is. */
 .hatch-health-toggle {
   display: inline-flex;
@@ -2358,7 +2539,7 @@ button.hatch-card-stories:focus-visible {
     min-width: 0;
   }
 
-  /* The strip on a phone: one row of the four numbers (BoardHealthRow), one
+  /* The strip on a phone: one row of the five numbers (BoardHealthRow), one
      button, and under it - once tapped - the same tiles and window control
      stacked in one column. Tokens only; 44px is a finger's height, the floor
      the rest of this file holds a phone control to. */
@@ -2395,7 +2576,7 @@ button.hatch-card-stories:focus-visible {
     outline-offset: 2px;
   }
 
-  /* Four equal cells that may shrink below their text, which is cut rather
+  /* Five equal cells that may shrink below their text, which is cut rather
      than wrapped, so the row never makes the page scroll sideways. */
   .hatch-health-cell {
     flex: 1 1 0;
@@ -2491,6 +2672,20 @@ button.hatch-card-stories:focus-visible {
     align-self: center;
     margin-top: 0;
     min-width: 0;
+  }
+
+  /* The Runners tile's Key, legend and hover popover sit outside the four
+     named areas - they span both columns rather than crowd one. */
+  .hatch-health-strip--stacked .hatch-health-key,
+  .hatch-health-strip--stacked .hatch-health-legend,
+  .hatch-health-strip--stacked .hatch-health-lane-hover {
+    grid-column: 1 / -1;
+  }
+
+  /* Five cells, still shrinking and cutting their text rather than wrapping. */
+  .hatch-health-cell-number {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Hide and show, inside Filters: the height its neighbours hold. */
