@@ -190,7 +190,7 @@ public class BoardHealthControllerTests
                 db, actors, runners, dispatch, time, new ColumnNormals(), caller, authOptions, keys, new RunnerStateLog(runners), sessions),
             Attention = new AttentionController(
                 db, actors, runners, time, dispatch, backup, keys, new GooseWatch(time),
-                Microsoft.Extensions.Options.Options.Create(new HatchOptions())),
+                Microsoft.Extensions.Options.Options.Create(new HatchOptions()), caller, sessions, authOptions),
             Reports = new ReportsController(db, actors, TestClaims.With(), time),
             Auth = auth,
             Caller = caller,

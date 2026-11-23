@@ -73,6 +73,11 @@ export type AttentionTone = 'rest' | 'asking';
  * nothing dispatches at what the goose found, and a goose that has stopped
  * is a person's to restart, so each is a person's every time.
  *
+ * `runnerFailures` counts every entry: a runner that cannot reach its forge,
+ * sign its commits or start its agent does nothing until a person fixes the
+ * machine, so every entry is a person's, every time. Unlike a runner out of
+ * usage, which ends by itself at its reset and stays a dot, uncounted.
+ *
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
@@ -99,6 +104,7 @@ export function attentionCount(attention: Attention | null): number {
     (attention.heldAtProjectLine?.length ?? 0) +
     (attention.runnerCapacity?.filter((r) => r.takers.length === 0).length ?? 0) +
     (attention.backup ? 1 : 0) +
+    (attention.runnerFailures?.length ?? 0) +
     (attention.stalled?.filter((s) => s.kind === 'person' && !s.held).length ?? 0)
   );
 }
@@ -132,7 +138,9 @@ export const attentionTone = (attention: Attention | null): AttentionTone =>
  * reader gets, and half of what makes the loud state legible without colour.
  *
  * `1 trunk build failing, 2 pull requests to review, 1 question to answer`,
- * any part dropped when it is empty, and one sentence at rest. Pluralised on
+ * any part dropped when it is empty, and one sentence at rest. A failing runner
+ * is counted once however many things it cannot do - `1 runner is failing` -
+ * while `attentionCount` counts each thing, since each is a row. Pluralised on
  * every part, because `1 pull requests` read out loud is the kind of thing
  * that makes somebody stop trusting the rest of the sentence.
  */
@@ -154,6 +162,9 @@ export function attentionLabel(attention: Attention | null): string {
   if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
   if (stalledCount > 0) parts.push(`${count(stalledCount, 'issue')} stalled`);
   if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
+
+  const failingRunners = new Set((attention.runnerFailures ?? []).map((f) => f.name)).size;
+  if (failingRunners > 0) parts.push(`${count(failingRunners, 'runner')} ${failingRunners === 1 ? 'is' : 'are'} failing`);
 
   const exhausted = attention.exhaustedRunners?.length ?? 0;
   if (exhausted > 0) parts.push(`${count(exhausted, 'runner')} ${exhausted === 1 ? 'is' : 'are'} out of usage`);

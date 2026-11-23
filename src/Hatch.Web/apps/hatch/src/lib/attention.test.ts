@@ -41,7 +41,7 @@ import {
   waitingOnARunnerEmptyWords,
   waitingOnARunnerLines,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, AttentionFinding, AttentionGoose, BackupAttention, Conflict, ContributionHeld, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, ProjectLineHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, AttentionFinding, AttentionGoose, AttentionRunnerFailure, BackupAttention, Conflict, ContributionHeld, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, ProjectLineHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -187,6 +187,15 @@ const exhaustedRunner = (over: Partial<ExhaustedRunner> = {}): ExhaustedRunner =
   name: 'here:/checkouts/one',
   where: 'here:/checkouts/one',
   exhaustedUntil: new Date(NOW.getTime() + 3_600_000).toISOString(),
+  ...over,
+});
+
+const runnerFailure = (over: Partial<AttentionRunnerFailure> = {}): AttentionRunnerFailure => ({
+  name: 'one',
+  where: 'here:/checkouts/one',
+  kind: 'forge',
+  why: null,
+  beganAt: new Date(NOW.getTime() - 600_000).toISOString(),
   ...over,
 });
 
@@ -392,6 +401,19 @@ describe('attentionCount', () => {
 
     expect(attentionCount(exhausted)).toBe(0);
     expect(attentionTone(exhausted)).toBe('rest');
+  });
+
+  it('counts a failing runner, one for each thing it cannot do, and lights the control for it', () => {
+    // Unlike a runner out of usage: a failure is a thing a person fixes.
+    const one = attention({ runnerFailures: [runnerFailure()] });
+    const two = attention({ runnerFailures: [runnerFailure(), runnerFailure({ kind: 'signing' })] });
+
+    expect(attentionCount(one)).toBe(1);
+    expect(attentionCount(two)).toBe(2);
+    expect(attentionCount(attention({ reviews: [review()], runnerFailures: [runnerFailure()] }))).toBe(2);
+    expect(attentionTone(one)).toBe('asking');
+    expect(attentionCount(attention({ runnerFailures: [] }))).toBe(0);
+    expect(attentionCount(attention())).toBe(0);
   });
 
   it('counts a failing trunk build, unlike a branch conflict or a failing branch build', () => {
@@ -637,6 +659,24 @@ describe('attentionLabel', () => {
     expect(attentionLabel(attention({ exhaustedRunners: [exhaustedRunner(), exhaustedRunner()] }))).toBe(
       '2 runners are out of usage',
     );
+  });
+
+  it('says a failing runner once, whatever it cannot do, with the count following the list', () => {
+    const oneThing = attention({ runnerFailures: [runnerFailure()] });
+    const twoThings = attention({ runnerFailures: [runnerFailure(), runnerFailure({ kind: 'signing' })] });
+    const twoRunners = attention({ runnerFailures: [runnerFailure(), runnerFailure({ name: 'two' })] });
+
+    expect(attentionLabel(oneThing)).toBe('1 runner is failing');
+    expect(attentionLabel(twoThings)).toBe('1 runner is failing');
+    expect(attentionLabel(twoRunners)).toBe('2 runners are failing');
+    expect(attentionCount(twoThings)).toBe(2);
+    expect(attentionLabel(attention({ runnerFailures: [] }))).toBe('Nothing is waiting on you');
+  });
+
+  it('puts a failing runner before one out of usage', () => {
+    expect(
+      attentionLabel(attention({ runnerFailures: [runnerFailure()], exhaustedRunners: [exhaustedRunner()] })),
+    ).toBe('1 runner is failing, 1 runner is out of usage');
   });
 
   it('joins it onto the human halves rather than replacing them', () => {

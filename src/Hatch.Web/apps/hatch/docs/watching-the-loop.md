@@ -637,16 +637,23 @@ Work, next to the battery - shows the same two sentences next to a row's own
 words, the way [hatch queue](cli-reference#queue) does at the terminal.
 
 **Agent** - things the loop is already on: **Branches that
-conflict**, **Branch builds that fail**. A separate **Out of usage** section
-sits above both, for any of your own runners that have run out, and clears
-itself once the usage comes back.
+conflict**, **Branch builds that fail**. A separate **Failing runners** section
+sits above both, and above **Out of usage**, for any of your own runners that
+cannot reach their forge, sign their commits or start their agent, or that the
+board has paused. Each row says which runner, what it cannot do, since when and
+what the tool said, then what to do about it, and a click opens that runner's
+page. It counts towards the badge, so the control says *1 runner is failing*,
+and it clears itself when the runner is well again or has gone quiet. An admin
+is also shown the failures of runners that belong to nobody. **Out of usage**
+sits above **Human**, for any of your own runners that have run out, and clears
+itself once the usage comes back; it lights a dot and is not counted.
 
 A section with nothing in it shows only its heading, which is a button:
 pressing it opens the section to its empty sentence, and pressing it again folds
 it. A group with nothing in any of its sections folds the same way, to its group
 heading alone, and opens to its section headings. A section or group with
 anything in it is open and has no button, since there is nothing to hide.
-**Findings**, **Backups**, **Stalled merge trains** and **Out of usage** are not
+**Findings**, **Backups**, **Stalled merge trains**, **Failing runners** and **Out of usage** are not
 folded but simply absent when empty. **Pull requests to review** stays open while it has a
 count to say - issues in review with no pull request recorded (not one whose
 pull request is written and waiting to be opened), or held back by
