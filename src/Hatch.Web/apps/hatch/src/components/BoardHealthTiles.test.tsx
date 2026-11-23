@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { flowHref, readout, tileLabel } from '../lib/boardHealth';
 import type { Tile } from '../lib/boardHealth';
-import { LANE_LEGEND, MAX_LANES, drawnLanes, hoverList } from '../lib/boardHealthLanes';
+import { LANE_LEGEND, MAX_LANES, cellWords, drawnLanes, hoverList } from '../lib/boardHealthLanes';
 import { sampleBar, sampleHealth, sampleRunners } from '../lib/boardHealthSample';
 import type { BoardHealth, BoardHealthLane } from '../types';
 import { InFlightTile, MovedTile, OldestTile, RunnersTile, WaitingTile } from './BoardHealthTiles';
@@ -154,10 +154,13 @@ describe('the Runners tile', () => {
     expect(html).toContain('2 not drawn');
   });
 
-  it('names each drawn runner', () => {
+  it('draws no names, but every cell says whose it is', () => {
     const html = runnersTile(sampleHealth(), null);
 
-    for (const lane of drawnLanes(sampleHealth()).lanes) expect(html).toContain(lane.name);
+    expect(html).not.toContain('hatch-health-lane-name');
+    for (const lane of drawnLanes(sampleHealth()).lanes) {
+      for (const cell of lane.cells) expect(html).toContain(`title="${lane.name}: ${cellWords(cell)}"`);
+    }
   });
 
   it('lists the hover words only while a bar is marked', () => {

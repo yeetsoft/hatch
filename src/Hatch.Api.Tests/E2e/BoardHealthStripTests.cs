@@ -122,13 +122,35 @@ public class BoardHealthStripTests(ITestOutputHelper output)
             await harness.WaitForFunctionAsync(deadline, "waiting for Escape", "() => document.querySelectorAll('.hatch-health-moment').length === 0");
             Assert.Equal(rest, await Readout(harness, deadline));
 
-            // The Runners tile draws the seeded runner's lane, its name and "working" in the hover list at
-            // the last bar.
-            var lanes = await Texts(harness, deadline, $"{Runners} .hatch-health-lane-name");
-            Assert.Equal([Runner], lanes);
+            // The Runners tile draws the seeded runner's lane with no name beside it, its cells saying whose
+            // they are, and "working" in the hover list at the last bar.
+            Assert.Equal(0, await page.Locator($"{Runners} .hatch-health-lane-name").CountAsync());
+            Assert.Equal(1, await page.Locator($"{Runners} .hatch-health-lane-cells").CountAsync());
+            Assert.Equal($"{Runner}: working", await page.Locator($"{Runners} .hatch-health-lane-cell").Last.GetAttributeAsync("title"));
 
             var runnersSpark = await page.Locator($"{Runners} [data-part='spark']").BoundingBoxAsync();
             Assert.NotNull(runnersSpark);
+
+            // The lanes are drawn across the whole width the pointer is read against.
+            var grid = await page.Locator($"{Runners} .hatch-health-lane-grid").BoundingBoxAsync();
+            Assert.NotNull(grid);
+            output.WriteLine($"runners spark x={runnersSpark.X} w={runnersSpark.Width}; lane grid x={grid.X} w={grid.Width}");
+            Assert.InRange(grid.X, runnersSpark.X - 1, runnersSpark.X + 1);
+            Assert.InRange(grid.Width, runnersSpark.Width - 1, runnersSpark.Width + 1);
+
+            // Pointing near the left edge marks a moment near the left edge, not the middle.
+            await deadline.BoundAsync(
+                "hovering the first bar", () => page.Mouse.MoveAsync((float)runnersSpark.X + 4, (float)(runnersSpark.Y + runnersSpark.Height / 2)));
+            await harness.WaitForVisibleAsync(deadline, $"{Runners} .hatch-health-lane-moment");
+            var moment = await page.Locator($"{Runners} .hatch-health-lane-moment").BoundingBoxAsync();
+            Assert.NotNull(moment);
+            var oneBar = runnersSpark.Width / 24;
+            Assert.True(
+                Math.Abs(moment.X + moment.Width / 2 - runnersSpark.X) <= oneBar,
+                $"the moment is at x={moment.X}, a bar is {oneBar}px, the spark starts at x={runnersSpark.X}");
+            await deadline.BoundAsync("leaving the sparkline", () => page.Mouse.MoveAsync(5, 5));
+            await harness.WaitForHiddenAsync(deadline, ".hatch-health-lane-hover");
+
             await deadline.BoundAsync(
                 "hovering the last bar", () => page.Mouse.MoveAsync((float)(runnersSpark.X + runnersSpark.Width - 2), (float)(runnersSpark.Y + runnersSpark.Height / 2)));
             await harness.WaitForVisibleAsync(deadline, ".hatch-health-lane-hover");

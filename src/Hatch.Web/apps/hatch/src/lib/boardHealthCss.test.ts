@@ -96,6 +96,11 @@ describe('the Runners tile', () => {
     expect(declarationsOf('.hatch-health-lane-cells')['height']).toBe('min(0.5rem, calc(100% / var(--hatch-lanes, 1)))');
   });
 
+  it('draws no names column, so the lanes fill the width the pointer is read against', () => {
+    expect(css).not.toMatch(/\.hatch-health-lane-names?\b/);
+    expect(declarationsOf('.hatch-health-lane-grid')['min-width']).toBe('0');
+  });
+
   it('draws idle and off short, paused hollow, down striped - no state by colour alone', () => {
     const idle = declarationsOf('.hatch-health-lane-cell--idle');
     const off = declarationsOf('.hatch-health-lane-cell--off');
