@@ -321,6 +321,50 @@ public class RunnerStateLogTests
         Assert.Equal(Now, old[1].At);
     }
 
+    // ---- Sources of a joined runner ----
+
+    [Theory]
+    [InlineData(true, true, 2)]
+    [InlineData(true, true, 0)]
+    [InlineData(false, true, 2)]
+    [InlineData(false, true, 0)]
+    [InlineData(true, false, 0)]
+    public async Task SourcesOf_AJoinedRunner_JudgesTheSameAsTheStoreRead(bool beat, bool key, int sessions)
+    {
+        var h = await NewAsync();
+        var minted = key ? await h.KeyAsync("r1") : null;
+
+        if (beat)
+        {
+            h.Db.LegacyRunners.Add(new EfHatchRunner
+            {
+                Name = "r1", Kind = "loop", FirstSeenAt = Now, LastSeenAt = Now, State = "running", ExhaustedUntil = Now.AddSeconds(10),
+            });
+            await h.Db.SaveChangesAsync();
+        }
+
+        for (var i = 0; i < sessions; i++)
+        {
+            var session = await h.SessionAsync(minted!.Id);
+            session.AgentDownUntil = Now.AddSeconds(30);
+            session.AgentDownKind = RunnerAgentDownKinds.NotStarting;
+            if (i == 1) session.EndedAt = Now.AddSeconds(5);
+            await h.Db.SaveChangesAsync();
+        }
+
+        var joined = (await global::Hatch.Api.Modules.Hatch.Runner.JoinAsync(h.Db, h.Keys, default)).Single(r => r.Name == "r1");
+        var log = new RunnerStateLog(h.Rule);
+        var after = Now.AddMinutes(-1);
+        var upTo = Now.AddMinutes(5);
+
+        var fromStore = await log.ClockTailAsync(h.Db, h.Keys, "r1", after, upTo, default);
+        var fromRunner = log.ClockTail(RunnerStateLog.SourcesOf(joined), after, upTo);
+
+        Assert.Equal(fromStore, fromRunner);
+        Assert.Equal(beat ? 1 : 0, RunnerStateLog.SourcesOf(joined).Count - sessions);
+        if (beat || sessions > 0) Assert.NotEmpty(fromRunner);
+    }
+
     // ---- Harness ----
 
     private static async Task<string> ConnectAsync()

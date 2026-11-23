@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
 import { addDream, deleteDream, getDreams, patchDream, weaveDreams } from '../api/client';
+import { AmbitionShape } from '../components/AmbitionShape';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { DreamsOpeningLines } from '../components/DreamsOpeningLines';
 import { DreamComposer } from '../components/DreamComposer';
@@ -386,6 +387,13 @@ function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Proj
           {weaveError && <p className="text-danger">{weaveError}</p>}
         </div>
       </section>
+
+      <AmbitionShape
+        projectId={weaveProject}
+        projectCount={projects.length}
+        useOnScreen={weaveOnScreen}
+        dreams={dreams}
+      />
 
       <button
         type="button"

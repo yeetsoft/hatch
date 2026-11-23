@@ -207,7 +207,7 @@ public static class FlowReport
     }
 
     /// <summary>A <c>claim_released</c> payload's own outcome, matched ordinal against <see cref="ClaimOutcomes.Dropped"/>.</summary>
-    private static bool IsDropped(string? payload) =>
+    internal static bool IsDropped(string? payload) =>
         IssueEventPayload.Parse(payload) is { ValueKind: JsonValueKind.Object } json
         && json.TryGetProperty("outcome", out var outcome) && outcome.ValueKind == JsonValueKind.String
         && outcome.GetString() == ClaimOutcomes.Dropped;

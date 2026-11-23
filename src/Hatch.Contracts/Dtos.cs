@@ -4262,6 +4262,7 @@ public record BoardHealthBarDto(
 /// <param name="PreviousTotal">Moves right over the window before it, for comparison.</param>
 /// <param name="PastNormal">Issues with no children standing in flight longer than their column's normal, now.</param>
 /// <param name="HasWorkColumn">Whether the board has an implementation column; without one no bar counts waiting, in flight or done.</param>
+/// <param name="Runners">A lane for each runner the caller may see, on the same bars, and how many are up now.</param>
 public record BoardHealthDto(
     DateTimeOffset From,
     DateTimeOffset To,
@@ -4270,7 +4271,44 @@ public record BoardHealthDto(
     int Total,
     int PreviousTotal,
     int PastNormal,
-    bool HasWorkColumn);
+    bool HasWorkColumn,
+    BoardHealthRunnersDto Runners);
+
+/// <summary>
+/// The runners' half of the board health read: one lane for each runner up at
+/// any time in the window, and the counts the Runners tile heads itself with.
+/// </summary>
+/// <param name="Up">Lanes whose runner is not gone now.</param>
+/// <param name="Paused">Of those, the ones paused now, by a person or by the board.</param>
+/// <param name="WithLane">How many lanes there are: the length of <paramref name="Lanes"/>.</param>
+/// <param name="Lanes">Up now first, then heard from most recently, then by name. The server caps nothing.</param>
+public record BoardHealthRunnersDto(
+    int Up,
+    int Paused,
+    int WithLane,
+    IReadOnlyList<BoardHealthLaneDto> Lanes);
+
+/// <summary>One runner over the window: who it is, how it stands now, and a cell for each bar.</summary>
+/// <param name="Name">The runner's name.</param>
+/// <param name="Up">Whether the runner is not gone now.</param>
+/// <param name="Paused">Whether the runner is paused now, by a person or by the board.</param>
+/// <param name="LastSeenAt">When the runner was last heard from.</param>
+/// <param name="Cells">Twenty-four cells, oldest first, one for each of the read's bars.</param>
+public record BoardHealthLaneDto(
+    string Name,
+    bool Up,
+    bool Paused,
+    DateTimeOffset LastSeenAt,
+    IReadOnlyList<BoardHealthCellDto> Cells);
+
+/// <summary>What a runner was doing in one bar.</summary>
+/// <param name="State">One of <c>let-go</c>, <c>down</c>, <c>moved</c>, <c>working</c>, <c>idle</c>, <c>paused</c>, <c>off</c> or <c>blank</c>.</param>
+/// <param name="Why">
+/// For <c>let-go</c>: <c>dropped</c>, <c>lapsed</c>, <c>stalled</c> or <c>errored</c>. For <c>down</c>:
+/// <c>out-of-usage</c>, <c>not-starting</c>, <c>signed-out</c>, or <c>agent-down</c> when the kind is not known.
+/// For <c>paused</c>: <c>board</c> when the board imposed it. Otherwise null.
+/// </param>
+public record BoardHealthCellDto(string State, string? Why);
 
 /// <summary>One board column's counts over a flow report's window.</summary>
 /// <param name="StatusId">The column's id.</param>

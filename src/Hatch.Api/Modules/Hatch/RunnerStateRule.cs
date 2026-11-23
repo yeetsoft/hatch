@@ -124,6 +124,38 @@ public static class RunnerStateRule
     }
 
     /// <summary>
+    /// A runner's whole timeline: its recorded rows, then the clock's tail,
+    /// each folded so that adjacent changes into the same state and kind are
+    /// one. Two beats that raced write the same row twice, and the tail judges
+    /// from the facts as they stand, so it can repeat the last state when a
+    /// beat overwrote them after that row - hence the second fold. The states
+    /// route and the lanes on the board health read both take their timeline
+    /// from here, so they cannot disagree.
+    /// </summary>
+    /// <param name="rows">The recorded rows, oldest first.</param>
+    /// <param name="tail">What the clock has changed since the last row, oldest first.</param>
+    public static List<Change> Timeline(IReadOnlyList<Change> rows, IReadOnlyList<Change> tail)
+    {
+        var folded = Fold(rows);
+        if (rows.Count == 0) return folded;
+
+        folded.AddRange(tail);
+        return Fold(folded);
+    }
+
+    private static List<Change> Fold(IReadOnlyList<Change> changes)
+    {
+        var folded = new List<Change>(changes.Count);
+        foreach (var change in changes)
+        {
+            if (folded.Count > 0 && folded[^1].State == change.State && folded[^1].Kind == change.Kind) continue;
+            folded.Add(change);
+        }
+
+        return folded;
+    }
+
+    /// <summary>
     /// The instant a source is gone from. A live session or heartbeat row is
     /// gone one limit after it was last heard from. A session that ended is
     /// gone from the earlier of that and its end, so a loop that ended its own

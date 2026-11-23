@@ -245,9 +245,16 @@ has stood there longer than the column's normal with no open child. There is no 
 beyond the standard ones.
 
 `/board/health` answers a `BoardHealthDto` - `From`, `To`, `BarMinutes`, `Bars` (each a
-`BoardHealthBarDto`), `Total`, `PreviousTotal`, `PastNormal` and `HasWorkColumn` - with
-counts and durations only: no issue is named. The last bar's waiting pull requests and
-questions are the attention control's own count. See docs/hatch.md, "The board health read".
+`BoardHealthBarDto`), `Total`, `PreviousTotal`, `PastNormal`, `HasWorkColumn` and `Runners` -
+with counts and durations only: no issue is named. The last bar's waiting pull requests and
+questions are the attention control's own count. `Runners` is a `BoardHealthRunnersDto`: `Up`
+(lanes whose runner is not gone now), `Paused` (of those, paused now, the board's pauses
+included), `WithLane` and `Lanes`. A `BoardHealthLaneDto` holds `Name`, `Up`, `Paused`,
+`LastSeenAt` and `Cells`: 24 `BoardHealthCellDto`, oldest first, one for each bar, each a
+`State` (`let-go`, `down`, `moved`, `working`, `idle`, `paused`, `off` or `blank`) and a `Why`
+that is null unless the state says why. The lanes are the runners `GET /api/runners` shows this
+caller, ignore `project`, and come sorted up now first, then heard from most recently; the server
+caps nothing. See docs/hatch.md, "The board health read".
 
 Every card names who filed it, as `createdBy` - a person's or an API key's
 name, so a runner's own filings are filterable too. Every route that serves
