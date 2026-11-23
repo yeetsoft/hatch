@@ -106,6 +106,13 @@ services:
       # writes is one no reviewer can open. Leaving it unset is fine: links then
       # use the address the runner itself reaches Hatch at (its HATCH_BASE).
       Hatch__PublicBaseUrl: "${HATCH_PUBLIC_URL:-}"
+      # The key secrets are sealed under, and the one before it while a rotation
+      # is under way: base64 of exactly 32 bytes (`openssl rand -base64 32`).
+      # Empty is fine - the API starts, warns once, and cannot save a secret. A
+      # value that is set and not a key stops the API at start. Only the api
+      # gets these: the migrate service never opens a secret.
+      Hatch__SecretKey: "${HATCH_SECRET_KEY:-}"
+      Hatch__PreviousSecretKey: "${HATCH_PREVIOUS_SECRET_KEY:-}"
       # One phone's WebAPK, so Android can trust the installed app with this
       # install's links without the user granting it by hand (HA-265). Chrome
       # mints the package name per install; the fingerprint is the cert it

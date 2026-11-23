@@ -1,3 +1,4 @@
+using Hatch.Api.Common;
 using Hatch.Api.Jobs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -45,6 +46,18 @@ public static class HatchModule
             .Bind(configuration.GetSection(HatchOptions.SectionName))
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<HatchOptions>, AssetLinksValidation>();
+
+        // The secret key, checked on the same terms: a key that is set and
+        // unusable stops the API at start, and one that is not set only warns
+        // (SecretKeyWarning). The cipher is parsed once here and holds the
+        // parsed keys; nothing stores a value under it yet.
+        services.AddSingleton<IValidateOptions<HatchOptions>, SecretKeyValidation>();
+        services.AddSingleton(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<HatchOptions>>().Value;
+            return SecretCipher.From(options.SecretKey, options.PreviousSecretKey);
+        });
+        services.AddHostedService<SecretKeyWarning>();
         services.AddSingleton<IssueClaims>();
 
         // The one list of model families a pinned id is judged against - a
