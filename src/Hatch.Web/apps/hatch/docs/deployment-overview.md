@@ -117,10 +117,11 @@ private, `docker login ghcr.io` first, with a token that can read packages.
 
 `compose.yaml` is set from the shell or from a `.env` beside it, and
 [Environment variables](environment-variables) has every one. The operator's
-eight: `HATCH_PORT`; `HATCH_AUTH` → `Auth__Enabled`; the three
+ten: `HATCH_PORT`; `HATCH_AUTH` → `Auth__Enabled`; the three
 `HATCH_GOOGLE_*` variables → `Auth__Google__*`; `HATCH_PUBLIC_URL` →
-`Hatch__PublicBaseUrl`; and the two `HATCH_ANDROID_*` variables →
-`Hatch__AssetLinks__0__…`. The runner's own variables are on
+`Hatch__PublicBaseUrl`; the two `HATCH_ANDROID_*` variables →
+`Hatch__AssetLinks__0__…`; and `HATCH_SECRET_KEY` → `Hatch__SecretKey` with
+`HATCH_PREVIOUS_SECRET_KEY` → `Hatch__PreviousSecretKey`. The runner's own variables are on
 [the container runner](the-container-runner#the-variables). `api` passes the
 shell's own `USERNAME`/`USER` as `Auth__LocalPerson__Name`, so there is
 nothing to set for that one.
@@ -164,6 +165,8 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Hatch__PublicBaseUrl` | empty | The address a browser opens this Hatch at, printed into a pull request's link back to its ticket. |
 | `Hatch__AssetLinks__0__PackageName` | empty | One phone's installed app, trusted to open this install's links without the user granting it by hand. |
 | `Hatch__AssetLinks__0__Sha256CertFingerprints__0` | empty | That app's signing certificate fingerprint. |
+| `Hatch__SecretKey` | empty | **A secret.** The key secrets are sealed under: base64 of exactly 32 bytes (`openssl rand -base64 32`). Empty means none: the API starts, warns once, and cannot save a secret. |
+| `Hatch__PreviousSecretKey` | empty | **A secret.** The key before the current one, kept while a change of key is under way. It opens what it sealed and seals nothing. Same form as `Hatch__SecretKey`. |
 | `Hatch__ClaimTtlSeconds` | `300` | How long a claim survives without a heartbeat. |
 | `Hatch__RunnerGoneAfterSeconds` | `90` | How long a runner may go without a heartbeat before its row reads *gone*. |
 | `Hatch__StallLapseMinutes` | `5` | How long a claim may go untouched before it is considered quiet. |
@@ -197,7 +200,11 @@ it elsewhere opens a redirect loop. The wall's own off/on/required states are co
 
 A malformed `Hatch__AssetLinks` entry stops the API at start
 (`Modules/AssetLinksValidation.cs`), unlike `Hatch__PublicBaseUrl`, which
-degrades quietly.
+degrades quietly. So does a `Hatch__SecretKey` or `Hatch__PreviousSecretKey`
+that is set and is not base64 of exactly 32 bytes
+(`Modules/SecretKeyValidation.cs`); the message names `HATCH_SECRET_KEY` or
+`HATCH_PREVIOUS_SECRET_KEY` and never prints the value. A key left empty only
+warns.
 
 The migration creates `hatch`'s schema on every start; see
 [backup, restore and replication](backup-restore-and-replication)

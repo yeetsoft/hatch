@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Hatch.Api.Common;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -284,6 +285,24 @@ public class HatchOptions
     /// own verification already fails silently and the config feeding it must not.
     /// </summary>
     public AssetLinkPackage[] AssetLinks { get; set; } = [];
+
+    /// <summary>
+    /// The key secrets are sealed under - base64 of exactly 32 bytes, supplied at
+    /// deploy as <c>HATCH_SECRET_KEY</c> (compose.yaml passes it as
+    /// <c>Hatch__SecretKey</c>). Empty means not set: the API still starts, says so
+    /// once, and cannot save a secret. A value that is set and unusable stops the
+    /// API at start - see <see cref="SecretKeyValidation"/>. Never logged and never
+    /// returned by a route; only its key id (<see cref="SecretKeys.KeyId"/>) may be.
+    /// </summary>
+    public string SecretKey { get; set; } = "";
+
+    /// <summary>
+    /// The key before the current one, kept while values sealed under it are
+    /// resealed - <c>HATCH_PREVIOUS_SECRET_KEY</c>, passed as
+    /// <c>Hatch__PreviousSecretKey</c>. It opens values and seals none. Same form
+    /// and same rules as <see cref="SecretKey"/>.
+    /// </summary>
+    public string PreviousSecretKey { get; set; } = "";
 
     public static bool IsValidPackageName(string value) =>
         Regex.IsMatch(value, @"^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$", RegexOptions.None, TimeSpan.FromSeconds(1));
