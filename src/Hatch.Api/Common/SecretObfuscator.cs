@@ -6,13 +6,12 @@ namespace Hatch.Api.Common;
 /// Reversible XOR obfuscation - not encryption, just enough that a token isn't
 /// sitting in the DB as cleartext.
 ///
-/// This is scheme <c>v1</c>, and it is an implementation detail of
-/// <see cref="SecretProtector"/>: call that instead. Nothing writes it to the
-/// database any more - new values are sealed under the operator's key as
-/// <c>v2</c> - but the protector still reads it, and needs no key to. The one
-/// other caller is the credential handoff to the container runner,
-/// <see cref="CredentialWire"/>, which is <c>v1</c> on the wire on purpose and
-/// keeps its own copy.
+/// This is scheme <c>v1</c> (docs/secrets-architecture.md): <see cref="SecretProtector"/>
+/// reads it for values written before sealing, and needs no key to. Nothing
+/// writes it to the database any more - new values are sealed under the
+/// operator's key as <c>v2</c>. It is still written on the wire to the container
+/// runner, through <see cref="CredentialWire"/>'s own copy of the key, which
+/// calls nothing here.
 /// </summary>
 public static class SecretObfuscator
 {
