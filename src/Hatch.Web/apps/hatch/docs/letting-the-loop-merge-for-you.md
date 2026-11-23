@@ -141,7 +141,8 @@ project that has an owner is driven only by a runner working for one of its
 owners or approvers, since theirs are the forge credentials that can make the
 merge; a runner on anyone else's key, or on a key nobody owns, never drives it,
 however long it has run. When none of a project's owners' or approvers' runners
-is up, the project reads `driving nothing` on the **Agents → Runners** page
+is up, or the only ones that are up cannot reach the forge (their sign-in has
+failed), the project reads `driving nothing` on the **Agents → Runners** page
 and the work queue says "no runner is driving it", and its approved pull
 requests wait for one rather than pass to a runner that cannot merge them.
 Only the train's own acting waits, though: a pull request somebody merged by

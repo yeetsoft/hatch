@@ -6070,6 +6070,109 @@ public class RunnersControllerTests
         Assert.Empty(notElected.Value!.Drives!);
     }
 
+    // ---- A runner whose forge fails is not elected (HA-2708) ----
+
+    private const string ForgeRemote = "git@example.com:o/r.git";
+
+    [SkippableFact]
+    public async Task ASessionBeat_SayingTheForgeFails_IsNotElected_AndTheOtherRunnerIs_UntilItSaysWorksAgain()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var older = await h.AddKeyAsync("here:/older");
+        h.Caller.Key = older;
+        var first = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: [ForgeRemote]));
+        Assert.Equal(["AER"], first.Value!.Drives);
+
+        var younger = await h.AddKeyAsync("here:/younger");
+        h.Caller.Key = younger;
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var waiting = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: [ForgeRemote]));
+        Assert.Empty(waiting.Value!.Drives!);
+
+        // The beat that says it fails is answered without the project, and the
+        // other runner is told it drives on its own next beat.
+        h.Caller.Key = older;
+        var failing = await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Remotes: [ForgeRemote], Forge: "fails", ForgeWhy: "signed out"));
+        Assert.Empty(failing.Value!.Drives!);
+
+        h.Caller.Key = younger;
+        var elected = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: [ForgeRemote]));
+        Assert.Equal(["AER"], elected.Value!.Drives);
+
+        // Saying it works again brings it back, and being older it wins the project back.
+        h.Caller.Key = older;
+        var back = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: [ForgeRemote], Forge: "works"));
+        Assert.Equal(["AER"], back.Value!.Drives);
+    }
+
+    [SkippableFact]
+    public async Task ASessionBeat_SayingTheForgeWorks_OrNothing_IsElectedAsBefore()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one");
+        h.Caller.Key = one;
+
+        var works = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: [ForgeRemote], Forge: "works"));
+        Assert.Equal(["AER"], works.Value!.Drives);
+
+        var two = await h.AddKeyAsync("here:/two");
+        await h.Db.RunnerSessions.Where(s => s.ApiKeyId == one.Id).ExecuteDeleteAsync();
+        h.Caller.Key = two;
+        var silent = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: [ForgeRemote]));
+        Assert.Equal(["AER"], silent.Value!.Drives);
+    }
+
+    [SkippableFact]
+    public async Task AKeyWithTwoLiveSessions_OneSayingTheForgeFails_IsNotElected()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var key = await h.AddKeyAsync("here:/two-sessions");
+        h.Caller.Key = key;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: [ForgeRemote], Forge: "works"));
+
+        var other = NewSession(key.Id, h.Time.GetUtcNow(), "host:/checkouts/other", remotes: ForgeRemote);
+        other.Forge = RunnerForge.Fails;
+        h.Db.RunnerSessions.Add(other);
+        await h.Db.SaveChangesAsync();
+
+        var runners = new Runners(
+            Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }),
+            Options.Create(new AuthOptions { Enabled = false }),
+            new StubRevision("dev", 0));
+        var drivers = await runners.DriversAsync(h.Db, h.Keys, h.Time.GetUtcNow(), default);
+
+        Assert.Empty(drivers.GetValueOrDefault("here:/two-sessions", []));
+    }
+
+    [SkippableFact]
+    public async Task AProjectWhoseOnlyRunnerFails_HasNoDriver_AndIsNeverPassedOver()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600, connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var head = await h.SeedMergingHeadAsync();
+        var one = await h.AddKeyAsync("here:/one");
+        h.Caller.Key = one;
+
+        var beat = await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Remotes: [ForgeRemote], Forge: "fails", ForgeWhy: "signed out"));
+        Assert.Empty(beat.Value!.Drives!);
+
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: [ForgeRemote], Forge: "fails", ForgeWhy: "signed out"));
+
+        var runners = new Runners(
+            Options.Create(new HatchOptions { RunnerGoneAfterSeconds = 3600 }),
+            Options.Create(new AuthOptions { Enabled = false }),
+            new StubRevision("dev", 0));
+        Assert.Empty(await runners.ProjectDriversAsync(h.Db, h.Keys, h.Time.GetUtcNow(), default));
+        Assert.Null((await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+        Assert.DoesNotContain(await h.EventsAsync(IssueKey.Format("AER", head.Number)), e => e.Kind == EfHatchIssueEvent.DriverStalled);
+    }
+
     // ---- What the loop was told, kept beside the election (AR-80) ----
 
     [SkippableFact]

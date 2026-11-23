@@ -8104,7 +8104,17 @@ Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 `BeatAsync` throws the instruction away (`Runners.cs:482-484`). A retired row
 (`r.RetiredAt == null` in the same filter) is not a candidate either, however
 recent its `LastSeenAt`; its own next beat clears the retirement and makes it
-one again — see [Runners on the board](#runners-on-the-board). A row's
+one again — see [Runners on the board](#runners-on-the-board). A runner whose
+live loop sessions say the forge fails (`Forge == RunnerForge.Fails`, HA-2708)
+is not a candidate either: it can merge nothing, and electing it would hold
+the project until the stall watch passed it over, again for each pull
+request. The runner is the unit — one failing live session leaves the whole
+key name out, whether or not its agent is down — and a runner that said
+nothing or said `works` is a candidate as before. The word is read on every
+election, so the runner stops driving on the beat that says `fails` and drives
+again from the next beat after one that says `works`. A runner left out this
+way is never passed over: no `driver_stalled` event, no `TrainStalledDriver`.
+A row's
 `LastSeenAt` is moved by its own heartbeat and by the heartbeat or token
 release of the claim it holds, found by the claim's `ClaimedBy` matching
 the row's `Name`; that is what keeps a driver live and elected through a
