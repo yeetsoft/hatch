@@ -388,6 +388,33 @@ function oldest(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, loca
   };
 }
 
+/** Where the Oldest tile's warning leads: nowhere when nothing is past normal, to the one issue when exactly one
+    is, and to the dialog's list narrowed to past normal when several are. Pure, so the tile and its tests share it. */
+export type WarningLead =
+  | { kind: 'none' }
+  | { kind: 'issue'; key: string; href: string; label: string }
+  | { kind: 'list'; count: number; label: string };
+
+/** The warning's destination, from the one list the count is also read from: the issues in flight with the band
+    `pastNormal`. The count is the read's own `pastNormal`, so the tile, the line and the list never disagree. */
+export function warningLead(answer: BoardHealth): WarningLead {
+  if (answer.pastNormal <= 0) return { kind: 'none' };
+
+  const past = answer.inFlightIssues.filter((issue) => issue.band === 'pastNormal');
+  if (answer.pastNormal === 1 && past.length === 1) {
+    const [issue] = past;
+
+    return {
+      kind: 'issue',
+      key: issue.key,
+      href: `/issues/${encodeURIComponent(issue.key)}`,
+      label: `Open ${issue.key}, the issue past normal`,
+    };
+  }
+
+  return { kind: 'list', count: answer.pastNormal, label: `Open the ${answer.pastNormal} issues past normal` };
+}
+
 /** The Runners tile: how many lanes are up, and what each was doing at rest
     or on one bar - the words alone come from lib/boardHealthLanes.ts. */
 function runners(answer: BoardHealth, index: number | null, locale?: string): TileReadout {
