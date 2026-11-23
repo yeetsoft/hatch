@@ -31,6 +31,18 @@ public interface IChatProvider
     /// Posts one message to a channel. Fail-soft like <see cref="CheckTokenAsync"/>.
     /// </summary>
     Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct);
+
+    /// <summary>
+    /// Posts a message to a channel, formatted the service's own way. Never
+    /// throws, and never puts the token in what it returns.
+    /// </summary>
+    Task<ChatSendResult> PostAsync(string token, string channelId, ChatMessageContent content, CancellationToken ct);
+
+    /// <summary>
+    /// Edits a message already posted, in place. Never throws, and never puts
+    /// the token in what it returns.
+    /// </summary>
+    Task<ChatSendResult> UpdateAsync(string token, string channelId, string messageId, ChatMessageContent content, CancellationToken ct);
 }
 
 /// <summary>
@@ -63,4 +75,38 @@ public record ChatPostResult(bool Posted, string? Refusal)
     public static ChatPostResult Delivered() => new(true, null);
 
     public static ChatPostResult Refused(string sentence) => new(false, sentence);
+}
+
+/// <summary>How a send ended, in the terms the sender acts on.</summary>
+public enum ChatSendOutcome
+{
+    /// <summary>The service took the message.</summary>
+    Sent,
+
+    /// <summary>The service asked for a pause. Not the message's fault.</summary>
+    Throttled,
+
+    /// <summary>The service could not be reached, or failed on its side.</summary>
+    Unreachable,
+
+    /// <summary>The token, or the app's permission, is not accepted: every room in the workspace is affected.</summary>
+    WorkspaceRefused,
+
+    /// <summary>This channel, or this message in it, is refused; the workspace is fine.</summary>
+    RoomRefused,
+}
+
+/// <summary>
+/// The answer to a post or an edit. <see cref="MessageId"/> is the service's id
+/// for the message when it took one. <see cref="Sentence"/> is plain and never
+/// holds the token. <see cref="RetryAfter"/> is how long a throttle asked for,
+/// or null when it did not say.
+/// </summary>
+public record ChatSendResult(ChatSendOutcome Outcome, string? MessageId, string? Sentence, TimeSpan? RetryAfter)
+{
+    public static ChatSendResult Sent(string? messageId) => new(ChatSendOutcome.Sent, messageId, null, null);
+
+    public static ChatSendResult Throttled(TimeSpan? retryAfter, string sentence) => new(ChatSendOutcome.Throttled, null, sentence, retryAfter);
+
+    public static ChatSendResult Failed(ChatSendOutcome outcome, string sentence) => new(outcome, null, sentence, null);
 }

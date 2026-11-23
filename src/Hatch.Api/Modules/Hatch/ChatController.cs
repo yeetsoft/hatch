@@ -134,6 +134,10 @@ public class ChatController(
             return BadRequest(NoSecretKey);
 
         row.Token = sealedToken;
+        // A new token ends whatever the old one was failing at.
+        row.HoldUntil = null;
+        row.FailStreak = 0;
+        row.SendFailingSince = null;
         row.Name = NameOf(check);
         row.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
@@ -382,7 +386,7 @@ public class ChatController(
         "a bot token cannot be saved until HATCH_SECRET_KEY is set; set it and restart";
 
     private const string AlreadyConnected = "that workspace is already connected; replace its token instead";
-    private const string TokenUnreadable = "the token for this workspace cannot be read; replace it";
+    internal const string TokenUnreadable = "the token for this workspace cannot be read; replace it";
     private const string ChannelAlreadyARoom = "that channel is already a room here";
     private const string UnknownProject = "unknown project";
 

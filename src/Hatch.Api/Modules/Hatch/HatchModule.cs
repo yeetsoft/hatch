@@ -152,6 +152,11 @@ public static class HatchModule
         services.AddSingleton<IGooseLock, PostgresGooseLock>();
         services.AddSingleton<GooseWatch>();
 
+        // The chat sender, set up the same way: a scoped job, and a stateless
+        // lock that takes a connection of its own per tick.
+        services.AddScoped<IAppJob, ChatSendJob>();
+        services.AddSingleton<IChatSendLock, PostgresChatSendLock>();
+
         // Scoped like Dispatch: it holds a scoped HatchContext, and its one
         // cached ReadySnapshot is meant to live no longer than the sweep that
         // built it - see ReadyWork's own remarks.

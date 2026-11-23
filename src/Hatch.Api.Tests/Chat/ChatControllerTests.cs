@@ -90,6 +90,27 @@ public class ChatControllerTests
     }
 
     [Fact]
+    public async Task ReplacingAToken_EndsTheSendersHoldOnTheWorkspace()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var row = await h.Db.ChatWorkspaces.SingleAsync();
+        row.HoldUntil = Now.AddMinutes(10);
+        row.FailStreak = 6;
+        row.SendFailingSince = Now;
+        row.LastRefusal = "Slack did not accept that token";
+        row.LastRefusalAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        await h.Chat.ReplaceToken(acme.Id, new ChatTokenRequest(AcmeNewToken), default);
+
+        row = await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync();
+        Assert.Null(row.HoldUntil);
+        Assert.Equal(0, row.FailStreak);
+        Assert.Null(row.SendFailingSince);
+    }
+
+    [Fact]
     public async Task ReplacingATokenForTheSameWorkspace_ChangesTheTokenNameAndUpdatedAt_AndNothingElse()
     {
         var h = NewHarness();

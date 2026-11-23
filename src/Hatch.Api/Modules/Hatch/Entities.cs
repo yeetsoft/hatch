@@ -5312,6 +5312,23 @@ public class EfHatchChatWorkspace
     /// <summary>The bot token, sealed as <c>v2</c> for the row name <c>SecretStores.ChatWorkspace</c> gives. A value stored before sealing is <c>v1</c> and still reads.</summary>
     public required string Token { get; set; }
 
+    public const int MaxRefusalLength = 500;
+
+    /// <summary>The sender sends nothing for this workspace until then: a throttle, or the wait after a failure. Null for no wait.</summary>
+    public DateTimeOffset? HoldUntil { get; set; }
+
+    /// <summary>How many sends in a row failed on the workspace's account or its network. Resets on a send that works.</summary>
+    public int FailStreak { get; set; }
+
+    /// <summary>When the run of failed sends began, or null while sends work.</summary>
+    public DateTimeOffset? SendFailingSince { get; set; }
+
+    /// <summary>The last sentence a send was refused with. Never holds the token.</summary>
+    [MaxLength(MaxRefusalLength)]
+    public string? LastRefusal { get; set; }
+
+    public DateTimeOffset? LastRefusalAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
@@ -5372,6 +5389,13 @@ public class EfHatchChatRoom
     /// row means the room carries none - never a fallback to every project.
     /// </summary>
     public bool AllProjects { get; set; } = true;
+
+    /// <summary>When sends to this channel began failing while the workspace's others work, or null.</summary>
+    public DateTimeOffset? SendFailingSince { get; set; }
+
+    /// <summary>The last sentence a send to this channel was refused with.</summary>
+    [MaxLength(EfHatchChatWorkspace.MaxRefusalLength)]
+    public string? LastRefusal { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

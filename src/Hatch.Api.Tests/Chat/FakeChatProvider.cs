@@ -34,6 +34,17 @@ internal sealed class FakeChatProvider : IChatProvider
     /// <summary>Every message posted, in order.</summary>
     public List<(string Token, string ChannelId, string Text)> Posts { get; } = [];
 
+    /// <summary>Every post and edit, in order, whatever the script answered.</summary>
+    public List<SendCall> Sends { get; } = [];
+
+    /// <summary>
+    /// Answers each post or edit; may throw. Unset, a post is sent under a new
+    /// id (<c>ts-1</c>, <c>ts-2</c>...) and an edit is sent under its own.
+    /// </summary>
+    public Func<SendCall, ChatSendResult>? Script { get; set; }
+
+    private int posted;
+
     public int Checks { get; private set; }
 
     public string Name => "fake";
@@ -62,4 +73,22 @@ internal sealed class FakeChatProvider : IChatProvider
             ? ChatPostResult.Refused(refusal)
             : ChatPostResult.Delivered());
     }
+
+    public Task<ChatSendResult> PostAsync(string token, string channelId, ChatMessageContent content, CancellationToken ct) =>
+        Send(new SendCall("post", token, channelId, null, content));
+
+    public Task<ChatSendResult> UpdateAsync(string token, string channelId, string messageId, ChatMessageContent content, CancellationToken ct) =>
+        Send(new SendCall("update", token, channelId, messageId, content));
+
+    private Task<ChatSendResult> Send(SendCall call)
+    {
+        Sends.Add(call);
+
+        if (Script is not null) return Task.FromResult(Script(call));
+
+        return Task.FromResult(ChatSendResult.Sent(call.MessageId ?? $"ts-{++posted}"));
+    }
 }
+
+/// <summary>One post (no message id) or edit (the id it edits), as the provider was asked.</summary>
+internal sealed record SendCall(string Kind, string Token, string ChannelId, string? MessageId, ChatMessageContent Content);
