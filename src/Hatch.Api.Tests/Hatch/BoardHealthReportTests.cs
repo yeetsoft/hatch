@@ -664,4 +664,171 @@ public class BoardHealthReportTests
         Assert.Contains(result.Bars, b => b.Done > 0);
         Assert.Equal(0, result.Bars[0].Done);
     }
+
+    // ---- when anything last waited ----
+
+    private static DateTimeOffset? Last(
+        BoardHealthReport.Issue[] rows, BoardHealthReport.Move[]? moves = null,
+        BoardHealthReport.PullRequestChange[]? prs = null, BoardHealthReport.PreApprovalChange[]? levels = null,
+        FlowReport.Question[]? questions = null, DateTimeOffset? from = null, DateTimeOffset? to = null, string[]? keys = null) =>
+        BoardHealthReport.LastWaited(
+            rows, moves ?? [], prs ?? [], levels ?? [], questions ?? [], Board(), from ?? From, to ?? Now, keys?.ToHashSet());
+
+    [Fact]
+    public void LastWaited_AQuestionAnsweredInsideTheWindow_IsTheAnswersOwnInstant_NotABarEdge()
+    {
+        var q = new FlowReport.Question(1, 1, At(6, 0), At(7, 13, 41));
+
+        Assert.Equal(At(7, 13, 41), Last([Issue(1, 3, At(1, 0))], questions: [q]));
+    }
+
+    [Fact]
+    public void LastWaited_AQuestionAnsweredBeforeTheWindow_IsFoundOnlyByAWideEnoughRead()
+    {
+        var q = new FlowReport.Question(1, 1, At(1, 0), At(2, 5));
+        var rows = new[] { Issue(1, 3, At(0, 30)) };
+
+        Assert.Equal(At(2, 5), Last(rows, questions: [q], from: At(0, 0)));
+        Assert.Null(Last(rows, questions: [q]));
+    }
+
+    [Fact]
+    public void LastWaited_ALapse_EndsTheWaitAtTheLapse()
+    {
+        var q = new FlowReport.Question(1, 1, At(6, 0), null, At(6, 30));
+
+        Assert.Equal(At(6, 30), Last([Issue(1, 3, At(1, 0))], questions: [q]));
+    }
+
+    [Fact]
+    public void LastWaited_AQuestionClosedUnderByATerminalMove_EndsWhenTheIssueIsDone()
+    {
+        var q = new FlowReport.Question(1, 1, At(6, 0), null);
+        var moves = new[] { Move(1, 1, At(8, 3), 3, 5) };
+
+        Assert.Equal(At(8, 3), Last([Issue(1, 5, At(1, 0))], moves, questions: [q]));
+    }
+
+    [Fact]
+    public void LastWaited_AQuestionStillOpen_IsSkipped_AndAQuestionAskedOfADoneIssueNeverWaited()
+    {
+        var open = new FlowReport.Question(1, 1, At(6, 0), null);
+        Assert.Null(Last([Issue(1, 3, At(1, 0))], questions: [open]));
+
+        var moves = new[] { Move(1, 1, At(5, 0), 3, 5) };
+        Assert.Null(Last([Issue(1, 5, At(1, 0))], moves, questions: [open]));
+    }
+
+    [Fact]
+    public void LastWaited_IsTheLatestEnd_AcrossQuestions_AndIgnoresAnEndAfterTo()
+    {
+        var qs = new[]
+        {
+            new FlowReport.Question(1, 1, At(5, 0), At(9, 10)),
+            new FlowReport.Question(1, 2, At(5, 0), At(7, 0)),
+            new FlowReport.Question(1, 3, At(5, 0), At(11, 55)),
+        };
+        var rows = new[] { Issue(1, 3, At(1, 0)) };
+
+        Assert.Equal(At(11, 55), Last(rows, questions: qs));
+        Assert.Equal(At(9, 10), Last(rows, questions: qs, to: At(10, 0)));
+    }
+
+    [Fact]
+    public void LastWaited_APullRequestLeavingReview_EndsAtTheMove_InsideOrBeforeTheWindow()
+    {
+        var back = new[] { Move(1, 1, At(6, 0), 3, 4), Move(1, 2, At(6, 47), 4, 3) };
+        Assert.Equal(At(6, 47), Last([Issue(1, 3, At(1, 0), pr: true)], back));
+
+        var before = new[] { Move(1, 1, At(1, 0), 3, 4), Move(1, 2, At(2, 0), 4, 5) };
+        var rows = new[] { Issue(1, 5, At(0, 30), pr: true) };
+        Assert.Equal(At(2, 0), Last(rows, before, from: At(0, 0)));
+        Assert.Null(Last(rows, before));
+    }
+
+    [Fact]
+    public void LastWaited_APullRequestRecordRemoved_EndsAtTheRemoval()
+    {
+        var moves = new[] { Move(1, 1, At(6, 0), 3, 4) };
+        var prs = new[] { new BoardHealthReport.PullRequestChange(1, 5, At(8, 13), true, false) };
+
+        Assert.Equal(At(8, 13), Last([Issue(1, 4, At(1, 0), pr: false)], moves, prs));
+    }
+
+    [Fact]
+    public void LastWaited_PreApprovalRaised_EndsTheWait_OnTheIssueOrOnAnAncestor()
+    {
+        var moves = new[] { Move(2, 1, At(6, 0), 3, 4) };
+        var own = new[] { new BoardHealthReport.PreApprovalChange(2, 5, At(10, 11), PreApprovalLevels.NoneName, PreApprovalLevels.PreApprovedName) };
+        Assert.Equal(At(10, 11), Last([Issue(2, 4, At(1, 0), pr: true, own: PreApprovalLevels.PreApproved)], moves, levels: own));
+
+        var parentLevel = new[] { new BoardHealthReport.PreApprovalChange(1, 6, At(9, 42), PreApprovalLevels.NoneName, PreApprovalLevels.PreApprovedName) };
+        var rows = new[]
+        {
+            Issue(1, 3, At(1, 0), type: "epic", own: PreApprovalLevels.PreApproved),
+            Issue(2, 4, At(1, 0), parent: 1, pr: true),
+        };
+        Assert.Equal(At(9, 42), Last(rows, moves, levels: parentLevel));
+    }
+
+    [Fact]
+    public void LastWaited_APullRequestStillWaiting_OrNeverRecorded_IsSkipped()
+    {
+        var moves = new[] { Move(1, 1, At(6, 0), 3, 4) };
+
+        Assert.Null(Last([Issue(1, 4, At(1, 0), pr: true)], moves));
+        Assert.Null(Last([Issue(1, 4, At(1, 0), pr: false)], [Move(1, 1, At(6, 0), 3, 4), Move(1, 2, At(7, 0), 4, 5)]));
+    }
+
+    [Fact]
+    public void LastWaited_IssuesOutsideTheProjectKeys_AreNotCounted()
+    {
+        var q = new FlowReport.Question(2, 1, At(6, 0), At(7, 0));
+        var rows = new[] { Issue(1, 3, At(1, 0)), Issue(2, 3, At(1, 0), key: "ZZ") };
+
+        Assert.Null(Last(rows, questions: [q], keys: ["HA"]));
+        Assert.Equal(At(7, 0), Last(rows, questions: [q], keys: ["ZZ"]));
+        Assert.Equal(At(7, 0), Last(rows, questions: [q]));
+    }
+
+    [Fact]
+    public void LastWaited_NoIssuesInScope_IsNull() => Assert.Null(Last([]));
+
+    // ---- settling the answer ----
+
+    private static readonly DateTimeOffset Month = Now - TimeSpan.FromDays(30);
+
+    [Fact]
+    public void Settle_SomethingWaitingNow_IsNull_AndNothingInScopeIsNull()
+    {
+        Assert.Equal((null, false), BoardHealthReport.Settle(At(6, 0), At(5, 0), 1, Now.AddDays(-9), Now));
+        Assert.Equal((null, false), BoardHealthReport.Settle(null, null, 0, null, Now));
+    }
+
+    [Fact]
+    public void Settle_TheLaterOfTheWindowAndTheKept_Wins()
+    {
+        var earlier = At(6, 0);
+        var later = At(8, 0);
+        var created = Now.AddDays(-9);
+
+        Assert.Equal((later, false), BoardHealthReport.Settle(later, earlier, 0, created, Now));
+        Assert.Equal((later, false), BoardHealthReport.Settle(earlier, later, 0, created, Now));
+        Assert.Equal((earlier, false), BoardHealthReport.Settle(null, earlier, 0, created, Now));
+        Assert.Equal((later, false), BoardHealthReport.Settle(later, null, 0, created, Now));
+    }
+
+    [Fact]
+    public void Settle_NothingInThirtyDays_IsTheFloor_AndAYoungBoardAnswersItsFirstIssue()
+    {
+        Assert.Equal((Month, true), BoardHealthReport.Settle(null, null, 0, Now.AddDays(-40), Now));
+        Assert.Equal((Now.AddDays(-2), true), BoardHealthReport.Settle(null, null, 0, Now.AddDays(-2), Now));
+    }
+
+    [Fact]
+    public void Settle_AKeptAnswerOlderThanThirtyDays_IsDropped()
+    {
+        Assert.Equal((Month, true), BoardHealthReport.Settle(null, Month.AddMinutes(-1), 0, Now.AddDays(-60), Now));
+        Assert.Equal((Month.AddMinutes(1), false), BoardHealthReport.Settle(null, Month.AddMinutes(1), 0, Now.AddDays(-60), Now));
+    }
 }

@@ -2396,6 +2396,10 @@ export interface BoardHealth {
   pastNormal: number;
   hasWorkColumn: boolean;
   runners: BoardHealthRunners;
+  /** When the latest wait on a person ended; null while anything waits now. */
+  lastWaitedAt: string | null;
+  /** True when nothing waited in 30 days and lastWaitedAt is a floor, not an event. */
+  lastWaitedIsFloor: boolean;
 }
 
 /** The states a runner lane's cell can draw, in the order a cell picks among

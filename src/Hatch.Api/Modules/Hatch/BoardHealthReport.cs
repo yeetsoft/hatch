@@ -180,18 +180,8 @@ public static class BoardHealthReport
         foreach (var issue in scoped)
         {
             var row = issue.Row;
-            var changes = movesByIssue[row.Id]
-                .Select(m => TimelineReport.ParseChange(m.IssueId, m.EventId, m.At, m.Payload))
-                .OfType<TimelineReport.Change>()
-                .OrderBy(c => c.At).ThenBy(c => c.EventId)
-                .ToList();
-
             // The stretches, cut as the cumulative flow cuts them.
-            var stretches = TimelineReport.StretchesOf(row, changes, index)
-                .Where(s => s.To is null || s.To > s.From)
-                .Where(s => s.Resolved && s.StatusId is not null && slot.ContainsKey(s.StatusId.Value))
-                .Select(s => (Id: s.StatusId!.Value, Opens: s.From > row.CreatedAt ? s.From : row.CreatedAt, s.To))
-                .ToList();
+            var stretches = StretchesOf(row, movesByIssue[row.Id], index, slot);
 
             bool Reads((int Id, DateTimeOffset Opens, DateTimeOffset? To) s, DateTimeOffset r) =>
                 s.Opens <= r && (s.To is null || s.To > r);
@@ -285,6 +275,160 @@ public static class BoardHealthReport
         }
 
         return new Result(axis.From, axis.To, axis.BarMinutes, bars, bars.Sum(b => b.Moved), previousTotal, pastNormal, hasWork);
+    }
+
+    /// <summary>
+    /// An issue's stretches, cut as the cumulative flow cuts them: a zero-length
+    /// stretch dropped, an unresolved or off-board one dropped, and a stretch
+    /// never opening before the issue was created. <see cref="Fold"/> and
+    /// <see cref="LastWaited"/> read the same stretches.
+    /// </summary>
+    private static List<(int Id, DateTimeOffset Opens, DateTimeOffset? To)> StretchesOf(
+        TimelineReport.Row row, IEnumerable<Move> moves, TimelineReport.BoardIndex index, Dictionary<int, int> slot)
+    {
+        var changes = moves
+            .Select(m => TimelineReport.ParseChange(m.IssueId, m.EventId, m.At, m.Payload))
+            .OfType<TimelineReport.Change>()
+            .OrderBy(c => c.At).ThenBy(c => c.EventId)
+            .ToList();
+
+        return TimelineReport.StretchesOf(row, changes, index)
+            .Where(s => s.To is null || s.To > s.From)
+            .Where(s => s.Resolved && s.StatusId is not null && slot.ContainsKey(s.StatusId.Value))
+            .Select(s => (Id: s.StatusId!.Value, Opens: s.From > row.CreatedAt ? s.From : row.CreatedAt, s.To))
+            .ToList();
+    }
+
+    /// <summary>How far back the last wait is looked for, and the oldest an answer can say.</summary>
+    public static readonly TimeSpan WaitLookback = TimeSpan.FromDays(30);
+
+    /// <summary>
+    /// The instant the latest wait on a person ended, inside <c>[from, to]</c>,
+    /// over the rows <paramref name="projectKeys"/> keeps (null keeps all); null
+    /// when none ended in that range.
+    /// </summary>
+    /// <remarks>
+    /// "Waited" is the bars' own rule (<see cref="Fold"/>): a question that was
+    /// open, or a pull request in review that was recorded and not pre-approved.
+    /// A wait ends at an event's own instant - an answer or a lapse, the issue
+    /// leaving review or entering a terminal column, the record removed, or
+    /// pre-approval raised on the issue or an ancestor - not at a bar's edge.
+    /// A pull request's wait ends at a candidate instant <c>e</c> when it held
+    /// one tick before and does not hold at <c>e</c>. A wait still open at
+    /// <paramref name="to"/> has not ended and is skipped.
+    /// <para>Takes the same inputs as <see cref="Fold"/>: for each issue, the
+    /// newest event before <paramref name="from"/> as well as every event after
+    /// it, and the same known gaps.</para>
+    /// </remarks>
+    public static DateTimeOffset? LastWaited(
+        IReadOnlyList<Issue> rows, IReadOnlyList<Move> moves, IReadOnlyList<PullRequestChange> prRecords,
+        IReadOnlyList<PreApprovalChange> levels, IReadOnlyList<FlowReport.Question> questions,
+        IReadOnlyList<EfHatchStatus> statuses, DateTimeOffset from, DateTimeOffset to, IReadOnlySet<string>? projectKeys)
+    {
+        var ordered = statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList();
+        var board = Columns.Board(ordered);
+        var review = Columns.AwaitingReview(ordered);
+        var index = TimelineReport.IndexOf(statuses);
+
+        var slot = new Dictionary<int, int>();
+        for (var i = 0; i < board.Count; i++) slot[board[i].Id] = i;
+
+        var scoped = projectKeys is null ? rows : rows.Where(r => projectKeys.Contains(r.Row.ProjectKey)).ToList();
+        if (scoped.Count == 0) return null;
+
+        var everyone = rows.GroupBy(r => r.Row.Id).ToDictionary(g => g.Key, g => g.First());
+        var movesByIssue = moves.ToLookup(m => m.IssueId);
+        var levelsByIssue = levels.ToLookup(c => c.IssueId);
+        var recordsByIssue = prRecords.ToLookup(c => c.IssueId);
+        var questionsByIssue = questions.ToLookup(q => q.IssueId);
+
+        DateTimeOffset? latest = null;
+        void Ended(DateTimeOffset at)
+        {
+            if (at < from || at > to) return;
+            if (latest is not { } current || at > current) latest = at;
+        }
+
+        static bool Stands((int Id, DateTimeOffset Opens, DateTimeOffset? To) s, DateTimeOffset r) =>
+            s.Opens <= r && (s.To is null || s.To > r);
+
+        foreach (var issue in scoped)
+        {
+            var row = issue.Row;
+            var stretches = StretchesOf(row, movesByIssue[row.Id], index, slot);
+
+            foreach (var q in questionsByIssue[row.Id])
+            {
+                if (stretches.Any(s => board[slot[s.Id]].IsTerminal && Stands(s, q.AskedAt))) continue;
+
+                var terminalEntry = stretches
+                    .Where(s => board[slot[s.Id]].IsTerminal && s.Opens > q.AskedAt)
+                    .Select(s => (DateTimeOffset?)s.Opens)
+                    .Min();
+                var ends = new[] { q.AnsweredAt, q.LapsedAt, terminalEntry }
+                    .Where(e => e is not null).Select(e => e!.Value).ToList();
+                if (ends.Count == 0) continue;
+
+                var end = ends.Min();
+                if (end > q.AskedAt) Ended(end);
+            }
+
+            if (review is not { } reviewColumn) continue;
+
+            bool Waits(DateTimeOffset r)
+            {
+                if (!stretches.Any(s => s.Id == reviewColumn.Id && Stands(s, r))) return false;
+                if (!RecordedAt(issue, recordsByIssue[row.Id], r).Recorded) return false;
+                return EffectiveLevel(row.Id, everyone, levelsByIssue, r) != PreApprovalLevels.PreApprovedName;
+            }
+
+            var candidates = new HashSet<DateTimeOffset>();
+            foreach (var s in stretches)
+            {
+                candidates.Add(s.Opens);
+                if (s.To is { } closed) candidates.Add(closed);
+            }
+
+            foreach (var c in recordsByIssue[row.Id]) candidates.Add(c.At);
+
+            var seen = new HashSet<long>();
+            long? up = row.Id;
+            while (up is { } id && seen.Add(id) && everyone.TryGetValue(id, out var above))
+            {
+                foreach (var c in levelsByIssue[id]) candidates.Add(c.At);
+                up = above.Row.ParentId;
+            }
+
+            foreach (var e in candidates.Where(e => e >= from && e <= to))
+            {
+                if (Waits(e - TimeSpan.FromTicks(1)) && !Waits(e)) Ended(e);
+            }
+        }
+
+        return latest;
+    }
+
+    /// <summary>
+    /// What the health read answers for "when did anything last wait": the later
+    /// of the window's own answer and the kept thirty-day one, dropped when older
+    /// than thirty days, else a floor. Null, not a floor, when nothing is in scope
+    /// (<paramref name="earliestCreated"/> is null) or something waits now.
+    /// </summary>
+    /// <remarks>
+    /// The floor is <paramref name="now"/> minus thirty days, so a page can say
+    /// "over 30d"; on a board younger than that it is the earliest scoped issue's
+    /// creation, since nothing could have waited before it.
+    /// </remarks>
+    public static (DateTimeOffset? At, bool IsFloor) Settle(
+        DateTimeOffset? window, DateTimeOffset? kept, int waitingNow, DateTimeOffset? earliestCreated, DateTimeOffset now)
+    {
+        if (earliestCreated is not { } created || waitingNow > 0) return (null, false);
+
+        var floor = now - WaitLookback;
+        var best = window is { } w && kept is { } k ? (w > k ? w : k) : window ?? kept;
+        if (best is { } at && at >= floor) return (at, false);
+
+        return (created > floor ? created : floor, true);
     }
 
     /// <summary>Who made a move right: the board itself, the runner holding the claim, or anybody else.</summary>

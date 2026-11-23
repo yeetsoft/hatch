@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -24,13 +23,18 @@ namespace Hatch.Api.Modules.Hatch;
 /// start of the window before this one, and everything else only from the start
 /// of this one; for each issue the newest event before that point is read too,
 /// since it says where a stretch began or whether a claim was open.
+///
+/// "When anything last waited" is the one answer that reaches past that: the
+/// window's own data gives the later part, and <see cref="WaitHistory"/> keeps
+/// thirty days per project for up to five minutes, read only on the caller's
+/// own context. Neither loads the whole history.
 /// </remarks>
 [ApiController]
 [Route("api/board/health")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class BoardHealthController(
     HatchContext db, IActorDirectory actors, Runners runners, Dispatch dispatch, TimeProvider time, ColumnNormals normals,
-    ICallerIdentity caller, IOptions<AuthOptions> auth, IAuthService keys, RunnerStateLog stateLog, RunnerSessions sessions) : ControllerBase
+    WaitHistory waits, ICallerIdentity caller, IOptions<AuthOptions> auth, IAuthService keys, RunnerStateLog stateLog, RunnerSessions sessions) : ControllerBase
 {
     private const string DefaultWindow = "8h";
 
@@ -38,9 +42,6 @@ public class BoardHealthController(
     [
         EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimReleased, EfHatchIssueEvent.ClaimCleared, EfHatchIssueEvent.ClaimLapsed,
     ];
-
-    /// <summary>One event, as the fold's inputs are cut from it.</summary>
-    private sealed record Ev(long IssueId, long Id, string Kind, DateTimeOffset At, string Actor, string? Payload);
 
     /// <summary>
     /// The board's health over a window ending now.
@@ -76,57 +77,19 @@ public class BoardHealthController(
 
         // The one full read: a row per issue, every project the caller can see,
         // since a parent outside the scope still carries a level down.
-        var issues = (await db.Issues.AsNoTracking()
-                .Select(i => new
-                {
-                    i.Id,
-                    i.ParentId,
-                    i.ProjectId,
-                    ProjectKey = i.Project!.Key,
-                    i.Number,
-                    i.Type,
-                    i.StatusId,
-                    i.Rank,
-                    i.CreatedAt,
-                    i.CreatedBy,
-                    i.PreApproval,
-                    i.PullRequestUrl,
-                })
-                .ToListAsync(ct))
-            .Select(i => new BoardHealthReport.Issue(
-                new TimelineReport.Row(
-                    i.Id, i.ParentId, i.ProjectId, i.ProjectKey, i.Number, i.Type,
-                    i.StatusId, i.Rank, i.CreatedAt, i.CreatedBy),
-                i.PreApproval,
-                !string.IsNullOrWhiteSpace(i.PullRequestUrl)))
-            .ToList();
+        var issues = await BoardHealthTrail.IssuesAsync(db, ct);
 
-        var moveRows = await ReadTrailAsync([EfHatchIssueEvent.StatusChanged], previous, scope, null, ct);
-        var moves = moveRows
-            .Select(e => new BoardHealthReport.Move(e.IssueId, e.Id, e.At, e.Actor, e.Payload))
-            .ToList();
+        var moves = await BoardHealthTrail.MovesAsync(db, previous, scope, ct);
 
         // Every claim of every issue, whatever the project scope: the lanes read
         // them all, and the Moved fold takes the ones it needs. Of what came
         // before the window, only an open claim (a take) is kept.
-        var claims = (await ReadTrailAsync(ClaimKinds, axis.From, null, null, ct, olderOnlyIf: EfHatchIssueEvent.ClaimTaken))
+        var claims = (await BoardHealthTrail.ReadAsync(db, ClaimKinds, axis.From, null, null, ct, olderOnlyIf: EfHatchIssueEvent.ClaimTaken))
             .Select(e => new BoardHealthReport.ClaimEvent(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
             .ToList();
 
-        var levels = new List<BoardHealthReport.PreApprovalChange>();
-        foreach (var e in await ReadTrailAsync([EfHatchIssueEvent.PreApprovalChanged], axis.From, null, null, ct))
-        {
-            if (Sides(e.Payload) is not { } sides) continue;
-            levels.Add(new BoardHealthReport.PreApprovalChange(e.IssueId, e.Id, e.At, sides.From ?? PreApprovalLevels.NoneName, sides.To ?? PreApprovalLevels.NoneName));
-        }
-
-        var records = new List<BoardHealthReport.PullRequestChange>();
-        foreach (var e in await ReadTrailAsync([EfHatchIssueEvent.PullRequestChanged], axis.From, scope, null, ct))
-        {
-            if (Sides(e.Payload) is not { } sides) continue;
-            records.Add(new BoardHealthReport.PullRequestChange(
-                e.IssueId, e.Id, e.At, !string.IsNullOrWhiteSpace(sides.From), !string.IsNullOrWhiteSpace(sides.To)));
-        }
+        var levels = await BoardHealthTrail.LevelsAsync(db, axis.From, ct);
+        var records = await BoardHealthTrail.RecordsAsync(db, axis.From, scope, ct);
 
         var questions = await QuestionTrail.ReadAsync(db, axis.From, axis.To, ct);
 
@@ -150,6 +113,15 @@ public class BoardHealthController(
 
         var attention = await WaitingOnYouAsync(statuses, tree, scope, moves, issues, now, ct);
 
+        // When anything last waited: this window's own answer, and the kept thirty days behind it.
+        var windowWaited = BoardHealthReport.LastWaited(
+            issues, moves, records, levels, questions, statuses, axis.From, now, scope);
+        var keptWaited = await waits.ForAsync(db, statuses, scope, now, ct);
+        var scopedIssues = scope is null ? issues : issues.Where(i => scope.Contains(i.Row.ProjectKey)).ToList();
+        var (waitedAt, waitedIsFloor) = BoardHealthReport.Settle(
+            windowWaited, keptWaited, attention.PullRequests + attention.Questions,
+            scopedIssues.Count == 0 ? null : scopedIssues.Min(i => i.Row.CreatedAt), now);
+
         var result = BoardHealthReport.Fold(
             issues, moves, claims, levels, records, questions, statuses,
             hours, now, scope, leaves, normalOf, attention);
@@ -167,7 +139,8 @@ public class BoardHealthController(
                 lanes.Up, lanes.Paused, lanes.Lanes.Count,
                 lanes.Lanes.Select(l => new BoardHealthLaneDto(
                     l.Name, l.Up, l.Paused, l.LastSeenAt,
-                    l.Cells.Select(c => new BoardHealthCellDto(c.State, c.Why)).ToList())).ToList()));
+                    l.Cells.Select(c => new BoardHealthCellDto(c.State, c.Why)).ToList())).ToList()),
+            waitedAt, waitedIsFloor);
     }
 
     /// <summary>
@@ -229,15 +202,13 @@ public class BoardHealthController(
 
     /// <summary>Every status change from the start of the window, in every project: the lanes ignore the project scope.</summary>
     private async Task<List<BoardHealthReport.Move>> UnscopedMovesAsync(BoardHealthReport.Axis axis, CancellationToken ct) =>
-        (await ReadTrailAsync([EfHatchIssueEvent.StatusChanged], axis.From, null, null, ct))
-            .Select(e => new BoardHealthReport.Move(e.IssueId, e.Id, e.At, e.Actor, e.Payload))
-            .ToList();
+        await BoardHealthTrail.MovesAsync(db, axis.From, null, ct);
 
     /// <summary>The events of one kind at or after <paramref name="since"/>, and nothing before it.</summary>
-    private async Task<List<Ev>> ReadSinceAsync(string kind, DateTimeOffset since, CancellationToken ct) =>
+    private async Task<List<BoardHealthTrail.Ev>> ReadSinceAsync(string kind, DateTimeOffset since, CancellationToken ct) =>
         await db.IssueEvents.AsNoTracking()
             .Where(e => e.Kind == kind && e.At >= since)
-            .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
+            .Select(e => new BoardHealthTrail.Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
             .ToListAsync(ct);
 
     /// <summary>
@@ -283,52 +254,5 @@ public class BoardHealthController(
         foreach (var q in waiting) Older(q.CreatedAt);
 
         return new BoardHealthReport.Attention(prs, waiting.Count, oldest);
-    }
-
-    /// <summary>
-    /// The events of these kinds at or after <paramref name="since"/>, plus, for
-    /// each issue, the newest one of them before it - which is the state the
-    /// window opens on. Bounded in the query, so history older than that is
-    /// never loaded.
-    /// </summary>
-    /// <remarks>
-    /// <paramref name="olderOnlyIf"/> keeps that older one only when it is of
-    /// this kind. The newest is still found over every kind asked for, so a
-    /// take that a later release closed before the window is not read as open.
-    /// </remarks>
-    private async Task<List<Ev>> ReadTrailAsync(
-        string[] kinds, DateTimeOffset since, HashSet<string>? scope, List<long>? issueIds, CancellationToken ct,
-        string? olderOnlyIf = null)
-    {
-        var events = db.IssueEvents.AsNoTracking()
-            .Where(e => kinds.Contains(e.Kind))
-            .Where(e => e.At >= since
-                || ((olderOnlyIf == null || e.Kind == olderOnlyIf)
-                    && e.Id == db.IssueEvents
-                        .Where(x => x.IssueId == e.IssueId && kinds.Contains(x.Kind) && x.At < since)
-                        .Max(x => (long?)x.Id)));
-
-        if (scope is not null)
-        {
-            var keys = scope.ToList();
-            events = events.Where(e => keys.Contains(e.Issue!.Project!.Key));
-        }
-
-        if (issueIds is not null) events = events.Where(e => issueIds.Contains(e.IssueId));
-
-        return await events
-            .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
-            .ToListAsync(ct);
-    }
-
-    /// <summary>The <c>from</c> and <c>to</c> of a change payload, as text; null when it will not parse.</summary>
-    private static (string? From, string? To)? Sides(string? payload)
-    {
-        if (IssueEventPayload.Parse(payload) is not { ValueKind: JsonValueKind.Object } json) return null;
-
-        string? Side(string name) =>
-            json.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-
-        return (Side("from"), Side("to"));
     }
 }

@@ -6165,7 +6165,8 @@ multiple of the bar's width, so a bar does not slide while now is inside it. The
 **last bar is read at now**, not at its end, which is still to come.
 
 It answers `{ from, to, barMinutes, bars, total, previousTotal, pastNormal,
-hasWorkColumn, runners }`. `runners` is [the runner lanes](#runner-lanes), below.
+hasWorkColumn, runners, lastWaitedAt, lastWaitedIsFloor }`. `runners` is [the runner lanes](#runner-lanes), below;
+`lastWaitedAt` is [when anything last waited](#when-anything-last-waited), just under.
 `total` is the moves right in the window and `previousTotal`
 the same over the window before it, for comparison. `pastNormal` is how many
 issues with no children now stand in flight longer than their column's
@@ -6203,10 +6204,37 @@ ends at a terminal column in a past bar yet counts now. Whether an issue has
 children is today's answer, not the answer then. A parent in a project the
 caller cannot see carries no level into a past bar.
 
+**When anything last waited.** `lastWaitedAt` is the instant the latest wait on a
+person ended, so a page can say "clear for 3h 20m" where the waiting tiles show
+only a zero. It is null while anything waits now - the last bar's waiting pull
+requests plus waiting questions is above zero - and when no issue is in scope.
+"Waited" follows the bars' own rules: a question that was open, or a pull request
+in review that was recorded and not pre-approved. A wait ends at the event's own
+instant, not a bar's edge: the question's answer or lapse, the issue leaving
+review or entering a terminal column, the pull request record being removed, or
+pre-approval being raised on the issue or an ancestor.
+
+The read looks back **30 days** from now at most. When nothing waited in that time,
+`lastWaitedAt` is now minus 30 days and `lastWaitedIsFloor` is true, so a page
+can say "over 30d". A board younger than 30 days answers its earliest issue's
+creation instead, flagged the same way, since nothing could have waited before it.
+The value keeps to `project` when it is given, and to the projects the caller may
+see; one caller never learns an instant from a project outside their reach.
+
+Two more gaps, beside the ones above. The earlier bars count a pull request that a
+check approved, or one held by a conflict or a failed build, as waiting, so this
+value can name an instant that the attention control would not. And a wait the
+trail still holds open, but the attention control does not list, is left out: it
+has not ended, and while the control lists nothing the value is a floor or an
+earlier instant.
+
 The status history is never loaded whole. Status changes are read back to the
 start of the window before this one, and everything else from the start of this
 one; for each issue the newest event before that point is read too, since it
-says where a stretch began or whether a claim was open.
+says where a stretch began or whether a claim was open. The 30-day read for
+`lastWaitedAt` is the one longer look, kept for each project for up to five
+minutes and read only on the caller's own view of the projects; the window's own
+answer wins when it is the later one.
 
 #### Runner lanes
 

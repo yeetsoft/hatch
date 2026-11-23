@@ -103,6 +103,8 @@ export function sampleHealth(over: Partial<BoardHealth> = {}): BoardHealth {
     pastNormal: 2,
     hasWorkColumn: true,
     runners: sampleRunners(),
+    lastWaitedAt: null,
+    lastWaitedIsFloor: false,
     ...over,
   };
 }
