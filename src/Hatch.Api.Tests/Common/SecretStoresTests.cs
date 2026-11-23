@@ -36,4 +36,11 @@ public class SecretStoresTests
             ["GoogleClientSecret", "AnthropicApiKey", "ClaudeSubscriptionToken", "CodexApiKey", "XaiApiKey"],
             SiteSettingKeys.Secrets);
     }
+
+    [Fact]
+    public void Only_the_site_settings_store_is_limited_to_the_secret_keys()
+    {
+        Assert.Equal(SiteSettingKeys.Secrets, SecretStores.SiteSettings.OnlyKeys);
+        Assert.Null(SecretStores.ChatWorkspaces.OnlyKeys);
+    }
 }

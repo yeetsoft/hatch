@@ -121,9 +121,10 @@ What happens at start:
 2. It takes a Postgres advisory lock (`LockKey`, through
    `PostgresAdvisoryLock`, in `src/Hatch.Api/Modules/Hatch/Goose.cs`). If
    another instance holds it, this one logs that and goes on; the other reseals.
-3. For each store, each value that is not already `v2` under the current key is
-   opened and sealed again for the same row. That covers `v1`, untagged, and
-   `v2` under the previous key.
+3. For each store, each row it is limited to (see the stores table below) whose
+   value is not already `v2` under the current key is opened and sealed again
+   for the same row. That covers `v1`, untagged, and `v2` under the previous
+   key. A store with no limit walks every row that holds a value.
 4. The update matches the old text as well as the row, so a secret saved while
    this runs is not overwritten with one sealed from the older value.
 
@@ -138,10 +139,16 @@ start tries again.
 once. A save seals through it and the reseal walks it. Row names are built there
 and nowhere else.
 
-| Store | Column | Row name |
-|---|---|---|
-| `SiteSettings` | `SiteSettings.Value` | `site-setting/<key>` |
-| `ChatWorkspaces` | `hatch.ChatWorkspaces.Token` | `chat-workspace/<provider>/<external id>` |
+| Store | Column | Row name | Limited to |
+|---|---|---|---|
+| `SiteSettings` | `SiteSettings.Value` | `site-setting/<key>` | the keys in `SiteSettingKeys.Secrets` |
+| `ChatWorkspaces` | `hatch.ChatWorkspaces.Token` | `chat-workspace/<provider>/<external id>` | every row |
+
+`SiteSettings` holds ordinary settings as well as secrets - a name, a time
+zone, a token limit - in the same table and column. The limit keeps the
+reseal from treating one of those as an older-form secret: without it, a
+value that happens to decode as base64 is silently resealed as garbage, and
+every other ordinary value logs a false "could not be opened" (HA-2774).
 
 To add one:
 
