@@ -54,6 +54,30 @@ attention panel raises a hand on a backup that failed or has gone stale.
 Unset `HATCH_BACKUP_DIR` and Hatch takes no backups: nothing is written
 anywhere. A copy somewhere other than this machine is yours to arrange.
 
+## The key and the backups
+
+Hatch seals the secrets it stores under [the secret key](the-secret-key), and
+the dump holds them as they are stored. Three things follow.
+
+- **A dump holds only sealed values once the reseal has run.** The reseal is the
+  first start with a key set: it rewrites every stored secret as `v2:<key id>.…`,
+  which is unreadable without the key. A dump taken **before** that start holds
+  the older form, which is only obfuscated, and anyone with the file can read
+  it. After the first start with a key, take a fresh dump, and delete the older
+  ones you do not need. [Upgrading](upgrading#secrets-are-sealed-from-this-version)
+  has that start.
+- **Restoring onto another install needs the same key.** Set `HATCH_SECRET_KEY`
+  to the key the dump was taken under before the restored Hatch starts. Without
+  it the board still opens and every issue is there, but each secret says *This
+  is saved, but it cannot be opened* until you enter it again. A dump taken
+  before a rotation, and not since, needs the older key as
+  `HATCH_PREVIOUS_SECRET_KEY` as well: see [changing the
+  key](the-secret-key#changing-the-key).
+- **Back the key up apart from the dumps.** Not in the folder `HATCH_BACKUP_DIR`
+  names, not in the place the dumps are copied to, and not in the database. A
+  key kept beside the dump it opens is no protection, and a dump without its key
+  restores everything but the secrets.
+
 ## Restoring
 
 Restoring is the same in reverse, with the API stopped for the length of it —
@@ -83,6 +107,9 @@ out which half arrived by using the board.
 
 The backup line's `>` works in either shell, as long as the PowerShell is 7 or
 newer — 5.1 writes UTF-16 there, which `psql` will not read back.
+
+Onto an install other than the one the dump came from, set the secret key
+first. See [the key and the backups](#the-key-and-the-backups).
 
 ## Doing it by hand instead
 
@@ -191,3 +218,30 @@ The table is quoted because the schema and the table are both case-sensitive
 names: `"hatch"."Issues"`. The two counts should match, give or take whatever was
 written since the dump. Run the drill once the nightly line is set up, and
 again after any change to the stack.
+
+**A count proves the dump restores, not that its secrets will open.** Those open
+only under the key they were sealed with, so check that too, before you run the
+`dropdb` line. Each stored secret begins `v2:` and the key's id, and the
+api's log names the id of the key it is running with.
+
+macOS / Linux:
+
+```
+docker compose exec db psql -U user -d hatch_drill -c 'SELECT "Key", split_part("Value", $$.$$, 1) FROM "SiteSettings" WHERE "Value" LIKE $$v2:%$$'
+docker compose logs api
+```
+
+PowerShell:
+
+```
+'SELECT "Key", split_part("Value", $$.$$, 1) FROM "SiteSettings" WHERE "Value" LIKE $$v2:%$$' | docker compose exec -T db psql -U user -d hatch_drill
+docker compose logs api
+```
+
+The first prints rows such as `ClaudeSubscriptionToken | v2:a1b2c3d4`. In the
+log, find `Resealed … stored secrets under key a1b2c3d4`. If the id after `v2:`
+is the id in the log, the key you hold is the one these were sealed under. If it
+is not, the key is wrong, and a Hatch restored from this dump would show each
+secret as unable to be opened, and log `It names key <id>` for it: that id is the
+one to look for in your copies. The last proof is to start a Hatch on the restored
+database with the key and read its Settings page, which says each secret is set.
