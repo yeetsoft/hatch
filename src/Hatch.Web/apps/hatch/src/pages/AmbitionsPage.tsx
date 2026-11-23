@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { PageHeader } from '@hatch/ui';
+import { Card, PageHeader } from '@hatch/ui';
 import { getAmbitions, getBallot, getStatuses } from '../api/client';
 import { ScopeGate } from '../components/ScopeGate';
 import { StatusPill } from '../components/StatusPill';
@@ -193,7 +193,7 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
   const drawn = SEGMENTS.map((s) => ({ ...s, n: s.count(row) })).filter((s) => s.n > 0);
 
   return (
-    <li className="hatch-ambition-row">
+    <Card as="li" className="hatch-ambition-row">
       <div className="hatch-ambition-part">
         <Link to={`/issues/${row.key}`} className="hatch-ambition-title">
           {row.title}
@@ -255,15 +255,17 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
                   <span className="hatch-progress-title">{epic.title}</span>
                   <span className="hatch-epics-in-flight-meta">
                     <ColumnPill statusId={epic.statusId} statusName={epic.statusName} statuses={statuses} />
-                    {epic.serves.length === 0 ? (
-                      <span className="text-muted">&mdash;</span>
-                    ) : (
-                      epic.serves.map((position) => (
-                        <span key={position} className="hatch-capability-badge">
-                          #{position}
-                        </span>
-                      ))
-                    )}
+                    <span className="hatch-ambition-serves">
+                      {epic.serves.length === 0 ? (
+                        <span className="text-muted">&mdash;</span>
+                      ) : (
+                        epic.serves.map((position) => (
+                          <span key={position} className="hatch-capability-badge">
+                            #{position}
+                          </span>
+                        ))
+                      )}
+                    </span>
                   </span>
                 </li>
               ))}
@@ -271,6 +273,6 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
           </>
         )}
       </div>
-    </li>
+    </Card>
   );
 }

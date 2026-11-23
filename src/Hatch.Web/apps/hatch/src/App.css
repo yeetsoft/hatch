@@ -4475,32 +4475,64 @@ input.hatch-inline-title-input {
 
 /* ---- The Ambitions page ----
 
-   One row per ambition, in three parts: the head, the capability bar, and the
+   One card per ambition, in three parts: the head, the capability bar, and the
    epics in flight. Side by side on a desk, stacked on a phone. The bar's
    segments grow by their counts from a zero basis, so the widths are in
    proportion without anything being summed. The legend's words carry the
-   meaning; the colours decorate them. */
+   meaning; the colours decorate them.
+
+   The three columns are set once, on the list, and every card reads them, so
+   a part starts at the same place on every card whatever the card holds. The
+   three first lines - the title and the two headings - share one size,
+   weight and line, and what follows each is spaced from the one margin-top,
+   so they sit level across a card.
+
+   The card rule is written as `.hatch-ambition-list > .hatch-ambition-row`
+   because the board's tile also wears `.hatch-card`, with a thinner pad, a
+   grab cursor and a hover ring, and a bare class would only tie with it. */
 .hatch-ambition-list {
+  --ambition-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
   list-style: none;
   margin: var(--sp-4) 0 0;
   padding: 0;
 }
 
-.hatch-ambition-row {
-  display: flex;
-  gap: var(--sp-4);
-  padding: var(--sp-4) 0;
-  border-top: 1px solid var(--line);
+.hatch-ambition-list > .hatch-ambition-row {
+  display: grid;
+  grid-template-columns: var(--ambition-columns);
+  align-items: start;
+  column-gap: var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--card);
+  cursor: default;
+}
+
+.hatch-ambition-list > .hatch-ambition-row:hover {
+  border-color: var(--line);
 }
 
 .hatch-ambition-part {
-  flex: 1 1 0;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.hatch-ambition-title {
+.hatch-ambition-part > p {
+  margin: var(--sp-2) 0 0;
+}
+
+.hatch-ambition-title,
+.hatch-ambition-heading {
+  margin: 0;
+  font-size: var(--t-body);
   font-weight: 700;
+  line-height: var(--lh-body);
+}
+
+.hatch-ambition-title {
+  display: block;
 }
 
 .hatch-ambition-head-meta {
@@ -4509,11 +4541,6 @@ input.hatch-inline-title-input {
   align-items: center;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
-}
-
-.hatch-ambition-heading {
-  margin: 0 0 var(--sp-2);
-  font-size: var(--t-body);
 }
 
 .hatch-ambition-holds {
@@ -4550,8 +4577,42 @@ input.hatch-inline-title-input {
   border-radius: var(--r-chip);
 }
 
+/* The epics in flight, as one grid for the whole list: key, title, column,
+   capability numbers. Each line and each line's meta are subgrids of it, so
+   the column pills start at the same place on every line of a card. The list
+   borrows .hatch-progress-list and its rows from the issue page's Progress
+   card, which keep their own rules; these name .hatch-ambition-epics first and
+   win on specificity. The phone puts them back to wrapping lines below. */
 .hatch-ambition-epics {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, max-content);
+  column-gap: var(--sp-2);
   margin-top: var(--sp-2);
+}
+
+.hatch-ambition-epics .hatch-progress-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+}
+
+.hatch-ambition-epics .hatch-progress-row:first-child {
+  border-top: none;
+}
+
+.hatch-ambition-epics .hatch-epics-in-flight-meta {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 3 / -1;
+  margin-left: 0;
+}
+
+.hatch-ambition-serves {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
 }
 
 /* What is waiting on the reader, above the rows: one line per hold question,
@@ -4578,8 +4639,24 @@ input.hatch-inline-title-input {
 }
 
 @media (max-width: 40rem) {
-  .hatch-ambition-row {
-    flex-direction: column;
+  .hatch-ambition-list > .hatch-ambition-row {
+    grid-template-columns: 1fr;
+    row-gap: var(--sp-4);
+  }
+
+  .hatch-ambition-epics {
+    display: block;
+  }
+
+  .hatch-ambition-epics .hatch-progress-row {
+    display: flex;
+    grid-column: auto;
+  }
+
+  .hatch-ambition-epics .hatch-epics-in-flight-meta {
+    display: flex;
+    grid-column: auto;
+    flex: 1 0 100%;
   }
 
   .hatch-ambition-strip-line {
