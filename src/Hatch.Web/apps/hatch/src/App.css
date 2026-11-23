@@ -2357,6 +2357,146 @@ button.hatch-card-stories:focus-visible {
     flex: 1 1 auto;
     min-width: 0;
   }
+
+  /* The strip on a phone: one row of the four numbers (BoardHealthRow), one
+     button, and under it - once tapped - the same tiles and window control
+     stacked in one column. Tokens only; 44px is a finger's height, the floor
+     the rest of this file holds a phone control to. */
+  .hatch-health-phone {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  /* Closed, the region holds nothing and must take no gap. */
+  .hatch-health-open:empty {
+    display: none;
+  }
+
+  .hatch-health-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .hatch-health-row:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  /* Four equal cells that may shrink below their text, which is cut rather
+     than wrapped, so the row never makes the page scroll sideways. */
+  .hatch-health-cell {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .hatch-health-cell-label,
+  .hatch-health-cell-second {
+    font-size: var(--t-label);
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .hatch-health-cell-number {
+    font-size: var(--t-heading);
+    font-weight: 600;
+    line-height: 1.1;
+  }
+
+  .hatch-health-cell--good .hatch-health-cell-second {
+    color: var(--success-ink);
+  }
+
+  .hatch-health-cell--warn .hatch-health-cell-second {
+    color: var(--warn-ink);
+  }
+
+  /* A chevron from two borders, so the row holds no SVG. It turns over when
+     the tiles are open. */
+  .hatch-health-chevron {
+    flex: none;
+    width: var(--sp-2);
+    height: var(--sp-2);
+    margin: 0 var(--sp-1) var(--sp-1);
+    border-right: 2px solid var(--muted);
+    border-bottom: 2px solid var(--muted);
+    transform: rotate(45deg);
+  }
+
+  .hatch-health-row.open .hatch-health-chevron {
+    margin-bottom: 0;
+    margin-top: var(--sp-1);
+    transform: rotate(-135deg);
+  }
+
+  /* Open: one column, the window control first, then a full-width tile each. */
+  .hatch-health-strip--stacked {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
+    gap: var(--sp-2);
+  }
+
+  .hatch-health-strip--stacked .hatch-health-window {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* A tile is its numbers on the left and the sparkline on the right, the
+     spark spanning every line of text. */
+  .hatch-health-strip--stacked .hatch-health-tile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'label spark'
+      'value spark'
+      'second spark'
+      'detail spark';
+    column-gap: var(--sp-3);
+  }
+
+  .hatch-health-strip--stacked .hatch-health-label {
+    grid-area: label;
+  }
+
+  .hatch-health-strip--stacked .hatch-health-value {
+    grid-area: value;
+  }
+
+  .hatch-health-strip--stacked .hatch-health-second {
+    grid-area: second;
+  }
+
+  .hatch-health-strip--stacked .hatch-health-detail {
+    grid-area: detail;
+  }
+
+  .hatch-health-strip--stacked .hatch-health-spark {
+    grid-area: spark;
+    align-self: center;
+    margin-top: 0;
+    min-width: 0;
+  }
+
+  /* Hide and show, inside Filters: the height its neighbours hold. */
+  .hatch-health-toggle {
+    height: var(--facet-h);
+  }
 }
 
 /* The Search page's own row: the box takes its own line, full width, and the
@@ -4460,32 +4600,64 @@ input.hatch-inline-title-input {
 
 /* ---- The Ambitions page ----
 
-   One row per ambition, in three parts: the head, the capability bar, and the
+   One card per ambition, in three parts: the head, the capability bar, and the
    epics in flight. Side by side on a desk, stacked on a phone. The bar's
    segments grow by their counts from a zero basis, so the widths are in
    proportion without anything being summed. The legend's words carry the
-   meaning; the colours decorate them. */
+   meaning; the colours decorate them.
+
+   The three columns are set once, on the list, and every card reads them, so
+   a part starts at the same place on every card whatever the card holds. The
+   three first lines - the title and the two headings - share one size,
+   weight and line, and what follows each is spaced from the one margin-top,
+   so they sit level across a card.
+
+   The card rule is written as `.hatch-ambition-list > .hatch-ambition-row`
+   because the board's tile also wears `.hatch-card`, with a thinner pad, a
+   grab cursor and a hover ring, and a bare class would only tie with it. */
 .hatch-ambition-list {
+  --ambition-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
   list-style: none;
   margin: var(--sp-4) 0 0;
   padding: 0;
 }
 
-.hatch-ambition-row {
-  display: flex;
-  gap: var(--sp-4);
-  padding: var(--sp-4) 0;
-  border-top: 1px solid var(--line);
+.hatch-ambition-list > .hatch-ambition-row {
+  display: grid;
+  grid-template-columns: var(--ambition-columns);
+  align-items: start;
+  column-gap: var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--card);
+  cursor: default;
+}
+
+.hatch-ambition-list > .hatch-ambition-row:hover {
+  border-color: var(--line);
 }
 
 .hatch-ambition-part {
-  flex: 1 1 0;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.hatch-ambition-title {
+.hatch-ambition-part > p {
+  margin: var(--sp-2) 0 0;
+}
+
+.hatch-ambition-title,
+.hatch-ambition-heading {
+  margin: 0;
+  font-size: var(--t-body);
   font-weight: 700;
+  line-height: var(--lh-body);
+}
+
+.hatch-ambition-title {
+  display: block;
 }
 
 .hatch-ambition-head-meta {
@@ -4494,11 +4666,6 @@ input.hatch-inline-title-input {
   align-items: center;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
-}
-
-.hatch-ambition-heading {
-  margin: 0 0 var(--sp-2);
-  font-size: var(--t-body);
 }
 
 .hatch-ambition-holds {
@@ -4535,8 +4702,42 @@ input.hatch-inline-title-input {
   border-radius: var(--r-chip);
 }
 
+/* The epics in flight, as one grid for the whole list: key, title, column,
+   capability numbers. Each line and each line's meta are subgrids of it, so
+   the column pills start at the same place on every line of a card. The list
+   borrows .hatch-progress-list and its rows from the issue page's Progress
+   card, which keep their own rules; these name .hatch-ambition-epics first and
+   win on specificity. The phone puts them back to wrapping lines below. */
 .hatch-ambition-epics {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, max-content);
+  column-gap: var(--sp-2);
   margin-top: var(--sp-2);
+}
+
+.hatch-ambition-epics .hatch-progress-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+}
+
+.hatch-ambition-epics .hatch-progress-row:first-child {
+  border-top: none;
+}
+
+.hatch-ambition-epics .hatch-epics-in-flight-meta {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 3 / -1;
+  margin-left: 0;
+}
+
+.hatch-ambition-serves {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
 }
 
 /* What is waiting on the reader, above the rows: one line per hold question,
@@ -4563,8 +4764,24 @@ input.hatch-inline-title-input {
 }
 
 @media (max-width: 40rem) {
-  .hatch-ambition-row {
-    flex-direction: column;
+  .hatch-ambition-list > .hatch-ambition-row {
+    grid-template-columns: 1fr;
+    row-gap: var(--sp-4);
+  }
+
+  .hatch-ambition-epics {
+    display: block;
+  }
+
+  .hatch-ambition-epics .hatch-progress-row {
+    display: flex;
+    grid-column: auto;
+  }
+
+  .hatch-ambition-epics .hatch-epics-in-flight-meta {
+    display: flex;
+    grid-column: auto;
+    flex: 1 0 100%;
   }
 
   .hatch-ambition-strip-line {

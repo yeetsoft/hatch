@@ -630,8 +630,9 @@ epic expanded.
 ## The health strip
 
 Above the columns, under the filter bar, a strip of four tiles shows in one look
-whether work is moving, piling up, stuck or waiting on a person. It is drawn on
-a desk-width screen; a phone does not draw it yet.
+whether work is moving, piling up, stuck or waiting on a person. On a phone it
+is one row of the four numbers that opens into the tiles when tapped; see
+[Hatch on your phone](hatch-on-your-phone).
 
 The strip has one window control: **2h**, **4h**, **8h**, **12h** or **24h**.
 It starts at 8h, and one choice sets every tile. Beside it a line says where the
@@ -672,7 +673,7 @@ the last answer drawn; it never blocks the board or puts an error over it.
 A board with no history shows no strip at all, with no placeholder and no error.
 
 The button at the right of the filter bar, beside the flow view, hides and
-shows the strip. While it is hidden nothing is read. Both choices, shown or
+shows the strip; on a phone it is inside **Filters** instead. While it is hidden nothing is read. Both choices, shown or
 hidden and the window, are remembered per browser, under `hatch.board.strip.shown`
 and `hatch.board.strip.window` in its local storage. A browser whose storage
 cannot be read opens with the strip shown at 8h.

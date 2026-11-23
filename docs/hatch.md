@@ -139,7 +139,8 @@ the next heading of the same level and stop.
   - [What it stops for](#what-it-stops-for) - What ends a run, and which
     stops are asked for?
   - [Runners on the board](#runners-on-the-board) - How does a runner
-    announce itself and get paused or ended from a browser?
+    announce itself, get paused or ended from a browser, and what does the
+    board keep of what it could not do?
   - [The console](#the-console) - What do the banners and pinned readout
     show during an increment?
 - [The level above the board](#the-level-above-the-board) - Which running
@@ -2553,6 +2554,16 @@ request waiting` chip, and its Pull request field says *Written, waiting to be
 opened* with the runner, the reason and the time, and the title and body behind
 a `<details>`; there is nothing on the page to edit or delete it.
 
+It rides on the review read as `ReviewCheckDto.WaitingPullRequest`
+(`WorkController.GetReview`, the same `WaitingPullRequest.ToDto` the issue
+carries), which is how the project's driver sees these rows at all; the queue
+words such a row's sentence the way the merges column's head has it - naming
+the driver that opens it, or saying no live runner is eligible to drive the
+project (`Dispatch.WaitingToBeOpened`) - and a waiting row counts as having a
+pull request for the judge's dead-end test, since something is about to open
+it. The driver opens it in the merge train's tick - see *A waiting pull request is opened by the
+driver* under [the merge train](#the-merge-train).
+
 ### WIP
 
 How full the [WIP section](#status) is right now — the read every later story
@@ -4254,6 +4265,12 @@ rather than by looking this one up. `Prefix` — the first 12 characters — is
 stored separately because it cannot be derived from a hash, and it is the only
 part of a secret it is safe to show; without it, a key list is a list of names
 somebody typed that you cannot check against the value in a config file.
+
+A runner's failures are kept in `RunnerFailures` (`EfHatchRunnerFailure`), the
+same bare `ApiKeyId` and no foreign key. It belongs to no project: it reaches
+none through a foreign key, carries no query filter, and is held to that by
+`QueryFilterModelAuditTests`, with the other runner tables. See
+[Failures](#failures).
 
 Revocation is a **column, not a `DELETE`**, unlike a grant: the audit trail
 names this key by a name that has to keep resolving, and "who held this key in
@@ -8096,7 +8113,17 @@ Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 `BeatAsync` throws the instruction away (`Runners.cs:482-484`). A retired row
 (`r.RetiredAt == null` in the same filter) is not a candidate either, however
 recent its `LastSeenAt`; its own next beat clears the retirement and makes it
-one again — see [Runners on the board](#runners-on-the-board). A row's
+one again — see [Runners on the board](#runners-on-the-board). A runner whose
+live loop sessions say the forge fails (`Forge == RunnerForge.Fails`, HA-2708)
+is not a candidate either: it can merge nothing, and electing it would hold
+the project until the stall watch passed it over, again for each pull
+request. The runner is the unit — one failing live session leaves the whole
+key name out, whether or not its agent is down — and a runner that said
+nothing or said `works` is a candidate as before. The word is read on every
+election, so the runner stops driving on the beat that says `fails` and drives
+again from the next beat after one that says `works`. A runner left out this
+way is never passed over: no `driver_stalled` event, no `TrainStalledDriver`.
+A row's
 `LastSeenAt` is moved by its own heartbeat and by the heartbeat or token
 release of the claim it holds, found by the claim's `ClaimedBy` matching
 the row's `Name`; that is what keeps a driver live and elected through a
@@ -8261,6 +8288,49 @@ the next tick finishes. A person's record, one the board does not say who made,
 and a filed outsider's are never moved: the issue in review is told once per
 runner run which ticket holds it, and neither issue changes. The filer runs
 after, so it finds the pull request recorded and never files it as an outsider.
+
+**A waiting pull request is opened by the driver.** In the same tick,
+`WaitingPullRequestOpener` (`WaitingPullRequests.cs`) runs right after the
+repair and before the filer, handed the repair's own instance so what it has
+told a ticket is shared, and the tick's list of open pull requests. A row is
+the opener's only where the runner drives its project, it is in review (no
+`MergeWork`, no `LandingWork`), its project lands by pull request, no pull
+request is recorded, `ReviewCheckDto.WaitingPullRequest` is set and exactly one
+checkout of this runner's is the repository the text names (`Checkouts.ToPoll`
+narrowed to the entry whose remote equals the stored one, ignoring case; with
+none stored, the one entry). The trunk is the repository's base branch, else
+`HATCH_BASE_BRANCH`, else what origin calls its trunk. In order:
+
+1. An open pull request from the stored branch (the repair's own match: open,
+   head ordinal, not from a fork, base the trunk) is handed to
+   `PullRequestRepair.PutRightAsync` - recorded, as the repair records it, and
+   nothing is opened. Two such pull requests write nothing.
+2. The issue is read again; a url recorded or the text gone ends it. Then
+   `IWorkspace.BranchHolds(branch, sha)` asks origin: `Heads()` (one
+   `ls-remote`) says gone or equal, and only a tip that differs is fetched, so
+   that `git merge-base --is-ancestor` can tell a branch that moved on from one
+   rewritten. A branch gone, or whose tip is neither the stored sha nor a
+   descendant of it, is left alone: one terminal line and one comment on the
+   ticket, each once per run (keyed on the key, branch, sha and state, and let
+   go again if the comment fails). A fetch that does not answer says one line,
+   no comment, and the next tick asks again. This is the one place the tick
+   reads git, and it moves no branch and no tree.
+3. `OpenPullRequestAsync` on the watched forge, with the stored title and body
+   unchanged - so a refused sign-in feeds the forge check, and the next
+   heartbeat says `fails` and the election moves on. gh answering that the pull
+   request already exists returns its url, so a retry is safe. A failure is one
+   line, `hatch: KEY - could not open its pull request - why`, and the text
+   stays for the next tick.
+4. The url is recorded with a patch - which clears the text - and the ticket's
+   chain is written into the pull request's body by the code `hatch pr` shares
+   (`PullRequestEnvelopes.TryWriteAsync`); an envelope failure is one line.
+   A failed record leaves the text and the pull request open, and the next tick
+   finds it in the list and records it.
+5. One comment names the runner that opened it, who left the text, and the
+   url.
+
+It asks nothing of a person, edits neither the title nor the body, and with no
+driver the text waits.
 
 #### Landing on the trunk
 
@@ -11650,6 +11720,63 @@ off build work in review, see [the dispatcher](#the-dispatcher), item 12d. A
 runner that said nothing is not judged. The `/work` reads accept `?forge=` and
 `?forgeWhy=` from the loop, and judge them the way they judge `?signing=`; the
 board stores nothing from a read.
+
+#### Failures
+
+The board keeps a row for each thing a runner could not do
+(`EfHatchRunnerFailure`, the `RunnerFailures` table), so a person sees what is
+failing now, since when, and what failed earlier. A row holds the key
+(`ApiKeyId`, bare, as on a session), the checkout (`Where`), the kind, what the
+tool said (`Why`, at most 200 characters), `BeganAt`, `LastReportedAt` and
+`EndedAt`, null while it stands. Rows hang off the key and the checkout, not
+the session row, so a restarted loop continues the open row it finds. A
+checkout nobody named is stored as `""`, never null: Postgres treats nulls as
+distinct, and a null would let the index below admit two open rows. The
+database holds the one rule that matters: a unique index on key, checkout and
+kind, filtered to `EndedAt IS NULL`, so at most one row is open for each.
+
+| Kind | Open while the beat says |
+| --- | --- |
+| `forge` | `forge` is `fails`; any other sent word ends it |
+| `signing` | `signing` is `fails`; `off` is a choice, not a failure |
+| `agent-signed-out` | `agentDownKind` is `signed-out` while `agentDown` is true |
+| `agent-not-starting` | `agentDownKind` is `not-starting` while `agentDown` is true |
+| `board-paused` | the board's own pause stands on the session |
+
+Out of usage and the hourly token cap are not failures: they end by
+themselves and keep their own wording.
+
+Only a loop session's heartbeat and the board's own pause write these rows;
+no route lets a key or a person open, edit or end one.
+`RunnerFailures.ReconcileAsync` runs on every `loop` beat of
+`POST /runners/sessions`, after the beat's own save, and a `once` beat touches
+nothing. For each kind the beat either says it fails, says it does not, or
+says nothing. Failing with no open row opens one; failing with an open row
+refreshes `LastReportedAt` and `Why`; not failing with an open row ends it at
+that beat; saying nothing leaves the row alone. The agent kinds are read from
+what the beat said, never from the session, and are left alone while a board
+pause stands, since the session ignores the runner's report then.
+`board-paused` is read from the session on every loop beat, which covers a
+pause that passed, one the lift route cleared, and a session seeded into a
+standing pause. The board writes the pause in
+`IssueClaimController.CountForPauseAsync`, which adds the row in the same save
+(`RunnerFailures.OpenBoardPauseAsync`); nothing lifts it, and the session's
+next beat ends it. Two beats racing to open the same row meet the index: the
+loser reads again and settles against the winner's row. The legacy
+`POST /runners/{name}` writes none of this.
+
+Ended rows are kept, newest fifty per key (`EfHatchRunnerFailure.History`);
+the beat that ends a fifty-first deletes the oldest. Nothing else sweeps. A row
+is **current** when it is open and its runner is being heard from at that
+checkout (`RunnerFailures.Current`: a live `loop` session at the same `Where`).
+A runner that has gone quiet shows no current failure, as it shows no other
+current fact, and its open rows are settled by its next beat; until then an
+open row of a quiet runner is in neither list. `RunnerDto.failures` carries the
+current rows, newest began first, and
+`GET /api/runners/{name}/failures` answers `{ current, earlier }`, `earlier`
+being the key's ended rows, newest ended first, under the rule
+`GET /api/runners/{name}` reads by. The table belongs to no project, like the
+other runner tables, and carries no query filter.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:

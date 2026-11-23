@@ -56,6 +56,32 @@ branch or more than one, and it never touches an issue in the merges column, one
 that lands on the trunk, one with a no-code declaration, or one whose project
 the runner does not drive.
 
+### A pull request that waits on its ticket
+
+When the runner that wrote a branch could not open its pull request, `hatch pr`
+leaves the title and body on the ticket. The runner that drives the project
+opens it from there, within a minute, with no session and nobody asked. The
+ticket then carries the url, the waiting text is gone, the pull request's body
+holds the ticket's chain the way `hatch pr` writes it, and one comment names the
+runner that opened it, who left the text, and the url.
+
+Before it opens anything, the runner looks. A pull request already open from the
+ticket's branch is recorded instead, and none is opened. A branch that is gone
+from origin, or whose tip is neither the commit the text was written at nor a
+descendant of it, is left alone: the runner says so once on the ticket and once
+in its terminal, and the text stays. The title and body are opened exactly as
+written.
+
+A failed open or record is one line in the runner's terminal and is tried again
+on the next check; a forge that cannot be reached also makes the runner report
+its forge as failing, so another runner takes over driving. The runner does not
+touch a ticket outside the review column, one in a project that lands on the
+trunk, or one whose repository it holds no single checkout of. With no runner to
+drive the project, the text waits, nobody is asked anything, and the queue says
+that no live runner is eligible to drive it. Once the pull request is open it is
+an ordinary one in review: a pre-approved ticket is merged by the loop as any
+other.
+
 ## The build check and the merge check
 
 Code decides here, not a prompt. The runner asks git whether the branch merges with the trunk, asks the forge how the build on its tip came out, and writes each answer onto the issue; the board reads what the issue holds and applies one rule. Both answers are kept per repository, because a project may bind several and a passing one must not hide a failing one.
@@ -125,7 +151,7 @@ Every ticket standing in a project's merges-PR column takes a place in that proj
 
 The head of the train is the first ticket in that order that is neither held nor being sent back to review. A ticket is held, and stepped over, when its pull request is closed or still a draft, when its branch is missing or ambiguous, when its pull request changes a playbook file or `.hatch/dependencies.json` — a person merges that one, whatever its pre-approval — or when its tip has had no checks past the settle window, on a project that requires them, and the forge does not call it clean. A ticket is sent back to review, and stepped over, when its branch conflicts with the trunk or its build failed on the sha just judged clean. A build that is still running is neither: that ticket stays the head, and the train waits on it until it settles. Every other ticket in the column shows a sentence naming the head and its own position behind it — `hatch queue` prints it too — and is not acted on until its turn comes, however actionable its own ticket would otherwise read.
 
-A pull request merged by hand on the forge closes its ticket without the train: any runner holding a checkout reports the merge within a tick, driver or not, and even when the branch is already deleted. Merging, bringing a branch current and sending one back wait for the elected driver.
+A pull request merged by hand on the forge closes its ticket without the train: any runner holding a checkout reports the merge within a tick, driver or not, and even when the branch is already deleted. Merging, bringing a branch current and sending one back wait for the elected driver. A runner whose forge sign-in has failed is not elected, so it never holds a project up; it drives again from the beat after it says the forge works.
 
 Only the head is touched on a tick. A clean branch whose build passed merges; a clean branch that is behind the trunk is brought current with it first, and waits for the next tick. Nothing behind the head moves, whatever its own branch and build would otherwise allow. The train acts in the repository the pull request is in, which its url names, even when the project binds several and that one is not the first; a runner without a checkout of that repository leaves the ticket to one that has.
 

@@ -38,6 +38,7 @@ export function BoardFilters({
   collapsed = false,
   leading,
   trailing,
+  inFilters,
 }: {
   filter: CardFilter;
   onChange: (next: CardFilter) => void;
@@ -67,6 +68,11 @@ export function BoardFilters({
   leading?: ReactNode;
   /** Placed at the right end of the row, on whichever line it wraps to; the row does not learn what it is. */
   trailing?: ReactNode;
+  /** Drawn at the end of what the Filters disclosure holds, so a control can
+      live there instead of in the header row - the phone's health strip hide
+      button (BoardPage), which keeps that row to one line. Off the phone there
+      is no disclosure and it follows the other facets. */
+  inFilters?: ReactNode;
 }) {
   const filtering = isFiltering(filter);
   const filers = filedByFacets(cards);
@@ -173,6 +179,8 @@ export function BoardFilters({
           </svg>
         </button>
       )}
+
+      {inFilters}
     </>
   );
 

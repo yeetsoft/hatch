@@ -197,7 +197,9 @@ public sealed record RunnerDeclaration(
     /// <summary>
     /// What a runner's live loop sessions say about its forge sign-in: the worst of their
     /// answers, see <see cref="RunnerForge.Worst"/>. Null when none said. Read by the
-    /// runners page, and by dispatch through <see cref="ForgeDeclarationOf"/>.
+    /// runners page, by dispatch through <see cref="ForgeDeclarationOf"/>, and by the merge
+    /// train's driver election, which leaves out a runner that says
+    /// <see cref="RunnerForge.Fails"/> (<c>Runners.LiveCandidatesAsync</c>).
     /// </summary>
     internal static (string State, string? Why)? ForgeOf(IEnumerable<EfHatchRunnerSession> live) =>
         RunnerForge.Worst(live.Where(s => s.Kind == EfHatchRunner.LoopKind).Select(s => (s.Forge, s.ForgeWhy)));

@@ -800,6 +800,77 @@ public class WorkControllerTests
         Assert.Null(named.Playbook);
     }
 
+    [Fact]
+    public async Task Work_ADraftOnTheShapingRow_CarriesItsDreamsAndTheFilesItsDescriptionLinks()
+    {
+        var (h, draft, _) = await DraftAsync(x => x.Inbox);
+
+        var older = new EfHatchDream { Body = "older\nwords", Author = "p", Source = "a chat", CreatedAt = Now.AddHours(-2), UpdatedAt = Now.AddHours(-2) };
+        var newer = new EfHatchDream { Body = "newer words", Author = "p", CreatedAt = Now.AddHours(-1), UpdatedAt = Now.AddHours(-1) };
+        var unrelated = new EfHatchDream { Body = "not on the draft", Author = "p", CreatedAt = Now, UpdatedAt = Now };
+        h.Db.Dreams.AddRange(older, newer, unrelated);
+        await h.Db.SaveChangesAsync();
+        h.Db.DreamThreads.AddRange(
+            new EfHatchDreamThread { DreamId = older.Id, IssueId = draft.Id, Actor = "p", At = Now },
+            new EfHatchDreamThread { DreamId = newer.Id, IssueId = draft.Id, Actor = "p", At = Now });
+
+        var stored = Guid.NewGuid();
+        var gone = Guid.NewGuid();
+        h.Db.Attachments.Add(new EfHatchAttachment
+        {
+            Id = stored, Bytes = [1, 2, 3, 4], ContentType = "image/png", FileName = "board.png", Size = 4, CreatedAt = Now,
+        });
+        draft.Description = $"See ![board](/api/images/{stored}) and [clip](/api/attachments/{gone}) and again /api/images/{stored}.";
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(draft), null, default));
+
+        var shaping = Assert.IsType<WorkShapingDto>(work.Shaping);
+        Assert.Equal([newer.Id, older.Id], shaping.Dreams.Select(d => d.Id));
+        Assert.Equal("newer words", shaping.Dreams[0].Body);
+        Assert.Null(shaping.Dreams[0].Source);
+        Assert.Equal("older\nwords", shaping.Dreams[1].Body);
+        Assert.Equal("a chat", shaping.Dreams[1].Source);
+
+        Assert.Equal(2, shaping.Files.Count);
+        Assert.Equal(new WorkFileDto(stored, "board.png", "image/png", 4), shaping.Files[0]);
+        Assert.Equal(new WorkFileDto(gone, null, null, null, Deleted: true), shaping.Files[1]);
+    }
+
+    [Fact]
+    public async Task Work_ADraftOnTheShapingRowWithNothingGiven_CarriesTwoEmptyLists()
+    {
+        var (h, draft, _) = await DraftAsync(x => x.Inbox);
+
+        var work = Value(await h.Work.GetWork(Key(draft), null, default));
+
+        var shaping = Assert.IsType<WorkShapingDto>(work.Shaping);
+        Assert.Empty(shaping.Dreams);
+        Assert.Empty(shaping.Files);
+    }
+
+    [Fact]
+    public async Task Work_AnythingButAShapingDispatch_CarriesNoShaping()
+    {
+        // A draft in the to-column is not on the shaping row.
+        var (h, draft, _) = await DraftAsync(x => x.Todo);
+        var dream = new EfHatchDream { Body = "words", Author = "p", CreatedAt = Now, UpdatedAt = Now };
+        h.Db.Dreams.Add(dream);
+        await h.Db.SaveChangesAsync();
+        h.Db.DreamThreads.Add(new EfHatchDreamThread { DreamId = dream.Id, IssueId = draft.Id, Actor = "p", At = Now });
+        var story = await h.FileAsync("story", "ordinary", h.InProgress);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null(Value(await h.Work.GetWork(Key(draft), null, default)).Shaping);
+        Assert.Null(Value(await h.Work.GetWork(Key(story), null, default)).Shaping);
+
+        // And with no flagged row at all, a draft in the from-column has none either.
+        h.Db.Playbooks.RemoveRange(h.Db.Playbooks.Where(p => p.ShapesAmbition));
+        var plain = await h.FileAsync("ambition", "plain", h.Inbox);
+        await h.Db.SaveChangesAsync();
+        Assert.Null(Value(await h.Work.GetWork(Key(plain), null, default)).Shaping);
+    }
+
     // ---- An ambition aimed at a question ----
 
     /// <summary>
@@ -12835,6 +12906,72 @@ public class WorkControllerTests
         Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
     }
 
+    private static void Wait(EfHatchIssue issue)
+    {
+        issue.WaitingPrTitle = "AER-1 Area: what changed";
+        issue.WaitingPrBody = "the body";
+        issue.WaitingPrBranch = "aer-1-a-thing";
+        issue.WaitingPrSha = new string('b', 40);
+        issue.WaitingPrRemote = "https://example.test/repo.git";
+        issue.WaitingPrRunner = "a runner";
+        issue.WaitingPrWhy = "the forge refused the push of a pull request";
+        issue.WaitingPrAt = DateTimeOffset.UnixEpoch;
+    }
+
+    [Fact]
+    public async Task ReviewRead_CarriesTheWaitingPullRequestOfARowThatHasOne_AndNullOnTheRest()
+    {
+        var h = await NewAsync();
+        var waiting = await h.FileAsync("story", "waits to be opened", h.Review, rank: 1024);
+        await h.FileAsync("story", "has nothing waiting", h.Review, rank: 2048);
+        Wait(waiting);
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        var written = Assert.IsType<WaitingPullRequestDto>(rows[0].WaitingPullRequest);
+        Assert.Equal("AER-1 Area: what changed", written.Title);
+        Assert.Equal("the body", written.Body);
+        Assert.Equal("aer-1-a-thing", written.Branch);
+        Assert.Equal(new string('b', 40), written.Sha);
+        Assert.Equal("https://example.test/repo.git", written.Remote);
+        Assert.Equal("a runner", written.Runner);
+        Assert.Null(rows[1].WaitingPullRequest);
+    }
+
+    [Fact]
+    public async Task ReviewQueue_ARowWithAWaitingPullRequestAndNoDriver_SaysNobodyIsEligibleToOpenIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "waits to be opened", h.Review);
+        Wait(issue);
+        await h.Db.SaveChangesAsync();
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "its pull request is written and waits, and no live runner is eligible to drive this project's merges",
+            entry.Blocked);
+    }
+
+    [Fact]
+    public async Task ReviewQueue_ARowWithAWaitingPullRequestAndALiveDriver_NamesTheDriverThatOpensIt()
+    {
+        var h = await NewAsync();
+        await AddLoopRunnerAsync(h, RunnerName(), row => row.Standing = true);
+        var issue = await h.FileAsync("story", "waits to be opened", h.Review);
+        Wait(issue);
+        await h.Db.SaveChangesAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.EndsWith(
+            " - its pull request is written and waits for the driver, last heard from 1 minute ago, to open it",
+            entry.Blocked);
+    }
+
     [Fact]
     public async Task MergeColumn_WithALiveStandingDriver_NamesItOnTheHeadsRow()
     {
@@ -12853,6 +12990,42 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default));
 
         Assert.Equal("its branch holds main and its build passes - for the driver, last heard from 1 minute ago", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WhoseOnlyLiveRunnerSaysTheForgeFails_ReadsTheNoDriverSentence()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", standing: true, forge: RunnerForge.Fails, forgeWhy: "signed out");
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge, the only runner cannot reach the forge", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WhoseOnlyLiveRunnerSaysTheForgeWorks_IsDriven()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, "here:/one", standing: true, forge: RunnerForge.Works);
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge, the runner reaches the forge", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.NotEqual("no live runner is eligible to drive this project's merges", entry.Blocked);
     }
 
     [Fact]

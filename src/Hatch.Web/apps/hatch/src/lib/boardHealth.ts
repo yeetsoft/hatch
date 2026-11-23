@@ -423,6 +423,65 @@ export function tileLabel(tile: Tile, readout: TileReadout): string {
   return parts.filter(Boolean).join(', ');
 }
 
+// ---- Compact readout ----
+
+/** One tile as the phone's closed row draws it: the figure, and a short second
+    line under it. Display only - the row's spoken label is `tileLabel` on the
+    full readout, so a screen reader hears the whole sentence. */
+export interface CompactReadout {
+  value: string;
+  second: string;
+  tone: Tone;
+}
+
+export type CompactReadouts = Record<Tile, CompactReadout>;
+
+/** The shortened second line. Each rule matches the one sentence `readout`
+    writes at rest, and falls back to the full line if that sentence ever
+    changes, so a rewording there shows long here rather than wrong. */
+function shorten(tile: Tile, readout: TileReadout): string {
+  const { second, glyph } = readout;
+
+  switch (tile) {
+    case 'moved': {
+      if (readout.arrow === 'flat') return `${glyph} same`;
+      const change = /^(\d+) vs prior /.exec(second);
+      return change ? `${glyph} ${change[1]}` : second;
+    }
+    case 'inFlight': {
+      const done = /(\d+) done$/.exec(second);
+      return done ? `${done[1]} done` : second;
+    }
+    case 'oldest': {
+      if (second === 'none past normal') return 'none old';
+      const past = /^(\d+) past normal$/.exec(second);
+      return past ? `${past[1]} old` : second;
+    }
+    case 'waiting': {
+      if (second === 'nothing waiting') return 'none';
+      if (second === 'oldest unknown') return 'unknown';
+      const age = /^oldest (.+)$/.exec(second);
+      return age ? `${age[1]} old` : second;
+    }
+  }
+}
+
+/**
+ * What each tile says in the phone's closed row. Built from the window at rest,
+ * `readout(answer, null)`, so its numbers are the full tiles' numbers; only the
+ * second line is shortened.
+ */
+export function compactReadout(answer: BoardHealth, locale?: string): CompactReadouts {
+  const full = readout(answer, null, locale);
+  const one = (tile: Tile): CompactReadout => ({
+    value: full[tile].value,
+    second: shorten(tile, full[tile]),
+    tone: full[tile].tone,
+  });
+
+  return { moved: one('moved'), inFlight: one('inFlight'), oldest: one('oldest'), waiting: one('waiting') };
+}
+
 // ---- Keyboard ----
 
 /**

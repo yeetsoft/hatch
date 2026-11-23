@@ -22,7 +22,7 @@ public sealed class RunnersCommandTests
         int? acceleratorDeviceCount = null, string? acceleratorBackend = null,
         string statusMode = RunnerStatusMode.All, IReadOnlyList<int>? statusIds = null,
         string? signing = null, string? signingWhy = null, bool preferred = false,
-        string? forge = null, string? forgeWhy = null) =>
+        string? forge = null, string? forgeWhy = null, IReadOnlyList<RunnerFailureDto>? failures = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
@@ -35,7 +35,7 @@ public sealed class RunnersCommandTests
             RefusedModels: refusedModels ?? [], AcceleratorMemoryBytes: acceleratorMemoryBytes,
             AcceleratorDeviceCount: acceleratorDeviceCount, AcceleratorBackend: acceleratorBackend,
             StatusMode: statusMode, StatusIds: statusIds ?? [], Signing: signing, SigningWhy: signingWhy, Preferred: preferred,
-            Forge: forge, ForgeWhy: forgeWhy);
+            Forge: forge, ForgeWhy: forgeWhy, Failures: failures);
 
     private static RunnerSessionDto ASession(
         string where = "Fry:/code/hatch", string? agent = "claude", string? os = "Darwin 23.6.0",
@@ -55,6 +55,18 @@ public sealed class RunnersCommandTests
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync([], default));
         Assert.Equal(RunnersCommand.EmptyWords, h.Said);
+    }
+
+    private static RunnerFailureDto AFailure(string kind, string? where, string? why, DateTimeOffset beganAt) =>
+        new(kind, where, why, beganAt, beganAt, null);
+
+    private static async Task<string> RenderedAsync(params RunnerDto[] rows)
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/runners", rows.ToList());
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
+        Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync([], default));
+        return h.Said;
     }
 
     [Fact]
@@ -738,6 +750,90 @@ public sealed class RunnersCommandTests
         var stale = lines.Single(l => l.StartsWith("stale", StringComparison.Ordinal));
         Assert.DoesNotContain("only", stale);
     }
+
+    [Fact]
+    public async Task A_current_failure_prints_a_failing_line_and_who_said_why()
+    {
+        var failure = AFailure(RunnerFailureKinds.Forge, "Fry:/code/hatch", "bad credentials", Now.AddMinutes(-5));
+        var lines = (await RenderedAsync(ARunner(failures: [failure]))).Split('\n');
+
+        Assert.Equal("  failing  cannot reach its forge  Fry:/code/hatch  5m ago", lines[2]);
+        Assert.Equal("  gh said: bad credentials", lines[3]);
+        Assert.Equal(4, lines.Length);
+
+        var quiet = (await RenderedAsync(ARunner(failures: [AFailure(RunnerFailureKinds.Forge, "Fry:/code/hatch", null, Now.AddMinutes(-5))]))).Split('\n');
+        Assert.Equal(3, quiet.Length);
+        Assert.DoesNotContain("said", string.Join("\n", quiet));
+    }
+
+    [Fact]
+    public async Task Two_failures_print_in_the_order_given_with_aligned_columns()
+    {
+        var said = await RenderedAsync(ARunner(failures: [
+            AFailure(RunnerFailureKinds.Signing, "Fry:/code/hatch", null, Now.AddMinutes(-2)),
+            AFailure(RunnerFailureKinds.AgentNotStarting, null, null, Now.AddHours(-1)),
+        ]));
+        var lines = said.Split('\n');
+
+        Assert.Equal(4, lines.Length);
+        Assert.Equal("  failing  cannot sign its commits  Fry:/code/hatch  2m ago", lines[2]);
+        Assert.Equal("  failing  agent will not start     -                1h ago", lines[3]);
+    }
+
+    [Fact]
+    public async Task A_runner_with_no_failures_prints_what_it_always_did()
+    {
+        var none = await RenderedAsync(ARunner(sessions: [ASession()]));
+        var empty = await RenderedAsync(ARunner(sessions: [ASession()], failures: []));
+        var failing = await RenderedAsync(ARunner(sessions: [ASession()], failures: [AFailure(RunnerFailureKinds.BoardPaused, null, "three ended in error", Now.AddMinutes(-5))]));
+
+        Assert.DoesNotContain("failing", none);
+        Assert.Equal(none, empty);
+        Assert.Equal(none + "\n  failing  paused by the board  -  5m ago\n  board said: three ended in error", failing);
+    }
+
+    [Fact]
+    public async Task A_runner_body_with_no_failures_field_reads_as_none()
+    {
+        var body = JsonSerializer.Serialize(new List<RunnerDto> { ARunner() }, Fixtures.Json);
+        Assert.Contains("\"failures\":[]", body);
+        body = body.Replace(",\"failures\":[]", "");
+        Assert.DoesNotContain("failures", body);
+
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Reply("GET", "/api/runners", HttpStatusCode.OK, body);
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
+
+        Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync([], default));
+        Assert.DoesNotContain("failing", h.Said);
+        Assert.Empty(h.Complained);
+    }
+
+    [Fact]
+    public async Task Json_carries_each_runners_failures()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
+        {
+            ARunner(failures: [AFailure(RunnerFailureKinds.Forge, "Fry:/code/hatch", "bad credentials", Now.AddMinutes(-5))]),
+        });
+
+        Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync(["--json"], default));
+
+        using var doc = JsonDocument.Parse(h.Said);
+        var failures = doc.RootElement[0].GetProperty("failures").EnumerateArray().ToList();
+        Assert.Single(failures);
+        Assert.Equal("forge", failures[0].GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public async Task An_unknown_failure_kind_prints_as_it_came()
+    {
+        var lines = (await RenderedAsync(ARunner(failures: [AFailure("sleepy", "Fry:/code/hatch", "zzz", Now.AddMinutes(-5))]))).Split('\n');
+
+        Assert.Equal("  failing  sleepy  Fry:/code/hatch  5m ago", lines[2]);
+        Assert.Equal("  said: zzz", lines[3]);
+    }
 }
 
 /// <summary>
@@ -881,4 +977,5 @@ public sealed class RunnersRefuseCommandTests
 
         Assert.Contains(RunnersCommand.NotAKeyRefusal, h.Complained);
     }
+
 }

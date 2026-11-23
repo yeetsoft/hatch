@@ -510,6 +510,142 @@ public sealed class PromptTests
         Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
     }
 
+    private static readonly Guid PictureId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private static readonly Guid ClipId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private static readonly Guid NotesId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+    private static readonly Guid GoneId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+
+    /// <summary>A draft ambition dispatched to the row that shapes it: moving to a column, with git writes denied as the seeded row does.</summary>
+    private static WorkDto ShapeWork(WorkShapingDto shaping) =>
+        Fixtures.Work(
+            "AER-12", issue: Fixtures.Issue("AER-12", type: "ambition"),
+            ambition: new WorkAmbitionDto("AER-1", "The ambition", ["Small steps."]),
+            shaping: shaping) with
+        {
+            ToStatus = Fixtures.Status(4, "Backlog"),
+            Playbook = Fixtures.Playbook(deniedTools: ["Bash(git push *)"]),
+        };
+
+    private static WorkShapingDto Given(
+        IReadOnlyList<WorkDreamDto>? dreams = null, IReadOnlyList<WorkFileDto>? files = null) =>
+        new(dreams ?? [], files ?? []);
+
+    private static string Section(string prompt)
+    {
+        var start = prompt.IndexOf("## What you were given", StringComparison.Ordinal);
+        Assert.True(start > 0);
+        return prompt[start..prompt.IndexOf("## Reaching Hatch", StringComparison.Ordinal)];
+    }
+
+    [Fact]
+    public void A_shaping_dispatch_lists_each_dream_in_full_and_each_file_with_its_command_after_the_principles()
+    {
+        var prompt = Prompt.Compose(
+            ShapeWork(Given(
+                [
+                    new WorkDreamDto(7, "First line.\nSecond line.\n\nFourth line.", "a chat"),
+                    new WorkDreamDto(3, "Plain.", null),
+                ],
+                [
+                    new WorkFileDto(PictureId, "board.png", "image/png", 2048),
+                    new WorkFileDto(NotesId, "notes.txt", "text/plain", 12)
+                ])),
+            repositories: [new Checkouts.RepositoryLine("C:/repo", "git@example.test:o/r.git", true, null)]);
+
+        var principles = prompt.IndexOf("## Principles", StringComparison.Ordinal);
+        var section = prompt.IndexOf("## What you were given", StringComparison.Ordinal);
+        var repositories = prompt.IndexOf("## Repositories", StringComparison.Ordinal);
+        Assert.True(principles > 0 && section > principles && repositories > section);
+
+        var text = Section(prompt);
+        Assert.Contains("Dream 7 (source: a chat)\n> First line.\n> Second line.\n>\n> Fourth line.\n", text, StringComparison.Ordinal);
+        Assert.Contains("Dream 3\n> Plain.\n", text, StringComparison.Ordinal);
+        Assert.True(text.IndexOf("Dream 7", StringComparison.Ordinal) < text.IndexOf("Dream 3", StringComparison.Ordinal));
+        Assert.Contains($"- board.png  image/png, 2,048 bytes  hatch attachment get {PictureId}", text, StringComparison.Ordinal);
+        Assert.Contains($"- notes.txt  text/plain, 12 bytes  hatch attachment get {NotesId}", text, StringComparison.Ordinal);
+        Assert.Contains("An image: fetch it, then open it with the file-reading tool.", text, StringComparison.Ordinal);
+        Assert.Contains("Never describe a file you did not open.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("A video:", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_shaping_dispatch_with_nothing_given_says_so_in_one_line()
+    {
+        var text = Section(Prompt.Compose(ShapeWork(Given())));
+
+        Assert.Equal(
+            "## What you were given\n\nThe person gave no dreams and no files. Shape the draft from its description alone.\n\n",
+            text);
+    }
+
+    [Fact]
+    public void The_paragraph_for_a_video_prints_only_where_one_is_listed()
+    {
+        var withVideo = Section(Prompt.Compose(ShapeWork(Given(files: [new WorkFileDto(ClipId, "tour.mp4", "video/mp4", 9000)]))));
+
+        Assert.Contains("A video: you may not be able to open one.", withVideo, StringComparison.Ordinal);
+        Assert.Contains("still", withVideo, StringComparison.Ordinal);
+        Assert.Contains("write in the", withVideo, StringComparison.Ordinal);
+        Assert.Contains("description that the video was not read", withVideo, StringComparison.Ordinal);
+        Assert.Contains("hatch ask AER-12 \"What does the video <name> show?\"", withVideo, StringComparison.Ordinal);
+        Assert.DoesNotContain("An image:", withVideo, StringComparison.Ordinal);
+
+        var withoutVideo = Section(Prompt.Compose(ShapeWork(Given(files: [new WorkFileDto(PictureId, "a.png", "image/png", 1)]))));
+        Assert.DoesNotContain("A video:", withoutVideo, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_deleted_file_is_listed_as_gone_and_gets_no_fetch_command_or_reading_rule()
+    {
+        var text = Section(Prompt.Compose(ShapeWork(Given(files: [new WorkFileDto(GoneId, null, null, null, Deleted: true)]))));
+
+        Assert.Contains($"- {GoneId}  deleted: the file is no longer stored. Say so on the ticket; do not describe it.", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("hatch attachment get", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("An image:", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Any other file", text, StringComparison.Ordinal);
+        Assert.Contains("Never describe a file you did not open.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_shaping_dispatch_ends_with_the_calls_it_makes_in_order()
+    {
+        var prompt = Prompt.Compose(ShapeWork(Given()));
+
+        var closing = prompt[prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal)..];
+        Assert.Contains("AER-12 should be in \"Backlog\" when you stop. End with these calls, in this order:", closing, StringComparison.Ordinal);
+
+        var add = closing.IndexOf("hatch capability add AER-12 \"<statement>\" --how \"<how to tell>\"", StringComparison.Ordinal);
+        var ask = closing.IndexOf("hatch ask AER-12 \"...\" --recommend \"...\" --option \"...\"", StringComparison.Ordinal);
+        var dreams = closing.IndexOf("hatch api PUT /api/issues/AER-12/dreams '{\"dreamIds\":[...]}'", StringComparison.Ordinal);
+        var move = closing.IndexOf("hatch move AER-12 \"Backlog\"", StringComparison.Ordinal);
+        Assert.True(add > 0 && ask > add && dreams > ask && move > dreams);
+        Assert.Contains("Only the operator moves work into a terminal column.", closing, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_shaping_dispatch_cuts_no_branch_and_opens_no_pull_request_on_the_seeded_row()
+    {
+        var branches = new[] { new BranchEntry { Path = "/checkouts/repo", Kind = BranchKind.None, Cut = "aer-12-x" } };
+        var prompt = Prompt.Compose(ShapeWork(Given()), branches: branches);
+
+        Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("cut `aer-12-x`", prompt, StringComparison.Ordinal);
+        Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void No_other_dispatch_carries_the_section_or_the_shaping_closing_calls()
+    {
+        foreach (var work in new[] { Fixtures.Work("AER-12"), PassWork(), ChangeWork(), AnswerWork() })
+        {
+            var prompt = Prompt.Compose(work);
+
+            Assert.DoesNotContain("## What you were given", prompt, StringComparison.Ordinal);
+            Assert.DoesNotContain("hatch capability add", prompt, StringComparison.Ordinal);
+            Assert.DoesNotContain("/dreams", prompt, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void A_dispatch_with_no_change_has_no_such_section_and_no_outcome_command()
     {
