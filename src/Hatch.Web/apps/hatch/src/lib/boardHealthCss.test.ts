@@ -91,6 +91,42 @@ describe('the board health strip stylesheet', () => {
   });
 });
 
+describe('the Oldest in flight tile', () => {
+  it.each([
+    ['healthy', '--success-fill'],
+    ['aging', '--warn'],
+    ['past', '--danger'],
+    ['nonormal', '--muted'],
+  ])('fills the %s band from %s, which both dark blocks define', (band, token) => {
+    expect(declarationsOf(`.hatch-health-band--${band}`)['fill']).toBe(`var(${token})`);
+    for (const block of darkBlocks) expect(block).toContain(`${token}:`);
+  });
+
+  it('draws the neutral band faint', () => {
+    expect(Number(declarationsOf('.hatch-health-band--nonormal')['opacity'])).toBeLessThan(0.5);
+  });
+
+  it('hides the peek until the number or the detail line is pointed at or focused', () => {
+    expect(declarationsOf('.hatch-health-peek')['display']).toBe('none');
+    for (const selector of [
+      '.hatch-health-value:hover ~ .hatch-health-peek',
+      '.hatch-health-value:focus ~ .hatch-health-peek',
+      '.hatch-health-detail:hover ~ .hatch-health-peek',
+      '.hatch-health-detail:focus-within ~ .hatch-health-peek',
+    ]) {
+      expect(declarationsOf(selector)['display']).toBe('block');
+    }
+  });
+
+  it('never lets the peek take a pointer', () => {
+    expect(declarationsOf('.hatch-health-peek')['pointer-events']).toBe('none');
+  });
+
+  it('spans the peek across a stacked tile', () => {
+    expect(declarationsOf('.hatch-health-strip--stacked .hatch-health-peek')['grid-column']).toBe('1 / -1');
+  });
+});
+
 describe('the Runners tile', () => {
   it('caps a lane at half a rem, over the lane count the body sets', () => {
     expect(declarationsOf('.hatch-health-lane-cells')['height']).toBe('min(0.5rem, calc(100% / var(--hatch-lanes, 1)))');

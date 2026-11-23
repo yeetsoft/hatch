@@ -27,6 +27,65 @@ function tiles(answer: BoardHealth, index: number | null, href = '/reports/cumul
   );
 }
 
+/** The Oldest tile alone, as the strip draws it. */
+function oldestTile(answer: BoardHealth, index: number | null): string {
+  const readouts = readout(answer, index);
+
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <OldestTile answer={answer} index={index} onIndex={() => {}} readout={readouts.oldest} />
+    </MemoryRouter>,
+  );
+}
+
+describe('the Oldest in flight tile', () => {
+  it('draws the age bands and no line', () => {
+    const html = oldestTile(sampleHealth(), null);
+
+    for (const band of ['healthy', 'aging', 'past']) {
+      expect(html).toMatch(new RegExp(`<polygon class="hatch-health-band hatch-health-band--${band}" points="[^"]+"`));
+    }
+    expect(html).not.toContain('hatch-health-line');
+    expect(html).not.toContain('hatch-health-dot');
+  });
+
+  it('draws the neutral band only when some column has no normal yet', () => {
+    expect(oldestTile(sampleHealth(), null)).not.toContain('hatch-health-band--nonormal');
+
+    const bars = sampleHealth().bars.map((bar) => ({ ...bar, ages: { ...bar.ages, noNormal: 1 } }));
+
+    expect(oldestTile(sampleHealth({ bars }), null)).toContain('hatch-health-band--nonormal');
+  });
+
+  it('links the detail line to the oldest issue at rest, and shows the peek', () => {
+    const html = oldestTile(sampleHealth(), null);
+
+    expect(html).toContain('href="/issues/HA-101"');
+    expect(html).toContain('HA-101 · In Progress');
+    expect(html).toContain('role="tooltip"');
+    expect(html).toContain('HA-101 The oldest issue in flight');
+    expect(html).toContain('Stood 4h in In Progress');
+    expect(html).toContain('normal 2h');
+    expect(html).toMatch(/class="hatch-health-value" tabindex="0" aria-describedby=/);
+  });
+
+  it('has no link and no peek on a marked bar, and says the split instead', () => {
+    const html = oldestTile(sampleHealth(), 4);
+
+    expect(html).not.toContain('/issues/');
+    expect(html).not.toContain('role="tooltip"');
+    expect(html).not.toContain('tabindex="0" aria-describedby');
+    expect(html).toContain(escape(readout(sampleHealth(), 4).oldest.detail));
+  });
+
+  it('has no link and no peek with no issue in flight', () => {
+    const html = oldestTile(sampleHealth({ inFlightIssues: [] }), null);
+
+    expect(html).not.toContain('/issues/');
+    expect(html).not.toContain('role="tooltip"');
+  });
+});
+
 describe('the five health tiles', () => {
   it('draws five tiles', () => {
     const html = tiles(sampleHealth(), null);

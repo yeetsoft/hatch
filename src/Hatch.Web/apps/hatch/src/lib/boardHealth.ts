@@ -18,7 +18,7 @@ import { formatSpan } from './cardAge';
 import { momentLabel } from './cumulativeFlow';
 import { withWindow } from './reportWindow';
 import { SCOPE, scopeSearch } from './scope';
-import type { BoardHealth, BoardHealthBar } from '../types';
+import type { BoardHealth, BoardHealthAges, BoardHealthBar, BoardHealthIssue } from '../types';
 
 /** The window lengths the strip offers, shortest first. */
 export const HEALTH_WINDOWS = ['2h', '4h', '8h', '12h', '24h'] as const;
@@ -126,34 +126,71 @@ export interface BandPolygons {
 
 const pointsOf = (points: [number, number][]): string => points.map(([x, y]) => `${x},${y}`).join(' ');
 
+/** How much of a bar one layer of a stack holds. */
+type Layer = (bar: BoardHealthBar) => number;
+
+/**
+ * Stacks `layers`, bottom first, one band each, scaled to the tallest bar's
+ * whole stack. Each band's string is its upper edge left to right, then its own
+ * lower edge back, every point at `momentX`. The scale never falls under 1, so
+ * an all-zero window stays finite. Empty strings for an answer with no bars.
+ */
+function stackBands(answer: BoardHealth, width: number, height: number, layers: Layer[]): string[] {
+  if (answer.bars.length === 0) return layers.map(() => '');
+
+  const below = (bar: BoardHealthBar, count: number): number =>
+    layers.slice(0, count).reduce((sum, layer) => sum + layer(bar), 0);
+  const scale = scaleOf(answer.bars.map((bar) => below(bar, layers.length)));
+  const y = (value: number) => round(height - (value / scale) * height);
+  const xs = answer.bars.map((_, i) => momentX(i, width));
+
+  return layers.map((_, k) => {
+    const top = answer.bars.map((bar, i): [number, number] => [xs[i], y(below(bar, k + 1))]);
+    const bottom = answer.bars.map((bar, i): [number, number] => [xs[i], y(below(bar, k))]).reverse();
+
+    return pointsOf([...top, ...bottom]);
+  });
+}
+
 /**
  * Where work stood, as three stacked bands: done at the bottom, in flight above
  * it, waiting on top. Scaled to the tallest of the three stacked, so the top
  * band's upper edge is the whole count at each bar.
- *
- * Each band's string is its upper edge left to right, then its own lower edge
- * back, every point at `momentX`. Empty strings for an answer with no bars.
  */
 export function bandPolygons(answer: BoardHealth, width: number, height: number): BandPolygons {
-  if (answer.bars.length === 0) return { done: '', inFlight: '', waiting: '' };
+  const [done, inFlight, waiting] = stackBands(answer, width, height, [
+    (bar) => bar.done,
+    (bar) => bar.inFlight,
+    (bar) => bar.waiting,
+  ]);
 
-  const tops = answer.bars.map((bar) => bar.done + bar.inFlight + bar.waiting);
-  const scale = scaleOf(tops);
-  const y = (value: number) => round(height - (value / scale) * height);
-  const xs = answer.bars.map((_, i) => momentX(i, width));
+  return { done, inFlight, waiting };
+}
 
-  const band = (lower: (bar: BoardHealthBar) => number, upper: (bar: BoardHealthBar) => number): string => {
-    const top = answer.bars.map((bar, i): [number, number] => [xs[i], y(upper(bar))]);
-    const bottom = answer.bars.map((bar, i): [number, number] => [xs[i], y(lower(bar))]).reverse();
+/** The oldest tile's four bands, each an SVG `points` string. */
+export interface AgeBandPolygons {
+  pastNormal: string;
+  aging: string;
+  healthy: string;
+  /** Empty unless some bar has an issue in a column with no normal yet. */
+  noNormal: string;
+}
 
-    return pointsOf([...top, ...bottom]);
-  };
+/**
+ * How old the in-flight issues were at each bar, as stacked bands: past normal
+ * on the baseline, aging above it, healthy above that, and - only where a
+ * column has no normal yet - a neutral band on top. Scaled to the tallest
+ * stack, so a bar with nothing in flight draws nothing.
+ */
+export function ageBandPolygons(answer: BoardHealth, width: number, height: number): AgeBandPolygons {
+  const [pastNormal, aging, healthy, noNormal] = stackBands(answer, width, height, [
+    (bar) => bar.ages.pastNormal,
+    (bar) => bar.ages.aging,
+    (bar) => bar.ages.healthy,
+    (bar) => bar.ages.noNormal,
+  ]);
 
-  return {
-    done: band(() => 0, (bar) => bar.done),
-    inFlight: band((bar) => bar.done, (bar) => bar.done + bar.inFlight),
-    waiting: band((bar) => bar.done + bar.inFlight, (bar) => bar.done + bar.inFlight + bar.waiting),
-  };
+  return { pastNormal, aging, healthy, noNormal: answer.bars.some((bar) => bar.ages.noNormal > 0) ? noNormal : '' };
 }
 
 /** A point on a chart, or null where there is none to mark. */
@@ -263,6 +300,9 @@ export interface TileReadout {
   glyph: string;
   /** Set only on the moved tile at rest. */
   arrow: Arrow | null;
+  /** What a screen reader hears after `detail` and a sighted reader does not
+      need said again; set only on the oldest tile at rest. */
+  spoken?: string;
 }
 
 export type Readouts = Record<Tile, TileReadout>;
@@ -327,8 +367,43 @@ function inFlight(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, lo
   };
 }
 
+/** The oldest issue in flight now, or null with none. The read lists them
+    longest stay first. */
+export const oldestIssue = (answer: BoardHealth): BoardHealthIssue | null => answer.inFlightIssues[0] ?? null;
+
+/** The split of in-flight issues by age, in words:
+    `2 past normal · 3 aging · 9 healthy`. Issues in a column with no normal
+    yet are added as `· 1 no normal yet`, and only when there are any. */
+export function splitSentence(ages: BoardHealthAges): string {
+  const parts = [`${ages.pastNormal} past normal`, `${ages.aging} aging`, `${ages.healthy} healthy`];
+  if (ages.noNormal > 0) parts.push(`${ages.noNormal} no normal yet`);
+
+  return parts.join(' · ');
+}
+
+/** What pointing at the oldest issue says, one line each. */
+export interface IssuePeek {
+  /** Its key and title. */
+  heading: string;
+  /** How long it has stood in its column. */
+  stood: string;
+  /** The column's normal. */
+  normal: string;
+}
+
+/** The oldest issue's peek: `HA-12 The title`, `Stood 4h 10m in In Progress`,
+    `normal 2h` - or `no normal yet` for a column without one. */
+export function issuePeek(issue: BoardHealthIssue): IssuePeek {
+  return {
+    heading: `${issue.key} ${issue.title}`,
+    stood: `Stood ${formatSpan(issue.seconds)} in ${issue.statusName}`,
+    normal: issue.normalSeconds === null ? 'no normal yet' : `normal ${formatSpan(issue.normalSeconds)}`,
+  };
+}
+
 /** The oldest-in-flight tile. `⚠` and the warning tone are the window's, so
-    they show at rest only. */
+    they show at rest only. At rest the detail line names the oldest issue; on a
+    bar it says that bar's split. */
 function oldest(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, locale?: string): TileReadout {
   const value = shown.oldestInFlightSeconds === null ? 'none' : formatSpan(shown.oldestInFlightSeconds);
 
@@ -336,7 +411,7 @@ function oldest(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, loca
     return {
       value,
       second: momentLabel(shown.start, answer.barMinutes, locale),
-      detail: '',
+      detail: splitSentence(shown.ages),
       tone: 'neutral',
       glyph: '',
       arrow: null,
@@ -344,14 +419,16 @@ function oldest(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, loca
   }
 
   const past = answer.pastNormal > 0;
+  const issue = oldestIssue(answer);
 
   return {
     value,
     second: past ? `${answer.pastNormal} past normal` : 'none past normal',
-    detail: '',
+    detail: issue ? `${issue.key} · ${issue.statusName}` : '',
     tone: past ? 'warn' : 'neutral',
     glyph: past ? '⚠' : '',
     arrow: null,
+    spoken: splitSentence(shown.ages),
   };
 }
 
@@ -433,6 +510,7 @@ export function tileLabel(tile: Tile, readout: TileReadout, hover?: string): str
   const parts = [`${tileName[tile]}: ${readout.value}`];
   parts.push(tile === 'moved' && readout.arrow ? changeSentence(readout) : readout.second);
   if (readout.detail) parts.push(readout.detail);
+  if (readout.spoken) parts.push(readout.spoken);
   if (hover) parts.push(hover);
 
   return parts.filter(Boolean).join(', ');
