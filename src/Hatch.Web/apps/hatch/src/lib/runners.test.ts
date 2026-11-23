@@ -41,6 +41,7 @@ import {
   sessionsByStart,
   earlierWords,
   failureWords,
+  releaseFailureWords,
   failuresNeedWhere,
   forgeFails,
   runnerFailing,
@@ -1791,5 +1792,21 @@ describe('acceleratorLabel', () => {
     expect(acceleratorLabel(session({ acceleratorBackend: 'none', acceleratorMemoryBytes: 1024 ** 3 }))).toBeNull();
     expect(acceleratorLabel(session({ acceleratorBackend: null }))).toBeNull();
     expect(acceleratorLabel(session())).toBeNull();
+  });
+});
+
+describe('releaseFailureWords', () => {
+  it.each([
+    ['agent-signed-out', 'its agent is signed out'],
+    ['agent-not-starting', 'its agent would not start'],
+    ['signing', 'it cannot sign commits'],
+    ['forge', 'it could not open a pull request'],
+  ])('words %s', (kind, reason) => {
+    expect(releaseFailureWords(kind, 'build-box')).toBe(`build-box could not go on - ${reason}`);
+  });
+
+  it('draws a kind this build does not know as it came', () => {
+    expect(releaseFailureWords('disk-full', 'build-box')).toBe('build-box hit a failure (disk-full)');
+    expect(releaseFailureWords('board-paused', 'build-box')).toBe('build-box hit a failure (board-paused)');
   });
 });

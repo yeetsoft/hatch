@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { RunnerFailuresView } from './RunnerFailures';
 import { resetClockWords } from '../lib/attention';
 import type { RunnerFailure } from '../types';
@@ -19,7 +20,11 @@ const row = (kind: string, over: Partial<RunnerFailure> = {}): RunnerFailure => 
 });
 
 const draw = (current: RunnerFailure[], earlier: RunnerFailure[]) =>
-  renderToStaticMarkup(<RunnerFailuresView current={current} earlier={earlier} now={NOW} />);
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <RunnerFailuresView current={current} earlier={earlier} now={NOW} />
+    </MemoryRouter>,
+  );
 
 describe('RunnerFailuresView', () => {
   it('draws a Failing list alone, with the reason where the board kept one', () => {
@@ -47,6 +52,22 @@ describe('RunnerFailuresView', () => {
     expect(html).toContain('>Failing</h2>');
     expect(html).toContain('>Earlier</h2>');
     expect(html.indexOf('Failing')).toBeLessThan(html.indexOf('Earlier'));
+  });
+
+  it('lists the tickets a failure cost, as links, in both lists', () => {
+    const html = draw(
+      [row('agent-signed-out', { tickets: ['HA-1', 'HA-2'] })],
+      [row('signing', { endedAt: at(-1_800_000), tickets: ['HA-3'] })],
+    );
+    expect(html).toContain('href="/issues/HA-1" data-discover="true">HA-1</a>');
+    expect(html).toContain('href="/issues/HA-2" data-discover="true">HA-2</a>');
+    expect(html).toContain('href="/issues/HA-3" data-discover="true">HA-3</a>');
+    expect(html.indexOf('HA-1')).toBeLessThan(html.indexOf('Earlier'));
+    expect(html.indexOf('HA-3')).toBeGreaterThan(html.indexOf('Earlier'));
+  });
+
+  it('draws no ticket row where tickets are absent or empty', () => {
+    expect(draw([row('forge')], [row('signing', { endedAt: at(-1_800_000), tickets: [] })])).not.toContain('hatch-runner-failure-tickets');
   });
 
   it('draws nothing for a runner with neither', () => {

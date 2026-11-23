@@ -1,8 +1,25 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card } from '@hatch/ui';
 import { getRunnerFailures } from '../api/client';
 import { earlierWords, failuresNeedWhere, failureWords } from '../lib/runners';
 import type { Runner, RunnerFailure } from '../types';
+
+/** The tickets a failure cost an increment, each a link. An older board sends none, and a failure that cost none draws nothing. */
+function CostTickets({ tickets }: { tickets?: string[] }) {
+  if (!tickets?.length) return null;
+  return (
+    <span className="hatch-runner-failure-tickets">
+      {' - cost '}
+      {tickets.map((key, i) => (
+        <span key={key}>
+          {i > 0 && ', '}
+          <Link to={`/issues/${encodeURIComponent(key)}`}>{key}</Link>
+        </span>
+      ))}
+    </span>
+  );
+}
 
 /**
  * The two lists on a runner's page: what it cannot do now and since when, and
@@ -35,6 +52,7 @@ export function RunnerFailuresView({
             {current.map((f) => (
               <li key={`${f.kind}|${f.where ?? ''}`} className="text-danger">
                 {failureWords(f, now, currentWhere)}
+                <CostTickets tickets={f.tickets} />
               </li>
             ))}
           </ul>
@@ -45,7 +63,10 @@ export function RunnerFailuresView({
           <h2 className="hatch-section-title">Earlier</h2>
           <ul className="hatch-runner-earlier">
             {earlier.map((f) => (
-              <li key={`${f.kind}|${f.where ?? ''}|${f.beganAt}`}>{earlierWords(f, now, earlierWhere)}</li>
+              <li key={`${f.kind}|${f.where ?? ''}|${f.beganAt}`}>
+                {earlierWords(f, now, earlierWhere)}
+                <CostTickets tickets={f.tickets} />
+              </li>
             ))}
           </ul>
         </>
