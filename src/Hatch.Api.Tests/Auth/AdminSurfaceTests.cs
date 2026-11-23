@@ -558,6 +558,15 @@ public class AdminSurfaceTests
         "ScopesController.GetScope",
         "ScopesController.PutScope",
 
+        // The chat workspaces and the bot tokens behind them: an admin's, and a
+        // person's alone, since a key that could read or write one could speak for
+        // the install. See ChatController.
+        "ChatController.GetWorkspaces",
+        "ChatController.ConnectWorkspace",
+        "ChatController.ReplaceToken",
+        "ChatController.RemoveWorkspace",
+        "ChatController.GetManifest",
+
         // A related edge, cut the same way and for a different reason: under
         // the loop's "people only" rule an assignee is a dispatch gate, so a
         // key that could write one could clear a person's name off a ticket and
@@ -839,6 +848,15 @@ public class AdminSurfaceTests
         "ScopesController.GetScope",
         "ScopesController.PutScope",
 
+        // The chat workspaces and the bot tokens behind them: an admin's, and a
+        // person's alone, since a key that could read or write one could speak for
+        // the install. See ChatController.
+        "ChatController.GetWorkspaces",
+        "ChatController.ConnectWorkspace",
+        "ChatController.ReplaceToken",
+        "ChatController.RemoveWorkspace",
+        "ChatController.GetManifest",
+
         // Choosing a home screen is a person's own, never a key's or a
         // keyless runner's. See MeHomeController.PutHome.
         "MeHomeController.PutHome",
@@ -1074,6 +1092,11 @@ public class AdminSurfaceTests
         "ScopesController.GetScopes",
         "ScopesController.GetScope",
         "ScopesController.PutScope",
+        "ChatController.GetWorkspaces",
+        "ChatController.ConnectWorkspace",
+        "ChatController.ReplaceToken",
+        "ChatController.RemoveWorkspace",
+        "ChatController.GetManifest",
     ];
 
     private static readonly string[] UserOutsideHatch =

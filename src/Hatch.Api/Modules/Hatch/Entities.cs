@@ -5273,3 +5273,45 @@ public class EfHatchRunnerFailureIssue
     /// <summary>When the release linked them.</summary>
     public DateTimeOffset At { get; set; }
 }
+
+/// <summary>
+/// A chat workspace Hatch is connected to: one Slack team and the bot token an
+/// admin gave for it. Belongs to no project - a workspace is the install's.
+/// </summary>
+/// <remarks>
+/// <para>Later tables that belong to a workspace hang off it with a cascade
+/// delete, so removing a workspace takes everything under it in the database,
+/// not in controller code. <c>ChatWorkspaceCascadeTests</c> holds that.</para>
+///
+/// <para>The token is stored through <c>SecretProtector</c> and never leaves
+/// the API: no DTO carries it.</para>
+/// </remarks>
+[Table("ChatWorkspaces")]
+[Index(nameof(Provider), nameof(ExternalId), IsUnique = true)]
+public class EfHatchChatWorkspace
+{
+    public const int MaxProviderLength = 24;
+    public const int MaxExternalIdLength = 64;
+    public const int MaxNameLength = 200;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    /// <summary>The chat service: <c>slack</c> today.</summary>
+    [MaxLength(MaxProviderLength)]
+    public required string Provider { get; set; }
+
+    /// <summary>The service's own id for the workspace - a Slack team id.</summary>
+    [MaxLength(MaxExternalIdLength)]
+    public required string ExternalId { get; set; }
+
+    /// <summary>What the service calls the workspace, as of the last token it accepted.</summary>
+    [MaxLength(MaxNameLength)]
+    public required string Name { get; set; }
+
+    /// <summary>The bot token, as <c>SecretProtector.Protect</c> wrote it.</summary>
+    public required string Token { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
