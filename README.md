@@ -142,7 +142,14 @@ make test        # test-api + test-hatch + test-web
 make browsers    # Playwright's browsers, once per machine and again when the package moves
 make test-e2e    # build the board bundle and run the browser cases, with `make db` up
 make run         # dotnet run, against a `make db` you started separately
+make up          # the whole stack in Docker
 ```
+
+`make run` and `make up` first make a development secret key in
+`src/Hatch.Api/.env.json` (git-ignored), at `Hatch:SecretKey`, if there is
+none, and never replace one. It is for development on this machine, and it
+wins over `HATCH_SECRET_KEY`. An install made any other way sets
+`HATCH_SECRET_KEY` itself.
 
 `make browsers` and `make test-e2e` drive the same browser cases
 [docs/browser-testing.md](docs/browser-testing.md) walks through by hand, down

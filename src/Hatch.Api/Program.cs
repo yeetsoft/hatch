@@ -48,7 +48,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 // dev (docs/ethos.md). Production injects the same keys as environment
 // variables, which the environment config provider picks up under the same
 // case-insensitive names.
-builder.Configuration.AddJsonFile(".env.json", optional: true);
+builder.Configuration.AddJsonFile(new Microsoft.Extensions.FileProviders.PhysicalFileProvider(builder.Environment.ContentRootPath, Microsoft.Extensions.FileProviders.Physical.ExclusionFilters.None), ".env.json", optional: true, reloadOnChange: false); // the default provider hides dot-prefixed files (HA-2747)
 builder.Services.AddSingleton<ISecrets>(new EnvSecrets(builder.Configuration));
 
 // Pooled factory so services that fan out concurrent DB work can each create
