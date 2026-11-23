@@ -31,6 +31,7 @@ public class BoardHealthStripTests(ITestOutputHelper output)
 
     private const string Strip = ".hatch-health-strip";
     private const string Moved = "[data-tile='moved']";
+    private const string Oldest = "[data-tile='oldest']";
     private const string Runners = "[data-tile='runners']";
     private const string Toggle = "button[aria-label='Show the health strip above the board']";
     private const string HealthRoute = "/api/board/health";
@@ -121,6 +122,39 @@ public class BoardHealthStripTests(ITestOutputHelper output)
             await deadline.BoundAsync("pressing Escape", () => page.Keyboard.PressAsync("Escape"));
             await harness.WaitForFunctionAsync(deadline, "waiting for Escape", "() => document.querySelectorAll('.hatch-health-moment').length === 0");
             Assert.Equal(rest, await Readout(harness, deadline));
+
+            // The Oldest tile draws its age bands, names its oldest issue in a link, shows the issue on a hover
+            // of that link, and says the split on a bar. The seeded board may have no column normals yet, so it
+            // asks for any band, not a past-normal one.
+            var drawn = await harness.EvaluateAsync<int>(
+                deadline, "counting the drawn age bands",
+                "() => [...document.querySelectorAll(\"" + Oldest + " polygon.hatch-health-band\")].filter((p) => (p.getAttribute('points') ?? '').trim() !== '').length");
+            Assert.True(drawn >= 1, "the Oldest tile draws no age band");
+            Assert.Equal(0, await page.Locator($"{Oldest} .hatch-health-line").CountAsync());
+
+            var issueLink = page.Locator($"{Oldest} .hatch-health-detail a");
+            Assert.Matches("^/issues/HLT-[0-9]+$", await issueLink.GetAttributeAsync("href") ?? "");
+            Assert.Matches("^HLT-[0-9]+ · .+$",(await issueLink.InnerTextAsync()).Trim());
+            Assert.Equal(0, await page.Locator($"{Oldest} .hatch-health-peek:visible").CountAsync());
+            await deadline.BoundAsync("pointing at the issue link", () => issueLink.HoverAsync());
+            await harness.WaitForVisibleAsync(deadline, $"{Oldest} .hatch-health-peek");
+            var peek = Assert.Single(await Texts(harness, deadline, $"{Oldest} .hatch-health-peek"));
+            Assert.Matches("HLT-[0-9]+ ", peek);
+            Assert.Contains("Stood ", peek);
+            await harness.ScreenshotAsync(deadline, "board-health-oldest-peek");
+            await deadline.BoundAsync("leaving the link", () => page.Mouse.MoveAsync(5, 5));
+            await harness.WaitForHiddenAsync(deadline, $"{Oldest} .hatch-health-peek");
+
+            var oldestSpark = await page.Locator($"{Oldest} [data-part='spark']").BoundingBoxAsync();
+            Assert.NotNull(oldestSpark);
+            await deadline.BoundAsync(
+                "hovering the last oldest bar", () => page.Mouse.MoveAsync((float)(oldestSpark.X + oldestSpark.Width - 2), (float)(oldestSpark.Y + oldestSpark.Height / 2)));
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for the split",
+                "() => /^[0-9]+ past normal · [0-9]+ aging · [0-9]+ healthy/.test(document.querySelector(\"" + Oldest + " [data-part='detail']\").textContent.trim())");
+            Assert.Equal(0, await page.Locator($"{Oldest} .hatch-health-detail a").CountAsync());
+            await deadline.BoundAsync("leaving the sparkline", () => page.Mouse.MoveAsync(5, 5));
+            await harness.WaitForFunctionAsync(deadline, "waiting for the hover to clear", "() => document.querySelectorAll('.hatch-health-moment').length === 0");
 
             // The Runners tile draws the seeded runner's lane with no name beside it, its cells saying whose
             // they are, and "working" in the hover list at the last bar.

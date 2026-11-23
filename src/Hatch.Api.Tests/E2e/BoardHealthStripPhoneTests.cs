@@ -75,6 +75,9 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
             Assert.True(closed.N("scrollWidth") <= closed.N("innerWidth"), $"the page scrolls sideways: {closed}");
             Assert.Equal(0, closed.N("cellsCut"));
 
+            // The Oldest cell of the closed row is as it was: a number, and a short "N old" under it.
+            Assert.Matches("^(none|[0-9]+) old$", Assert.Single(await Texts(harness, deadline, $"{Row} [data-tile='oldest'] [data-part='second']")));
+
             // The hide button is inside Filters, not in the header row.
             Assert.Equal(1, await page.Locator($"details.hatch-board-filters-more {Toggle}").CountAsync());
             Assert.Equal(0, await page.Locator($".hatch-filter-trailing {Toggle}").CountAsync());
@@ -128,6 +131,27 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
             output.WriteLine($"runners spark x={runnersSpark.X} w={runnersSpark.Width}; lane grid x={runnersGrid.X} w={runnersGrid.Width}");
             Assert.InRange(runnersGrid.X, runnersSpark.X - 1, runnersSpark.X + 1);
             Assert.InRange(runnersGrid.Width, runnersSpark.Width - 1, runnersSpark.Width + 1);
+
+            // The stacked Oldest tile draws the age bands and names its oldest issue, since a phone has no hover.
+            const string stackedOldest = ".hatch-health-strip--stacked [data-tile='oldest']";
+            var drawn = await harness.EvaluateAsync<int>(
+                deadline, "counting the drawn age bands",
+                "() => [...document.querySelectorAll(" + "\"" + stackedOldest + " polygon.hatch-health-band\"" + ")].filter((p) => (p.getAttribute('points') ?? '').trim() !== '').length");
+            Assert.True(drawn >= 1, "the stacked Oldest tile draws no age band");
+            var issueLink = page.Locator($"{stackedOldest} .hatch-health-detail a");
+            Assert.Matches("^/issues/HLT-[0-9]+$", await issueLink.GetAttributeAsync("href") ?? "");
+            Assert.Matches("^HLT-[0-9]+ · .+$", (await issueLink.InnerTextAsync()).Trim());
+            Assert.Equal(1, await page.Locator($"{stackedOldest} .hatch-health-peek").CountAsync());
+
+            var oldestSpark = await page.Locator($"{stackedOldest} [data-part='spark']").BoundingBoxAsync();
+            Assert.NotNull(oldestSpark);
+            await deadline.BoundAsync(
+                "pointing at the last oldest bar", () => page.Mouse.MoveAsync((float)(oldestSpark.X + oldestSpark.Width - 2), (float)(oldestSpark.Y + oldestSpark.Height / 2)));
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for the split",
+                "() => /^[0-9]+ past normal · [0-9]+ aging · [0-9]+ healthy/.test(document.querySelector(" + "\"" + stackedOldest + " [data-part='detail']\"" + ").textContent.trim())");
+            await deadline.BoundAsync("leaving the sparkline", () => page.Mouse.MoveAsync(2, 2));
+            await harness.WaitForFunctionAsync(deadline, "waiting for the mark to clear", "() => document.querySelectorAll('.hatch-health-moment').length === 0");
             await harness.ScreenshotAsync(deadline, "board-health-phone-open");
 
             // Tapping a tile - its chart, or a blank part of it - opens its dialog across the whole width, and
