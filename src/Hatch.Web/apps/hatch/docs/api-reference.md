@@ -1225,6 +1225,14 @@ the `entries` that `GET /issues/{key}/changes` returns for it, and the `epics`
 to weigh, each with `key`, `title`, `column` and `serves`, the positions of the
 capabilities the epic serves. The work-log row the runner posts carries the same
 `id` as `changeEventId`.
+The `WorkDto` also carries `shaping`, null on every dispatch that is not for
+shaping a draft ambition, and on an older board's answer. It holds `dreams`, the
+dreams `GET /issues/{key}/dreams` lists, each with `id`, `body` and `source`, and
+`files`, every `/api/attachments/{id}` and `/api/images/{id}` link in the
+description, once each, with `id`, `fileName`, `contentType`, `size` and `deleted`
+- true, with the rest null, for a file that is no longer stored. It is read when
+the answer is built and nothing is stored for it. With nothing given it is
+present with two empty lists.
 
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus
