@@ -110,6 +110,13 @@ If the older API fails against the newer schema, put the data back too:
 restore the backup taken before the upgrade, as described under
 [Restoring](backup-restore-and-replication#restoring).
 
+**Sealed secrets do not roll back.** An older build does not know the sealed
+form. It reads a sealed value as not set, so a runner that needs it says it has
+no credential. The way back is to enter the
+secrets again on the older build, or to restore the backup taken before the
+upgrade, which still holds them as the older build wrote them. See [Secrets are
+sealed from this version](#secrets-are-sealed-from-this-version).
+
 ## What an upgrade drops
 
 Hatch no longer carries the Gather, Photos, Quill and Storage apps, or the
@@ -143,6 +150,48 @@ back: the older migration history is still there, but the tables are not. If
 anything in them is worth keeping, dump it first with
 [the by-hand `pg_dump`](backup-restore-and-replication#doing-it-by-hand-instead),
 before you pull.
+
+## Secrets are sealed from this version
+
+Hatch seals the secrets it stores, under a key you set: `HATCH_SECRET_KEY`. An
+install that already holds a Claude token, a Codex API key or a Grok Build API
+key meets this on the way up. [The secret key](the-secret-key) is the page about
+the key itself.
+
+1. **Take the backup first.** It is the one copy that still holds your secrets
+   as the older build wrote them, which is what [Rolling
+   back](#rolling-back) needs.
+2. **Upgrade as usual.** With no key set, nothing breaks. The stored secrets
+   keep opening, a runner keeps getting its credential, and the API warns once
+   at start: `HATCH_SECRET_KEY is not set, so secrets cannot be saved until one
+   is set.`
+3. **Saving a new secret is refused until a key is set.** The Settings page says
+   *Secrets cannot be saved until HATCH_SECRET_KEY is set.* Making a key and
+   where it goes is [Set the secret key](getting-started#set-the-secret-key).
+4. **The first start with a key seals everything already stored.** Set the key
+   and run `docker compose up -d`, then read the api's log:
+
+   ```
+   docker compose logs api
+   ```
+
+   It says, once:
+
+   ```
+   Resealed 2 stored secrets under key <id>; 0 could not be opened.
+   ```
+
+   `<id>` names the key and is not the key. A secret it could not open is left
+   as it is, and has a line of its own naming its row. That is
+   [a secret that cannot be opened](troubleshooting#the-settings-page-says-a-secret-cannot-be-opened),
+   not a failed upgrade.
+
+The reseal runs in the api when it serves, never in `migrate`, and runs on every
+start: with everything already sealed it has nothing to do. If it fails, the
+failure is logged, the API still starts, and the next start tries again.
+
+**Take a backup after that start,** too. A dump taken before it holds the
+secrets in their older form, which anyone with the file can read.
 
 ## Settings renamed from `Apps__*`
 

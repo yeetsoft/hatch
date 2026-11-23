@@ -72,6 +72,43 @@ $env:HATCH_PORT=9090; docker compose up -d
 Wherever this page writes `<your-hatch-origin>`, it means whatever that address
 turned out to be — `http://localhost:8080` unless you moved it.
 
+## Set the secret key
+
+The board runs without one, and everything above works. A key is needed for
+one thing: **saving a credential**, such as the Claude token the container
+runner uses. Hatch seals each stored secret under `HATCH_SECRET_KEY`, and
+refuses to save one until a key is set. Set it before you save the first.
+
+Make one. macOS and Linux:
+
+```
+openssl rand -base64 32
+```
+
+PowerShell, 5.1 or 7:
+
+```
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)
+```
+
+Either prints one line. Put it in a file named `.env`, beside `compose.yaml`
+(git ignores it), as one line:
+
+```
+HATCH_SECRET_KEY=<your-secret-key>
+```
+
+Then apply it:
+
+```
+docker compose up -d
+```
+
+**Keep a copy of the key somewhere that is not the database or its backups**,
+a password manager for instance. A key kept only beside the data it protects
+protects nothing, and a lost key cannot be made again. What the key does, how
+to change it, and what losing it costs are on [the secret key](the-secret-key).
+
 ## Opening the board and naming yourself
 
 Open that address. That is the board, and it is empty in a particular way: the
