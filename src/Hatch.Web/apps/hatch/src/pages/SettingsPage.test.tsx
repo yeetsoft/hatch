@@ -2,26 +2,39 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { CredentialCard, HomeScreenCard, TokenBudgetCard } from './SettingsPage';
-import { defaultTokensOf } from '../lib/hatchSettings';
+import { defaultTokensOf, UNREADABLE_WORDS } from '../lib/hatchSettings';
 import type { DefaultTokenField } from '../lib/hatchSettings';
 import type { Home } from '../lib/homeScreen';
-import type { HatchSettings } from '../types';
+import type { HatchSettings, SecretState } from '../types';
 
 /* No DOM runner, so neither useMe nor useLoaded resolves - the card is
    rendered from props, the way CumulativeFlowPage.test.tsx renders
    CumulativeFlowBody. */
 
-const settingsOf = (over: Partial<HatchSettings> = {}): HatchSettings => ({
-  claudeSubscriptionToken: '',
-  codexApiKey: '',
-  xaiApiKey: '',
-  localPersonNameApplies: false,
-  localPersonName: '',
-  defaultMaxTokens: null,
-  defaultMaxTokensPerHour: null,
-  canSaveSecrets: true,
-  ...over,
-});
+/** The states follow the dots unless a test says otherwise, so a test that sets a credential need not say twice that it is set. */
+const settingsOf = (over: Partial<HatchSettings> = {}): HatchSettings => {
+  const base = {
+    claudeSubscriptionToken: '',
+    codexApiKey: '',
+    xaiApiKey: '',
+    localPersonNameApplies: false,
+    localPersonName: '',
+    defaultMaxTokens: null,
+    defaultMaxTokensPerHour: null,
+    canSaveSecrets: true,
+    ...over,
+  };
+  const stateOf = (dots: string): SecretState => (dots === '' ? 'unset' : 'set');
+  return {
+    ...base,
+    secretStates: {
+      claudeSubscriptionToken: stateOf(base.claudeSubscriptionToken),
+      codexApiKey: stateOf(base.codexApiKey),
+      xaiApiKey: stateOf(base.xaiApiKey),
+      ...over.secretStates,
+    },
+  };
+};
 
 const render = (over: {
   settings?: HatchSettings;
@@ -157,6 +170,41 @@ describe('CredentialCard', () => {
     const html = renderCard({ settings: settingsOf({ canSaveSecrets: false, codexApiKey: '••••••••' }) });
 
     expect(buttonOf(html, 'Remove API key')).not.toContain('disabled=""');
+  });
+
+  const unreadable = settingsOf({
+    secretStates: { claudeSubscriptionToken: 'unset', codexApiKey: 'unreadable', xaiApiKey: 'unset' },
+  });
+
+  it('with a secret that cannot be opened, says so beside the field and links troubleshooting', () => {
+    const html = renderCard({ settings: unreadable });
+
+    expect(html).toContain(UNREADABLE_WORDS);
+    expect(html).toContain('href="/docs/troubleshooting"');
+    expect(html).toContain('Saved but unreadable');
+  });
+
+  it('with a secret that cannot be opened, leaves Remove on and Save for a new value', () => {
+    const html = renderCard({ settings: unreadable, draft: 'sk-new' });
+
+    expect(buttonOf(html, 'Remove API key')).not.toContain('disabled=""');
+    expect(buttonOf(html, 'Save API key')).not.toContain('disabled=""');
+  });
+
+  it('with a secret set and readable, or none, does not say it cannot be opened', () => {
+    expect(renderCard({ settings: settingsOf({ codexApiKey: '••••••••' }) })).not.toContain(UNREADABLE_WORDS);
+    expect(renderCard()).not.toContain(UNREADABLE_WORDS);
+  });
+
+  it('with none set, keeps Remove off', () => {
+    expect(buttonOf(renderCard(), 'Remove API key')).toContain('disabled=""');
+  });
+
+  it('on a Hatch with no key and a secret that cannot be opened, says both sentences', () => {
+    const html = renderCard({ settings: { ...unreadable, canSaveSecrets: false } });
+
+    expect(html).toContain(UNREADABLE_WORDS);
+    expect(html).toContain('Secrets cannot be saved until HATCH_SECRET_KEY is set.');
   });
 });
 

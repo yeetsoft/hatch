@@ -127,7 +127,7 @@ public class SettingsController(
         var credential = await credentials.GetAsync(agent, ct);
         if (credential is null) return NoContent();
 
-        return new CredentialDto(CredentialWire.Wrap(credential));
+        return new CredentialDto(CredentialWire.Wrap(credential.Reveal()));
     }
 
     /// <summary>
@@ -286,9 +286,9 @@ public class SettingsController(
         var settings = await siteSettings.GetAsync(ct);
 
         return new HatchSettingsDto(
-            // The snapshot has already deobfuscated the token, so "is it set"
-            // is asked of the plaintext rather than of the stored form. Same
-            // answer, and the value itself never leaves this method.
+            // The snapshot holds each secret opened, so "is it set" is asked of
+            // the secret itself (null when there is none) rather than of the
+            // stored form. Same answer, and the value is never read out here.
             ClaudeSubscriptionToken: RedactedIfSet(settings.ClaudeSubscriptionToken),
             LocalPersonNameApplies: !authOptions.Value.Enabled,
             LocalPersonName: settings.LocalPersonName ?? "",
@@ -296,10 +296,23 @@ public class SettingsController(
             XaiApiKey: RedactedIfSet(settings.XaiApiKey),
             DefaultMaxTokens: settings.RunnerDefaultMaxTokens,
             DefaultMaxTokensPerHour: settings.RunnerDefaultMaxTokensPerHour,
-            CanSaveSecrets: protector.CanSeal);
+            CanSaveSecrets: protector.CanSeal,
+            SecretStates: new SecretStatesDto(
+                ClaudeSubscriptionToken: StateOf(settings, SiteSettingKeys.ClaudeSubscriptionToken, settings.ClaudeSubscriptionToken),
+                CodexApiKey: StateOf(settings, SiteSettingKeys.CodexApiKey, settings.CodexApiKey),
+                XaiApiKey: StateOf(settings, SiteSettingKeys.XaiApiKey, settings.XaiApiKey)));
     }
 
-    private static string RedactedIfSet(string? secret) => string.IsNullOrWhiteSpace(secret) ? "" : Redacted;
+    private static string RedactedIfSet(OpenedSecret? secret) => secret is null ? "" : Redacted;
+
+    /// <summary>
+    /// Set when the secret is there; unreadable when something is stored that
+    /// did not open; unset otherwise. The plaintext is asked about and never returned.
+    /// </summary>
+    private static string StateOf(SiteSettingsSnapshot settings, string key, OpenedSecret? secret) =>
+        secret is not null ? SecretStates.Set
+        : settings.IsUnreadable(key) ? SecretStates.Unreadable
+        : SecretStates.Unset;
 }
 
 /// <summary>
@@ -319,6 +332,11 @@ public class SettingsController(
 /// <param name="DefaultMaxTokens">The site-wide cap on tokens a runner with none of its own runs under, or null when none is set.</param>
 /// <param name="DefaultMaxTokensPerHour">The site-wide cap on tokens per hour a runner with none of its own runs under, or null when none is set.</param>
 /// <param name="CanSaveSecrets">Whether a secret can be saved: true when <c>HATCH_SECRET_KEY</c> is set. False means a save carrying one is refused; removing one still works.</param>
+/// <param name="SecretStates">
+/// Which of the three secrets is set, unset, or stored but unreadable. The dotted
+/// fields above keep their meaning (dots when set and readable, empty otherwise);
+/// this is how a page tells "not set" from "set, but this Hatch cannot open it".
+/// </param>
 public record HatchSettingsDto(
     string ClaudeSubscriptionToken,
     bool LocalPersonNameApplies,
@@ -327,7 +345,24 @@ public record HatchSettingsDto(
     string XaiApiKey,
     long? DefaultMaxTokens,
     long? DefaultMaxTokensPerHour,
-    bool CanSaveSecrets);
+    bool CanSaveSecrets,
+    SecretStatesDto SecretStates);
+
+/// <summary>The three states a secret setting reports. One place, so the API and its tests agree on the words.</summary>
+public static class SecretStates
+{
+    /// <summary>Nothing is stored, or what is stored is blank.</summary>
+    public const string Unset = "unset";
+
+    /// <summary>A value is stored and opens.</summary>
+    public const string Set = "set";
+
+    /// <summary>A value is stored and cannot be opened: wrong key, lost key, damaged text, or a scheme this build does not know.</summary>
+    public const string Unreadable = "unreadable";
+}
+
+/// <summary>One of <see cref="SecretStates"/> for each secret the Settings page can set.</summary>
+public record SecretStatesDto(string ClaudeSubscriptionToken, string CodexApiKey, string XaiApiKey);
 
 /// <summary>
 /// An edit to any of the settings, or several. Null - or omitted - leaves one
