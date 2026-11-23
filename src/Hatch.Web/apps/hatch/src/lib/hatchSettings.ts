@@ -1,4 +1,4 @@
-import type { HatchSettings, HatchSettingsWriteRequest, Me } from '../types';
+import type { HatchSettings, HatchSettingsWriteRequest, Me, SecretState } from '../types';
 import { parseTokenCount, thousands } from './workLog';
 import { tokensWire } from './runners';
 
@@ -20,6 +20,25 @@ export type CredentialField = 'claudeSubscriptionToken' | 'codexApiKey' | 'xaiAp
 /** Whether a credential is already stored. The server answers dots or nothing, never the credential. */
 export const credentialIsSet = (settings: HatchSettings, field: CredentialField): boolean => settings[field] !== '';
 
+/** What the server says of a credential: unset, set, or stored but unreadable. */
+export const credentialState = (settings: HatchSettings, field: CredentialField): SecretState =>
+  settings.secretStates[field];
+
+/**
+ * Whether a credential is stored but this Hatch cannot open it. It reads as not
+ * set to everything that uses it, so `credentialIsSet` is false too - this is
+ * how the page tells the two apart.
+ */
+export const credentialIsUnreadable = (settings: HatchSettings, field: CredentialField): boolean =>
+  credentialState(settings, field) === 'unreadable';
+
+/** Whether there is anything stored to remove: a credential that is set, or one that is stored and unreadable. */
+export const credentialIsRemovable = (settings: HatchSettings, field: CredentialField): boolean =>
+  credentialState(settings, field) !== 'unset';
+
+/** The one sentence the page says beside a secret field when what is stored cannot be opened. */
+export const UNREADABLE_WORDS = 'This is saved, but it cannot be opened. Enter it again, or remove it.';
+
 /**
  * What the empty credential input says.
  *
@@ -28,7 +47,11 @@ export const credentialIsSet = (settings: HatchSettings, field: CredentialField)
  * eight bullet characters as their credential.
  */
 export const credentialPlaceholder = (settings: HatchSettings, field: CredentialField): string =>
-  credentialIsSet(settings, field) ? 'A token is set — type a new one to replace it' : 'Not set';
+  credentialIsUnreadable(settings, field)
+    ? 'Saved but unreadable — type a new one to replace it'
+    : credentialIsSet(settings, field)
+      ? 'A token is set — type a new one to replace it'
+      : 'Not set';
 
 /**
  * The edit a Save of a credential field sends, or null when there is nothing
@@ -39,6 +62,17 @@ export const credentialPlaceholder = (settings: HatchSettings, field: Credential
  */
 export const credentialSave = (field: CredentialField, draft: string): HatchSettingsWriteRequest | null =>
   draft.trim() === '' ? null : { [field]: draft.trim() };
+
+/**
+ * Whether saving a secret is refused: this Hatch has no `HATCH_SECRET_KEY`, so
+ * there is nothing to seal one under and the server would answer 400. The page
+ * says so beside the field before anyone presses Save, and turns Save off.
+ * Removing a credential needs no key and is never blocked here.
+ */
+export const secretsBlocked = (settings: HatchSettings): boolean => !settings.canSaveSecrets;
+
+/** The one sentence the page says beside each secret field when saving is blocked. */
+export const SECRETS_BLOCKED_WORDS = 'Secrets cannot be saved until HATCH_SECRET_KEY is set.';
 
 /** Removes a credential. `''` rather than an omitted field, which would leave it alone. */
 export const credentialClear = (field: CredentialField): HatchSettingsWriteRequest => ({ [field]: '' });

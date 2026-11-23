@@ -31,9 +31,13 @@ namespace Hatch.Api.Tests.Hatch;
 /// reaches out with (a chat service, say) removes the real registration and adds
 /// its own. Left out, the host is exactly the one that ships.
 /// </param>
+/// <param name="secretKey">
+/// Sets <c>Hatch:SecretKey</c>. Left out, the host has no secret key, which is
+/// the install nobody has configured and the one that refuses to save a secret.
+/// </param>
 internal sealed class MinimalFactory(
     string hatch, string quartz, CapturedLogs logs, string? webRoot = null, bool walled = false,
-    Action<IServiceCollection>? services = null)
+    Action<IServiceCollection>? services = null, string? secretKey = null)
     : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -44,6 +48,7 @@ internal sealed class MinimalFactory(
         builder.UseSetting("ConnectionStrings:Hatch", hatch);
         builder.UseSetting("ConnectionStrings:Quartz", quartz);
         builder.UseSetting("Auth:Enabled", walled ? "true" : "false");
+        if (secretKey is not null) builder.UseSetting("Hatch:SecretKey", secretKey);
 
         builder.ConfigureLogging(logging => logging.AddProvider(logs));
 

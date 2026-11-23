@@ -22,8 +22,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// explicitly.</para>
 ///
 /// <para>Nothing logged here, and nothing returned, carries a token or any
-/// part of one. The token is stored through <see cref="SecretProtector"/> and
-/// the DTO has no field for it.</para>
+/// part of one. The token is sealed through <see cref="SecretProtector"/> under
+/// the key the operator set, and the DTO has no field for it. With no key
+/// there is nothing to seal it under, so both writes answer 400 first.</para>
 ///
 /// <para>Removing a workspace is one <c>DELETE</c>. What hangs off a workspace
 /// goes with it by the database's own cascade, not by code here, so a later
@@ -33,7 +34,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/chat")]
 public class ChatController(
     HatchContext db, IChatProvider provider, ICallerIdentity caller, TimeProvider time,
-    ILogger<ChatController> logger) : ControllerBase
+    SecretProtector protector, ILogger<ChatController> logger) : ControllerBase
 {
     /// <summary>Every connected workspace, oldest first.</summary>
     [HttpGet("workspaces")]
@@ -55,6 +56,10 @@ public class ChatController(
     [RequireAdmin]
     public async Task<ActionResult<ChatWorkspaceDto>> ConnectWorkspace(ChatTokenRequest request, CancellationToken ct)
     {
+        // Before the token goes to the chat service: with nothing to seal it
+        // under, there is nothing to do with it.
+        if (!protector.CanSeal) return BadRequest(NoSecretKey);
+
         var token = request.Token?.Trim();
         if (string.IsNullOrEmpty(token)) return BadRequest("a bot token is needed");
 
@@ -64,13 +69,16 @@ public class ChatController(
 
         if (await FindAsync(check.WorkspaceId!, ct) is not null) return Conflict(AlreadyConnected);
 
+        if (!protector.TrySeal(token, SecretStores.ChatWorkspace(provider.Name, check.WorkspaceId!), out var sealedToken))
+            return BadRequest(NoSecretKey);
+
         var now = time.GetUtcNow();
         var row = new EfHatchChatWorkspace
         {
             Provider = provider.Name,
             ExternalId = check.WorkspaceId!,
             Name = NameOf(check),
-            Token = SecretProtector.Protect(token),
+            Token = sealedToken,
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -105,6 +113,8 @@ public class ChatController(
     [RequireAdmin]
     public async Task<ActionResult<ChatWorkspaceDto>> ReplaceToken(int id, ChatTokenRequest request, CancellationToken ct)
     {
+        if (!protector.CanSeal) return BadRequest(NoSecretKey);
+
         var row = await db.ChatWorkspaces.FirstOrDefaultAsync(w => w.Id == id, ct);
         if (row is null) return NotFound();
 
@@ -118,7 +128,12 @@ public class ChatController(
         if (!string.Equals(check.WorkspaceId, row.ExternalId, StringComparison.Ordinal))
             return Conflict("that token belongs to another workspace; connect that one instead, or use a token for this one");
 
-        row.Token = SecretProtector.Protect(token);
+        // The row's own provider and id, which the check above has just shown
+        // are the token's.
+        if (!protector.TrySeal(token, SecretStores.ChatWorkspace(row.Provider, row.ExternalId), out var sealedToken))
+            return BadRequest(NoSecretKey);
+
+        row.Token = sealedToken;
         row.Name = NameOf(check);
         row.UpdatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
@@ -193,7 +208,7 @@ public class ChatController(
         var workspace = await db.ChatWorkspaces.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id, ct);
         if (workspace is null) return NotFound();
 
-        var token = SecretProtector.Unprotect(workspace.Token);
+        var token = protector.Unprotect(workspace.Token, SecretStores.ChatWorkspace(workspace.Provider, workspace.ExternalId));
         if (token is null) return Conflict(TokenUnreadable);
 
         var channels = await provider.ListChannelsAsync(token, ct);
@@ -348,11 +363,11 @@ public class ChatController(
     {
         var room = await db.ChatRooms.AsNoTracking()
             .Where(r => r.Id == id)
-            .Select(r => new { r.ExternalId, Token = r.Workspace!.Token })
+            .Select(r => new { r.ExternalId, r.Workspace!.Provider, WorkspaceExternalId = r.Workspace!.ExternalId, Token = r.Workspace!.Token })
             .FirstOrDefaultAsync(ct);
         if (room is null) return NotFound();
 
-        var token = SecretProtector.Unprotect(room.Token);
+        var token = protector.Unprotect(room.Token, SecretStores.ChatWorkspace(room.Provider, room.WorkspaceExternalId));
         if (token is null) return Conflict(TokenUnreadable);
 
         var result = await provider.PostMessageAsync(token, room.ExternalId, TestMessage, ct);
@@ -362,6 +377,9 @@ public class ChatController(
 
         return new ChatTestResultDto(result.Posted, result.Refusal);
     }
+
+    private const string NoSecretKey =
+        "a bot token cannot be saved until HATCH_SECRET_KEY is set; set it and restart";
 
     private const string AlreadyConnected = "that workspace is already connected; replace its token instead";
     private const string TokenUnreadable = "the token for this workspace cannot be read; replace it";

@@ -54,10 +54,15 @@ public class SettingsController(
     ISiteSettingsService siteSettings,
     IAgentCredential credentials,
     IOptions<AuthOptions> authOptions,
-    ICallerIdentity caller) : ControllerBase
+    ICallerIdentity caller,
+    SecretProtector protector) : ControllerBase
 {
     /// <summary>What is stood in for a secret that is set.</summary>
     private const string Redacted = "••••••••";
+
+    /// <summary>The sentence a save is refused with when there is no key to seal under.</summary>
+    internal const string NoSecretKey =
+        "secrets cannot be saved until HATCH_SECRET_KEY is set; set it and restart, or remove the secret from this request";
 
     [HttpGet]
     [RequireRole(PersonRole.User)]
@@ -131,10 +136,10 @@ public class SettingsController(
     /// clears it, anything else replaces it.
     ///
     /// That is what makes "clearing the token removes it" a value rather than a
-    /// second verb - <see cref="SecretProtector.Protect"/> answers <c>""</c>
-    /// for an empty input and stores it untagged, so a cleared token reads back
-    /// exactly like one nobody ever set and <see cref="IAgentCredential"/>
-    /// answers null for both.
+    /// second verb - <see cref="SecretProtector.TrySeal"/> answers <c>""</c>
+    /// for an empty input, with a key or without, and it is stored untagged, so
+    /// a cleared token reads back exactly like one nobody ever set and
+    /// <see cref="IAgentCredential"/> answers null for both.
     /// </summary>
     /// <remarks>
     /// <para>The default token caps are the same convention with a count in
@@ -150,6 +155,11 @@ public class SettingsController(
     /// gate is dormant wherever the wall is off. A request that carries neither
     /// default is not gated by it, so a non-admin's name-only <c>PUT</c> is
     /// unchanged.</para>
+    ///
+    /// <para>A secret to store with no secret key set is refused before
+    /// anything is written, the other fields of the request with it. Clearing
+    /// one (<c>""</c>) needs no key, and neither does a request with no secret
+    /// in it.</para>
     /// </remarks>
     [HttpPut]
     [RequireRole(PersonRole.User)]
@@ -158,6 +168,18 @@ public class SettingsController(
         if (request.DefaultMaxTokens is not null || request.DefaultMaxTokensPerHour is not null)
         {
             if (await NotAnAdmin(ct) is { } refusal) return refusal;
+        }
+
+        (string Key, string? Value)[] secrets =
+        [
+            (SiteSettingKeys.ClaudeSubscriptionToken, request.ClaudeSubscriptionToken),
+            (SiteSettingKeys.CodexApiKey, request.CodexApiKey),
+            (SiteSettingKeys.XaiApiKey, request.XaiApiKey),
+        ];
+
+        if (!protector.CanSeal && secrets.Any(s => !string.IsNullOrEmpty(s.Value)))
+        {
+            return BadRequest(NoSecretKey);
         }
 
         var tokenWrites = new List<(string Key, string Stored)>();
@@ -186,18 +208,15 @@ public class SettingsController(
 
         var wrote = false;
 
-        (string Key, string? Value)[] secrets =
-        [
-            (SiteSettingKeys.ClaudeSubscriptionToken, request.ClaudeSubscriptionToken),
-            (SiteSettingKeys.CodexApiKey, request.CodexApiKey),
-            (SiteSettingKeys.XaiApiKey, request.XaiApiKey),
-        ];
-
         foreach (var (key, value) in secrets)
         {
             if (value is not { } secret) continue;
 
-            await UpsertAsync(key, SecretProtector.Protect(secret), ct);
+            // CanSeal was checked above, so this cannot refuse: an empty value
+            // clears and a non-empty one has a key.
+            if (!protector.TrySeal(secret, SecretStores.SiteSetting(key), out var stored)) return BadRequest(NoSecretKey);
+
+            await UpsertAsync(key, stored, ct);
             wrote = true;
         }
 
@@ -268,19 +287,32 @@ public class SettingsController(
 
         return new HatchSettingsDto(
             // The snapshot has already deobfuscated the token, so "is it set"
-            // is asked of the plaintext rather than of SecretProtector.HasValue,
-            // which expects the stored form. Same answer, one query fewer - and
-            // the value itself never leaves this method.
+            // is asked of the plaintext rather than of the stored form. Same
+            // answer, and the value itself never leaves this method.
             ClaudeSubscriptionToken: RedactedIfSet(settings.ClaudeSubscriptionToken),
             LocalPersonNameApplies: !authOptions.Value.Enabled,
             LocalPersonName: settings.LocalPersonName ?? "",
             CodexApiKey: RedactedIfSet(settings.CodexApiKey),
             XaiApiKey: RedactedIfSet(settings.XaiApiKey),
             DefaultMaxTokens: settings.RunnerDefaultMaxTokens,
-            DefaultMaxTokensPerHour: settings.RunnerDefaultMaxTokensPerHour);
+            DefaultMaxTokensPerHour: settings.RunnerDefaultMaxTokensPerHour,
+            CanSaveSecrets: protector.CanSeal,
+            SecretStates: new SecretStatesDto(
+                ClaudeSubscriptionToken: StateOf(settings, SiteSettingKeys.ClaudeSubscriptionToken, settings.ClaudeSubscriptionToken),
+                CodexApiKey: StateOf(settings, SiteSettingKeys.CodexApiKey, settings.CodexApiKey),
+                XaiApiKey: StateOf(settings, SiteSettingKeys.XaiApiKey, settings.XaiApiKey)));
     }
 
     private static string RedactedIfSet(string? secret) => string.IsNullOrWhiteSpace(secret) ? "" : Redacted;
+
+    /// <summary>
+    /// Set when the plaintext is there; unreadable when something is stored that
+    /// did not open; unset otherwise. The plaintext is asked about and never returned.
+    /// </summary>
+    private static string StateOf(SiteSettingsSnapshot settings, string key, string? plaintext) =>
+        !string.IsNullOrWhiteSpace(plaintext) ? SecretStates.Set
+        : settings.IsUnreadable(key) ? SecretStates.Unreadable
+        : SecretStates.Unset;
 }
 
 /// <summary>
@@ -299,6 +331,12 @@ public class SettingsController(
 /// <param name="XaiApiKey">Dots when one is set, empty when none is.</param>
 /// <param name="DefaultMaxTokens">The site-wide cap on tokens a runner with none of its own runs under, or null when none is set.</param>
 /// <param name="DefaultMaxTokensPerHour">The site-wide cap on tokens per hour a runner with none of its own runs under, or null when none is set.</param>
+/// <param name="CanSaveSecrets">Whether a secret can be saved: true when <c>HATCH_SECRET_KEY</c> is set. False means a save carrying one is refused; removing one still works.</param>
+/// <param name="SecretStates">
+/// Which of the three secrets is set, unset, or stored but unreadable. The dotted
+/// fields above keep their meaning (dots when set and readable, empty otherwise);
+/// this is how a page tells "not set" from "set, but this Hatch cannot open it".
+/// </param>
 public record HatchSettingsDto(
     string ClaudeSubscriptionToken,
     bool LocalPersonNameApplies,
@@ -306,7 +344,25 @@ public record HatchSettingsDto(
     string CodexApiKey,
     string XaiApiKey,
     long? DefaultMaxTokens,
-    long? DefaultMaxTokensPerHour);
+    long? DefaultMaxTokensPerHour,
+    bool CanSaveSecrets,
+    SecretStatesDto SecretStates);
+
+/// <summary>The three states a secret setting reports. One place, so the API and its tests agree on the words.</summary>
+public static class SecretStates
+{
+    /// <summary>Nothing is stored, or what is stored is blank.</summary>
+    public const string Unset = "unset";
+
+    /// <summary>A value is stored and opens.</summary>
+    public const string Set = "set";
+
+    /// <summary>A value is stored and cannot be opened: wrong key, lost key, damaged text, or a scheme this build does not know.</summary>
+    public const string Unreadable = "unreadable";
+}
+
+/// <summary>One of <see cref="SecretStates"/> for each secret the Settings page can set.</summary>
+public record SecretStatesDto(string ClaudeSubscriptionToken, string CodexApiKey, string XaiApiKey);
 
 /// <summary>
 /// An edit to any of the settings, or several. Null - or omitted - leaves one

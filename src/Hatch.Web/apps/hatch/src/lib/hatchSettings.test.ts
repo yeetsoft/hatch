@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   credentialClear,
+  credentialIsRemovable,
+  credentialIsUnreadable,
+  credentialState,
   credentialIsSet,
   credentialPlaceholder,
   credentialSave,
@@ -9,21 +12,38 @@ import {
   defaultTokensProblem,
   defaultTokensSave,
   nameSave,
+  SECRETS_BLOCKED_WORDS,
+  secretsBlocked,
   tokenBudgetEditable,
+  UNREADABLE_WORDS,
 } from './hatchSettings';
 import type { CredentialField, DefaultTokenField } from './hatchSettings';
-import type { HatchSettings, Me } from '../types';
+import type { HatchSettings, Me, SecretState } from '../types';
 
-const settings = (over: Partial<HatchSettings> = {}): HatchSettings => ({
-  claudeSubscriptionToken: '',
-  codexApiKey: '',
-  xaiApiKey: '',
-  localPersonNameApplies: true,
-  localPersonName: '',
-  defaultMaxTokens: null,
-  defaultMaxTokensPerHour: null,
-  ...over,
-});
+/** The states follow the dots unless a test says otherwise, so a test that sets a credential need not say twice that it is set. */
+const settings = (over: Partial<HatchSettings> = {}): HatchSettings => {
+  const base = {
+    claudeSubscriptionToken: '',
+    codexApiKey: '',
+    xaiApiKey: '',
+    localPersonNameApplies: true,
+    localPersonName: '',
+    defaultMaxTokens: null,
+    defaultMaxTokensPerHour: null,
+    canSaveSecrets: true,
+    ...over,
+  };
+  const stateOf = (dots: string): SecretState => (dots === '' ? 'unset' : 'set');
+  return {
+    ...base,
+    secretStates: {
+      claudeSubscriptionToken: stateOf(base.claudeSubscriptionToken),
+      codexApiKey: stateOf(base.codexApiKey),
+      xaiApiKey: stateOf(base.xaiApiKey),
+      ...over.secretStates,
+    },
+  };
+};
 
 const me = (over: Partial<Me> = {}): Me => ({
   kind: 'person',
@@ -198,5 +218,66 @@ describe('defaultTokensSave', () => {
       defaultMaxTokens: '',
       defaultMaxTokensPerHour: '',
     });
+  });
+});
+
+describe('secretsBlocked', () => {
+  it('is false when a key is set, so the page looks as it always did', () => {
+    expect(secretsBlocked(settings({ canSaveSecrets: true }))).toBe(false);
+  });
+
+  it('is true when there is no key to seal under', () => {
+    expect(secretsBlocked(settings({ canSaveSecrets: false }))).toBe(true);
+  });
+
+  it('says one sentence, naming the variable', () => {
+    expect(SECRETS_BLOCKED_WORDS).toContain('HATCH_SECRET_KEY');
+    expect(SECRETS_BLOCKED_WORDS.match(/\./g)).toHaveLength(1);
+  });
+
+  it('never stops a credential being removed', () => {
+    expect(credentialClear('codexApiKey')).toEqual({ codexApiKey: '' });
+  });
+});
+
+describe.each(FIELDS)('the %s field when what is stored cannot be opened', (field) => {
+  const unreadable = settings({
+    secretStates: { claudeSubscriptionToken: 'unset', codexApiKey: 'unset', xaiApiKey: 'unset', [field]: 'unreadable' },
+  });
+
+  it('reads the state the server gave', () => {
+    expect(credentialState(unreadable, field)).toBe('unreadable');
+    expect(credentialIsUnreadable(unreadable, field)).toBe(true);
+    expect(credentialIsUnreadable(settings(), field)).toBe(false);
+  });
+
+  /* Dots mean set and readable, so an unreadable one is not "set" to anything
+     that asks that - only to the page, which asks the state. */
+  it('is still not set by the dots, and can still be removed', () => {
+    expect(credentialIsSet(unreadable, field)).toBe(false);
+    expect(credentialIsRemovable(unreadable, field)).toBe(true);
+  });
+
+  it('is removable when set and not when unset', () => {
+    expect(credentialIsRemovable(settings({ [field]: '••••••••' }), field)).toBe(true);
+    expect(credentialIsRemovable(settings(), field)).toBe(false);
+  });
+
+  it('says so in the placeholder, without the dots', () => {
+    const hint = credentialPlaceholder(unreadable, field);
+
+    expect(hint).toContain('unreadable');
+    expect(hint).not.toContain('•');
+  });
+
+  it('still sends only the new value when one is typed', () => {
+    expect(credentialSave(field, ' sk-new ')).toEqual({ [field]: 'sk-new' });
+  });
+});
+
+describe('UNREADABLE_WORDS', () => {
+  it('is two short sentences that tell the operator what to do', () => {
+    expect(UNREADABLE_WORDS).toContain('Enter it again');
+    expect(UNREADABLE_WORDS.match(/\./g)).toHaveLength(2);
   });
 });

@@ -3030,7 +3030,14 @@ export interface HatchSettings {
   defaultMaxTokens: number | null;
   /** The site-wide cap on tokens per hour a runner with none of its own runs under. Null for no cap. */
   defaultMaxTokensPerHour: number | null;
+  /** Whether a secret can be saved: true when `HATCH_SECRET_KEY` is set. When false a save carrying one is refused; removing one still works. */
+  canSaveSecrets: boolean;
+  /** Which of the three secrets is set, unset, or stored but unreadable. The dotted fields above keep their meaning: dots when set and readable, empty otherwise. */
+  secretStates: Record<'claudeSubscriptionToken' | 'codexApiKey' | 'xaiApiKey', SecretState>;
 }
+
+/** What the server says of a stored secret: nothing stored, stored and opens, or stored and this Hatch cannot open it. */
+export type SecretState = 'unset' | 'set' | 'unreadable';
 
 /** An edit to any of the settings, or several. A field left out is left alone;
     `''` clears one - the same rule the issues bulk endpoint states. */

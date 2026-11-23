@@ -5283,7 +5283,7 @@ public class EfHatchRunnerFailureIssue
 /// delete, so removing a workspace takes everything under it in the database,
 /// not in controller code. <c>ChatWorkspaceCascadeTests</c> holds that.</para>
 ///
-/// <para>The token is stored through <c>SecretProtector</c> and never leaves
+/// <para>The token is sealed through <c>SecretProtector</c> and never leaves
 /// the API: no DTO carries it.</para>
 /// </remarks>
 [Table("ChatWorkspaces")]
@@ -5309,7 +5309,7 @@ public class EfHatchChatWorkspace
     [MaxLength(MaxNameLength)]
     public required string Name { get; set; }
 
-    /// <summary>The bot token, as <c>SecretProtector.Protect</c> wrote it.</summary>
+    /// <summary>The bot token, sealed as <c>v2</c> for the row name <c>SecretStores.ChatWorkspace</c> gives. A value stored before sealing is <c>v1</c> and still reads.</summary>
     public required string Token { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

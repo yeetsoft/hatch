@@ -169,7 +169,7 @@ internal sealed class WalledHost : IAsyncDisposable
         var chatNow = DateTimeOffset.UtcNow;
         var chatWorkspace = new EfHatchChatWorkspace
         {
-            Provider = "fake", ExternalId = "T-MATRIX", Name = "matrix", Token = SecretProtector.Protect("xoxb-matrix-seed"),
+            Provider = "fake", ExternalId = "T-MATRIX", Name = "matrix", Token = SecretObfuscator.Obfuscate("xoxb-matrix-seed"),
             CreatedAt = chatNow, UpdatedAt = chatNow,
         };
         db.ChatWorkspaces.Add(chatWorkspace);

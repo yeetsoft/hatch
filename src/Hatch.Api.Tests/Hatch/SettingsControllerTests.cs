@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
@@ -10,6 +11,7 @@ using Hatch.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -92,7 +94,7 @@ public class SettingsControllerTests
     [Fact]
     public async Task ATokenSetBeforeThisPageExisted_ReadsBackOnIt()
     {
-        var fixture = NewFixture((SiteSettingKeys.ClaudeSubscriptionToken, SecretProtector.Protect("set-by-the-admin-page")));
+        var fixture = NewFixture((SiteSettingKeys.ClaudeSubscriptionToken, V1("set-by-the-admin-page")));
 
         var settings = await fixture.Controller.GetHatchSettings(default);
 
@@ -369,6 +371,7 @@ public class SettingsControllerTests
 
     private static string? Plaintext(SiteSettingsSnapshot snapshot, string key) => key switch
     {
+        SiteSettingKeys.ClaudeSubscriptionToken => snapshot.ClaudeSubscriptionToken,
         SiteSettingKeys.CodexApiKey => snapshot.CodexApiKey,
         SiteSettingKeys.XaiApiKey => snapshot.XaiApiKey,
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
@@ -412,7 +415,8 @@ public class SettingsControllerTests
 
         var stored = fixture.Db.SiteSettings.Single(s => s.Key == key).Value;
         Assert.DoesNotContain("sk-agent-1", stored);
-        Assert.Equal("sk-agent-1", SecretProtector.Unprotect(stored));
+        Assert.StartsWith("v2:", stored, StringComparison.Ordinal);
+        Assert.Equal("sk-agent-1", fixture.Protector.Unprotect(stored, SecretStores.SiteSetting(key)));
         Assert.Equal("sk-agent-1", Plaintext(await fixture.Settings.GetAsync(default), key));
     }
 
@@ -464,7 +468,7 @@ public class SettingsControllerTests
     [InlineData(SiteSettingKeys.XaiApiKey)]
     public async Task AnAgentKeySetByTheAdminPage_ReadsBackOnIt(string key)
     {
-        var fixture = NewFixture((key, SecretProtector.Protect("set-by-the-admin-page")));
+        var fixture = NewFixture((key, V1("set-by-the-admin-page")));
 
         var settings = await fixture.Controller.GetHatchSettings(default);
 
@@ -738,12 +742,414 @@ public class SettingsControllerTests
             ?? throw new Xunit.Sdk.XunitException($"{action} carries no [RequireAdmin] of its own.");
     }
 
+    // ---- Sealing at rest, and the Hatch with no key ----
+
+    [Theory]
+    [InlineData(SiteSettingKeys.ClaudeSubscriptionToken)]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task ASavedSecret_IsStoredSealedForItsOwnRow(string key)
+    {
+        var fixture = NewFixture();
+
+        await fixture.PutAsync(Request(key, "sk-agent-1"));
+
+        var stored = fixture.Db.SiteSettings.Single(s => s.Key == key).Value;
+        Assert.Matches(@"^v2:[^:.]+\.[^:.]+\.[^:.]+$", stored);
+        Assert.Equal("sk-agent-1", fixture.Protector.Unprotect(stored, $"site-setting/{key}"));
+        Assert.Equal("sk-agent-1", Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    /// <summary>A stored value copied into another setting's row is not that setting's value.</summary>
+    [Fact]
+    public async Task AStoredValueCopiedIntoAnotherSettingsRow_DoesNotOpen()
+    {
+        var fixture = NewFixture();
+        await fixture.PutAsync(Request(SiteSettingKeys.CodexApiKey, "sk-codex"));
+        var stored = fixture.Db.SiteSettings.Single(s => s.Key == SiteSettingKeys.CodexApiKey).Value;
+
+        // The same key as the one that sealed it, so only the row name differs.
+        var sameKey = NewFixture(fixture.Cipher, false, null, (SiteSettingKeys.XaiApiKey, stored));
+
+        Assert.Null((await sameKey.Settings.GetAsync(default)).XaiApiKey);
+        Assert.Equal("", (await sameKey.Controller.GetHatchSettings(default)).XaiApiKey);
+    }
+
+    [Fact]
+    public async Task TwoSavesOfTheSameSecret_StoreDifferentText()
+    {
+        var fixture = NewFixture();
+
+        await fixture.PutAsync(Request(SiteSettingKeys.XaiApiKey, "sk-agent-1"));
+        var first = fixture.Db.SiteSettings.Single(s => s.Key == SiteSettingKeys.XaiApiKey).Value;
+        await fixture.PutAsync(Request(SiteSettingKeys.XaiApiKey, "sk-agent-1"));
+        var second = fixture.Db.SiteSettings.Single(s => s.Key == SiteSettingKeys.XaiApiKey).Value;
+
+        Assert.NotEqual(first, second);
+    }
+
+    /// <summary>What was stored before sealing keeps reading, with a key or without one.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AV1AndAnUntaggedValue_StillRead(bool withKey)
+    {
+        var seed = new[]
+        {
+            (SiteSettingKeys.CodexApiKey, V1("v1-codex")),
+            (SiteSettingKeys.XaiApiKey, SecretObfuscator.Obfuscate("untagged-xai")),
+        };
+        var fixture = withKey ? NewFixture(seed) : NewFixtureWithNoKey(seed);
+
+        var snapshot = await fixture.Settings.GetAsync(default);
+
+        Assert.Equal("v1-codex", snapshot.CodexApiKey);
+        Assert.Equal("untagged-xai", snapshot.XaiApiKey);
+    }
+
+    [Fact]
+    public async Task ASecretSealedUnderThePreviousKey_StillReads()
+    {
+        var oldKey = RandomNumberGenerator.GetBytes(32);
+        var sealedBefore = new SecretProtector(new SecretCipher(oldKey, null));
+        Assert.True(sealedBefore.TrySeal("sk-old", SecretStores.SiteSetting(SiteSettingKeys.CodexApiKey), out var stored));
+
+        var fixture = NewFixture(new SecretCipher(RandomNumberGenerator.GetBytes(32), oldKey), false, null,
+            (SiteSettingKeys.CodexApiKey, stored));
+
+        Assert.Equal("sk-old", (await fixture.Settings.GetAsync(default)).CodexApiKey);
+    }
+
+    [Fact]
+    public async Task TheDto_SaysWhetherSecretsCanBeSaved()
+    {
+        Assert.True((await NewFixture().Controller.GetHatchSettings(default)).CanSaveSecrets);
+        Assert.False((await NewFixtureWithNoKey().Controller.GetHatchSettings(default)).CanSaveSecrets);
+    }
+
+    /// <summary>The refusal writes nothing at all: a name sent in the same body is not saved either.</summary>
+    [Theory]
+    [InlineData(SiteSettingKeys.ClaudeSubscriptionToken)]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task WithNoKey_ASecretToStoreIsRefusedAndNothingIsWritten(string key)
+    {
+        var fixture = NewFixtureWithNoKey();
+        var body = Request(key, "sk-agent-1") with { LocalPersonName = "Ada", DefaultMaxTokens = "2M" };
+
+        var answer = await fixture.Controller.PutHatchSettings(body, default);
+
+        var refused = Assert.IsType<BadRequestObjectResult>(answer.Result);
+        Assert.Contains("HATCH_SECRET_KEY", Assert.IsType<string>(refused.Value));
+        Assert.Empty(fixture.Db.SiteSettings);
+    }
+
+    [Theory]
+    [InlineData(SiteSettingKeys.ClaudeSubscriptionToken)]
+    [InlineData(SiteSettingKeys.CodexApiKey)]
+    [InlineData(SiteSettingKeys.XaiApiKey)]
+    public async Task WithNoKey_AnEmptyStringStillClearsASecret(string key)
+    {
+        var fixture = NewFixtureWithNoKey((key, V1("set-before")));
+
+        await fixture.PutAsync(Request(key, ""));
+
+        Assert.Equal("", fixture.Db.SiteSettings.Single(s => s.Key == key).Value);
+        Assert.Null(Plaintext(await fixture.Settings.GetAsync(default), key));
+    }
+
+    [Fact]
+    public async Task WithNoKey_ARequestWithNoSecretInItIsNotRefused()
+    {
+        var fixture = NewFixtureWithNoKey();
+
+        var settings = await fixture.PutAsync(new(null, "Ada", DefaultMaxTokens: "2M", DefaultMaxTokensPerHour: "200k"));
+
+        Assert.Equal("Ada", settings.LocalPersonName);
+        Assert.Equal(2_000_000L, settings.DefaultMaxTokens);
+        Assert.Equal(200_000L, settings.DefaultMaxTokensPerHour);
+        Assert.False(settings.CanSaveSecrets);
+    }
+
+    [Fact]
+    public async Task WithNoKey_SecretsAlreadyStoredKeepReading()
+    {
+        var fixture = NewFixtureWithNoKey((SiteSettingKeys.ClaudeSubscriptionToken, V1("old-token")));
+
+        Assert.Equal("old-token", await fixture.Credential.GetAsync("claude", default));
+    }
+
+    // ---- A stored secret that cannot be opened ----
+
+    /// <summary>Every row the snapshot opens a secret from, not only the three the page edits.</summary>
+    public static TheoryData<string> EverySecretRow => new()
+    {
+        SiteSettingKeys.GoogleClientSecret,
+        SiteSettingKeys.AnthropicApiKey,
+        SiteSettingKeys.ClaudeSubscriptionToken,
+        SiteSettingKeys.CodexApiKey,
+        SiteSettingKeys.XaiApiKey,
+    };
+
+    public static TheoryData<string> ThePageSecretRows => new()
+    {
+        SiteSettingKeys.ClaudeSubscriptionToken,
+        SiteSettingKeys.CodexApiKey,
+        SiteSettingKeys.XaiApiKey,
+    };
+
+    /// <summary>
+    /// None of these opens, so each is unreadable and none throws. Untagged text
+    /// that happens to be valid base64 is left out on purpose: <c>v1</c> has no
+    /// integrity check, so it "opens" to junk rather than failing.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(EverySecretRow))]
+    public async Task WhateverASecretRowHolds_TheSnapshotReadsAndTheRowIsUnreadable(string key)
+    {
+        var cipher = NewCipher();
+        Assert.True(new SecretProtector(cipher).TrySeal("sk-other", SecretStores.SiteSetting("another-row"), out var forAnotherRow));
+        Assert.True(new SecretProtector(cipher).TrySeal("sk-own", SecretStores.SiteSetting(key), out var own));
+        Assert.True(new SecretProtector(NewCipher()).TrySeal("sk-x", SecretStores.SiteSetting(key), out var underAnotherKey));
+
+        var garbage = new[]
+        {
+            "v2:",
+            "v2:a.b.c",
+            forAnotherRow,
+            underAnotherKey,
+            own[..^4],
+            "v3:xyz",
+            "v1:%%%",
+            "not base64!!",
+            ":",
+            new string('x', 10 * 1024) + "!",
+            "v2:" + new string('x', 10 * 1024),
+            "v2:\u0001\u0002\u0003\u0000",
+            "\u0001\u0002\u0003",
+        };
+
+        foreach (var stored in garbage)
+        {
+            var fixture = NewFixture(cipher, false, null, (key, stored));
+
+            var snapshot = await fixture.Settings.GetAsync(default);
+
+            var label = stored.Length > 24 ? stored[..24] + "..." : stored;
+            Assert.True(PlaintextOf(snapshot, key) is null, $"'{label}' should not have opened");
+            Assert.True(snapshot.IsUnreadable(key), $"'{label}' should read as unreadable");
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(EverySecretRow))]
+    public async Task ABlankRow_IsUnsetNotUnreadable(string key)
+    {
+        foreach (var stored in new[] { "", "   ", "\t\n" })
+        {
+            var snapshot = await NewFixture((key, stored)).Settings.GetAsync(default);
+
+            Assert.Null(PlaintextOf(snapshot, key));
+            Assert.False(snapshot.IsUnreadable(key));
+        }
+    }
+
+    /// <summary>The key is lost, not the value: everything that uses it sees "not set", and the page is told why.</summary>
+    [Theory]
+    [MemberData(nameof(ThePageSecretRows))]
+    public async Task ASecretSealedUnderAKeyThatIsGone_IsUnreadableAndHandedOffAsNothing(string key)
+    {
+        var sealer = NewFixture();
+        await sealer.PutAsync(Request(key, "sk-agent-1"));
+        var stored = sealer.Db.SiteSettings.Single(s => s.Key == key).Value;
+
+        var fixture = NewFixtureWithNoKey((key, stored));
+        var settings = await fixture.Controller.GetHatchSettings(default);
+
+        Assert.Equal(SecretStates.Unreadable, StateIn(settings, key));
+        Assert.Equal("", key == SiteSettingKeys.ClaudeSubscriptionToken ? settings.ClaudeSubscriptionToken : Read(settings, key));
+        Assert.Null(PlaintextOf(await fixture.Settings.GetAsync(default), key));
+        Assert.IsType<NoContentResult>((await fixture.Controller.GetCredential(AgentOf(key), default)).Result);
+        if (key == SiteSettingKeys.ClaudeSubscriptionToken)
+            Assert.IsType<NoContentResult>((await fixture.Controller.GetClaudeToken(default)).Result);
+    }
+
+    [Theory]
+    [MemberData(nameof(ThePageSecretRows))]
+    public async Task TheStates_AreUnsetThenSetThenUnsetWhenCleared(string key)
+    {
+        var fixture = NewFixture();
+        Assert.Equal(new SecretStatesDto("unset", "unset", "unset"), (await fixture.Controller.GetHatchSettings(default)).SecretStates);
+
+        var set = await fixture.PutAsync(Request(key, "sk-agent-1"));
+        Assert.Equal(SecretStates.Set, StateIn(set, key));
+        Assert.Equal(2, new[] { SiteSettingKeys.ClaudeSubscriptionToken, SiteSettingKeys.CodexApiKey, SiteSettingKeys.XaiApiKey }
+            .Count(other => other != key && StateIn(set, other) == SecretStates.Unset));
+
+        var cleared = await fixture.PutAsync(Request(key, ""));
+        Assert.Equal(SecretStates.Unset, StateIn(cleared, key));
+    }
+
+    [Theory]
+    [MemberData(nameof(ThePageSecretRows))]
+    public async Task ASaveOverAnUnreadableValue_ReadsAsSet(string key)
+    {
+        var fixture = NewFixture((key, "v3:xyz"));
+        Assert.Equal(SecretStates.Unreadable, StateIn(await fixture.Controller.GetHatchSettings(default), key));
+
+        var saved = await fixture.PutAsync(Request(key, "sk-agent-2"));
+
+        Assert.Equal(SecretStates.Set, StateIn(saved, key));
+        Assert.Equal("sk-agent-2", PlaintextOf(await fixture.Settings.GetAsync(default), key));
+    }
+
+    [Theory]
+    [MemberData(nameof(ThePageSecretRows))]
+    public async Task RemovingAnUnreadableValue_ReadsAsUnset(string key)
+    {
+        var fixture = NewFixture((key, "v3:xyz"));
+
+        var removed = await fixture.PutAsync(Request(key, ""));
+
+        Assert.Equal(SecretStates.Unset, StateIn(removed, key));
+        Assert.False((await fixture.Settings.GetAsync(default)).IsUnreadable(key));
+    }
+
+    [Fact]
+    public async Task AnUnreadableSecret_StillReadsAsEmptyDotsAndSetsNoneOfTheOthers()
+    {
+        var fixture = NewFixture(
+            (SiteSettingKeys.ClaudeSubscriptionToken, "v3:xyz"),
+            (SiteSettingKeys.CodexApiKey, V1("sk-codex")));
+
+        var settings = await fixture.Controller.GetHatchSettings(default);
+
+        Assert.Equal("", settings.ClaudeSubscriptionToken);
+        Assert.NotEqual("", settings.CodexApiKey);
+        Assert.Equal(new SecretStatesDto("unreadable", "set", "unset"), settings.SecretStates);
+    }
+
+    [Fact]
+    public async Task AnUnreadableSecret_IsWarnedAboutByNameOnceUntilItsTextChanges()
+    {
+        var fixture = NewFixture((SiteSettingKeys.ClaudeSubscriptionToken, "v3:xyz"));
+
+        await fixture.Settings.GetAsync(default);
+        fixture.Settings.Invalidate();
+        await fixture.Settings.GetAsync(default);
+
+        var warning = Assert.Single(fixture.Log.Lines);
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.Contains("ClaudeSubscriptionToken", warning.Text);
+
+        fixture.Db.SiteSettings.Single(s => s.Key == SiteSettingKeys.ClaudeSubscriptionToken).Value = "v3:abc";
+        fixture.Db.SaveChanges();
+        fixture.Settings.Invalidate();
+        await fixture.Settings.GetAsync(default);
+        fixture.Settings.Invalidate();
+        await fixture.Settings.GetAsync(default);
+
+        Assert.Equal(2, fixture.Log.Lines.Count);
+    }
+
+    [Fact]
+    public async Task ASecretThatReadsFineAgain_WarnsAgainWhenItBreaksAgain()
+    {
+        var fixture = NewFixture((SiteSettingKeys.XaiApiKey, "v3:xyz"));
+        await fixture.Settings.GetAsync(default);
+
+        await fixture.PutAsync(Request(SiteSettingKeys.XaiApiKey, "sk-agent-1"));
+        await fixture.Settings.GetAsync(default);
+        Assert.Single(fixture.Log.Lines);
+
+        fixture.Db.SiteSettings.Single(s => s.Key == SiteSettingKeys.XaiApiKey).Value = "v3:xyz";
+        fixture.Db.SaveChanges();
+        fixture.Settings.Invalidate();
+        await fixture.Settings.GetAsync(default);
+
+        Assert.Equal(2, fixture.Log.Lines.Count);
+        Assert.All(fixture.Log.Lines, line => Assert.Contains("XaiApiKey", line.Text));
+    }
+
+    [Fact]
+    public async Task ASecretThatIsUnsetOrBlank_IsNotWarnedAbout()
+    {
+        var fixture = NewFixture((SiteSettingKeys.CodexApiKey, ""), (SiteSettingKeys.XaiApiKey, "  "));
+
+        await fixture.Settings.GetAsync(default);
+
+        Assert.Empty(fixture.Log.Lines);
+    }
+
+    [Fact]
+    public async Task TheLog_NeverHoldsTheStoredTextOrAPlaintext()
+    {
+        var sealer = NewFixture();
+        await sealer.PutAsync(Request(SiteSettingKeys.CodexApiKey, "sk-plain-secret"));
+        var sealedText = sealer.Db.SiteSettings.Single(s => s.Key == SiteSettingKeys.CodexApiKey).Value;
+        var fixture = NewFixtureWithNoKey(
+            (SiteSettingKeys.CodexApiKey, sealedText),
+            (SiteSettingKeys.XaiApiKey, "v3:do-not-log-this-text"));
+
+        await fixture.Settings.GetAsync(default);
+
+        Assert.Equal(2, fixture.Log.Lines.Count);
+        foreach (var line in fixture.Log.Lines)
+        {
+            Assert.DoesNotContain("sk-plain-secret", line.Text);
+            Assert.DoesNotContain("do-not-log-this-text", line.Text);
+            Assert.DoesNotContain(sealedText, line.Text);
+            Assert.DoesNotContain(sealedText[3..], line.Text);
+        }
+    }
+
+    private static string StateIn(HatchSettingsDto dto, string key) => key switch
+    {
+        SiteSettingKeys.ClaudeSubscriptionToken => dto.SecretStates.ClaudeSubscriptionToken,
+        SiteSettingKeys.CodexApiKey => dto.SecretStates.CodexApiKey,
+        SiteSettingKeys.XaiApiKey => dto.SecretStates.XaiApiKey,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
+    };
+
+    private static string AgentOf(string key) => key switch
+    {
+        SiteSettingKeys.ClaudeSubscriptionToken => "claude",
+        SiteSettingKeys.CodexApiKey => "codex",
+        SiteSettingKeys.XaiApiKey => "grok",
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
+    };
+
+    private static string? PlaintextOf(SiteSettingsSnapshot snapshot, string key) => key switch
+    {
+        SiteSettingKeys.GoogleClientSecret => snapshot.GoogleClientSecret,
+        SiteSettingKeys.AnthropicApiKey => snapshot.AnthropicApiKey,
+        _ => Plaintext(snapshot, key),
+    };
+
+    private static HatchSettingsWriteRequest Request(string key, string? value) =>
+        key == SiteSettingKeys.ClaudeSubscriptionToken ? new(value, null) : Write(key, value);
+
+    /// <summary>
+    /// A value as <c>v1</c> wrote it, made on purpose: nothing writes <c>v1</c>
+    /// any more, but every row stored before sealing is one.
+    /// </summary>
+    private static string V1(string plaintext) => $"v1:{SecretObfuscator.Obfuscate(plaintext)}";
+
+    private static SecretCipher NewCipher() => new(RandomNumberGenerator.GetBytes(32), null);
+
     private static Fixture NewFixture(params (string Key, string Value)[] seed) => NewFixture(false, null, seed);
 
     private static Fixture NewFixture(bool authEnabled, params (string Key, string Value)[] seed) =>
         NewFixture(authEnabled, null, seed);
 
-    private static Fixture NewFixture(bool authEnabled, ICallerIdentity? caller, params (string Key, string Value)[] seed)
+    private static Fixture NewFixture(bool authEnabled, ICallerIdentity? caller, params (string Key, string Value)[] seed) =>
+        NewFixture(NewCipher(), authEnabled, caller, seed);
+
+    /// <summary>A Hatch with no secret key set.</summary>
+    private static Fixture NewFixtureWithNoKey(params (string Key, string Value)[] seed) =>
+        NewFixture(new SecretCipher(null, null), false, null, seed);
+
+    private static Fixture NewFixture(SecretCipher cipher, bool authEnabled, ICallerIdentity? caller, params (string Key, string Value)[] seed)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -753,24 +1159,42 @@ public class SettingsControllerTests
         db.SiteSettings.AddRange(seed.Select(s => new EfSiteSetting { Key = s.Key, Value = s.Value }));
         db.SaveChanges();
 
+        var protector = new SecretProtector(cipher);
+
         // A FakeTimeProvider that never advances, so the snapshot's TTL never
         // expires on its own: anything these tests see refreshed was refreshed
         // by the controller's own Invalidate, which is the point.
-        var settings = new SiteSettingsService(new TestDbContextFactory(options), new FakeTimeProvider());
+        var log = new CapturingLogger();
+        var settings = new SiteSettingsService(new TestDbContextFactory(options), new FakeTimeProvider(), protector, log);
 
         var credential = new SiteSettingAgentCredential(settings);
         var controller = new SettingsController(
             db, settings, credential, Options.Create(new AuthOptions { Enabled = authEnabled }),
-            caller ?? new StubCallerIdentity());
+            caller ?? new StubCallerIdentity(), protector);
 
-        return new Fixture(controller, db, settings, credential);
+        return new Fixture(controller, db, settings, credential, protector, cipher, log);
+    }
+
+    /// <summary>Hand-rolled, as in the other tests here: a level and the formatted line, nothing more.</summary>
+    private sealed class CapturingLogger : ILogger<SiteSettingsService>
+    {
+        public List<(LogLevel Level, string Text)> Lines { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Lines.Add((logLevel, $"{formatter(state, exception)} {exception}"));
     }
 
     private sealed record Fixture(
         SettingsController Controller,
         AppDbContext Db,
         ISiteSettingsService Settings,
-        IAgentCredential Credential)
+        IAgentCredential Credential,
+        SecretProtector Protector,
+        SecretCipher Cipher,
+        CapturingLogger Log)
     {
         /// <summary>The <c>PUT</c>, for a test that expects it to be accepted: a refusal fails the test here.</summary>
         public async Task<HatchSettingsDto> PutAsync(HatchSettingsWriteRequest request)

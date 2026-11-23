@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
@@ -213,8 +214,10 @@ public class ChatWorkspaceCascadeDatabaseTests
     private static HatchContext Open(string connection) =>
         new(new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connection).Options);
 
+    private static readonly SecretProtector Protector = new(new SecretCipher(RandomNumberGenerator.GetBytes(32), null));
+
     private static ChatController NewController(HatchContext db) =>
-        new(db, new AcmeProvider(), new StubCaller(), new FakeTimeProvider(new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero)), NullLogger<ChatController>.Instance)
+        new(db, new AcmeProvider(), new StubCaller(), new FakeTimeProvider(new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero)), Protector, NullLogger<ChatController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
@@ -250,7 +253,7 @@ public class ChatWorkspaceCascadeDatabaseTests
             var now = DateTimeOffset.UtcNow;
             other.ChatWorkspaces.Add(new EfHatchChatWorkspace
             {
-                Provider = "fake", ExternalId = "TACME", Name = "Acme", Token = SecretProtector.Protect(AcmeToken), CreatedAt = now, UpdatedAt = now,
+                Provider = "fake", ExternalId = "TACME", Name = "Acme", Token = Protector.TrySeal(AcmeToken, SecretStores.ChatWorkspace("fake", "TACME"), out var sealedToken) ? sealedToken : "", CreatedAt = now, UpdatedAt = now,
             });
             await other.SaveChangesAsync(ct);
 

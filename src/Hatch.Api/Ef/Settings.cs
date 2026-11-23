@@ -77,4 +77,17 @@ public static class SiteSettingKeys
 
     /// <summary>A site-wide cap on tokens per hour a runner with none of its own runs under.</summary>
     public const string RunnerDefaultMaxTokensPerHour = "RunnerDefaultMaxTokensPerHour";
+
+    /// <summary>
+    /// The settings whose value is a secret, so stored sealed. The list
+    /// <c>SecretStores</c> names the table for.
+    /// </summary>
+    public static readonly string[] Secrets =
+    [
+        GoogleClientSecret,
+        AnthropicApiKey,
+        ClaudeSubscriptionToken,
+        CodexApiKey,
+        XaiApiKey,
+    ];
 }
