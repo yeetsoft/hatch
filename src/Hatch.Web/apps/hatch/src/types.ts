@@ -2362,8 +2362,39 @@ export interface CumulativeFlow {
 
 // ---- Board health ----
 
-/** One equal slice of a board health window. Counts and durations only; nothing
-    names an issue. Mirrors BoardHealthBarDto. */
+/** Four counts of the in-flight issues with no children at one bar's end. They
+    add up to those issues, not to the bar's `inFlight`, which also counts parents.
+    An earlier bar is judged against today's column normals. Mirrors BoardHealthAgesDto. */
+export interface BoardHealthAges {
+  /** In the column for less than half its normal. */
+  healthy: number;
+  /** From half the normal up to, and including, the normal. */
+  aging: number;
+  /** Longer than the normal. */
+  pastNormal: number;
+  /** The column has no normal yet. */
+  noNormal: number;
+}
+
+/** The four groups an issue in flight can be in: the strings of `ColumnNormals`. */
+export type BoardHealthBand = 'healthy' | 'aging' | 'pastNormal' | 'noNormal';
+
+/** One issue in flight now, as the board health read lists it. Mirrors BoardHealthIssueDto. */
+export interface BoardHealthIssue {
+  key: string;
+  title: string;
+  statusId: number;
+  statusName: string;
+  /** When it entered the column, no earlier than the issue's creation. */
+  enteredAt: string;
+  /** How long it has stood there, in whole seconds. */
+  seconds: number;
+  /** The column's normal in seconds; null when the column has none yet. */
+  normalSeconds: number | null;
+  band: BoardHealthBand;
+}
+
+/** One equal slice of a board health window: counts and durations. Mirrors BoardHealthBarDto. */
 export interface BoardHealthBar {
   start: string;
   end: string;
@@ -2382,6 +2413,8 @@ export interface BoardHealthBar {
   /** Null when nothing was in flight, or nothing waited. */
   oldestInFlightSeconds: number | null;
   oldestWaitSeconds: number | null;
+  /** The in-flight issues with no children, by age against their column's normal. */
+  ages: BoardHealthAges;
 }
 
 /** The whole health of the board over a window in one read. `bars` is empty
@@ -2396,6 +2429,9 @@ export interface BoardHealth {
   pastNormal: number;
   hasWorkColumn: boolean;
   runners: BoardHealthRunners;
+  /** Every issue with no children in flight now, longest stay first. The server
+      caps nothing: a page that draws fewer says how many it left out. */
+  inFlightIssues: BoardHealthIssue[];
 }
 
 /** The states a runner lane's cell can draw, in the order a cell picks among

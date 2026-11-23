@@ -8,7 +8,14 @@
    (paused by a person) and `heron` (gone, off throughout). */
 
 import { BARS } from './boardHealth';
-import type { BoardHealth, BoardHealthBar, BoardHealthCell, BoardHealthLane, BoardHealthRunners } from '../types';
+import type {
+  BoardHealth,
+  BoardHealthBar,
+  BoardHealthCell,
+  BoardHealthIssue,
+  BoardHealthLane,
+  BoardHealthRunners,
+} from '../types';
 
 const TO = Date.parse('2026-11-22T15:40:00.000Z');
 const BAR_MS = 20 * 60_000;
@@ -33,7 +40,37 @@ export function sampleBar(i: number): BoardHealthBar {
     waitingQuestions,
     oldestInFlightSeconds: 600 * (i + 1),
     oldestWaitSeconds: waitingPullRequests + waitingQuestions > 0 ? 7800 : null,
+    ages: sampleAges(i),
   };
+}
+
+/** The four groups add up to the bar's leaves in flight, `2 + i % 4`; the last bar has two past normal. */
+function sampleAges(i: number): BoardHealthBar['ages'] {
+  const pastNormal = i === BARS - 1 ? 2 : 1;
+  return { healthy: (i % 4) - (pastNormal - 1), aging: 1, pastNormal, noNormal: 0 };
+}
+
+const IN_PROGRESS = { statusId: 3, statusName: 'In Progress', normalSeconds: 7200 };
+const IN_REVIEW = { statusId: 4, statusName: 'In Review', normalSeconds: 3600 };
+
+/** The last bar's five issues, longest stay first; the first stands as long as its `oldestInFlightSeconds`. */
+export function sampleIssues(): BoardHealthIssue[] {
+  const row = (n: number, title: string, seconds: number, column: typeof IN_PROGRESS, band: BoardHealthIssue['band']) => ({
+    key: `HA-${100 + n}`,
+    title,
+    ...column,
+    enteredAt: new Date(TO - seconds * 1000).toISOString(),
+    seconds,
+    band,
+  });
+
+  return [
+    row(1, 'The oldest issue in flight', 600 * BARS, IN_PROGRESS, 'pastNormal'),
+    row(2, 'A second past its normal', 9000, IN_PROGRESS, 'pastNormal'),
+    row(3, 'One that is ageing', 3000, IN_REVIEW, 'aging'),
+    row(4, 'A healthy one', 1200, IN_PROGRESS, 'healthy'),
+    row(5, 'Another healthy one', 600, IN_REVIEW, 'healthy'),
+  ];
 }
 
 /** Every cell state at least once, including every `why` a cell can carry. */
@@ -103,6 +140,7 @@ export function sampleHealth(over: Partial<BoardHealth> = {}): BoardHealth {
     pastNormal: 2,
     hasWorkColumn: true,
     runners: sampleRunners(),
+    inFlightIssues: sampleIssues(),
     ...over,
   };
 }

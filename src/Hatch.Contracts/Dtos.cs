@@ -4254,6 +4254,7 @@ public record CumulativeFlowDto(
 /// <param name="WaitingQuestions">Questions waiting on a person at the bar's end.</param>
 /// <param name="OldestInFlightSeconds">How long the oldest issue with no children had stood in flight at the bar's end; null when none.</param>
 /// <param name="OldestWaitSeconds">How long the oldest pull request or question had waited on a person; null when none.</param>
+/// <param name="Ages">The in-flight issues with no children, split by how long each had stood in its column against that column's normal, at the bar's end.</param>
 public record BoardHealthBarDto(
     DateTimeOffset Start,
     DateTimeOffset End,
@@ -4267,12 +4268,48 @@ public record BoardHealthBarDto(
     int WaitingPullRequests,
     int WaitingQuestions,
     long? OldestInFlightSeconds,
-    long? OldestWaitSeconds);
+    long? OldestWaitSeconds,
+    BoardHealthAgesDto Ages);
+
+/// <summary>
+/// Four counts of the in-flight issues with no children at one bar's end, which add up to
+/// that bar's in-flight leaves (not <c>InFlight</c>, which also counts parents). Each is judged by
+/// the one rule the card's age chip uses: the column's normal, the ninetieth percentile of its
+/// finished stays over thirty days. An earlier bar is judged against today's normals.
+/// </summary>
+/// <param name="Healthy">In the column for less than half its normal.</param>
+/// <param name="Aging">From half the normal up to, and including, the normal.</param>
+/// <param name="PastNormal">Longer than the normal.</param>
+/// <param name="NoNormal">The column has no normal yet: fewer than ten finished stays.</param>
+public record BoardHealthAgesDto(int Healthy, int Aging, int PastNormal, int NoNormal);
+
+/// <summary>
+/// One issue in flight now, as the board health read lists it: who it is, where it stands and
+/// how old it is against its column.
+/// </summary>
+/// <param name="Key">The issue's key, such as <c>AER-12</c>.</param>
+/// <param name="Title">The issue's title.</param>
+/// <param name="StatusId">The id of the column it stands in.</param>
+/// <param name="StatusName">The name of that column.</param>
+/// <param name="EnteredAt">When it entered the column, no earlier than the issue's creation.</param>
+/// <param name="Seconds">How long it has stood there, in whole seconds.</param>
+/// <param name="NormalSeconds">The column's normal in seconds; null when the column has none yet.</param>
+/// <param name="Band">One of <c>healthy</c>, <c>aging</c>, <c>pastNormal</c> or <c>noNormal</c>.</param>
+public record BoardHealthIssueDto(
+    string Key,
+    string Title,
+    int StatusId,
+    string StatusName,
+    DateTimeOffset EnteredAt,
+    long Seconds,
+    long? NormalSeconds,
+    string Band);
 
 /// <summary>
 /// The whole health of the board over a window in one read: twenty-four equal
 /// bars of what moved right and who moved it, where work stood and what waited on
-/// a person. Counts and durations only; nothing in the answer names an issue.
+/// a person. Counts and durations, and one list that names the issues in flight now: it names only
+/// issues the caller may already see, and narrows to <c>project</c> when that is given.
 /// </summary>
 /// <param name="From">The first bar's start, on the UTC clock.</param>
 /// <param name="To">The last bar's end.</param>
@@ -4283,6 +4320,7 @@ public record BoardHealthBarDto(
 /// <param name="PastNormal">Issues with no children standing in flight longer than their column's normal, now.</param>
 /// <param name="HasWorkColumn">Whether the board has an implementation column; without one no bar counts waiting, in flight or done.</param>
 /// <param name="Runners">A lane for each runner the caller may see, on the same bars, and how many are up now.</param>
+/// <param name="InFlightIssues">Every issue with no children standing in flight now, longest stay first. The server caps nothing: a page that draws fewer says how many it left out.</param>
 public record BoardHealthDto(
     DateTimeOffset From,
     DateTimeOffset To,
@@ -4292,7 +4330,8 @@ public record BoardHealthDto(
     int PreviousTotal,
     int PastNormal,
     bool HasWorkColumn,
-    BoardHealthRunnersDto Runners);
+    BoardHealthRunnersDto Runners,
+    IReadOnlyList<BoardHealthIssueDto> InFlightIssues);
 
 /// <summary>
 /// The runners' half of the board health read: one lane for each runner up at

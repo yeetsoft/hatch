@@ -32,7 +32,9 @@ public class BoardHealthControllerTests
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
+        public required DbContextOptions<HatchContext> Options { get; init; }
         public required BoardHealthController Health { get; init; }
+        public required Func<HatchContext, BoardHealthController> HealthOn { get; init; }
         public required AttentionController Attention { get; init; }
         public required ReportsController Reports { get; init; }
         public required global::Hatch.Api.Services.Auth.AuthOptions Auth { get; init; }
@@ -139,6 +141,31 @@ public class BoardHealthControllerTests
             await Db.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// Ten finished stays in doing of an hour each and in review of ten minutes each, two days ago,
+        /// so both columns have a normal: 3600 seconds in doing, 600 in review.
+        /// </summary>
+        public async Task GiveNormalsAsync()
+        {
+            var created = Now.AddDays(-2).AddHours(-1);
+            for (var i = 0; i < ColumnNormals.MinimumStays; i++)
+            {
+                var issue = await FileAsync(Todo, createdAt: created);
+                await MoveAsync(issue, Todo, Doing, created.AddHours(1));
+                await MoveAsync(issue, Doing, Review, created.AddHours(2));
+                await MoveAsync(issue, Review, Done, created.AddHours(2).AddMinutes(10));
+            }
+        }
+
+        public async Task<EfHatchIssue> FileTitledAsync(
+            string title, int statusId, DateTimeOffset createdAt, int? projectId = null)
+        {
+            var issue = await FileAsync(statusId, createdAt, projectId: projectId);
+            issue.Title = title;
+            await Db.SaveChangesAsync();
+            return issue;
+        }
+
         public async Task<int> AddProjectAsync(string key)
         {
             var project = new EfHatchProject { Key = key, Name = key, CreatedAt = At(1, 0) };
@@ -156,8 +183,8 @@ public class BoardHealthControllerTests
 
     private static async Task<Harness> NewAsync()
     {
-        var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var db = new HatchContext(options);
         var actors = new StubActorDirectory();
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = At(1, 0) };
@@ -183,11 +210,15 @@ public class BoardHealthControllerTests
             Microsoft.Extensions.Options.Options.Create(new HatchOptions { BackupPath = "" }),
             new ConfigurationBuilder().Build(), new NoBackupProcess(), new BackupStatus(time), time, NullLogger<BackupService>.Instance);
 
+        BoardHealthController HealthOn(HatchContext on) => new(
+            on, actors, runners, dispatch, time, new ColumnNormals(), caller, authOptions, keys, new RunnerStateLog(runners), sessions);
+
         return new Harness
         {
             Db = db,
-            Health = new BoardHealthController(
-                db, actors, runners, dispatch, time, new ColumnNormals(), caller, authOptions, keys, new RunnerStateLog(runners), sessions),
+            Options = options,
+            HealthOn = HealthOn,
+            Health = HealthOn(db),
             Attention = new AttentionController(
                 db, actors, runners, time, dispatch, backup, keys, new GooseWatch(time),
                 Microsoft.Extensions.Options.Options.Create(new HatchOptions()), caller, sessions, authOptions),
@@ -334,19 +365,126 @@ public class BoardHealthControllerTests
     }
 
     [Fact]
-    public async Task NothingInTheAnswer_NamesAnIssue()
+    public async Task TheAnswer_NamesOnlyTheIssuesInFlightNow_AndNeverALink()
     {
         var h = await NewAsync();
-        var issue = await h.FileAsync(h.Review, pullRequestUrl: "https://forge.example/pulls/1");
-        await h.AskAsync(issue, At(8, 0));
-        var mover = await h.FileAsync(h.Todo);
-        await h.MoveAsync(mover, h.Todo, h.Doing, At(5, 5));
+        var flying = await h.FileTitledAsync("in flight title", h.Doing, At(8, 0));
+        await h.FileTitledAsync("waiting title", h.Todo, At(8, 0));
+        await h.FileTitledAsync("done title", h.Done, At(8, 0));
+        var asked = await h.FileTitledAsync("review title", h.Review, At(8, 0));
+        asked.PullRequestUrl = "https://forge.example/pulls/1";
+        await h.Db.SaveChangesAsync();
+        await h.AskAsync(asked, At(8, 0));
 
         var json = JsonSerializer.Serialize(Value(await h.Health.GetBoardHealth(null, null, default)));
 
-        Assert.DoesNotContain("AER-", json);
-        Assert.DoesNotContain(SecretTitle, json);
+        Assert.Contains($"AER-{flying.Number}", json);
+        Assert.Contains("in flight title", json);
+        Assert.Contains("review title", json);
+        Assert.DoesNotContain("waiting title", json);
+        Assert.DoesNotContain("done title", json);
         Assert.DoesNotContain("pulls/1", json);
+        Assert.DoesNotContain("which way?", json);
+    }
+
+    // ---- The issues in flight now ----
+
+    [Fact]
+    public async Task TheList_CarriesKeyTitleColumnAndNormal_LongestStayFirst_AndMatchesPastNormal()
+    {
+        var h = await NewAsync();
+        await h.GiveNormalsAsync();
+        var old = await h.FileTitledAsync("the oldest", h.Doing, At(8, 0));
+        var fresh = await h.FileTitledAsync("a fresh one", h.Doing, At(11, 50));
+        var reviewing = await h.FileTitledAsync("under review", h.Review, At(12, 0));
+        await h.FileTitledAsync("not started", h.Inbox, At(8, 0));
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(["the oldest", "a fresh one", "under review"], answer.InFlightIssues.Select(i => i.Title));
+        var first = answer.InFlightIssues[0];
+        Assert.Equal($"AER-{old.Number}", first.Key);
+        Assert.Equal(h.Doing, first.StatusId);
+        Assert.Equal("doing", first.StatusName);
+        Assert.Equal(At(8, 0), first.EnteredAt);
+        Assert.Equal(4 * 3600 + 7 * 60 + 30, first.Seconds);
+        Assert.Equal(3600, first.NormalSeconds);
+        Assert.Equal(["pastNormal", "healthy", "aging"], answer.InFlightIssues.Select(i => i.Band));
+        Assert.Equal($"AER-{fresh.Number}", answer.InFlightIssues[1].Key);
+        Assert.Equal($"AER-{reviewing.Number}", answer.InFlightIssues[2].Key);
+        Assert.Equal(600, answer.InFlightIssues[2].NormalSeconds);
+
+        var last = answer.Bars[^1];
+        Assert.Equal(last.OldestInFlightSeconds, first.Seconds);
+        Assert.Equal(1, answer.PastNormal);
+        Assert.Equal(answer.PastNormal, answer.InFlightIssues.Count(i => i.Band == "pastNormal"));
+        Assert.Equal(answer.PastNormal, last.Ages.PastNormal);
+        Assert.Equal(new BoardHealthAgesDto(1, 1, 1, 0), last.Ages);
+        Assert.Equal(answer.InFlightIssues.Count, last.Ages.Healthy + last.Ages.Aging + last.Ages.PastNormal + last.Ages.NoNormal);
+    }
+
+    [Fact]
+    public async Task TheList_WithNoNormalYet_IsNoNormalWithANullNormal()
+    {
+        var h = await NewAsync();
+        await h.FileTitledAsync("anything", h.Doing, At(8, 0));
+
+        var answer = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        var row = Assert.Single(answer.InFlightIssues);
+        Assert.Equal("noNormal", row.Band);
+        Assert.Null(row.NormalSeconds);
+        Assert.Equal(new BoardHealthAgesDto(0, 0, 0, 1), answer.Bars[^1].Ages);
+    }
+
+    [Fact]
+    public async Task TheList_IsEmpty_OnAnEmptyBoard_AndWithNothingInFlight()
+    {
+        var empty = await NewAsync();
+        Assert.Empty(Value(await empty.Health.GetBoardHealth(null, null, default)).InFlightIssues);
+
+        var quiet = await NewAsync();
+        await quiet.FileTitledAsync("waiting", quiet.Todo, At(8, 0));
+        await quiet.FileTitledAsync("finished", quiet.Done, At(8, 0));
+        var answer = Value(await quiet.Health.GetBoardHealth(null, null, default));
+        Assert.Empty(answer.InFlightIssues);
+        Assert.Equal(0, answer.PastNormal);
+    }
+
+    [Fact]
+    public async Task TheList_KeepsToTheProjectGiven_AndNamesNothingOfAnother()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.FileTitledAsync("ours", h.Doing, At(8, 0));
+        await h.FileTitledAsync("theirs and private", h.Doing, At(8, 0), other);
+
+        var narrowed = Value(await h.Health.GetBoardHealth(null, ["AER"], default));
+        var wide = Value(await h.Health.GetBoardHealth(null, null, default));
+
+        Assert.Equal(["ours"], narrowed.InFlightIssues.Select(i => i.Title));
+        var json = JsonSerializer.Serialize(narrowed);
+        Assert.DoesNotContain("OTH-", json);
+        Assert.DoesNotContain("theirs and private", json);
+        Assert.Equal(2, wide.InFlightIssues.Count);
+    }
+
+    [Fact]
+    public async Task TheList_KeepsToTheProjectsTheCallerMaySee()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.FileTitledAsync("ours", h.Doing, At(8, 0));
+        await h.FileTitledAsync("theirs and private", h.Doing, At(9, 0), other);
+
+        using var scoped = ScopeSeed.Request(h.Options, ScopeSeed.Only(h.ProjectId));
+        var answer = Value(await h.HealthOn(scoped).GetBoardHealth(null, null, default));
+
+        Assert.Equal(["ours"], answer.InFlightIssues.Select(i => i.Title));
+        var json = JsonSerializer.Serialize(answer);
+        Assert.DoesNotContain("OTH-", json);
+        Assert.DoesNotContain("theirs and private", json);
+        Assert.Equal(1, answer.Bars[^1].Ages.NoNormal);
     }
 
     // ---- What happened before the window ----

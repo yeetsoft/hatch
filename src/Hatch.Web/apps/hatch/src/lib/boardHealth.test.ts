@@ -52,6 +52,7 @@ function bar(i: number, over: Partial<BoardHealthBar> = {}): BoardHealthBar {
     waitingQuestions,
     oldestInFlightSeconds: i % 7 === 6 ? null : 600 * (i + 1),
     oldestWaitSeconds: waitingPullRequests + waitingQuestions > 0 ? 7800 : null,
+    ages: { healthy: 1, aging: 1, pastNormal: 0, noNormal: 0 },
     ...over,
   };
 }
@@ -110,6 +111,7 @@ function answer(over: Partial<BoardHealth> = {}): BoardHealth {
     pastNormal: 2,
     hasWorkColumn: true,
     runners: runners(),
+    inFlightIssues: [],
     ...over,
   };
 }
@@ -129,6 +131,7 @@ const quiet = (): BoardHealth =>
       waitingQuestions: 0,
       oldestInFlightSeconds: null,
       oldestWaitSeconds: null,
+      ages: { healthy: 0, aging: 0, pastNormal: 0, noNormal: 0 },
     })),
     total: 0,
     previousTotal: 0,
