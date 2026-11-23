@@ -104,6 +104,33 @@ describe('the Oldest in flight tile', () => {
     for (const block of darkBlocks) expect(block).toContain(`${token}:`);
   });
 
+  it.each([
+    ['pastNormal', '--danger', '--danger', null],
+    ['aging', '--card', '--warn', '--warn'],
+    ['healthy', '--card', '--success-fill', '--success-fill'],
+    ['noNormal', '--card', '--muted', '--muted'],
+  ])(
+    'draws the dialog\'s %s band on a %s ground, in %s ink and %s stroke, every token in both dark blocks',
+    (mark, ground, ink, stroke) => {
+      expect(declarationsOf(`.hatch-health-dialog-ground--${mark}`)['fill']).toBe(`var(${ground})`);
+      // Past normal is a solid ground, so it has no pattern ink to colour.
+      if (stroke === null) {
+        expect(declarationsOf(`.hatch-health-dialog-seg--${mark}`)['stroke']).toBe('none');
+      } else {
+        expect(declarationsOf(`.hatch-health-dialog-ink--${mark}`)['fill']).toBe(`var(${ink})`);
+        expect(declarationsOf(`.hatch-health-dialog-seg--${mark}`)['stroke']).toBe(`var(${stroke})`);
+      }
+      for (const token of new Set([ground, ink, stroke].filter((t): t is string => t !== null))) {
+        for (const block of darkBlocks) expect(block, token).toContain(`${token}:`);
+      }
+    },
+  );
+
+  it('has no line or dot in the dialog any more', () => {
+    expect(css).not.toContain('.hatch-health-dialog-line');
+    expect(css).not.toContain('.hatch-health-dialog-dot');
+  });
+
   it('draws the neutral band faint', () => {
     expect(Number(declarationsOf('.hatch-health-band--nonormal')['opacity'])).toBeLessThan(0.5);
   });

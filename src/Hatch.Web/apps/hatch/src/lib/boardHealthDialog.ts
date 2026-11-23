@@ -19,6 +19,7 @@ import {
   plural,
   round,
   scaleOf,
+  splitSentence,
   tileName,
   waitingCount,
   windowLabel,
@@ -44,22 +45,29 @@ export type MarkKey =
   | 'done'
   | 'inFlight'
   | 'waiting'
-  | 'line'
-  | 'now'
+  | 'pastNormal'
+  | 'aging'
+  | 'healthy'
+  | 'noNormal'
   | 'pullRequests'
   | 'questions';
 
 /** How a filled mark is told apart from its neighbours by more than its shade. */
-export type PatternKind = 'solid' | 'stripes' | 'dots';
+export type PatternKind = 'solid' | 'stripes' | 'dots' | 'cross';
 
 /** The fill pattern of the marks that stack side by side in one chart. In
-    flight's bands are told apart by their order and the labelled legend. */
+    flight's bands have no pattern: they are told apart by their order and the
+    labelled legend. Oldest's four age bands each have one. */
 export const MARK_PATTERN: Partial<Record<MarkKey, PatternKind>> = {
   runner: 'solid',
   person: 'stripes',
   board: 'dots',
   pullRequests: 'solid',
   questions: 'stripes',
+  pastNormal: 'solid',
+  aging: 'stripes',
+  healthy: 'dots',
+  noNormal: 'cross',
 };
 
 export interface LegendEntry {
@@ -67,10 +75,12 @@ export interface LegendEntry {
   label: string;
 }
 
-/** Every mark of a tile's chart, top to bottom as it is drawn. Runners has none
+/** Every mark of a tile's chart, top to bottom as it is drawn. Oldest names its
+    grey band only when the `answer` has a bar with an issue in a column with no
+    normal yet; the other tiles ignore `answer`. Runners has none
     here: its legend is the seven lane states, `LANE_LEGEND`, which swatch with
     cells rather than the chart's marks. */
-export function legend(tile: Tile): LegendEntry[] {
+export function legend(tile: Tile, answer?: BoardHealth): LegendEntry[] {
   switch (tile) {
     case 'moved':
       return [
@@ -86,8 +96,10 @@ export function legend(tile: Tile): LegendEntry[] {
       ];
     case 'oldest':
       return [
-        { key: 'line', label: 'Age of the oldest in flight' },
-        { key: 'now', label: 'Now' },
+        ...(answer?.bars.some((bar) => bar.ages.noNormal > 0) ? [{ key: 'noNormal' as const, label: 'No normal yet' }] : []),
+        { key: 'healthy', label: 'Healthy' },
+        { key: 'aging', label: 'Aging' },
+        { key: 'pastNormal', label: 'Past normal' },
       ];
     case 'waiting':
       return [
@@ -136,7 +148,7 @@ export function scaleTop(tile: Tile, answer: BoardHealth): string {
     case 'inFlight':
       return String(scaleOf(answer.bars.map((bar) => bar.done + bar.inFlight + bar.waiting)));
     case 'oldest':
-      return formatSpan(scaleOf(answer.bars.map((bar) => bar.oldestInFlightSeconds ?? 0)));
+      return String(scaleOf(answer.bars.map((bar) => bar.ages.pastNormal + bar.ages.aging + bar.ages.healthy + bar.ages.noNormal)));
     case 'waiting':
       return String(scaleOf(answer.bars.map(waitingCount)));
     case 'runners':
@@ -351,7 +363,7 @@ export function markedWords(tile: Tile, answer: BoardHealth, index: number | nul
     case 'oldest':
       return bar.oldestInFlightSeconds === null
         ? `${when}: nothing in flight`
-        : `${when}: the oldest has been in flight ${formatSpan(bar.oldestInFlightSeconds)}`;
+        : `${when}: the oldest has been in flight ${formatSpan(bar.oldestInFlightSeconds)}, ${splitSentence(bar.ages)}`;
     case 'waiting': {
       if (waitingCount(bar) === 0) return `${when}: nothing waiting`;
 

@@ -2661,9 +2661,16 @@ button.hatch-card-stories:focus-visible {
   fill: var(--warn);
 }
 
+.hatch-health-dialog-ground--pastNormal {
+  fill: var(--danger);
+}
+
 .hatch-health-dialog-ground--person,
 .hatch-health-dialog-ground--board,
-.hatch-health-dialog-ground--questions {
+.hatch-health-dialog-ground--questions,
+.hatch-health-dialog-ground--aging,
+.hatch-health-dialog-ground--healthy,
+.hatch-health-dialog-ground--noNormal {
   fill: var(--card);
 }
 
@@ -2675,8 +2682,17 @@ button.hatch-card-stories:focus-visible {
   fill: var(--ink);
 }
 
-.hatch-health-dialog-ink--questions {
+.hatch-health-dialog-ink--questions,
+.hatch-health-dialog-ink--aging {
   fill: var(--warn);
+}
+
+.hatch-health-dialog-ink--healthy {
+  fill: var(--success-fill);
+}
+
+.hatch-health-dialog-ink--noNormal {
+  fill: var(--muted);
 }
 
 .hatch-health-dialog-seg--runner,
@@ -2688,8 +2704,21 @@ button.hatch-card-stories:focus-visible {
   stroke: var(--ink);
 }
 
+.hatch-health-dialog-seg--aging {
+  stroke: var(--warn);
+}
+
+.hatch-health-dialog-seg--healthy {
+  stroke: var(--success-fill);
+}
+
+.hatch-health-dialog-seg--noNormal {
+  stroke: var(--muted);
+}
+
 .hatch-health-dialog-seg--pullRequests,
-.hatch-health-dialog-seg--questions {
+.hatch-health-dialog-seg--questions,
+.hatch-health-dialog-seg--pastNormal {
   stroke: none;
 }
 
@@ -2697,18 +2726,6 @@ button.hatch-card-stories:focus-visible {
   stroke: var(--warn);
   stroke-width: 1.5;
   stroke-linejoin: round;
-}
-
-.hatch-health-dialog-line {
-  stroke: var(--ink);
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-
-.hatch-health-dialog-dot {
-  stroke: var(--primary);
-  stroke-width: 9;
-  stroke-linecap: round;
 }
 
 /* Its own class, not .hatch-health-moment, which the strip's tiles count. */

@@ -98,6 +98,10 @@ public class BoardHealthDialogTests(ITestOutputHelper output)
                 // the dialog's own line is not one of theirs.
                 Assert.Equal(4, await page.Locator(".hatch-health-moment").CountAsync());
 
+                // HA-2769: Oldest draws the tile's age bands large, so it is checked at now, the last bar.
+                if (tile == "oldest")
+                    await AssertOldestBandsAsync(harness, deadline, page);
+
                 foreach (var theme in new[] { "light", "dark" })
                 {
                     await harness.EvaluateAsync<bool>(deadline, "setting the theme", $"() => {{ document.documentElement.setAttribute('data-theme', '{theme}'); return true; }}");
@@ -352,6 +356,27 @@ public class BoardHealthDialogTests(ITestOutputHelper output)
     /// <summary>Whether focus is on <c>tile</c>'s own sparkline - where Modal hands it back.</summary>
     private const string FocusIsOnSpark =
         "(tile) => document.activeElement === document.querySelector(`[data-tile='${tile}'] [data-part='spark']`)";
+
+    /// <summary>
+    /// HA-2769: with the Oldest in flight dialog open, marks the last bar (now: the first bars predate the seed
+    /// and would say nothing is in flight) and checks the chart draws the tile's age bands - three, or four with
+    /// the grey one - with a legend entry for each, a side scale that is a plain count, and a sentence that ends
+    /// in the split. Whether grey shows is left alone: the seed may have no normal yet.
+    /// </summary>
+    internal static async Task AssertOldestBandsAsync(E2eHarness harness, Deadline deadline, IPage page)
+    {
+        await deadline.BoundAsync("focusing the chart", () => page.Locator($"{Dialog} [data-part='chart']").FocusAsync());
+        await deadline.BoundAsync("pressing End", () => page.Keyboard.PressAsync("End"));
+        await harness.WaitForFunctionAsync(
+            deadline, "waiting for the last bar's sentence",
+            "() => /^.+?: the oldest has been in flight .+, [0-9]+ past normal · [0-9]+ aging · [0-9]+ healthy( · [0-9]+ no normal yet)?$/.test(document.querySelector(\"[role='dialog'] [data-part='words']\")?.textContent.trim() ?? '')");
+
+        var bands = await page.Locator($"{Dialog} .hatch-health-dialog-svg polygon.hatch-health-dialog-seg").CountAsync();
+        Assert.InRange(bands, 3, 4);
+        Assert.Equal(bands, await page.Locator($"{Dialog} .hatch-health-dialog-legend li").CountAsync());
+        Assert.Matches("^[0-9]+$", Assert.Single(await Texts(harness, deadline, $"{Dialog} [data-part='scale-top']")));
+        Assert.Equal(0, await page.Locator($"{Dialog} .hatch-health-dialog-line, {Dialog} .hatch-health-dialog-dot").CountAsync());
+    }
 
     private static async Task<string[]> Texts(E2eHarness harness, Deadline deadline, string selector) =>
         await harness.EvaluateAsync<string[]>(

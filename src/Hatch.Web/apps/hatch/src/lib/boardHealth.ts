@@ -199,50 +199,6 @@ export interface Dot {
   y: number;
 }
 
-/** The oldest-in-flight line: an SVG path, and the last bar's point for a dot. */
-export interface OldestLine {
-  path: string;
-  last: Dot | null;
-}
-
-/**
- * The age of the oldest thing in flight at each bar, as a path scaled to the
- * oldest of them. A bar with nothing in flight (`null`) is a gap, not a zero:
- * the path breaks into separate segments there, and `last` is null when the
- * last bar is such a gap. A segment of one point is drawn as a zero-length line
- * so a round cap still shows it.
- */
-export function oldestLine(answer: BoardHealth, width: number, height: number): OldestLine {
-  const scale = scaleOf(answer.bars.map((bar) => bar.oldestInFlightSeconds ?? 0));
-  const segments: string[][] = [];
-  let open = false;
-  let last: Dot | null = null;
-
-  for (const [i, bar] of answer.bars.entries()) {
-    const seconds = bar.oldestInFlightSeconds;
-    if (seconds === null) {
-      open = false;
-      last = null;
-      continue;
-    }
-
-    const point = { x: momentX(i, width), y: round(height - (seconds / scale) * height) };
-    if (!open) segments.push([]);
-    segments[segments.length - 1].push(`${point.x} ${point.y}`);
-    open = true;
-    last = point;
-  }
-
-  const path = segments
-    .map((points) => {
-      const lone = points.length === 1 ? [points[0], points[0]] : points;
-      return lone.map((point, i) => `${i === 0 ? 'M' : 'L'} ${point}`).join(' ');
-    })
-    .join(' ');
-
-  return { path, last };
-}
-
 /** What waits on a person at one bar: pull requests plus questions. */
 export const waitingCount = (bar: BoardHealthBar): number => bar.waitingPullRequests + bar.waitingQuestions;
 
