@@ -319,12 +319,14 @@ and its columns](the-board-and-its-columns) and
 
 Above the rows is a strip of what is waiting on the reader: one line for
 every question at the hold level anywhere on an ambition's tree, the
-ambition itself included. A line names the ambition, the key of the issue
-the question is on, the first words of the question, and how long it has
-waited; the whole line links to the Ballot, under the tab's scope. With
-none waiting, the strip is one sentence: "Nothing is waiting on you." Where
-the read behind the strip fails, the strip says so in a sentence of its own
-and the rows beneath it still draw.
+ambition itself included. The strip is a card, like a row below it, with
+the same heading style as every other card in the app. A line names the
+ambition, the key of the issue the question is on, the first words of the
+question, and how long it has waited; the whole line links to the Ballot,
+under the tab's scope. The four sit on four columns, so two lines read as
+a table. With none waiting, the strip is one sentence: "Nothing is waiting
+on you." Where the read behind the strip fails, the strip says so in a
+sentence of its own and the rows beneath it still draw.
 
 A row is the ambition's title, linking to the ambition's own page, its
 project key and its column. Beside that, "N capabilities" with a bar and a

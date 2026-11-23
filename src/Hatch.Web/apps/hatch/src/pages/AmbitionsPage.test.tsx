@@ -52,6 +52,7 @@ describe('AmbitionList', () => {
     const html = render();
 
     expect(html).toContain('No ambition in scope.');
+    expect(html).toContain('hatch-empty');
     expect(html).not.toContain('hatch-ambition-row');
   });
 
@@ -96,6 +97,7 @@ describe('AmbitionList', () => {
 
     expect(html).toContain('0 capabilities');
     expect(html).toContain('This ambition has no capabilities yet.');
+    expect(html).toContain('hatch-empty');
     expect(html).not.toContain('hatch-ambition-bar');
     expect(html).not.toContain('hatch-ambition-legend');
   });
@@ -105,7 +107,15 @@ describe('AmbitionList', () => {
 
     expect(html).toContain('In flight, 0 of 2');
     expect(html).toContain('No epic is open under this ambition.');
+    expect(html).toContain('hatch-empty');
     expect(html).not.toContain('runs 2 at once');
+  });
+
+  it('carries the legend and the count line in the note style', () => {
+    const html = render(row('AER-1', { open: [epic('AER-7')] }));
+
+    expect(html).toContain('<ul class="hatch-ambition-legend">');
+    expect(html).toContain('<p class="hatch-ambition-tally">1 open, runs 2 at once</p>');
   });
 
   it('draws an open epic with its key link, column and served badges, and the count line', () => {
@@ -192,6 +202,13 @@ const tree = (): Ballot =>
   );
 
 describe('WaitingStrip', () => {
+  it('draws the strip as a card, its heading the card heading the rest of the app uses', () => {
+    const html = strip(tree());
+
+    expect(html).toContain('<section class="hatch-card hatch-ambition-strip">');
+    expect(html).toContain('<h2 class="hatch-section-title">');
+  });
+
   it('draws one line per hold question, in the ballot order, each linking to the ballot', () => {
     const html = strip(tree());
 
@@ -223,6 +240,7 @@ describe('WaitingStrip', () => {
 
     expect(html).not.toContain('hatch-ambition-strip-line');
     expect(html).toContain('Nothing is waiting on you.');
+    expect(html).toContain('hatch-empty');
   });
 
   it('draws no line for a ballot whose only root is an epic', () => {
@@ -234,6 +252,13 @@ describe('WaitingStrip', () => {
 
   it('draws its sentence for an empty ballot', () => {
     expect(strip(ballot())).toContain('Nothing is waiting on you.');
+  });
+
+  it('draws the failure sentence as an error, not an empty state', () => {
+    const html = strip(null, 'boom');
+
+    expect(html).toContain('<p class="text-danger hatch-ambition-failure">');
+    expect(html).not.toContain('hatch-empty');
   });
 
   it('links to the ballot under the scope of the tab', () => {
