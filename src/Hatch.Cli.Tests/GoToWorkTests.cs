@@ -5961,7 +5961,8 @@ public sealed class GoToWorkTests
     private static void UnpublishedBoard(
         Harness h, string key = "AER-1", string endsIn = "In Review", bool endsInReview = true,
         bool branchOnOrigin = true, string? pullRequest = null, int letGo = 0,
-        string? landing = null, IReadOnlyList<LandingDto>? landings = null, bool waiting = false)
+        string? landing = null, IReadOnlyList<LandingDto>? landings = null, bool waiting = false,
+        WaitingPullRequestDto? waitingPullRequest = null)
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
         h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -5976,9 +5977,9 @@ public sealed class GoToWorkTests
 
         h.Wire.Json("GET", $"/api/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings) with
         {
-            WaitingPullRequest = waiting
+            WaitingPullRequest = waitingPullRequest ?? (waiting
                 ? new WaitingPullRequestDto("AER-1 Pr: a thing", "body", "aer-1-thing", new string('b', 40), null, "a runner", "gh is signed out", DateTimeOffset.UnixEpoch)
-                : null,
+                : null),
         });
         h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
         h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
@@ -6042,6 +6043,48 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(UnpublishedComments(h), c => c.Kind == "question");
         var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+    }
+
+    private static WaitingPullRequestDto WrittenBy(string runner, DateTimeOffset at) =>
+        new("AER-1 Pr: a thing", "body", "aer-1-thing", new string('b', 40), null, runner, "gh said: bad credentials", at);
+
+    [Fact]
+    public async Task A_pull_request_this_runner_left_waiting_names_the_forge_on_the_release()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, waitingPullRequest: WrittenBy(h.Runtime.RunnerName, DateTimeOffset.UtcNow.AddHours(1)));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+        Assert.Contains("failure=forge", released.Query, StringComparison.Ordinal);
+        Assert.Contains($"failureWhy={Uri.EscapeDataString("gh said: bad credentials")}", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_waiting_pull_request_from_an_earlier_increment_names_no_failure()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, waitingPullRequest: WrittenBy(h.Runtime.RunnerName, DateTimeOffset.UnixEpoch));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("failure", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_waiting_pull_request_another_runner_wrote_names_no_failure()
+    {
+        using var h = new Harness();
+        UnpublishedBoard(h, waitingPullRequest: WrittenBy("another:/checkout", DateTimeOffset.UtcNow.AddHours(1)));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.DoesNotContain("failure", released.Query, StringComparison.Ordinal);
     }
 
     [Fact]

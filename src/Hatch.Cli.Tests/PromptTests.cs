@@ -166,6 +166,43 @@ public sealed class PromptTests
         Assert.Contains("Do not push an empty branch", prompt, StringComparison.Ordinal);
     }
 
+    private const string MachineFaultSentence = "A tool or a sign-in this runner lacks is not a decision, so do not ask about it.";
+    private const string MachineFaultPullRequestSentence = "To open a pull request, use `hatch pr` with a title and a body";
+
+    [Theory]
+    [InlineData("ordinary", true)]
+    [InlineData("check", true)]
+    [InlineData("conflict", true)]
+    [InlineData("build", true)]
+    [InlineData("trunk", false)]
+    [InlineData("denied", false)]
+    public void A_machine_fault_is_not_a_question_and_the_pull_request_sentence_rides_with_that_section_only(string prompt, bool opensPullRequest)
+    {
+        var text = WorkOf(prompt);
+
+        var cannotDecide = text.IndexOf("## When you cannot decide", StringComparison.Ordinal);
+        var fault = text.IndexOf(MachineFaultSentence, StringComparison.Ordinal);
+        var checks = text.IndexOf("What the repository can answer, answer by reading the repository.", StringComparison.Ordinal);
+
+        Assert.True(cannotDecide >= 0 && cannotDecide < checks && checks < fault, "the paragraph follows the repository sentence");
+        Assert.Equal(fault, text.LastIndexOf(MachineFaultSentence, StringComparison.Ordinal));
+        Assert.Contains("use `hatch recuse`", text, StringComparison.Ordinal);
+        Assert.Contains("`hatch ask` stays for a choice between named things.", text, StringComparison.Ordinal);
+        Assert.Equal(opensPullRequest, text.Contains(MachineFaultPullRequestSentence, StringComparison.Ordinal));
+        Assert.Equal(opensPullRequest, text.Contains("## Opening a pull request", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_shared_story_branch_gets_the_paragraph_without_the_pull_request_sentence()
+    {
+        var work = Fixtures.Work("AER-12") with { BranchKey = "AER-1" };
+        var text = Prompt.Compose(work);
+
+        Assert.Contains(MachineFaultSentence, text, StringComparison.Ordinal);
+        Assert.True(Branches.IsShared(work));
+        Assert.DoesNotContain(MachineFaultPullRequestSentence, text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_trunk_landing_project_is_told_to_land_rather_than_open_a_pull_request()
     {
@@ -1430,7 +1467,7 @@ public sealed class PromptTests
         Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51, and to 5,500 for the playbook-proposals call, HA-1644, and to 6,200 for how a ticket should read, HA-2327, and to 6,600 for opening the pull request with hatch pr, HA-2716) ----
+    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51, and to 5,500 for the playbook-proposals call, HA-1644, and to 6,200 for how a ticket should read, HA-2327, and to 6,600 for opening the pull request with hatch pr, HA-2716, and to 7,000 for the machine-fault paragraph, HA-2754) ----
 
     [Fact]
     public void The_fixed_part_of_the_prompt_stays_under_five_thousand_characters()
@@ -1438,8 +1475,8 @@ public sealed class PromptTests
         var fixedPart = string.Join('\n', Prompt.Tail(
             "AER-12", "In Review", "https://hatch.example.test/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
-        Assert.True(fixedPart.Length < 6600,
-            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 6,600.");
+        Assert.True(fixedPart.Length < 7000,
+            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 7,000.");
     }
 
     [Fact]

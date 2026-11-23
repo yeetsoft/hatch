@@ -390,6 +390,13 @@ public sealed class WorkCommand(Runtime runtime)
         // the release stamps is the one for this session.
         string? releaseSessionId = null;
 
+        // The runner failure the increment ended on, sent with the release so
+        // the board writes it on the ticket. Null on every other way out.
+        ReleaseFailure? releaseFailure = null;
+
+        // The runner's clock just before the session started; null where none ran.
+        DateTimeOffset? started = null;
+
         try
         {
             if (key is { Length: > 0 })
@@ -733,6 +740,9 @@ public sealed class WorkCommand(Runtime runtime)
                 using var skip = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 void OnSkip() => skip.Cancel();
                 runtime.Controls.Skipped += OnSkip;
+                // Read before the session: a pull request left waiting is this
+                // increment's only where it was written at or after this.
+                started = runtime.Clock.GetUtcNow();
                 try
                 {
                     report = await increment.RunAsync(
@@ -751,6 +761,7 @@ public sealed class WorkCommand(Runtime runtime)
                 releaseOutcome = report.ReleaseOutcome;
                 releaseReason = report.ReleaseReason;
                 releaseSessionId = report.SessionId;
+                releaseFailure = report.ReleaseFailure;
                 return 0;
             }
             finally
@@ -768,6 +779,10 @@ public sealed class WorkCommand(Runtime runtime)
                 var left = await lifecycle.LeaveAsync(
                     work, chosen, owned, CancellationToken.None, limit, preempted, modelRefusal: modelRefusal,
                     entered: entering.Entries, signing: commitSigning);
+
+                // A pull request this increment left written and waiting is the
+                // forge failing this runner - see GoToWork, which reads it the same way.
+                if (started is { } began) releaseFailure ??= Lifecycle.ForgeFailure(left.Waiting, runtime.RunnerName, began);
 
                 // Something happened - the ticket moved into review, or a
                 // conflict resolved, or a build fix pushed, on a branch judged
@@ -817,13 +832,14 @@ public sealed class WorkCommand(Runtime runtime)
             releaseOutcome = ClaimOutcomes.Dropped;
             releaseReason = ClaimLostReasons.Error;
             releaseSessionId = increment?.SessionId;
+            releaseFailure = null;
 
             return 1;
         }
         finally
         {
             runtime.Unsigned.Clear();
-            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId);
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId, releaseFailure);
         }
     }
 

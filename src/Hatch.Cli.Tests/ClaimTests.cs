@@ -145,6 +145,36 @@ public sealed class ClaimTests
     }
 
     [Fact]
+    public async Task A_release_with_a_failure_sends_its_kind_and_why()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(
+            ClaimOutcomes.Unstarted, null, "s-1", new ReleaseFailure(RunnerFailureKinds.AgentSignedOut, "Not logged in\n  run /login"));
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Contains("outcome=unstarted", released.Query, StringComparison.Ordinal);
+        Assert.Contains("&failure=agent-signed-out", released.Query, StringComparison.Ordinal);
+        Assert.Contains($"&failureWhy={Uri.EscapeDataString("Not logged in run /login")}", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_failure_with_no_outcome_is_not_sent()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(null, null, null, new ReleaseFailure(RunnerFailureKinds.Forge, "no"));
+
+        Assert.DoesNotContain("failure", Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim")).Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_release_the_board_never_answers_still_removes_the_session_record()
     {
         using var h = new Harness();

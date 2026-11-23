@@ -2703,6 +2703,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // the release stamps is the one for this session.
         string? releaseSessionId = null;
 
+        // The runner failure the increment ended on, carried alongside the
+        // outcome above so the board writes it on the release. Null for a pass
+        // that ended on nothing of the runner's.
+        ReleaseFailure? releaseFailure = null;
+
         try
         {
             // A person's order names the ticket, so the walk over the queue -
@@ -2993,6 +2998,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var refused = await runtime.Increment().CannotSignAsync(work, signing, runtime.RunnerName, ct);
                 tally.Refused(refused);
                 releaseOutcome = refused.ReleaseOutcome;
+                releaseFailure = refused.ReleaseFailure;
                 line.Line = $"{refused.Key} needs a runner that can sign commits";
 
                 // Asked again here: git may have been able to sign at the start
@@ -3074,6 +3080,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             releaseOutcome = report.ReleaseOutcome;
             releaseReason = report.ReleaseReason;
             releaseSessionId = report.SessionId;
+            releaseFailure = report.ReleaseFailure;
 
             // A fresh clock read, not the `now` taken before the session ran:
             // the narrowing's own "until" is read against when it actually
@@ -3109,6 +3116,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // returned - so the report's own Filed list, read by Outcome in
                 // the finally block below, only sees it if it is spliced in here.
                 if (hardLimit is not null && left.FiledKey is { } filedKey) report.Filed = [.. report.Filed, filedKey];
+
+                // A pull request this increment left written and waiting is the
+                // forge failing this runner. Only one this runner wrote since the
+                // session began: the board's clock and this one can differ, so
+                // the runner's name is what keeps an old waiting pull request,
+                // from a past increment or another runner, from being named again.
+                releaseFailure ??= Lifecycle.ForgeFailure(left.Waiting, runtime.RunnerName, now);
 
                 // Something happened - the ticket moved into review, or a
                 // conflict resolved, or a build fix pushed, on a branch judged
@@ -3176,6 +3190,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             releaseOutcome = ClaimOutcomes.Dropped;
             releaseReason = ClaimLostReasons.Error;
             releaseSessionId = increment?.SessionId;
+            releaseFailure = null;
 
             tally.Record(new IncrementReport
             {
@@ -3197,7 +3212,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             // The lease covers the bookkeeping too, and this is the door every
             // path out of a pass goes through.
-            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId);
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason, releaseSessionId, releaseFailure);
         }
     }
 

@@ -41,10 +41,11 @@ public sealed record ModelRefusalInfo(string Model, DateTimeOffset? Until, strin
 /// splices it into the report's own <c>Filed</c> list, since nothing re-reads the
 /// board afterward to pick it up on its own.
 /// </param>
-/// <param name="HasWaitingPullRequest">
-/// Whether the issue carries a pull request that is written and waiting for a runner that can
-/// open it. For the guard alone: it counts as published, and is never a pull request to merge the
-/// trunk into, so <see cref="HasPullRequest"/> stays what the forge was told.
+/// <param name="Waiting">
+/// The pull request the issue carries that is written and waiting for a runner that can open it,
+/// or null. For the guard it counts as published (<see cref="HasWaitingPullRequest"/>), and is never
+/// a pull request to merge the trunk into, so <see cref="HasPullRequest"/> stays what the forge was
+/// told. The loop also reads it to name a forge failure on the release.
 /// </param>
 /// <param name="HasLanding">
 /// Whether a trunk-landing project's issue has a landing recorded - meaningless,
@@ -52,7 +53,11 @@ public sealed record ModelRefusalInfo(string Model, DateTimeOffset? Until, strin
 /// request instead.
 /// </param>
 public sealed record LeaveOutcome(
-    bool HasPullRequest, bool BranchOnOrigin, string? FiledKey = null, bool HasLanding = true, bool HasWaitingPullRequest = false);
+    bool HasPullRequest, bool BranchOnOrigin, string? FiledKey = null, bool HasLanding = true, WaitingPullRequestDto? Waiting = null)
+{
+    /// <summary>Whether a pull request is written and waiting - see <see cref="Waiting"/>.</summary>
+    public bool HasWaitingPullRequest => Waiting is not null;
+}
 
 /// <summary>What entering the issue's branch across every checkout came to.</summary>
 /// <param name="Entries">One per checkout the increment resets, in the project's order.</param>
@@ -302,7 +307,7 @@ public sealed class Lifecycle(Runtime runtime)
             // never has one, so there is nothing to ask the board for - and it is
             // whether a landing is recorded that matters there instead.
             var trunkLanding = work.Landing == Landings.Trunk;
-            var (pullRequest, waiting) = trunkLanding ? (false, false) : await PullRequestStateAsync(branchKey, ct);
+            var (pullRequest, waiting) = trunkLanding ? (false, null) : await PullRequestStateAsync(branchKey, ct);
             var hasLanding = trunkLanding ? await HasLandingAsync(key, ct) : true;
             var branchOnOrigin = false;
 
@@ -325,37 +330,37 @@ public sealed class Lifecycle(Runtime runtime)
             if (limit is not null)
             {
                 await runtime.Board.CommentAsync(key, UsageLimitBody(limit, chosen, pushed, lines), ct);
-                return new LeaveOutcome(pullRequest, false, HasWaitingPullRequest: waiting);
+                return new LeaveOutcome(pullRequest, false, Waiting: waiting);
             }
 
             if (preempted is not null)
             {
                 await runtime.Board.CommentAsync(key, PreemptedBody(preempted, chosen, pushed, lines), ct);
-                return new LeaveOutcome(pullRequest, false, HasWaitingPullRequest: waiting);
+                return new LeaveOutcome(pullRequest, false, Waiting: waiting);
             }
 
             if (hardLimit is not null)
             {
                 var filed = await FileContinuationAsync(key, work, chosen, pushed, hardLimit, ct);
                 await runtime.Board.CommentAsync(key, HardLimitBody(hardLimit, chosen, pushed, lines, filed, runtime.Adapter), ct);
-                return new LeaveOutcome(pullRequest, false, filed?.Key, HasWaitingPullRequest: waiting);
+                return new LeaveOutcome(pullRequest, false, filed?.Key, Waiting: waiting);
             }
 
             if (modelRefusal is not null)
             {
                 await runtime.Board.CommentAsync(key, UnservableBody(modelRefusal, chosen, pushed, lines), ct);
-                return new LeaveOutcome(pullRequest, false, HasWaitingPullRequest: waiting);
+                return new LeaveOutcome(pullRequest, false, Waiting: waiting);
             }
 
             // A task on its story's branch is not owed a pull request of its own:
             // the story's closeout opens the one, so "pushed with none recorded"
             // is the design for it and not a branch nobody can find a review for.
-            if (lines.Count == 0) return new LeaveOutcome(pullRequest || shared, branchOnOrigin, HasLanding: hasLanding, HasWaitingPullRequest: waiting);
+            if (lines.Count == 0) return new LeaveOutcome(pullRequest || shared, branchOnOrigin, HasLanding: hasLanding, Waiting: waiting);
 
             await runtime.Board.CommentAsync(
                 key, "The runner tidied the tree after this increment:\n\n" + string.Join('\n', lines), ct);
 
-            return new LeaveOutcome(pullRequest || shared, branchOnOrigin, HasLanding: hasLanding, HasWaitingPullRequest: waiting);
+            return new LeaveOutcome(pullRequest || shared, branchOnOrigin, HasLanding: hasLanding, Waiting: waiting);
         }
         catch (Exception e)
         {
@@ -845,18 +850,27 @@ public sealed class Lifecycle(Runtime runtime)
         chosen.Repositories.FirstOrDefault(r => r.Path == path)?.Remote
         ?? runtime.Checkouts.FirstOrDefault(c => c.Path == path)?.Remote;
 
+    /// <summary>
+    /// The forge failure a waiting pull request names, or null: only one this runner wrote,
+    /// at or after <paramref name="since"/> - the runner's clock before the session began.
+    /// </summary>
+    internal static ReleaseFailure? ForgeFailure(WaitingPullRequestDto? waiting, string runnerName, DateTimeOffset since) =>
+        waiting is not null && runnerName.Length > 0 && waiting.Runner == runnerName && waiting.At >= since
+            ? new ReleaseFailure(RunnerFailureKinds.Forge, waiting.Why)
+            : null;
+
     /// <summary>One read of the issue: whether it has a pull request recorded, and whether it has one waiting to be opened.</summary>
-    private async Task<(bool Recorded, bool Waiting)> PullRequestStateAsync(string key, CancellationToken ct)
+    private async Task<(bool Recorded, WaitingPullRequestDto? Waiting)> PullRequestStateAsync(string key, CancellationToken ct)
     {
         try
         {
             var issue = await runtime.Board.IssueAsync(key, ct);
-            return (issue?.PullRequestUrl is { Length: > 0 }, issue?.WaitingPullRequest is not null);
+            return (issue?.PullRequestUrl is { Length: > 0 }, issue?.WaitingPullRequest);
         }
         catch (Exception e) when (e is HatchException or OperationCanceledException)
         {
             runtime.Say.Complain($"hatch: {key} - could not read whether it has a pull request, so its branch was not brought up to date");
-            return (false, false);
+            return (false, null);
         }
     }
 

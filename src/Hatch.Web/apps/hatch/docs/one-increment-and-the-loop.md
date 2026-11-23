@@ -427,6 +427,15 @@ whether or not the agent ever started a stream, and pauses the runner at once
 rather than waiting for a second run: one comment saying the agent needs
 signing in again, carrying the sentence it was recognised from.
 
+Each of those machine faults is named on the release. A signed-out agent
+(`agent-signed-out`), an agent that never started (`agent-not-starting`), a
+ticket let go because this runner cannot sign commits (`signing`) and a pull
+request this increment left written and waiting (`forge`) each send their kind,
+and what the tool said, with the release. The board writes both on the ticket's
+`claim_released` event and links the runner's open failure of that kind to the
+ticket. A waiting pull request is named only where this runner wrote it during
+this increment, so an old one is never named twice.
+
 Two of these in a row pause the runner. It claims nothing and says on the
 terminal that the agent is not starting and when it will check again: five
 minutes first, then fifteen, then sixty if the check keeps failing. When a wait

@@ -6,6 +6,12 @@ using System.Text.Json;
 namespace Hatch.Cli;
 
 /// <summary>
+/// The runner failure an increment ended on, as a release names it: one of
+/// <c>RunnerFailureKinds</c>, and what the tool said, one line.
+/// </summary>
+public sealed record ReleaseFailure(string Kind, string Why);
+
+/// <summary>
 /// What one increment came to - read by the loop after it ends, so that a night
 /// can say what happened without asking the board a second time.
 /// </summary>
@@ -93,6 +99,13 @@ public sealed class IncrementReport
     /// this increment's verdict to give, because none of them ran to one.
     /// </summary>
     public string? ReleaseOutcome { get; set; }
+
+    /// <summary>
+    /// The runner failure this increment ended on, sent with the release so the board can
+    /// write it on the ticket: a signed-out or never-started agent, a ticket let go for want
+    /// of a signer, or a pull request this increment left waiting. Null for everything else.
+    /// </summary>
+    public ReleaseFailure? ReleaseFailure { get; set; }
 
     /// <summary>
     /// The runner could not sign a commit and the project allows only signed
@@ -569,6 +582,8 @@ public sealed class Increment(
             Stalled = true,
             SigningWhy = signing.Why,
             ReleaseOutcome = ClaimOutcomes.Dropped,
+            ReleaseFailure = new(
+                RunnerFailureKinds.Signing, signing.Why.Length > 0 ? signing.Why : "git is not set to sign commits here"),
         };
 
         say.Line("");
@@ -925,6 +940,7 @@ public sealed class Increment(
                 report.AuthFailed = true;
                 report.AuthFailedLine = signedOut.Sentence;
                 report.ReleaseOutcome = ClaimOutcomes.Unstarted;
+                report.ReleaseFailure = new(RunnerFailureKinds.AgentSignedOut, signedOut.Sentence);
 
                 say.Line("");
                 say.Line($"hatch: {report.Key} - the agent is signed out ({signedOut.Sentence}) - sign in on this machine");
@@ -946,6 +962,9 @@ public sealed class Increment(
             {
                 report.Unstarted = true;
                 report.ReleaseOutcome = ClaimOutcomes.Unstarted;
+                report.ReleaseFailure = new(
+                    RunnerFailureKinds.AgentNotStarting,
+                    report.KeptLast.Length > 0 ? report.KeptLast : "the agent started no session");
 
                 say.Line("");
                 say.Line($"hatch: {report.Key} - the agent never started on this runner, going on to the next");

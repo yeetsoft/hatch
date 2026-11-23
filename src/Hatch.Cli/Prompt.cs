@@ -1020,6 +1020,7 @@ public static class Prompt
         "What the repository can answer, answer by reading the repository. A question",
         "the code already settles is a round trip through a person for nothing.",
         "",
+        ..MachineFault(!deniesGitWrites && !trunkLanding && sharedStory is null),
         ..PreApproval(preApproval),
         "## Where this increment ends",
         "",
@@ -1173,6 +1174,26 @@ public static class Prompt
         "- Sentences are short and say who does what. No coined names. Spell out an acronym once.",
         "",
         "The work-log title at the end says what you did, as a commit subject does.",
+        "",
+    ];
+
+    /// <summary>
+    /// What a session is told about its own machine: a tool or a sign-in this runner lacks is
+    /// not a question for the operator. The <c>hatch pr</c> sentence is said only where the
+    /// prompt has a pull request to open.
+    /// </summary>
+    private static string[] MachineFault(bool opensPullRequest) =>
+    [
+        "A tool or a sign-in this runner lacks is not a decision, so do not ask about it.",
+        ..(opensPullRequest
+            ? new[]
+            {
+                "To open a pull request, use `hatch pr` with a title and a body: where this runner",
+                "cannot open it, it leaves the text on the ticket, and another runner does.",
+            }
+            : Array.Empty<string>()),
+        "Where the work itself needs something this runner lacks, use `hatch recuse`",
+        "with the reason. `hatch ask` stays for a choice between named things.",
         "",
     ];
 
