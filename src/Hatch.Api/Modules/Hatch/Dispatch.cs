@@ -329,6 +329,12 @@ public sealed class Dispatch(
                 drivers = await runners.ProjectDriversAsync(db, keys, now, ct);
         }
 
+        // A review row whose pull request is written and waiting is opened by its project's driver, so
+        // its sentence names the driver - or says there is none - just as a merges row's does.
+        if (drivers.Count == 0 && keys is not null && runners is not null
+            && candidates.Any(i => WaitingPullRequest.Has(i) && string.IsNullOrWhiteSpace(i.PullRequestUrl)))
+            drivers = await runners.ProjectDriversAsync(db, keys, now, ct);
+
         // Resolved only when some candidate actually reads at economy or low
         // level - a pass with nothing at either tier has no reason to read an
         // account's usage at all. One read, judged twice - see PaceReadingsAsync.
@@ -1403,6 +1409,19 @@ public sealed class Dispatch(
 
         return needed.Count == 0 ? null : $"no live runner has {Listed(needed)}";
     }
+
+    /// <summary>
+    /// What a review row says when the pull request written for it is still waiting to be opened: the
+    /// project's driver opens it, so the sentence names the driver, or says no live runner is eligible
+    /// to be one - the same words a merges row has. Any other row keeps <paramref name="sentence"/>.
+    /// </summary>
+    private static string WaitingToBeOpened(
+        EfHatchIssue issue, string sentence, (string Name, DateTimeOffset LastSeenAt)? driver, DateTimeOffset now) =>
+        !WaitingPullRequest.Has(issue) || !string.IsNullOrWhiteSpace(issue.PullRequestUrl)
+            ? sentence
+            : driver is { } d
+                ? $"{sentence} - its pull request is written and waits for the driver, last heard from {Minutes((int)(now - d.LastSeenAt).TotalSeconds)} ago, to open it"
+                : "its pull request is written and waits, and no live runner is eligible to drive this project's merges";
 
     private static string Minutes(int seconds)
     {
@@ -3010,7 +3029,7 @@ public sealed class Dispatch(
                 issue, verdicts, builds, issue.RecordedBranch, gate.EffectivePreApproval(issue.Id).Level,
                 new ReviewWork.Carry(
                     IssueKey.Format(issue.Project!.Key, issue.Number),
-                    !string.IsNullOrWhiteSpace(issue.PullRequestUrl),
+                    !string.IsNullOrWhiteSpace(issue.PullRequestUrl) || WaitingPullRequest.Has(issue),
                     family.Children(issue.Id).Count > 0,
                     Columns.Advance(statuses, from) is { MergesPullRequest: true }))
             : (ReviewWork.Judgement?)null;
@@ -3144,7 +3163,9 @@ public sealed class Dispatch(
                         ? $"add one to .hatch/playbooks.yaml on {checkTrunk}, or a board-wide one on the Playbooks page"
                         : "add one on the Playbooks page"),
                     BlockedKinds.Other)
-                : new Blocking(reviewBlock, BlockedKinds.Other, DeadEnd: judged is { DeadEnd: true }, WaitsOnApprover: judged is { WaitsOnApprover: true });
+                : new Blocking(
+                    WaitingToBeOpened(issue, reviewBlock, driver, claimed.Now),
+                    BlockedKinds.Other, DeadEnd: judged is { DeadEnd: true }, WaitsOnApprover: judged is { WaitsOnApprover: true });
 
         // A contribution's branch the project has not asked a runner to work:
         // conflict or build work the judge would dispatch, held for a person.

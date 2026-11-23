@@ -487,6 +487,9 @@ public sealed class FakeWorkspace
     /// <summary>What <c>Heads</c> answers for a checkout - null, like an origin that did not answer, unless a test says.</summary>
     public Dictionary<string, RemoteHeads?> HeadsFor { get; } = [];
 
+    /// <summary>What <c>BranchHolds</c> answers for a branch, for every checkout. Absent is a branch that holds.</summary>
+    public Dictionary<string, BranchHolding> HoldingFor { get; } = [];
+
     /// <summary>What <c>Fetch</c> answers, for every checkout.</summary>
     public bool FetchAnswer { get; set; } = true;
 
@@ -615,6 +618,12 @@ public sealed class FakeWorkspace
         {
             owner.Calls.Add($"fetch {path}");
             return owner.FetchAnswer;
+        }
+
+        public BranchHolding BranchHolds(string branch, string sha)
+        {
+            owner.Calls.Add($"branch-holds {path} {branch}");
+            return owner.HoldingFor.GetValueOrDefault(branch, BranchHolding.Holds);
         }
 
         public (string? Full, bool OnTrunk) ResolveOnTrunk(string sha, string trunk)
