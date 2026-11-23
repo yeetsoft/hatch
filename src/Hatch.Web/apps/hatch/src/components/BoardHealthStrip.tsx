@@ -40,14 +40,14 @@ export function BoardHealthStripView({
   stacked?: boolean;
 }) {
   /* Declared above the early return, so the hooks run in the same order whether or not there is a strip. */
-  const [open, setOpen] = useState<Tile | null>(null);
+  const [open, setOpen] = useState<{ tile: Tile; pastOnly: boolean } | null>(null);
 
   /* No history, nothing drawn: no placeholder, no error. */
   if (!hasStrip(answer)) return null;
 
   const readouts = readout(answer, index);
   const tile = { answer, index, onIndex };
-  const opener = (which: Tile) => () => setOpen(which);
+  const opener = (which: Tile) => () => setOpen({ tile: which, pastOnly: false });
   const href = flowHref(answer, scopeKeys);
 
   return (
@@ -59,13 +59,19 @@ export function BoardHealthStripView({
         </div>
         <MovedTile {...tile} readout={readouts.moved} onOpen={opener('moved')} />
         <InFlightTile {...tile} readout={readouts.inFlight} href={href} onOpen={opener('inFlight')} />
-        <OldestTile {...tile} readout={readouts.oldest} onOpen={opener('oldest')} />
+        <OldestTile
+          {...tile}
+          readout={readouts.oldest}
+          onOpen={opener('oldest')}
+          onOpenPast={() => setOpen({ tile: 'oldest', pastOnly: true })}
+        />
         <WaitingTile {...tile} readout={readouts.waiting} onOpen={opener('waiting')} />
         <RunnersTile {...tile} readout={readouts.runners} onOpen={opener('runners')} />
       </div>
       {open && (
         <BoardHealthDialog
-          tile={open}
+          tile={open.tile}
+          pastOnly={open.pastOnly}
           answer={answer}
           index={index}
           onIndex={onIndex}

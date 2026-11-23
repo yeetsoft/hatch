@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Modal } from '@hatch/ui';
@@ -10,10 +10,13 @@ import {
   bandCounts,
   clearSummary,
   dialogTitle,
+  issueCounts,
+  issueRows,
   legend,
   markedWords,
   movedSummary,
   oldestWaitWords,
+  rowLabel,
   scaleTop,
   stackedMovedBars,
   waitingSplit,
@@ -253,6 +256,80 @@ function LaneLegend() {
   );
 }
 
+/** The Oldest dialog's list of issues in flight, longest stay first. A two-way control narrows it to the issues past
+    normal; each side shows its count, both read from the issues themselves, so the past normal side is the tile's
+    own count. A row is one link to its issue and draws its time as a bar on the list's one shared scale, with a mark
+    where its column's normal falls. A row past normal carries the warning sign and the words; the other bands have
+    words too, so no row is told by colour alone. The list scrolls inside the dialog. */
+function IssueList({ answer, pastOnly: seed }: { answer: BoardHealth; pastOnly: boolean }) {
+  const [pastOnly, setPastOnly] = useState(seed);
+  const block = useRef<HTMLElement>(null);
+  const counts = issueCounts(answer);
+  const rows = issueRows(answer, pastOnly);
+  const sides: [boolean, string, number][] = [
+    [false, 'All', counts.all],
+    [true, 'Past normal', counts.pastNormal],
+  ];
+
+  /* Opened from the warning, the list is what was asked for: bring it into view, as a phone's tall chart would
+     otherwise leave it below the fold. Once, on mount - the dialog is mounted fresh on each open. */
+  useEffect(() => {
+    if (seed) block.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [seed]);
+
+  return (
+    <section ref={block} className="hatch-health-dialog-issues-block" aria-label="Issues in flight">
+      <div className="hatch-health-issue-sides" role="group" aria-label="Show" data-part="issue-filter">
+        {sides.map(([past, label, count]) => (
+          <button
+            key={label}
+            type="button"
+            className={`hatch-health-issue-side${past === pastOnly ? ' active' : ''}`}
+            aria-pressed={past === pastOnly}
+            onClick={() => setPastOnly(past)}
+          >
+            {label} {count}
+          </button>
+        ))}
+      </div>
+      {rows.length === 0 ? (
+        <p className="hatch-health-dialog-note" data-part="issues-empty">
+          {counts.all === 0 ? 'Nothing is in flight' : 'No issue is past normal'}
+        </p>
+      ) : (
+        <ul className="hatch-health-dialog-issues" data-part="issues">
+          {rows.map((row) => (
+            <li key={row.key}>
+              <Link to={row.href} className={`hatch-health-dialog-issue hatch-health-dialog-issue--${row.band}`} aria-label={rowLabel(row)} data-issue={row.key}>
+                <span className="hatch-health-dialog-issue-name">
+                  <strong>{row.key}</strong> {row.title}
+                </span>
+                <span className="hatch-health-dialog-issue-stood">
+                  {row.statusName} · {row.stood}
+                </span>
+                {row.fillPercent !== null && row.normalPercent !== null && (
+                  <span className="hatch-health-dialog-issue-track" aria-hidden="true">
+                    <span className="hatch-health-dialog-issue-fill" style={{ width: `${row.fillPercent}%` }} />
+                    <span className="hatch-health-dialog-issue-normal" style={{ left: `${row.normalPercent}%` }} />
+                  </span>
+                )}
+                <span className="hatch-health-dialog-issue-band">
+                  {row.sign && (
+                    <span className="hatch-health-glyph" aria-hidden="true">
+                      ⚠
+                    </span>
+                  )}{' '}
+                  {row.bandWords}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function Rows({ rows }: { rows: SummaryRow[] }) {
   return (
     <dl className="hatch-health-dialog-rows">
@@ -275,6 +352,7 @@ export function BoardHealthDialog({
   onWindow,
   onClose,
   href,
+  pastOnly = false,
 }: {
   tile: Tile;
   answer: BoardHealth;
@@ -286,6 +364,9 @@ export function BoardHealthDialog({
   onClose: () => void;
   /** The cumulative flow report on the same window and projects, for In flight. */
   href?: string;
+  /** Opens the Oldest list narrowed to the issues past normal. It only seeds the list: the dialog is mounted fresh
+      on each open. */
+  pastOnly?: boolean;
 }) {
   const base = `hd-${useId().replace(/:/g, '')}`;
   const svgRef = useRef<SVGSVGElement>(null);
@@ -440,6 +521,8 @@ export function BoardHealthDialog({
             )}
           </>
         )}
+
+        {tile === 'oldest' && <IssueList answer={answer} pastOnly={pastOnly} />}
 
         {tile === 'waiting' &&
           (clearSummary(answer).length > 0 ? (

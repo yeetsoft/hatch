@@ -2140,13 +2140,15 @@ button.hatch-card-stories:focus-visible {
   gap: var(--sp-2);
 }
 
-.hatch-health-windows {
+.hatch-health-windows,
+.hatch-health-issue-sides {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-1);
 }
 
-.hatch-health-window {
+.hatch-health-window,
+.hatch-health-issue-side {
   padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-ctl);
@@ -2157,16 +2159,19 @@ button.hatch-card-stories:focus-visible {
   cursor: pointer;
 }
 
-.hatch-health-window:hover {
+.hatch-health-window:hover,
+.hatch-health-issue-side:hover {
   filter: brightness(0.97);
 }
 
-.hatch-health-window:focus-visible {
+.hatch-health-window:focus-visible,
+.hatch-health-issue-side:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
-.hatch-health-window.active {
+.hatch-health-window.active,
+.hatch-health-issue-side.active {
   border-color: var(--primary);
   background: var(--primary-bg);
   color: var(--primary-ink);
@@ -2899,6 +2904,157 @@ button.hatch-card-stories:focus-visible {
   text-decoration: underline;
 }
 
+/* The Oldest dialog's list of issues in flight: the two-way control, then a box that scrolls on its own, so a long
+   list never grows the dialog. A row is one link over two lines - key and title with the band in words, then the
+   column and time with a bar on the list's one shared scale. The bar's fill differs by band in texture as well as
+   colour, and a tick marks where the column's normal falls, so the ticks line up down the list. */
+.hatch-health-dialog-issues-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hatch-health-dialog-issues {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(22rem, 45dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--r-in);
+}
+
+.hatch-health-dialog-issues li + li {
+  border-top: 1px solid var(--line);
+}
+
+.hatch-health-dialog-issue {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(7rem, 40%);
+  grid-template-areas:
+    'name band'
+    'stood track';
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-label);
+  text-decoration: none;
+}
+
+.hatch-health-dialog-issue:hover {
+  background: var(--primary-bg);
+}
+
+.hatch-health-dialog-issue:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.hatch-health-dialog-issue-name {
+  grid-area: name;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hatch-health-dialog-issue-stood {
+  grid-area: stood;
+  color: var(--muted);
+}
+
+.hatch-health-dialog-issue-band {
+  grid-area: band;
+  font-weight: 600;
+}
+
+.hatch-health-dialog-issue--pastNormal .hatch-health-dialog-issue-band {
+  color: var(--warn-ink);
+}
+
+.hatch-health-dialog-issue--healthy .hatch-health-dialog-issue-band {
+  color: var(--success-ink);
+}
+
+.hatch-health-dialog-issue--noNormal .hatch-health-dialog-issue-band {
+  color: var(--muted);
+}
+
+.hatch-health-dialog-issue-track {
+  grid-area: track;
+  position: relative;
+  height: 0.5rem;
+  border-radius: var(--r-in);
+  background: var(--line);
+}
+
+.hatch-health-dialog-issue-fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  border-radius: var(--r-in);
+  background: var(--danger);
+}
+
+.hatch-health-dialog-issue--aging .hatch-health-dialog-issue-fill {
+  background: repeating-linear-gradient(45deg, var(--warn) 0 3px, var(--card) 3px 5px);
+}
+
+.hatch-health-dialog-issue--healthy .hatch-health-dialog-issue-fill {
+  background: radial-gradient(var(--card) 0.75px, transparent 1.25px) 0 0 / 4px 4px, var(--success-fill);
+}
+
+/* Where the column's normal falls: a tick taller than the bar, in the ink. */
+.hatch-health-dialog-issue-normal {
+  position: absolute;
+  inset-block: -3px;
+  width: 2px;
+  margin-inline-start: -1px;
+  background: var(--ink);
+}
+
+/* The Oldest tile's warning: the sign and the line beside it are controls when they lead somewhere. They keep the
+   look of the text they stand in for and say they can be pressed by an underline on hover and a ring on focus. */
+.hatch-health-lead {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.hatch-health-lead:hover {
+  text-decoration: underline;
+}
+
+.hatch-health-lead:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: var(--r-in);
+}
+
+/* Forced colours drop author backgrounds, which would leave the list's bars empty: the track is outlined and the
+   fill and tick take the system's text colour. The band's words say what the texture said. */
+@media (forced-colors: active) {
+  .hatch-health-dialog-issue-track {
+    border: 1px solid CanvasText;
+  }
+
+  .hatch-health-dialog-issue-fill,
+  .hatch-health-dialog-issue-normal {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}
+
 /* The hide and show button, framed as .hatch-flow-viz-control is. */
 .hatch-health-toggle {
   display: inline-flex;
@@ -3091,13 +3247,29 @@ button.hatch-card-stories:focus-visible {
   /* The dialog's controls, a finger high: the window buttons, the report link
      and Modal's close, which is reached from here so Modal.css stays the same
      for every other dialog. */
-  .hatch-health-dialog .hatch-health-window {
+  .hatch-health-dialog .hatch-health-window,
+  .hatch-health-dialog .hatch-health-issue-side {
     min-width: 44px;
     min-height: 44px;
   }
 
-  .hatch-health-dialog-link {
+  .hatch-health-dialog-link,
+  .hatch-health-dialog-issue {
     min-height: 44px;
+  }
+
+  /* The Oldest tile's warning, a finger high. The line is let grow past its one fixed line to hold it, for the
+     tiles that carry a control. */
+  .hatch-health-lead {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .hatch-health-second:has(.hatch-health-lead) {
+    height: auto;
+    overflow: visible;
   }
 
   .hatch-modal__panel:has(.hatch-health-dialog) .hatch-modal__close {

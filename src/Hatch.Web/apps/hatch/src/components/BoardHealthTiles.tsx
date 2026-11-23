@@ -14,6 +14,7 @@ import {
   stepMoment,
   tileLabel,
   waitingSteps,
+  warningLead,
 } from '../lib/boardHealth';
 import type { IssuePeek, Tile, TileReadout } from '../lib/boardHealth';
 import { LANE_LEGEND, cellWords, drawnLanes, hoverList } from '../lib/boardHealthLanes';
@@ -45,7 +46,41 @@ interface TileProps {
 /** The glyph said in a word, so it is never the whole of a signal. */
 const GLYPH_WORD: Record<string, string> = { '▲': 'up', '▼': 'down', '–': 'unchanged', '⚠': 'warning', '✓': 'clear' };
 
+/** Where a tile's warning leads: a link to an issue, or a press that opens something. Its `label` is the spoken
+    name of both controls the warning is drawn as - the sign and the line beside it. */
+export type TileLead = { to: string; label: string } | { onPress: () => void; label: string };
+
 const KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'];
+
+/** The warning sign, as the tile's readout carries it. */
+const WARNING = '⚠';
+
+/** The warning's two controls - the sign and the line - are one component, so they lead the same way and say the
+    same name. With no lead, the children are drawn plain, as text. A button focuses itself first: WebKit does not
+    focus a pressed button, and the dialog records the focused element as its opener to hand focus back to it. */
+function LeadControl({ lead, className, children }: { lead?: TileLead; className: string; children: ReactNode }) {
+  if (!lead) return <>{children}</>;
+
+  const own = `hatch-health-lead ${className}`;
+
+  return 'to' in lead ? (
+    <Link to={lead.to} className={own} aria-label={lead.label}>
+      {children}
+    </Link>
+  ) : (
+    <button
+      type="button"
+      className={own}
+      aria-label={lead.label}
+      onClick={(event) => {
+        event.currentTarget.focus();
+        lead.onPress();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 /** What a press on a tile leaves to the thing pressed: a link, a button, or anything a tile marks as its own
     control with `data-tile-control`. */
@@ -68,6 +103,7 @@ function HealthTile({
   hover,
   detailHref,
   peek,
+  lead,
 }: TileProps & {
   tile: Tile;
   label: string;
@@ -92,6 +128,9 @@ function HealthTile({
   detailHref?: string;
   /** A note shown on pointing at, or focusing, the number or the detail line. */
   peek?: IssuePeek;
+  /** Where the warning sign and the line beside it lead. A warning is never drawn bare: with `⚠` in the readout and
+      no lead, nothing is drawn for it. */
+  lead?: TileLead;
 }) {
   const count = answer.bars.length;
   const peekId = useId();
@@ -147,14 +186,18 @@ function HealthTile({
         <span className="hatch-health-number" data-part="value">
           {readout.value}
         </span>
-        {readout.glyph && (
-          <span className="hatch-health-glyph" role="img" aria-label={GLYPH_WORD[readout.glyph] ?? ''}>
-            {readout.glyph}
-          </span>
+        {readout.glyph && (readout.glyph !== WARNING || lead) && (
+          <LeadControl lead={readout.glyph === WARNING ? lead : undefined} className="hatch-health-glyph-lead">
+            <span className="hatch-health-glyph" role="img" aria-label={GLYPH_WORD[readout.glyph] ?? ''}>
+              {readout.glyph}
+            </span>
+          </LeadControl>
         )}
       </p>
       <p className="hatch-health-second" data-part="second" title={readout.second}>
-        {readout.second}
+        <LeadControl lead={readout.glyph === WARNING ? lead : undefined} className="hatch-health-second-lead">
+          {readout.second}
+        </LeadControl>
       </p>
       <p className="hatch-health-detail" data-part="detail" title={readout.detail || undefined}>
         {detailHref && readout.detail ? (
@@ -256,9 +299,18 @@ export function InFlightTile({ answer, index, onIndex, readout, href, onOpen }: 
   );
 }
 
-export function OldestTile({ answer, index, onIndex, readout, onOpen }: TileProps) {
+/** The Oldest tile. `onOpenPast` opens its dialog with the list narrowed to past normal; one issue past normal is a
+    link to it instead, and none is plain text. The warning leads only at rest: on a marked bar the line is a time. */
+export function OldestTile({ answer, index, onIndex, readout, onOpen, onOpenPast }: TileProps & { onOpenPast?: () => void }) {
   const bands = ageBandPolygons(answer, WIDTH, HEIGHT);
   const issue = index === null ? oldestIssue(answer) : null;
+  const warning = index === null ? warningLead(answer) : { kind: 'none' as const };
+  const lead: TileLead | undefined =
+    warning.kind === 'issue'
+      ? { to: warning.href, label: warning.label }
+      : warning.kind === 'list' && onOpenPast
+        ? { onPress: onOpenPast, label: warning.label }
+        : undefined;
 
   return (
     <HealthTile
@@ -269,6 +321,7 @@ export function OldestTile({ answer, index, onIndex, readout, onOpen }: TileProp
       index={index}
       onIndex={onIndex}
       onOpen={onOpen}
+      lead={lead}
       detailHref={issue ? `/issues/${encodeURIComponent(issue.key)}` : undefined}
       peek={issue ? issuePeek(issue) : undefined}
     >

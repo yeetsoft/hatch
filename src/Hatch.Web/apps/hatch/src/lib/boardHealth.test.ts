@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  warningLead,
   BARS,
   DEFAULT_HEALTH_WINDOW,
   HEALTH_WINDOWS,
@@ -960,5 +961,42 @@ describe('compactReadout when clear', () => {
 
   it('keeps none with no clear time', () => {
     expect(compactReadout(clear(null)).waiting).toMatchObject({ second: 'none', tone: 'neutral' });
+  });
+});
+
+describe('warningLead', () => {
+  const issue = (key: string, band: BoardHealthIssue['band']): BoardHealthIssue => ({
+    key,
+    title: key,
+    statusId: 3,
+    statusName: 'In Progress',
+    enteredAt: '2026-01-01T00:00:00Z',
+    seconds: 100,
+    normalSeconds: 50,
+    band,
+  });
+
+  it('leads nowhere with none past normal, even with aging issues in flight', () => {
+    const health = answer({ pastNormal: 0, inFlightIssues: [issue('HA-1', 'aging'), issue('HA-2', 'healthy')] });
+
+    expect(warningLead(health)).toEqual({ kind: 'none' });
+  });
+
+  it('leads to the one issue when exactly one is past normal, among other bands', () => {
+    const health = answer({
+      pastNormal: 1,
+      inFlightIssues: [issue('HA-1', 'aging'), issue('HA-7', 'pastNormal'), issue('HA-2', 'healthy')],
+    });
+
+    expect(warningLead(health)).toEqual({
+      kind: 'issue',
+      key: 'HA-7',
+      href: '/issues/HA-7',
+      label: 'Open HA-7, the issue past normal',
+    });
+  });
+
+  it('leads to the list when several are past normal, and names the count', () => {
+    expect(warningLead(answer())).toEqual({ kind: 'list', count: 2, label: 'Open the 2 issues past normal' });
   });
 });

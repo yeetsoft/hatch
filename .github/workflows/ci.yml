@@ -418,14 +418,18 @@ jobs:
   # install on top of it keeps the entrypoint, the user, the environment and
   # /etc/hatch.
   hatch-runner-image:
-    timeout-minutes: 5
+    # Raised from 5 to 15 alongside the build step below, so the step's own
+    # timeout still fires first, with a clear message.
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # Raised from 4 to 10: the apt installs alone have run past 4 minutes on a
+      # slow Ubuntu mirror, the same as in hatch-runner-recipes.
       - name: Build the runner image
-        timeout-minutes: 4
+        timeout-minutes: 10
         run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
 
       - name: gh is on PATH and runs
@@ -468,25 +472,23 @@ jobs:
   # the result. A job of its own rather than steps in hatch-runner-image,
   # because another story edits that job.
   hatch-runner-recipes:
-    # Raised from 13 to 19 alongside the step below, for the same reason.
-    timeout-minutes: 19
+    # Raised from 13 to 26 alongside the two steps below, so a step's own
+    # timeout still fires first, with a clear message.
+    timeout-minutes: 26
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # A step's ceiling is three times the slowest of the last thirty green trunk runs,
-      # or twice where three times would reach the job's own, so it can fire first (HA-2428).
-      # Raised from 5 to 8: this step's own apt-get, inside the Dockerfile, already retries a
-      # stalled mirror, but a single attempt stalled past the step's own timeout before the
-      # retry ever got to run, costing the whole job on a mirror that would have cleared with
-      # more room (HA-2764). The slowest of the last thirty green runs was 143s.
+      # Raised from 5 to 10, and the check step from 10 to 14: on a slow Ubuntu
+      # mirror the apt installs alone have run past 5 minutes, and the check
+      # step has been cut off mid-download at 10.
       - name: Build the runner image
-        timeout-minutes: 8
+        timeout-minutes: 10
         run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
 
       - name: Build every recipe on it and run every check
-        timeout-minutes: 10
+        timeout-minutes: 14
         run: containers/hatch-runner/check-recipes.sh hatch-runner:ci
 
   # Proves `hatch image build` against Hatch's own repository, for real
@@ -497,7 +499,8 @@ jobs:
     # Raised from 14 to 20 alongside the step below (HA-2520), so that step's
     # own timeout still fires first, with a clear message, instead of this
     # job's own timeout cutting it off instead.
-    timeout-minutes: 20
+    # Raised again from 20 to 26 alongside the runner image build step below.
+    timeout-minutes: 26
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -508,8 +511,10 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # Raised from 5 to 10: the apt installs alone have run past 5 minutes on a
+      # slow Ubuntu mirror, the same as in hatch-runner-recipes.
       - name: Build the runner image
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
 
       # The same publish the hatch-cli matrix's linux-x64 leg runs.

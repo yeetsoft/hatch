@@ -54,7 +54,10 @@ dialog the desk opens covers the width of the screen, with the chart drawn
 large and its controls at least 44px tall; all five tiles open one, Runners
 included, whose dialog lists every runner's lane and scrolls when there are many. Its **✕**, or a tap on the strip of page above it,
 closes it and puts you back on the tile. The dialog's window control is the
-strip's.
+strip's. On the open Oldest in flight tile, the warning sign and the "N past
+normal" beside it are two more controls, each at least 44px tall: with one issue
+past normal a tap opens that issue, and with more it opens the dialog with its
+list narrowed to the issues past normal, scrolled into view.
 It starts closed each time the board opens, and the window you pick is the
 same one the desk remembers. The button that hides the strip altogether is
 inside **Filters**, not in the header, so the header stays on one line.

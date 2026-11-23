@@ -654,7 +654,14 @@ same moment on all four.
 - **Oldest in flight** is the longest stay of an issue that has no children and
   is in flight, as a time such as `14h 20m`, or "none". Under it is how many
   in-flight cards are past normal for their column, in amber with a warning
-  sign, or "none past normal". The line under that names the oldest issue by key
+  sign, or "none past normal". The warning sign and the "N past normal" line
+  are pressable, and say where they lead, as "Open the 3 issues past normal".
+  With exactly one issue past normal, pressing either opens that issue. With
+  more, pressing either opens the Oldest in flight dialog with its list
+  narrowed to the issues past normal and scrolled into view, and does not open
+  the dialog a second time. "none past normal" is plain text, and so is the line on a marked bar,
+  where it is a time. On a phone the sign and the line are at least 44px tall,
+  so the tile's line grows a little to hold them. The line under that names the oldest issue by key
   and column, as "AER-12 · In Review", and is a link that opens it. Point at the
   number or at that line, or focus either, and a note shows the issue's key and
   title, how long it has stood in its column, and that column's normal.
@@ -730,6 +737,19 @@ The dialog draws from the same read as the strip and redraws as it refreshes.
   well as a different shade, and the legend names every band drawn. The side
   scale is a count of issues, and a bar's sentence gives the oldest stay and the
   split by age.
+
+  Under the legend is a list of every in-flight issue that has no children,
+  longest stay first. Each row is one link that opens the issue, and shows its
+  key and title, its column, and its time in that column. The time is also drawn
+  as a bar against the column's normal. Every row shares one scale, and a mark on
+  each bar shows where the normal falls, so an issue at twice its normal reads
+  that way at a glance. A row whose column has no normal yet draws no bar and
+  says "no normal yet". A row past normal carries the warning sign and the words
+  "past normal"; the others say "aging" or "healthy". A two-way control above the
+  list, **All** and **Past normal**, switches between every issue and those past
+  normal alone, each side with its count. The past normal count is the tile's own,
+  because both come from one answer. A list longer than the dialog scrolls inside
+  it, and the dialog keeps its size.
 - **Waiting on you** draws pull requests and questions apart, as two stacked
   areas, and says how long the oldest has waited now. When nothing waits it
   says instead how long the board has been clear and since when, as a date and

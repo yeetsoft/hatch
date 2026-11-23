@@ -20,7 +20,7 @@ function tiles(answer: BoardHealth, index: number | null, href = '/reports/cumul
     <MemoryRouter>
       <MovedTile {...props} {...open} readout={readouts.moved} />
       <InFlightTile {...props} {...open} readout={readouts.inFlight} href={href} />
-      <OldestTile {...props} {...open} readout={readouts.oldest} />
+      <OldestTile {...props} {...open} readout={readouts.oldest} onOpenPast={() => {}} />
       <WaitingTile {...props} {...open} readout={readouts.waiting} />
       <RunnersTile {...props} {...open} readout={readouts.runners} />
     </MemoryRouter>,
@@ -33,7 +33,7 @@ function oldestTile(answer: BoardHealth, index: number | null): string {
 
   return renderToStaticMarkup(
     <MemoryRouter>
-      <OldestTile answer={answer} index={index} onIndex={() => {}} readout={readouts.oldest} />
+      <OldestTile answer={answer} index={index} onIndex={() => {}} readout={readouts.oldest} onOpenPast={() => {}} />
     </MemoryRouter>,
   );
 }
@@ -329,5 +329,71 @@ describe('the Waiting on you tile when clear', () => {
 
     expect(html).toContain('nothing waiting');
     expect(html).not.toContain('✓');
+  });
+});
+
+describe('the Oldest in flight warning', () => {
+  const past = (key: string): BoardHealth['inFlightIssues'][number] => ({
+    ...sampleHealth().inFlightIssues[0],
+    key,
+    band: 'pastNormal',
+  });
+  const aging = { ...sampleHealth().inFlightIssues[2] };
+
+  /** A tile with no `onOpenPast`: the sign in its readout, and no way to lead. */
+  const bare = (answer: BoardHealth): string => {
+    const readouts = readout(answer, null);
+
+    return renderToStaticMarkup(
+      <MemoryRouter>
+        <OldestTile answer={answer} index={null} onIndex={() => {}} readout={readouts.oldest} />
+      </MemoryRouter>,
+    );
+  };
+
+  it('is a pair of buttons with several past normal, each saying where it leads', () => {
+    const html = oldestTile(sampleHealth(), null);
+    const buttons = html.match(/<button[^>]*aria-label="Open the 2 issues past normal"[^>]*>/g) ?? [];
+
+    expect(buttons).toHaveLength(2);
+    expect(html).toContain('hatch-health-glyph-lead');
+    expect(html).toMatch(/<button[^>]*class="hatch-health-lead hatch-health-second-lead"[^>]*>2 past normal<\/button>/);
+  });
+
+  it('is a link to the issue when exactly one is past normal', () => {
+    const answer = sampleHealth({ pastNormal: 1, inFlightIssues: [past('HA-7'), aging] });
+    const html = oldestTile(answer, null);
+    const links = html.match(/<a[^>]*aria-label="Open HA-7, the issue past normal"[^>]*>/g) ?? [];
+
+    expect(links).toHaveLength(2);
+    for (const link of links) expect(link).toContain('href="/issues/HA-7"');
+    expect(html).not.toMatch(/<button[^>]*hatch-health-lead/);
+  });
+
+  it('is plain text with none past normal', () => {
+    const answer = sampleHealth({ pastNormal: 0, inFlightIssues: [aging] });
+    const html = oldestTile(answer, null);
+
+    expect(html).toContain('none past normal');
+    expect(html).not.toContain('hatch-health-lead');
+    expect(html).not.toContain('⚠');
+  });
+
+  it('is plain on a marked bar, where the line is a time', () => {
+    expect(oldestTile(sampleHealth(), 5)).not.toContain('hatch-health-lead');
+  });
+
+  it('never draws a warning sign outside a control, in any of the five tiles', () => {
+    const several = tiles(sampleHealth(), null);
+    const one = tiles(sampleHealth({ pastNormal: 1, inFlightIssues: [past('HA-7')] }), null);
+
+    for (const html of [several, one]) {
+      const without = html.replace(/<(a|button)\b[^>]*>[\s\S]*?<\/\1>/g, '');
+      expect(without).not.toContain('⚠');
+    }
+  });
+
+  it('draws no warning sign at all when given the sign and no way to lead', () => {
+    expect(bare(sampleHealth())).not.toContain('⚠');
   });
 });
