@@ -927,7 +927,7 @@ A runner that has said nothing, and an older one, shows nothing.
 
 The **Runners** page reads it on the runner's own page as *Signs its commits*,
 *Does not sign its commits* or *Signing fails* with what git said, and marks a
-runner whose signing fails with a **signing fails** badge in the list. `hatch
+runner whose signing fails with a **failing** badge in the list. `hatch
 runners` prints the same on the runner's line
 ([`runners`](cli-reference#runners)).
 
@@ -1047,9 +1047,17 @@ has said `fails`.
 
 The **Runners** page reads it on the runner's own page as *Signed in to its
 forge* or *Forge sign-in fails* with what `gh` said, and marks a runner whose
-forge sign-in fails with a **forge sign-in fails** badge in the list. `hatch
+forge sign-in fails with a **failing** badge in the list. `hatch
 runners` prints the same on the runner's line
 ([`runners`](cli-reference#runners)). A runner that said nothing shows nothing.
+
+A signing or forge failure also shows on the runner's page under **Failing**,
+as *Cannot sign its commits since 7:40pm - git said: …* or *Cannot reach its
+forge since 7:40pm - gh said: …*. It stays there until a beat finds it working
+again, and then it moves to **Earlier**, as *began 7:40pm, ended 8:10pm*. The
+same two lists carry a signed-out or non-starting agent and a pause by the
+board. A list with nothing in it draws no heading, and a runner with neither
+draws nothing.
 
 ## Preferred
 

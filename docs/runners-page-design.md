@@ -205,7 +205,9 @@ flush>`. It carries `aria-current="page"` when selected (see
 
 - **Line 1** is the glyph, the name (`hatch-runner-name`), and then, right
   aligned, a muted `Badge` `x2` when more than one session is live and a `Badge`
-  `revoked` when the runner is revoked.
+  `revoked` when the runner is revoked, and one danger `Badge` `failing` when it
+  has a current failure (`runner.failures` is not empty) - one, however many
+  rows; what failed is on its page, under **Failing** and **Earlier**.
 - **Line 2** is `--t-label`, muted, one line with an ellipsis, and the full text
   in `title`. By state:
   - working draws the claim key as plain text — the row is already a link —

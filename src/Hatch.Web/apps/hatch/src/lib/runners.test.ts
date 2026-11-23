@@ -39,7 +39,11 @@ import {
   sessionActivity,
   sessionRepositoriesLabel,
   sessionsByStart,
+  earlierWords,
+  failureWords,
+  failuresNeedWhere,
   forgeFails,
+  runnerFailing,
   forgeWords,
   signingFails,
   signingWords,
@@ -63,7 +67,8 @@ import {
   TOKEN_WARN_PERCENT,
   ACTIVITY_TONES,
 } from './runners';
-import type { Runner, RunnerSession, Status } from '../types';
+import type { Runner, RunnerFailure, RunnerSession, Status } from '../types';
+import { resetClockWords } from './attention';
 import type { RunnerBounds } from './runners';
 import { agoPhrase } from './claim';
 import { TOKEN_FIELD_HINT } from './workLog';
@@ -689,6 +694,68 @@ describe('forgeFails', () => {
     expect(forgeFails(runner({ forge: 'works' }))).toBe(false);
     expect(forgeFails(runner({ forge: null }))).toBe(false);
     expect(forgeFails(runner())).toBe(false);
+  });
+});
+
+describe('runnerFailing', () => {
+  it('is true only for a runner with a current failure', () => {
+    const f = { kind: 'forge', where: null, why: null, beganAt: at(-1000), lastReportedAt: at(0), endedAt: null };
+    expect(runnerFailing(runner({ failures: [f] }))).toBe(true);
+    expect(runnerFailing(runner({ failures: [] }))).toBe(false);
+    expect(runnerFailing(runner())).toBe(false);
+  });
+});
+
+describe('failureWords and earlierWords', () => {
+  const began = at(-3_600_000);
+  const ended = at(-1_800_000);
+  const clock = (iso: string) => resetClockWords(new Date(iso), NOW);
+  const row = (kind: string, over: Partial<RunnerFailure> = {}): RunnerFailure => ({
+    kind,
+    where: null,
+    why: null,
+    beganAt: began,
+    lastReportedAt: began,
+    endedAt: null,
+    ...over,
+  });
+
+  it('says every kind in its own words, with who said the reason where there is one', () => {
+    const cases: [string, string, string][] = [
+      ['forge', 'Cannot reach its forge', 'gh'],
+      ['signing', 'Cannot sign its commits', 'git'],
+      ['agent-signed-out', 'Its agent is signed out', 'agent'],
+      ['agent-not-starting', 'Its agent will not start', 'agent'],
+      ['board-paused', 'Paused by the board', 'board'],
+    ];
+    for (const [kind, words, who] of cases) {
+      expect(failureWords(row(kind), NOW)).toBe(`${words} since ${clock(began)}`);
+      expect(failureWords(row(kind, { why: 'a reason' }), NOW)).toBe(`${words} since ${clock(began)} - ${who} said: a reason`);
+    }
+  });
+
+  it('draws a kind it does not know as it came', () => {
+    expect(failureWords(row('disk-full'), NOW)).toBe(`disk-full since ${clock(began)}`);
+    expect(earlierWords(row('disk-full', { endedAt: ended }), NOW)).toBe(`disk-full - began ${clock(began)}, ended ${clock(ended)}`);
+  });
+
+  it('names the checkout only where asked', () => {
+    const f = row('forge', { where: 'here:/checkouts/one' });
+    expect(failureWords(f, NOW)).not.toContain('checkouts');
+    expect(failureWords(f, NOW, true)).toBe(`Cannot reach its forge at here:/checkouts/one since ${clock(began)}`);
+    expect(failureWords(row('forge'), NOW, true)).toBe(`Cannot reach its forge since ${clock(began)}`);
+  });
+
+  it('says when an ended failure began and ended', () => {
+    expect(earlierWords(row('signing', { endedAt: ended }), NOW)).toBe(
+      `Cannot sign its commits - began ${clock(began)}, ended ${clock(ended)}`,
+    );
+  });
+
+  it('needs the checkout only where two rows share a kind', () => {
+    expect(failuresNeedWhere([row('forge'), row('signing')])).toBe(false);
+    expect(failuresNeedWhere([row('forge', { where: 'a' }), row('forge', { where: 'b' })])).toBe(true);
+    expect(failuresNeedWhere([])).toBe(false);
   });
 });
 
