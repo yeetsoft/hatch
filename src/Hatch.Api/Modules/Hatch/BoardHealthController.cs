@@ -17,7 +17,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// The last bar's waiting-on-you is the attention panel's own count - this reads
 /// <see cref="AttentionReviews"/> and <see cref="Questions.Waiting"/> exactly as
 /// <see cref="AttentionController"/> does - and the bands are the cumulative
-/// flow's, so the three reads agree. Nothing in the answer names an issue.
+/// flow's, so the three reads agree. The answer names the issues in flight now, and only those: the
+/// route is open to a caller who may see them, `db.Issues` carries the caller's project filter, and
+/// `project` narrows the list as it narrows every count. Titles are read for the listed ids alone.
 ///
 /// The status history is never loaded whole. The fold reads moves back to the
 /// start of the window before this one, and everything else only from the start
@@ -126,6 +128,17 @@ public class BoardHealthController(
             issues, moves, claims, levels, records, questions, statuses,
             hours, now, scope, leaves, normalOf, attention);
 
+        // Titles for the issues listed and no others; `db.Issues` already keeps to what the caller may see.
+        var listedIds = result.InFlightNow.Select(r => r.Row.Id).ToList();
+        var titles = listedIds.Count == 0
+            ? new Dictionary<long, string>()
+            : (await db.Issues.AsNoTracking()
+                    .Where(i => listedIds.Contains(i.Id))
+                    .Select(i => new { i.Id, i.Title })
+                    .ToListAsync(ct))
+                .ToDictionary(i => i.Id, i => i.Title);
+        var columnNames = statuses.ToDictionary(c => c.Id, c => c.Name);
+
         var lanes = await LanesAsync(
             statuses, scope is null ? moves : await UnscopedMovesAsync(axis, ct), claims, axis, now, ct);
 
@@ -133,13 +146,20 @@ public class BoardHealthController(
             result.From, result.To, result.BarMinutes,
             result.Bars.Select(b => new BoardHealthBarDto(
                 b.Start, b.End, b.Board, b.Runner, b.Person, b.Moved, b.Waiting, b.InFlight, b.Done,
-                b.WaitingPullRequests, b.WaitingQuestions, b.OldestInFlightSeconds, b.OldestWaitSeconds)).ToList(),
+                b.WaitingPullRequests, b.WaitingQuestions, b.OldestInFlightSeconds, b.OldestWaitSeconds,
+                new BoardHealthAgesDto(b.Ages.Healthy, b.Ages.Aging, b.Ages.PastNormal, b.Ages.NoNormal))).ToList(),
             result.Total, result.PreviousTotal, result.PastNormal, result.HasWorkColumn,
             new BoardHealthRunnersDto(
                 lanes.Up, lanes.Paused, lanes.Lanes.Count,
                 lanes.Lanes.Select(l => new BoardHealthLaneDto(
                     l.Name, l.Up, l.Paused, l.LastSeenAt,
                     l.Cells.Select(c => new BoardHealthCellDto(c.State, c.Why)).ToList())).ToList()),
+            result.InFlightNow
+                .Where(r => titles.ContainsKey(r.Row.Id))
+                .Select(r => new BoardHealthIssueDto(
+                    IssueKey.Format(r.Row.ProjectKey, r.Row.Number), titles[r.Row.Id], r.StatusId,
+                    columnNames.GetValueOrDefault(r.StatusId, ""), r.Opens, r.Seconds, r.NormalSeconds, r.Band))
+                .ToList(),
             waitedAt, waitedIsFloor);
     }
 

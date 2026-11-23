@@ -42,6 +42,34 @@ public sealed class ColumnNormals
         IReadOnlyDictionary<int, long> normalOf, int statusId, DateTimeOffset enteredAt, DateTimeOffset now) =>
         normalOf.TryGetValue(statusId, out var seconds) && (now - enteredAt).TotalSeconds > seconds;
 
+    /// <summary>Under half the column's normal.</summary>
+    public const string Healthy = "healthy";
+
+    /// <summary>From half the column's normal up to, and including, the normal.</summary>
+    public const string Aging = "aging";
+
+    /// <summary>Longer than the column's normal, as <see cref="PastNormal"/> says.</summary>
+    public const string PastNormalBand = "pastNormal";
+
+    /// <summary>The column has no normal yet.</summary>
+    public const string NoNormal = "noNormal";
+
+    /// <summary>
+    /// Which of the four age groups a card that entered <paramref name="statusId"/> at
+    /// <paramref name="enteredAt"/> is in at <paramref name="read"/>. The column has no
+    /// normal: <see cref="NoNormal"/>. <see cref="PastNormal"/> is true:
+    /// <see cref="PastNormalBand"/>. Under half the normal: <see cref="Healthy"/>;
+    /// otherwise <see cref="Aging"/>. The seconds are never rounded, so exactly half
+    /// and exactly the normal are both aging.
+    /// </summary>
+    public static string AgeBand(
+        IReadOnlyDictionary<int, long> normalOf, int statusId, DateTimeOffset enteredAt, DateTimeOffset read)
+    {
+        if (!normalOf.TryGetValue(statusId, out var normal)) return NoNormal;
+        if (PastNormal(normalOf, statusId, enteredAt, read)) return PastNormalBand;
+        return (read - enteredAt).TotalSeconds * 2 < normal ? Healthy : Aging;
+    }
+
     /// <summary>The two lists <see cref="Fold"/> reads, as <see cref="ReadAsync"/> returns them.</summary>
     private sealed record Rows(List<TimelineReport.Row> Issues, List<FlowReport.Event> Moves);
 

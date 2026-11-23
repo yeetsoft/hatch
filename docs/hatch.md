@@ -4572,7 +4572,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — except the one card the server itself withholds: a terminal card whose `ClosedAt` is older than `doneHorizonHours` (48 by default, off at `0`) is not handed over at all, and `doneHorizonHours` on the DTO says what that horizon is; stories the horizon withheld whose epic is still on the board are handed over in `pastHorizon` instead, as ordinary cards, so a client can count them; `issues` is unchanged — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) — and `normals`, `at`, and on each card `enteredColumnAt` and `aged`: how long a column's stays normally last and who is past it (see [the flow](#the-flow)) |
-| `/board/health` | GET | The board's health in one read for a program: 24 bars over a `window` of `2h`, `4h`, `8h` (default), `12h` or `24h` - moves right by the board, a runner and a person, the bands waiting, in flight and done, and what waits on a person, whose last bar is the attention control's own count, and a lane for each runner the caller may see (`runners`). `project` (repeatable), which the lanes ignore. Open to a key. `400` for another window or an unknown `project` - see [the board health read](#the-board-health-read) |
+| `/board/health` | GET | The board's health in one read for a program: 24 bars over a `window` of `2h`, `4h`, `8h` (default), `12h` or `24h` - moves right by the board, a runner and a person, the bands waiting, in flight and done, and what waits on a person, whose last bar is the attention control's own count, a lane for each runner the caller may see (`runners`), each bar's four `ages` counts against its column's normal, and the issues in flight now (`inFlightIssues`). `project` (repeatable), which the lanes ignore. Open to a key. `400` for another window or an unknown `project` - see [the board health read](#the-board-health-read) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, `filedFromKey` (`""` finds the issues filed from nothing), ANDed, all optional; POST takes `filedFromKey` |
 | `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `filedFromKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way, each issue keeping its parent unless `parentKey` says otherwise — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it, and keeping its parent unless `parentKey` names another or `""`; `400` on an unknown project, `403` from a key, `409` naming any issue in the moving set holding a live claim, or a one-PR story's tasks that the move would leave in another project |
@@ -6153,7 +6153,12 @@ what moved and how long it took. This read says **how the board is doing right
 now**, in one call and with no page: twenty-four equal bars across a window, so
 a program can tell a board that is moving from one that is stuck, and a board
 waiting on a person from one waiting on the loop. The route is open to a person
-or to a key, and nothing in the answer names an issue: counts and durations only.
+or to a key. The answer is counts and durations, and one list that names the
+issues in flight now (`inFlightIssues`, below). Naming them is safe because the
+route is open only to a caller who may see those issues, `db.Issues` carries
+that caller's project filter, and `project` narrows the list as it narrows every
+count; an issue outside the caller's scope never appears, key or title. Titles
+are read for the listed issues alone.
 
 `window` is one of `2h`, `4h`, `8h`, `12h` or `24h`, and `8h` when absent; any
 other is a `400` naming the five. A bar is a twenty-fourth of it, so 20 minutes
@@ -6165,8 +6170,9 @@ multiple of the bar's width, so a bar does not slide while now is inside it. The
 **last bar is read at now**, not at its end, which is still to come.
 
 It answers `{ from, to, barMinutes, bars, total, previousTotal, pastNormal,
-hasWorkColumn, runners, lastWaitedAt, lastWaitedIsFloor }`. `runners` is [the runner lanes](#runner-lanes), below;
-`lastWaitedAt` is [when anything last waited](#when-anything-last-waited), just under.
+hasWorkColumn, runners, inFlightIssues, lastWaitedAt, lastWaitedIsFloor }`. `runners` is [the runner lanes](#runner-lanes), below,
+`inFlightIssues` is [the issues in flight now](#the-issues-in-flight-now), and
+`lastWaitedAt` is when anything last waited, under **When anything last waited** below.
 `total` is the moves right in the window and `previousTotal`
 the same over the window before it, for comparison. `pastNormal` is how many
 issues with no children now stand in flight longer than their column's
@@ -6187,7 +6193,36 @@ issues with no children now stand in flight longer than their column's
 - `waitingPullRequests` and `waitingQuestions` - what waited on a person at the
   bar's end, and `oldestWaitSeconds` for the longest of either;
 - `oldestInFlightSeconds` - how long the oldest issue with no children had
-  stood in flight.
+  stood in flight;
+- `ages` - `{ healthy, aging, pastNormal, noNormal }`, four counts of the in-flight
+  issues with no children, read at the bar's end (at now for the last bar), each
+  by how long it had stood in its column against that column's
+  [normal](#the-flow). **healthy** is under half the normal, **aging** is from half
+  the normal up to and including the normal, **pastNormal** is longer than the
+  normal (the rule `ColumnNormals.PastNormal` gives, the one the card's age chip
+  uses) and **noNormal** is a column with none yet. The four add up to the
+  in-flight issues with no children, **not** to `inFlight`, which also counts
+  parents. The last bar's `pastNormal` equals the answer's `pastNormal`. The seconds
+  are compared unrounded, so exactly half the normal and exactly the normal are
+  both aging.
+
+#### The issues in flight now
+
+`inFlightIssues` lists every issue with no children that stands in flight now,
+longest stay first (ties by when it entered, then by id). A row is `{ key, title,
+statusId, statusName, enteredAt, seconds, normalSeconds, band }`: the issue, the
+column it stands in and when it entered, how many seconds it has stood there,
+the column's normal in seconds or null, and which of the four groups it is in
+(`healthy`, `aging`, `pastNormal` or `noNormal`). `enteredAt` is the start of the
+stretch, never earlier than the issue's creation. The first row's `seconds` equal
+the last bar's `oldestInFlightSeconds`, and the rows with `band` `pastNormal` number
+`pastNormal`: the answer's count is taken from the list, so the two cannot
+differ. An empty board, or one with nothing in flight, answers an empty list.
+**The server caps nothing**, so a page that draws fewer rows says how many it
+left out.
+
+The counts and the list come from the same pass over the issues that finds the
+oldest in flight; no new read of the status history is made.
 
 **The last bar is the attention control's own count.** Its waiting pull requests
 and questions are what [the attention panel](#what-is-waiting-on-you) lists as
@@ -6203,6 +6238,11 @@ may not cross. A question of the merge level, or one awaiting its look back,
 ends at a terminal column in a past bar yet counts now. Whether an issue has
 children is today's answer, not the answer then. A parent in a project the
 caller cannot see carries no level into a past bar.
+
+**Two more approximations.** An earlier bar's `ages` are judged against today's
+column normals, not the normals of that time. And whether an issue has children
+(so whether it is counted at all) is today's answer, the same as for the oldest in
+flight.
 
 **When anything last waited.** `lastWaitedAt` is the instant the latest wait on a
 person ended, so a page can say "clear for 3h 20m" where the waiting tiles show

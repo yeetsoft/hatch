@@ -409,6 +409,119 @@ public class BoardHealthReportTests
         Assert.Equal(1, Fold(rows, leaves: [1, 3], normals: normals).PastNormal);
     }
 
+    // ---- the four age groups, and the list of issues in flight now ----
+
+    [Theory]
+    [InlineData(499, "healthy")]
+    [InlineData(500, "aging")]
+    [InlineData(1000, "aging")]
+    [InlineData(1001, "pastNormal")]
+    public void Ages_AreCutAtHalfTheNormalAndAtTheNormal(int seconds, string band)
+    {
+        var normals = new Dictionary<int, long> { [3] = 1000 };
+
+        var result = Fold([Issue(1, 3, Now.AddSeconds(-seconds))], leaves: [1], normals: normals);
+
+        var row = Assert.Single(result.InFlightNow);
+        Assert.Equal(band, row.Band);
+        Assert.Equal(1000, row.NormalSeconds);
+        var ages = result.Bars[23].Ages;
+        Assert.Equal(new BoardHealthReport.Ages(
+            band == "healthy" ? 1 : 0, band == "aging" ? 1 : 0, band == "pastNormal" ? 1 : 0, 0), ages);
+    }
+
+    [Fact]
+    public void Ages_AColumnWithNoNormal_IsNoNormal()
+    {
+        var result = Fold([Issue(1, 3, At(8, 0))], leaves: [1], normals: new() { [4] = 60 });
+
+        Assert.Equal(new BoardHealthReport.Ages(0, 0, 0, 1), result.Bars[23].Ages);
+        var row = Assert.Single(result.InFlightNow);
+        Assert.Equal("noNormal", row.Band);
+        Assert.Null(row.NormalSeconds);
+    }
+
+    [Fact]
+    public void Ages_AddUpToTheLeavesInFlight_NotToInFlight_WhichAlsoCountsParents()
+    {
+        var rows = new[]
+        {
+            Issue(1, 3, At(8, 0), type: "epic"), Issue(2, 3, At(8, 0), parent: 1), Issue(3, 4, At(11, 0), parent: 1),
+            Issue(4, 1, At(8, 0)),
+        };
+        var normals = new Dictionary<int, long> { [3] = 7200 };
+
+        var last = Fold(rows, leaves: [2, 3, 4], normals: normals).Bars[23];
+
+        Assert.Equal(3, last.InFlight);
+        Assert.Equal(2, last.Ages.Healthy + last.Ages.Aging + last.Ages.PastNormal + last.Ages.NoNormal);
+        Assert.Equal(1, last.Ages.PastNormal);   // issue 2: 4h07m in a column whose normal is 2h
+        Assert.Equal(1, last.Ages.NoNormal);     // issue 3 stands in a column with none
+    }
+
+    [Fact]
+    public void Ages_AnEarlierBar_IsReadAtItsEnd_AgainstTodaysNormals()
+    {
+        var normals = new Dictionary<int, long> { [3] = 3600 };
+        var result = Fold([Issue(1, 3, At(10, 0))], leaves: [1], normals: normals);
+
+        Assert.Equal(new BoardHealthReport.Ages(1, 0, 0, 0), result.Bars[17].Ages);   // reads 10:20: 20 minutes
+        Assert.Equal(new BoardHealthReport.Ages(0, 1, 0, 0), result.Bars[18].Ages);   // reads 10:40: 40 minutes
+        Assert.Equal(new BoardHealthReport.Ages(0, 1, 0, 0), result.Bars[19].Ages);   // reads 11:00: exactly the normal
+        Assert.Equal(new BoardHealthReport.Ages(0, 0, 1, 0), result.Bars[20].Ages);   // reads 11:20
+        Assert.Equal(new BoardHealthReport.Ages(0, 0, 1, 0), result.Bars[23].Ages);   // now
+        Assert.Equal(new BoardHealthReport.Ages(0, 0, 0, 0), result.Bars[9].Ages);    // not yet created
+    }
+
+    [Fact]
+    public void Ages_TheLastBarsPastNormal_IsTheAnswersPastNormal()
+    {
+        var normals = new Dictionary<int, long> { [3] = 60, [4] = 60 };
+        var rows = new[] { Issue(1, 3, At(8, 0)), Issue(2, 4, At(9, 0)), Issue(3, 3, At(12, 7)), Issue(4, 3, At(8, 0)) };
+
+        var result = Fold(rows, leaves: [1, 2, 3], normals: normals);
+
+        Assert.Equal(2, result.PastNormal);
+        Assert.Equal(result.PastNormal, result.Bars[23].Ages.PastNormal);
+        Assert.Equal(result.PastNormal, result.InFlightNow.Count(r => r.Band == "pastNormal"));
+    }
+
+    [Fact]
+    public void InFlightNow_ListsEveryLeafInFlight_LongestStayFirst_TiesByEntryThenId()
+    {
+        var rows = new[]
+        {
+            Issue(1, 3, At(11, 0)), Issue(2, 4, At(8, 0)), Issue(3, 3, At(11, 0)),
+            Issue(4, 3, At(9, 0)), Issue(5, 1, At(6, 0)), Issue(6, 5, At(6, 0)), Issue(7, 3, At(7, 0)),
+        };
+
+        var result = Fold(rows, leaves: [1, 2, 3, 4, 5, 6]);
+
+        Assert.Equal([2L, 4, 1, 3], result.InFlightNow.Select(r => r.Row.Id));   // 5 waits, 6 is done, 7 is not a leaf
+        Assert.Equal(result.Bars[23].OldestInFlightSeconds, result.InFlightNow[0].Seconds);
+        Assert.Equal(result.Bars[23].InFlight - 1, result.InFlightNow.Count);    // the parent counts in InFlight only
+        Assert.Equal(new[] { 4, 3, 3, 3 }, result.InFlightNow.Select(r => r.StatusId));
+        Assert.Equal(At(8, 0), result.InFlightNow[0].Opens);
+    }
+
+    [Fact]
+    public void InFlightNow_IsEmpty_ForAnEmptyBoard_AndForNothingInFlight()
+    {
+        Assert.Empty(Fold([]).InFlightNow);
+        Assert.Empty(Fold([Issue(1, 1, At(8, 0)), Issue(2, 5, At(8, 0))], leaves: [1, 2]).InFlightNow);
+        Assert.Empty(Fold([Issue(1, 3, At(8, 0))], leaves: []).InFlightNow);
+    }
+
+    [Fact]
+    public void InFlightNow_KeepsToTheProjectScope()
+    {
+        var rows = new[] { Issue(1, 3, At(8, 0)), Issue(2, 3, At(8, 0), key: "OTH") };
+
+        var result = Fold(rows, keys: ["HA"], leaves: [1]);
+
+        Assert.Equal(1L, Assert.Single(result.InFlightNow).Row.Id);
+    }
+
     // ---- waiting on you: questions ----
 
     [Fact]

@@ -41,6 +41,19 @@ public static class BoardHealthReport
     public sealed record Axis(DateTimeOffset From, DateTimeOffset To, int BarMinutes);
 
     /// <summary>
+    /// The four age groups of the in-flight issues with no children at one read. They add up
+    /// to those issues, not to <see cref="Bar.InFlight"/>, which also counts parents.
+    /// </summary>
+    public sealed record Ages(int Healthy, int Aging, int PastNormal, int NoNormal);
+
+    /// <summary>
+    /// One issue in flight at <c>now</c>: its row, the column and when it entered, how long it
+    /// has stood there in whole seconds, the column's normal, and its <see cref="ColumnNormals.AgeBand"/>.
+    /// </summary>
+    public sealed record InFlightRow(
+        TimelineReport.Row Row, int StatusId, DateTimeOffset Opens, long Seconds, long? NormalSeconds, string Band);
+
+    /// <summary>
     /// One bar. <see cref="Board"/>, <see cref="Runner"/> and <see cref="Person"/> split
     /// the moves right made inside it; the rest is read at its end, or at
     /// <c>now</c> for the last bar.
@@ -48,14 +61,14 @@ public static class BoardHealthReport
     public sealed record Bar(
         DateTimeOffset Start, DateTimeOffset End, int Board, int Runner, int Person,
         int Waiting, int InFlight, int Done, int WaitingPullRequests, int WaitingQuestions,
-        long? OldestInFlightSeconds, long? OldestWaitSeconds)
+        long? OldestInFlightSeconds, long? OldestWaitSeconds, Ages Ages)
     {
         public int Moved => Board + Runner + Person;
     }
 
     public sealed record Result(
         DateTimeOffset From, DateTimeOffset To, int BarMinutes, IReadOnlyList<Bar> Bars,
-        int Total, int PreviousTotal, int PastNormal, bool HasWorkColumn);
+        int Total, int PreviousTotal, int PastNormal, bool HasWorkColumn, IReadOnlyList<InFlightRow> InFlightNow);
 
     /// <summary>
     /// The window <paramref name="windowHours"/> long that ends in the bar holding
@@ -95,7 +108,8 @@ public static class BoardHealthReport
     /// <para><b>Known gaps.</b> A check approving a merge, and a pull request held by
     /// a conflict or a failed build, count as waiting on a person in past bars; only
     /// the attention panel knows the difference, and the last bar takes its answer
-    /// when given. Leaf-ness (<paramref name="leaves"/>) is today's, not then.
+    /// when given. Leaf-ness (<paramref name="leaves"/>) is today's, not then, and an earlier
+    /// bar's age groups are judged against today's normals.
     /// Pre-approval is walked up the parents the issue has today and ignores the
     /// project line <c>PriorityTree.HonoursAcross</c> honours. None of these is
     /// closed unless the trail holds enough to do it exactly.</para>
@@ -127,7 +141,7 @@ public static class BoardHealthReport
 
         var scoped = projectKeys is null ? rows : rows.Where(r => projectKeys.Contains(r.Row.ProjectKey)).ToList();
         if (scoped.Count == 0 || scoped.Min(r => r.Row.CreatedAt) > axis.To)
-            return new Result(axis.From, axis.To, axis.BarMinutes, [], 0, 0, 0, hasWork);
+            return new Result(axis.From, axis.To, axis.BarMinutes, [], 0, 0, 0, hasWork, []);
 
         // Every row, scoped or not: a parent outside the scope still carries a level down.
         var everyone = rows.GroupBy(r => r.Row.Id).ToDictionary(g => g.Key, g => g.First());
@@ -152,7 +166,11 @@ public static class BoardHealthReport
         var waitingPrs = new int[BarCount];
         var waitingQuestions = new int[BarCount];
         var oldestWait = new long?[BarCount];
-        var pastNormal = 0;
+        var ageHealthy = new int[BarCount];
+        var ageAging = new int[BarCount];
+        var agePast = new int[BarCount];
+        var ageNone = new int[BarCount];
+        var listed = new List<InFlightRow>();
 
         // Moved right: the scoped issues' own forward moves, by the rule the
         // runners' lanes read too.
@@ -204,7 +222,17 @@ public static class BoardHealthReport
                         else
                         {
                             inFlight[k]++;
-                            if (isLeaf) Longest(oldestFlight, k, s.Opens, reads[k]);
+                            if (isLeaf)
+                            {
+                                Longest(oldestFlight, k, s.Opens, reads[k]);
+                                switch (ColumnNormals.AgeBand(normals, s.Id, s.Opens, reads[k]))
+                                {
+                                    case ColumnNormals.NoNormal: ageNone[k]++; break;
+                                    case ColumnNormals.PastNormalBand: agePast[k]++; break;
+                                    case ColumnNormals.Healthy: ageHealthy[k]++; break;
+                                    default: ageAging[k]++; break;
+                                }
+                            }
                         }
                     }
                 }
@@ -213,7 +241,11 @@ public static class BoardHealthReport
                 {
                     var at = slot[s.Id];
                     if (board[at].IsTerminal || at == 0 || at < workSlot || (firstTerminal >= 0 && at > firstTerminal)) continue;
-                    if (isLeaf && ColumnNormals.PastNormal(normals, s.Id, s.Opens, now)) pastNormal++;
+                    if (!isLeaf) continue;
+                    listed.Add(new InFlightRow(
+                        row, s.Id, s.Opens, (long)Math.Round((now - s.Opens).TotalSeconds),
+                        normals.TryGetValue(s.Id, out var normal) ? normal : null,
+                        ColumnNormals.AgeBand(normals, s.Id, s.Opens, now)));
                 }
             }
 
@@ -271,10 +303,17 @@ public static class BoardHealthReport
         {
             bars.Add(new Bar(
                 starts[k], starts[k] + width, movedBoard[k], movedRunner[k], movedPerson[k],
-                waiting[k], inFlight[k], done[k], waitingPrs[k], waitingQuestions[k], oldestFlight[k], oldestWait[k]));
+                waiting[k], inFlight[k], done[k], waitingPrs[k], waitingQuestions[k], oldestFlight[k], oldestWait[k],
+                new Ages(ageHealthy[k], ageAging[k], agePast[k], ageNone[k])));
         }
 
-        return new Result(axis.From, axis.To, axis.BarMinutes, bars, bars.Sum(b => b.Moved), previousTotal, pastNormal, hasWork);
+        // The answer's past-normal count is the list's own, so the two cannot differ.
+        var inFlightNow = listed
+            .OrderByDescending(r => r.Seconds).ThenBy(r => r.Opens).ThenBy(r => r.Row.Id)
+            .ToList();
+        var pastNormal = inFlightNow.Count(r => r.Band == ColumnNormals.PastNormalBand);
+
+        return new Result(axis.From, axis.To, axis.BarMinutes, bars, bars.Sum(b => b.Moved), previousTotal, pastNormal, hasWork, inFlightNow);
     }
 
     /// <summary>
