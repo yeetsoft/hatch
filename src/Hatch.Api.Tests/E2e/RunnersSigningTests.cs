@@ -88,16 +88,16 @@ public class RunnersSigningTests(ITestOutputHelper output)
                 await BeatAsync(baseUrl, Silent, null, null);
             });
 
-            // The list: one badge, on the runner whose signing fails.
+            // The list: one failing badge, on the runner whose signing fails.
             await harness.OpenAsync(deadline, baseUrl, "/runners");
             await harness.WaitForVisibleAsync(deadline, $"text={Failing}");
-            await harness.WaitForVisibleAsync(deadline, "text=signing fails");
+            await harness.WaitForVisibleAsync(deadline, ".hatch-badge:text-is(\"failing\")");
 
             var list = await harness.EvaluateAsync<string>(deadline, "reading the list", "() => document.body.innerText");
             output.WriteLine($"--- {where} /runners{Environment.NewLine}screenshot: {await harness.ScreenshotAsync(deadline, screenshot + "-list")}{Environment.NewLine}{list}");
             Assert.Equal(1, await harness.EvaluateAsync<int>(
                 deadline, "counting the badges",
-                "() => [...document.querySelectorAll('.hatch-badge')].filter(b => b.textContent.trim() === 'signing fails').length"));
+                "() => [...document.querySelectorAll('.hatch-badge')].filter(b => b.textContent.trim() === 'failing').length"));
             AssertNoOverflow(await Overflows(harness, deadline), "the list");
 
             // Each runner's own page.
