@@ -44,7 +44,7 @@ function phoneDeclarationsOf(selector: string): Record<string, string> {
 
 describe("the ambition strip's stylesheet", () => {
   it('reads the legend and the count line in the same muted label style', () => {
-    const legend = declarationsOf('.hatch-ambition-note');
+    const legend = declarationsOf('.hatch-ambition-tally');
 
     expect(legend['font-size']).toBe('var(--t-label)');
     expect(legend['color']).toBe('var(--muted)');

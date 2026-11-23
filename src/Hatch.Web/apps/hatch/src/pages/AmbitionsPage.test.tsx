@@ -115,7 +115,7 @@ describe('AmbitionList', () => {
     const html = render(row('AER-1', { open: [epic('AER-7')] }));
 
     expect(html).toContain('<ul class="hatch-ambition-legend">');
-    expect(html).toContain('<p class="hatch-ambition-note">1 open, runs 2 at once</p>');
+    expect(html).toContain('<p class="hatch-ambition-tally">1 open, runs 2 at once</p>');
   });
 
   it('draws an open epic with its key link, column and served badges, and the count line', () => {

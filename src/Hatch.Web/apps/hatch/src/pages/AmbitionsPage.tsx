@@ -243,7 +243,7 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
           <EmptyState message="No epic is open under this ambition." />
         ) : (
           <>
-            <p className="hatch-ambition-note">
+            <p className="hatch-ambition-tally">
               {row.open.length} open, runs {row.limit} at once
             </p>
             <ul className="hatch-progress-list hatch-ambition-epics">

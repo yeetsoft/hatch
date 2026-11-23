@@ -4812,7 +4812,7 @@ input.hatch-inline-title-input {
 }
 
 .hatch-ambition-legend,
-.hatch-ambition-note {
+.hatch-ambition-tally {
   font-size: var(--t-label);
   color: var(--muted);
 }
