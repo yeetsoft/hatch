@@ -135,6 +135,12 @@ public class HatchContext : DbContext, IModuleContext
     /// <summary>The projects a room is scoped to - see <see cref="EfHatchChatRoomProject"/>.</summary>
     public DbSet<EfHatchChatRoomProject> ChatRoomProjects => Set<EfHatchChatRoomProject>();
 
+    /// <summary>Things Hatch has announced to chat, heard by any room or none - see <see cref="EfHatchChatSubject"/>.</summary>
+    public DbSet<EfHatchChatSubject> ChatSubjects => Set<EfHatchChatSubject>();
+
+    /// <summary>Messages queued for rooms - see <see cref="EfHatchChatMessage"/>.</summary>
+    public DbSet<EfHatchChatMessage> ChatMessages => Set<EfHatchChatMessage>();
+
     /// <summary>
     /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
     /// end of a relationship to a filtered <c>Projects</c>. It is the one table
@@ -593,6 +599,31 @@ public class HatchContext : DbContext, IModuleContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // A queued message: RoomId cascades off the room, and the pair
+        // (WorkspaceId, ProjectId) is a composite foreign key into
+        // ChatWorkspaceProjects' own pair, cascading - unbinding a project takes
+        // what is waiting about it in that workspace. ProjectId is nullable, and
+        // Postgres skips a composite key with a null part, so a project-less
+        // message survives unbinding. The partial index serves the sender's
+        // "what is waiting" read.
+        modelBuilder.Entity<EfHatchChatMessage>(e =>
+        {
+            e.HasOne(m => m.Room)
+                .WithMany()
+                .HasForeignKey(m => m.RoomId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<EfHatchChatWorkspaceProject>()
+                .WithMany()
+                .HasForeignKey(m => new { m.WorkspaceId, m.ProjectId })
+                .HasPrincipalKey(w => new { w.WorkspaceId, w.ProjectId })
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(m => m.PendingSince)
+                .HasDatabaseName("IX_ChatMessages_PendingSince")
+                .HasFilter("\"DroppedAt\" IS NULL AND \"SentRevision\" < \"Revision\"");
+        });
+
         // A verdict is about an issue and means nothing without it, the same
         // as its events: deleting the issue takes them.
         modelBuilder.Entity<EfHatchMergeCheck>(e =>
@@ -840,7 +871,7 @@ public class HatchContext : DbContext, IModuleContext
         //
         // Deliberately unfiltered: Statuses, WipLimits, PersonHomes,
         // the runner tables (RunnerFailures among them), ChatWorkspaces and
-        // ChatRooms (neither names a project), PersonScopes and
+        // ChatRooms and ChatSubjects (none names a project), PersonScopes and
         // PersonScopeProjects (the resolver reads them), and the core schema.
         modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
         modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
@@ -849,6 +880,8 @@ public class HatchContext : DbContext, IModuleContext
         modelBuilder.Entity<EfHatchProjectLogo>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
         modelBuilder.Entity<EfHatchChatWorkspaceProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
         modelBuilder.Entity<EfHatchChatRoomProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));
+        modelBuilder.Entity<EfHatchChatMessage>().HasQueryFilter(e =>
+            Unbounded || e.ProjectId == null || Visible.Contains(e.ProjectId.Value));
 
         // A global playbook, a dream leaning toward no project, and an
         // unlinked attachment are visible to everyone.

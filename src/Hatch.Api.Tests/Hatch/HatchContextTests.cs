@@ -30,12 +30,12 @@ public class HatchContextTests
     }
 
     [Fact]
-    public void TheModuleOwnsFiftyTables()
+    public void TheModuleOwnsFiftyTwoTables()
     {
         using var db = NewContext();
 
         Assert.Equal(
-            ["Attachments", "BuildChecks", "Capabilities", "CapabilityLinks", "CapabilityVerdicts", "ChangeOutcomes", "ChangelogFiles", "ChangelogTasks", "ChatRoomProjects", "ChatRooms", "ChatWorkspaceProjects", "ChatWorkspaces", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "GooseFindings", "GooseRuns", "GooseSightings", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "LocalModels", "MergeChecks", "PersonHomes", "PersonScopeProjects", "PersonScopes", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerFailureIssues", "RunnerFailures", "RunnerSessions", "RunnerStates", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
+            ["Attachments", "BuildChecks", "Capabilities", "CapabilityLinks", "CapabilityVerdicts", "ChangeOutcomes", "ChangelogFiles", "ChangelogTasks", "ChatMessages", "ChatRoomProjects", "ChatRooms", "ChatSubjects", "ChatWorkspaceProjects", "ChatWorkspaces", "Comments", "Contributions", "DependencyFiles", "DreamRemands", "DreamThreads", "Dreams", "GooseFindings", "GooseRuns", "GooseSightings", "IssueDependencies", "IssueEvents", "IssueRunnerOmissions", "Issues", "Landings", "LegacyRunners", "LocalModels", "MergeChecks", "PersonHomes", "PersonScopeProjects", "PersonScopes", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "RunnerConfigs", "RunnerFailureIssues", "RunnerFailures", "RunnerSessions", "RunnerStates", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 

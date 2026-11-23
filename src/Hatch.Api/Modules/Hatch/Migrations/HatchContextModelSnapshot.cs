@@ -394,6 +394,80 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("ChangelogTasks", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatMessage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("DroppedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("LastRefusal")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("PendingSince")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("QueuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RoomId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SentRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("WorkspaceId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PendingSince")
+                        .HasDatabaseName("IX_ChatMessages_PendingSince")
+                        .HasFilter("\"DroppedAt\" IS NULL AND \"SentRevision\" < \"Revision\"");
+
+                    b.HasIndex("WorkspaceId", "ProjectId");
+
+                    b.HasIndex("RoomId", "Kind", "Subject")
+                        .IsUnique();
+
+                    b.ToTable("ChatMessages", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatRoom", b =>
                 {
                     b.Property<int>("Id")
@@ -469,6 +543,35 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasIndex("WorkspaceId", "ProjectId");
 
                     b.ToTable("ChatRoomProjects", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatSubject", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind", "Subject")
+                        .IsUnique();
+
+                    b.ToTable("ChatSubjects", "hatch");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatWorkspace", b =>
@@ -3255,6 +3358,23 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Issue");
 
                     b.Navigation("SourceIssue");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatMessage", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchChatRoom", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchChatWorkspaceProject", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId", "ProjectId")
+                        .HasPrincipalKey("WorkspaceId", "ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Room");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatRoom", b =>

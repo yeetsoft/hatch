@@ -113,6 +113,16 @@ public class QueryFilterAuditTests
             "Whether an issue was filed as the bug for some finding, asked board-wide so every check agrees on "
             + "the answer regardless of the caller's own scope - a job's context already reads every project, "
             + "but a later caller must get the same answer a job would. What leaves is one bool, no row."),
+        ["ChatOutbox.QueueAsync"] = (1,
+            "The rows already queued for a thing, read so a change edits them instead of adding a second. Who "
+            + "hears a thing is the rooms' to say and not the writer's, so a writer whose scope hides the project "
+            + "must still find the rows its own earlier write queued, or a repeat would add a duplicate. Nothing "
+            + "leaves: the rows are edited in place and never returned."),
+        ["ChatOutbox.RoomsAsync"] = (1,
+            "The rooms that carry a project, read with the bindings and the rooms' chosen projects. A room is the "
+            + "install's and not the writer's, so a scoped writer must queue for the same rooms as anyone else, or "
+            + "the same change would reach different rooms by who made it. What leaves is a room id and its "
+            + "workspace id, which become the queued row's."),
         ["GooseJob.SweepAsync"] = (1,
             "The goose's own retention prune of closed findings, on a timer with no request and no caller scope "
             + "at all - the same reason the run pruning beside it reads every project. Nothing leaves the "
