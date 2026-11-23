@@ -139,7 +139,8 @@ the next heading of the same level and stop.
   - [What it stops for](#what-it-stops-for) - What ends a run, and which
     stops are asked for?
   - [Runners on the board](#runners-on-the-board) - How does a runner
-    announce itself and get paused or ended from a browser?
+    announce itself, get paused or ended from a browser, and what does the
+    board keep of what it could not do?
   - [The console](#the-console) - What do the banners and pinned readout
     show during an increment?
 - [The level above the board](#the-level-above-the-board) - Which running
@@ -4254,6 +4255,12 @@ rather than by looking this one up. `Prefix` — the first 12 characters — is
 stored separately because it cannot be derived from a hash, and it is the only
 part of a secret it is safe to show; without it, a key list is a list of names
 somebody typed that you cannot check against the value in a config file.
+
+A runner's failures are kept in `RunnerFailures` (`EfHatchRunnerFailure`), the
+same bare `ApiKeyId` and no foreign key. It belongs to no project: it reaches
+none through a foreign key, carries no query filter, and is held to that by
+`QueryFilterModelAuditTests`, with the other runner tables. See
+[Failures](#failures).
 
 Revocation is a **column, not a `DELETE`**, unlike a grant: the audit trail
 names this key by a name that has to keep resolving, and "who held this key in
@@ -11660,6 +11667,63 @@ off build work in review, see [the dispatcher](#the-dispatcher), item 12d. A
 runner that said nothing is not judged. The `/work` reads accept `?forge=` and
 `?forgeWhy=` from the loop, and judge them the way they judge `?signing=`; the
 board stores nothing from a read.
+
+#### Failures
+
+The board keeps a row for each thing a runner could not do
+(`EfHatchRunnerFailure`, the `RunnerFailures` table), so a person sees what is
+failing now, since when, and what failed earlier. A row holds the key
+(`ApiKeyId`, bare, as on a session), the checkout (`Where`), the kind, what the
+tool said (`Why`, at most 200 characters), `BeganAt`, `LastReportedAt` and
+`EndedAt`, null while it stands. Rows hang off the key and the checkout, not
+the session row, so a restarted loop continues the open row it finds. A
+checkout nobody named is stored as `""`, never null: Postgres treats nulls as
+distinct, and a null would let the index below admit two open rows. The
+database holds the one rule that matters: a unique index on key, checkout and
+kind, filtered to `EndedAt IS NULL`, so at most one row is open for each.
+
+| Kind | Open while the beat says |
+| --- | --- |
+| `forge` | `forge` is `fails`; any other sent word ends it |
+| `signing` | `signing` is `fails`; `off` is a choice, not a failure |
+| `agent-signed-out` | `agentDownKind` is `signed-out` while `agentDown` is true |
+| `agent-not-starting` | `agentDownKind` is `not-starting` while `agentDown` is true |
+| `board-paused` | the board's own pause stands on the session |
+
+Out of usage and the hourly token cap are not failures: they end by
+themselves and keep their own wording.
+
+Only a loop session's heartbeat and the board's own pause write these rows;
+no route lets a key or a person open, edit or end one.
+`RunnerFailures.ReconcileAsync` runs on every `loop` beat of
+`POST /runners/sessions`, after the beat's own save, and a `once` beat touches
+nothing. For each kind the beat either says it fails, says it does not, or
+says nothing. Failing with no open row opens one; failing with an open row
+refreshes `LastReportedAt` and `Why`; not failing with an open row ends it at
+that beat; saying nothing leaves the row alone. The agent kinds are read from
+what the beat said, never from the session, and are left alone while a board
+pause stands, since the session ignores the runner's report then.
+`board-paused` is read from the session on every loop beat, which covers a
+pause that passed, one the lift route cleared, and a session seeded into a
+standing pause. The board writes the pause in
+`IssueClaimController.CountForPauseAsync`, which adds the row in the same save
+(`RunnerFailures.OpenBoardPauseAsync`); nothing lifts it, and the session's
+next beat ends it. Two beats racing to open the same row meet the index: the
+loser reads again and settles against the winner's row. The legacy
+`POST /runners/{name}` writes none of this.
+
+Ended rows are kept, newest fifty per key (`EfHatchRunnerFailure.History`);
+the beat that ends a fifty-first deletes the oldest. Nothing else sweeps. A row
+is **current** when it is open and its runner is being heard from at that
+checkout (`RunnerFailures.Current`: a live `loop` session at the same `Where`).
+A runner that has gone quiet shows no current failure, as it shows no other
+current fact, and its open rows are settled by its next beat; until then an
+open row of a quiet runner is in neither list. `RunnerDto.failures` carries the
+current rows, newest began first, and
+`GET /api/runners/{name}/failures` answers `{ current, earlier }`, `earlier`
+being the key's ended rows, newest ended first, under the rule
+`GET /api/runners/{name}` reads by. The table belongs to no project, like the
+other runner tables, and carries no query filter.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:

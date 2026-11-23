@@ -3265,6 +3265,27 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task TheReleaseThatSetsThePause_OpensTheFailureRowInTheSameSave()
+    {
+        var (h, id) = await PausableAsync();
+        await using var _ = h;
+
+        for (var i = 0; i < 2; i++)
+        {
+            await DropAsync(h, await h.FileAsync());
+            Assert.Empty(await h.Connect().RunnerFailures.AsNoTracking().ToListAsync());
+        }
+
+        var at = h.Time.GetUtcNow();
+        await DropAsync(h, await h.FileAsync());
+
+        var session = await h.SessionAsync(id);
+        var row = Assert.Single(await h.Connect().RunnerFailures.AsNoTracking().ToListAsync());
+        Assert.Equal((h.Caller.Key!.Id, PauseWhere, "board-paused", session.AgentDownLine), (row.ApiKeyId, row.Where, row.Kind, row.Why));
+        Assert.Equal((at, at, (DateTimeOffset?)null), (row.BeganAt, row.LastReportedAt, row.EndedAt));
+    }
+
+    [SkippableFact]
     public async Task OneTicketThatSpentNothingThreeTimes_PausesTheSession()
     {
         var (h, id) = await PausableAsync();
