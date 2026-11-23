@@ -84,9 +84,60 @@ describe('the board health strip stylesheet', () => {
     const used = new Set([...section.matchAll(/var\((--[\w-]+)\)/g)].map((m) => m[1]));
 
     for (const token of used) {
-      // Spacing, type and radius tokens do not change with the theme.
-      if (/^--(sp|t|r)(-|$)/.test(token)) continue;
+      // Spacing, type, radius and the filter bar's row height do not change with the theme.
+      if (/^--(sp|t|r|facet-h)(-|$)/.test(token)) continue;
       for (const block of darkBlocks) expect(block, token).toContain(`${token}:`);
     }
+  });
+});
+
+describe('the board health strip on a phone', () => {
+  it('holds the closed row to a finger-high, full-width button', () => {
+    const row = declarationsOf('.hatch-health-row');
+
+    expect(row['width']).toBe('100%');
+    expect(row['min-height']).toBe('44px');
+    expect(row['display']).toBe('flex');
+  });
+
+  it('lets each of the four cells shrink and cuts its text rather than wrapping it', () => {
+    expect(declarationsOf('.hatch-health-cell')['min-width']).toBe('0');
+    expect(declarationsOf('.hatch-health-cell')['flex']).toBe('1 1 0');
+    expect(declarationsOf('.hatch-health-cell-second')['white-space']).toBe('nowrap');
+  });
+
+  it('draws the chevron from borders, with no image', () => {
+    const chevron = declarationsOf('.hatch-health-chevron');
+
+    expect(chevron['border-right']).toContain('2px solid');
+    expect(chevron['border-bottom']).toContain('2px solid');
+    expect(section).not.toMatch(/url\(/);
+  });
+
+  it('takes no gap for the open region while it is empty', () => {
+    expect(declarationsOf('.hatch-health-open:empty')['display']).toBe('none');
+  });
+
+  it('stacks the open tiles in one column, one tile to a row', () => {
+    const stacked = declarationsOf('.hatch-health-strip--stacked');
+
+    expect(stacked['grid-template-columns']).toBe('minmax(0, 1fr)');
+    expect(stacked['grid-auto-flow']).toBe('row');
+  });
+
+  it('puts the sparkline to the right of the numbers, spanning the text lines', () => {
+    const tile = declarationsOf('.hatch-health-strip--stacked .hatch-health-tile');
+
+    expect(tile['grid-template-areas']).toContain("'label spark'");
+    expect(tile['grid-template-areas']).toContain("'detail spark'");
+    expect(declarationsOf('.hatch-health-strip--stacked .hatch-health-spark')['grid-area']).toBe('spark');
+    expect(declarationsOf('.hatch-health-strip--stacked .hatch-health-spark')['min-width']).toBe('0');
+  });
+
+  it('gives the window choices a finger-high target when open', () => {
+    const window = declarationsOf('.hatch-health-strip--stacked .hatch-health-window');
+
+    expect(window['min-height']).toBe('44px');
+    expect(window['min-width']).toBe('44px');
   });
 });

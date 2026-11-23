@@ -3579,6 +3579,12 @@ public record DreamRemandResultDto(
 /// or had rewritten, and the epics beneath it to weigh against that. Null on
 /// every other dispatch, and on an older board's answer.
 /// </param>
+/// <param name="Shaping">
+/// What the person gave a draft ambition that a shaping dispatch is for: the dreams
+/// recorded on it and the files its description links. Null on every other
+/// dispatch, and on an older board's answer. Present with two empty lists where
+/// the dispatch is for shaping and nothing was given.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3617,7 +3623,8 @@ public record WorkDto(
     WorkAmbitionDto? Ambition = null,
     WorkQuestionDto? Answering = null,
     bool AllowsUnsignedCommits = true,
-    WorkChangeDto? Changing = null);
+    WorkChangeDto? Changing = null,
+    WorkShapingDto? Shaping = null);
 
 /// <summary>
 /// The question an answering dispatch is for: where it stands, what it says,
@@ -3652,6 +3659,31 @@ public record WorkChangeDto(
     long Id,
     IReadOnlyList<ChangeEntryDto> Entries,
     IReadOnlyList<WorkChangeEpicDto> Epics);
+
+/// <summary>
+/// What a shaping dispatch was given: the dreams recorded on the draft, newest
+/// first, and the files its description links, in the order the links first
+/// appear. Read when the answer is built; nothing is stored for it.
+/// </summary>
+/// <param name="Dreams">The dreams <c>GET /api/issues/{key}/dreams</c> lists.</param>
+/// <param name="Files">Every <c>/api/attachments/{id}</c> and <c>/api/images/{id}</c> link in the description, once each.</param>
+public record WorkShapingDto(
+    IReadOnlyList<WorkDreamDto> Dreams,
+    IReadOnlyList<WorkFileDto> Files);
+
+/// <summary>One dream recorded on a draft, in full.</summary>
+/// <param name="Id">The dream's id, which the session names when it records the dreams it drew on.</param>
+/// <param name="Body">What the dream says, whole.</param>
+/// <param name="Source">Where it came from, or null.</param>
+public record WorkDreamDto(long Id, string Body, string? Source);
+
+/// <summary>One file a draft's description links.</summary>
+/// <param name="Id">The file's id, which <c>hatch attachment get</c> takes.</param>
+/// <param name="FileName">The name it was stored under. Null where <paramref name="Deleted"/>.</param>
+/// <param name="ContentType">Its content type. Null where <paramref name="Deleted"/>.</param>
+/// <param name="Size">Its size in bytes. Null where <paramref name="Deleted"/>.</param>
+/// <param name="Deleted">True where the link names a file that is no longer stored.</param>
+public record WorkFileDto(Guid Id, string? FileName, string? ContentType, long? Size, bool Deleted = false);
 
 /// <summary>
 /// One epic a change dispatch asks the session to weigh: where it stands and
