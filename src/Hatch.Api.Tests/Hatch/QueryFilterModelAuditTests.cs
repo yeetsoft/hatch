@@ -91,6 +91,7 @@ public class QueryFilterModelAuditTests
     [InlineData(typeof(EfHatchRunnerConfig))]
     [InlineData(typeof(EfHatchRunnerSession))]
     [InlineData(typeof(EfHatchRunnerState))]
+    [InlineData(typeof(EfHatchRunnerFailure))]
     public void TheTablesTheBriefLeavesOpen_CarryNoFilter_AndReachNoProject(Type clr)
     {
         var model = Model();
