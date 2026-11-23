@@ -61,7 +61,12 @@ import type {
   Plan,
   Person,
   PersonSession,
+  ChatChannel,
   ChatManifest,
+  ChatRoom,
+  ChatRoomCreate,
+  ChatRoomPatch,
+  ChatTestResult,
   ChatWorkspace,
   PersonCreateRequest,
   PersonScope,
@@ -1210,6 +1215,19 @@ export const replaceChatToken = (id: number, token: string) =>
 export const deleteChatWorkspace = (id: number) =>
   fetchJson<void>(`/api/chat/workspaces/${seg(String(id))}`, { method: 'DELETE' });
 export const getChatManifest = () => fetchJson<ChatManifest>('/api/chat/manifest');
+export const setChatProjects = (id: number, projectIds: number[]) =>
+  fetchJson<number[]>(`/api/chat/workspaces/${seg(String(id))}/projects`, { method: 'PUT', ...asJson({ projectIds }) });
+export const getChatChannels = (id: number) =>
+  fetchJson<ChatChannel[]>(`/api/chat/workspaces/${seg(String(id))}/channels`);
+export const getChatRooms = (id: number) => fetchJson<ChatRoom[]>(`/api/chat/workspaces/${seg(String(id))}/rooms`);
+export const createChatRoom = (id: number, body: ChatRoomCreate) =>
+  fetchJson<ChatRoom>(`/api/chat/workspaces/${seg(String(id))}/rooms`, { method: 'POST', ...asJson(body) });
+export const updateChatRoom = (roomId: number, patch: ChatRoomPatch) =>
+  fetchJson<ChatRoom>(`/api/chat/rooms/${seg(String(roomId))}`, { method: 'PATCH', ...asJson(patch) });
+export const deleteChatRoom = (roomId: number) =>
+  fetchJson<void>(`/api/chat/rooms/${seg(String(roomId))}`, { method: 'DELETE' });
+export const testChatRoom = (roomId: number) =>
+  fetchJson<ChatTestResult>(`/api/chat/rooms/${seg(String(roomId))}/test`, { method: 'POST' });
 
 /**
  * The grant this browser holds - how the Users page knows which session row is

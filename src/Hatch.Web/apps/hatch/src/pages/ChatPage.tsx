@@ -7,10 +7,13 @@ import {
   getChatWorkspaces,
   replaceChatToken,
 } from '../api/client';
+import { ChatBindings } from '../components/ChatBindings';
+import { ChatRooms } from '../components/ChatRooms';
 import { CopyMarkdownButton } from '../components/CopyMarkdownButton';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
-import type { ChatWorkspace } from '../types';
+import { useProjects } from '../lib/useProjects';
+import type { ChatWorkspace, Project } from '../types';
 
 /**
  * An Admin's view of the chat workspaces Hatch is connected to: connect one by
@@ -25,6 +28,7 @@ import type { ChatWorkspace } from '../types';
  */
 export function ChatPage() {
   const [workspaces, setWorkspaces] = useState<ChatWorkspace[] | null>(null);
+  const { projects } = useProjects();
   const [manifest, setManifest] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [addFailure, setAddFailure] = useState<string | null>(null);
@@ -76,6 +80,10 @@ export function ChatPage() {
     }
   }
 
+  function bound(workspace: ChatWorkspace, projectIds: number[]) {
+    setWorkspaces((rows) => rows?.map((w) => (w.id === workspace.id ? { ...w, projectIds } : w)) ?? rows);
+  }
+
   async function remove(workspace: ChatWorkspace) {
     setBusy(true);
     try {
@@ -94,7 +102,7 @@ export function ChatPage() {
     <div className="hatch-page">
       <PageHeader
         title="Chat"
-        description="The chat workspaces Hatch is connected to. Nothing is posted to them yet; this is where a workspace is connected, so what comes next has somewhere to go."
+        description="The chat workspaces Hatch is connected to, the projects each is bound to, and the rooms it posts to. A test message is the only thing posted from here."
       />
 
       <Card>
@@ -113,13 +121,22 @@ export function ChatPage() {
         <Card flush>
           <WorkspaceTable
             workspaces={workspaces}
+            projects={projects}
             now={new Date()}
             busy={busy}
+            onBound={bound}
             onReplace={replace}
             onRemove={setPending}
           />
         </Card>
       )}
+
+      {workspaces?.map((workspace) => (
+        <Card key={workspace.id}>
+          <h2 className="hatch-chat-heading">Rooms on {workspace.name}</h2>
+          <ChatRooms workspace={workspace} projects={projects} />
+        </Card>
+      ))}
 
       <RemoveDialog workspace={pending} busy={busy} onClose={() => setPending(null)} onConfirm={(w) => void remove(w)} />
     </div>
@@ -193,14 +210,19 @@ export function AddTokenForm({
     whether one is held. */
 export function WorkspaceTable({
   workspaces,
+  projects,
   now,
   busy,
+  onBound,
   onReplace,
   onRemove,
 }: {
   workspaces: ChatWorkspace[];
+  projects: Project[];
   now: Date;
   busy: boolean;
+  /** A workspace's bound set changed; handed the set the server answered with. */
+  onBound: (workspace: ChatWorkspace, projectIds: number[]) => void;
   /** Rejects with the service's sentence when the token is refused. */
   onReplace: (workspace: ChatWorkspace, token: string) => Promise<void>;
   onRemove: (workspace: ChatWorkspace) => void;
@@ -211,6 +233,7 @@ export function WorkspaceTable({
         <tr>
           <th>Workspace</th>
           <th>Token</th>
+          <th>Projects</th>
           <th>Connected</th>
           <th />
         </tr>
@@ -222,6 +245,9 @@ export function WorkspaceTable({
               <strong>{workspace.name}</strong>
             </td>
             <td>{workspace.hasToken ? 'Token set' : <Text tone="muted">No token</Text>}</td>
+            <td className="hatch-chat-projects-cell">
+              <ChatBindings workspace={workspace} projects={projects} busy={busy} onChange={onBound} />
+            </td>
             <td>{agoPhrase(workspace.createdAt, now)}</td>
             <td className="hatch-chat-actions-cell">
               <div className="hatch-chat-actions">

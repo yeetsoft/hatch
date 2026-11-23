@@ -4757,6 +4757,127 @@ button.hatch-chip {
   }
 }
 
+/* The projects a workspace is bound to, and the rooms it posts to. Every flex
+   row wraps and may shrink to nothing, so a long project or channel name wraps
+   in place instead of widening the page. */
+.hatch-chat-projects,
+.hatch-chat-projects__list,
+.hatch-chat-rooms,
+.hatch-chat-room,
+.hatch-chat-picker {
+  min-width: 0;
+}
+
+.hatch-chat-projects__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.hatch-chat-projects__item,
+.hatch-chat-room__switch {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-chat-projects__key {
+  font-weight: 600;
+}
+
+.hatch-chat-projects__failure {
+  margin: var(--sp-1) 0 0;
+}
+
+.hatch-chat-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-chat-room {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.hatch-chat-room__name {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-chat-room__switches,
+.hatch-chat-room__scope,
+.hatch-chat-room__chosen,
+.hatch-chat-room__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  min-width: 0;
+}
+
+.hatch-chat-room__none,
+.hatch-chat-room__result {
+  margin: 0;
+}
+
+.hatch-chat-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hatch-chat-channel {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  min-width: 0;
+}
+
+.hatch-chat-channel__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-chat-channel__note,
+.hatch-chat-channel__mark {
+  min-width: 0;
+  font-size: 0.875rem;
+  opacity: 0.75;
+}
+
+@media (max-width: 40rem) {
+  .hatch-chat-projects-cell {
+    grid-column: 1 / -1;
+  }
+
+  .hatch-chat-room__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hatch-chat-channel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hatch-chat-room__actions .hatch-btn,
+  .hatch-chat-channel .hatch-btn {
+    width: 100%;
+  }
+}
+
 /* A runner row's controls, which run to five or six items once the Order
    control is drawn: they wrap inside the cell rather than push the table wider
    than the card. flex-shrink: 0 on the buttons so one is squeezed, wrapping
