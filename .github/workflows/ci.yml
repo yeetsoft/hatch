@@ -468,14 +468,21 @@ jobs:
   # the result. A job of its own rather than steps in hatch-runner-image,
   # because another story edits that job.
   hatch-runner-recipes:
-    timeout-minutes: 13
+    # Raised from 13 to 19 alongside the step below, for the same reason.
+    timeout-minutes: 19
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # A step's ceiling is three times the slowest of the last thirty green trunk runs,
+      # or twice where three times would reach the job's own, so it can fire first (HA-2428).
+      # Raised from 5 to 8: this step's own apt-get, inside the Dockerfile, already retries a
+      # stalled mirror, but a single attempt stalled past the step's own timeout before the
+      # retry ever got to run, costing the whole job on a mirror that would have cleared with
+      # more room (HA-2764). The slowest of the last thirty green runs was 143s.
       - name: Build the runner image
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
 
       - name: Build every recipe on it and run every check
