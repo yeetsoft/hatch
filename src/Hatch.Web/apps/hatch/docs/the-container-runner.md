@@ -199,10 +199,14 @@ entrypoint exports before it starts the loop. If none is saved, the container
 says so once and waits, asking again every 60 seconds, so the order you do
 these two things in does not matter.
 
-Hatch stores that credential sealed under `HATCH_SECRET_KEY`, and the route that
-hands it out is refused to every caller when the wall is up, which is why
-`HATCH_KEY` is no help here. `hatch` carries its own decoder for it, and that
-is why the image has no `jq`, `python` or `openssl`.
+Hatch stores that credential sealed under `HATCH_SECRET_KEY` (see [the secret
+key](the-secret-key)), so saving one needs a key to be set. Sealed is how it
+rests in the database. The handoff to the container is another matter: it
+travels only obfuscated, which hides it from a glance and does not encrypt it,
+so what keeps it private on the way is your network, or TLS in front of Hatch.
+The route that hands it out is refused to every caller when the wall is up,
+which is why `HATCH_KEY` is no help here. `hatch` carries its own decoder for
+the obfuscation, and that is why the image has no `jq`, `python` or `openssl`.
 
 It reads the credential **once, at start**. Save a new one on the Settings page
 and the container keeps the old one until it is restarted:

@@ -530,6 +530,39 @@ board answered it is a normal end, and ends the loop as it always has.
 - Deleting `versions/` in the per-user folder is safe at any time. The next start
   runs the downloaded file itself.
 
+## A secret will not save
+
+Saving a Claude token, Codex API key or Grok Build API key on the **Settings**
+page fails. The page says *Secrets cannot be saved until HATCH_SECRET_KEY is
+set.* Called from the API, the refusal is `secrets cannot be saved until
+HATCH_SECRET_KEY is set; set it and restart, or remove the secret from this
+request`, and `GET /api/settings` says `canSaveSecrets: false`.
+
+Hatch seals every secret it stores under a key, and this Hatch has none. The API
+said so once when it started, in a line you can still read:
+
+```
+docker compose logs api
+```
+
+Look for `HATCH_SECRET_KEY is not set, so secrets cannot be saved until one is
+set.` Two causes are usual:
+
+- **No key was ever set.** Make one and set it: [Set the secret
+  key](getting-started#set-the-secret-key).
+- **The `.env` is not beside `compose.yaml`,** or the variable is spelled some
+  other way, so Compose never read it. `HATCH_SECRET_KEY` is the whole name.
+
+To fix it, put the key in the `.env` and run `docker compose up -d`. A `restart`
+does not do it, because it starts the same container with the environment it
+already had. Reload the Settings page and save again. The line in the log stops
+once a key is set. Nothing stored is lost while there is no key.
+
+If the API will not start at all after you set one, the value is not base64 of
+exactly 32 bytes. The message names `HATCH_SECRET_KEY` and never prints it. Make
+a fresh one with `openssl rand -base64 32`. [The secret key](the-secret-key) is
+the whole page about it.
+
 ## The Settings page says a secret cannot be opened
 
 Beside the Claude token, Codex API key or Grok Build API key on the
@@ -542,7 +575,9 @@ It comes about three ways:
 
 - **The key is wrong.** `HATCH_SECRET_KEY` is set, but it is not the key the
   value was saved under. This is usual after the key was changed without
-  `HATCH_PREVIOUS_SECRET_KEY` keeping the old one for the change-over.
+  `HATCH_PREVIOUS_SECRET_KEY` keeping the old one for the change-over: see
+  [changing the key](the-secret-key#changing-the-key). The log line for each
+  secret names the key it was sealed under (`It names key <id>`).
 - **The key is lost.** `HATCH_SECRET_KEY` is not set at all now, for instance in
   a `.env` that was not carried over. Set it back to the key the value was saved
   under and the sentence goes. See [Environment variables](environment-variables).

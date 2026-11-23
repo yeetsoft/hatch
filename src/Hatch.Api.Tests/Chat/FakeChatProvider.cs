@@ -25,6 +25,15 @@ internal sealed class FakeChatProvider : IChatProvider
         [GlobexToken] = ("TGLOBEX", "Globex"),
     };
 
+    /// <summary>Every channel a token can see, keyed by the token. A token with no entry sees none.</summary>
+    public Dictionary<string, List<ChatChannel>> Channels { get; } = new();
+
+    /// <summary>A sentence to refuse a channel id with, instead of posting to it.</summary>
+    public Dictionary<string, string> PostRefusals { get; } = new();
+
+    /// <summary>Every message posted, in order.</summary>
+    public List<(string Token, string ChannelId, string Text)> Posts { get; } = [];
+
     public int Checks { get; private set; }
 
     public string Name => "fake";
@@ -38,5 +47,19 @@ internal sealed class FakeChatProvider : IChatProvider
         return Task.FromResult(Workspaces.TryGetValue(token, out var w)
             ? ChatTokenCheck.Workspace(w.Id, w.Name)
             : ChatTokenCheck.Refused(RefusalSentence));
+    }
+
+    public Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct) =>
+        Task.FromResult(Workspaces.ContainsKey(token)
+            ? ChatChannelList.Of(Channels.GetValueOrDefault(token, []))
+            : ChatChannelList.Refused(RefusalSentence));
+
+    public Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct)
+    {
+        Posts.Add((token, channelId, text));
+
+        return Task.FromResult(PostRefusals.TryGetValue(channelId, out var refusal)
+            ? ChatPostResult.Refused(refusal)
+            : ChatPostResult.Delivered());
     }
 }

@@ -48,7 +48,8 @@ API expects of a cluster, and what an operator writes.
   - Every key on [What the API reads](deployment-overview#what-the-api-reads).
   - `DOTNET_ENVIRONMENT` set to anything but `Development`, which writes
     JSON log lines to stdout.
-  - The secrets from a Secret.
+  - The secrets from a Secret, the secret key among them: see
+    [The secret key](#the-secret-key).
   - `.env.json` is optional, and a board needs nothing in it.
 - **One origin** serving `/`, `/auth/`, `/api/*`,
   `/.well-known/assetlinks.json` and `/health/*`: one Ingress host to one
@@ -57,6 +58,26 @@ API expects of a cluster, and what an operator writes.
   every replica's check-in collapses onto one cluster row
   (`Jobs/SchedulerCheckout.cs:21-25`). The sign-in rate limiter is per
   process (`Program.cs:284-288`).
+
+## The secret key
+
+Hatch seals the secrets it stores under a key. In a cluster the key comes from a
+Secret, like the rest of the configuration.
+
+- **`Hatch__SecretKey`:** base64 of exactly 32 bytes (`openssl rand -base64 32`).
+  Put it in the Secret and read it into the environment of the **api
+  Deployment**.
+- **`Hatch__PreviousSecretKey`, beside it, during a rotation only.** It opens
+  what the old key sealed and seals nothing. Take it out once the log says `0
+  could not be opened`: [Changing the key](the-secret-key#changing-the-key)
+  has the steps.
+- **Not the migration Job.** It never opens a secret, so it needs neither key.
+- **Left unset,** the API starts, warns once, and cannot save a secret. A
+  value that is set and is not such a key stops the pod at start, with a message
+  that names the variable and does not print the value. A Secret edited under a
+  running pod changes nothing until the pod is rolled.
+- **Keep a copy of the key outside the cluster,** apart from the database and
+  its backups. See [The secret key](the-secret-key#losing-the-key).
 
 ## Reading Flux, optionally
 
@@ -99,9 +120,9 @@ without it.
 
 One line each: what it is for, and which part above it carries.
 
-- **A Secret:** the Google client secret and the connection strings. See
-  [What the API expects](#what-the-api-expects), configuration through
-  environment.
+- **A Secret:** the Google client secret, the connection strings and the
+  secret key. See [What the API expects](#what-the-api-expects),
+  configuration through environment, and [The secret key](#the-secret-key).
 - **A ServiceAccount.** The Pod runs as it. Add the Role and RoleBinding
   from [Reading Flux, optionally](#reading-flux-optionally) only if you want
   that read.

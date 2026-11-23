@@ -16,6 +16,7 @@ const workspace = (id: number, name: string, hasToken = true): ChatWorkspace => 
   name,
   hasToken,
   createdAt: '2026-03-01T11:00:00Z',
+  projectIds: [],
 });
 
 const FELLOWSHIP = workspace(1, 'Fellowship');
