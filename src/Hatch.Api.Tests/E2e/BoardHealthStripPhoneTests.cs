@@ -128,6 +128,51 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
             Assert.InRange(runnersGrid.Width, runnersSpark.Width - 1, runnersSpark.Width + 1);
             await harness.ScreenshotAsync(deadline, "board-health-phone-open");
 
+            // Tapping a tile - its chart, or a blank part of it - opens its dialog across the whole width, and
+            // every button and link in it is a finger high.
+            foreach (var (tile, press) in new[] { ("moved", "spark"), ("inFlight", "value"), ("oldest", "spark"), ("waiting", "spark") })
+            {
+                await harness.ClickAsync(deadline, $".hatch-health-strip--stacked [data-tile='{tile}'] [data-part='{press}']");
+                await harness.WaitForVisibleAsync(deadline, $"[role='dialog'] .hatch-health-dialog[data-dialog='{tile}']");
+                await harness.WaitForFunctionAsync(
+                    deadline, "waiting for the chart to draw at its measured size",
+                    """
+                    () => {
+                      const svg = document.querySelector("[role='dialog'] .hatch-health-dialog-svg");
+                      const box = svg.getBoundingClientRect();
+                      const view = svg.viewBox.baseVal;
+                      return box.width > 100 && Math.abs(box.width - view.width) < 1 && Math.abs(box.height - view.height) < 1;
+                    }
+                    """);
+
+                var sheet = new Reading(await harness.EvaluateAsync<JsonElement>(
+                    deadline, "measuring the dialog",
+                    """
+                    () => {
+                      const panel = document.querySelector("[role='dialog']").getBoundingClientRect();
+                      const heights = [...document.querySelectorAll("[role='dialog'] button, [role='dialog'] a")].map((e) => e.getBoundingClientRect().height);
+                      return {
+                        panelLeft: panel.left,
+                        panelRight: panel.right,
+                        controls: heights.length,
+                        shortest: Math.min(...heights),
+                        scrollWidth: document.documentElement.scrollWidth,
+                        innerWidth: window.innerWidth,
+                      };
+                    }
+                    """));
+                output.WriteLine($"{tile} dialog: {sheet}");
+                Assert.True(sheet.N("panelLeft") <= 0.5, $"the dialog starts at x={sheet.N("panelLeft")}");
+                Assert.True(sheet.N("panelRight") >= sheet.N("innerWidth") - 0.5, $"the dialog ends at x={sheet.N("panelRight")} in a {sheet.N("innerWidth")}px viewport");
+                Assert.True(sheet.N("controls") >= 6, "the dialog has the five window buttons and its close");
+                Assert.True(sheet.N("shortest") >= 43.5, $"a control in the dialog is {sheet.N("shortest")}px high, under 44");
+                Assert.True(sheet.N("scrollWidth") <= sheet.N("innerWidth"), $"the page scrolls sideways under the dialog: {sheet}");
+                await harness.ScreenshotAsync(deadline, $"board-health-phone-dialog-{tile}");
+
+                await harness.ClickAsync(deadline, "[role='dialog'] .hatch-modal__close");
+                await harness.WaitForHiddenAsync(deadline, "[role='dialog']");
+            }
+
             // The window chosen in the open strip is remembered across a reload; the row starts closed again.
             await harness.ClickAsync(deadline, ".hatch-health-window:text-is('4h')");
             await harness.WaitForFunctionAsync(

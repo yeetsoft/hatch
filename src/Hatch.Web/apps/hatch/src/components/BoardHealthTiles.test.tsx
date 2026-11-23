@@ -14,13 +14,14 @@ const escape = (text: string): string => text.replace(/&/g, '&amp;').replace(/</
 function tiles(answer: BoardHealth, index: number | null, href = '/reports/cumulative-flow') {
   const readouts = readout(answer, index);
   const props = { answer, index, onIndex: () => {} };
+  const open = { onOpen: () => {} };
 
   return renderToStaticMarkup(
     <MemoryRouter>
-      <MovedTile {...props} readout={readouts.moved} />
-      <InFlightTile {...props} readout={readouts.inFlight} href={href} />
-      <OldestTile {...props} readout={readouts.oldest} />
-      <WaitingTile {...props} readout={readouts.waiting} />
+      <MovedTile {...props} {...open} readout={readouts.moved} />
+      <InFlightTile {...props} {...open} readout={readouts.inFlight} href={href} />
+      <OldestTile {...props} {...open} readout={readouts.oldest} />
+      <WaitingTile {...props} {...open} readout={readouts.waiting} />
       <RunnersTile {...props} readout={readouts.runners} />
     </MemoryRouter>,
   );
@@ -72,7 +73,15 @@ describe('the five health tiles', () => {
     const html = tiles(answer, null, href);
 
     expect(html).toContain(`href="${escape(href)}"`);
-    expect(html).toContain('hatch-health-spark--link');
+    expect(html).not.toContain('hatch-health-spark--link');
+  });
+
+  it('says the four tiles open a dialog when pressed, and Runners does not yet', () => {
+    const html = tiles(sampleHealth(), null);
+    const sparks = html.split('<section ').slice(1).map((tile) => tile.includes('hatch-health-spark--open'));
+
+    // moved, inFlight, oldest, waiting, runners - in the order they are drawn.
+    expect(sparks).toEqual([true, true, true, true, false]);
   });
 
   it('draws the marked line on every tile only when a bar is marked', () => {

@@ -648,8 +648,9 @@ same moment on all four.
 - **In flight** counts the issues in columns that hold work being done now. Its
   sparkline is three stacked bands: waiting, in flight and done, each read from
   the columns' flags rather than their names. The big number is the in-flight
-  count, with the other two beside it. Pressing the tile opens the [cumulative
-  flow](flow-wip-and-the-battery) report on the same window and the same projects.
+  count, with the other two beside it. The tile's label opens the [cumulative
+  flow](flow-wip-and-the-battery) report on the same window and the same projects;
+  pressing the sparkline opens the dialog described below.
 - **Oldest in flight** is the longest stay of an issue that has no children and
   is in flight, as a time such as `14h 20m`. Under it is how many in-flight
   cards are past normal for their column, in amber with a warning sign.
@@ -674,6 +675,31 @@ same moment on all four.
   project the caller cannot see reads as idle. A **Key** button at the tile's
   top right opens a legend naming all seven cells; press it, or hover or focus
   the tile.
+
+Press the sparkline of **Moved**, **In flight**, **Oldest in flight** or
+**Waiting on you**, or anywhere else on the tile that is not a link or a button,
+and a dialog opens with that tile's window drawn large. From the keyboard, focus
+the sparkline and press Enter or Space; the arrow keys still mark a bar and do
+not open it. Escape or a click outside closes the dialog and puts focus back on
+the sparkline. Pointing at a tile only marks a moment, as before. Every dialog
+is titled with the tile and its window, as "Moved, last 8h", and carries the
+same window control: changing it there changes the strip's window too. Under it
+is the chart on the same 24 bars, with times along the bottom and the scale's
+top value at the side, then a legend naming every mark, then one sentence for
+the marked bar - point at a bar, or step with the arrow keys, and it says that
+bar's figures in words. The marks are told apart by pattern as well as shade.
+The dialog draws from the same read as the strip and redraws as it refreshes.
+
+- **Moved** stacks each bar by who moved: runners at the bottom, then a person,
+  then the board. Under the chart are each one's total for the window and the
+  window's total, with the total for the window before. The read has no
+  per-source figure for that window, so it is one number.
+- **In flight** draws the three bands, with each band's count at the marked bar
+  (the last bar, now, at rest), and a link, "Open the cumulative flow report",
+  to the report on the same window and projects.
+- **Oldest in flight** draws the tile's line large, with a dot for now.
+- **Waiting on you** draws pull requests and questions apart, as two stacked
+  areas, and says how long the oldest has waited now.
 
 At rest the last three tiles show now, the bar still filling, Moved shows
 the window's total, and Runners shows how many are up now. Point at any bar,

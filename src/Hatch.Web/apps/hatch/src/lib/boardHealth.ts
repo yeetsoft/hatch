@@ -42,7 +42,7 @@ export const hasStrip = (answer: BoardHealth): boolean => answer.bars.length > 0
 
 /** The window's own label, from the answer alone: `8h` for twenty-four bars of
     twenty minutes. */
-const windowLabel = (answer: BoardHealth): string => `${Math.round((answer.barMinutes * BARS) / 60)}h`;
+export const windowLabel = (answer: BoardHealth): string => `${Math.round((answer.barMinutes * BARS) / 60)}h`;
 
 /** The strip's axis in one sentence: `to 15:40 · 20 min bars`. The time is the
     window's end in the reader's zone, in the form `momentLabel` writes it. */
@@ -54,7 +54,7 @@ export function axisSentence(answer: BoardHealth, locale?: string): string {
 
 // ---- Geometry ----
 
-const round = (n: number): number => Math.round(n * 100) / 100;
+export const round = (n: number): number => Math.round(n * 100) / 100;
 
 /** One bar's slot on the shared axis. */
 export interface Slot {
@@ -82,7 +82,7 @@ export function barIndexAt(x: number, width: number): number | null {
 export const momentX = (index: number, width: number): number => round(((index + 0.5) * width) / BARS);
 
 /** A bar's drawn share of its slot, so neighbours do not touch. */
-const BAR_FILL = 0.8;
+export const BAR_FILL = 0.8;
 
 /** One moved bar as a rectangle. */
 export interface MovedRect {
@@ -95,7 +95,7 @@ export interface MovedRect {
 
 /** The scale every chart divides by: the tallest value, and never under 1, so
     an all-zero window divides by one and not by zero. */
-const scaleOf = (values: number[]): number => Math.max(1, ...values);
+export const scaleOf = (values: number[]): number => Math.max(1, ...values);
 
 /** The moved counts as rectangles, scaled to the tallest bar. A bar that moved
     nothing has no height; any other is never under one unit high, so a single
@@ -286,7 +286,7 @@ const NONE: BoardHealthBar = {
   ages: { healthy: 0, aging: 0, pastNormal: 0, noNormal: 0 },
 };
 
-const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+export const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 /** The moved tile, at rest or on one bar. */
 function moved(answer: BoardHealth, bar: BoardHealthBar | null, locale?: string): TileReadout {
@@ -410,7 +410,7 @@ export function readout(answer: BoardHealth, index: number | null, locale?: stri
 }
 
 /** Each tile's name, as a sentence opens on it. */
-const TILE_NAME: Record<Tile, string> = {
+export const tileName: Record<Tile, string> = {
   moved: 'Moved',
   inFlight: 'In flight',
   oldest: 'Oldest in flight',
@@ -430,7 +430,7 @@ const changeSentence = (readout: TileReadout): string => {
     `hover` carries the Runners tile's hover list, said last, when a bar is
     marked. */
 export function tileLabel(tile: Tile, readout: TileReadout, hover?: string): string {
-  const parts = [`${TILE_NAME[tile]}: ${readout.value}`];
+  const parts = [`${tileName[tile]}: ${readout.value}`];
   parts.push(tile === 'moved' && readout.arrow ? changeSentence(readout) : readout.second);
   if (readout.detail) parts.push(readout.detail);
   if (hover) parts.push(hover);
