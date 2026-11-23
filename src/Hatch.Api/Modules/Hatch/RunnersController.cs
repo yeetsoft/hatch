@@ -88,10 +88,11 @@ public class RunnersController(
         var visibleKeys = await VisibleKeysAsync(ct);
         var statusIds = await StatusIdsAsync(ct);
         var localModels = await LocalModelsAsync(ct);
+        var openFailures = await OpenFailuresAsync(ct);
 
         var dtos = new List<RunnerDto>(visible.Count);
         foreach (var r in visible)
-            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, visibleKeys, statusIds, localModels, now, ct));
+            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, visibleKeys, statusIds, localModels, openFailures, now, ct));
 
         return dtos;
     }
@@ -118,7 +119,41 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), await OpenFailuresAsync(ct), now, ct);
+    }
+
+    /// <summary>
+    /// What one visible runner cannot do now and could not do earlier, or
+    /// <c>404</c> for a name this caller may not see - the same rule
+    /// <see cref="GetRunner"/> reads under.
+    /// </summary>
+    /// <remarks>
+    /// <para><c>Current</c> is the key's open rows at a checkout the runner is
+    /// being heard from at; <c>Earlier</c> is its ended rows, newest ended first,
+    /// at most fifty. An open row of a runner gone quiet is in neither: its next
+    /// beat settles it. A name with no key has no rows and answers two empty
+    /// lists. This read writes nothing.</para>
+    /// </remarks>
+    [HttpGet("{name}/failures")]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<ActionResult<RunnerFailuresDto>> GetRunnerFailures(string name, CancellationToken ct)
+    {
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+
+        var now = time.GetUtcNow();
+        var (all, personId) = await VisibleAsync(ct);
+
+        if (db.Database.IsRelational()) await sessions.MarkAllGoneAsync(db, now, ct);
+
+        var joined = await Runner.JoinAsync(db, keys, ct);
+        var found = joined.FirstOrDefault(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
+        if (found is null || !(all || found.OwnerPersonId == personId)) return NotFound();
+
+        if (found.Key is not { } key) return new RunnerFailuresDto([], []);
+
+        return new RunnerFailuresDto(
+            RunnerFailures.Current(await OpenFailuresAsync(ct), found, sessions, now),
+            await RunnerFailures.EarlierAsync(db, key.Id, ct));
     }
 
     /// <summary>
@@ -278,7 +313,7 @@ public class RunnersController(
         // A new key holds nothing and drives nothing, so nothing is read for it.
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), time.GetUtcNow(), ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), [], time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
@@ -318,12 +353,16 @@ public class RunnersController(
     private Task<List<EfHatchLocalModel>> LocalModelsAsync(CancellationToken ct) =>
         db.LocalModels.AsNoTracking().OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).ToListAsync(ct);
 
+    /// <summary>Every open failure row, read once per request and threaded through <see cref="ProjectAsync"/>; <see cref="RunnerFailures.Current"/> says which of them are current.</summary>
+    private async Task<IReadOnlyList<EfHatchRunnerFailure>> OpenFailuresAsync(CancellationToken ct) =>
+        await db.RunnerFailures.AsNoTracking().Where(f => f.EndedAt == null).ToListAsync(ct);
+
     /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
     private async Task<RunnerDto> ProjectAsync(
         Runner runner, Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
         SiteSettingsSnapshot site, IReadOnlySet<string> visibleKeys, IReadOnlySet<int> statusIds, IReadOnlyList<EfHatchLocalModel> localModels,
-        DateTimeOffset now, CancellationToken ct)
+        IReadOnlyList<EfHatchRunnerFailure> openFailures, DateTimeOffset now, CancellationToken ct)
     {
         var ownerId = runner.OwnerPersonId;
         var forName = ownerId is { } id ? (await actors.ResolveAsync(ActorKind.Person, id, ct))?.Name : null;
@@ -354,6 +393,10 @@ public class RunnersController(
         // The forge sign-in reads the same way: the worst of the live loops.
         if (dto.Forge is null && RunnerDeclaration.ForgeOf(loop) is { } forge)
             dto = dto with { Forge = forge.State, ForgeWhy = forge.Why };
+
+        // What this runner cannot do right now: its open failure rows at a
+        // checkout it is being heard from at, none for a runner gone quiet.
+        dto = dto with { Failures = RunnerFailures.Current(openFailures, runner, sessions, now) };
 
         // A keyed runner with no legacy row has no row-level accelerator fact
         // at all, so the newest live loop session's own carries it - the same
@@ -520,6 +563,9 @@ public class RunnersController(
 
         if (kind == EfHatchRunner.LoopKind)
         {
+            // What this beat found failing, kept; a `once` beat touches nothing.
+            await RunnerFailures.ReconcileAsync(db, key.Id, session, request, now, ct);
+
             foreach (var retired in await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct))
                 await stateLog.RecordAsync(db, keys, retired, now, ct);
 
@@ -1223,7 +1269,7 @@ public class RunnersController(
         return await ProjectAsync(
             new Runner(aggregate.Key, config ?? aggregate.Config, beatRow, aggregate.Sessions),
             await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, keys, now, ct),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), await OpenFailuresAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -1360,7 +1406,7 @@ public class RunnersController(
         var drivers = await runners.DriversAsync(db, keys, now, ct);
         var site = await siteSettings.GetAsync(ct);
 
-        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
+        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), await OpenFailuresAsync(ct), now, ct);
         return new RunnerMintedDto(dto, rotated.Secret);
     }
 
@@ -1805,7 +1851,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), now, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), await OpenFailuresAsync(ct), now, ct);
     }
 
     // ---- The one narrowing ----
@@ -2407,7 +2453,7 @@ public class RunnersController(
     }
 
     /// <summary>A reported value, capped rather than refused - see the remark on <see cref="Heartbeat"/>.</summary>
-    private static string? Fits(string? value, int max)
+    internal static string? Fits(string? value, int max)
     {
         var trimmed = value?.Trim();
         if (string.IsNullOrEmpty(trimmed)) return null;
@@ -2420,7 +2466,7 @@ public class RunnersController(
     /// and <see cref="RunnerAgentDownKinds.BoardPaused"/>, which only the board
     /// writes, reads as <see cref="RunnerAgentDownKinds.NotStarting"/>.
     /// </summary>
-    private static string NormaliseAgentDownKind(string? kind) =>
+    internal static string NormaliseAgentDownKind(string? kind) =>
         kind == RunnerAgentDownKinds.SignedOut ? RunnerAgentDownKinds.SignedOut : RunnerAgentDownKinds.NotStarting;
 
     /// <summary>

@@ -5198,3 +5198,58 @@ public class EfHatchRunnerState
     [MaxLength(MaxKindLength)]
     public string? Kind { get; set; }
 }
+
+/// <summary>
+/// One thing a runner could not do, from when it began to when it ended. A
+/// row hangs off the key and the checkout, not a session row, so a loop that
+/// restarts continues the open row it finds.
+/// </summary>
+/// <remarks>
+/// <para>Written by <see cref="RunnerFailures"/> alone: a loop session's
+/// heartbeat, and the board's own pause. Nothing sweeps - a runner gone quiet
+/// keeps its open rows until its next beat settles them, and the read leaves
+/// them out until then. At most one row is open for a key, checkout and kind,
+/// which the database enforces.</para>
+///
+/// <para>Belongs to no project, like the other runner tables.</para>
+/// </remarks>
+[Table("RunnerFailures")]
+[Index(nameof(ApiKeyId), nameof(EndedAt), nameof(Id))]
+public class EfHatchRunnerFailure
+{
+    public const int MaxKindLength = 24;
+    public const int MaxWhyLength = EfHatchRunner.MaxAgentDownLineLength;
+
+    /// <summary>How many ended rows one key keeps; the beat that ends one more deletes the oldest.</summary>
+    public const int History = 50;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>The runner's key. Bare, with no foreign key, like <see cref="EfHatchRunnerSession.ApiKeyId"/>.</summary>
+    public Guid ApiKeyId { get; set; }
+
+    /// <summary>
+    /// The checkout the failure is at; the empty string where none was named.
+    /// Never null: Postgres treats nulls as distinct, so a null would let the
+    /// open-row index admit two.
+    /// </summary>
+    [MaxLength(EfHatchRunner.MaxNameLength)]
+    public required string Where { get; set; }
+
+    /// <summary>One of <see cref="RunnerFailureKinds.All"/>.</summary>
+    [MaxLength(MaxKindLength)]
+    public required string Kind { get; set; }
+
+    /// <summary>What the tool said, one line.</summary>
+    [MaxLength(MaxWhyLength)]
+    public string? Why { get; set; }
+
+    public DateTimeOffset BeganAt { get; set; }
+
+    /// <summary>The last beat that still found it failing.</summary>
+    public DateTimeOffset LastReportedAt { get; set; }
+
+    /// <summary>Null while it stands.</summary>
+    public DateTimeOffset? EndedAt { get; set; }
+}

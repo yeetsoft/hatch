@@ -800,6 +800,77 @@ public class WorkControllerTests
         Assert.Null(named.Playbook);
     }
 
+    [Fact]
+    public async Task Work_ADraftOnTheShapingRow_CarriesItsDreamsAndTheFilesItsDescriptionLinks()
+    {
+        var (h, draft, _) = await DraftAsync(x => x.Inbox);
+
+        var older = new EfHatchDream { Body = "older\nwords", Author = "p", Source = "a chat", CreatedAt = Now.AddHours(-2), UpdatedAt = Now.AddHours(-2) };
+        var newer = new EfHatchDream { Body = "newer words", Author = "p", CreatedAt = Now.AddHours(-1), UpdatedAt = Now.AddHours(-1) };
+        var unrelated = new EfHatchDream { Body = "not on the draft", Author = "p", CreatedAt = Now, UpdatedAt = Now };
+        h.Db.Dreams.AddRange(older, newer, unrelated);
+        await h.Db.SaveChangesAsync();
+        h.Db.DreamThreads.AddRange(
+            new EfHatchDreamThread { DreamId = older.Id, IssueId = draft.Id, Actor = "p", At = Now },
+            new EfHatchDreamThread { DreamId = newer.Id, IssueId = draft.Id, Actor = "p", At = Now });
+
+        var stored = Guid.NewGuid();
+        var gone = Guid.NewGuid();
+        h.Db.Attachments.Add(new EfHatchAttachment
+        {
+            Id = stored, Bytes = [1, 2, 3, 4], ContentType = "image/png", FileName = "board.png", Size = 4, CreatedAt = Now,
+        });
+        draft.Description = $"See ![board](/api/images/{stored}) and [clip](/api/attachments/{gone}) and again /api/images/{stored}.";
+        await h.Db.SaveChangesAsync();
+
+        var work = Value(await h.Work.GetWork(Key(draft), null, default));
+
+        var shaping = Assert.IsType<WorkShapingDto>(work.Shaping);
+        Assert.Equal([newer.Id, older.Id], shaping.Dreams.Select(d => d.Id));
+        Assert.Equal("newer words", shaping.Dreams[0].Body);
+        Assert.Null(shaping.Dreams[0].Source);
+        Assert.Equal("older\nwords", shaping.Dreams[1].Body);
+        Assert.Equal("a chat", shaping.Dreams[1].Source);
+
+        Assert.Equal(2, shaping.Files.Count);
+        Assert.Equal(new WorkFileDto(stored, "board.png", "image/png", 4), shaping.Files[0]);
+        Assert.Equal(new WorkFileDto(gone, null, null, null, Deleted: true), shaping.Files[1]);
+    }
+
+    [Fact]
+    public async Task Work_ADraftOnTheShapingRowWithNothingGiven_CarriesTwoEmptyLists()
+    {
+        var (h, draft, _) = await DraftAsync(x => x.Inbox);
+
+        var work = Value(await h.Work.GetWork(Key(draft), null, default));
+
+        var shaping = Assert.IsType<WorkShapingDto>(work.Shaping);
+        Assert.Empty(shaping.Dreams);
+        Assert.Empty(shaping.Files);
+    }
+
+    [Fact]
+    public async Task Work_AnythingButAShapingDispatch_CarriesNoShaping()
+    {
+        // A draft in the to-column is not on the shaping row.
+        var (h, draft, _) = await DraftAsync(x => x.Todo);
+        var dream = new EfHatchDream { Body = "words", Author = "p", CreatedAt = Now, UpdatedAt = Now };
+        h.Db.Dreams.Add(dream);
+        await h.Db.SaveChangesAsync();
+        h.Db.DreamThreads.Add(new EfHatchDreamThread { DreamId = dream.Id, IssueId = draft.Id, Actor = "p", At = Now });
+        var story = await h.FileAsync("story", "ordinary", h.InProgress);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null(Value(await h.Work.GetWork(Key(draft), null, default)).Shaping);
+        Assert.Null(Value(await h.Work.GetWork(Key(story), null, default)).Shaping);
+
+        // And with no flagged row at all, a draft in the from-column has none either.
+        h.Db.Playbooks.RemoveRange(h.Db.Playbooks.Where(p => p.ShapesAmbition));
+        var plain = await h.FileAsync("ambition", "plain", h.Inbox);
+        await h.Db.SaveChangesAsync();
+        Assert.Null(Value(await h.Work.GetWork(Key(plain), null, default)).Shaping);
+    }
+
     // ---- An ambition aimed at a question ----
 
     /// <summary>

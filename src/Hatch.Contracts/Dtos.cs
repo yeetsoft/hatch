@@ -3579,6 +3579,12 @@ public record DreamRemandResultDto(
 /// or had rewritten, and the epics beneath it to weigh against that. Null on
 /// every other dispatch, and on an older board's answer.
 /// </param>
+/// <param name="Shaping">
+/// What the person gave a draft ambition that a shaping dispatch is for: the dreams
+/// recorded on it and the files its description links. Null on every other
+/// dispatch, and on an older board's answer. Present with two empty lists where
+/// the dispatch is for shaping and nothing was given.
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -3617,7 +3623,8 @@ public record WorkDto(
     WorkAmbitionDto? Ambition = null,
     WorkQuestionDto? Answering = null,
     bool AllowsUnsignedCommits = true,
-    WorkChangeDto? Changing = null);
+    WorkChangeDto? Changing = null,
+    WorkShapingDto? Shaping = null);
 
 /// <summary>
 /// The question an answering dispatch is for: where it stands, what it says,
@@ -3652,6 +3659,31 @@ public record WorkChangeDto(
     long Id,
     IReadOnlyList<ChangeEntryDto> Entries,
     IReadOnlyList<WorkChangeEpicDto> Epics);
+
+/// <summary>
+/// What a shaping dispatch was given: the dreams recorded on the draft, newest
+/// first, and the files its description links, in the order the links first
+/// appear. Read when the answer is built; nothing is stored for it.
+/// </summary>
+/// <param name="Dreams">The dreams <c>GET /api/issues/{key}/dreams</c> lists.</param>
+/// <param name="Files">Every <c>/api/attachments/{id}</c> and <c>/api/images/{id}</c> link in the description, once each.</param>
+public record WorkShapingDto(
+    IReadOnlyList<WorkDreamDto> Dreams,
+    IReadOnlyList<WorkFileDto> Files);
+
+/// <summary>One dream recorded on a draft, in full.</summary>
+/// <param name="Id">The dream's id, which the session names when it records the dreams it drew on.</param>
+/// <param name="Body">What the dream says, whole.</param>
+/// <param name="Source">Where it came from, or null.</param>
+public record WorkDreamDto(long Id, string Body, string? Source);
+
+/// <summary>One file a draft's description links.</summary>
+/// <param name="Id">The file's id, which <c>hatch attachment get</c> takes.</param>
+/// <param name="FileName">The name it was stored under. Null where <paramref name="Deleted"/>.</param>
+/// <param name="ContentType">Its content type. Null where <paramref name="Deleted"/>.</param>
+/// <param name="Size">Its size in bytes. Null where <paramref name="Deleted"/>.</param>
+/// <param name="Deleted">True where the link names a file that is no longer stored.</param>
+public record WorkFileDto(Guid Id, string? FileName, string? ContentType, long? Size, bool Deleted = false);
 
 /// <summary>
 /// One epic a change dispatch asks the session to weigh: where it stands and
@@ -5613,6 +5645,46 @@ public static class RunnerForge
 }
 
 /// <summary>
+/// What a runner could not do, as <see cref="RunnerFailureDto.Kind"/> names it.
+/// Out of usage and the hourly token cap are not here: they end by themselves.
+/// </summary>
+public static class RunnerFailureKinds
+{
+    /// <summary>The forge refused the runner's sign-in.</summary>
+    public const string Forge = "forge";
+
+    /// <summary>Commits are meant to be signed and git could not sign one.</summary>
+    public const string Signing = "signing";
+
+    /// <summary>The runner's agent is signed out.</summary>
+    public const string AgentSignedOut = "agent-signed-out";
+
+    /// <summary>The runner's agent would not start.</summary>
+    public const string AgentNotStarting = "agent-not-starting";
+
+    /// <summary>The board stood the session down after several empty failures in a row.</summary>
+    public const string BoardPaused = "board-paused";
+
+    /// <summary>All five.</summary>
+    public static readonly string[] All = [Forge, Signing, AgentSignedOut, AgentNotStarting, BoardPaused];
+}
+
+/// <summary>One thing a runner could not do, from when it began to when it ended.</summary>
+/// <param name="Kind">One of <see cref="RunnerFailureKinds.All"/>.</param>
+/// <param name="Where">The checkout it is at; null where none was named.</param>
+/// <param name="Why">What the tool said, one line of at most 200 characters. Null where it said nothing.</param>
+/// <param name="BeganAt">When a beat first found it failing.</param>
+/// <param name="LastReportedAt">The last beat that still found it failing.</param>
+/// <param name="EndedAt">The beat that found it no longer failing. Null while it stands.</param>
+public record RunnerFailureDto(
+    string Kind, string? Where, string? Why, DateTimeOffset BeganAt, DateTimeOffset LastReportedAt, DateTimeOffset? EndedAt);
+
+/// <summary>What <c>GET /api/runners/{name}/failures</c> answers.</summary>
+/// <param name="Current">Open rows at a checkout the runner is being heard from at, newest began first.</param>
+/// <param name="Earlier">Ended rows, newest ended first, at most fifty.</param>
+public record RunnerFailuresDto(IReadOnlyList<RunnerFailureDto> Current, IReadOnlyList<RunnerFailureDto> Earlier);
+
+/// <summary>
 /// What a person is ordering a runner to do, from the Runners page's own
 /// <c>POST .../order</c>.
 /// </summary>
@@ -5840,6 +5912,11 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// Null where it never said.
 /// </param>
 /// <param name="ForgeWhy">What the forge said, where <paramref name="Forge"/> is <c>fails</c> - one line of at most 200 characters, keys masked. Null otherwise.</param>
+/// <param name="Failures">
+/// What this runner cannot do right now: its open failure rows at a checkout it
+/// is being heard from at, newest began first. Empty for a runner gone quiet,
+/// and for one that never failed.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -5916,7 +5993,8 @@ public record RunnerDto(
     string? Signing = null,
     string? SigningWhy = null,
     string? Forge = null,
-    string? ForgeWhy = null)
+    string? ForgeWhy = null,
+    IReadOnlyList<RunnerFailureDto> Failures = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -5928,6 +6006,7 @@ public record RunnerDto(
     public IReadOnlyList<string> RefusedModels { get; init; } = RefusedModels ?? [];
     public IReadOnlyList<int> StatusIds { get; init; } = StatusIds ?? [];
     public IReadOnlyList<string> Hold { get; init; } = Hold ?? [];
+    public IReadOnlyList<RunnerFailureDto> Failures { get; init; } = Failures ?? [];
 }
 
 /// <summary>

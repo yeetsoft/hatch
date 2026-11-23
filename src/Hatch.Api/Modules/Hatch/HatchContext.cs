@@ -117,6 +117,9 @@ public class HatchContext : DbContext, IModuleContext
     /// <summary>Every change of a runner's state, with its instant - see <see cref="EfHatchRunnerState"/>.</summary>
     public DbSet<EfHatchRunnerState> RunnerStates => Set<EfHatchRunnerState>();
 
+    /// <summary>What a runner could not do, one row per failure - see <see cref="EfHatchRunnerFailure"/>.</summary>
+    public DbSet<EfHatchRunnerFailure> RunnerFailures => Set<EfHatchRunnerFailure>();
+
     /// <summary>
     /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
     /// end of a relationship to a filtered <c>Projects</c>. It is the one table
@@ -664,6 +667,11 @@ public class HatchContext : DbContext, IModuleContext
             e.HasIndex(f => new { f.Check, f.Subject }).IsUnique().HasFilter("\"ClosedAt\" IS NULL");
         });
 
+        // At most one open row for a key, checkout and kind - the database
+        // holds it, so two racing beats cannot both open one.
+        modelBuilder.Entity<EfHatchRunnerFailure>(e =>
+            e.HasIndex(f => new { f.ApiKeyId, f.Where, f.Kind }).IsUnique().HasFilter("\"EndedAt\" IS NULL"));
+
         // An attachment that names a project is that project's - cascading,
         // not the SetNull a dream's own FK above is: there is no meaning to
         // an attachment surviving the deletion of the project it was
@@ -755,7 +763,7 @@ public class HatchContext : DbContext, IModuleContext
         // it.
         //
         // Deliberately unfiltered: Statuses, WipLimits, PersonHomes,
-        // the runner tables, PersonScopes and PersonScopeProjects
+        // the runner tables (RunnerFailures among them), PersonScopes and PersonScopeProjects
         // (the resolver reads them), and the core schema.
         modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
         modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));

@@ -74,6 +74,36 @@ to weigh, one line each: a link built the way the question's link is, and the
 bare key where it cannot be, then the title, the column in brackets, and the
 positions of the capabilities the epic serves, or `serves no capability`.
 
+### What you were given
+
+Only on a shaping dispatch: a draft ambition sent to the row that shapes it. It
+stands after the principles and the change to work out, and ahead of the
+repositories. It says what the person gave the draft, read when the dispatch is
+built and stored nowhere.
+
+- Each dream recorded on the draft, newest first, as `Dream <id>` with
+  `(source: ...)` where it has one, and its words in full, each line quoted
+  with `> `.
+- Each file the description links, in the order the links first appear and once
+  each: its name, its content type and its size in bytes, then the command that
+  fetches it, `hatch attachment get <id>`. A link to a file that is no longer
+  stored is listed by its id as deleted, with no command, and the session is told
+  to say so on the ticket and not describe it.
+
+It then says how to read a file, one paragraph for each kind that is listed. An
+image: fetch it and open it with the file-reading tool. A video: the session may
+not be able to open one, so it tries what the machine has for pulling still
+frames out of it. Where nothing can, it writes in the description that the video
+was not read, and asks the person what it shows with `hatch ask`. Any other
+file: open it if it is text, and say it was not read if it is not. Whenever any
+file is listed, the section ends by saying never to describe a file the session
+did not open.
+
+With no dreams and no files it is one line: the person gave neither, so shape
+the draft from the description alone. The same field, `shaping`, is on the
+`GET /work/{key}` answer; an older `hatch` that does not know it still has the
+description, which carries the words and the links.
+
 ### Repositories
 
 When the dispatch has any. A line for each repository the ticket's project
@@ -373,6 +403,15 @@ moves nothing, files nothing, cuts no branch and opens no pull request, so
 claiming are left out as they are for an answering dispatch. How the runner
 tells that such a session finished is in [a change
 increment](one-increment-and-the-loop#a-change-increment).
+
+A shaping dispatch ends with the calls it makes, in this order: `hatch capability
+add <key> "<statement>" --how "<how to tell>"` for each row, `hatch ask <key>
+"..." --recommend "..." --option "..."` for each question, `hatch api PUT
+/api/issues/<key>/dreams '{"dreamIds":[...]}'` to record the dreams it drew on,
+and `hatch move <key> "<column>"` to the column the increment ends in. It cuts
+no branch and opens no pull request: the row denies `git push`, so
+[Opening a pull request](#opening-a-pull-request) is replaced the way it is for
+any row that denies it.
 
 The prompt then ends with two things that are plain paragraphs, not sections,
 not with a heading of their own: a ticket moving into review may be asked for
