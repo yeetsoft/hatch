@@ -123,6 +123,9 @@ public class HatchContext : DbContext, IModuleContext
     /// <summary>The tickets let go for a runner failure - see <see cref="EfHatchRunnerFailureIssue"/>.</summary>
     public DbSet<EfHatchRunnerFailureIssue> RunnerFailureIssues => Set<EfHatchRunnerFailureIssue>();
 
+    /// <summary>The chat workspaces Hatch is connected to - see <see cref="EfHatchChatWorkspace"/>.</summary>
+    public DbSet<EfHatchChatWorkspace> ChatWorkspaces => Set<EfHatchChatWorkspace>();
+
     /// <summary>
     /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
     /// end of a relationship to a filtered <c>Projects</c>. It is the one table
@@ -783,7 +786,8 @@ public class HatchContext : DbContext, IModuleContext
         // it.
         //
         // Deliberately unfiltered: Statuses, WipLimits, PersonHomes,
-        // the runner tables (RunnerFailures among them), PersonScopes and PersonScopeProjects
+        // the runner tables (RunnerFailures among them), ChatWorkspaces (it names no
+        // project), PersonScopes and PersonScopeProjects
         // (the resolver reads them), and the core schema.
         modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
         modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));

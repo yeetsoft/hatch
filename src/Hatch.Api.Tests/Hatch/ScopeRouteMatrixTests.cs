@@ -77,6 +77,7 @@ public class ScopeRouteMatrixTests
     private const string WipIsTheHouses = "the WIP limit is the house's, and its counts read every project on purpose";
     private const string LocalModelsAreTheHouses = "the local-models table is the house's, board-wide; no project owns a row";
     private const string ScopeWriting = "what each person may see; an admin's, never a project's";
+    private const string ChatWorkspaces = "a workspace names no project";
     private const string HouseSettings = "house settings and the agent credentials; no project";
     private const string HouseBackup = "the house backup; no project";
     private const string RunnerBinary = "the runner binary; no project";
@@ -101,6 +102,11 @@ public class ScopeRouteMatrixTests
         ("AttachmentsController.PostAttachment", Ha2388),
         ("BackupController.GetBackup", HouseBackup),
         ("BackupController.PostBackupRun", HouseBackup),
+        ("ChatController.ConnectWorkspace", ChatWorkspaces),
+        ("ChatController.GetManifest", ChatWorkspaces),
+        ("ChatController.GetWorkspaces", ChatWorkspaces),
+        ("ChatController.RemoveWorkspace", ChatWorkspaces),
+        ("ChatController.ReplaceToken", ChatWorkspaces),
         ("ImagesController.GetImage", Ha2388),
         ("ImportController.Preview", "parses the files it is sent and reads no project"),
         ("ImportController.PreviewText", "parses the text it is sent and reads no project"),

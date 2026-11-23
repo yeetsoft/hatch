@@ -142,6 +142,19 @@ public record PersonScopeDto(Guid PersonId, string Mode, IReadOnlyList<int> Proj
 /// </summary>
 public record PersonScopeWriteRequest(string? Mode, IReadOnlyList<int>? ProjectIds);
 
+/// <summary>
+/// A chat workspace Hatch is connected to. There is no token field: the bot
+/// token goes in and never comes back out, <c>HasToken</c> says only that one
+/// is held.
+/// </summary>
+public record ChatWorkspaceDto(int Id, string Provider, string ExternalId, string Name, bool HasToken, DateTimeOffset CreatedAt);
+
+/// <summary>A bot token to connect a workspace with, or to replace its token with.</summary>
+public record ChatTokenRequest(string? Token);
+
+/// <summary>The app manifest a chat service's own screen takes, as the JSON text it wants pasted.</summary>
+public record ChatManifestDto(string Provider, string Manifest);
+
 /// <summary>A write to a project's landing settings - <c>null</c> on a field leaves it alone.</summary>
 /// <param name="Landing">One of <see cref="Landings"/>.</param>
 /// <param name="OnePullRequest">The project default for whether a story's tasks share its branch and one pull request - see <see cref="EfHatchProject.OnePullRequest"/>. Null leaves it alone.</param>

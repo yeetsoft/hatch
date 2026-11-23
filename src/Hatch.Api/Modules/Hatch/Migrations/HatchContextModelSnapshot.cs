@@ -394,6 +394,47 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("ChangelogTasks", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatWorkspace", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider", "ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("ChatWorkspaces", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchComment", b =>
                 {
                     b.Property<long>("Id")
