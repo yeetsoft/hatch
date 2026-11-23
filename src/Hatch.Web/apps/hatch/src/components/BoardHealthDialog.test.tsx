@@ -15,7 +15,14 @@ const escape = (text: string): string => text.replace(/&/g, '&amp;').replace(/</
 const TILES: Tile[] = ['moved', 'inFlight', 'oldest', 'waiting'];
 
 /** One open dialog over `answer`, as the strip mounts it. */
-function dialog(tile: Tile, answer: BoardHealth, index: number | null = null, window: HealthWindow = '8h', href?: string) {
+function dialog(
+  tile: Tile,
+  answer: BoardHealth,
+  index: number | null = null,
+  window: HealthWindow = '8h',
+  href?: string,
+  pastOnly = false,
+) {
   return renderToStaticMarkup(
     <MemoryRouter>
       <BoardHealthDialog
@@ -27,6 +34,7 @@ function dialog(tile: Tile, answer: BoardHealth, index: number | null = null, wi
         onWindow={() => {}}
         onClose={() => {}}
         href={href}
+        pastOnly={pastOnly}
       />
     </MemoryRouter>,
   );
@@ -380,5 +388,71 @@ describe('the Runners dialog', () => {
     expect(html).not.toContain('hatch-health-dialog-lane-moment');
     expect(html).not.toContain('class="hatch-health-dialog-lane"');
     expect(html).toContain('0 lanes');
+  });
+});
+
+describe('the Oldest dialog list of issues', () => {
+  const list = (html: string): string => /<ul class="hatch-health-dialog-issues"[\s\S]*?<\/ul>/.exec(html)?.[0] ?? '';
+  const rowsOf = (html: string): string[] => list(html).match(/<li>[\s\S]*?<\/li>/g) ?? [];
+
+  it('is drawn under the legend, for Oldest only', () => {
+    const html = dialog('oldest', sampleHealth());
+
+    expect(html.indexOf('aria-label="Legend"')).toBeLessThan(html.indexOf('data-part="issues"'));
+    for (const tile of TILES.filter((t) => t !== 'oldest')) expect(dialog(tile, sampleHealth())).not.toContain('data-part="issues"');
+    expect(dialog('runners', sampleHealth())).not.toContain('data-part="issues"');
+  });
+
+  it('draws every issue, each one link to the issue with its column and time', () => {
+    const rows = rowsOf(dialog('oldest', sampleHealth()));
+
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toContain('href="/issues/HA-101"');
+    expect(rows[0]).toContain('<strong>HA-101</strong> The oldest issue in flight');
+    expect(rows[0]).toContain('In Progress · 4h');
+    expect(rows[0].match(/<a /g)).toHaveLength(1);
+  });
+
+  it('says each band in words, and draws the sign on those past normal', () => {
+    const rows = rowsOf(dialog('oldest', sampleHealth()));
+
+    expect(rows.filter((row) => row.includes('⚠'))).toHaveLength(2);
+    expect(rows[0]).toContain('past normal');
+    expect(rows[2]).toContain('aging');
+    expect(rows[3]).toContain('healthy');
+  });
+
+  it('draws a bar and its tick on each row, and none for a column with no normal', () => {
+    const base = sampleHealth().inFlightIssues[0];
+    const none = { ...base, key: 'HA-9', normalSeconds: null, band: 'noNormal' as const };
+    const [withBar, without] = rowsOf(dialog('oldest', sampleHealth({ inFlightIssues: [base, none] })));
+
+    expect(withBar).toContain('hatch-health-dialog-issue-fill');
+    expect(withBar).toContain('hatch-health-dialog-issue-normal');
+    expect(without).not.toContain('hatch-health-dialog-issue-track');
+    expect(without).toContain('no normal yet');
+  });
+
+  it('has a two-way control with a count on each side, from the issues', () => {
+    const html = dialog('oldest', sampleHealth());
+
+    expect(html).toMatch(/aria-pressed="true"[^>]*>All 5</);
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Past normal 2</);
+  });
+
+  it('opens narrowed to past normal when asked, with the control saying so', () => {
+    const html = dialog('oldest', sampleHealth(), null, '8h', undefined, true);
+
+    expect(rowsOf(html)).toHaveLength(2);
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Past normal 2</);
+    expect(html).toMatch(/aria-pressed="false"[^>]*>All 5</);
+  });
+
+  it('says so when nothing is past normal or nothing is in flight', () => {
+    const base = sampleHealth().inFlightIssues[3];
+    const calm = dialog('oldest', sampleHealth({ pastNormal: 0, inFlightIssues: [base] }), null, '8h', undefined, true);
+
+    expect(calm).toContain('No issue is past normal');
+    expect(dialog('oldest', sampleHealth({ pastNormal: 0, inFlightIssues: [] }))).toContain('Nothing is in flight');
   });
 });

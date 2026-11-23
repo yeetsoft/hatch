@@ -354,3 +354,33 @@ describe('the dialog a health tile opens', () => {
     expect(modal).not.toContain('health');
   });
 });
+
+describe('the Oldest in flight warning and its list', () => {
+  it('scrolls the list inside the dialog, and keeps the scroll from chaining to the page', () => {
+    const list = declarationsOf('.hatch-health-dialog-issues');
+
+    expect(list['max-height']).toBe('min(22rem, 45dvh)');
+    expect(list['overflow-y']).toBe('auto');
+    expect(list['overscroll-behavior']).toBe('contain');
+  });
+
+  it('holds the warning controls, the rows and the two-way control to a finger high on a phone', () => {
+    expect(declarationsOf('.hatch-health-lead')['min-height']).toBe('44px');
+    expect(declarationsOf('.hatch-health-lead')['min-width']).toBe('44px');
+    expect(declarationsOf('.hatch-health-dialog-issue')['min-height']).toBe('44px');
+    expect(declarationsOf('.hatch-health-dialog .hatch-health-issue-side')['min-height']).toBe('44px');
+  });
+
+  it('shows where each control has focus', () => {
+    expect(declarationsOf('.hatch-health-lead:focus-visible')['outline']).toBe('2px solid var(--primary)');
+    expect(declarationsOf('.hatch-health-dialog-issue:focus-visible')['outline']).toBe('2px solid var(--primary)');
+  });
+
+  it('tells the fills apart by more than colour', () => {
+    const aging = declarationsOf('.hatch-health-dialog-issue--aging .hatch-health-dialog-issue-fill')['background'];
+    const healthy = declarationsOf('.hatch-health-dialog-issue--healthy .hatch-health-dialog-issue-fill')['background'];
+
+    expect(aging).toContain('repeating-linear-gradient');
+    expect(healthy).toContain('radial-gradient');
+  });
+});

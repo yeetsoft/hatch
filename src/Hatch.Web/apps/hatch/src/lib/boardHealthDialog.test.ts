@@ -5,11 +5,15 @@ import {
   axisTicks,
   bandCounts,
   dialogTitle,
+  issueCounts,
+  issueRows,
+  issueScale,
   legend,
   markedWords,
   movedSummary,
   movedTotals,
   oldestWaitWords,
+  rowLabel,
   scaleTop,
   stackedMovedBars,
   waitingSplit,
@@ -426,5 +430,70 @@ describe('markedWords', () => {
   it('says nothing for an answer with no bars, and for Runners', () => {
     for (const tile of TILES) expect(markedWords(tile, sampleHealth({ bars: [] }), null)).toBe('');
     expect(markedWords('runners', sampleHealth(), null)).toBe('');
+  });
+});
+
+describe('the list of issues in flight', () => {
+  it('lists every issue longest stay first, with its column and time', () => {
+    const rows = issueRows(sampleHealth(), false);
+
+    expect(rows.map((row) => row.key)).toEqual(['HA-101', 'HA-102', 'HA-103', 'HA-104', 'HA-105']);
+    expect(rows[1]).toMatchObject({ title: 'A second past its normal', href: '/issues/HA-102', statusName: 'In Progress', stood: '2h 30m' });
+  });
+
+  it('narrows to the issues past normal, and its count is the answer\'s own', () => {
+    const answer = sampleHealth();
+
+    expect(issueRows(answer, true).map((row) => row.key)).toEqual(['HA-101', 'HA-102']);
+    expect(issueCounts(answer)).toEqual({ all: 5, pastNormal: answer.pastNormal });
+  });
+
+  it('says each band in words, and draws the sign on past normal alone', () => {
+    const rows = issueRows(sampleHealth(), false);
+
+    expect(rows.map((row) => [row.bandWords, row.sign])).toEqual([
+      ['past normal', true],
+      ['past normal', true],
+      ['aging', false],
+      ['healthy', false],
+      ['healthy', false],
+    ]);
+  });
+
+  it('draws every bar on one scale, so twice a normal reads as twice', () => {
+    const answer = sampleHealth();
+    const rows = issueRows(answer, false);
+    const top = issueScale(answer);
+    const second = rows[1];
+    const fourth = rows[3];
+
+    /* HA-102 stood 9000s against 7200s; HA-104 stood 1200s against 7200s. */
+    expect(second.fillPercent).toBeCloseTo(((9000 / 7200) / top) * 100, 1);
+    expect(fourth.fillPercent).toBeCloseTo(((1200 / 7200) / top) * 100, 1);
+    expect(new Set(rows.map((row) => row.normalPercent)).size).toBe(1);
+    expect(top).toBeGreaterThanOrEqual(2);
+  });
+
+  it('holds the scale to at least two normals, and grows it for a longer stay', () => {
+    const answer = sampleHealth();
+    const base = answer.inFlightIssues[0];
+    const longer = sampleHealth({ inFlightIssues: [{ ...base, seconds: base.normalSeconds! * 5 }] });
+    const [row] = issueRows(longer, false);
+
+    expect(issueScale(longer)).toBe(5);
+    expect(row.fillPercent).toBe(100);
+    expect(row.normalPercent).toBe(20);
+  });
+
+  it('draws no bar for a column with no normal yet, and says so', () => {
+    const base = sampleHealth().inFlightIssues[0];
+    const answer = sampleHealth({ inFlightIssues: [{ ...base, normalSeconds: null, band: 'noNormal' }] });
+    const [row] = issueRows(answer, false);
+
+    expect(row).toMatchObject({ fillPercent: null, normalPercent: null, bandWords: 'no normal yet', sign: false });
+  });
+
+  it('says one row as one sentence', () => {
+    expect(rowLabel(issueRows(sampleHealth(), false)[0])).toBe('HA-101 The oldest issue in flight, In Progress, 4h, past normal');
   });
 });

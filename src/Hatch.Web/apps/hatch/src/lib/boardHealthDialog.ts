@@ -27,7 +27,7 @@ import {
 import type { Tile } from './boardHealth';
 import { formatSpan } from './cardAge';
 import { momentLabel } from './cumulativeFlow';
-import type { BoardHealth, BoardHealthBar } from '../types';
+import type { BoardHealth, BoardHealthBar, BoardHealthBand, BoardHealthIssue } from '../types';
 
 /** The dialog's title: the tile's own label and the window, `Moved, last 8h`.
     It follows the answer's window, not the button that was pressed, so the
@@ -375,3 +375,77 @@ export function markedWords(tile: Tile, answer: BoardHealth, index: number | nul
     }
   }
 }
+
+// ---- The list of issues in flight ----
+
+/** What a band says in a row, so no row is told by colour alone. */
+const BAND_WORDS: Record<BoardHealthBand, string> = {
+  pastNormal: 'past normal',
+  aging: 'aging',
+  healthy: 'healthy',
+  noNormal: 'no normal yet',
+};
+
+/** One issue in the Oldest dialog's list. `fillPercent` and `normalPercent` are positions on the list's one
+    shared scale, and are null for an issue whose column has no normal yet: it draws no bar. */
+export interface IssueRow {
+  key: string;
+  title: string;
+  href: string;
+  statusName: string;
+  stood: string;
+  band: BoardHealthBand;
+  bandWords: string;
+  /** True for the warning sign: only a row past normal carries one. */
+  sign: boolean;
+  fillPercent: number | null;
+  normalPercent: number | null;
+}
+
+/** The two sides of the list's control. Both come from the issues, never from the bars, so the past normal side
+    is the tile's own count. */
+export function issueCounts(answer: BoardHealth): { all: number; pastNormal: number } {
+  return {
+    all: answer.inFlightIssues.length,
+    pastNormal: answer.inFlightIssues.filter((issue) => issue.band === 'pastNormal').length,
+  };
+}
+
+/** How many normals the shared scale runs to: the larger of 2 and the longest stay in its column's normals.
+    A row at twice its normal fills the track; one beyond it is held to the end. */
+export function issueScale(answer: BoardHealth): number {
+  let top = 2;
+  for (const issue of answer.inFlightIssues) {
+    if (issue.normalSeconds !== null && issue.normalSeconds > 0) top = Math.max(top, issue.seconds / issue.normalSeconds);
+  }
+
+  return top;
+}
+
+/** The list's rows, longest stay first as the read gives them, optionally only those past normal. */
+export function issueRows(answer: BoardHealth, pastOnly: boolean): IssueRow[] {
+  const top = issueScale(answer);
+
+  return answer.inFlightIssues
+    .filter((issue) => !pastOnly || issue.band === 'pastNormal')
+    .map((issue: BoardHealthIssue) => {
+      const hasNormal = issue.normalSeconds !== null && issue.normalSeconds > 0;
+      const fill = hasNormal ? issue.seconds / (issue.normalSeconds as number) : 0;
+
+      return {
+        key: issue.key,
+        title: issue.title,
+        href: `/issues/${encodeURIComponent(issue.key)}`,
+        statusName: issue.statusName,
+        stood: formatSpan(issue.seconds),
+        band: issue.band,
+        bandWords: BAND_WORDS[issue.band],
+        sign: issue.band === 'pastNormal',
+        fillPercent: hasNormal ? Math.min(100, round((fill / top) * 100)) : null,
+        normalPercent: hasNormal ? round((1 / top) * 100) : null,
+      };
+    });
+}
+
+/** The row's link, said as one sentence: `HA-12 Title, In Progress, 4h 10m, past normal`. */
+export const rowLabel = (row: IssueRow): string => `${row.key} ${row.title}, ${row.statusName}, ${row.stood}, ${row.bandWords}`;
