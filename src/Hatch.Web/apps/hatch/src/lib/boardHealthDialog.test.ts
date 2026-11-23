@@ -4,6 +4,7 @@ import {
   MARK_PATTERN,
   axisTicks,
   bandCounts,
+  clearSummary,
   dialogTitle,
   issueCounts,
   issueRows,
@@ -430,6 +431,53 @@ describe('markedWords', () => {
   it('says nothing for an answer with no bars, and for Runners', () => {
     for (const tile of TILES) expect(markedWords(tile, sampleHealth({ bars: [] }), null)).toBe('');
     expect(markedWords('runners', sampleHealth(), null)).toBe('');
+  });
+});
+
+describe('clearSummary', () => {
+  const locale = 'en-GB';
+  const clear = (ago: number, over: Partial<BoardHealth> = {}): BoardHealth => {
+    const base = sampleHealth();
+
+    return {
+      ...base,
+      bars: base.bars.map((bar) => ({ ...bar, waitingPullRequests: 0, waitingQuestions: 0, waiting: 0, oldestWaitSeconds: null })),
+      lastWaitedAt: new Date(Date.parse(base.to) - ago * 1000).toISOString(),
+      ...over,
+    };
+  };
+
+  it('gives the time, the since, who moved, the share and the done', () => {
+    const answer = clear(3 * 3600 + 20 * 60);
+    const totals = movedTotals(answer);
+    const at = new Date(answer.lastWaitedAt!);
+    const without = totals.runner + totals.board;
+    const rows = clearSummary(answer, locale);
+
+    expect(rows.map((row) => row.key)).toEqual(['clear', 'since', 'runner', 'board', 'person', 'without', 'done']);
+    expect(rows.map((row) => row.value)).toEqual([
+      '3h 20m',
+      `${at.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}, ${at.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`,
+      String(totals.runner),
+      String(totals.board),
+      String(totals.person),
+      `${without} of ${totals.total}`,
+      String(answer.bars[BARS - 1].done),
+    ]);
+    expect(rows[0].label).toBe('Clear for');
+    expect(rows[1].label).toBe('Since');
+  });
+
+  it('says since at least, and over, at the floor', () => {
+    const rows = clearSummary(clear(30 * 86400, { lastWaitedIsFloor: true }), locale);
+
+    expect(rows[0].value).toBe('over 30d');
+    expect(rows[1].label).toBe('Since at least');
+  });
+
+  it('is empty while something waits, and with no clear time', () => {
+    expect(clearSummary(sampleHealth(), locale)).toEqual([]);
+    expect(clearSummary(clear(60, { lastWaitedAt: null }), locale)).toEqual([]);
   });
 });
 

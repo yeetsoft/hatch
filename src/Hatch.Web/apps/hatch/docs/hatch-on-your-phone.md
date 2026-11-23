@@ -45,7 +45,9 @@ side.
 
 The health strip above the board is one row of five numbers on a phone: moved,
 in flight, oldest, waiting and runners, each with a short line under it and no
-charts. Tap the row and it opens into the full tiles, stacked one under another, with
+charts. When nothing waits on you, the waiting cell is 0 in the good tone over
+how long the board has been clear in a short form, "clear 3h 20m", or "clear
+30d+" at the read's limit; the stacked tile says the same as the desk. Tap the row and it opens into the full tiles, stacked one under another, with
 the window control (**2h** to **24h**) above them; tap it again and it closes.
 Tap a tile - on its chart or anywhere that is not a link - and the same
 dialog the desk opens covers the width of the screen, with the chart drawn

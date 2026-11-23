@@ -2289,6 +2289,11 @@ button.hatch-card-stories:focus-visible {
   opacity: 1;
 }
 
+.hatch-health-bar--clear {
+  fill: var(--success-fill);
+  opacity: 0.55;
+}
+
 .hatch-health-band--done {
   fill: var(--success-fill);
   opacity: 0.55;

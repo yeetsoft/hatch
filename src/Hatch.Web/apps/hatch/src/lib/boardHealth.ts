@@ -97,15 +97,16 @@ export interface MovedRect {
     an all-zero window divides by one and not by zero. */
 export const scaleOf = (values: number[]): number => Math.max(1, ...values);
 
-/** The moved counts as rectangles, scaled to the tallest bar. A bar that moved
-    nothing has no height; any other is never under one unit high, so a single
-    move is still seen beside a tall one. `[]` for an answer with no bars. */
-export function movedBars(answer: BoardHealth, width: number, height: number): MovedRect[] {
-  const tallest = scaleOf(answer.bars.map((bar) => bar.moved));
+/** Bars as rectangles for any per-bar count, scaled to the tallest. A bar with
+    a count of nothing has no height; any other is never under one unit high, so
+    a single move is still seen beside a tall one. `[]` for an answer with no bars. */
+function countBars(answer: BoardHealth, width: number, height: number, pick: (bar: BoardHealthBar) => number): MovedRect[] {
+  const tallest = scaleOf(answer.bars.map(pick));
   const slot = width / BARS;
 
   return answer.bars.map((bar, index) => {
-    const drawn = bar.moved > 0 ? Math.min(height, Math.max(1, (bar.moved / tallest) * height)) : 0;
+    const count = pick(bar);
+    const drawn = count > 0 ? Math.min(height, Math.max(1, (count / tallest) * height)) : 0;
 
     return {
       index,
@@ -116,6 +117,10 @@ export function movedBars(answer: BoardHealth, width: number, height: number): M
     };
   });
 }
+
+/** The moved counts as rectangles, scaled to the tallest bar. */
+export const movedBars = (answer: BoardHealth, width: number, height: number): MovedRect[] =>
+  countBars(answer, width, height, (bar) => bar.moved);
 
 /** The three bands of the state chart, each an SVG `points` string. */
 export interface BandPolygons {
@@ -233,6 +238,55 @@ export function waitingSteps(answer: BoardHealth, width: number, height: number)
   return { line, area, last: points[points.length - 1] };
 }
 
+/** The moves in a bar that no person made: runners and the board. */
+const withoutOne = (bar: BoardHealthBar): number => bar.runner + bar.board;
+
+/** The window's moves made without a person, and all of its moves. */
+export function withoutPerson(answer: BoardHealth): { without: number; all: number } {
+  return {
+    without: answer.bars.reduce((sum, bar) => sum + withoutOne(bar), 0),
+    all: answer.bars.reduce((sum, bar) => sum + bar.moved, 0),
+  };
+}
+
+/** How long nothing has waited on a person. */
+export interface WaitingClear {
+  /** `clear for 3h 20m`, or `clear for over 30d` at the read's floor. */
+  words: string;
+  /** The span alone, `3h 20m`, or `over 30d` at the floor. */
+  span: string;
+  /** When the last wait ended; at the floor, the earliest the read can see. */
+  since: string;
+  floor: boolean;
+}
+
+/**
+ * The clear state of Waiting on you: null while anything waits now, or when the
+ * read has no clear time to give - no issue in scope - so the tile falls back to
+ * its own "nothing waiting". "Now" is the read's `to`, never the clock, so the
+ * words stay the same for the same read.
+ */
+export function waitingClear(answer: BoardHealth): WaitingClear | null {
+  const last = answer.bars[answer.bars.length - 1];
+  if (!last || waitingCount(last) > 0 || answer.lastWaitedAt === null) return null;
+
+  const floor = answer.lastWaitedIsFloor;
+  const span = `${floor ? 'over ' : ''}${formatSpan((Date.parse(answer.to) - Date.parse(answer.lastWaitedAt)) / 1000)}`;
+
+  return { words: `clear for ${span}`, span, since: answer.lastWaitedAt, floor };
+}
+
+/**
+ * The moves made without a person in each bar, for the clear tile's chart; null
+ * when any bar in the window had something waiting, so the steps are drawn and
+ * show when it cleared.
+ */
+export function clearBars(answer: BoardHealth, width: number, height: number): MovedRect[] | null {
+  if (answer.bars.length === 0 || answer.bars.some((bar) => waitingCount(bar) > 0)) return null;
+
+  return countBars(answer, width, height, withoutOne);
+}
+
 // ---- Readouts ----
 
 export type Tile = 'moved' | 'inFlight' | 'oldest' | 'waiting' | 'runners';
@@ -252,7 +306,7 @@ export interface TileReadout {
   /** The hover's extra line; empty when there is none. */
   detail: string;
   tone: Tone;
-  /** `▲`, `▼`, `–` or `⚠`; empty when the tile has none. */
+  /** `▲`, `▼`, `–`, `⚠` or `✓`; empty when the tile has none. */
   glyph: string;
   /** Set only on the moved tile at rest. */
   arrow: Arrow | null;
@@ -281,6 +335,9 @@ const NONE: BoardHealthBar = {
   oldestWaitSeconds: null,
   ages: { healthy: 0, aging: 0, pastNormal: 0, noNormal: 0 },
 };
+
+/** The check mark the clear Waiting tile carries beside its good tone. */
+export const CLEAR_GLYPH = '✓';
 
 export const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
@@ -427,6 +484,9 @@ function runners(answer: BoardHealth, index: number | null, locale?: string): Ti
 function waiting(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, locale?: string): TileReadout {
   const count = waitingCount(shown);
   const base = { value: String(count), tone: 'neutral' as const, glyph: '', arrow: null };
+  const clear = waitingClear(answer);
+  const everClear = answer.bars.every((bar) => waitingCount(bar) === 0);
+  const without = (n: number): string => `${plural(n, 'move', 'moves')} without you`;
 
   if (onBar) {
     return {
@@ -434,9 +494,15 @@ function waiting(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, loc
       second: momentLabel(shown.start, answer.barMinutes, locale),
       detail:
         count === 0
-          ? 'nothing waiting'
+          ? everClear
+            ? without(shown.runner + shown.board)
+            : 'nothing waiting'
           : `${plural(shown.waitingPullRequests, 'pull request', 'pull requests')} · ${plural(shown.waitingQuestions, 'question', 'questions')}`,
     };
+  }
+
+  if (count === 0 && clear) {
+    return { ...base, second: clear.words, detail: without(withoutPerson(answer).without), tone: 'good', glyph: CLEAR_GLYPH };
   }
 
   const second =
@@ -535,6 +601,8 @@ function shorten(tile: Tile, readout: TileReadout): string {
     }
     case 'waiting': {
       if (second === 'nothing waiting') return 'none';
+      const clear = /^clear for (over )?(.+)$/.exec(second);
+      if (clear) return `clear ${clear[2]}${clear[1] ? '+' : ''}`;
       if (second === 'oldest unknown') return 'unknown';
       const age = /^oldest (.+)$/.exec(second);
       return age ? `${age[1]} old` : second;

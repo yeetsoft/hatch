@@ -21,8 +21,10 @@ import {
   scaleOf,
   splitSentence,
   tileName,
+  waitingClear,
   waitingCount,
   windowLabel,
+  withoutPerson,
 } from './boardHealth';
 import type { Tile } from './boardHealth';
 import { formatSpan } from './cardAge';
@@ -318,6 +320,36 @@ export function waitingSplit(answer: BoardHealth, width: number, height: number)
     pullRequests: { line: lowerLine, area: `${lowerLine} V ${floor} H ${xs[0]} Z` },
     questions: { line: upperLine, area: `${upperLine} ${back} Z` },
   };
+}
+
+/**
+ * The Waiting on you dialog's rows when nothing waits now, or `[]` when
+ * something does or the read has no clear time to give. How long it has been
+ * clear and since when - "since at least" at the floor, past which the read
+ * cannot see - then the window's moves by who made them, the share made without
+ * a person, and the issues done. A bar's `done` counts from the window's start,
+ * so the last bar's is the window's own.
+ */
+export function clearSummary(answer: BoardHealth, locale?: string): SummaryRow[] {
+  const clear = waitingClear(answer);
+  if (!clear) return [];
+
+  const totals = movedTotals(answer);
+  const { without, all } = withoutPerson(answer);
+  const at = new Date(clear.since);
+  const day = at.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+  const time = at.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  const last = answer.bars[answer.bars.length - 1];
+
+  return [
+    { key: 'clear', label: 'Clear for', value: clear.span },
+    { key: 'since', label: clear.floor ? 'Since at least' : 'Since', value: `${day}, ${time}` },
+    { key: 'runner', label: 'By runners', value: String(totals.runner) },
+    { key: 'board', label: 'By the board', value: String(totals.board) },
+    { key: 'person', label: 'By a person', value: String(totals.person) },
+    { key: 'without', label: 'Without a person', value: `${without} of ${all}` },
+    { key: 'done', label: 'Done in the window', value: String(last.done) },
+  ];
 }
 
 /** How long the oldest thing waiting on a person has waited, at the last bar. */
