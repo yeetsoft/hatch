@@ -105,6 +105,7 @@ import type {
   Revision,
   Runner,
   RunnerDownloads,
+  RunnerFailures,
   RunnerMinted,
   RunnerOrderRequest,
   RunnerPatchRequest,
@@ -379,6 +380,8 @@ export const getChangelogFiles = () => fetchJson<ChangelogFilesDto>('/api/change
 // that could ever post one is the loop itself.
 
 export const getRunners = () => fetchJson<Runner[]>('/api/runners?live=true');
+export const getRunnerFailures = (name: string) =>
+  fetchJson<RunnerFailures>(`/api/runners/${seg(name)}/failures`);
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>
   fetchJson<Runner>(`/api/runners/${seg(name)}`, { method: 'PATCH', ...asJson(request) });
 export const putRunnerRefusedModels = (name: string, models: string[]) =>

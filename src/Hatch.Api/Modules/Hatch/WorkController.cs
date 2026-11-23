@@ -619,7 +619,8 @@ public class WorkController(
                 i.PullRequestReviewDecision,
                 i.PullRequestHeadSha,
                 i.PullRequestHeadSince,
-                recordedBranches.GetValueOrDefault(i.Id));
+                recordedBranches.GetValueOrDefault(i.Id),
+                WaitingPullRequest.ToDto(i));
         }).ToList();
     }
 

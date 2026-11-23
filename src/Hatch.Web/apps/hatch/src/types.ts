@@ -3596,6 +3596,26 @@ export interface Runner {
   /** What gh said, where `forge` is `fails` - one line of at most 200 characters. Mirrors
       RunnerDto.ForgeWhy. */
   forgeWhy?: string | null;
+  /** What this runner cannot do now, one row per kind per checkout it is heard from at.
+      Absent from a board that predates it; read as none. Mirrors RunnerDto.Failures. */
+  failures?: RunnerFailure[];
+}
+
+/** One thing a runner could not do, from when it began to when it ended. `kind` is a word
+    this build may not know. Mirrors RunnerFailureDto. */
+export interface RunnerFailure {
+  kind: string;
+  where: string | null;
+  why: string | null;
+  beganAt: string;
+  lastReportedAt: string;
+  endedAt: string | null;
+}
+
+/** What GET /api/runners/{name}/failures answers. Mirrors RunnerFailuresDto. */
+export interface RunnerFailures {
+  current: RunnerFailure[];
+  earlier: RunnerFailure[];
 }
 
 /** One session beneath a runner: one `go-to-work` loop, so two checkouts

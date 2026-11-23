@@ -56,30 +56,14 @@ public sealed class PullRequestRepair
 
             if (failed.Contains(polled.Path)) continue;
 
-            if (!lists.TryGetValue(polled.Path, out var list))
-            {
-                var forge = runtime.Forge(polled.Path, polled.Canonical);
-                lists[polled.Path] = list = await forge.ReadOpenPullRequestsAsync(ct);
-                if (list.Open is null && list.Why is { } why)
-                {
-                    var name = Path.GetFileName(polled.Path.TrimEnd('/', '\\'));
-                    complain($"hatch: could not read pull requests in {name} - {why}");
-                }
-            }
-
+            var list = await ReadListAsync(runtime, complain, polled, lists, ct);
             if (list.Open is null)
             {
                 failed.Add(polled.Path);
                 continue;
             }
 
-            var found = list.Open
-                .Where(p => p.Value.State == PullRequestStates.Open
-                    && string.Equals(p.Value.HeadBranch, check.Branch, StringComparison.Ordinal)
-                    && p.Value.IsCrossRepository != true
-                    && (p.Value.Base is null || string.Equals(p.Value.Base, check.Trunk, StringComparison.Ordinal)))
-                .Take(2)
-                .ToList();
+            var found = FromBranch(list, check.Branch!, check.Trunk);
 
             if (found.Count != 1) continue;
 
@@ -94,7 +78,41 @@ public sealed class PullRequestRepair
         }
     }
 
-    private async Task PutRightAsync(
+    /// <summary>
+    /// The open pull requests of <paramref name="polled"/>'s repository, read once a tick through
+    /// <paramref name="lists"/> and said once when the forge would not answer.
+    /// </summary>
+    internal static async Task<PullRequestListAnswer> ReadListAsync(
+        Runtime runtime, Action<string> complain, Checkouts.Polled polled,
+        Dictionary<string, PullRequestListAnswer> lists, CancellationToken ct)
+    {
+        if (lists.TryGetValue(polled.Path, out var list)) return list;
+
+        var forge = runtime.Forge(polled.Path, polled.Canonical);
+        lists[polled.Path] = list = await forge.ReadOpenPullRequestsAsync(ct);
+        if (list.Open is null && list.Why is { } why)
+        {
+            var name = Path.GetFileName(polled.Path.TrimEnd('/', '\\'));
+            complain($"hatch: could not read pull requests in {name} - {why}");
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// The open pull requests from <paramref name="branch"/> into <paramref name="trunk"/> in the same
+    /// repository, at most two: one is the answer, and a second only says it is not one.
+    /// </summary>
+    internal static List<KeyValuePair<string, PullRequestAnswer>> FromBranch(
+        PullRequestListAnswer list, string branch, string? trunk) =>
+        [.. list.Open!
+            .Where(p => p.Value.State == PullRequestStates.Open
+                && string.Equals(p.Value.HeadBranch, branch, StringComparison.Ordinal)
+                && p.Value.IsCrossRepository != true
+                && (p.Value.Base is null || string.Equals(p.Value.Base, trunk, StringComparison.Ordinal)))
+            .Take(2)];
+
+    internal async Task PutRightAsync(
         Runtime runtime, Action<string> complain, string key, string branch, string url, CancellationToken ct)
     {
         // The row is a moment old: the issue may have declared no code, or had a pull request recorded, since.
@@ -159,7 +177,7 @@ public sealed class PullRequestRepair
         }
     }
 
-    private static IssuePatchRequest Patch(string url) => new(
+    internal static IssuePatchRequest Patch(string url) => new(
         Title: null, Description: null, Type: null, StatusId: null, ParentKey: null,
         ReadyAt: null, DueAt: null, PullRequestUrl: url, ProjectId: null, MoveDescendants: null);
 }
