@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AddTokenForm, ManifestBlock, RemoveDialog, ReplaceTokenForm, WorkspaceTable } from './ChatPage';
-import type { ChatWorkspace } from '../types';
+import type { ChatWorkspace, Project } from '../types';
 
 // The client reaches lib/clientLogger, which reads `window` at import, and
 // there is no jsdom here.
@@ -19,13 +19,24 @@ const workspace = (id: number, name: string, hasToken = true): ChatWorkspace => 
   projectIds: [],
 });
 
+const project = (id: number, key: string, name: string): Project => ({ id, key, name }) as Project;
+const PROJECTS = [project(1, 'AER', 'Aerie'), project(2, 'BEE', 'Hive')];
+
 const FELLOWSHIP = workspace(1, 'Fellowship');
 const noop = () => {};
 
 describe('the workspace table', () => {
   const table = (rows: ChatWorkspace[], busy = false) =>
     renderToStaticMarkup(
-      <WorkspaceTable workspaces={rows} now={NOW} busy={busy} onReplace={async () => {}} onRemove={noop} />,
+      <WorkspaceTable
+        workspaces={rows}
+        projects={PROJECTS}
+        now={NOW}
+        busy={busy}
+        onBound={noop}
+        onReplace={async () => {}}
+        onRemove={noop}
+      />,
     );
 
   it('shows each workspace by name, with the word Token set and when it was connected', () => {
@@ -50,6 +61,16 @@ describe('the workspace table', () => {
     const html = table([FELLOWSHIP, workspace(2, 'Youth')]);
     expect(html.match(/Replace token/g)).toHaveLength(2);
     expect(html.match(/>Remove</g)).toHaveLength(2);
+  });
+
+  it('has a Projects column that lists every project to bind, ticked where bound', () => {
+    const html = table([{ ...FELLOWSHIP, projectIds: [2] }]);
+    expect(html).toContain('<th>Projects</th>');
+    expect(html).toContain('aria-label="Projects bound to Fellowship"');
+    expect(html).toContain('Aerie');
+    expect(html).toContain('Hive');
+    expect(html.match(/type="checkbox"/g)).toHaveLength(2);
+    expect(html.match(/checked=""/g)).toHaveLength(1);
   });
 
   it('disables the row controls while a write is in flight', () => {

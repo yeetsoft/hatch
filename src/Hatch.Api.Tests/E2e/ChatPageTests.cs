@@ -1,4 +1,7 @@
+using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
+using Hatch.Contracts;
 using Hatch.Api.Services.Chat;
 using Hatch.Api.Tests.Chat;
 using Hatch.Api.Tests.Hatch;
@@ -20,15 +23,20 @@ namespace Hatch.Api.Tests.E2e;
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class ChatPageTests(ITestOutputHelper output)
 {
-    private const int CaseBudgetSeconds = 90;
+    private const int CaseBudgetSeconds = 180;
 
     /// <summary>A little past <see cref="CaseBudgetSeconds"/>, so it only fires if <see cref="Deadline"/> itself fails to bound something.</summary>
     private const int CaseTimeoutMs = (CaseBudgetSeconds + 10) * 1000;
 
     private const string Form = "form.hatch-chat-add";
 
+    /// <summary>The sentence <c>SlackChatProvider</c> gives for <c>not_in_channel</c>; the fake refuses C2 with it.</summary>
+    private const string NotInvitedSentence = "the app has not been invited to that channel; in Slack, add Hatch to it";
+
+    private const string NotInvitedHint = "Not invited yet. In Slack, open the channel and add Hatch.";
+
     [SkippableFact(Timeout = CaseTimeoutMs)]
-    public Task Chat_ConnectsReplacesAndRemoves_AtTheDesktopProfile()
+    public Task Chat_BindsSetsUpRoomsAndSendsATest_AtTheDesktopProfile()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
@@ -36,7 +44,7 @@ public class ChatPageTests(ITestOutputHelper output)
     }
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
-    public Task Chat_ConnectsReplacesAndRemoves_AtThePhoneProfile()
+    public Task Chat_BindsSetsUpRoomsAndSendsATest_AtThePhoneProfile()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
         Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
@@ -56,11 +64,24 @@ public class ChatPageTests(ITestOutputHelper output)
                 File.Exists(E2eHarness.BundleIndex()),
                 $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
 
+            // Held, so the case can say what each workspace's token can see and which channel refuses a post.
+            var provider = new FakeChatProvider();
+            // Acme's token is replaced part way through the case, so both of its tokens see the same channels.
+            provider.Channels[FakeChatProvider.AcmeToken] =
+            [
+                new("C1", "general", false, true),
+                new("C2", "announcements", false, false),
+                new("C3", "leaders", true, true),
+            ];
+            provider.Channels[FakeChatProvider.AcmeNewToken] = provider.Channels[FakeChatProvider.AcmeToken];
+            provider.Channels[FakeChatProvider.GlobexToken] = [new("C9", "lobby", false, true)];
+            provider.PostRefusals["C2"] = NotInvitedSentence;
+
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline, services =>
             {
                 services.RemoveAll<IChatProvider>();
-                services.AddSingleton<IChatProvider>(new FakeChatProvider());
+                services.AddSingleton<IChatProvider>(provider);
             },
             // A token is sealed under a key, and a host with none refuses to connect a workspace.
             // Made here at run time: no key, real or example, goes in a tracked file.
@@ -110,16 +131,10 @@ public class ChatPageTests(ITestOutputHelper output)
                 "() => document.querySelector('input[aria-label=\"New token for Acme\"]').value === ''");
             await AssertNoTokenOnPageAsync(harness, deadline);
 
-            if (profile is not null)
-            {
-                var measured = await harness.EvaluateAsync<double[]>(
-                    deadline, "measuring the page",
-                    "() => [document.documentElement.scrollWidth, window.innerWidth]");
-                output.WriteLine($"scrollWidth {measured[0]}, innerWidth {measured[1]}");
-                Assert.True(measured[0] <= measured[1], $"the page runs off the screen: scrollWidth {measured[0]} > innerWidth {measured[1]}");
-            }
-
+            await AssertFitsAsync(harness, deadline, profile);
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "chat-two-workspaces"));
+
+            await BindAndSetUpRoomsAsync(harness, deadline, baseUrl, provider, profile);
 
             // Remove asks first, names the workspace, and removes nothing until it is confirmed.
             await harness.ClickAsync(deadline, "tr:has-text(\"Globex\") button:text-is(\"Remove\")");
@@ -146,6 +161,211 @@ public class ChatPageTests(ITestOutputHelper output)
         {
             await harness.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// Binds projects to the workspaces, sets channels up as rooms, narrows a room to chosen projects, and sends
+    /// test messages: the part of the page that does something with a connected workspace. Run through the page the
+    /// way an admin would, with the fake provider standing in for Slack.
+    /// </summary>
+    private async Task BindAndSetUpRoomsAsync(E2eHarness harness, Deadline deadline, string baseUrl, FakeChatProvider provider, DeviceProfile? profile)
+    {
+        var seeded = await deadline.BoundAsync("filing three projects", () => SeedProjectsAsync(baseUrl));
+        Assert.Equal(3, seeded.Length);
+
+        // The page reads the projects when it opens, so open it again.
+        await harness.GoToAsync(deadline, "/chat");
+        await harness.WaitForVisibleAsync(deadline, "td strong:text-is(\"Acme\")");
+        await harness.WaitForVisibleAsync(deadline, "td strong:text-is(\"Globex\")");
+
+        const string acmeBound = "[aria-label=\"Projects bound to Acme\"]";
+        const string globexBound = "[aria-label=\"Projects bound to Globex\"]";
+        const string acmeRooms = "[aria-label=\"Rooms on Acme\"]";
+        const string globexRooms = "[aria-label=\"Rooms on Globex\"]";
+        const string general = acmeRooms + " section[aria-label=\"Room general\"]";
+        const string generalChosen = general + " [aria-label=\"Projects general carries\"]";
+
+        // Every project is offered, none is bound yet, and there is no room.
+        Assert.Equal(3, await CountAsync(harness, deadline, acmeBound + " input[type=checkbox]"));
+        Assert.Equal(0, await CountAsync(harness, deadline, acmeBound + " input:checked"));
+        await harness.WaitForVisibleAsync(deadline, acmeRooms + " :text(\"No room is set up on Acme.\")");
+
+        // Bind two projects to Acme and one to Globex.
+        await SetCheckboxAsync(harness, deadline, acmeBound, "CHA", true);
+        await SetCheckboxAsync(harness, deadline, acmeBound, "CHB", true);
+        await SetCheckboxAsync(harness, deadline, globexBound, "CHC", true);
+        Assert.Equal(2, await CountAsync(harness, deadline, acmeBound + " input:checked"));
+        Assert.Equal(1, await CountAsync(harness, deadline, globexBound + " input:checked"));
+        await AssertNoTokenOnPageAsync(harness, deadline);
+
+        // Add a room on Acme: the channels are read now, and the one the app has not joined says so.
+        await harness.ClickAsync(deadline, acmeRooms + " button:text-is(\"Add a room\")");
+        await harness.WaitForVisibleAsync(deadline, acmeRooms + " ul.hatch-chat-picker");
+        Assert.Equal(3, await CountAsync(harness, deadline, acmeRooms + " li.hatch-chat-channel"));
+        Assert.Contains(NotInvitedHint, await TextAsync(harness, deadline, acmeRooms + " li.hatch-chat-channel:has-text(\"announcements\")"));
+        Assert.DoesNotContain(NotInvitedHint, await TextAsync(harness, deadline, acmeRooms + " li.hatch-chat-channel:has-text(\"general\")"));
+        Assert.Contains("Private", await TextAsync(harness, deadline, acmeRooms + " li.hatch-chat-channel:has-text(\"leaders\")"));
+        output.WriteLine("screenshot: " + await harness.FullPageScreenshotAsync(deadline, "chat-channel-picker"));
+
+        await harness.ClickAsync(deadline, acmeRooms + " button[aria-label=\"Add general\"]");
+        await harness.WaitForVisibleAsync(deadline, general);
+        await harness.WaitForVisibleAsync(deadline, acmeRooms + " li.hatch-chat-channel:has-text(\"general\") :text(\"Already a room\")");
+        Assert.True(
+            await harness.EvaluateAsync<bool>(
+                deadline, "reading the Add general button",
+                "() => document.querySelector('[aria-label=\"Rooms on Acme\"] button[aria-label=\"Add general\"]').disabled"),
+            "a channel that is already a room can be added again");
+
+        // A new room starts with every switch off, carrying every bound project.
+        Assert.Equal(0, await CountAsync(harness, deadline, general + " [aria-label=\"What it posts\"] input:checked"));
+        Assert.Equal(1, await CountAsync(harness, deadline, general + " input[type=radio]:checked"));
+        Assert.Equal(0, await CountAsync(harness, deadline, generalChosen));
+
+        // And on Globex: a room of its own, whose chosen list could only ever be Globex's projects.
+        await harness.ClickAsync(deadline, globexRooms + " button:text-is(\"Add a room\")");
+        await harness.WaitForVisibleAsync(deadline, globexRooms + " li.hatch-chat-channel:has-text(\"lobby\")");
+        await harness.ClickAsync(deadline, globexRooms + " button[aria-label=\"Add lobby\"]");
+        await harness.WaitForVisibleAsync(deadline, globexRooms + " section[aria-label=\"Room lobby\"]");
+        await AssertNoTokenOnPageAsync(harness, deadline);
+
+        // A switch saves on its own.
+        await SetCheckboxAsync(harness, deadline, general + " [aria-label=\"What it posts\"]", "Changelog", true);
+        Assert.Equal(1, await CountAsync(harness, deadline, general + " [aria-label=\"What it posts\"] input:checked"));
+
+        // Chosen projects, none ticked: the room says it carries nothing.
+        await ChooseScopeAsync(harness, deadline, general, "Chosen projects");
+        await harness.WaitForVisibleAsync(deadline, general + " p:text-is(\"This room carries no project.\")");
+
+        // Only Acme's own bound projects are offered, not Globex's.
+        Assert.Equal(2, await CountAsync(harness, deadline, generalChosen + " input[type=checkbox]"));
+        Assert.DoesNotContain("CHC", await TextAsync(harness, deadline, generalChosen));
+
+        await SetCheckboxAsync(harness, deadline, generalChosen, "CHA", true);
+        await SetCheckboxAsync(harness, deadline, generalChosen, "CHB", true);
+        await harness.WaitForHiddenAsync(deadline, general + " p:text-is(\"This room carries no project.\")");
+        Assert.Equal(2, await CountAsync(harness, deadline, generalChosen + " input:checked"));
+        await AssertNoTokenOnPageAsync(harness, deadline);
+        await AssertFitsAsync(harness, deadline, profile);
+        output.WriteLine("screenshot: " + await harness.FullPageScreenshotAsync(deadline, "chat-rooms"));
+
+        // Unbinding the second project takes it from the room's chosen list; the page re-reads, it does not guess.
+        await SetCheckboxAsync(harness, deadline, acmeBound, "CHB", false);
+        await harness.WaitForFunctionAsync(
+            deadline, "waiting for the chosen list to lose CHB",
+            "(s) => document.querySelectorAll(s + ' input[type=checkbox]').length === 1", generalChosen);
+        Assert.Equal(1, await CountAsync(harness, deadline, generalChosen + " input:checked"));
+        Assert.DoesNotContain("CHB", await TextAsync(harness, deadline, generalChosen));
+
+        // Unbinding the first leaves a room that carries nothing, and says that, never "every project".
+        await SetCheckboxAsync(harness, deadline, acmeBound, "CHA", false);
+        await harness.WaitForVisibleAsync(deadline, general + " p:text-is(\"This room carries no project.\")");
+        Assert.Equal(0, await CountAsync(harness, deadline, generalChosen + " input[type=checkbox]"));
+        var roomText = (await TextAsync(harness, deadline, general)).Replace("Every bound project", "");
+        Assert.DoesNotContain("every project", roomText, StringComparison.OrdinalIgnoreCase);
+        await AssertNoTokenOnPageAsync(harness, deadline);
+        await AssertFitsAsync(harness, deadline, profile);
+        output.WriteLine("screenshot: " + await harness.FullPageScreenshotAsync(deadline, "chat-carries-none"));
+
+        // Binding it again offers it back, unticked: what was chosen before is gone.
+        await SetCheckboxAsync(harness, deadline, acmeBound, "CHA", true);
+        await harness.WaitForFunctionAsync(
+            deadline, "waiting for the chosen list to offer CHA",
+            "(s) => document.querySelectorAll(s + ' input[type=checkbox]').length === 1", generalChosen);
+        Assert.Equal(0, await CountAsync(harness, deadline, generalChosen + " input:checked"));
+        Assert.True(await harness.IsVisibleAsync(deadline, general + " p:text-is(\"This room carries no project.\")"));
+
+        // A test message is sent, says Sent, and reached the channel with Acme's current token.
+        await harness.ClickAsync(deadline, general + " button:text-is(\"Send a test message\")");
+        await harness.WaitForVisibleAsync(deadline, general + " p[role=status]:text-is(\"Sent\")");
+        Assert.Contains(provider.Posts, p => p.ChannelId == "C1" && p.Token == FakeChatProvider.AcmeNewToken);
+        await AssertNoTokenOnPageAsync(harness, deadline);
+
+        // A channel the app has not joined can still be added, and its test says why it did not arrive.
+        await harness.ClickAsync(deadline, acmeRooms + " button:text-is(\"Add a room\")");
+        await harness.WaitForVisibleAsync(deadline, acmeRooms + " li.hatch-chat-channel:has-text(\"announcements\")");
+        await harness.ClickAsync(deadline, acmeRooms + " button[aria-label=\"Add announcements\"]");
+        const string announcements = acmeRooms + " section[aria-label=\"Room announcements\"]";
+        await harness.WaitForVisibleAsync(deadline, announcements);
+        await harness.ClickAsync(deadline, announcements + " button:text-is(\"Send a test message\")");
+        await harness.WaitForVisibleAsync(deadline, announcements + $" p[role=status]:text-is(\"{NotInvitedSentence}\")");
+        Assert.Equal(
+            0,
+            await CountAsync(harness, deadline, announcements + " p[role=status]:text-is(\"Sent\")"));
+        await AssertNoTokenOnPageAsync(harness, deadline);
+        await AssertFitsAsync(harness, deadline, profile);
+        output.WriteLine("screenshot: " + await harness.FullPageScreenshotAsync(deadline, "chat-test-refused"));
+
+        // Remove room asks first, and names the channel.
+        await harness.ClickAsync(deadline, announcements + " button:text-is(\"Remove room\")");
+        await harness.WaitForVisibleAsync(deadline, "[aria-modal=\"true\"]:has-text(\"Remove room #announcements?\")");
+        await harness.ClickAsync(deadline, "[aria-modal=\"true\"] button:text-is(\"Leave it\")");
+        await harness.WaitForHiddenAsync(deadline, "[aria-modal=\"true\"]");
+        Assert.True(await harness.IsVisibleAsync(deadline, announcements), "the room was removed without being confirmed");
+        await harness.ClickAsync(deadline, announcements + " button:text-is(\"Remove room\")");
+        await harness.WaitForVisibleAsync(deadline, "[aria-modal=\"true\"]:has-text(\"Remove room #announcements?\")");
+        await harness.ClickAsync(deadline, "[aria-modal=\"true\"] button:text-is(\"Remove room\")");
+        await harness.WaitForHiddenAsync(deadline, announcements);
+        Assert.True(await harness.IsVisibleAsync(deadline, general), "the other room went with it");
+    }
+
+    /// <summary>Files three projects, as the Projects screen would.</summary>
+    private static async Task<ProjectDto[]> SeedProjectsAsync(string baseUrl)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var projects = new List<ProjectDto>();
+
+        foreach (var key in new[] { "CHA", "CHB", "CHC" })
+        {
+            using var response = await http.PostAsJsonAsync("/api/projects", new ProjectCreateRequest(key, key), web);
+            var text = await response.Content.ReadAsStringAsync();
+            Assert.True(response.IsSuccessStatusCode, $"POST /api/projects answered {(int)response.StatusCode}: {text}");
+            projects.Add(JsonSerializer.Deserialize<ProjectDto>(text, web)!);
+        }
+
+        return [.. projects];
+    }
+
+    /// <summary>Clicks the checkbox in <paramref name="group"/> whose label holds <paramref name="key"/>, and waits for it to be in the wanted state and enabled again: a saved change.</summary>
+    private static async Task SetCheckboxAsync(E2eHarness harness, Deadline deadline, string group, string key, bool wanted)
+    {
+        await harness.ClickAsync(deadline, $"{group} label:has-text(\"{key}\") input");
+        await harness.WaitForFunctionAsync(
+            deadline, $"waiting for {key} to be {(wanted ? "ticked" : "unticked")} in {group}",
+            "([g, k, w]) => { const l = [...document.querySelectorAll(g + ' label')].find(x => x.textContent.includes(k)); " +
+            "if (!l) return false; const i = l.querySelector('input'); return i.checked === w && !i.disabled; }",
+            new object[] { group, key, wanted });
+    }
+
+    /// <summary>Picks "Every bound project" or "Chosen projects" on a room, and waits for the save.</summary>
+    private static async Task ChooseScopeAsync(E2eHarness harness, Deadline deadline, string room, string label)
+    {
+        await harness.ClickAsync(deadline, $"{room} [aria-label=\"Which projects\"] label:has-text(\"{label}\") input");
+        await harness.WaitForFunctionAsync(
+            deadline, $"waiting for {label} to be chosen",
+            "([r, l]) => { const x = [...document.querySelectorAll(r + ' [aria-label=\"Which projects\"] label')].find(y => y.textContent.includes(l)); " +
+            "const i = x && x.querySelector('input'); return !!i && i.checked && !i.disabled; }",
+            new object[] { room, label });
+    }
+
+    /// <summary>How many elements match a Playwright selector, so <c>:text-is</c> works.</summary>
+    private static Task<int> CountAsync(E2eHarness harness, Deadline deadline, string selector) =>
+        deadline.BoundAsync($"counting {selector}", () => harness.Page!.Locator(selector).CountAsync());
+
+    /// <summary>The text of the first element matching a Playwright selector, so <c>:has-text</c> works.</summary>
+    private static async Task<string> TextAsync(E2eHarness harness, Deadline deadline, string selector) =>
+        await deadline.BoundAsync($"reading {selector}", () => harness.Page!.Locator(selector).First.TextContentAsync()) ?? "";
+
+    /// <summary>On a phone, nothing may run off the screen.</summary>
+    private async Task AssertFitsAsync(E2eHarness harness, Deadline deadline, DeviceProfile? profile)
+    {
+        if (profile is null) return;
+
+        var measured = await harness.EvaluateAsync<double[]>(
+            deadline, "measuring the page",
+            "() => [document.documentElement.scrollWidth, window.innerWidth]");
+        output.WriteLine($"scrollWidth {measured[0]}, innerWidth {measured[1]}");
+        Assert.True(measured[0] <= measured[1], $"the page runs off the screen: scrollWidth {measured[0]} > innerWidth {measured[1]}");
     }
 
     /// <summary>Types a token into the add form's box, the way a person would, and presses Connect. The box is empty again once the page has answered.</summary>

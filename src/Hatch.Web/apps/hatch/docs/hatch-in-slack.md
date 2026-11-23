@@ -2,12 +2,14 @@
 title: Hatch in Slack
 section: Running agents
 order: 60
-summary: Connect a Slack workspace to Hatch from the Chat screen, by creating an app from Hatch's manifest and pasting its bot token.
+summary: Connect a Slack workspace to Hatch from the Chat screen, bind projects to it, set channels up as rooms, and send a test message.
 ---
 
-Hatch can be connected to a Slack workspace. **Nothing is posted there yet.**
-Connecting is the first step: it gives Hatch a workspace to speak in, so what
-comes next has somewhere to go.
+Hatch can be connected to a Slack workspace. Connecting gives Hatch a workspace
+to speak in. An admin then binds projects to the workspace and sets channels up
+as **rooms**, each room taking the kinds of message and the projects it should
+carry. The only thing the Chat screen posts is a **test message**, to show that
+a room can be reached.
 
 The **Chat** screen, at `/chat`, is where an admin does it. It is under
 **Manage**, after **Users**, and only an admin sees it. A key never reads or
@@ -49,6 +51,72 @@ The sentence under the box is the reason, in Slack's or Hatch's own words.
 Use **Replace token** on the workspace's row: type the new token into the box in
 that row and press the button. The token has to be for the same workspace. A
 token for another one is refused, and the old token stays.
+
+## Bind a project
+
+A workspace row has a **Projects** cell with a checkbox for every project you
+can see. Tick a project to bind it to the workspace, and untick it to unbind it.
+Each tick saves at once, and the list is disabled while it saves. Binding
+touches nothing in Slack. If the save is refused, the sentence shows under the
+list.
+
+A room can only carry projects bound to its own workspace. Unbinding a project
+takes it out of every room's chosen list on that workspace.
+
+## Set up a room
+
+Under the table, each workspace has a **Rooms on** card, named for it. Press **Add a room** to
+see the channels the app's token can see. Hatch asks Slack every time you press
+it, so a channel made a minute ago is there. While it asks, the card says it is
+reading. If Slack refuses, the sentence shows instead of a list.
+
+- A channel the app has not joined says **Not invited yet. In Slack, open the
+  channel and add Hatch.** See the next section.
+- A private channel is marked **Private**.
+- A channel that is already a room says **Already a room**, and its **Add**
+  button is off. A channel is one room only.
+
+Press **Add** beside a channel to set it up. A new room starts with every switch
+off and **Every bound project** chosen, so nothing is posted until you tick
+something.
+
+Each room has:
+
+- Four switches: **Changelog**, **Questions**, **Problems**, and **Problems
+  that belong to no project**. A change saves at once.
+- A choice of projects. **Every bound project** carries whatever the workspace
+  is bound to. **Chosen projects** shows a checkbox for each project bound to
+  this workspace, and the room carries only the ones ticked.
+
+If **Chosen projects** is picked and none is ticked, the room says **This room
+carries no project.** It posts nothing for any project. It does not fall back
+to every project.
+
+**Remove room** asks first, and names the channel. Nothing in Slack is touched,
+and the channel can be added again.
+
+## Invite the app to the channel
+
+Slack only lets the app post where it is a member. In Slack, open the channel
+and add Hatch to it. Then press **Add a room** again: the channel is no longer
+marked **Not invited yet**.
+
+## Send a test message
+
+**Send a test message** on a room posts one short message to its channel. The
+button is disabled while Hatch waits for Slack. Under it a line says **Sent**,
+or says why not, in these words:
+
+- **the app has not been invited to that channel; in Slack, add Hatch to it.**
+  Invite the app, as above.
+- **that channel could not be found.** The channel was deleted or renamed away.
+  Remove the room and add the channel again.
+- **that channel is archived.** Unarchive it in Slack, or remove the room.
+- **That token has been revoked in Slack; install the app again for a new
+  one.** Install the app again, then use **Replace token**.
+- **the app is missing a permission it needs; install it again.** Install the
+  app again from the manifest.
+- Anything else is shown as Slack gave it.
 
 ## Remove a workspace
 

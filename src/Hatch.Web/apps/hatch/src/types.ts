@@ -3905,6 +3905,58 @@ export interface ChatWorkspace {
   projectIds: number[];
 }
 
+/** One channel a workspace's token can see. Mirrors ChatChannelDto. */
+export interface ChatChannel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  isMember: boolean;
+}
+
+/** A channel set up as a room. Mirrors ChatRoomDto. `projectIds` is empty under
+    `allProjects`, and is the chosen set otherwise. */
+export interface ChatRoom {
+  id: number;
+  workspaceId: number;
+  channelId: string;
+  channelName: string;
+  changelog: boolean;
+  questions: boolean;
+  problems: boolean;
+  unownedProblems: boolean;
+  allProjects: boolean;
+  projectIds: number[];
+}
+
+/** A room to create. Mirrors ChatRoomCreateRequest. */
+export interface ChatRoomCreate {
+  channelId: string;
+  channelName: string;
+  changelog: boolean;
+  questions: boolean;
+  problems: boolean;
+  unownedProblems: boolean;
+  allProjects: boolean;
+  projectIds?: number[];
+}
+
+/** A change to a room; a field left out stays as it was. Mirrors ChatRoomPatchRequest. */
+export interface ChatRoomPatch {
+  changelog?: boolean;
+  questions?: boolean;
+  problems?: boolean;
+  unownedProblems?: boolean;
+  allProjects?: boolean;
+  projectIds?: number[];
+}
+
+/** Whether a test message was delivered, and the sentence if not. A refusal is
+    a normal answer, not an error. Mirrors ChatTestResultDto. */
+export interface ChatTestResult {
+  delivered: boolean;
+  reason: string | null;
+}
+
 /** The app manifest to create the chat app from. Mirrors ChatManifestDto. */
 export interface ChatManifest {
   provider: string;
