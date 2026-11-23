@@ -57,7 +57,7 @@ public class SettingsControllerTests
 
         var stored = fixture.Db.SiteSettings.Single(s => s.Key == SiteSettingKeys.ClaudeSubscriptionToken).Value;
         Assert.DoesNotContain("sk-ant-oat-1", stored);
-        Assert.Equal("sk-ant-oat-1", await fixture.Credential.GetAsync("claude", default));
+        Assert.Equal("sk-ant-oat-1", (await fixture.Credential.GetAsync("claude", default))?.Reveal());
     }
 
     /// <summary>The whole of "clearing it removes it": a value sent, not a second verb.</summary>
@@ -83,7 +83,7 @@ public class SettingsControllerTests
         await fixture.PutAsync(new(ClaudeSubscriptionToken: "second", null));
 
         Assert.Single(fixture.Db.SiteSettings.Where(s => s.Key == SiteSettingKeys.ClaudeSubscriptionToken));
-        Assert.Equal("second", await fixture.Credential.GetAsync("claude", default));
+        Assert.Equal("second", (await fixture.Credential.GetAsync("claude", default))?.Reveal());
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public class SettingsControllerTests
         var settings = await fixture.Controller.GetHatchSettings(default);
 
         Assert.NotEqual("", settings.ClaudeSubscriptionToken);
-        Assert.Equal("set-by-the-admin-page", await fixture.Credential.GetAsync("claude", default));
+        Assert.Equal("set-by-the-admin-page", (await fixture.Credential.GetAsync("claude", default))?.Reveal());
     }
 
     // ---- The site's default token caps ----
@@ -371,9 +371,9 @@ public class SettingsControllerTests
 
     private static string? Plaintext(SiteSettingsSnapshot snapshot, string key) => key switch
     {
-        SiteSettingKeys.ClaudeSubscriptionToken => snapshot.ClaudeSubscriptionToken,
-        SiteSettingKeys.CodexApiKey => snapshot.CodexApiKey,
-        SiteSettingKeys.XaiApiKey => snapshot.XaiApiKey,
+        SiteSettingKeys.ClaudeSubscriptionToken => snapshot.ClaudeSubscriptionToken?.Reveal(),
+        SiteSettingKeys.CodexApiKey => snapshot.CodexApiKey?.Reveal(),
+        SiteSettingKeys.XaiApiKey => snapshot.XaiApiKey?.Reveal(),
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, null),
     };
 
@@ -416,7 +416,7 @@ public class SettingsControllerTests
         var stored = fixture.Db.SiteSettings.Single(s => s.Key == key).Value;
         Assert.DoesNotContain("sk-agent-1", stored);
         Assert.StartsWith("v2:", stored, StringComparison.Ordinal);
-        Assert.Equal("sk-agent-1", fixture.Protector.Unprotect(stored, SecretStores.SiteSetting(key)));
+        Assert.Equal("sk-agent-1", (fixture.Protector.Unprotect(stored, SecretStores.SiteSetting(key)))?.Reveal());
         Assert.Equal("sk-agent-1", Plaintext(await fixture.Settings.GetAsync(default), key));
     }
 
@@ -486,16 +486,16 @@ public class SettingsControllerTests
         await fixture.PutAsync(new(null, null, CodexApiKey: "codex-2"));
         var snapshot = await fixture.Settings.GetAsync(default);
 
-        Assert.Equal("claude-1", snapshot.ClaudeSubscriptionToken);
-        Assert.Equal("codex-2", snapshot.CodexApiKey);
-        Assert.Equal("xai-1", snapshot.XaiApiKey);
+        Assert.Equal("claude-1", (snapshot.ClaudeSubscriptionToken)?.Reveal());
+        Assert.Equal("codex-2", (snapshot.CodexApiKey)?.Reveal());
+        Assert.Equal("xai-1", (snapshot.XaiApiKey)?.Reveal());
 
         await fixture.PutAsync(new(null, null, XaiApiKey: ""));
         snapshot = await fixture.Settings.GetAsync(default);
 
-        Assert.Equal("claude-1", snapshot.ClaudeSubscriptionToken);
-        Assert.Equal("codex-2", snapshot.CodexApiKey);
-        Assert.True(string.IsNullOrWhiteSpace(snapshot.XaiApiKey));
+        Assert.Equal("claude-1", (snapshot.ClaudeSubscriptionToken)?.Reveal());
+        Assert.Equal("codex-2", (snapshot.CodexApiKey)?.Reveal());
+        Assert.Null(snapshot.XaiApiKey);
     }
 
     /// <summary>Not a secret, so it comes back to be edited rather than redacted.</summary>
@@ -532,7 +532,7 @@ public class SettingsControllerTests
         var settings = await fixture.PutAsync(new(null, LocalPersonName: "Grace"));
 
         Assert.Equal("Grace", settings.LocalPersonName);
-        Assert.Equal("sk-ant-oat-1", await fixture.Credential.GetAsync("claude", default));
+        Assert.Equal("sk-ant-oat-1", (await fixture.Credential.GetAsync("claude", default))?.Reveal());
     }
 
     [Fact]
@@ -756,7 +756,7 @@ public class SettingsControllerTests
 
         var stored = fixture.Db.SiteSettings.Single(s => s.Key == key).Value;
         Assert.Matches(@"^v2:[^:.]+\.[^:.]+\.[^:.]+$", stored);
-        Assert.Equal("sk-agent-1", fixture.Protector.Unprotect(stored, $"site-setting/{key}"));
+        Assert.Equal("sk-agent-1", (fixture.Protector.Unprotect(stored, $"site-setting/{key}"))?.Reveal());
         Assert.Equal("sk-agent-1", Plaintext(await fixture.Settings.GetAsync(default), key));
     }
 
@@ -803,8 +803,8 @@ public class SettingsControllerTests
 
         var snapshot = await fixture.Settings.GetAsync(default);
 
-        Assert.Equal("v1-codex", snapshot.CodexApiKey);
-        Assert.Equal("untagged-xai", snapshot.XaiApiKey);
+        Assert.Equal("v1-codex", (snapshot.CodexApiKey)?.Reveal());
+        Assert.Equal("untagged-xai", (snapshot.XaiApiKey)?.Reveal());
     }
 
     [Fact]
@@ -817,7 +817,7 @@ public class SettingsControllerTests
         var fixture = NewFixture(new SecretCipher(RandomNumberGenerator.GetBytes(32), oldKey), false, null,
             (SiteSettingKeys.CodexApiKey, stored));
 
-        Assert.Equal("sk-old", (await fixture.Settings.GetAsync(default)).CodexApiKey);
+        Assert.Equal("sk-old", ((await fixture.Settings.GetAsync(default)).CodexApiKey)?.Reveal());
     }
 
     [Fact]
@@ -876,7 +876,7 @@ public class SettingsControllerTests
     {
         var fixture = NewFixtureWithNoKey((SiteSettingKeys.ClaudeSubscriptionToken, V1("old-token")));
 
-        Assert.Equal("old-token", await fixture.Credential.GetAsync("claude", default));
+        Assert.Equal("old-token", (await fixture.Credential.GetAsync("claude", default))?.Reveal());
     }
 
     // ---- A stored secret that cannot be opened ----
@@ -1121,8 +1121,8 @@ public class SettingsControllerTests
 
     private static string? PlaintextOf(SiteSettingsSnapshot snapshot, string key) => key switch
     {
-        SiteSettingKeys.GoogleClientSecret => snapshot.GoogleClientSecret,
-        SiteSettingKeys.AnthropicApiKey => snapshot.AnthropicApiKey,
+        SiteSettingKeys.GoogleClientSecret => snapshot.GoogleClientSecret?.Reveal(),
+        SiteSettingKeys.AnthropicApiKey => snapshot.AnthropicApiKey?.Reveal(),
         _ => Plaintext(snapshot, key),
     };
 

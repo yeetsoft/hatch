@@ -1,3 +1,4 @@
+using Hatch.Api.Common;
 using Hatch.Api.Services.Settings;
 
 namespace Hatch.Api.Tests;
@@ -24,12 +25,12 @@ internal sealed class StubSiteSettings(
     public Task<SiteSettingsSnapshot> GetAsync(CancellationToken ct) => Task.FromResult(new SiteSettingsSnapshot(
         TimeZone: timeZone,
         GoogleClientId: googleClientId,
-        GoogleClientSecret: googleClientSecret,
+        GoogleClientSecret: OpenedSecret.From(googleClientSecret),
         GoogleOAuthRedirectUri: googleOAuthRedirectUri,
-        AnthropicApiKey: anthropicApiKey,
-        ClaudeSubscriptionToken: claudeSubscriptionToken,
-        CodexApiKey: codexApiKey,
-        XaiApiKey: xaiApiKey,
+        AnthropicApiKey: OpenedSecret.From(anthropicApiKey),
+        ClaudeSubscriptionToken: OpenedSecret.From(claudeSubscriptionToken),
+        CodexApiKey: OpenedSecret.From(codexApiKey),
+        XaiApiKey: OpenedSecret.From(xaiApiKey),
         LocalPersonName: localPersonName,
         RunnerDefaultMaxTokens: runnerDefaultMaxTokens,
         RunnerDefaultMaxTokensPerHour: runnerDefaultMaxTokensPerHour));
