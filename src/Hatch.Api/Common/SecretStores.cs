@@ -11,8 +11,9 @@ namespace Hatch.Api.Common;
 /// <param name="Schema">The schema the table is in, or null for the default one.</param>
 /// <param name="Table">The table, as the database names it.</param>
 /// <param name="Column">The column the sealed value is in.</param>
+/// <param name="IdColumns">The columns <paramref name="RowName"/> is built from, in the order it takes them: what names a row to a walk that has only the table to go on.</param>
 /// <param name="RowName">The name of a row, from the values that identify it: the key for a site setting, the provider and external id for a workspace.</param>
-public sealed record SecretStore(string? Schema, string Table, string Column, Func<string[], string> RowName);
+public sealed record SecretStore(string? Schema, string Table, string Column, string[] IdColumns, Func<string[], string> RowName);
 
 /// <summary>
 /// Every place a sealed value is stored, listed once. A save seals through this
@@ -22,10 +23,10 @@ public sealed record SecretStore(string? Schema, string Table, string Column, Fu
 public static class SecretStores
 {
     /// <summary>The five secret site settings, one row each, named by key.</summary>
-    public static readonly SecretStore SiteSettings = new(null, "SiteSettings", nameof(EfSiteSetting.Value), id => SiteSetting(id[0]));
+    public static readonly SecretStore SiteSettings = new(null, "SiteSettings", nameof(EfSiteSetting.Value), [nameof(EfSiteSetting.Key)], id => SiteSetting(id[0]));
 
     /// <summary>The chat workspace bot token, named by provider and the service's own id for the workspace.</summary>
-    public static readonly SecretStore ChatWorkspaces = new("hatch", "ChatWorkspaces", nameof(EfHatchChatWorkspace.Token), id => ChatWorkspace(id[0], id[1]));
+    public static readonly SecretStore ChatWorkspaces = new("hatch", "ChatWorkspaces", nameof(EfHatchChatWorkspace.Token), [nameof(EfHatchChatWorkspace.Provider), nameof(EfHatchChatWorkspace.ExternalId)], id => ChatWorkspace(id[0], id[1]));
 
     /// <summary>Every store, in no order that matters.</summary>
     public static readonly IReadOnlyList<SecretStore> All = [SiteSettings, ChatWorkspaces];
