@@ -112,6 +112,8 @@ function answer(over: Partial<BoardHealth> = {}): BoardHealth {
     hasWorkColumn: true,
     runners: runners(),
     inFlightIssues: [],
+    lastWaitedAt: null,
+    lastWaitedIsFloor: false,
     ...over,
   };
 }
