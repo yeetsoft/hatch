@@ -149,8 +149,9 @@ public sealed class SecretReseal(
 
         var rowName = store.RowName(ids);
 
-        var plaintext = protector.Unprotect(stored, rowName);
-        if (string.IsNullOrEmpty(plaintext) || !protector.TrySeal(plaintext, rowName, out var resealed) || resealed.Length == 0)
+        var secret = protector.Unprotect(stored, rowName);
+        string resealed = string.Empty;
+        if (secret is null || !protector.TrySeal(secret.Reveal(), rowName, out resealed) || resealed.Length == 0)
         {
             logger.LogWarning(
                 "The stored secret on {Row} could not be opened, so it is left as it is. It names key {KeyId}.",

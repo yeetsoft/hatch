@@ -69,7 +69,7 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
         foreach (var (row, stored) in first)
         {
             Assert.True(protector.IsCurrent(stored), $"{row} is not v2 under the current key");
-            Assert.Equal(seeded.Plaintexts[row], protector.Unprotect(stored, row));
+            Assert.Equal(seeded.Plaintexts[row], protector.Unprotect(stored, row)?.Reveal());
         }
 
         // The two already under the current key were not rewritten.
@@ -166,7 +166,7 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
         var protector = new SecretProtector(new SecretCipher(KeyB, KeyA));
         var codex = SecretStores.SiteSetting(SiteSettingKeys.CodexApiKey);
         Assert.True(protector.IsCurrent(after[codex]));
-        Assert.Equal("opens-fine", protector.Unprotect(after[codex], codex));
+        Assert.Equal("opens-fine", protector.Unprotect(after[codex], codex)?.Reveal());
 
         var named = Assert.Single(logs.Messages, m => m.Contains("site-setting/XaiApiKey"));
         Assert.Contains(unknownKeyId, named);
@@ -206,7 +206,7 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
         Assert.Equal(SecretReseal.RowOutcome.SavedMeanwhile, outcome);
         var after = (await ReadAsync(connectionString))[row];
         Assert.Equal(saved, after);
-        Assert.Equal("the new secret", protector.Unprotect(after, row));
+        Assert.Equal("the new secret", protector.Unprotect(after, row)?.Reveal());
     }
 
     [SkippableFact]

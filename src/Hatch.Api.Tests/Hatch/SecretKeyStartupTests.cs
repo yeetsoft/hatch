@@ -210,7 +210,7 @@ public class SecretKeyStartupTests
         foreach (var (row, value) in stored)
         {
             Assert.True(protector.IsCurrent(value), $"{row} is not under the current key");
-            Assert.Equal(plaintexts[row], protector.Unprotect(value, row));
+            Assert.Equal(plaintexts[row], protector.Unprotect(value, row)?.Reveal());
         }
     }
 
