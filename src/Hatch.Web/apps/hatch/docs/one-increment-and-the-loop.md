@@ -433,7 +433,11 @@ ticket let go because this runner cannot sign commits (`signing`) and a pull
 request this increment left written and waiting (`forge`) each send their kind,
 and what the tool said, with the release. The board writes both on the ticket's
 `claim_released` event and links the runner's open failure of that kind to the
-ticket. A waiting pull request is named only where this runner wrote it during
+ticket. The issue page's History draws that release as its own line, `build-box
+could not go on - its agent is signed out`, then what the tool said, then a link
+to the runner's page. It is not a question: it carries no Ballot entry and no
+`asked` event. A kind this build does not know is drawn as it came (`build-box
+hit a failure (disk-full)`), and a release with no failure is drawn as before. A waiting pull request is named only where this runner wrote it during
 this increment, so an old one is never named twice.
 
 Two of these in a row pause the runner. It claims nothing and says on the

@@ -79,6 +79,7 @@ import { TypeControl } from '../components/TypeControl';
 import { WorkLog } from '../components/WorkLog';
 import { assigneeHint } from '../lib/assignee';
 import { onePrSaid } from '../lib/onePr';
+import { releaseFailureWords } from '../lib/runners';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
 import { repoSourcedOverrideHint, shortSha } from '../lib/playbookFiles';
@@ -2761,6 +2762,19 @@ function DangerousInherited({ from, reason }: { from: string | null; reason: str
   );
 }
 
+/** A release that carried a failure: which runner could not go on and why, what the tool said, and a link to the runner. Not a question - it asks for nothing. */
+export function ReleaseFailure({ event }: { event: IssueEvent }) {
+  const kind = typeof event.payload?.failure === 'string' ? event.payload.failure : '';
+  const said = describe(event);
+  return (
+    <span className="hatch-release-failure">
+      <span>{releaseFailureWords(kind, event.actor)}</span>
+      {said !== '' && <span className="text-muted"> - {said}</span>}{' '}
+      <Link to={`/runners/${encodeURIComponent(event.actor)}`}>{event.actor}</Link>
+    </span>
+  );
+}
+
 function EventTrail({ events }: { events: IssueEvent[] }) {
   return (
     <IssueSection id="history" title={<NewestFirstTitle>History</NewestFirstTitle>} count={events.length} defaultOpen={false}>
@@ -2770,7 +2784,11 @@ function EventTrail({ events }: { events: IssueEvent[] }) {
             <span className="text-muted">{new Date(event.at).toLocaleString()}</span>
             <Badge>{event.kind.replaceAll('_', ' ')}</Badge>
             <span>{event.actor}</span>
-            <span className="text-muted">{describe(event)}</span>
+            {event.kind === 'claim_released' && typeof event.payload?.failure === 'string' ? (
+              <ReleaseFailure event={event} />
+            ) : (
+              <span className="text-muted">{describe(event)}</span>
+            )}
           </li>
         ))}
       </ul>

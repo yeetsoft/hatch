@@ -104,7 +104,8 @@ Five cards, in this order. Above them, a card with a **Failing** list and an
 has one line for each thing the runner cannot do now, `Cannot reach its forge
 since 7:40pm - gh said: token expired`; **Earlier** has one for each that ended,
 `Cannot sign its commits - began 7:40pm, ended 8:10pm`. A list with no rows draws
-no heading.
+no heading. A line whose failure cost a ticket its increment ends with those
+tickets, each a link: `- cost HA-12, HA-15`.
 
 **Identity and key.** Its name, the key's prefix, when it was created, when it
 was last used, and when it was rotated or revoked, where either has happened. The
