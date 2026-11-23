@@ -490,6 +490,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("LastRefusal")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -500,6 +504,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<bool>("Questions")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("SendFailingSince")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("UnownedProblems")
                         .HasColumnType("boolean");
@@ -590,6 +597,19 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("FailStreak")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("HoldUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastRefusal")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("LastRefusalAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -599,6 +619,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsRequired()
                         .HasMaxLength(24)
                         .HasColumnType("character varying(24)");
+
+                    b.Property<DateTimeOffset?>("SendFailingSince")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Token")
                         .IsRequired()
