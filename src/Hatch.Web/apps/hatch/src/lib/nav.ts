@@ -67,6 +67,7 @@ export const NAV: NavEntry[] = [
       { to: '/design', label: 'Design' },
       // Admin only, and only where the wall gives anybody a role.
       { to: '/users', label: 'Users', adminOnly: true },
+      { to: '/chat', label: 'Chat', adminOnly: true },
     ],
   },
 ];

@@ -7,14 +7,15 @@ const COPIED_FOR_MS = 2000;
 const REFUSED = 'Copy was refused by the browser';
 
 /**
- * One press to put a Markdown string on the clipboard.
+ * One press to put a Markdown string on the clipboard. `label` renames the
+ * button where what is copied is not Markdown, such as the chat app manifest.
  *
  * Drawn only where the clipboard API is there - an insecure origin or an old
  * browser has no way to take the paste, and a button that silently does nothing
  * is worse than none, as Command argues. A write the browser refuses after the
  * press says so, and says so until the next press.
  */
-export function CopyMarkdownButton({ markdown }: { markdown: string }) {
+export function CopyMarkdownButton({ markdown, label = 'Copy as Markdown' }: { markdown: string; label?: string }) {
   const [said, setSaid] = useState<string | null>(null);
   const [known, setKnown] = useState(markdown);
 
@@ -50,7 +51,7 @@ export function CopyMarkdownButton({ markdown }: { markdown: string }) {
 
   return (
     <button type="button" className={facetClass(false)} aria-live="polite" onClick={() => void copy()}>
-      {said ?? 'Copy as Markdown'}
+      {said ?? label}
     </button>
   );
 }

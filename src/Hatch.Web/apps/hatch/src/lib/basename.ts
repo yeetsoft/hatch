@@ -64,6 +64,7 @@ export const APP_ROUTE_ROOTS = [
   'runner',
   'settings',
   'users',
+  'chat',
   'docs',
 ] as const;
 

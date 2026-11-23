@@ -3886,6 +3886,23 @@ export interface PersonSession {
   lastSeenAt: string | null;
 }
 
+/** A chat workspace Hatch is connected to. Mirrors ChatWorkspaceDto. There is
+    no token field: the server never sends one back, only whether it holds one. */
+export interface ChatWorkspace {
+  id: number;
+  provider: string;
+  externalId: string;
+  name: string;
+  hasToken: boolean;
+  createdAt: string;
+}
+
+/** The app manifest to create the chat app from. Mirrors ChatManifestDto. */
+export interface ChatManifest {
+  provider: string;
+  manifest: string;
+}
+
 /** The device answering, and who holds it. Mirrors AuthMeDto; the Users page
     reads only which grant is this browser's. */
 export interface AuthMe {

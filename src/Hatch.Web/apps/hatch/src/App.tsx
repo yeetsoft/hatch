@@ -40,6 +40,7 @@ import { DocsPage } from './pages/DocsPage';
 import { RunnerPage } from './pages/RunnerPage';
 import { GoosePage } from './pages/GoosePage';
 import { UsersPage } from './pages/UsersPage';
+import { ChatPage } from './pages/ChatPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
@@ -210,6 +211,7 @@ function AppShell() {
               <Route path="/runner" element={<RunnerPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/chat" element={<ChatPage />} />
               <Route path="/docs" element={<DocsPage />} />
               <Route path="/docs/*" element={<DocsPage />} />
               {/* An unknown deep link lands on the root's own page rather than on

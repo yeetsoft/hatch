@@ -22,10 +22,10 @@ namespace Hatch.Api.Tests.Chat;
 /// </summary>
 public class ChatControllerTests
 {
-    private const string AcmeToken = "xoxb-1111-acmeSecretPart";
-    private const string AcmeNewToken = "xoxb-2222-acmeReplacementPart";
-    private const string GlobexToken = "xoxb-3333-globexSecretPart";
-    private const string RefusedToken = "xoxb-9999-refusedSecretPart";
+    private const string AcmeToken = FakeChatProvider.AcmeToken;
+    private const string AcmeNewToken = FakeChatProvider.AcmeNewToken;
+    private const string GlobexToken = FakeChatProvider.GlobexToken;
+    private const string RefusedToken = FakeChatProvider.RefusedToken;
 
     [Fact]
     public async Task TwoWorkspaces_Connect_AndBothAreListed_OldestFirst()
@@ -288,35 +288,6 @@ public class ChatControllerTests
             Time = time,
             Log = log,
         };
-    }
-
-    /// <summary>Answers from a table of token to workspace; any other token is refused with a fixed sentence that does not echo it.</summary>
-    private sealed class FakeChatProvider : IChatProvider
-    {
-        public const string RefusalSentence = "the fake refused that token";
-        public const string ManifestText = "{\"fake\":true}";
-
-        public Dictionary<string, (string Id, string Name)> Workspaces { get; } = new()
-        {
-            [AcmeToken] = ("TACME", "Acme"),
-            [AcmeNewToken] = ("TACME", "Acme"),
-            [GlobexToken] = ("TGLOBEX", "Globex"),
-        };
-
-        public int Checks { get; private set; }
-
-        public string Name => "fake";
-
-        public string Manifest() => ManifestText;
-
-        public Task<ChatTokenCheck> CheckTokenAsync(string token, CancellationToken ct)
-        {
-            Checks++;
-
-            return Task.FromResult(Workspaces.TryGetValue(token, out var w)
-                ? ChatTokenCheck.Workspace(w.Id, w.Name)
-                : ChatTokenCheck.Refused(RefusalSentence));
-        }
     }
 
     private sealed class CapturingLogger : ILogger<ChatController>
