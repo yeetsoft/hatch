@@ -1,5 +1,6 @@
 using System.Text;
 using Hatch.Api.Common;
+using Hatch.Api.Ef;
 using Npgsql;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -23,6 +24,14 @@ namespace Hatch.Api.Modules.Hatch;
 ///
 /// <para>A reseal that fails logs the error and lets the API start. Values stay
 /// readable under both keys, and the next start tries again.</para>
+///
+/// <para>Each store in <see cref="SecretStores.All"/> says which rows are
+/// secrets at all (HA-2774): the site settings walk is limited to
+/// <see cref="SiteSettingKeys.Secrets"/>, so an ordinary setting such as a
+/// name or a number is never opened as an older-form secret, resealed, or
+/// named in the "could not be opened" log. A row an earlier build resealed by
+/// mistake, before this limit, cannot be told from a real secret once it
+/// reads <c>v2</c> - this fix does not try to find or repair one.</para>
 /// </summary>
 public sealed class SecretReseal(
     SecretProtector protector, SecretCipher cipher, IConfiguration configuration, ILogger<SecretReseal> logger) : IHostedService
@@ -114,16 +123,24 @@ public sealed class SecretReseal(
             resealed, cipher.CurrentKeyId, unopened);
     }
 
-    /// <summary>The id values and the sealed text of every row of <paramref name="store"/> that holds one, on a connection of its own.</summary>
+    /// <summary>
+    /// The id values and the sealed text of every row of <paramref name="store"/>
+    /// that holds one, on a connection of its own. When <see cref="SecretStore.OnlyKeys"/>
+    /// is set, a row whose first id column is not in it is never read: an
+    /// ordinary setting such as a name is not an older-form secret, and is
+    /// never opened, resealed, or named in the "could not be opened" log.
+    /// </summary>
     private static async Task<List<(string[] Ids, string Stored)>> ReadAsync(string connectionString, SecretStore store, CancellationToken ct)
     {
         var columns = string.Join(", ", store.IdColumns.Select(Quote));
         var sql = $"SELECT {columns}, {Quote(store.Column)} FROM {Table(store)} " +
                   $"WHERE {Quote(store.Column)} IS NOT NULL AND {Quote(store.Column)} <> ''";
+        if (store.OnlyKeys is not null) sql += $" AND {Quote(store.IdColumns[0])} = ANY(@only)";
 
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(ct);
         await using var command = new NpgsqlCommand(sql, connection);
+        if (store.OnlyKeys is not null) command.Parameters.AddWithValue("only", store.OnlyKeys);
         await using var reader = await command.ExecuteReaderAsync(ct);
 
         var rows = new List<(string[], string)>();
