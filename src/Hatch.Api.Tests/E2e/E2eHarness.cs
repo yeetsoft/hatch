@@ -242,16 +242,17 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// the built SPA out of the repository's own <c>wwwroot</c>. Returns the
     /// address it is listening on. <paramref name="services"/> replaces services
     /// the host registered, for a case that needs a fake of something it reaches
-    /// out to.
+    /// out to. <paramref name="secretKey"/> is the host's <c>Hatch:SecretKey</c>;
+    /// left out, the host has none.
     /// </summary>
-    public async Task<string> StartHostAsync(Deadline deadline, Action<IServiceCollection>? services = null)
+    public async Task<string> StartHostAsync(Deadline deadline, Action<IServiceCollection>? services = null, string? secretKey = null)
     {
         // Quartz keeps its logging provider in a static bound to whichever
         // host built a scheduler first; see MinimalStartupTests for why it is
         // cleared on the way in and again on the way out.
         QuartzLogProvider.SetCurrentLogProvider(null);
 
-        factory = new MinimalFactory(hatch!, quartz!, logs, WebRoot(), services: services);
+        factory = new MinimalFactory(hatch!, quartz!, logs, WebRoot(), services: services, secretKey: secretKey);
         factory.UseKestrel(o => o.Listen(IPAddress.Loopback, 0));
 
         // StartServer blocks, so Task.Run is what gives Deadline something to race.

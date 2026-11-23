@@ -7,12 +7,12 @@ namespace Hatch.Api.Common;
 /// sitting in the DB as cleartext.
 ///
 /// This is scheme <c>v1</c>, and it is an implementation detail of
-/// <see cref="SecretProtector"/>: call that instead. Everything stored goes
-/// through the protector - the one exception is the credential handoff to the
-/// container runner, <see cref="CredentialWire"/>, which is <c>v1</c> on
-/// purpose and keeps its own copy - so that the day this is replaced with real crypto,
-/// the replacement is a new scheme beside this one rather than an edit to
-/// every call site that ever wrote a secret.
+/// <see cref="SecretProtector"/>: call that instead. Nothing writes it to the
+/// database any more - new values are sealed under the operator's key as
+/// <c>v2</c> - but the protector still reads it, and needs no key to. The one
+/// other caller is the credential handoff to the container runner,
+/// <see cref="CredentialWire"/>, which is <c>v1</c> on the wire on purpose and
+/// keeps its own copy.
 /// </summary>
 public static class SecretObfuscator
 {

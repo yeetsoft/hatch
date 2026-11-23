@@ -44,7 +44,7 @@ public interface ISiteSettingsService
 /// so a stale read is bounded to CacheTtl rather than living forever, which is
 /// what a bare in-memory cache would do.
 /// </summary>
-public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, TimeProvider time) : ISiteSettingsService
+public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, TimeProvider time, SecretProtector protector) : ISiteSettingsService
 {
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
 
@@ -77,14 +77,14 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
                 GoogleClientId: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.GoogleClientId)),
                 // The read side has to hand back something usable, so the
                 // client secret is deobfuscated here.
-                GoogleClientSecret: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.GoogleClientSecret)),
+                GoogleClientSecret: Deobfuscated(SiteSettingKeys.GoogleClientSecret, values),
                 GoogleOAuthRedirectUri: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.GoogleOAuthRedirectUri)),
                 // Deobfuscated for the same reason as the Google secret above:
                 // the game module has to hand it to an SDK, not display it.
-                AnthropicApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.AnthropicApiKey)),
-                ClaudeSubscriptionToken: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.ClaudeSubscriptionToken)),
-                CodexApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.CodexApiKey)),
-                XaiApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.XaiApiKey)),
+                AnthropicApiKey: Deobfuscated(SiteSettingKeys.AnthropicApiKey, values),
+                ClaudeSubscriptionToken: Deobfuscated(SiteSettingKeys.ClaudeSubscriptionToken, values),
+                CodexApiKey: Deobfuscated(SiteSettingKeys.CodexApiKey, values),
+                XaiApiKey: Deobfuscated(SiteSettingKeys.XaiApiKey, values),
                 // No default: "nobody has said" is a distinct answer from any
                 // name, and it is what tells the nav strip to explain how to
                 // set one. LocalCaller decides what unset means.
@@ -108,14 +108,16 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     /// <summary>
-    /// Reverses SettingsController's protection. Unlike that controller's own
+    /// Opens what SettingsController sealed, under the row it was sealed for. Unlike that controller's own
     /// call sites, this one is on the path of every settings read in the app,
     /// so a value that isn't readable - hand-edited in the DB, or written by a
-    /// newer Hatch under a scheme this one doesn't know - degrades to "unset"
+    /// newer Hatch under a scheme this one doesn't know, or sealed under a key
+    /// that is gone - degrades to "unset"
     /// rather than throwing out of the snapshot. SecretProtector.Unprotect
-    /// already answers null for both, which is why this no longer catches.
+    /// already answers null for all of them, which is why this does not catch.
     /// </summary>
-    private static string? Deobfuscated(string? value) => SecretProtector.Unprotect(value);
+    private string? Deobfuscated(string key, IReadOnlyDictionary<string, string> values) =>
+        protector.Unprotect(values.GetValueOrDefault(key), SecretStores.SiteSetting(key));
 
     private static long? ParseTokens(IReadOnlyDictionary<string, string> values, string key) =>
         values.TryGetValue(key, out var raw) && long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1

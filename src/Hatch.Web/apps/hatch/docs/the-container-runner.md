@@ -199,7 +199,7 @@ entrypoint exports before it starts the loop. If none is saved, the container
 says so once and waits, asking again every 60 seconds, so the order you do
 these two things in does not matter.
 
-Hatch stores that credential obfuscated, not encrypted, and the route that
+Hatch stores that credential sealed under `HATCH_SECRET_KEY`, and the route that
 hands it out is refused to every caller when the wall is up, which is why
 `HATCH_KEY` is no help here. `hatch` carries its own decoder for it, and that
 is why the image has no `jq`, `python` or `openssl`.

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
@@ -84,7 +85,7 @@ public class ChatControllerTests
         var conflict = Assert.IsType<ConflictObjectResult>(again.Result);
         Assert.Contains("replace its token", (string)conflict.Value!);
         Assert.Single(h.Db.ChatWorkspaces);
-        Assert.Equal(AcmeToken, SecretProtector.Unprotect((await h.Db.ChatWorkspaces.SingleAsync()).Token));
+        Assert.Equal(AcmeToken, h.Open((await h.Db.ChatWorkspaces.SingleAsync()).Token));
     }
 
     [Fact]
@@ -98,7 +99,7 @@ public class ChatControllerTests
         var replaced = Value(await h.Chat.ReplaceToken(acme.Id, new ChatTokenRequest(AcmeNewToken), default));
 
         var row = await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync();
-        Assert.Equal(AcmeNewToken, SecretProtector.Unprotect(row.Token));
+        Assert.Equal(AcmeNewToken, h.Open(row.Token));
         Assert.Equal("Acme Renamed", row.Name);
         Assert.Equal(Now.AddHours(1), row.UpdatedAt);
         Assert.Equal(acme.Id, row.Id);
@@ -119,7 +120,7 @@ public class ChatControllerTests
         var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
         Assert.Contains("another workspace", (string)conflict.Value!);
         var row = await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync();
-        Assert.Equal(AcmeToken, SecretProtector.Unprotect(row.Token));
+        Assert.Equal(AcmeToken, h.Open(row.Token));
         Assert.Equal("Acme", row.Name);
         Assert.Equal(Now, row.UpdatedAt);
     }
@@ -133,7 +134,7 @@ public class ChatControllerTests
         var result = await h.Chat.ReplaceToken(acme.Id, new ChatTokenRequest(RefusedToken), default);
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
-        Assert.Equal(AcmeToken, SecretProtector.Unprotect((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).Token));
+        Assert.Equal(AcmeToken, h.Open((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).Token));
     }
 
     [Fact]
@@ -170,7 +171,10 @@ public class ChatControllerTests
 
         Assert.NotEqual(AcmeToken, stored);
         Assert.DoesNotContain("acmeSecretPart", stored);
-        Assert.Equal(AcmeToken, SecretProtector.Unprotect(stored));
+        Assert.StartsWith("v2:", stored, StringComparison.Ordinal);
+        Assert.Equal(AcmeToken, h.Open(stored));
+        // Sealed for this workspace's row and no other.
+        Assert.Null(h.Protector.Unprotect(stored, SecretStores.ChatWorkspace("fake", "TGLOBEX")));
     }
 
     [Fact]
@@ -180,7 +184,32 @@ public class ChatControllerTests
 
         Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest($"  {AcmeToken}\n"), default));
 
-        Assert.Equal(AcmeToken, SecretProtector.Unprotect((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).Token));
+        Assert.Equal(AcmeToken, h.Open((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).Token));
+    }
+
+    /// <summary>With no key there is nothing to seal under, so the token is never sent to the chat service.</summary>
+    [Fact]
+    public async Task WithNoKey_BothWritesAreABadRequestNamingTheKey_AndNeverCallTheProvider()
+    {
+        var h = NewHarness(withKey: false);
+        var acme = new EfHatchChatWorkspace
+        {
+            Provider = "fake", ExternalId = "TACME", Name = "Acme", Token = "", CreatedAt = Now, UpdatedAt = Now,
+        };
+        h.Db.ChatWorkspaces.Add(acme);
+        await h.Db.SaveChangesAsync();
+
+        var connect = await h.Chat.ConnectWorkspace(new ChatTokenRequest(GlobexToken), default);
+        var replace = await h.Chat.ReplaceToken(acme.Id, new ChatTokenRequest(AcmeNewToken), default);
+
+        foreach (var refused in new[] { connect.Result, replace.Result })
+        {
+            var bad = Assert.IsType<BadRequestObjectResult>(refused);
+            Assert.Contains("HATCH_SECRET_KEY", (string)bad.Value!);
+        }
+
+        Assert.Equal(0, h.Provider.Checks);
+        Assert.Single(h.Db.ChatWorkspaces);
     }
 
     [Fact]
@@ -267,19 +296,24 @@ public class ChatControllerTests
         public required FakeChatProvider Provider { get; init; }
         public required FakeTimeProvider Time { get; init; }
         public required CapturingLogger Log { get; init; }
+        public required SecretProtector Protector { get; init; }
+
+        /// <summary>The plaintext of a stored token, opened for the Acme workspace's row.</summary>
+        public string? Open(string stored) => Protector.Unprotect(stored, SecretStores.ChatWorkspace("fake", "TACME"));
     }
 
-    private static Harness NewHarness()
+    private static Harness NewHarness(bool withKey = true)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var provider = new FakeChatProvider();
         var time = new FakeTimeProvider(Now);
         var log = new CapturingLogger();
+        var protector = new SecretProtector(new SecretCipher(withKey ? RandomNumberGenerator.GetBytes(32) : null, null));
 
         return new Harness
         {
-            Chat = new ChatController(db, provider, new StubCaller("Root"), time, log)
+            Chat = new ChatController(db, provider, new StubCaller("Root"), time, protector, log)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             },
@@ -287,6 +321,7 @@ public class ChatControllerTests
             Provider = provider,
             Time = time,
             Log = log,
+            Protector = protector,
         };
     }
 

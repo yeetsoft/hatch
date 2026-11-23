@@ -18,6 +18,8 @@ import {
   defaultTokensProblem,
   defaultTokensSave,
   nameSave,
+  SECRETS_BLOCKED_WORDS,
+  secretsBlocked,
   tokenBudgetEditable,
 } from '../lib/hatchSettings';
 import type { CredentialField, DefaultTokenField } from '../lib/hatchSettings';
@@ -46,7 +48,7 @@ const AGENT_CREDENTIALS: {
     title: 'Claude subscription token',
     noun: 'token',
     label: 'Token',
-    hint: "An OAuth token for your own Claude subscription. It is what a container runner's entrypoint authenticates the claude CLI it starts with - an install whose runners all run on somebody's own machine needs none. Stored obfuscated, and never read back.",
+    hint: "An OAuth token for your own Claude subscription. It is what a container runner's entrypoint authenticates the claude CLI it starts with - an install whose runners all run on somebody's own machine needs none. Stored sealed, and never read back.",
     steps: (
       <>
         <li>
@@ -79,7 +81,7 @@ const AGENT_CREDENTIALS: {
         the only mode that reads that variable. A ChatGPT-subscription login cannot be passed this way,
         since its <code>auth.json</code> is a file rather than one variable, and the models an API key
         reaches can differ from a ChatGPT login&rsquo;s. An install whose runners all run on
-        somebody&rsquo;s own machine needs none. Stored obfuscated, and never read back.
+        somebody&rsquo;s own machine needs none. Stored sealed, and never read back.
       </>
     ),
     steps: (
@@ -105,7 +107,7 @@ const AGENT_CREDENTIALS: {
       <>
         It is what a container runner exports as <code>XAI_API_KEY</code>. <code>grok login</code> is for
         interactive machines and does not travel to a container. An install whose runners all run on
-        somebody&rsquo;s own machine needs none. Stored obfuscated, and never read back.
+        somebody&rsquo;s own machine needs none. Stored sealed, and never read back.
       </>
     ),
     steps: (
@@ -246,38 +248,16 @@ export function SettingsPage() {
 
       {settings &&
         AGENT_CREDENTIALS.map((c) => (
-          <Card key={c.field}>
-            <h2 className="hatch-section-title">{c.title}</h2>
-            <ol className="hatch-runner-needs">{c.steps}</ol>
-            <Field label={c.label} hint={c.hint}>
-              <input
-                type="password"
-                autoComplete="off"
-                value={drafts[c.field]}
-                placeholder={credentialPlaceholder(settings, c.field)}
-                onChange={(e) => setDrafts((d) => ({ ...d, [c.field]: e.target.value }))}
-              />
-            </Field>
-            <div className="hatch-form-actions">
-              <Button
-                variant="primary"
-                loading={busy === c.field}
-                disabled={busy !== null || credentialSave(c.field, drafts[c.field]) === null}
-                onClick={() => void save(c.field, credentialSave(c.field, drafts[c.field])!)}
-              >
-                Save {c.noun}
-              </Button>
-              {/* Its own button rather than "save a blank field", so a credential
-                  cannot be removed by tabbing through a form and pressing Save. */}
-              <Button
-                variant="danger"
-                disabled={busy !== null || !credentialIsSet(settings, c.field)}
-                onClick={() => void save(c.field, credentialClear(c.field))}
-              >
-                Remove {c.noun}
-              </Button>
-            </div>
-          </Card>
+          <CredentialCard
+            key={c.field}
+            credential={c}
+            settings={settings}
+            draft={drafts[c.field]}
+            busy={busy}
+            onDraft={(value) => setDrafts((d) => ({ ...d, [c.field]: value }))}
+            onSave={() => void save(c.field, credentialSave(c.field, drafts[c.field])!)}
+            onClear={() => void save(c.field, credentialClear(c.field))}
+          />
         ))}
 
       <p className="text-muted">
@@ -391,6 +371,70 @@ export function SettingsPage() {
         </Field>
       </Card>
     </div>
+  );
+}
+
+/**
+ * One agent's credential card. With no `HATCH_SECRET_KEY` the server refuses to
+ * store a secret, so the card says so beside the field and Save is off before
+ * anyone types; Remove is untouched, since clearing needs no key.
+ */
+export function CredentialCard({
+  credential: c,
+  settings,
+  draft,
+  busy,
+  onDraft,
+  onSave,
+  onClear,
+}: {
+  credential: (typeof AGENT_CREDENTIALS)[number];
+  settings: HatchSettings;
+  draft: string;
+  busy: CredentialField | 'name' | 'defaultTokens' | null;
+  onDraft: (value: string) => void;
+  onSave: () => void;
+  onClear: () => void;
+}) {
+  const blocked = secretsBlocked(settings);
+  return (
+    <Card>
+      <h2 className="hatch-section-title">{c.title}</h2>
+      <ol className="hatch-runner-needs">{c.steps}</ol>
+      <Field label={c.label} hint={c.hint}>
+        <input
+          type="password"
+          autoComplete="off"
+          value={draft}
+          placeholder={credentialPlaceholder(settings, c.field)}
+          onChange={(e) => onDraft(e.target.value)}
+        />
+      </Field>
+      {blocked && (
+        <p className="text-muted">
+          {SECRETS_BLOCKED_WORDS} <Link to="/docs/environment-variables">Environment variables</Link>
+        </p>
+      )}
+      <div className="hatch-form-actions">
+        <Button
+          variant="primary"
+          loading={busy === c.field}
+          disabled={busy !== null || blocked || credentialSave(c.field, draft) === null}
+          onClick={onSave}
+        >
+          Save {c.noun}
+        </Button>
+        {/* Its own button rather than "save a blank field", so a credential
+            cannot be removed by tabbing through a form and pressing Save. */}
+        <Button
+          variant="danger"
+          disabled={busy !== null || !credentialIsSet(settings, c.field)}
+          onClick={onClear}
+        >
+          Remove {c.noun}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

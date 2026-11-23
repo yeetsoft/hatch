@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Hatch.Api.Services.Chat;
 using Hatch.Api.Tests.Chat;
 using Hatch.Api.Tests.Hatch;
@@ -60,7 +61,10 @@ public class ChatPageTests(ITestOutputHelper output)
             {
                 services.RemoveAll<IChatProvider>();
                 services.AddSingleton<IChatProvider>(new FakeChatProvider());
-            });
+            },
+            // A token is sealed under a key, and a host with none refuses to connect a workspace.
+            // Made here at run time: no key, real or example, goes in a tracked file.
+            secretKey: Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
 
             await harness.OpenAsync(deadline, baseUrl, "/chat");
             await harness.WaitForTopBarAsync(deadline);
