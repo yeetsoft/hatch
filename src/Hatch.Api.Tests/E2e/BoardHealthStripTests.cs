@@ -1,21 +1,25 @@
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Tests.Hatch;
 using Microsoft.Playwright;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Xunit.Abstractions;
 
 namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
-/// HA-2732's acceptance at desktop width, driven in Chromium: four tiles sit above the board and share one
-/// window and one hovered moment, the operator can hide them, and a board with no history draws no strip.
+/// HA-2732's and HA-2739's acceptance at desktop width, driven in Chromium: five tiles sit above the board and
+/// share one window and one hovered moment, the operator can hide them, and a board with no history draws no
+/// strip.
 ///
-/// <para>A board is filed with four issues, each moved right once, so every move lands in the newest bar.
-/// Hovering the oldest bar then reads a count of nothing where the window's own number was four, and a
-/// keyboard step to the last bar marks the moment too. The window survives a reload; hiding survives one
-/// as well, and a request watcher registered before it saw no read of the health route. A screenshot of
-/// the strip is left in the artifact directory in the light and the dark theme, and with a hover.</para>
+/// <para>A board is filed with four issues, each moved right once, so every move lands in the newest bar, and
+/// a keyed runner claims a fifth without moving it, so its lane reads working. Hovering the oldest bar then
+/// reads a count of nothing where the window's own number was four, and a keyboard step to the last bar marks
+/// the moment too. The window survives a reload; hiding survives one as well, and a request watcher registered
+/// before it saw no read of the health route. A screenshot of the strip is left in the artifact directory in
+/// the light and the dark theme, and with a hover.</para>
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class BoardHealthStripTests(ITestOutputHelper output)
@@ -27,12 +31,17 @@ public class BoardHealthStripTests(ITestOutputHelper output)
 
     private const string Strip = ".hatch-health-strip";
     private const string Moved = "[data-tile='moved']";
+    private const string Runners = "[data-tile='runners']";
     private const string Toggle = "button[aria-label='Show the health strip above the board']";
     private const string HealthRoute = "/api/board/health";
 
-    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
     private static readonly string[] Titles = ["Draft the brief", "Cut the first slice", "Review the slice", "Ship the slice"];
+
+    private const string Runner = "board-health-runner";
+
+    private const string Where = "here:/checkouts/board-health";
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public async Task TheStrip_SharesOneWindowAndOneMoment_AndCanBeHidden()
@@ -58,9 +67,9 @@ public class BoardHealthStripTests(ITestOutputHelper output)
             var page = harness.Page!;
             await harness.WaitForVisibleAsync(deadline, Strip);
 
-            // Four tiles, the window control with one button pressed, and the axis said in a sentence.
+            // Five tiles, the window control with one button pressed, and the axis said in a sentence.
             var tiles = await Texts(harness, deadline, $"{Strip} [data-tile] h3");
-            Assert.Equal(["Moved", "In flight", "Oldest in flight", "Waiting on you"], tiles);
+            Assert.Equal(["Moved", "In flight", "Oldest in flight", "Waiting on you", "Runners"], tiles);
             Assert.Equal(["2h", "4h", "8h", "12h", "24h"], await Texts(harness, deadline, ".hatch-health-window"));
             Assert.Equal("8h", Assert.Single(await Texts(harness, deadline, ".hatch-health-window[aria-pressed='true']")));
             Assert.Matches(@"^to \d{1,2}:\d{2}( [AP]M)? · \d+ min bars$", Assert.Single(await Texts(harness, deadline, ".hatch-health-axis")));
@@ -112,6 +121,32 @@ public class BoardHealthStripTests(ITestOutputHelper output)
             await deadline.BoundAsync("pressing Escape", () => page.Keyboard.PressAsync("Escape"));
             await harness.WaitForFunctionAsync(deadline, "waiting for Escape", "() => document.querySelectorAll('.hatch-health-moment').length === 0");
             Assert.Equal(rest, await Readout(harness, deadline));
+
+            // The Runners tile draws the seeded runner's lane, its name and "working" in the hover list at
+            // the last bar.
+            var lanes = await Texts(harness, deadline, $"{Runners} .hatch-health-lane-name");
+            Assert.Equal([Runner], lanes);
+
+            var runnersSpark = await page.Locator($"{Runners} [data-part='spark']").BoundingBoxAsync();
+            Assert.NotNull(runnersSpark);
+            await deadline.BoundAsync(
+                "hovering the last bar", () => page.Mouse.MoveAsync((float)(runnersSpark.X + runnersSpark.Width - 2), (float)(runnersSpark.Y + runnersSpark.Height / 2)));
+            await harness.WaitForVisibleAsync(deadline, ".hatch-health-lane-hover");
+            var hover = Assert.Single(await Texts(harness, deadline, ".hatch-health-lane-hover"));
+            Assert.Contains(Runner, hover);
+            Assert.Contains("working", hover);
+            await deadline.BoundAsync("leaving the sparkline", () => page.Mouse.MoveAsync(5, 5));
+            await harness.WaitForHiddenAsync(deadline, ".hatch-health-lane-hover");
+
+            // The Key opens the legend, naming all seven cells, and closes it again.
+            await harness.ClickAsync(deadline, $"{Runners} .hatch-health-key");
+            await harness.WaitForVisibleAsync(deadline, $"{Runners} .hatch-health-legend");
+            Assert.Equal("true", await page.Locator($"{Runners} .hatch-health-key").GetAttributeAsync("aria-expanded"));
+            var legend = Assert.Single(await Texts(harness, deadline, $"{Runners} .hatch-health-legend"));
+            Assert.Contains("Moved a ticket", legend);
+            Assert.Contains("Off", legend);
+            await harness.ClickAsync(deadline, $"{Runners} .hatch-health-key");
+            Assert.Equal("false", await page.Locator($"{Runners} .hatch-health-key").GetAttributeAsync("aria-expanded"));
 
             // The window is remembered across a reload.
             await harness.ClickAsync(deadline, ".hatch-health-window:text-is('12h')");
@@ -210,6 +245,8 @@ public class BoardHealthStripTests(ITestOutputHelper output)
     /// <summary>
     /// Files a project and four issues, then moves each one column right of where it was filed, on a
     /// column that is neither protected, terminal nor deferred, so every move counts as work going forward.
+    /// A fifth issue is claimed by a keyed, heartbeating runner and left unmoved, as
+    /// <see cref="QueueRunnerStripTests.SeedAsync"/> does, so its lane reads working rather than moved.
     /// </summary>
     private static async Task SeedAsync(string baseUrl)
     {
@@ -233,6 +270,20 @@ public class BoardHealthStripTests(ITestOutputHelper output)
             var text = await response.Content.ReadAsStringAsync();
             Assert.True(response.IsSuccessStatusCode, $"POST /api/issues/{issue.Key}/move answered {(int)response.StatusCode}: {text}");
         }
+
+        var held = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "task", "Keep a runner busy", null, null, null, null));
+        var minted = await PostAsync<CreateRunnerRequest, RunnerMintedDto>(http, "/api/runners", new(Runner));
+
+        using var asRunner = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        asRunner.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", minted.Secret);
+
+        await PostAsync<RunnerHeartbeatRequest, RunnerInstructionDto>(asRunner, "/api/runners/sessions", new(Kind: "loop", Where: Where));
+        var taken = await PostAsync<ClaimRequest, ClaimTakenDto>(asRunner, $"/api/issues/{held.Key}/claim", new(Where));
+
+        using var beat = await asRunner.PostAsJsonAsync(
+            $"/api/issues/{held.Key}/claim/heartbeat", new ClaimHeartbeatRequest(taken.Token, "running the tests"), Web);
+        Assert.True(beat.IsSuccessStatusCode, $"the claim heartbeat answered {(int)beat.StatusCode}: {await beat.Content.ReadAsStringAsync()}");
     }
 
     private static async Task<TResponse> PostAsync<TRequest, TResponse>(HttpClient http, string path, TRequest body)

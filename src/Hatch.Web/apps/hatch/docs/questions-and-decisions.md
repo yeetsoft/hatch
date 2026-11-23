@@ -25,6 +25,13 @@ A label is short enough to press and reads as a decision on its own:
 text, so it is worth getting right. Prose is for the answer that is genuinely
 open-ended, where no short list of choices covers it.
 
+A fault of the runner's own machine is not a question either: a tool or a
+sign-in the runner lacks is not a choice between named things. The session is
+told to open its pull request with `hatch pr` anyway (the text waits on the
+ticket for a runner that can), and to use `hatch recuse` with the reason where
+the work itself needs what it lacks. The loop names the failure on the release
+instead, so the ticket shows what was wrong with the machine.
+
 A question the repository can answer is not one to ask. The session answers it
 by reading, because a question the code already settles is a round trip through
 a person for nothing. [What a session is

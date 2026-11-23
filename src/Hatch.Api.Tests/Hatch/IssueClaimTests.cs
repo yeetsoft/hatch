@@ -1300,6 +1300,145 @@ public class IssueClaimTests
         Assert.Single((await h.EventsAsync(issue)), e => e.Kind == EfHatchIssueEvent.ClaimReleased);
     }
 
+    // ---- The runner failure on a release ----
+
+    private const string FailureRunner = "host-one:/work/tree";
+
+    private static async Task<EfHatchRunnerFailure> OpenFailureAsync(Harness h, string kind, string where = FailureRunner)
+    {
+        var db = h.Connect();
+        var row = new EfHatchRunnerFailure
+        {
+            ApiKeyId = h.Caller.Key!.Id, Where = where, Kind = kind, Why = "earlier", BeganAt = Now, LastReportedAt = Now,
+        };
+        db.RunnerFailures.Add(row);
+        await db.SaveChangesAsync();
+        return row;
+    }
+
+    private static Harness AsRunnerKey(Harness h)
+    {
+        h.Caller.Key = new EfApiKey { Id = Guid.NewGuid(), Name = "runner-one", Prefix = "hatch_ak_x", Hash = [1], CreatedAt = Now };
+        return h;
+    }
+
+    private static Task<List<EfHatchRunnerFailureIssue>> LinksAsync(Harness h) =>
+        h.Connect().RunnerFailureIssues.AsNoTracking().ToListAsync();
+
+    [SkippableFact]
+    public async Task AReleaseNamingAFailure_RecordsItOnTheEvent_AndLinksTheOpenRowOnce()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        AsRunnerKey(h);
+        var row = await OpenFailureAsync(h, RunnerFailureKinds.Signing);
+
+        for (var round = 0; round < 2; round++)
+        {
+            var token = await h.TakeAsync(issue, FailureRunner);
+            Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(
+                issue, token, ClaimOutcomes.Dropped, null, null, RunnerFailureKinds.Signing, "git is not set to sign commits here", default));
+        }
+
+        var released = (await h.EventsAsync(issue)).Where(e => e.Kind == EfHatchIssueEvent.ClaimReleased).ToList();
+        Assert.Equal(2, released.Count);
+        foreach (var e in released)
+        {
+            Assert.Equal(ClaimOutcomes.Dropped, e.Payload!.Value.GetProperty("outcome").GetString());
+            Assert.Equal(RunnerFailureKinds.Signing, e.Payload!.Value.GetProperty("failure").GetString());
+            Assert.Equal("git is not set to sign commits here", e.Payload!.Value.GetProperty("failureWhy").GetString());
+        }
+
+        var link = Assert.Single(await LinksAsync(h));
+        Assert.Equal((row.Id, (await h.RowAsync(issue)).Id), (link.FailureId, link.IssueId));
+    }
+
+    [SkippableFact]
+    public async Task AFailureWhy_IsCutToTheRowsLength()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        AsRunnerKey(h);
+        var token = await h.TakeAsync(issue, FailureRunner);
+
+        await h.Claims.ReleaseClaim(
+            issue, token, ClaimOutcomes.Dropped, null, null, RunnerFailureKinds.Forge, "  " + new string('x', 500), default);
+
+        var why = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased)
+            .Payload!.Value.GetProperty("failureWhy").GetString();
+        Assert.Equal(EfHatchRunnerFailure.MaxWhyLength, why!.Length);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseNamingNoFailure_WritesTheSamePayloadAsBefore_AndLinksNothing()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        AsRunnerKey(h);
+        await OpenFailureAsync(h, RunnerFailureKinds.Signing);
+        var token = await h.TakeAsync(issue, FailureRunner);
+
+        await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default);
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.False(payload.TryGetProperty("failure", out _));
+        Assert.False(payload.TryGetProperty("failureWhy", out _));
+        Assert.Empty(await LinksAsync(h));
+    }
+
+    [SkippableFact]
+    public async Task AFailureTheBoardDoesNotKnow_IsDropped_AndTheReleaseGoesThrough()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        AsRunnerKey(h);
+        await OpenFailureAsync(h, RunnerFailureKinds.Signing);
+        var token = await h.TakeAsync(issue, FailureRunner);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(
+            issue, token, ClaimOutcomes.Dropped, null, null, "nonsense", "said so", default));
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.Equal(ClaimOutcomes.Dropped, payload.GetProperty("outcome").GetString());
+        Assert.False(payload.TryGetProperty("failure", out _));
+        Assert.False(payload.TryGetProperty("failureWhy", out _));
+        Assert.Empty(await LinksAsync(h));
+    }
+
+    [SkippableFact]
+    public async Task AFailureWithNoOpenRow_WritesTheEventAlone()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        AsRunnerKey(h);
+        // A row of another kind, and one at another checkout, are not the one.
+        await OpenFailureAsync(h, RunnerFailureKinds.Forge);
+        await OpenFailureAsync(h, RunnerFailureKinds.Signing, "host-two:/work/tree");
+        var token = await h.TakeAsync(issue, FailureRunner);
+
+        await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, null, null, RunnerFailureKinds.Signing, "no key", default);
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.Equal(RunnerFailureKinds.Signing, payload.GetProperty("failure").GetString());
+        Assert.Empty(await LinksAsync(h));
+    }
+
+    [SkippableFact]
+    public async Task AFailureWithNoOutcome_IsNotRead()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        AsRunnerKey(h);
+        await OpenFailureAsync(h, RunnerFailureKinds.Signing);
+        var token = await h.TakeAsync(issue, FailureRunner);
+
+        await h.Claims.ReleaseClaim(issue, token, null, null, null, RunnerFailureKinds.Signing, "no key", default);
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.False(payload.TryGetProperty("failure", out _));
+        Assert.Empty(await LinksAsync(h));
+    }
+
     [SkippableFact]
     public async Task AReleaseNamingNoSession_StampsNothingAndWritesTheSamePayloadAsBefore()
     {

@@ -629,9 +629,10 @@ epic expanded.
 
 ## The health strip
 
-Above the columns, under the filter bar, a strip of four tiles shows in one look
-whether work is moving, piling up, stuck or waiting on a person. On a phone it
-is one row of the four numbers that opens into the tiles when tapped; see
+Above the columns, under the filter bar, a strip of five tiles shows in one look
+whether work is moving, piling up, stuck or waiting on a person, and which
+runners were up and doing what. On a phone it is one row of the five numbers
+that opens into the tiles when tapped; see
 [Hatch on your phone](hatch-on-your-phone).
 
 The strip has one window control: **2h**, **4h**, **8h**, **12h** or **24h**.
@@ -655,15 +656,34 @@ same moment on all four.
 - **Waiting on you** counts pull requests and questions waiting on a person. The
   sparkline is steps. The big number is the count now, and under it is how long
   the oldest has waited. At zero it says "nothing waiting".
+- **Runners** draws one thin lane per runner that was up at any time in the
+  window, at most eight: up now first, then most recently heard from, and a
+  line under the lanes says how many are not drawn. The big number is how many
+  are up of how many have a lane, with how many of those are paused underneath.
+  Each cell in a lane is the most telling thing the runner did in that bar: a
+  full bar is **moved a ticket** or **working**, told apart by shade; a
+  dotted full bar is **let go or errored** - a stall, a drop or a failed
+  session; a striped full bar is **out of usage or agent down**, from the
+  state record; a short bar is **idle** (up, nothing it could take) or **off**
+  (no session open); a hollow bar is **paused**, from the state record, worded
+  "paused by the board" when the board itself imposed it. No cell is told by
+  colour alone - every one is also a word in the hover, the key and the
+  tile's own spoken label. Lanes ignore the project scope the rest of the
+  board follows, but not the caller's own visibility: a runner's work in a
+  project the caller cannot see reads as idle. A **Key** button at the tile's
+  top right opens a legend naming all seven cells; press it, or hover or focus
+  the tile.
 
-At rest the last three tiles show now, the bar still filling, and Moved shows
-the window's total. Point at any bar, on any tile, and every tile marks that
-same moment: each number becomes its value then, and the line under it says
-the time. On Moved the hovered bar's count is split by who moved: a runner, a
-person, or the board. Move off and the window's own numbers come back. From
-the keyboard, Tab to a sparkline and use the left and right arrows to step a
-bar, Home and End to jump, and Escape to clear. Every tile also reads
-sensibly from its text alone, with its arrow or warning said in words.
+At rest the last three tiles show now, the bar still filling, Moved shows
+the window's total, and Runners shows how many are up now. Point at any bar,
+on any tile, and every tile marks that same moment: each number becomes its
+value then, and the line under it says the time. On Moved the hovered bar's
+count is split by who moved: a runner, a person, or the board. On Runners a
+popover under the tile names every drawn runner's state at that moment. Move
+off and the window's own numbers come back. From the keyboard, Tab to a
+sparkline and use the left and right arrows to step a bar, Home and End to
+jump, and Escape to clear. Every tile also reads sensibly from its text
+alone, with its arrow or warning said in words.
 
 Colour follows meaning, not direction, and no tile says anything by colour
 alone. Light and dark each have their own values.

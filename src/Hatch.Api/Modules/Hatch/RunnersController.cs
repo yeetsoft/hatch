@@ -151,8 +151,9 @@ public class RunnersController(
 
         if (found.Key is not { } key) return new RunnerFailuresDto([], []);
 
+        var open = await OpenFailuresAsync(ct);
         return new RunnerFailuresDto(
-            RunnerFailures.Current(await OpenFailuresAsync(ct), found, sessions, now),
+            RunnerFailures.Current(open.Rows, found, sessions, now, open.Tickets),
             await RunnerFailures.EarlierAsync(db, key.Id, ct));
     }
 
@@ -293,7 +294,7 @@ public class RunnersController(
         // A new key holds nothing and drives nothing, so nothing is read for it.
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), [], time.GetUtcNow(), ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), await VisibleKeysAsync(ct), await StatusIdsAsync(ct), await LocalModelsAsync(ct), OpenFailures.None, time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
@@ -334,15 +335,24 @@ public class RunnersController(
         db.LocalModels.AsNoTracking().OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).ToListAsync(ct);
 
     /// <summary>Every open failure row, read once per request and threaded through <see cref="ProjectAsync"/>; <see cref="RunnerFailures.Current"/> says which of them are current.</summary>
-    private async Task<IReadOnlyList<EfHatchRunnerFailure>> OpenFailuresAsync(CancellationToken ct) =>
-        await db.RunnerFailures.AsNoTracking().Where(f => f.EndedAt == null).ToListAsync(ct);
+    private async Task<OpenFailures> OpenFailuresAsync(CancellationToken ct)
+    {
+        var rows = await db.RunnerFailures.AsNoTracking().Where(f => f.EndedAt == null).ToListAsync(ct);
+        return new OpenFailures(rows, await RunnerFailures.TicketsAsync(db, rows.Select(r => r.Id).ToList(), ct));
+    }
+
+    /// <summary>The open rows, and the issue keys linked to them - see <see cref="OpenFailuresAsync"/>.</summary>
+    private sealed record OpenFailures(IReadOnlyList<EfHatchRunnerFailure> Rows, IReadOnlyDictionary<long, IReadOnlyList<string>> Tickets)
+    {
+        public static readonly OpenFailures None = new([], new Dictionary<long, IReadOnlyList<string>>());
+    }
 
     /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
     private async Task<RunnerDto> ProjectAsync(
         Runner runner, Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
         SiteSettingsSnapshot site, IReadOnlySet<string> visibleKeys, IReadOnlySet<int> statusIds, IReadOnlyList<EfHatchLocalModel> localModels,
-        IReadOnlyList<EfHatchRunnerFailure> openFailures, DateTimeOffset now, CancellationToken ct)
+        OpenFailures openFailures, DateTimeOffset now, CancellationToken ct)
     {
         var ownerId = runner.OwnerPersonId;
         var forName = ownerId is { } id ? (await actors.ResolveAsync(ActorKind.Person, id, ct))?.Name : null;
@@ -376,7 +386,7 @@ public class RunnersController(
 
         // What this runner cannot do right now: its open failure rows at a
         // checkout it is being heard from at, none for a runner gone quiet.
-        dto = dto with { Failures = RunnerFailures.Current(openFailures, runner, sessions, now) };
+        dto = dto with { Failures = RunnerFailures.Current(openFailures.Rows, runner, sessions, now, openFailures.Tickets) };
 
         // A keyed runner with no legacy row has no row-level accelerator fact
         // at all, so the newest live loop session's own carries it - the same

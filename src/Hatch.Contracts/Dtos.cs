@@ -5737,7 +5737,14 @@ public static class RunnerFailureKinds
 /// <param name="LastReportedAt">The last beat that still found it failing.</param>
 /// <param name="EndedAt">The beat that found it no longer failing. Null while it stands.</param>
 public record RunnerFailureDto(
-    string Kind, string? Where, string? Why, DateTimeOffset BeganAt, DateTimeOffset LastReportedAt, DateTimeOffset? EndedAt);
+    string Kind, string? Where, string? Why, DateTimeOffset BeganAt, DateTimeOffset LastReportedAt, DateTimeOffset? EndedAt)
+{
+    /// <summary>
+    /// Keys of the issues the runner let go because of this failure, newest first, at most twenty.
+    /// Absent from an older board, so a reader takes it as none.
+    /// </summary>
+    public IReadOnlyList<string> Tickets { get; init; } = [];
+}
 
 /// <summary>What <c>GET /api/runners/{name}/failures</c> answers.</summary>
 /// <param name="Current">Open rows at a checkout the runner is being heard from at, newest began first.</param>

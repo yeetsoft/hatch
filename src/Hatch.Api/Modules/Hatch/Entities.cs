@@ -5253,3 +5253,23 @@ public class EfHatchRunnerFailure
     /// <summary>Null while it stands.</summary>
     public DateTimeOffset? EndedAt { get; set; }
 }
+
+/// <summary>
+/// A ticket a runner let go because of one of its failures - see
+/// <see cref="EfHatchRunnerFailure"/>. Written by the release that named the
+/// failure, once per row and issue, and cleared with either end.
+/// </summary>
+[Table("RunnerFailureIssues")]
+public class EfHatchRunnerFailureIssue
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long FailureId { get; set; }
+
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    /// <summary>When the release linked them.</summary>
+    public DateTimeOffset At { get; set; }
+}

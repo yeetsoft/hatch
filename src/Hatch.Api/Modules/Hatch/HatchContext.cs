@@ -120,6 +120,9 @@ public class HatchContext : DbContext, IModuleContext
     /// <summary>What a runner could not do, one row per failure - see <see cref="EfHatchRunnerFailure"/>.</summary>
     public DbSet<EfHatchRunnerFailure> RunnerFailures => Set<EfHatchRunnerFailure>();
 
+    /// <summary>The tickets let go for a runner failure - see <see cref="EfHatchRunnerFailureIssue"/>.</summary>
+    public DbSet<EfHatchRunnerFailureIssue> RunnerFailureIssues => Set<EfHatchRunnerFailureIssue>();
+
     /// <summary>
     /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
     /// end of a relationship to a filtered <c>Projects</c>. It is the one table
@@ -672,6 +675,23 @@ public class HatchContext : DbContext, IModuleContext
         modelBuilder.Entity<EfHatchRunnerFailure>(e =>
             e.HasIndex(f => new { f.ApiKeyId, f.Where, f.Kind }).IsUnique().HasFilter("\"EndedAt\" IS NULL"));
 
+        // A release links its ticket to the failure it named, once. Either end
+        // going takes the link with it.
+        modelBuilder.Entity<EfHatchRunnerFailureIssue>(e =>
+        {
+            e.HasIndex(l => new { l.FailureId, l.IssueId }).IsUnique();
+
+            e.HasOne<EfHatchRunnerFailure>()
+                .WithMany()
+                .HasForeignKey(l => l.FailureId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(l => l.Issue)
+                .WithMany()
+                .HasForeignKey(l => l.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // An attachment that names a project is that project's - cascading,
         // not the SetNull a dream's own FK above is: there is no meaning to
         // an attachment surviving the deletion of the project it was
@@ -789,6 +809,7 @@ public class HatchContext : DbContext, IModuleContext
         modelBuilder.Entity<EfHatchVerdict>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchContribution>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchIssueRunnerOmission>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
+        modelBuilder.Entity<EfHatchRunnerFailureIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchIssueDependency>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchDreamThread>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));
         modelBuilder.Entity<EfHatchCapability>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Issue!.ProjectId));

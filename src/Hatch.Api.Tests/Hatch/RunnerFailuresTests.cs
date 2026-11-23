@@ -393,6 +393,62 @@ public class RunnerFailuresTests
         Assert.Equal(runner.Failures, route.Current);
     }
 
+    // ---- The tickets a failure let go ----
+
+    [SkippableFact]
+    public async Task ARowCarriesTheKeysOfTheTicketsLinkedToIt_NewestFirst_OnCurrentAndEarlier()
+    {
+        var h = await NewAsync(await ConnectAsync());
+        await h.BeatAsync(Forge("fails", "no"));
+        await h.BeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Tree, Signing: "fails", SigningWhy: "no key"));
+        var project = await h.Db.Projects.SingleAsync();
+        var status = await h.Db.Statuses.SingleAsync();
+
+        var issues = new List<EfHatchIssue>();
+        for (var number = 1; number <= RunnerFailures.MaxTickets + 3; number++)
+            issues.Add(new EfHatchIssue
+            {
+                ProjectId = project.Id, Number = number, Type = "task", Title = "t", StatusId = status.Id, Rank = number,
+                CreatedBy = "operator", CreatedAt = Now, UpdatedAt = Now,
+            });
+        h.Db.Issues.AddRange(issues);
+        await h.Db.SaveChangesAsync();
+
+        var forge = (await h.RowsAsync()).Single(r => r.Kind == RunnerFailureKinds.Forge);
+        var signing = (await h.RowsAsync()).Single(r => r.Kind == RunnerFailureKinds.Signing);
+        for (var i = 0; i < issues.Count; i++)
+            h.Db.RunnerFailureIssues.Add(new EfHatchRunnerFailureIssue { FailureId = forge.Id, IssueId = issues[i].Id, At = Now.AddMinutes(i) });
+        h.Db.RunnerFailureIssues.Add(new EfHatchRunnerFailureIssue { FailureId = signing.Id, IssueId = issues[0].Id, At = Now });
+        await h.Db.SaveChangesAsync();
+
+        var current = Assert.IsType<RunnerFailuresDto>((await h.Runners.GetRunnerFailures(Name, default)).Value).Current;
+        Assert.Equal(["AER-1"], current.Single(f => f.Kind == RunnerFailureKinds.Signing).Tickets);
+        var capped = current.Single(f => f.Kind == RunnerFailureKinds.Forge).Tickets;
+        Assert.Equal(RunnerFailures.MaxTickets, capped.Count);
+        Assert.Equal($"AER-{issues.Count}", capped[0]);
+
+        var runner = Assert.Single((await h.Runners.GetRunners(default)).Value!.ToList());
+        Assert.Equal(current.Select(f => f.Tickets.Count), runner.Failures.Select(f => f.Tickets.Count));
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.BeatAsync(Forge("works"));
+
+        var earlier = Assert.Single(Assert.IsType<RunnerFailuresDto>((await h.Runners.GetRunnerFailures(Name, default)).Value).Earlier);
+        Assert.Equal(RunnerFailureKinds.Forge, earlier.Kind);
+        Assert.Equal(RunnerFailures.MaxTickets, earlier.Tickets.Count);
+        Assert.Equal($"AER-{issues.Count}", earlier.Tickets[0]);
+    }
+
+    [SkippableFact]
+    public async Task ARowWithNoTickets_ReadsAnEmptyList()
+    {
+        var h = await NewAsync(await ConnectAsync());
+        await h.BeatAsync(Forge("fails", "no"));
+
+        var current = Assert.IsType<RunnerFailuresDto>((await h.Runners.GetRunnerFailures(Name, default)).Value).Current;
+        Assert.Empty(Assert.Single(current).Tickets);
+    }
+
     // ---- Harness ----
 
     private static RunnerHeartbeatRequest Forge(string word, string? why = null) =>

@@ -13,6 +13,7 @@
    `withWindow` from ./reportWindow and `scopeSearch` from ./scope, and copies
    none of them. */
 
+import { runnersTileWords } from './boardHealthLanes';
 import { formatSpan } from './cardAge';
 import { momentLabel } from './cumulativeFlow';
 import { withWindow } from './reportWindow';
@@ -241,7 +242,7 @@ export function waitingSteps(answer: BoardHealth, width: number, height: number)
 
 // ---- Readouts ----
 
-export type Tile = 'moved' | 'inFlight' | 'oldest' | 'waiting';
+export type Tile = 'moved' | 'inFlight' | 'oldest' | 'waiting' | 'runners';
 
 /** How a tile's colour follows its meaning. Never the only carrier of it: every
     tone has a glyph or a word beside it. */
@@ -353,6 +354,14 @@ function oldest(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, loca
   };
 }
 
+/** The Runners tile: how many lanes are up, and what each was doing at rest
+    or on one bar - the words alone come from lib/boardHealthLanes.ts. */
+function runners(answer: BoardHealth, index: number | null, locale?: string): TileReadout {
+  const words = runnersTileWords(answer, index, locale);
+
+  return { value: words.value, second: words.second, detail: words.detail, tone: 'neutral', glyph: '', arrow: null };
+}
+
 /** The waiting-on-you tile. */
 function waiting(answer: BoardHealth, shown: BoardHealthBar, onBar: boolean, locale?: string): TileReadout {
   const count = waitingCount(shown);
@@ -395,6 +404,7 @@ export function readout(answer: BoardHealth, index: number | null, locale?: stri
     inFlight: inFlight(answer, shown, onBar, locale),
     oldest: oldest(answer, shown, onBar, locale),
     waiting: waiting(answer, shown, onBar, locale),
+    runners: runners(answer, index, locale),
   };
 }
 
@@ -404,6 +414,7 @@ const TILE_NAME: Record<Tile, string> = {
   inFlight: 'In flight',
   oldest: 'Oldest in flight',
   waiting: 'Waiting on you',
+  runners: 'Runners',
 };
 
 /** The moved tile's change in words: `up 16 against the prior 8h`. */
@@ -414,11 +425,14 @@ const changeSentence = (readout: TileReadout): string => {
 };
 
 /** One tile as one sentence for `aria-label`, readable alone: `Moved: 47, up 16
-    against the prior 8h`. Arrows and the warning glyph are said in words. */
-export function tileLabel(tile: Tile, readout: TileReadout): string {
+    against the prior 8h`. Arrows and the warning glyph are said in words.
+    `hover` carries the Runners tile's hover list, said last, when a bar is
+    marked. */
+export function tileLabel(tile: Tile, readout: TileReadout, hover?: string): string {
   const parts = [`${TILE_NAME[tile]}: ${readout.value}`];
   parts.push(tile === 'moved' && readout.arrow ? changeSentence(readout) : readout.second);
   if (readout.detail) parts.push(readout.detail);
+  if (hover) parts.push(hover);
 
   return parts.filter(Boolean).join(', ');
 }
@@ -463,6 +477,9 @@ function shorten(tile: Tile, readout: TileReadout): string {
       const age = /^oldest (.+)$/.exec(second);
       return age ? `${age[1]} old` : second;
     }
+    // The Runners tile splits its value instead - see compactReadout.
+    case 'runners':
+      return second;
   }
 }
 
@@ -470,6 +487,9 @@ function shorten(tile: Tile, readout: TileReadout): string {
  * What each tile says in the phone's closed row. Built from the window at rest,
  * `readout(answer, null)`, so its numbers are the full tiles' numbers; only the
  * second line is shortened.
+ *
+ * The Runners tile has no room for both its value and "up"/"paused": its
+ * value, "3 of 4", splits instead into "3" over "of 4".
  */
 export function compactReadout(answer: BoardHealth, locale?: string): CompactReadouts {
   const full = readout(answer, null, locale);
@@ -479,7 +499,20 @@ export function compactReadout(answer: BoardHealth, locale?: string): CompactRea
     tone: full[tile].tone,
   });
 
-  return { moved: one('moved'), inFlight: one('inFlight'), oldest: one('oldest'), waiting: one('waiting') };
+  const split = full.runners.value.indexOf(' ');
+  const runnersCompact: CompactReadout = {
+    value: split === -1 ? full.runners.value : full.runners.value.slice(0, split),
+    second: split === -1 ? '' : full.runners.value.slice(split + 1),
+    tone: full.runners.tone,
+  };
+
+  return {
+    moved: one('moved'),
+    inFlight: one('inFlight'),
+    oldest: one('oldest'),
+    waiting: one('waiting'),
+    runners: runnersCompact,
+  };
 }
 
 // ---- Keyboard ----
