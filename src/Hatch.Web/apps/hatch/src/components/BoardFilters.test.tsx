@@ -15,7 +15,7 @@ const projects = [
 function render(
   filter: CardFilter = DEFAULT_FILTER,
   collapsed = false,
-  over: { scoped?: boolean; projects?: Project[]; cards?: IssueCard[] } = {},
+  over: { scoped?: boolean; projects?: Project[]; cards?: IssueCard[]; inFilters?: boolean } = {},
 ) {
   return renderToStaticMarkup(
     <BoardFilters
