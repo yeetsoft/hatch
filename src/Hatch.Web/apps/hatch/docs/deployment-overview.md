@@ -128,10 +128,12 @@ nothing to set for that one.
 
 ## Where secrets go
 
-- **The `.env` beside `compose.yaml`.** Git-ignored (`.gitignore:13-17`).
+- **The `.env` beside `compose.yaml`.** Git-ignored (`.gitignore:13-17`). This is where
+  `HATCH_SECRET_KEY` goes: [the secret key](the-secret-key) says how to make one.
 - **`src/Hatch.Api/.env.json`.** Bind-mounted at `/App/.env.json`
-  (`compose.yaml:80`) and git-ignored (`.gitignore:12`). It loads after the
-  environment, so it wins (`Program.cs:56-62`). A board needs nothing
+  (`compose.yaml:83`) and git-ignored (`.gitignore:12`). It loads after the
+  environment, so it wins (`Program.cs:48-52`), for `Hatch:SecretKey` as for
+  everything else. A board needs nothing
   from it: it is a place for operator secrets in local development.
   `make run` and `make up` make a development secret key there, at
   `Hatch:SecretKey`, if it holds none, and never replace one. An install made
@@ -168,8 +170,8 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Hatch__PublicBaseUrl` | empty | The address a browser opens this Hatch at, printed into a pull request's link back to its ticket. |
 | `Hatch__AssetLinks__0__PackageName` | empty | One phone's installed app, trusted to open this install's links without the user granting it by hand. |
 | `Hatch__AssetLinks__0__Sha256CertFingerprints__0` | empty | That app's signing certificate fingerprint. |
-| `Hatch__SecretKey` | empty | **A secret.** The key secrets are sealed under: base64 of exactly 32 bytes (`openssl rand -base64 32`). Empty means none: the API starts, warns once, and cannot save a secret. |
-| `Hatch__PreviousSecretKey` | empty | **A secret.** The key before the current one, kept while a change of key is under way. It opens what it sealed and seals nothing. Same form as `Hatch__SecretKey`. |
+| `Hatch__SecretKey` | empty | **A secret.** The key secrets are sealed under: base64 of exactly 32 bytes (`openssl rand -base64 32`). Empty means none: the API starts, warns once, and cannot save a secret. See [the secret key](the-secret-key). |
+| `Hatch__PreviousSecretKey` | empty | **A secret.** The key before the current one, kept while a change of key is under way. It opens what it sealed and seals nothing. Same form as `Hatch__SecretKey`. See [changing the key](the-secret-key#changing-the-key). |
 | `Hatch__ClaimTtlSeconds` | `300` | How long a claim survives without a heartbeat. |
 | `Hatch__RunnerGoneAfterSeconds` | `90` | How long a runner may go without a heartbeat before its row reads *gone*. |
 | `Hatch__StallLapseMinutes` | `5` | How long a claim may go untouched before it is considered quiet. |
