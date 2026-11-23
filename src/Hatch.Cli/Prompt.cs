@@ -61,6 +61,7 @@ public static class Prompt
 
         if (work.Answering is { } answering) lines.AddRange(QuestionToAnswer(answering, work.IssueUrl, key));
         if (work.Changing is { } changing) lines.AddRange(ChangeToWorkOut(changing, work.IssueUrl, key));
+        if (work.Shaping is { } shaping) lines.AddRange(WhatYouWereGiven(shaping, key));
 
         if (work.NextBriefLimit is { } limit)
         {
@@ -263,7 +264,7 @@ public static class Prompt
             buildsPast: work.BuildPast is { Count: > 0 },
             staysPut: issue.Type == "ambition" && work.FromStatus.Id == work.ToStatus?.Id && work.Answering is null
                 && work.Changing is null,
-            answering: work.Answering, changing: work.Changing,
+            answering: work.Answering, changing: work.Changing, shaping: work.Shaping is not null,
             readmeAt: branches?.Where(b => b.TrunkLanding && b.AsksReadme).Select(b => b.Path).ToList()));
         return string.Join('\n', lines);
     }
@@ -355,6 +356,88 @@ public static class Prompt
     }
 
     private static string Folded(string? text) => (text ?? "").ReplaceLineEndings(" ");
+
+    /// <summary>
+    /// What the person gave the draft a shaping session is shaping: each dream
+    /// in full, each file with the command that fetches it, and how to read
+    /// each kind. With nothing given it is one line. A rule for reading a kind
+    /// of file prints only where a stored file of that kind is listed.
+    /// </summary>
+    private static IEnumerable<string> WhatYouWereGiven(WorkShapingDto shaping, string key)
+    {
+        yield return "## What you were given";
+        yield return "";
+
+        if (shaping.Dreams.Count == 0 && shaping.Files.Count == 0)
+        {
+            yield return "The person gave no dreams and no files. Shape the draft from its description alone.";
+            yield return "";
+            yield break;
+        }
+
+        if (shaping.Dreams.Count > 0)
+        {
+            yield return "The dreams recorded on this draft, newest first, each as it was written:";
+            yield return "";
+
+            foreach (var dream in shaping.Dreams)
+            {
+                yield return dream.Source is { Length: > 0 } source
+                    ? $"Dream {dream.Id} (source: {Folded(source)})"
+                    : $"Dream {dream.Id}";
+
+                foreach (var line in dream.Body.ReplaceLineEndings("\n").Split('\n'))
+                    yield return line.Length == 0 ? ">" : $"> {line}";
+
+                yield return "";
+            }
+        }
+
+        if (shaping.Files.Count == 0) yield break;
+
+        yield return "The files the description links:";
+        yield return "";
+
+        foreach (var file in shaping.Files)
+        {
+            yield return file.Deleted
+                ? $"- {file.Id}  deleted: the file is no longer stored. Say so on the ticket; do not describe it."
+                : $"- {file.FileName}  {file.ContentType}, {file.Size?.ToString("N0", CultureInfo.InvariantCulture)} bytes  hatch attachment get {file.Id}";
+        }
+
+        yield return "";
+
+        var stored = shaping.Files.Where(f => !f.Deleted).ToList();
+        static bool Is(WorkFileDto f, string prefix) =>
+            f.ContentType?.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) == true;
+
+        if (stored.Any(f => Is(f, "image/")))
+        {
+            yield return "An image: fetch it, then open it with the file-reading tool.";
+            yield return "";
+        }
+
+        if (stored.Any(f => Is(f, "video/")))
+        {
+            yield return "A video: you may not be able to open one. Try what this machine has for pulling still";
+            yield return "frames out of it, and open the frames. Where nothing here can, write in the";
+            yield return "description that the video was not read, and ask the person what it shows:";
+            yield return "";
+            yield return "```";
+            yield return $"hatch ask {key} \"What does the video <name> show?\"";
+            yield return "```";
+            yield return "";
+        }
+
+        if (stored.Any(f => !Is(f, "image/") && !Is(f, "video/")))
+        {
+            yield return "Any other file: fetch it and open it if it is text. Where it is not, say it was not read.";
+            yield return "";
+        }
+
+        yield return "Never describe a file you did not open.";
+        yield return "";
+    }
 
     /// <summary>
     /// The question an answering dispatch is for: the issue it is on, who asked
@@ -847,7 +930,7 @@ public static class Prompt
         bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
         bool deniesGitWrites = false, bool offersNoCode = true, string? releaseNoteFor = null,
         bool buildsPast = false, bool staysPut = false, WorkQuestionDto? answering = null,
-        WorkChangeDto? changing = null, IReadOnlyList<string>? readmeAt = null) =>
+        WorkChangeDto? changing = null, IReadOnlyList<string>? readmeAt = null, bool shaping = false) =>
     [
         "## Reaching Hatch",
         "",
@@ -942,6 +1025,7 @@ public static class Prompt
         "",
         ..(answering is not null ? AnsweringEnd(answering)
         : changing is not null ? ChangingEnd(key, changing)
+        : shaping ? ShapingEnd(key, to)
         : staysPut ? new[]
         {
             $"{key} stays in \"{to}\" when you stop. Only the operator moves work into a",
@@ -1015,6 +1099,27 @@ public static class Prompt
         "",
         "Move nothing, cut no branch, and open no pull request. Only the operator moves work",
         "into a terminal column.",
+    ];
+
+    /// <summary>
+    /// How a shaping increment ends: the calls it makes, in the order it makes
+    /// them. It cuts no branch and opens no pull request - the row denies
+    /// <c>git push</c>, and the branch and pull-request sections follow that.
+    /// </summary>
+    private static string[] ShapingEnd(string key, string to) =>
+    [
+        $"{key} should be in \"{to}\" when you stop. End with these calls, in this order:",
+        "",
+        "```",
+        $"hatch capability add {key} \"<statement>\" --how \"<how to tell>\"   once for each row",
+        $"hatch ask {key} \"...\" --recommend \"...\" --option \"...\"   once for each question",
+        $"hatch api PUT /api/issues/{key}/dreams '{{\"dreamIds\":[...]}}'   the dreams you drew on",
+        $"hatch move {key} \"{to}\"",
+        "```",
+        "",
+        "Only the operator moves work into a terminal column. An increment that",
+        "leaves this ticket where it found it is recorded as having done nothing -",
+        "so move it, or ask, before you stop.",
     ];
 
     /// <summary>

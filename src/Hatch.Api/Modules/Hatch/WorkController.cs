@@ -1644,9 +1644,11 @@ public class WorkController(
         // A draft ambition standing in the from-column of the row that shapes it is
         // briefed by that row - the same rule the scan applies, from the same finder,
         // so `hatch work <key>` agrees with the queue.
+        var shaping = false;
         if (to is not null && Dispatch.ShapeStands(issue, from, statuses)
             && await _dispatch.MatchShapingAsync(from.Id, to.Id, issue.Type, children.Count > 0, issue.ProjectId, ct) is { Playbook: not null } shapingMatch)
         {
+            shaping = true;
             match = shapingMatch;
             playbook = shapingMatch.Playbook;
         }
@@ -1823,7 +1825,10 @@ public class WorkController(
             ambition,
             answering is null ? null : AnswerQuestions.ToDto(answering),
             issue.Project!.AllowsUnsignedCommits,
-            changing is null ? null : WorkOutChanges.ToDto(changing));
+            changing is null ? null : WorkOutChanges.ToDto(changing),
+            // What the person gave the draft, read now and stored nowhere. Not on a
+            // hop: no session is spawned for one.
+            shaping && !hopped ? await ShapeBrief.ReadAsync(db, issue, ct) : null);
     }
 
     /// <summary>
