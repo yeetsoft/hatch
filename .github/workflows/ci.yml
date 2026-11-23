@@ -468,18 +468,23 @@ jobs:
   # the result. A job of its own rather than steps in hatch-runner-image,
   # because another story edits that job.
   hatch-runner-recipes:
-    timeout-minutes: 13
+    # Raised from 13 to 26 alongside the two steps below, so a step's own
+    # timeout still fires first, with a clear message.
+    timeout-minutes: 26
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # Raised from 5 to 10, and the check step from 10 to 14: on a slow Ubuntu
+      # mirror the apt installs alone have run past 5 minutes, and the check
+      # step has been cut off mid-download at 10.
       - name: Build the runner image
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
 
       - name: Build every recipe on it and run every check
-        timeout-minutes: 10
+        timeout-minutes: 14
         run: containers/hatch-runner/check-recipes.sh hatch-runner:ci
 
   # Proves `hatch image build` against Hatch's own repository, for real
