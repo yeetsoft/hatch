@@ -24,6 +24,7 @@ public class SecretStoresTests
         Assert.Equal(["SiteSettings", "ChatWorkspaces"], SecretStores.All.Select(s => s.Table));
         Assert.Equal(["Value", "Token"], SecretStores.All.Select(s => s.Column));
         Assert.Equal([null, "hatch"], SecretStores.All.Select(s => s.Schema));
+        Assert.Equal([["Key"], ["Provider", "ExternalId"]], SecretStores.All.Select(s => s.IdColumns));
         Assert.Equal("site-setting/XaiApiKey", SecretStores.SiteSettings.RowName(["XaiApiKey"]));
         Assert.Equal("chat-workspace/slack/T123", SecretStores.ChatWorkspaces.RowName(["slack", "T123"]));
     }
