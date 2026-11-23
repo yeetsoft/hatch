@@ -6726,8 +6726,10 @@ public record RunnerSessionPatchRequest(string? State = null);
 /// is redacted on read, and the route that answers this one refuses outright
 /// wherever the wall is up - see docs/hatch.md, "API surface".</para>
 ///
-/// <para>Wrapped rather than plain because it crosses a network, over the
-/// scheme the store already uses (<c>SecretProtector</c>). That is a courtesy
+/// <para>Wrapped rather than plain because it crosses a network. The wire is
+/// <c>v1</c> on purpose and is not how Hatch stores anything: storage may change
+/// its scheme, the wire may not, because every container image already built
+/// reads it. That is a courtesy
 /// and not a lock: the algorithm is a fixed XOR key both sides carry, which is
 /// exactly what lets a container holding nothing but <c>git</c> and this
 /// binary reverse it without a second round trip. A credential that has to be
@@ -6737,7 +6739,7 @@ public record RunnerSessionPatchRequest(string? State = null);
 /// the older <c>claude-token</c> route answers the same record for Claude, so
 /// a container built before the first still reads it.</para>
 /// </remarks>
-/// <param name="ProtectedToken">The credential as <c>SecretProtector.Protect</c> wrote it: <c>v1:&lt;base64&gt;</c>.</param>
+/// <param name="ProtectedToken">The credential on the <c>v1</c> wire: <c>v1:&lt;base64&gt;</c>, the credential XORed with a fixed key. Not how Hatch stores it.</param>
 public record CredentialDto(string ProtectedToken);
 
 /// <summary>
