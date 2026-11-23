@@ -1,63 +1,161 @@
+using System.Reflection;
+using System.Security.Cryptography;
 using Hatch.Api.Common;
 
 namespace Hatch.Api.Tests.Common;
 
 /// <summary>
-/// docs/secrets-architecture.md. The property these tests exist to pin is not
-/// "XOR round-trips" - that was true before - but that the *format* can change
-/// under the callers: a value written by any scheme this build knows reads
-/// back, including the untagged ones written before the format existed.
+/// The protector over a real cipher, no host. Every key is made here at run
+/// time: no key, real or example, goes in a tracked file (docs/ethos.md).
+///
+/// The property these tests exist to pin is that the *format* can change under
+/// the callers: a value written by any scheme this build knows reads back,
+/// including the untagged ones written before schemes existed, and that nothing
+/// new is written weakly.
 /// </summary>
 public class SecretProtectorTests
 {
-    [Fact]
-    public void Protect_then_unprotect_round_trips()
-    {
-        var stored = SecretProtector.Protect("hunter2");
+    private const string Row = "site-setting/CodexApiKey";
 
-        Assert.Equal("hunter2", SecretProtector.Unprotect(stored));
+    // The awkward string SecretCipherTests round-trips: the characters that break a URL.
+    private const string Awkward = "p@ss:w/rd?#&=%[]";
+
+    private static byte[] NewKey() => RandomNumberGenerator.GetBytes(32);
+
+    private static SecretProtector WithKey(byte[]? current = null, byte[]? previous = null) =>
+        new(new SecretCipher(current ?? NewKey(), previous));
+
+    private static SecretProtector WithNoKey() => new(new SecretCipher(null, null));
+
+    private static string Sealed(SecretProtector protector, string plaintext, string row = Row)
+    {
+        Assert.True(protector.TrySeal(plaintext, row, out var stored));
+        return stored;
     }
 
     [Fact]
-    public void Protect_tags_the_value_with_the_current_scheme()
+    public void The_current_scheme_is_v2()
+    {
+        Assert.Equal("v2", SecretProtector.CurrentScheme);
+    }
+
+    [Fact]
+    public void A_sealed_value_reads_back()
+    {
+        var protector = WithKey();
+
+        Assert.Equal("hunter2", protector.Unprotect(Sealed(protector, "hunter2"), Row));
+    }
+
+    [Fact]
+    public void A_sealed_value_is_tagged_v2_with_a_payload_of_three_dotted_parts()
     {
         // The tag is the whole mechanism, so it is asserted directly rather
         // than only through a round trip that would pass without it.
-        Assert.StartsWith("v1:", SecretProtector.Protect("hunter2"), StringComparison.Ordinal);
+        var stored = Sealed(WithKey(), "hunter2");
+
+        Assert.StartsWith("v2:", stored, StringComparison.Ordinal);
+        Assert.Equal(3, stored["v2:".Length..].Split('.').Length);
+        Assert.DoesNotContain("hunter2", stored);
     }
 
     [Fact]
-    public void Untagged_legacy_values_still_read()
+    public void Round_trips_a_secret_full_of_url_metacharacters()
     {
-        // What every row in the database looked like before this type existed.
-        // If this ever fails, the data migration is no longer a labelling pass
-        // and every stored secret in every installation is unreadable.
+        var protector = WithKey();
+
+        Assert.Equal(Awkward, protector.Unprotect(Sealed(protector, Awkward), Row));
+    }
+
+    [Fact]
+    public void A_value_sealed_for_one_row_does_not_open_for_another()
+    {
+        var protector = WithKey();
+        var stored = Sealed(protector, "hunter2");
+
+        Assert.Null(protector.Unprotect(stored, "site-setting/XaiApiKey"));
+    }
+
+    [Fact]
+    public void Two_seals_of_the_same_secret_store_different_text()
+    {
+        var protector = WithKey();
+
+        Assert.NotEqual(Sealed(protector, "hunter2"), Sealed(protector, "hunter2"));
+    }
+
+    [Fact]
+    public void The_previous_key_opens_what_it_sealed_but_seals_nothing()
+    {
+        var oldKey = NewKey();
+        var stored = Sealed(WithKey(oldKey), "hunter2");
+
+        var rotated = WithKey(NewKey(), oldKey);
+
+        Assert.Equal("hunter2", rotated.Unprotect(stored, Row));
+        Assert.NotEqual(stored.Split(':')[1].Split('.')[0], Sealed(rotated, "hunter2").Split(':')[1].Split('.')[0]);
+    }
+
+    [Fact]
+    public void A_value_sealed_under_a_key_that_is_gone_reads_as_absent()
+    {
+        var stored = Sealed(WithKey(), "hunter2");
+
+        Assert.Null(WithKey().Unprotect(stored, Row));
+        Assert.Null(WithNoKey().Unprotect(stored, Row));
+    }
+
+    [Fact]
+    public void V1_and_untagged_values_read_with_no_key()
+    {
+        // What every row in the database looked like before sealing. If this
+        // ever fails, every stored secret in every installation is unreadable
+        // to a Hatch that has not been given a key.
+        var legacy = SecretObfuscator.Obfuscate("legacy-token");
+        var protector = WithNoKey();
+
+        Assert.Equal("legacy-token", protector.Unprotect($"v1:{legacy}", Row));
+        Assert.Equal("legacy-token", protector.Unprotect(legacy, Row));
+    }
+
+    [Fact]
+    public void V1_and_untagged_values_read_the_same_whatever_row_asks()
+    {
+        // v1 never carried a row name, so none can be checked.
         var legacy = SecretObfuscator.Obfuscate("legacy-token");
 
-        Assert.Equal("legacy-token", SecretProtector.Unprotect(legacy));
+        Assert.Equal("legacy-token", WithKey().Unprotect($"v1:{legacy}", "chat-workspace/slack/T1"));
     }
 
     [Fact]
-    public void Retag_relabels_a_legacy_value_without_changing_its_payload()
+    public void Sealing_nothing_stores_nothing_with_a_key_or_without_one()
     {
-        var legacy = SecretObfuscator.Obfuscate("legacy-token");
-
-        var retagged = SecretProtector.Retag(legacy);
-
-        // Same bytes, new label - which is why the migration is an UPDATE that
-        // prepends three characters rather than a decrypt/re-encrypt pass.
-        Assert.Equal($"v1:{legacy}", retagged);
-        Assert.Equal("legacy-token", SecretProtector.Unprotect(retagged));
+        // Rather than a tagged empty payload: "unset" is a state every
+        // settings form has, and clearing one needs no key.
+        foreach (var protector in new[] { WithKey(), WithNoKey() })
+        {
+            Assert.True(protector.TrySeal("", Row, out var empty));
+            Assert.Equal(string.Empty, empty);
+            Assert.True(protector.TrySeal(null, Row, out var none));
+            Assert.Equal(string.Empty, none);
+        }
     }
 
     [Fact]
-    public void Retag_leaves_an_already_tagged_value_alone()
+    public void With_no_key_sealing_a_secret_is_refused_and_stores_nothing()
     {
-        var tagged = SecretProtector.Protect("hunter2");
+        var protector = WithNoKey();
 
-        // The migration has to be safe to run twice - a re-run, or a row
-        // written by the new code before the migration lands.
-        Assert.Equal(tagged, SecretProtector.Retag(tagged));
+        Assert.False(protector.CanSeal);
+        Assert.False(protector.TrySeal("hunter2", Row, out var stored));
+        Assert.Equal(string.Empty, stored);
+    }
+
+    [Fact]
+    public void CanSeal_follows_the_key()
+    {
+        Assert.True(WithKey().CanSeal);
+        Assert.False(WithNoKey().CanSeal);
     }
 
     [Fact]
@@ -66,13 +164,17 @@ public class SecretProtectorTests
         // A row written by a newer Hatch than this one, seen by a rolled-back
         // deployment. Unreadable is the honest answer and it is the same
         // answer callers already handle for a damaged value.
-        Assert.Null(SecretProtector.Unprotect("v9:AAAA"));
+        Assert.Null(WithKey().Unprotect("v9:AAAA", Row));
     }
 
-    [Fact]
-    public void A_damaged_payload_reads_as_absent_rather_than_throwing()
+    [Theory]
+    [InlineData("v1:not-base64!!")]
+    [InlineData("v2:not.a.sealed-value")]
+    [InlineData("v2:")]
+    [InlineData("v2:abc")]
+    public void A_damaged_payload_reads_as_absent_rather_than_throwing(string stored)
     {
-        Assert.Null(SecretProtector.Unprotect("v1:not-base64!!"));
+        Assert.Null(WithKey().Unprotect(stored, Row));
     }
 
     [Theory]
@@ -81,38 +183,27 @@ public class SecretProtectorTests
     [InlineData("   ")]
     public void Nothing_stored_reads_as_nothing(string? stored)
     {
-        Assert.Null(SecretProtector.Unprotect(stored));
-        Assert.False(SecretProtector.HasValue(stored));
+        Assert.Null(WithKey().Unprotect(stored, Row));
     }
 
+    /// <summary>
+    /// Point 4 of HA-2748, held for whoever adds a method later: there is no
+    /// way to store a value without saying which row it is for.
+    /// </summary>
     [Fact]
-    public void Protecting_nothing_stores_nothing()
+    public void Every_public_method_that_takes_a_plaintext_also_takes_the_row_name()
     {
-        // Rather than a tagged empty payload: "unset" is a state every
-        // settings form has, and tagging it would turn every cleared field
-        // into a present value that decodes to nothing.
-        Assert.Equal(string.Empty, SecretProtector.Protect(""));
-        Assert.Equal(string.Empty, SecretProtector.Protect(null));
-    }
+        var methods = typeof(SecretProtector).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName);
 
-    [Fact]
-    public void HasValue_does_not_need_to_decode_to_answer()
-    {
-        // What an admin API asks: has the operator set a password? It must be
-        // answerable without revealing one, and without a damaged row
-        // reporting "unset" and inviting a silent overwrite.
-        Assert.True(SecretProtector.HasValue("v1:not-base64!!"));
-        Assert.True(SecretProtector.HasValue(SecretProtector.Protect("hunter2")));
-    }
+        foreach (var method in methods)
+        {
+            var strings = method.GetParameters().Where(p => p.ParameterType == typeof(string) && !p.IsOut).ToArray();
+            if (strings.Length == 0) continue;
 
-    [Fact]
-    public void Round_trips_a_secret_full_of_url_metacharacters()
-    {
-        // A client secret or token can land in a URL (an OAuth exchange, an
-        // Authorization header), so the characters that break one are exactly
-        // the characters worth pinning here.
-        const string awkward = "p@ss:w/rd?#&=%[]";
+            Assert.True(strings.Any(p => p.Name == "rowName"), $"{method.Name} takes a string and no rowName");
+        }
 
-        Assert.Equal(awkward, SecretProtector.Unprotect(SecretProtector.Protect(awkward)));
+        Assert.Contains(methods, m => m.Name == nameof(SecretProtector.TrySeal));
     }
 }

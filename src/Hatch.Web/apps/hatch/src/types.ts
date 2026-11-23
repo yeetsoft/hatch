@@ -3030,6 +3030,8 @@ export interface HatchSettings {
   defaultMaxTokens: number | null;
   /** The site-wide cap on tokens per hour a runner with none of its own runs under. Null for no cap. */
   defaultMaxTokensPerHour: number | null;
+  /** Whether a secret can be saved: true when `HATCH_SECRET_KEY` is set. When false a save carrying one is refused; removing one still works. */
+  canSaveSecrets: boolean;
 }
 
 /** An edit to any of the settings, or several. A field left out is left alone;

@@ -9,6 +9,8 @@ import {
   defaultTokensProblem,
   defaultTokensSave,
   nameSave,
+  SECRETS_BLOCKED_WORDS,
+  secretsBlocked,
   tokenBudgetEditable,
 } from './hatchSettings';
 import type { CredentialField, DefaultTokenField } from './hatchSettings';
@@ -22,6 +24,7 @@ const settings = (over: Partial<HatchSettings> = {}): HatchSettings => ({
   localPersonName: '',
   defaultMaxTokens: null,
   defaultMaxTokensPerHour: null,
+  canSaveSecrets: true,
   ...over,
 });
 
@@ -198,5 +201,24 @@ describe('defaultTokensSave', () => {
       defaultMaxTokens: '',
       defaultMaxTokensPerHour: '',
     });
+  });
+});
+
+describe('secretsBlocked', () => {
+  it('is false when a key is set, so the page looks as it always did', () => {
+    expect(secretsBlocked(settings({ canSaveSecrets: true }))).toBe(false);
+  });
+
+  it('is true when there is no key to seal under', () => {
+    expect(secretsBlocked(settings({ canSaveSecrets: false }))).toBe(true);
+  });
+
+  it('says one sentence, naming the variable', () => {
+    expect(SECRETS_BLOCKED_WORDS).toContain('HATCH_SECRET_KEY');
+    expect(SECRETS_BLOCKED_WORDS.match(/\./g)).toHaveLength(1);
+  });
+
+  it('never stops a credential being removed', () => {
+    expect(credentialClear('codexApiKey')).toEqual({ codexApiKey: '' });
   });
 });

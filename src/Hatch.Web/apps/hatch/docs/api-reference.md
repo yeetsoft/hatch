@@ -175,8 +175,8 @@ it is stored protected, never as written.
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | GET | `/chat/workspaces` | **admin** | Every connected workspace, oldest first, `[{ id, provider, externalId, name, hasToken, createdAt }]` |
-| POST | `/chat/workspaces` | **admin** | Connects the workspace a bot token belongs to; body `{ token }`. The token is checked with the chat service first, and the service names the workspace. `400` for a blank token or one the service refuses, with its sentence; `409` for a workspace already connected |
-| PUT | `/chat/workspaces/{id}/token` | **admin** | Replaces a workspace's token with one for the same workspace, and refreshes its name; body `{ token }`. `400` as for connecting, `404` for an unknown id, `409` for a token that belongs to another workspace, which keeps the old one |
+| POST | `/chat/workspaces` | **admin** | Connects the workspace a bot token belongs to; body `{ token }`. The token is checked with the chat service first, and the service names the workspace. The token is stored sealed under `HATCH_SECRET_KEY`. `400` for a blank token or one the service refuses, with its sentence; `400` naming `HATCH_SECRET_KEY` when none is set, before the token is sent to the chat service; `409` for a workspace already connected |
+| PUT | `/chat/workspaces/{id}/token` | **admin** | Replaces a workspace's token with one for the same workspace, and refreshes its name; body `{ token }`. Sealed the same way. `400` as for connecting, including the one naming `HATCH_SECRET_KEY` when none is set; `404` for an unknown id, `409` for a token that belongs to another workspace, which keeps the old one |
 | DELETE | `/chat/workspaces/{id}` | **admin** | Removes a workspace, and in the database whatever hangs off it; `204`, or `404` for an unknown id |
 | GET | `/chat/manifest` | **admin** | `{ provider, manifest }`: the app manifest as the JSON text to paste into the chat service's own screen |
 
@@ -1654,8 +1654,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | POST | `/runners/{name}/stop-all` | **person** | Stops every live `loop` session under this key at once |
 | GET | `/runner` | key | What platforms this image can hand out, the commit they and it were built from, and each build's `sha256` - lowercase hex of the exact bytes its download serves |
 | GET | `/runner/download/{rid}` | key | One platform's `hatch` binary |
-| GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name, and the site's default token caps (`defaultMaxTokens`, `defaultMaxTokensPerHour`) |
-| PUT | `/settings` | **person** | Edits them - the two default token caps only for an admin, or for anyone at the keyboard with the wall off |
+| GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name, the site's default token caps (`defaultMaxTokens`, `defaultMaxTokensPerHour`), and `canSaveSecrets`: whether a secret can be saved, which is whether `HATCH_SECRET_KEY` is set |
+| PUT | `/settings` | **person** | Edits them - the two default token caps only for an admin, or for anyone at the keyboard with the wall off. A secret is stored sealed under `HATCH_SECRET_KEY`. With no key set, a body carrying a secret to store is a `400` naming `HATCH_SECRET_KEY` and writes nothing, the other fields of the body with it; `""` still clears a secret, and a body with no secret in it is not refused |
 | GET | `/settings/credentials/{agent}` | key | One agent's credential, unprotected, for the container runner to start it with |
 | GET | `/settings/claude-token` | key | The same, kept for an older container; `credentials/claude` is its successor |
 | GET | `/backup` | key | The backup folder's truth and the last attempt's: configured, path, keep-days, copies, and the last outcome |

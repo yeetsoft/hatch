@@ -50,13 +50,14 @@ public static class HatchModule
         // The secret key, checked on the same terms: a key that is set and
         // unusable stops the API at start, and one that is not set only warns
         // (SecretKeyWarning). The cipher is parsed once here and holds the
-        // parsed keys; nothing stores a value under it yet.
+        // parsed keys. The protector is what stores a secret under it.
         services.AddSingleton<IValidateOptions<HatchOptions>, SecretKeyValidation>();
         services.AddSingleton(sp =>
         {
             var options = sp.GetRequiredService<IOptions<HatchOptions>>().Value;
             return SecretCipher.From(options.SecretKey, options.PreviousSecretKey);
         });
+        services.AddSingleton<SecretProtector>();
         services.AddHostedService<SecretKeyWarning>();
         services.AddSingleton<IssueClaims>();
 

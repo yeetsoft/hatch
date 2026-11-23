@@ -40,6 +40,17 @@ export const credentialPlaceholder = (settings: HatchSettings, field: Credential
 export const credentialSave = (field: CredentialField, draft: string): HatchSettingsWriteRequest | null =>
   draft.trim() === '' ? null : { [field]: draft.trim() };
 
+/**
+ * Whether saving a secret is refused: this Hatch has no `HATCH_SECRET_KEY`, so
+ * there is nothing to seal one under and the server would answer 400. The page
+ * says so beside the field before anyone presses Save, and turns Save off.
+ * Removing a credential needs no key and is never blocked here.
+ */
+export const secretsBlocked = (settings: HatchSettings): boolean => !settings.canSaveSecrets;
+
+/** The one sentence the page says beside each secret field when saving is blocked. */
+export const SECRETS_BLOCKED_WORDS = 'Secrets cannot be saved until HATCH_SECRET_KEY is set.';
+
 /** Removes a credential. `''` rather than an omitted field, which would leave it alone. */
 export const credentialClear = (field: CredentialField): HatchSettingsWriteRequest => ({ [field]: '' });
 

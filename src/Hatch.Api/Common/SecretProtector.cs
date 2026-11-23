@@ -1,68 +1,78 @@
-using System.Text;
-
 namespace Hatch.Api.Common;
 
 /// <summary>
 /// The one way a secret is written to Hatch's database, and the one way it is
-/// read back (docs/secrets-architecture.md).
+/// read back.
 ///
-/// Every protected value carries the scheme that produced it:
-/// <c>v1:&lt;payload&gt;</c>. That prefix is the whole point of this type. The
-/// protection today is <see cref="SecretObfuscator"/>'s XOR - obfuscation, not
-/// encryption, honestly labelled as such in docs/secrets-architecture.md - and
-/// it will not be forever. When it is replaced, the replacement is a new
-/// scheme registered here plus a re-protect on next write; rows in both formats
-/// stay readable throughout, so the migration never has to be a single
-/// stop-the-world pass over every table that holds a secret.
+/// Every protected value carries the scheme that produced it, as
+/// <c>&lt;scheme&gt;:&lt;payload&gt;</c>.
+/// <list type="bullet">
+/// <item><c>v2</c> is sealed under the operator's secret key
+/// (<see cref="SecretCipher"/>), for the row it is stored on. It is the only
+/// scheme written.</item>
+/// <item><c>v1</c> is <see cref="SecretObfuscator"/>'s XOR - obfuscation, not
+/// encryption. It is read and never written, and reading it needs no key.</item>
+/// <item>No tag is a value written before schemes existed. It is read as
+/// <c>v1</c>.</item>
+/// </list>
 ///
-/// The discriminator is free rather than clever: a v1 payload is base64, base64
-/// has no colon in its alphabet, so no legacy value written before this type
-/// existed can be mistaken for a tagged one. That is why <see cref="Unprotect"/>
-/// can read an untagged value as v1 without a flag, a column, or a migration
-/// that must run before the code that depends on it.
+/// The discriminator is free rather than clever: a <c>v1</c> payload is base64
+/// and a <c>v2</c> payload is base64url joined by dots, and neither alphabet has
+/// a colon, so no value can be mistaken for a tagged one.
+///
+/// Every method that takes a plaintext also takes the name of the row it
+/// belongs to (<see cref="SecretStores"/>), so there is no way to store a value
+/// without saying where.
 /// </summary>
-public static class SecretProtector
+public sealed class SecretProtector(SecretCipher cipher)
 {
-    /// <summary>
-    /// The scheme new values are written with. One symbol to change - plus a
-    /// case in <see cref="Unprotect"/> - when real crypto lands.
-    /// </summary>
-    public const string CurrentScheme = "v1";
+    /// <summary>The scheme new values are written with.</summary>
+    public const string CurrentScheme = "v2";
 
     private const char SchemeSeparator = ':';
 
+    /// <summary>Whether there is a key to seal with. Without one, <see cref="TrySeal"/> refuses.</summary>
+    public bool CanSeal => cipher.CanSeal;
+
     /// <summary>
-    /// Wraps <paramref name="plaintext"/> in the current scheme. An empty input
-    /// stays empty and untagged: "no secret" is a state the callers already
-    /// have (a cleared form field, an unset setting), and tagging it would turn
-    /// every absent value into a present one that decodes to nothing.
+    /// Seals <paramref name="plaintext"/> for the row named <paramref name="rowName"/>.
+    /// An empty input gives <c>""</c> whether or not there is a key: "no secret"
+    /// is a state callers already have (a cleared field, an unset setting), and
+    /// clearing one needs no key. Anything else needs a key, and false means
+    /// there is none - nothing is stored weakly in its place.
     /// </summary>
-    public static string Protect(string? plaintext)
+    public bool TrySeal(string? plaintext, string rowName, out string stored)
     {
-        if (string.IsNullOrEmpty(plaintext)) return string.Empty;
-        return $"{CurrentScheme}{SchemeSeparator}{SecretObfuscator.Obfuscate(plaintext)}";
+        ArgumentNullException.ThrowIfNull(rowName);
+
+        stored = string.Empty;
+        if (string.IsNullOrEmpty(plaintext)) return true;
+
+        var sealedValue = cipher.Seal(plaintext, rowName);
+        if (sealedValue is null) return false;
+
+        stored = $"{CurrentScheme}{SchemeSeparator}{sealedValue}";
+        return true;
     }
 
     /// <summary>
     /// The plaintext behind a stored value, or null when there isn't one -
-    /// absent, blank, or damaged past reading.
+    /// absent, blank, sealed for another row, under a key this Hatch does not
+    /// hold, or damaged past reading.
     ///
     /// Null rather than an exception for the reason <see cref="SecretObfuscator.TryReveal"/>
     /// gives: a value that has been hand-edited in the database should cost the
     /// one setting it belongs to a re-entry, not throw out of every operation
     /// that happens to touch the row.
     /// </summary>
-    public static string? Unprotect(string? stored)
+    public string? Unprotect(string? stored, string rowName)
     {
         if (string.IsNullOrWhiteSpace(stored)) return null;
 
         var separator = stored.IndexOf(SchemeSeparator);
         if (separator < 0)
         {
-            // Untagged: written before this type existed. v1 is that same
-            // algorithm, so it reads without conversion - which is what lets
-            // the data migration be a labelling pass rather than a re-encrypt,
-            // and what lets code deployed ahead of that migration still work.
+            // Untagged: written before schemes existed, and v1's own bytes.
             return SecretObfuscator.TryReveal(stored);
         }
 
@@ -71,33 +81,11 @@ public static class SecretProtector
 
         return scheme switch
         {
+            "v2" => cipher.TryOpen(payload, rowName, out var plaintext) ? plaintext : null,
             "v1" => SecretObfuscator.TryReveal(payload),
-            // An unknown scheme is a value written by a *newer* Hatch than this
-            // one - a rolled-back deployment reading a row the new version
-            // wrote. Unreadable is the honest answer, and it is the same
-            // answer as damaged, which callers already handle.
+            // An unknown scheme is a value written by a newer Hatch than this
+            // one. Unreadable is the honest answer, the same as damaged.
             _ => null,
         };
-    }
-
-    /// <summary>
-    /// Whether <paramref name="stored"/> holds something. Distinguishes "the
-    /// operator has set a password" from "the operator has not" without
-    /// revealing or even decoding it - which is what an admin API needs to
-    /// answer, since it must never hand the value back.
-    /// </summary>
-    public static bool HasValue(string? stored) => !string.IsNullOrWhiteSpace(stored);
-
-    /// <summary>
-    /// Re-labels an untagged legacy value as v1 without decoding it. The bytes
-    /// are already v1's bytes; only the tag is missing. Used by the data
-    /// migration and by nothing else - ordinary writes go through
-    /// <see cref="Protect"/>.
-    /// </summary>
-    public static string Retag(string? stored)
-    {
-        if (string.IsNullOrWhiteSpace(stored)) return string.Empty;
-        if (stored.Contains(SchemeSeparator)) return stored;
-        return $"{CurrentScheme}{SchemeSeparator}{stored}";
     }
 }

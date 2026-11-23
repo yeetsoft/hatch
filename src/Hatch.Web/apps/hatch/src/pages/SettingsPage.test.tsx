@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { HomeScreenCard, TokenBudgetCard } from './SettingsPage';
+import { MemoryRouter } from 'react-router-dom';
+import { CredentialCard, HomeScreenCard, TokenBudgetCard } from './SettingsPage';
 import { defaultTokensOf } from '../lib/hatchSettings';
 import type { DefaultTokenField } from '../lib/hatchSettings';
 import type { Home } from '../lib/homeScreen';
@@ -18,6 +19,7 @@ const settingsOf = (over: Partial<HatchSettings> = {}): HatchSettings => ({
   localPersonName: '',
   defaultMaxTokens: null,
   defaultMaxTokensPerHour: null,
+  canSaveSecrets: true,
   ...over,
 });
 
@@ -96,6 +98,65 @@ describe('TokenBudgetCard', () => {
     });
 
     expect(html).toContain('disabled=""');
+  });
+});
+
+describe('CredentialCard', () => {
+  const credential = {
+    field: 'codexApiKey' as const,
+    title: 'Codex API key',
+    noun: 'API key',
+    label: 'API key',
+    hint: 'A hint.',
+    steps: <li>A step.</li>,
+  };
+
+  const renderCard = (over: { settings?: HatchSettings; draft?: string; busy?: 'codexApiKey' | null } = {}): string =>
+    renderToStaticMarkup(
+      <MemoryRouter>
+        <CredentialCard
+          credential={credential}
+          settings={over.settings ?? settingsOf()}
+          draft={over.draft ?? ''}
+          busy={over.busy ?? null}
+          onDraft={() => {}}
+          onSave={() => {}}
+          onClear={() => {}}
+        />
+      </MemoryRouter>,
+    );
+
+  /** The opening tag of the button whose text is `label`. */
+  const buttonOf = (html: string, label: string): string => {
+    const at = html.indexOf(`${label}</button>`);
+    return html.slice(html.lastIndexOf('<button', at), at);
+  };
+
+  it('with a key set, says nothing about one and enables Save once something is typed', () => {
+    const html = renderCard({ draft: 'sk-new' });
+
+    expect(html).not.toContain('HATCH_SECRET_KEY');
+    expect(html).not.toContain('/docs/environment-variables');
+    expect(buttonOf(html, 'Save API key')).not.toContain('disabled=""');
+  });
+
+  it('with no key, says so beside the field and links the environment variables page', () => {
+    const html = renderCard({ settings: settingsOf({ canSaveSecrets: false }) });
+
+    expect(html).toContain('Secrets cannot be saved until HATCH_SECRET_KEY is set.');
+    expect(html).toContain('href="/docs/environment-variables"');
+  });
+
+  it('with no key, keeps Save off even with something typed', () => {
+    const html = renderCard({ settings: settingsOf({ canSaveSecrets: false }), draft: 'sk-new' });
+
+    expect(buttonOf(html, 'Save API key')).toContain('disabled=""');
+  });
+
+  it('with no key, leaves Remove on for a credential that is set', () => {
+    const html = renderCard({ settings: settingsOf({ canSaveSecrets: false, codexApiKey: '••••••••' }) });
+
+    expect(buttonOf(html, 'Remove API key')).not.toContain('disabled=""');
   });
 });
 
