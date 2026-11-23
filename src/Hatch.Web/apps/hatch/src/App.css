@@ -2401,29 +2401,14 @@ button.hatch-card-stories:focus-visible {
   margin: 0;
 }
 
-/* The lanes: a fixed name column, then a grid of equal cells, one row per
+/* The lanes: a grid of equal cells the full width of the tile, one row per
    runner, capped at eight and at most 0.5rem tall each - set by
-   --hatch-lanes, the lane count, on the body's own style attribute. */
+   --hatch-lanes, the lane count, on the body's own style attribute. The names
+   are in the hover and each cell's title, not beside the grid, so the width the
+   pointer is read against is the width drawn. */
 .hatch-health-lanes {
   display: flex;
   height: 100%;
-  gap: var(--sp-1-5);
-}
-
-.hatch-health-lane-names {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-evenly;
-  flex: none;
-  max-width: 5rem;
-}
-
-.hatch-health-lane-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--t-label);
-  color: var(--muted);
 }
 
 .hatch-health-lane-grid {

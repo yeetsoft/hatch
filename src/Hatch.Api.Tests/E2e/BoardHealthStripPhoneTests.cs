@@ -115,6 +115,17 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
             Assert.True(layout.N("scrollWidth") <= layout.N("innerWidth"), $"the page scrolls sideways when open: {layout}");
             Assert.True(layout.N("sparkWidth") > 40, $"the sparkline is {layout.N("sparkWidth")}px wide");
             Assert.True(layout.N("sparkLeft") >= layout.N("numberRight") - 0.5, "the sparkline is not to the right of the numbers");
+
+            // The stacked Runners tile draws no names, and its lane grid is as wide as its sparkline area.
+            const string stackedRunners = ".hatch-health-strip--stacked [data-tile='runners']";
+            Assert.Equal(0, await page.Locator($"{stackedRunners} .hatch-health-lane-name").CountAsync());
+            var runnersSpark = await page.Locator($"{stackedRunners} [data-part='spark']").BoundingBoxAsync();
+            var runnersGrid = await page.Locator($"{stackedRunners} .hatch-health-lane-grid").BoundingBoxAsync();
+            Assert.NotNull(runnersSpark);
+            Assert.NotNull(runnersGrid);
+            output.WriteLine($"runners spark x={runnersSpark.X} w={runnersSpark.Width}; lane grid x={runnersGrid.X} w={runnersGrid.Width}");
+            Assert.InRange(runnersGrid.X, runnersSpark.X - 1, runnersSpark.X + 1);
+            Assert.InRange(runnersGrid.Width, runnersSpark.Width - 1, runnersSpark.Width + 1);
             await harness.ScreenshotAsync(deadline, "board-health-phone-open");
 
             // The window chosen in the open strip is remembered across a reload; the row starts closed again.

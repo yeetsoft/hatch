@@ -657,7 +657,8 @@ same moment on all four.
   sparkline is steps. The big number is the count now, and under it is how long
   the oldest has waited. At zero it says "nothing waiting".
 - **Runners** draws one thin lane per runner that was up at any time in the
-  window, at most eight: up now first, then most recently heard from, and a
+  window, at most eight, across the whole tile and without names: the hover
+(and each cell's own tooltip) names each runner. Up now first, then most recently heard from, and a
   line under the lanes says how many are not drawn. The big number is how many
   are up of how many have a lane, with how many of those are paused underneath.
   Each cell in a lane is the most telling thing the runner did in that bar: a
