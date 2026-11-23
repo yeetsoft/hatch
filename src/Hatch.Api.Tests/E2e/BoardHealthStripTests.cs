@@ -342,6 +342,29 @@ public class BoardHealthStripTests(ITestOutputHelper output)
         Assert.True(beat.IsSuccessStatusCode, $"the claim heartbeat answered {(int)beat.StatusCode}: {await beat.Content.ReadAsStringAsync()}");
     }
 
+    /// <summary>
+    /// Mints <paramref name="count"/> more runners and sends one session heartbeat from each, as
+    /// <see cref="SeedAsync"/> does for its one, so each has a lane in the read. That makes more lanes than the
+    /// Runners tile draws, which the Runners dialog must still show whole. Returns the names it minted.
+    /// </summary>
+    internal static async Task<string[]> SeedRunnersAsync(string baseUrl, int count)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        var names = new string[count];
+
+        for (var i = 0; i < count; i++)
+        {
+            names[i] = $"lane-runner-{i + 1:00}";
+            var minted = await PostAsync<CreateRunnerRequest, RunnerMintedDto>(http, "/api/runners", new(names[i]));
+
+            using var asRunner = new HttpClient { BaseAddress = new Uri(baseUrl) };
+            asRunner.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", minted.Secret);
+            await PostAsync<RunnerHeartbeatRequest, RunnerInstructionDto>(asRunner, "/api/runners/sessions", new(Kind: "loop", Where: Where));
+        }
+
+        return names;
+    }
+
     private static async Task<TResponse> PostAsync<TRequest, TResponse>(HttpClient http, string path, TRequest body)
     {
         using var response = await http.PostAsJsonAsync(path, body, Web);

@@ -18,7 +18,7 @@ import type { IssuePeek, Tile, TileReadout } from '../lib/boardHealth';
 import { LANE_LEGEND, cellWords, drawnLanes, hoverList } from '../lib/boardHealthLanes';
 import type { BoardHealth, BoardHealthCell } from '../types';
 
-/* The four tiles of the board health strip. Each draws from the read's answer
+/* The five tiles of the board health strip. Each draws from the read's answer
    alone: nothing here knows the board page, the router's location or the scope
    (only the In flight tile's `href`, handed in), so another page could draw the
    same tile. Every number and every point of geometry comes from
@@ -72,7 +72,7 @@ function HealthTile({
   label: string;
   href?: string;
   /** Opens the tile's dialog. A press on the tile anywhere but a control of its own, or Enter or Space on the
-      focused sparkline, calls it. A tile without one - Runners, until its dialog lands - only marks. */
+      focused sparkline, calls it. A tile without one only marks. */
   onOpen?: () => void;
   /** The sparkline's marks, drawn in the box `WIDTH` by `HEIGHT`. Ignored when `body` is given. */
   children?: ReactNode;
@@ -306,15 +306,21 @@ function cellClass(cell: BoardHealthCell): string {
   return cell.why === 'board' ? `${base} hatch-health-lane-cell--board` : base;
 }
 
+/** One lane cell, as the tile and the Runners dialog both draw it. `title` is its hover text; a legend
+    swatch leaves it off. */
+export function LaneCell({ cell, title }: { cell: BoardHealthCell; title?: string }) {
+  return <span className={cellClass(cell)} title={title} />;
+}
+
 /**
- * The Runners tile: a thin lane per runner, at most eight, drawn the full width
+ * The Runners tile: a thin lane per runner, at most eight - its dialog draws them all - drawn the full width
  * of the tile with no names - the hover list and each cell's title name them -
  * and a legend one press away. Its body replaces the svg sparkline
  * with 24 HTML cells a row - the svg would stretch hollow and striped cells
  * into a skew - so its moment marker is its own, `hatch-health-lane-moment`,
  * not the shared `hatch-health-moment` the other four tiles count on.
  */
-export function RunnersTile({ answer, index, onIndex, readout }: TileProps) {
+export function RunnersTile({ answer, index, onIndex, readout, onOpen }: TileProps) {
   const { lanes } = drawnLanes(answer);
   const hover = index !== null ? hoverList(answer, index) : null;
   const legendId = useId();
@@ -372,7 +378,7 @@ export function RunnersTile({ answer, index, onIndex, readout }: TileProps) {
         {lanes.map((lane) => (
           <div className="hatch-health-lane-cells" key={lane.name}>
             {lane.cells.map((cell, i) => (
-              <span key={i} className={cellClass(cell)} title={`${lane.name}: ${cellWords(cell)}`} />
+              <LaneCell key={i} cell={cell} title={`${lane.name}: ${cellWords(cell)}`} />
             ))}
           </div>
         ))}
@@ -399,6 +405,7 @@ export function RunnersTile({ answer, index, onIndex, readout }: TileProps) {
       legend={legend}
       popover={popover}
       hover={hoverSentence}
+      onOpen={onOpen}
     />
   );
 }

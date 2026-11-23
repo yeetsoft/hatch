@@ -51,6 +51,8 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
             await deadline.BoundAsync("filing the issues", () => SeedAsync(baseUrl));
+            // More lanes than the Runners tile draws, so its dialog has a list to scroll.
+            await deadline.BoundAsync("minting the runners", () => BoardHealthStripTests.SeedRunnersAsync(baseUrl, 10));
 
             await harness.OpenAsync(deadline, baseUrl, "/", reducedMotion: true);
             await harness.WaitForTopBarAsync(deadline);
@@ -196,6 +198,55 @@ public class BoardHealthStripPhoneTests(ITestOutputHelper output)
                 await harness.ClickAsync(deadline, "[role='dialog'] .hatch-modal__close");
                 await harness.WaitForHiddenAsync(deadline, "[role='dialog']");
             }
+
+            // Runners opens one too, but draws rows of cells and no svg, so it is measured apart from the loop
+            // above: the panel fills the width, every control is a finger high, nothing scrolls sideways, and the
+            // lanes scroll inside their own box with the time axis kept in view.
+            await harness.ClickAsync(deadline, ".hatch-health-strip--stacked [data-tile='runners'] [data-part='spark']");
+            await harness.WaitForVisibleAsync(deadline, "[role='dialog'] .hatch-health-dialog[data-dialog='runners']");
+            Assert.Equal("Runners, last 8h", Assert.Single(await Texts(harness, deadline, "[role='dialog'] h3")));
+            Assert.True(await page.Locator("[role='dialog'] .hatch-health-dialog-lane").CountAsync() > 8, "the dialog draws no more than eight lanes");
+            Assert.Equal(0, await page.Locator("[role='dialog'] svg").CountAsync());
+            var runners = new Reading(await harness.EvaluateAsync<JsonElement>(
+                deadline, "measuring the Runners dialog",
+                """
+                () => {
+                  const panel = document.querySelector("[role='dialog']").getBoundingClientRect();
+                  const heights = [...document.querySelectorAll("[role='dialog'] button, [role='dialog'] a")].map((e) => e.getBoundingClientRect().height);
+                  const box = document.querySelector("[role='dialog'] .hatch-health-dialog-lanes");
+                  const boxRect = box.getBoundingClientRect();
+                  const cells = document.querySelector("[role='dialog'] .hatch-health-dialog-lane-cells").getBoundingClientRect();
+                  const axis = document.querySelector("[role='dialog'] .hatch-health-dialog-lane-axis").getBoundingClientRect();
+                  return {
+                    panelLeft: panel.left,
+                    panelRight: panel.right,
+                    controls: heights.length,
+                    shortest: Math.min(...heights),
+                    scrollWidth: document.documentElement.scrollWidth,
+                    innerWidth: window.innerWidth,
+                    boxScrollsSideways: box.scrollWidth > box.clientWidth + 1,
+                    boxScrolls: box.scrollHeight > box.clientHeight,
+                    cellsWidth: cells.width,
+                    cellsRight: cells.right,
+                    boxRight: boxRect.right,
+                    axisInView: axis.bottom <= boxRect.bottom + 1 && axis.top >= boxRect.top,
+                  };
+                }
+                """));
+            output.WriteLine($"runners dialog: {runners}");
+            Assert.True(runners.N("panelLeft") <= 0.5, $"the dialog starts at x={runners.N("panelLeft")}");
+            Assert.True(runners.N("panelRight") >= runners.N("innerWidth") - 0.5, $"the dialog ends at x={runners.N("panelRight")}");
+            Assert.True(runners.N("controls") >= 6, "the dialog has the five window buttons and its close");
+            Assert.True(runners.N("shortest") >= 43.5, $"a control in the dialog is {runners.N("shortest")}px high, under 44");
+            Assert.True(runners.N("scrollWidth") <= runners.N("innerWidth"), $"the page scrolls sideways under the dialog: {runners}");
+            Assert.False(runners.B("boxScrollsSideways"), $"the lanes scroll sideways: {runners}");
+            Assert.True(runners.B("boxScrolls"), $"the lanes do not scroll: {runners}");
+            Assert.True(runners.B("axisInView"), $"the time axis is out of view: {runners}");
+            Assert.True(runners.N("cellsWidth") > 80, $"the cells are {runners.N("cellsWidth")}px wide");
+            Assert.True(runners.N("cellsRight") <= runners.N("boxRight") + 0.5, "the cells run past the box");
+            await harness.ScreenshotAsync(deadline, "board-health-phone-dialog-runners");
+            await harness.ClickAsync(deadline, "[role='dialog'] .hatch-modal__close");
+            await harness.WaitForHiddenAsync(deadline, "[role='dialog']");
 
             // The window chosen in the open strip is remembered across a reload; the row starts closed again.
             await harness.ClickAsync(deadline, ".hatch-health-window:text-is('4h')");

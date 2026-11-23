@@ -2257,7 +2257,7 @@ button.hatch-card-stories:focus-visible {
 }
 
 /* A tile with a dialog to open: pressing it does something, so it says so. The
-   Runners tile has none yet and keeps its crosshair. */
+   Runners tile has one too, so it is pressable like the rest. */
 .hatch-health-spark--open {
   cursor: pointer;
 }
@@ -2740,6 +2740,95 @@ button.hatch-card-stories:focus-visible {
   overflow: visible;
 }
 
+/* The Runners dialog's lanes: a scroll box holding one two-column row a runner -
+   the name and how it stands, then 24 cells in the same column for every row.
+   The time axis is the box's last child and sticks to the bottom, so it stays in
+   view as the lanes scroll. A name's width is --hatch-lane-name, which the moment
+   marker also reads to stay over the cells. */
+.hatch-health-dialog-lanes {
+  --hatch-lane-name: 11rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  touch-action: pan-y;
+  cursor: crosshair;
+  border-radius: var(--r-in);
+}
+
+.hatch-health-dialog-lanes:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-health-dialog-lane-rows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+
+.hatch-health-dialog-lane {
+  display: grid;
+  grid-template-columns: var(--hatch-lane-name) 1fr;
+  column-gap: var(--sp-2);
+  align-items: center;
+}
+
+.hatch-health-dialog-lane-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-health-dialog-lane-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-body);
+  color: var(--ink);
+}
+
+.hatch-health-dialog-lane-cells {
+  display: flex;
+  height: 1.25rem;
+  gap: 1px;
+}
+
+.hatch-health-dialog-lane-moment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ink);
+  pointer-events: none;
+}
+
+.hatch-health-dialog-lane-axis {
+  position: sticky;
+  bottom: 0;
+  padding-left: calc(var(--hatch-lane-name) + var(--sp-2));
+  background: var(--card);
+}
+
+.hatch-health-dialog-lane-axis .hatch-health-dialog-ticks {
+  height: 1.5rem;
+}
+
+.hatch-health-dialog-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-body);
+}
+
+.hatch-health-dialog-lane-swatch {
+  display: inline-flex;
+  flex: none;
+  width: 22px;
+  height: 14px;
+}
+
 /* Two lines are kept for it, so a marked bar's longer sentence moves nothing under it. */
 .hatch-health-dialog-words {
   margin: 0;
@@ -2996,6 +3085,10 @@ button.hatch-card-stories:focus-visible {
 
   .hatch-health-dialog-plot {
     grid-template-columns: 3rem minmax(0, 1fr);
+  }
+
+  .hatch-health-dialog-lanes {
+    --hatch-lane-name: 8rem;
   }
 
   /* Five 12-hour times do not fit under a phone's chart: the second and fourth

@@ -14,7 +14,7 @@ import {
   stackedMovedBars,
   waitingSplit,
 } from './boardHealthDialog';
-import type { DialogTile } from './boardHealthDialog';
+import type { Tile } from './boardHealth';
 import { sampleBar, sampleHealth } from './boardHealthSample';
 import { momentLabel } from './cumulativeFlow';
 import type { BoardHealth, BoardHealthBar } from '../types';
@@ -25,7 +25,7 @@ const withBar = (answer: BoardHealth, i: number, over: Partial<BoardHealthBar>):
   bars: answer.bars.map((bar, at) => (at === i ? { ...bar, ...over } : bar)),
 });
 
-const TILES: DialogTile[] = ['moved', 'inFlight', 'oldest', 'waiting'];
+const TILES: Tile[] = ['moved', 'inFlight', 'oldest', 'waiting'];
 
 describe('dialogTitle', () => {
   it('is the tile\'s own label and the window', () => {
@@ -268,12 +268,12 @@ describe('legend', () => {
     expect(legend('waiting').map((entry) => entry.label)).toEqual(['Questions', 'Pull requests']);
   });
 
-  it('has no legend of its own for Runners yet', () => {
+  it('has no chart legend for Runners, whose seven lines are the lane states', () => {
     expect(legend('runners')).toEqual([]);
   });
 
   it('tells the stacked marks of one chart apart by pattern, not shade alone', () => {
-    for (const tile of ['moved', 'waiting'] as DialogTile[]) {
+    for (const tile of ['moved', 'waiting'] as Tile[]) {
       const patterns = legend(tile).map((entry) => MARK_PATTERN[entry.key]);
 
       expect(patterns.every(Boolean)).toBe(true);
@@ -382,7 +382,7 @@ describe('markedWords', () => {
   it('reads the last bar at rest on the other three, and as rest for an index with no bar', () => {
     const answer = sampleHealth();
 
-    for (const tile of ['inFlight', 'oldest', 'waiting'] as DialogTile[]) {
+    for (const tile of ['inFlight', 'oldest', 'waiting'] as Tile[]) {
       expect(markedWords(tile, answer, null, locale).startsWith('Now: ')).toBe(true);
       expect(markedWords(tile, answer, 99, locale)).toBe(markedWords(tile, answer, null, locale));
     }

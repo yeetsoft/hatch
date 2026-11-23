@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   LANE_LEGEND,
   MAX_LANES,
+  allLanes,
   cellWords,
   drawnLanes,
   hoverList,
+  laneStanding,
+  lanesMarkedWords,
+  lastHeardWords,
   runnersTileWords,
 } from './boardHealthLanes';
 import { momentLabel } from './cumulativeFlow';
@@ -132,6 +136,88 @@ describe('hoverList', () => {
     expect(list.lines).toHaveLength(MAX_LANES);
     expect(list.lines[0]).toEqual({ name: 'r0', words: 'working' });
     expect(list.omitted).toBe(1);
+  });
+});
+
+describe('allLanes', () => {
+  it('answers every lane where drawnLanes caps at eight', () => {
+    const lanes = Array.from({ length: 12 }, (_, i) => lane(`r${i}`));
+    const answer = sampleHealth({ runners: { up: 12, paused: 0, withLane: 12, lanes } });
+
+    expect(allLanes(answer)).toHaveLength(12);
+    expect(allLanes(answer).map((l) => l.name)).toEqual(lanes.map((l) => l.name));
+    expect(drawnLanes(answer).lanes).toHaveLength(MAX_LANES);
+  });
+});
+
+describe('laneStanding', () => {
+  it('says paused, up or not up', () => {
+    expect(laneStanding(lane('a'))).toBe('up');
+    expect(laneStanding(lane('a', { paused: true }))).toBe('paused');
+    expect(laneStanding(lane('a', { up: false }))).toBe('not up');
+  });
+
+  it('puts paused ahead of not up, as the read marks a paused runner', () => {
+    expect(laneStanding(lane('a', { up: false, paused: true }))).toBe('paused');
+  });
+});
+
+describe('lastHeardWords', () => {
+  const answer = sampleHealth();
+  const time = new Date(answer.to).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const before = (minutes: number): string => new Date(Date.parse(answer.to) - minutes * 60_000).toISOString();
+
+  it("says 'at' the window's end for a runner heard from just now", () => {
+    expect(lastHeardWords(lane('a', { lastSeenAt: answer.to }), answer)).toBe(`last heard at ${time}`);
+    expect(lastHeardWords(lane('a', { lastSeenAt: before(0.5) }), answer)).toBe(`last heard at ${time}`);
+  });
+
+  it("says 'at' for a last seen after the window's end, rather than a negative span", () => {
+    expect(lastHeardWords(lane('a', { lastSeenAt: before(-5) }), answer)).toBe(`last heard at ${time}`);
+  });
+
+  it('says how long before the end for a runner heard from minutes earlier', () => {
+    expect(lastHeardWords(lane('a', { lastSeenAt: before(190) }), answer)).toBe(`last heard 3h 10m before ${time}`);
+    expect(lastHeardWords(lane('a', { lastSeenAt: before(7) }), answer)).toBe(`last heard 7m before ${time}`);
+  });
+
+  it('says how long before for a runner last seen before the window began', () => {
+    expect(lastHeardWords(lane('a', { lastSeenAt: before(26 * 60) }), answer)).toBe(`last heard 1d 2h before ${time}`);
+  });
+});
+
+describe('lanesMarkedWords', () => {
+  const answer = sampleHealth();
+  const locale = 'en-GB';
+
+  it('counts the runners at rest', () => {
+    const { up, paused, withLane } = answer.runners;
+
+    expect(lanesMarkedWords(answer, null)).toBe(`${withLane} runners, ${up} up, ${paused} paused`);
+  });
+
+  it('says "1 runner" for one', () => {
+    const one = sampleHealth({ runners: { up: 1, paused: 0, withLane: 1, lanes: [lane('solo')] } });
+
+    expect(lanesMarkedWords(one, null)).toBe('1 runner, 1 up, 0 paused');
+  });
+
+  it("opens on the bar's time and names every runner at it, with none left as not drawn", () => {
+    const lanes = Array.from({ length: 12 }, (_, i) =>
+      lane(`r${i}`, { cells: Array.from({ length: 24 }, () => ({ state: i % 2 ? 'paused' : 'working', why: null }) as BoardHealthCell) }),
+    );
+    const twelve = sampleHealth({ runners: { up: 12, paused: 6, withLane: 12, lanes } });
+    const words = lanesMarkedWords(twelve, 4, locale);
+
+    expect(words.startsWith(`${momentLabel(twelve.bars[4].start, twelve.barMinutes, locale)}: r0 working, r1 paused, `)).toBe(true);
+    for (const l of lanes) expect(words).toContain(l.name);
+    expect(words).not.toContain('not drawn');
+  });
+
+  it("uses each cell's own words, why included", () => {
+    const marked = lanesMarkedWords(answer, 0, locale);
+
+    for (const l of answer.runners.lanes) expect(marked).toContain(`${l.name} ${cellWords(l.cells[0])}`);
   });
 });
 
