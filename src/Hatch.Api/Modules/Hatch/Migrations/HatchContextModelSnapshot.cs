@@ -394,6 +394,85 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("ChangelogTasks", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConversationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MemberId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("MemberName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("SecretExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("SecretHash")
+                        .HasMaxLength(32)
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("WorkspaceId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SecretHash")
+                        .IsUnique();
+
+                    b.HasIndex("WorkspaceId", "MemberId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ChatLinks_WorkspaceId_MemberId_Confirmed")
+                        .HasFilter("\"ConfirmedAt\" IS NOT NULL");
+
+                    b.HasIndex("WorkspaceId", "PersonId")
+                        .IsUnique();
+
+                    b.ToTable("ChatLinks", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatLinkSend", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId", "SentAt");
+
+                    b.ToTable("ChatLinkSends", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatMessage", b =>
                 {
                     b.Property<long>("Id")
@@ -3454,6 +3533,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Issue");
 
                     b.Navigation("SourceIssue");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatLink", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchChatWorkspace", "Workspace")
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workspace");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatMessage", b =>

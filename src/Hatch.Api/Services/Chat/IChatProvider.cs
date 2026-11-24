@@ -28,6 +28,28 @@ public interface IChatProvider
     Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct);
 
     /// <summary>
+    /// The member whose email is this one, or a null member when there is none
+    /// (or the member is deactivated). A refusal is a sentence, not a missing
+    /// member. Fail-soft like <see cref="CheckTokenAsync"/>; the email is never
+    /// in what it returns, a URL or a log line.
+    /// </summary>
+    Task<ChatMemberFound> FindMemberByEmailAsync(string token, string email, CancellationToken ct);
+
+    /// <summary>
+    /// Every member a message could go to: deactivated members, bots and the
+    /// service's own assistant are left out, and no email is returned. Fail-soft
+    /// like <see cref="CheckTokenAsync"/>; a throttle stops the read and says how
+    /// long it asked for, with no retry.
+    /// </summary>
+    Task<ChatMemberList> ListMembersAsync(string token, CancellationToken ct);
+
+    /// <summary>
+    /// Opens (or finds) the direct message conversation with a member and
+    /// returns its id. Fail-soft like <see cref="CheckTokenAsync"/>.
+    /// </summary>
+    Task<ChatConversationOpened> OpenDirectMessageAsync(string token, string memberId, CancellationToken ct);
+
+    /// <summary>
     /// Posts one message to a channel. Fail-soft like <see cref="CheckTokenAsync"/>.
     /// </summary>
     Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct);
@@ -67,6 +89,36 @@ public record ChatChannelList(IReadOnlyList<ChatChannel>? Channels, string? Refu
     public static ChatChannelList Of(IReadOnlyList<ChatChannel> channels) => new(channels, null);
 
     public static ChatChannelList Refused(string sentence) => new(null, sentence);
+}
+
+/// <summary>One member of a workspace. Never carries an email.</summary>
+/// <param name="Id">The service's own id for the member.</param>
+/// <param name="Name">The member's full name, else their handle.</param>
+/// <param name="DisplayName">The name they chose to be shown as, or null.</param>
+public record ChatMember(string Id, string Name, string? DisplayName);
+
+/// <summary>A member, or none, or one plain sentence saying why the lookup could not be made.</summary>
+public record ChatMemberFound(ChatMember? Member, string? Refusal)
+{
+    public static ChatMemberFound Of(ChatMember? member) => new(member, null);
+
+    public static ChatMemberFound Refused(string sentence) => new(null, sentence);
+}
+
+/// <summary>Every member, or one plain sentence saying why not. Exactly one side is set.</summary>
+public record ChatMemberList(IReadOnlyList<ChatMember>? Members, string? Refusal)
+{
+    public static ChatMemberList Of(IReadOnlyList<ChatMember> members) => new(members, null);
+
+    public static ChatMemberList Refused(string sentence) => new(null, sentence);
+}
+
+/// <summary>The id of a direct message conversation, or one plain sentence saying why not.</summary>
+public record ChatConversationOpened(string? ConversationId, string? Refusal)
+{
+    public static ChatConversationOpened Of(string id) => new(id, null);
+
+    public static ChatConversationOpened Refused(string sentence) => new(null, sentence);
 }
 
 /// <summary>Whether a message was posted, or one plain sentence saying why not.</summary>

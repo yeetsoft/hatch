@@ -81,6 +81,7 @@ public class ScopeRouteMatrixTests
     private const string ChatWorkspaces = "a workspace names no project";
     private const string ChatBoundIdsPinned = "bound ids come through the query filter; pinned in ChatControllerTests";
     private const string ChatRoomRoutesNameNoProject = "channels, test and DELETE room read no project";
+    private const string MeChatNamesNoProject = "the caller's own Slack links; workspaces are narrowed by the bound projects the caller sees, pinned in MeChatControllerTests";
     private const string HouseSettings = "house settings and the agent credentials; no project";
     private const string HouseBackup = "the house backup; no project";
     private const string RunnerBinary = "the runner binary; no project";
@@ -121,6 +122,12 @@ public class ScopeRouteMatrixTests
         ("LocalModelsController.DeleteLocalModel", LocalModelsAreTheHouses),
         ("LocalModelsController.GetLocalModels", LocalModelsAreTheHouses),
         ("MeController.GetMe", NamesTheCaller),
+        ("MeChatController.ConfirmLink", MeChatNamesNoProject),
+        ("MeChatController.DeleteLink", MeChatNamesNoProject),
+        ("MeChatController.Get", MeChatNamesNoProject),
+        ("MeChatController.GetMembers", MeChatNamesNoProject),
+        ("MeChatController.GetSuggestion", MeChatNamesNoProject),
+        ("MeChatController.PostLink", MeChatNamesNoProject),
         ("MeHomeController.PutHome", "sets the caller's own home screen; it names no project and returns none"),
         ("ProjectsController.CreateProject", "names no project; it makes one"),
         ("RunnerController.Download", RunnerBinary),
