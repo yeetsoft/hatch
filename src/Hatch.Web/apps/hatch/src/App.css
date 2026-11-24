@@ -4710,6 +4710,12 @@ button.hatch-chip {
   margin: 0;
 }
 
+/* The app-token cell's own line: which state the token is in, above the box. */
+.hatch-chat-apptoken__state {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 /* On a phone a row is a small card, not a table row: the name, then the token
    and when it was connected side by side, then the controls full width. A table
    with an input in every row is wider than the screen, and scrolled sideways it
@@ -4738,6 +4744,7 @@ button.hatch-chip {
   }
 
   .hatch-chat-name,
+  .hatch-chat-apptoken-cell,
   .hatch-chat-actions-cell {
     grid-column: 1 / -1;
   }

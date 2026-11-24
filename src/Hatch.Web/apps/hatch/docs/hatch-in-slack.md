@@ -8,6 +8,7 @@ summary: A start-to-finish guide to Slack in Hatch. Make the app from a manifest
 This page takes you from no Slack app to a room that got a message from Hatch.
 Follow [the steps](#set-up-slack-start-to-finish) in order. The rest of the page
 is for after: [what a message looks like](#what-a-message-looks-like),
+[how to turn answering on](#turn-answering-on),
 [what to do when something is wrong](#when-something-is-wrong), and
 [what is not here yet](#not-here-yet).
 
@@ -92,6 +93,45 @@ You need:
 A room posts nothing else until a switch is on and a project is carried. After
 that, the board does the posting. [The next section](#what-a-message-looks-like)
 shows what it posts.
+
+## Turn answering on
+
+Answering a question from Slack needs a second secret: an **app-level token**.
+It lets Hatch hold a **Socket Mode** connection to Slack, which is how Slack
+sends it a button press without Hatch needing a public address. The buttons are
+not here yet (HA-2720), so storing the token changes nothing you can see in a
+room today. It is worth doing now so the workspace is ready.
+
+1. **Make sure the app asks for Socket Mode and Interactivity.** A new app made
+   from the manifest on the Chat screen already does. An app made from an
+   earlier manifest does not. Either paste the new manifest into the app's
+   manifest page in Slack, or turn on **Socket Mode** and **Interactivity** by
+   hand in the app's settings. If Slack asks you to reinstall the app, do.
+2. **Make an app-level token.** On the app's **Basic Information** page in
+   Slack, under **App-Level Tokens**, make one with the `connections:write`
+   scope. Copy it. It starts `xapp-`.
+3. **Paste it into Hatch.** On the workspace's row on the Chat screen, paste it
+   into the box in the **App token** cell and press **Set app token**. Hatch
+   asks Slack to check the token. If Slack accepts it, the cell says **App token
+   set**. If not, the token is not stored and the sentence under the row says
+   why: see [Set app token refuses](#set-app-token-refuses).
+
+The cell says one of three things:
+
+- **No app token.** None is held. The button says **Set app token**.
+- **App token set.** One is held. The button says **Replace app token**, and
+  **Remove app token** is beside it.
+- **The app token cannot be read. Paste it again.** One is stored but Hatch
+  cannot open it, for instance because the secret key it was sealed with has
+  changed. Paste it again to mend it, or use **Remove app token**.
+
+The box is a password field. It is emptied the moment you press the button,
+whether or not the token is accepted, and the token is never shown again.
+**Remove app token** asks nothing, because the token can be pasted again. It
+removes only the app token: the bot token and the workspace stay.
+
+Accepting a token does not show that Socket Mode is switched on in the app.
+HA-2806 will show whether Hatch is listening.
 
 ## What a message looks like
 
@@ -191,6 +231,18 @@ The sentence under the box is the reason, in Slack's or Hatch's own words.
   instead. Use **Replace token** on its row, as in
   [Change a token](#change-a-token).
 
+### Set app token refuses
+
+The sentence under the row is the reason, and the token is not stored.
+
+- **That is not an app-level token; a Slack app-level token starts with xapp-.**
+  The bot token was pasted by mistake, or part of the token was lost. Copy the
+  app-level token from **Basic Information** in the app's settings.
+- **That app-level token lacks the connections:write scope; make a new one with
+  it.** Make a new app-level token with that scope, and paste it.
+- Slack's own sentence, where Slack refuses the token. It is wrong or was
+  revoked. Make a new one.
+
 ### Add a room shows a sentence
 
 If Slack refuses when you press **Add a room**, its sentence shows in place of
@@ -261,13 +313,16 @@ not posted to the room or workspace it is about, since that room cannot hear it.
 ## Not here yet
 
 - **Answering from Slack** (HA-2720). Today a question in a room links to the
-  Ballot, and it is answered there.
+  Ballot, and it is answered there. The app-level token it needs can be stored
+  now: see [Turn answering on](#turn-answering-on). The buttons are not here
+  yet.
 
 ## Change a token
 
 Use **Replace token** on the workspace's row: type the new token into the box in
 that row and press the button. The token has to be for the same workspace. A
-token for another one is refused, and the old token stays.
+token for another one is refused, and the old token stays. Replacing the bot
+token keeps the app token.
 
 ## What each message says
 
@@ -593,7 +648,8 @@ accepts, a throttle and an outage are the workspace's, as for any message.
 ## Remove a workspace
 
 **Remove** asks first, and names the workspace. Confirming removes the
-workspace and everything Hatch holds for it, token included, in one step.
+workspace and everything Hatch holds for it, bot token and app-level token
+included, in one step.
 Nothing in Slack itself is touched. To connect it again, paste a token as
 above.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AddTokenForm, DeliveryState, LinksOffNote, ManifestBlock, RemoveDialog, ReplaceTokenForm, WorkspaceTable } from './ChatPage';
+import { AddTokenForm, AppTokenCell, DeliveryState, LinksOffNote, ManifestBlock, RemoveDialog, ReplaceTokenForm, WorkspaceTable } from './ChatPage';
 import type { ChatWorkspace, ChatWorkspaceDelivery, Project } from '../types';
 
 // The client reaches lib/clientLogger, which reads `window` at import, and
@@ -15,6 +15,8 @@ const workspace = (id: number, name: string, hasToken = true): ChatWorkspace => 
   externalId: `T${id}`,
   name,
   hasToken,
+  hasAppToken: false,
+  appTokenUnreadable: false,
   createdAt: '2026-03-01T11:00:00Z',
   projectIds: [],
 });
@@ -35,9 +37,15 @@ const table = (rows: ChatWorkspace[], busy = false, delivery: ChatWorkspaceDeliv
       busy={busy}
       onBound={noop}
       onReplace={async () => {}}
+      onSetAppToken={async () => {}}
+      onRemoveAppToken={noop}
       onRemove={noop}
     />,
   );
+
+const withAppToken = (over: Partial<ChatWorkspace>): ChatWorkspace => ({ ...workspace(1, 'Fellowship'), ...over });
+const cell = (w: ChatWorkspace, busy = false) =>
+  renderToStaticMarkup(<AppTokenCell workspace={w} busy={busy} onSet={async () => {}} onRemove={noop} />);
 
 describe('the workspace table', () => {
   it('shows each workspace by name, with the word Token set and when it was connected', () => {
@@ -76,6 +84,70 @@ describe('the workspace table', () => {
 
   it('disables the row controls while a write is in flight', () => {
     expect(table([FELLOWSHIP], true).match(/disabled=""/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('the app token cell', () => {
+  const SET = withAppToken({ hasAppToken: true });
+  const UNREADABLE = withAppToken({ hasAppToken: true, appTokenUnreadable: true });
+
+  it('is a column of the table, in its own cell', () => {
+    const html = table([SET]);
+    expect(html).toContain('<th>App token</th>');
+    expect(html).toContain('class="hatch-chat-apptoken-cell"');
+    expect(html.match(/<td[ >]/g)).toHaveLength(7);
+  });
+
+  it('says App token set where one is held', () => {
+    const html = cell(SET);
+    expect(html).toContain('App token set');
+    expect(html).not.toContain('No app token');
+  });
+
+  it('says No app token where none is held', () => {
+    const html = cell(withAppToken({}));
+    expect(html).toContain('No app token');
+    expect(html).not.toContain('App token set');
+  });
+
+  it('says the token cannot be read, and to paste it again, when it is unreadable', () => {
+    const html = cell(UNREADABLE);
+    expect(html).toContain('cannot be read');
+    expect(html).toContain('Paste it again');
+    expect(html).toContain('text-danger');
+    expect(html).not.toContain('App token set');
+  });
+
+  it('offers Set app token where none is held and Replace app token where one is', () => {
+    expect(cell(withAppToken({}))).toContain('Set app token');
+    expect(cell(withAppToken({}))).not.toContain('Replace app token');
+    expect(cell(SET)).toContain('Replace app token');
+    expect(cell(SET)).not.toContain('Set app token');
+  });
+
+  it('offers Remove app token only where a token is set or unreadable', () => {
+    expect(cell(withAppToken({}))).not.toContain('Remove app token');
+    expect(cell(SET)).toContain('Remove app token');
+    expect(cell(withAppToken({ appTokenUnreadable: true }))).toContain('Remove app token');
+  });
+
+  it('is a password box with autocomplete off, named for its workspace', () => {
+    const html = cell(SET);
+    expect(html).toContain('type="password"');
+    expect(html).toContain('autoComplete="off"');
+    expect(html).toContain('aria-label="App-level token for Fellowship"');
+    expect(html).not.toMatch(/value="xapp/);
+  });
+
+  it('never draws anything shaped like an app-level token', () => {
+    for (const w of [withAppToken({}), SET, UNREADABLE]) expect(cell(w)).not.toContain('xapp-');
+    expect(table([SET, UNREADABLE])).not.toContain('xapp-');
+  });
+
+  it('disables its buttons while a write is in flight, and the Set button while the box is blank', () => {
+    expect(cell(SET).match(/disabled=""/g)).toHaveLength(1);
+    expect(cell(SET, true).match(/disabled=""/g)).toHaveLength(2);
+    expect(cell(withAppToken({}), true).match(/disabled=""/g)).toHaveLength(1);
   });
 });
 

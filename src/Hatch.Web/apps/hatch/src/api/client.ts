@@ -1246,6 +1246,10 @@ export const createChatWorkspace = (token: string) =>
   fetchJson<ChatWorkspace>('/api/chat/workspaces', { method: 'POST', ...asJson({ token }) });
 export const replaceChatToken = (id: number, token: string) =>
   fetchJson<ChatWorkspace>(`/api/chat/workspaces/${seg(String(id))}/token`, { method: 'PUT', ...asJson({ token }) });
+export const setChatAppToken = (id: number, token: string) =>
+  fetchJson<ChatWorkspace>(`/api/chat/workspaces/${seg(String(id))}/app-token`, { method: 'PUT', ...asJson({ token }) });
+export const removeChatAppToken = (id: number) =>
+  fetchJson<void>(`/api/chat/workspaces/${seg(String(id))}/app-token`, { method: 'DELETE' });
 export const deleteChatWorkspace = (id: number) =>
   fetchJson<void>(`/api/chat/workspaces/${seg(String(id))}`, { method: 'DELETE' });
 export const getChatManifest = () => fetchJson<ChatManifest>('/api/chat/manifest');

@@ -16,6 +16,8 @@ const workspace = (projectIds: number[]): ChatWorkspace => ({
   externalId: 'T7',
   name: 'Fellowship',
   hasToken: true,
+  hasAppToken: false,
+  appTokenUnreadable: false,
   createdAt: '2026-03-01T11:00:00Z',
   projectIds,
 });

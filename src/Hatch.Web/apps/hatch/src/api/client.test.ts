@@ -17,6 +17,8 @@ import {
   getChatManifest,
   getChatWorkspaces,
   replaceChatToken,
+  setChatAppToken,
+  removeChatAppToken,
   getActivity,
   getAllRunners,
   getAttachments,
@@ -890,7 +892,7 @@ describe('chat page calls', () => {
     vi.unstubAllGlobals();
   });
 
-  const workspace = { id: 4, provider: 'slack', externalId: 'T1', name: 'Fellowship', hasToken: true, createdAt: '2026-01-01T00:00:00Z', projectIds: [] };
+  const workspace = { id: 4, provider: 'slack', externalId: 'T1', name: 'Fellowship', hasToken: true, hasAppToken: false, appTokenUnreadable: false, createdAt: '2026-01-01T00:00:00Z', projectIds: [] };
 
   it('getChatWorkspaces GETs the list', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify([workspace]), { status: 200 }));
@@ -935,6 +937,30 @@ describe('chat page calls', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/chat/workspaces/4/token',
       expect.objectContaining({ method: 'PUT', body: '{"token":"xoxb-d.e.f"}' }),
+    );
+  });
+
+  it('setChatAppToken PUTs the token to the workspace app-token route', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(workspace), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(setChatAppToken(4, 'a-b-c')).resolves.toEqual(workspace);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/chat/workspaces/4/app-token',
+      expect.objectContaining({ method: 'PUT', body: '{"token":"a-b-c"}' }),
+    );
+  });
+
+  it('removeChatAppToken DELETEs the app token and tolerates the empty answer', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(removeChatAppToken(4)).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/chat/workspaces/4/app-token',
+      expect.objectContaining({ method: 'DELETE' }),
     );
   });
 
