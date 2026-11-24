@@ -174,7 +174,8 @@ Ended 2026-01-05 11:10 UTC
 The sentence is the goose's own, so it differs from finding to finding. A failing trunk build, a stopped goose and backups that need a person
 look the same way, and are described under [Goose findings](#goose-findings),
 [Goose and backup messages](#goose-and-backup-messages) and
-[Trunk build messages](#trunk-build-messages).
+[Trunk build messages](#trunk-build-messages). So is a runner that cannot do
+something, under [Runner failure messages](#runner-failure-messages).
 
 ## When something is wrong
 
@@ -297,7 +298,8 @@ workspace it is about, since that room cannot hear it.
 Two problems belong to no project: [the goose](the-goose) having stopped, and
 the backups needing a person. Both go to rooms with **Problems that belong to no
 project** on, and to no other. A room with only **Problems** on hears findings
-about its projects and none of these.
+about its projects and none of these. A [runner failure](#runner-failure-messages)
+goes to the same rooms.
 
 The goose has stopped when its last sweep is older than three intervals, or,
 with no sweep stored, when the server has been up that long. It is the same rule
@@ -328,6 +330,59 @@ with several copies of Hatch running.
 Hatch checks both once every few seconds, as it sends messages. The limit is
 plain: if the whole scheduler stops, the sender stops with it, and nothing inside
 Hatch can say so. Watch the goose page, or something outside Hatch, for that.
+
+## Runner failure messages
+
+When a runner begins to fail at something, a room with **Problems that belong to
+no project** on hears of it, in every workspace. A runner belongs to no project,
+so a room with only **Problems** on hears of none. The switch says it also
+carries the goose stopping, backups and runner failures.
+
+Five kinds of failure post, each in the words `hatch runners` and the runner's
+page use:
+
+- **Cannot reach its forge**: the forge refused the runner's sign-in.
+- **Cannot sign its commits**: commits are meant to be signed and git could not
+  sign one.
+- **Its agent is signed out**: the agent needs a person to sign it back in.
+- **Its agent will not start.**
+- **Paused by the board**: the board stood the runner down after several
+  increments in a row ended in error without spending a token.
+
+Running out of usage and the hourly token cap are not failures, and post nothing.
+
+The message names the runner, says what it cannot do, and says since when. It
+links to the runner's page, at `/runners/<name>`; without `HATCH_PUBLIC_URL` it
+names the runner with no link:
+
+```
+mike-laptop: Cannot reach its forge
+Since 2026-01-05 09:30 UTC
+```
+
+When a beat finds the failure gone, or the pause ends, the same message is
+edited to start with **Ended:** and to say when it began and when it ended:
+
+```
+Ended: mike-laptop: Cannot reach its forge
+Began 2026-01-05 09:30 UTC
+Ended 2026-01-05 11:10 UTC
+```
+
+Each failure is one message, from when it begins to when it ends. A failure that
+comes back is a new message. A runner that keeps reporting the same failure
+changes nothing, even when what the tool said changes.
+
+The message leaves out the checkout, and it leaves out what the tool said. The
+checkout's path can name a repository, and what `gh` said can name a host or an
+account, and everyone in the channel reads what is posted there. The runner's
+page shows both to whoever may read that runner.
+
+A runner that goes quiet does not edit its message. Nothing in Hatch ends a
+failure for a runner that has stopped reporting, so the message keeps saying the
+failure stands until the runner's next beat ends it. Hatch does not yet say that
+a runner has gone quiet. A failure that was already open before Hatch could post
+these is never posted, and its end is not either.
 
 ## Trunk build messages
 

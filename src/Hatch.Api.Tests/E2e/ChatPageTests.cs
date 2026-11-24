@@ -225,6 +225,11 @@ public class ChatPageTests(ITestOutputHelper output)
         Assert.Equal(1, await CountAsync(harness, deadline, general + " input[type=radio]:checked"));
         Assert.Equal(0, await CountAsync(harness, deadline, generalChosen));
 
+        // The switch for problems that belong to no project says what else it carries.
+        Assert.Equal(
+            "Also the goose stopping, backups needing a person, and runner failures.",
+            (await TextAsync(harness, deadline, general + " .hatch-chat-room__hint")).Trim());
+
         // And on Globex: a room of its own, whose chosen list could only ever be Globex's projects.
         await harness.ClickAsync(deadline, globexRooms + " button:text-is(\"Add a room\")");
         await harness.WaitForVisibleAsync(deadline, globexRooms + " li.hatch-chat-channel:has-text(\"lobby\")");

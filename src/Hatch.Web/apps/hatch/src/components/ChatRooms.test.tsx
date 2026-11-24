@@ -51,6 +51,14 @@ describe('a room card', () => {
     expect(html).toContain('Chosen projects');
   });
 
+  it('says under the no-project switch that it also carries the goose, the backups and runner failures', () => {
+    const html = card(room());
+    expect(html).toContain('Also the goose stopping, backups needing a person, and runner failures.');
+    // only that one switch carries a hint, and the checkbox points at it
+    expect(html.match(/hatch-chat-room__hint/g)).toHaveLength(1);
+    expect(html).toMatch(/aria-describedby="[^"]+-unownedProblems"/);
+  });
+
   it('shows the switches as they stand', () => {
     const html = card(room({ changelog: true, problems: true }));
     // two switches and the all-projects radio

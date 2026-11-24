@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button, Modal, Text } from '@hatch/ui';
 import {
   createChatRoom,
@@ -179,12 +179,18 @@ export function ChatRooms({ workspace, projects }: { workspace: ChatWorkspace; p
   );
 }
 
-const SWITCHES = [
+/** The fields a room's switches set, each with its label and, where the label alone
+    would not say what it carries, a line under it. */
+const SWITCHES: readonly (readonly [field: 'changelog' | 'questions' | 'problems' | 'unownedProblems', label: string, hint?: string])[] = [
   ['changelog', 'Changelog'],
   ['questions', 'Questions'],
   ['problems', 'Problems'],
-  ['unownedProblems', 'Problems that belong to no project'],
-] as const;
+  [
+    'unownedProblems',
+    'Problems that belong to no project',
+    'Also the goose stopping, backups needing a person, and runner failures.',
+  ],
+];
 
 /**
  * One room: the channel, four switches, which projects it carries, and the
@@ -211,6 +217,7 @@ export function RoomCard({
   onTest: () => void;
   onRemove: () => void;
 }) {
+  const hintId = useId();
   const carriesNone = !room.allProjects && room.projectIds.length === 0;
   const waiting = test?.waiting ?? false;
 
@@ -224,16 +231,24 @@ export function RoomCard({
       <h3 className="hatch-chat-room__name">#{room.channelName}</h3>
 
       <div role="group" aria-label="What it posts" className="hatch-chat-room__switches">
-        {SWITCHES.map(([field, label]) => (
-          <label key={field} className="hatch-chat-room__switch">
-            <input
-              type="checkbox"
-              checked={room[field]}
-              disabled={busy}
-              onChange={(e) => onPatch({ [field]: e.target.checked })}
-            />
-            {label}
-          </label>
+        {SWITCHES.map(([field, label, hint]) => (
+          <div key={field} className="hatch-chat-room__option">
+            <label className="hatch-chat-room__switch">
+              <input
+                type="checkbox"
+                checked={room[field]}
+                disabled={busy}
+                aria-describedby={hint ? `${hintId}-${field}` : undefined}
+                onChange={(e) => onPatch({ [field]: e.target.checked })}
+              />
+              {label}
+            </label>
+            {hint && (
+              <Text tone="muted" as="span" id={`${hintId}-${field}`} className="hatch-chat-room__hint">
+                {hint}
+              </Text>
+            )}
+          </div>
         ))}
       </div>
 
