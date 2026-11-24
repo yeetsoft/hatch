@@ -103,17 +103,22 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// that runner let go of to a different live runner. <paramref name="takers"/>
     /// asks the board to say, per row, which live runners could take its next
     /// step - only <c>queue</c> prints that, so a dispatch pass never asks.
+    /// <paramref name="descriptions"/> false asks the board to leave each entry's
+    /// description empty: nothing that reads the queue reads one, and the board
+    /// then makes no read of the column. The brief comes from the named issue's own
+    /// route when a ticket is picked.
     /// </summary>
     public async Task<IReadOnlyList<QueueEntryDto>> QueueAsync(
         IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
-        bool clones = false, bool mine = false, string? runner = null, bool takers = false)
+        bool clones = false, bool mine = false, string? runner = null, bool takers = false, bool descriptions = true)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
         var narrowed = mine ? "&mine=true" : "";
         var asking = string.IsNullOrEmpty(runner) ? "" : $"&runner={Uri.EscapeDataString(runner)}";
         var who = takers ? "&takers=true" : "";
+        var text = descriptions ? "" : "&descriptions=false";
         return await Client.GetAsync<List<QueueEntryDto>>(
-            $"/api/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{who}{Declare(checkouts, clones)}", ct) ?? [];
+            $"/api/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{who}{text}{Declare(checkouts, clones)}", ct) ?? [];
     }
 
     /// <summary>

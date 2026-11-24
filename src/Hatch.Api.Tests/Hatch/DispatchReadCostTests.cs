@@ -67,46 +67,59 @@ public class DispatchReadCostTests
     // Every statement of the call counts, the scans of peers included. A failure
     // prints the measured table in this shape, ready to paste.
     //
-    // One scan of the board is 30 statements, here and at either size: it is what
+    // One scan of the board is 32 statements, here and at either size: it is what
     // each peer adds to next and to the takers read, and half of what each adds to
     // attention. The rest of every number is what the route does with the scan.
+    //
+    // It was 30 before HA-2795. The candidates were one statement that joined each
+    // issue to its project, its repositories and its contribution, and carried every
+    // description with it. They are now three: the issues without their description
+    // or search vector, the projects they name with their repositories, and the
+    // contributions. Two more statements a scan, and no description read - this
+    // seed sets no description and no brief limit, so the scan never loads one.
 
     private static readonly Dictionary<(string Read, int Board, int Fleet), int> Pinned = new()
     {
-        // next: its own scan (30), then resolving the one row it returns - the brief,
-        // the row's notes and questions, its ancestors, its playbook (51). A runner
-        // that is not preferred asks each preferred peer whether it could take a row
-        // before keeping it, and the row picked here is one no peer can take, so
-        // every peer is scanned, once each: 30 more for each.
-        [(Next, 100, 1)] = 81,
-        [(Next, 100, 4)] = 171,
-        [(Next, 1000, 1)] = 81,
-        [(Next, 1000, 4)] = 171,
+        // next: its own scan (32), then resolving the one row it returns - the brief,
+        // the row's notes and questions, its ancestors, its playbook (51), and one
+        // statement more than before HA-2795: the scan's rows carry no description,
+        // so the one issue it answers with is read for its own. A runner that is not
+        // preferred asks each preferred peer whether it could take a row before
+        // keeping it, and the row picked here is one no peer can take, so every peer
+        // is scanned, once each: 32 more for each.
+        [(Next, 100, 1)] = 84,
+        [(Next, 100, 4)] = 180,
+        [(Next, 1000, 1)] = 84,
+        [(Next, 1000, 4)] = 180,
 
-        // queue: its own scan (30), then the projection of every row it returns -
-        // issues, comments, claims, the merge-train notes (19). No runner is
-        // named, so no peer is asked and the fleet does not show.
-        [(Queue, 100, 1)] = 49,
-        [(Queue, 100, 4)] = 49,
-        [(Queue, 1000, 1)] = 49,
-        [(Queue, 1000, 4)] = 49,
+        // queue: its own scan (32), then the projection of every row it returns -
+        // issues, comments, claims, the merge-train notes (19), and one statement
+        // more than before HA-2795: with the default descriptions=true the rows'
+        // descriptions are read together, once, for the answer. descriptions=false
+        // would make it 51. No runner is named, so no peer is asked and the fleet
+        // does not show.
+        [(Queue, 100, 1)] = 52,
+        [(Queue, 100, 4)] = 52,
+        [(Queue, 1000, 1)] = 52,
+        [(Queue, 1000, 4)] = 52,
 
-        // queue?takers=true: the queue (49), the unnarrowed scan of the whole board
-        // (30), and one scan for every live runner (30 each), plus three statements
+        // queue?takers=true: the queue (52), the unnarrowed scan of the whole board
+        // (32), and one scan for every live runner (32 each), plus three statements
         // to read the fleet. That is 2 + runners scans, as the proof above counts.
-        [(Takers, 100, 1)] = 112,
-        [(Takers, 100, 4)] = 202,
-        [(Takers, 1000, 1)] = 112,
-        [(Takers, 1000, 4)] = 202,
+        [(Takers, 100, 1)] = 119,
+        [(Takers, 100, 4)] = 215,
+        [(Takers, 1000, 1)] = 119,
+        [(Takers, 1000, 4)] = 215,
 
         // attention: six scans with one runner (deadlocks, the project line, runner
-        // capacity, who is waiting on a runner), and two more, 60 statements, for
-        // every further one. The rest is what the route reads besides scans. It
-        // also grows with the board: see GrowsWithBoardSize.
-        [(Attention, 100, 1)] = 231,
-        [(Attention, 100, 4)] = 411,
-        [(Attention, 1000, 1)] = 346,
-        [(Attention, 1000, 4)] = 526,
+        // capacity, who is waiting on a runner), and two more, 64 statements, for
+        // every further one. Two statements a scan more than before HA-2795, so 12
+        // more with one runner and 24 more with four. The rest is what the route
+        // reads besides scans. It also grows with the board: see GrowsWithBoardSize.
+        [(Attention, 100, 1)] = 243,
+        [(Attention, 100, 4)] = 435,
+        [(Attention, 1000, 1)] = 358,
+        [(Attention, 1000, 4)] = 550,
     };
 
     // ---- The shape ----

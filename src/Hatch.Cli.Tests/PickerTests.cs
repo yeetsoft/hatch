@@ -44,6 +44,17 @@ public sealed class PickerTests
     }
 
     [Fact]
+    public async Task The_queue_read_leaves_descriptions_out_since_the_brief_comes_from_the_named_read()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+
+        await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Contains("descriptions=false", h.Wire.To("GET", Queue).Single().Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_claim_carries_the_sessions_where_not_the_runners_own_name()
     {
         using var h = new Harness();

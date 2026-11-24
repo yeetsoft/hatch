@@ -34,7 +34,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// reads <c>v2</c> - this fix does not try to find or repair one.</para>
 /// </summary>
 public sealed class SecretReseal(
-    SecretProtector protector, SecretCipher cipher, IConfiguration configuration, ILogger<SecretReseal> logger) : IHostedService
+    SecretProtector protector, SecretCipher cipher, IConfiguration configuration, DatabaseConnections connections, ILogger<SecretReseal> logger) : IHostedService
 {
     /// <summary>The lock's key, arbitrary but fixed - "reseal" in ASCII. Advisory locks are per database.</summary>
     internal const long LockKey = 0x72657365616C;
@@ -68,7 +68,7 @@ public sealed class SecretReseal(
 
         try
         {
-            var connectionString = configuration.GetConnectionString("Hatch");
+            var connectionString = connections.Hatch;
             if (string.IsNullOrWhiteSpace(connectionString))
                 throw new InvalidOperationException("There is no ConnectionStrings:Hatch to reseal stored secrets in");
 
