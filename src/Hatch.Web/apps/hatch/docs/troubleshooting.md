@@ -661,6 +661,14 @@ and a meter for anything that reads numbers.
   instead. The `api` image does not carry `dotnet-counters`, so reading the meter
   from inside the container needs the tool added to it.
 
+- **Expect no scan from the merge-train poll.** Every runner polls
+  `GET /work/review` every few seconds, so it is built to cost the same on a
+  board of fifty issues and on one of two thousand. It runs no scan and builds no
+  priority tree: with nothing in review or merging for the caller it sends two
+  statements, and with rows there it reads only those rows and the issues above
+  them. A `Dispatch reads on api/work/review` line, or any `TreeBuilds` count on
+  that route, means the poll has started reading the whole board again.
+
 ## A psql shell
 
 For looking at the database by hand:
