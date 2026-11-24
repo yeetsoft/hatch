@@ -58,12 +58,15 @@ public class QueryFilterAuditTests
             "Rank placement. A column is shared by every project, so a rank placed against only the visible "
             + "cards could land on a hidden card's rank, and a renumber would reorder the two sets against each "
             + "other. What leaves is a rank."),
-        ["BoardHealthTrail.ReadAsync"] = (1,
+        ["BoardHealthTrail.ReadAsync"] = (3,
             "The newest event of each issue and kind before a time, probed from Issues. The opt-out is query-wide, so "
             + "the probe reaches issues in projects the caller cannot see; it returns only the instants, which the method "
             + "keeps in memory, and the rows at those instants are then read through the caller's own filter, so what "
             + "leaves is the same as the filtered read it replaced. The filter in the probe would join Issues again for "
-            + "every issue and kind and so cost a read of Issues per probe."),
+            + "every issue and kind and so cost a read of Issues per probe. Three calls, one reason: the probe is "
+            + "written in two shapes so that a read with no closing time sends the statement it always did, and the "
+            + "one with a closing time (HA-2784) adds the first event after it, which is again an instant and nothing "
+            + "else."),
         ["Dispatch.ForAsync"] = (4,
             "The dependency gate and the priority tree it, the family gate, the work-in-progress count and every "
             + "projection lean on. A blocker in a project the caller cannot see still blocks, a level on an ancestor "

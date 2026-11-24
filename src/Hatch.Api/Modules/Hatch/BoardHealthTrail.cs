@@ -99,13 +99,32 @@ internal static class BoardHealthTrail
     /// kind asked for. <paramref name="olderOnlyIf"/> keeps it only when it is
     /// of this kind, so a take that a later release closed before the window is
     /// dropped and not read as open.</para>
+    /// <para><paramref name="until"/> closes the window, for a report that folds a
+    /// range and not an open-ended tail. The window then ends at <paramref name="until"/>
+    /// inclusive - a change at that instant opens a stretch the fold counts - and,
+    /// for each issue with no event of these kinds at or before it, the first one
+    /// after it is read too: that move's <c>from</c> is the column the issue stood
+    /// in throughout. One is enough, and later ones are never read. Left null, the
+    /// statements are the ones above and nothing changes. It has no meaning beside
+    /// <paramref name="olderOnlyIf"/>, which decides what to keep of the newest
+    /// before the window, so naming both is refused.</para>
+    /// <para>An event whose payload names no column on either side is dropped by
+    /// the fold's parser, and a cut keeps only the newest before the window; if
+    /// that one were such an event the state before it would be lost. Every writer
+    /// goes through <c>IssueEventPayload.StatusChanged</c>, which writes both
+    /// sides, so none exists; this has not been checked against production rows.</para>
     /// </remarks>
     internal static async Task<List<Ev>> ReadAsync(
         HatchContext db, string[] kinds, DateTimeOffset since, HashSet<string>? scope, List<long>? issueIds,
-        CancellationToken ct, string? olderOnlyIf = null)
+        CancellationToken ct, string? olderOnlyIf = null, DateTimeOffset? until = null)
     {
+        if (until is not null && olderOnlyIf is not null)
+            throw new ArgumentException("until and olderOnlyIf have no meaning together", nameof(until));
+
         var window = db.IssueEvents.AsNoTracking()
             .Where(e => e.At >= since && kinds.Contains(e.Kind));
+
+        if (until is { } closed) window = window.Where(e => e.At <= closed);
 
         var drivers = db.Issues.AsNoTracking().AsQueryable();
 
@@ -137,21 +156,40 @@ internal static class BoardHealthTrail
         // the caller's; it only finds instants, and the read of the rows below
         // applies the caller's own filter, so nothing hidden is returned.
         var newest = new Dictionary<(long IssueId, string Kind), DateTimeOffset>();
+        var after = new Dictionary<(long IssueId, string Kind), DateTimeOffset>();
         foreach (var kind in kinds)
         {
             var k = kind;
-            var probed = await drivers
-                .Select(i => new
-                {
-                    i.Id,
-                    At = db.IssueEvents.IgnoreQueryFilters()
-                        .Where(x => x.IssueId == i.Id && x.Kind == k && x.At < since)
-                        .Max(x => (DateTimeOffset?)x.At),
-                })
-                .ToListAsync(ct);
+            // With a closed window the same statement also probes the first event
+            // after it, one column more. Without one it is the statement it always
+            // was: a second shape, not a null parameter, so the SQL does not change.
+            var probed = until is { } closes
+                ? await drivers
+                    .Select(i => new
+                    {
+                        i.Id,
+                        At = db.IssueEvents.IgnoreQueryFilters()
+                            .Where(x => x.IssueId == i.Id && x.Kind == k && x.At < since)
+                            .Max(x => (DateTimeOffset?)x.At),
+                        After = db.IssueEvents.IgnoreQueryFilters()
+                            .Where(x => x.IssueId == i.Id && x.Kind == k && x.At > closes)
+                            .Min(x => (DateTimeOffset?)x.At),
+                    })
+                    .ToListAsync(ct)
+                : await drivers
+                    .Select(i => new
+                    {
+                        i.Id,
+                        At = db.IssueEvents.IgnoreQueryFilters()
+                            .Where(x => x.IssueId == i.Id && x.Kind == k && x.At < since)
+                            .Max(x => (DateTimeOffset?)x.At),
+                        After = (DateTimeOffset?)null,
+                    })
+                    .ToListAsync(ct);
             foreach (var p in probed)
             {
                 if (p.At is { } at) newest[(p.Id, k)] = at;
+                if (p.After is { } later) after[(p.Id, k)] = later;
             }
         }
 
@@ -178,6 +216,32 @@ internal static class BoardHealthTrail
                          .Select(g => g.OrderByDescending(e => e.At).ThenByDescending(e => e.Id).First()))
             {
                 if (olderOnlyIf is null || latest.Kind == olderOnlyIf) found.Add(latest);
+            }
+        }
+
+        if (until is { } end && after.Count > 0)
+        {
+            // An issue with nothing at or before the end of the window stood in
+            // its first move's from column throughout: read that one move. Only
+            // issues with a first event after the end and none before it get here.
+            var seen = found.Select(e => e.IssueId).ToHashSet();
+            var bare = after.Where(a => !seen.Contains(a.Key.IssueId)).ToList();
+
+            if (bare.Count > 0)
+            {
+                var instants = bare.Select(a => a.Value).Distinct().ToList();
+                var owners = bare.Select(a => a.Key.IssueId).Distinct().ToList();
+                var atThose = await db.IssueEvents.AsNoTracking()
+                    .Where(e => kinds.Contains(e.Kind) && owners.Contains(e.IssueId) && instants.Contains(e.At) && e.At > end)
+                    .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
+                    .ToListAsync(ct);
+
+                // The earliest across kinds, by At and then Id, the fold's order.
+                var wanted = bare.ToDictionary(a => (a.Key.IssueId, a.Key.Kind), a => a.Value);
+                found.AddRange(atThose
+                    .Where(e => wanted.TryGetValue((e.IssueId, e.Kind), out var at) && at == e.At)
+                    .GroupBy(e => e.IssueId)
+                    .Select(g => g.OrderBy(e => e.At).ThenBy(e => e.Id).First()));
             }
         }
 
