@@ -162,11 +162,15 @@ public class ReportReadCostTests
         ["GET /api/reports/timeline"] = (
             new(13, 4, 1496, 716, "Comments=220;IssueEvents=704;Issues=1401;Projects=8;Statuses=24"),
             new(13, 4, 1496, 716, "Comments=720;IssueEvents=704;Issues=1600;Projects=8;Statuses=24")),
-        // Every status change with no time bound (HA-2785), and QuestionTrail with no range,
-        // so every question and answer: no range index can serve either.
+        // Read for its window alone (HA-2785): the moves the window needs, the questions asked in it or
+        // answered in it, and the drops and the sessions as counts, a row for each of the two. Rows
+        // returned are the same at both sizes. It stays here and not in Same for one figure: the query
+        // filters join Issues in every statement, and at the large size Postgres scans Issues for the
+        // question reads where the small one does not, 400 rows more. The test below holds apart what the
+        // report is meant to keep equal. Two loads of Issues: the report's rows and the trail's probe.
         ["GET /api/reports/flow"] = (
-            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=1869;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
-            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=5389;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=300")),
+            new(10, 2, 1233, 833, "Comments=561;IssueEvents=704;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=500"),
+            new(10, 2, 1233, 833, "Comments=241;IssueEvents=704;Issues=1400;Projects=2;Statuses=6;WorkLogEntries=300")),
         // QuestionTrail.ReadAsync with no range, so every question and every answer.
         ["GET /api/reports/changelog (epic level)"] = (
             new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
@@ -338,14 +342,15 @@ public class ReportReadCostTests
         if (topSmall.Statements != topLarge.Statements || topSmall.Rows != topLarge.Rows)
             failures.Add($"sessions?top costs {topSmall.Statements} statements and {topSmall.Rows} rows at the small size and {topLarge.Statements} and {topLarge.Rows} at the large - it should be the same");
 
-        // Both reports read the moves their range needs and no more (HA-2784), so
+        // The reports read the moves their range needs and no more (HA-2784, HA-2785), so
         // the rows of IssueEvents are the same at both sizes. Timeline stays in
         // the Grows list for its cards and priority tree, so the shared Grew
         // check cannot see this figure alone, and it is held apart. Issues is loaded as many
         // times as the lines in the table say: the report's rows and the trail's
         // probe for cumulative flow (2), and those and the cards and the priority
         // tree for the timeline (4).
-        foreach (var (name, loads) in new[] { ("GET /api/reports/timeline", 4), ("GET /api/reports/cumulative-flow", 2) })
+        foreach (var (name, loads) in new[]
+                 { ("GET /api/reports/timeline", 4), ("GET /api/reports/cumulative-flow", 2), ("GET /api/reports/flow", 2) })
         {
             var (before, after) = (small[name].Row, large[name].Row);
             var (eventsBefore, eventsAfter) = (
@@ -358,6 +363,28 @@ public class ReportReadCostTests
                 failures.Add($"{name} loads Issues {before.IssueLoads} then {after.IssueLoads} times, not {loads}");
         }
 
+        // The flow report reads its window alone (HA-2785): the rows IssueEvents and Comments return
+        // are the same at both sizes, and the sessions are counted by the database, so no more than
+        // the two groups come back from WorkLogEntries.
+        {
+            var (before, after) = (small["GET /api/reports/flow"], large["GET /api/reports/flow"]);
+
+            foreach (var table in new[] { "IssueEvents", "Comments" })
+            {
+                var (rowsBefore, rowsAfter) = (ReturnedBy(before, table), ReturnedBy(after, table));
+                if (rowsBefore != rowsAfter || rowsBefore == 0)
+                    failures.Add($"GET /api/reports/flow returned {rowsBefore} {table} rows at the small size and {rowsAfter} at the large - " +
+                        "the same number is the point, and none would mean the read was not measured");
+            }
+
+            foreach (var (size, m) in new[] { ("small", before), ("large", after) })
+            {
+                var sessions = ReturnedBy(m, "WorkLogEntries");
+                if (sessions is 0 or > 2)
+                    failures.Add($"GET /api/reports/flow returned {sessions} WorkLogEntries rows at the {size} size - the sessions are counted by the database, two groups at most");
+            }
+        }
+
         if (failures.Count > 0)
             Assert.Fail(
                 string.Join(Environment.NewLine, failures) + Environment.NewLine + Environment.NewLine
@@ -365,6 +392,10 @@ public class ReportReadCostTests
     }
 
     private sealed record Measurement(Row Row, IReadOnlyList<ReadCounter.Statement> Statements);
+
+    /// <summary>The rows the statements that begin on this table returned.</summary>
+    private static long ReturnedBy(Measurement m, string table) =>
+        m.Statements.Where(s => s.Table == table).Sum(s => s.Rows);
 
     /// <summary>What a seed holds: its window and its history before the window.</summary>
     private sealed record Seeded(
