@@ -60,7 +60,8 @@ public static class Wip
     /// claimed-inbound part agree.
     /// </param>
     public static async Task<WipSection?> LoadAsync(
-        HatchContext db, IActorDirectory actors, IssueClaims claims, List<EfHatchStatus> statuses, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, IActorDirectory actors, IssueClaims claims, List<EfHatchStatus> statuses, DateTimeOffset now,
+        CancellationToken ct, PriorityTree? tree = null)
     {
         var section = statuses
             .Where(s => s.IsWip && !s.IsDeferred && !s.IsTerminal)
@@ -86,25 +87,18 @@ public static class Wip
         // Every project, not the caller's: the limit is the house's, and a
         // count that left out a hidden project's cards would let a scoped
         // caller push past it. Only counts leave this method.
-        var rows = await db.Issues.IgnoreQueryFilters().AsNoTracking()
-            .Where(i => everyType.Contains(i.Type) && (sectionIds.Contains(i.StatusId) || feeders.Contains(i.StatusId)))
-            .Select(i => new
-            {
-                i.Id,
-                i.StatusId,
-                i.Type,
-                Claim = new ClaimSnapshot(
-                    i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
-            })
-            .ToListAsync(ct);
+        tree ??= await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
-        var parents = await db.Issues.IgnoreQueryFilters().AsNoTracking()
-            .Select(i => new { i.Id, i.ParentId })
-            .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
+        var rows = new List<(long Id, int StatusId, string Type, ClaimSnapshot? Claim)>();
+        var parents = new Dictionary<long, long?>();
+        foreach (var id in tree.OrderedIds)
+        {
+            if (!tree.TryGetFamily(id, out var row)) continue;
 
-        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
+            parents[id] = row.ParentId;
+            if (everyType.Contains(row.Type) && (sectionIds.Contains(row.StatusId) || feeders.Contains(row.StatusId)))
+                rows.Add((id, row.StatusId, row.Type, tree.Claim(id)));
+        }
 
         var slices = new List<WipSlice>();
         foreach (var types in sliceTypes)
@@ -204,6 +198,20 @@ public static class Wip
         return rows.ToDictionary(
             r => r.Id,
             r => new EpicLimit(r.Id, IssueKey.Format(r.Key, r.Number), r.WipLimit!.Value));
+    }
+
+    /// <summary>
+    /// The same answer as <see cref="EpicsAsync"/>, read from a tree already in
+    /// hand rather than a second query over <c>Issues</c> - for a caller that
+    /// built one for the pass anyway, such as <see cref="Dispatch.ScanAsync"/>.
+    /// </summary>
+    public static IReadOnlyDictionary<long, EpicLimit> Epics(PriorityTree tree, IEnumerable<long?> parentIds)
+    {
+        var result = new Dictionary<long, EpicLimit>();
+        foreach (var id in parentIds.Where(id => id is not null).Select(id => id!.Value).Distinct())
+            if (tree.Epic(id) is { } epic) result[id] = epic;
+
+        return result;
     }
 }
 

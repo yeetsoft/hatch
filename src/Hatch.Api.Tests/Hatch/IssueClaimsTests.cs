@@ -1,4 +1,6 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -311,4 +313,111 @@ public class IssueClaimsTests
 
     private static ClaimSnapshot Held(DateTimeOffset heartbeatAt) => new(
         Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", heartbeatAt, heartbeatAt, null, null);
+
+    // ---- IsLive against the SQL shape ----
+
+    /// <summary>
+    /// <see cref="IssueClaims.IsLive"/> answers the same as the compiled
+    /// <see cref="IssueClaims.Live"/> expression - the predicate
+    /// <see cref="IssueClaims.LineageAsync"/> once ran as a second query and now
+    /// judges off a row lifted from a priority tree. A drift between the two
+    /// would show nobody a claim the take-path still honours, or the reverse.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ClaimCases))]
+    public void IsLive_AgreesWithTheCompiledSqlPredicate(string name, EfHatchIssue issue)
+    {
+        var claims = TestClaims.With();
+        var compiled = claims.Live(Now).Compile();
+
+        Assert.Equal(compiled(issue), claims.IsLive(ClaimSnapshot.Of(issue), Now));
+    }
+
+    public static IEnumerable<object[]> ClaimCases()
+    {
+        yield return ["fresh", Issue(c =>
+        {
+            c.ClaimToken = Guid.NewGuid(); c.ClaimedBy = "ann"; c.ClaimRunner = "box-0";
+            c.ClaimedAt = Now; c.ClaimHeartbeatAt = Now;
+        })];
+
+        // No word since the take, past TestClaims.StallLapseMinutes: quiet,
+        // whatever the heartbeat says.
+        yield return ["quiet", Issue(c =>
+        {
+            c.ClaimToken = Guid.NewGuid(); c.ClaimedBy = "ann"; c.ClaimRunner = "box-0";
+            c.ClaimedAt = Now.AddMinutes(-(TestClaims.StallLapseMinutes + 1)); c.ClaimHeartbeatAt = Now;
+        })];
+
+        // Past its own run cap, however recently it spoke.
+        yield return ["over-run", Issue(c =>
+        {
+            c.ClaimToken = Guid.NewGuid(); c.ClaimedBy = "ann"; c.ClaimRunner = "box-0";
+            c.ClaimedAt = Now.AddSeconds(-120); c.ClaimHeartbeatAt = Now; c.ClaimMaxRunSeconds = 60;
+        })];
+
+        yield return ["no claim", Issue(_ => { })];
+    }
+
+    /// <summary>A bare issue with every required column filled, for a test that cares only about its claim.</summary>
+    private static EfHatchIssue Issue(Action<EfHatchIssue> set)
+    {
+        var issue = new EfHatchIssue
+        {
+            ProjectId = 1, Number = 1, Type = "task", Title = "t", StatusId = 1, Rank = 1,
+            CreatedBy = "operator", CreatedAt = Now, UpdatedAt = Now,
+        };
+        set(issue);
+        return issue;
+    }
+
+    // ---- Scope ----
+
+    /// <summary>
+    /// A caller's own scope still bounds the lineage, even though it is read
+    /// off a house-wide tree rather than a scoped query of its own: a claim on
+    /// a parent in a project this caller cannot see does not hold its visible
+    /// child, whether the tree is handed in or <see cref="IssueClaims.LineageAsync"/>
+    /// builds its own.
+    /// </summary>
+    [Fact]
+    public async Task LineageAsync_StaysInsideTheCallersOwnScope()
+    {
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var seedDb = new HatchContext(options);
+
+        var hidden = new EfHatchProject { Key = "HID", Name = "Hidden", CreatedAt = Now };
+        var visible = new EfHatchProject { Key = "VIS", Name = "Visible", CreatedAt = Now };
+        var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
+        seedDb.AddRange(hidden, visible, todo);
+        await seedDb.SaveChangesAsync();
+
+        var parent = new EfHatchIssue
+        {
+            ProjectId = hidden.Id, Number = 1, Type = "story", Title = "parent", StatusId = todo.Id, Rank = 1,
+            CreatedBy = "operator", CreatedAt = Now, UpdatedAt = Now,
+            ClaimToken = Guid.NewGuid(), ClaimedBy = "ann", ClaimRunner = "box-0", ClaimedAt = Now, ClaimHeartbeatAt = Now,
+        };
+        seedDb.Issues.Add(parent);
+        await seedDb.SaveChangesAsync();
+
+        var child = new EfHatchIssue
+        {
+            ProjectId = visible.Id, ParentId = parent.Id, Number = 1, Type = "task", Title = "child", StatusId = todo.Id, Rank = 2,
+            CreatedBy = "operator", CreatedAt = Now, UpdatedAt = Now,
+        };
+        seedDb.Issues.Add(child);
+        await seedDb.SaveChangesAsync();
+
+        var actors = new StubActorDirectory();
+        var claims = TestClaims.With();
+        var scopedDb = ScopeSeed.Request(options, ScopeSeed.Only(visible.Id));
+
+        var withoutTree = await claims.LineageAsync(scopedDb, actors, Now, default);
+        Assert.Null(withoutTree.Holder(child.Id, null));
+
+        var tree = await PriorityTree.ForAsync(scopedDb, actors, default, ignoreFilters: true);
+        var withTree = await claims.LineageAsync(scopedDb, actors, Now, default, tree);
+        Assert.Null(withTree.Holder(child.Id, null));
+    }
 }

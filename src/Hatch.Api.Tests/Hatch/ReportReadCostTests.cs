@@ -192,15 +192,17 @@ public class ReportReadCostTests
             new(12, 3, 1861, 1281, "Comments=220;IssueEvents=4088;Issues=1401;Projects=8;Statuses=18"),
             new(12, 3, 1861, 1281, "Comments=720;IssueEvents=6588;Issues=1600;Projects=8;Statuses=18")),
         // The trail reads are bounded (HA-2783, see the BoardHealthTrail lines above). What still
-        // grows is the dispatch and family-gate reads (HA-2790). The column normals (HA-2786) are bounded
+        // grows is the dispatch and family-gate reads (HA-2790), one statement and one issue load fewer
+        // than before HA-2796: FamilyGate.ForAsync reads every row off the tree it is handed rather than
+        // Issues a second time. The column normals (HA-2786) are bounded
         // now, so the rows returned are the same at both sizes; what is left is Postgres reading more of
         // Issues at the large size, and Comments.
         ["GET /api/board/health"] = (
-            new(63, 18, 5894, 2641, "Comments=1782;IssueEvents=2755;Issues=5602;LegacyRunners=3;Projects=22;RunnerStates=27;Statuses=30"),
-            new(63, 18, 5894, 2641, "Comments=1923;IssueEvents=2607;Issues=6202;LegacyRunners=3;Projects=22;RunnerStates=3;Statuses=30")),
+            new(62, 17, 5694, 2641, "Comments=1782;IssueEvents=2755;Issues=5402;LegacyRunners=3;Projects=20;RunnerStates=27;Statuses=30"),
+            new(62, 17, 5694, 2641, "Comments=1923;IssueEvents=2607;Issues=6002;LegacyRunners=3;Projects=20;RunnerStates=3;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(67, 19, 5855, 2591, "Comments=1782;IssueEvents=2799;Issues=6004;LegacyRunners=3;Projects=28;RunnerStates=27;Statuses=30"),
-            new(67, 19, 5855, 2591, "Comments=1923;IssueEvents=2651;Issues=6604;LegacyRunners=3;Projects=28;RunnerStates=3;Statuses=30")),
+            new(66, 18, 5655, 2591, "Comments=1782;IssueEvents=2799;Issues=5804;LegacyRunners=3;Projects=26;RunnerStates=27;Statuses=30"),
+            new(66, 18, 5655, 2591, "Comments=1923;IssueEvents=2651;Issues=6404;LegacyRunners=3;Projects=26;RunnerStates=3;Statuses=30")),
     };
 
     private sealed record Read(string Name, Func<Harness, Task> Call);

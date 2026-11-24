@@ -196,7 +196,7 @@ public class BoardController(
         foreach (var i in issues.Concat(past))
             assignees[i.Id] = await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct);
 
-        var wip = await Wip.LoadAsync(db, actors, claims, statuses, now, ct);
+        var wip = await Wip.LoadAsync(db, actors, claims, statuses, now, ct, priorities);
 
         var contributions = await IssueContributions.ForIssuesAsync(
             db, issues.Concat(past).Select(i => i.Id).ToList(), ct);
