@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -20,7 +21,8 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/trunk-builds")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
+public class TrunkBuildController(
+    HatchContext db, ICallerIdentity caller, TimeProvider time, TrunkBuildMessages? messages = null) : ControllerBase
 {
     /// <summary>Every trunk verdict the board holds, ordered by canonical then trunk - what the poll reads once a poll.</summary>
     [HttpGet]
@@ -160,6 +162,10 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
 
         if (request.Reran) row.RerunCount++;
 
+        // The rooms hear of it in the same save as the verdict. A hidden row
+        // stores nothing, so it says nothing either.
+        if (hiddenId is null && messages is not null) await messages.SaidAsync(row, ct);
+
         await db.SaveChangesAsync(ct);
 
         // That lookup ignores the scope, so it would name the hidden project.
@@ -192,6 +198,22 @@ public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeP
             ? trimmed
             : null;
     }
+}
+
+/// <summary>
+/// When a trunk counts as failing: the verdict is failed, or it is still pending
+/// but a check has already failed. Written once, for the query and for memory, so
+/// the attention panel and the chat message cannot disagree about it.
+/// </summary>
+public static class TrunkBuildFailing
+{
+    /// <summary>The rule as a query.</summary>
+    public static readonly Expression<Func<EfHatchTrunkBuild, bool>> Where = t =>
+        t.Verdict == BuildVerdicts.Failed || (t.Verdict == BuildVerdicts.Pending && t.Failing != null);
+
+    /// <summary>The same rule for a verdict and failing column already in memory.</summary>
+    public static bool Is(string verdict, string? failing) =>
+        verdict == BuildVerdicts.Failed || (verdict == BuildVerdicts.Pending && failing != null);
 }
 
 /// <summary>The stored trunk verdict, as a client reads it.</summary>

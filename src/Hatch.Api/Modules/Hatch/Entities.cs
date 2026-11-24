@@ -2411,6 +2411,14 @@ public class EfHatchTrunkBuild
     /// own budget. What the poll's own cap (HA-794) is spent against.
     /// </summary>
     public int RerunCount { get; set; }
+
+    /// <summary>
+    /// When the trunk began failing, as the board heard it; null while it is not
+    /// failing (or was failing before this was kept - see <c>TrunkBuildMessages</c>).
+    /// It names the chat message that announced the failure, so it is read back
+    /// from the saved row, never rebuilt from a clock.
+    /// </summary>
+    public DateTimeOffset? FailingSince { get; set; }
 }
 
 /// <summary>
