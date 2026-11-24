@@ -26,6 +26,12 @@ public class QueryFilterAuditTests
             "The house-wide work-in-progress count. The limit is the house's, so a count that left out a hidden "
             + "project's cards would let a scoped caller push past it. It reads ids and parents and returns "
             + "numbers. Its priority tree is read the same way, through PriorityTree.ForAsync."),
+        ["AncestorChains.ForAsync"] = (1,
+            "A merge-train poll's rows and the issues above them, read a level at a time for the priority and "
+            + "one-pull-request walks. A level on an ancestor in a project the caller cannot see still applies, "
+            + "and a story there still holds the pull request its task waits on, so a read that left one out "
+            + "would rank two callers' trains differently. It reads only the poll's own ids and their parents; "
+            + "what leaves is a level, a flag and a key the route already holds, never the hidden issue's content."),
         ["Questions.WaitingLevelsAsync"] = (1,
             "The strictest open question per issue, read for the priority tree. A question on an ancestor in a "
             + "project the caller cannot see still holds the work beneath it, so a read that left it out would "

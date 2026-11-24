@@ -500,30 +500,68 @@ public class WorkController(
         var repos = RepositoryDeclaration.From(remote, standing, null);
         if (!repos.IsDeclared) return new List<ReviewCheckDto>();
 
+        var statuses = await _dispatch.OrderedStatusesAsync(ct);
+        if (Columns.AwaitingReview(statuses) is not { } review) return new List<ReviewCheckDto>();
+        var merges = Columns.Merges(statuses);
+        var ids = merges is null ? new List<long> { review.Id } : new List<long> { review.Id, merges.Id };
+
+        // A poll with nothing for this caller is two statements: the columns,
+        // and the projects that have a row in them. It reads no issue, and
+        // builds no tree.
+        var projects = (await db.Projects.AsNoTracking()
+                .Include(p => p.Repositories)
+                .Where(p => db.Issues.Any(i => i.ProjectId == p.Id && ids.Contains(i.StatusId)))
+                .ToListAsync(ct))
+            .Where(p => Dispatch.HoldsCheckout(p.Repositories, repos))
+            .ToDictionary(p => p.Id);
+        if (projects.Count == 0) return new List<ReviewCheckDto>();
+
         var flaggedCanonicals = (await db.Projects.AsNoTracking()
                 .Where(p => p.RepoSourced).Include(p => p.Repositories).ToListAsync(ct))
             .Select(p => p.Repositories.OrderBy(r => r.SortOrder).FirstOrDefault()?.Canonical)
             .Where(c => c is not null)
             .ToHashSet();
 
-        var statuses = await _dispatch.OrderedStatusesAsync(ct);
-        if (Columns.AwaitingReview(statuses) is not { } review) return new List<ReviewCheckDto>();
-        var merges = Columns.Merges(statuses);
-        var ids = merges is null ? new List<long> { review.Id } : new List<long> { review.Id, merges.Id };
-
-        var rows = await db.Issues
-            .Where(i => ids.Contains(i.StatusId))
-            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Include(i => i.Project).ThenInclude(p => p!.Repositories)
-            .ToListAsync(ct);
+        // Only what the route and its helpers read, and never the description:
+        // a poll that loaded whole issues would carry every word of each one
+        // across the wire every few seconds.
+        var projectIds = projects.Keys.ToList();
+        var rows = (await db.Issues.AsNoTracking()
+                .Where(i => ids.Contains(i.StatusId) && projectIds.Contains(i.ProjectId))
+                .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+                .Select(i => new
+                {
+                    i.Id, i.ProjectId, i.Number, i.Type, i.Title, i.Rank, i.StatusId,
+                    i.PullRequestUrl, i.PullRequestClosedAt, i.PullRequestMergeState, i.PullRequestHeadSha,
+                    i.PullRequestHeadSince, i.PullRequestHeadBranch, i.PullRequestReviewDecision,
+                    i.BroughtCurrentAt, i.BroughtCurrentTrunkSha, i.CreatedBy, i.CreatedAt, i.UpdatedAt,
+                    i.WaitingPrTitle, i.WaitingPrBody, i.WaitingPrBranch, i.WaitingPrSha,
+                    i.WaitingPrRemote, i.WaitingPrRunner, i.WaitingPrWhy, i.WaitingPrAt,
+                })
+                .ToListAsync(ct))
+            .Select(i => new EfHatchIssue
+            {
+                Id = i.Id, ProjectId = i.ProjectId, Project = projects[i.ProjectId], Number = i.Number, Type = i.Type, Title = i.Title,
+                Rank = i.Rank, StatusId = i.StatusId, PullRequestUrl = i.PullRequestUrl,
+                PullRequestClosedAt = i.PullRequestClosedAt, PullRequestMergeState = i.PullRequestMergeState,
+                PullRequestHeadSha = i.PullRequestHeadSha, PullRequestHeadSince = i.PullRequestHeadSince,
+                PullRequestHeadBranch = i.PullRequestHeadBranch, PullRequestReviewDecision = i.PullRequestReviewDecision,
+                BroughtCurrentAt = i.BroughtCurrentAt, BroughtCurrentTrunkSha = i.BroughtCurrentTrunkSha,
+                CreatedBy = i.CreatedBy, CreatedAt = i.CreatedAt, UpdatedAt = i.UpdatedAt,
+                WaitingPrTitle = i.WaitingPrTitle, WaitingPrBody = i.WaitingPrBody, WaitingPrBranch = i.WaitingPrBranch,
+                WaitingPrSha = i.WaitingPrSha, WaitingPrRemote = i.WaitingPrRemote, WaitingPrRunner = i.WaitingPrRunner,
+                WaitingPrWhy = i.WaitingPrWhy, WaitingPrAt = i.WaitingPrAt,
+            })
+            .ToList();
 
         // A task waiting on its story's pull request has no branch of its own
         // to check - its work is on the story's, which is checked as the story
         // - so a poll that went looking for one named for the task would find
-        // none and report that, for every task, until the story merged.
-        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
+        // none and report that, for every task, until the story merged. Asked
+        // of these rows and their ancestors alone: nothing else bears on it.
+        var chains = await AncestorChains.ForAsync(db, actors, rows.Select(i => i.Id), statuses, ct);
         var held = rows
-            .Where(i => Dispatch.HoldsCheckout(i.Project!.Repositories, repos) && tree.WaitingOn(i.Id, statuses) is null)
+            .Where(i => chains.WaitingOn(i.Id, statuses) is null)
             .ToList();
 
         // The true head of a project's train may be a row this runner holds
@@ -532,7 +570,7 @@ public class WorkController(
         var heldProjectIds = held.Select(h => h.ProjectId).ToHashSet();
         var merging = merges is null
             ? []
-            : rows.Where(i => i.StatusId == merges.Id && heldProjectIds.Contains(i.ProjectId) && tree.WaitingOn(i.Id, statuses) is null).ToList();
+            : rows.Where(i => i.StatusId == merges.Id && heldProjectIds.Contains(i.ProjectId) && chains.WaitingOn(i.Id, statuses) is null).ToList();
 
         var checkIds = held.Select(i => i.Id).Union(merging.Select(i => i.Id)).ToList();
         var verdicts = await _dispatch.MergeChecksAsync(checkIds, ct);
@@ -570,8 +608,7 @@ public class WorkController(
         IReadOnlyDictionary<long, Dispatch.TrainSlot> trainSlots = new Dictionary<long, Dispatch.TrainSlot>();
         if (merging.Count > 0)
         {
-            var gate = await DependencyGate.ForAsync(db, actors, statuses, ct, tree);
-            var effective = merging.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
+            var effective = merging.ToDictionary(i => i.Id, i => chains.Effective(i.Id));
             var judged = merging.ToDictionary(i => i.Id, i => MergeWork.Judge(
                 i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts.TryGetValue(i.Id, out var mv) ? mv : [],
