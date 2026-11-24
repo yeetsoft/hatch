@@ -133,6 +133,83 @@ public class MeChatDatabaseTests
         Assert.Equal([kept], await read.ChatLinks.Select(l => l.WorkspaceId).ToListAsync());
     }
 
+    [SkippableFact]
+    public async Task RemovingALink_RemovesItsDirectMessages_AndNoOthers()
+    {
+        var connection = await PrepareAsync();
+        await using var db = Open(connection);
+        var workspace = await WorkspaceAsync(db, "TACME");
+        var gone = Link(workspace, Guid.NewGuid(), "U1", confirmed: true);
+        var kept = Link(workspace, Guid.NewGuid(), "U2", confirmed: true);
+        db.ChatLinks.AddRange(gone, kept);
+        await db.SaveChangesAsync();
+        db.ChatMessages.AddRange(Direct(gone, "failure:1"), Direct(gone, "failure:2"), Direct(kept, "failure:1"));
+        await db.SaveChangesAsync();
+
+        db.ChatLinks.Remove(gone);
+        await db.SaveChangesAsync();
+
+        await using var read = Open(connection);
+        Assert.Equal([kept.Id], await read.ChatMessages.IgnoreQueryFilters().Select(m => m.LinkId!.Value).ToListAsync());
+    }
+
+    [SkippableFact]
+    public async Task RemovingTheWorkspace_RemovesItsDirectMessages_ThroughItsLinks()
+    {
+        var connection = await PrepareAsync();
+        await using var db = Open(connection);
+        var workspace = await WorkspaceAsync(db, "TACME");
+        var link = Link(workspace, Guid.NewGuid(), "U1", confirmed: true);
+        db.ChatLinks.Add(link);
+        await db.SaveChangesAsync();
+        db.ChatMessages.Add(Direct(link, "failure:1"));
+        await db.SaveChangesAsync();
+
+        db.ChatWorkspaces.Remove(await db.ChatWorkspaces.SingleAsync(w => w.Id == workspace));
+        await db.SaveChangesAsync();
+
+        await using var read = Open(connection);
+        Assert.Empty(await read.ChatMessages.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [SkippableFact]
+    public async Task AMessageNeedsExactlyOneDestination_AndALinkHearsAnySubjectOnce()
+    {
+        var connection = await PrepareAsync();
+        await using var db = Open(connection);
+        var workspace = await WorkspaceAsync(db, "TACME");
+        var link = Link(workspace, Guid.NewGuid(), "U1", confirmed: true);
+        var room = new EfHatchChatRoom { WorkspaceId = workspace, ExternalId = "C1", Name = "c", CreatedAt = Now, UpdatedAt = Now };
+        db.ChatLinks.Add(link);
+        db.ChatRooms.Add(room);
+        await db.SaveChangesAsync();
+
+        await using var neither = Open(connection);
+        var none = Direct(link, "failure:1");
+        none.LinkId = null;
+        neither.ChatMessages.Add(none);
+        await Assert.ThrowsAsync<DbUpdateException>(() => neither.SaveChangesAsync());
+
+        await using var both = Open(connection);
+        var two = Direct(link, "failure:1");
+        two.RoomId = room.Id;
+        both.ChatMessages.Add(two);
+        await Assert.ThrowsAsync<DbUpdateException>(() => both.SaveChangesAsync());
+
+        db.ChatMessages.Add(Direct(link, "failure:1"));
+        await db.SaveChangesAsync();
+
+        await using var twice = Open(connection);
+        twice.ChatMessages.Add(Direct(link, "failure:1"));
+        await Assert.ThrowsAsync<DbUpdateException>(() => twice.SaveChangesAsync());
+    }
+
+    private static EfHatchChatMessage Direct(EfHatchChatLink link, string subject) => new()
+    {
+        LinkId = link.Id, WorkspaceId = link.WorkspaceId, Kind = "direct", Subject = subject,
+        Content = "{}", QueuedAt = Now, PendingSince = Now,
+    };
+
     /// <summary>The controller for one person, over a real context. Only the confirm route is used, which reads nothing from Slack.</summary>
     private static MeChatController Controller(HatchContext db, Guid personId) =>
         new(db, new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options),

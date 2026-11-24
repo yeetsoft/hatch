@@ -28,6 +28,22 @@ internal sealed class ChatOutboxSeed(HatchContext db, DateTimeOffset now)
         return workspace.Id;
     }
 
+    /// <summary>A person's link in a workspace: confirmed unless told otherwise, with the runner failures switch on.</summary>
+    public async Task<int> LinkAsync(
+        int workspace, Guid person, string memberId = "U1", bool confirmed = true, bool runnerFailures = true)
+    {
+        var link = new EfHatchChatLink
+        {
+            WorkspaceId = workspace, PersonId = person, MemberId = memberId, MemberName = memberId,
+            ConversationId = $"D-{memberId}", CreatedAt = now, ConfirmedAt = confirmed ? now : null,
+            SecretHash = confirmed ? null : [(byte)memberId.Length], SecretExpiresAt = confirmed ? null : now.AddHours(24),
+            RunnerFailures = runnerFailures,
+        };
+        db.ChatLinks.Add(link);
+        await db.SaveChangesAsync();
+        return link.Id;
+    }
+
     public async Task<int> RoomAsync(
         int workspace, string channel,
         bool changelog = false, bool questions = false, bool problems = false, bool unownedProblems = false,

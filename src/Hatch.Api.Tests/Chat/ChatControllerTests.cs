@@ -404,6 +404,40 @@ public class ChatControllerTests
     }
 
     [Fact]
+    public async Task GetDelivery_CountsDirectMessages_UnderTheirLinksWorkspace()
+    {
+        var h = NewHarness(publicUrl: "https://hatch.example.com");
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        var room = await AddRoomAsync(h.Db, acme.Id);
+        var link = new EfHatchChatLink
+        {
+            WorkspaceId = acme.Id, PersonId = Guid.NewGuid(), MemberId = "U1", MemberName = "U1", ConversationId = "D1",
+            CreatedAt = Now, ConfirmedAt = Now,
+        };
+        h.Db.ChatLinks.Add(link);
+        await h.Db.SaveChangesAsync();
+        h.Db.ChatMessages.AddRange(
+            Message(room, acme.Id, a, "issue:1"),
+            new EfHatchChatMessage
+            {
+                LinkId = link.Id, WorkspaceId = acme.Id, Kind = "direct", Subject = "failure:1", Content = "{}",
+                QueuedAt = Now, PendingSince = Now,
+            },
+            new EfHatchChatMessage
+            {
+                LinkId = link.Id, WorkspaceId = acme.Id, Kind = "direct", Subject = "failure:2", Content = "{}",
+                QueuedAt = Now, PendingSince = Now, DroppedAt = Now,
+            });
+        await h.Db.SaveChangesAsync();
+
+        var row = Value(await h.Chat.GetDelivery(default)).Workspaces.Single(w => w.WorkspaceId == acme.Id);
+
+        Assert.Equal(2, row.Waiting);
+        Assert.Equal(1, row.Dropped);
+    }
+
+    [Fact]
     public async Task GetDelivery_WithNoPublicAddress_SaysLinksAreOff()
     {
         var h = NewHarness();

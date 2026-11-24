@@ -357,6 +357,7 @@ public class AdminSurfaceTests
         "MeChatController.GetMembers",
         "MeChatController.GetSuggestion",
         "MeChatController.PostLink",
+        "MeChatController.PutLink",
 
         // What shipped, a window at a time - key-accepting and open to a
         // person the same way WorkLogController's read is. See
@@ -892,6 +893,7 @@ public class AdminSurfaceTests
         "MeChatController.GetMembers",
         "MeChatController.GetSuggestion",
         "MeChatController.PostLink",
+        "MeChatController.PutLink",
 
         // Running a backup is the operator's own act, never a key's or a
         // keyless runner's. See BackupController.PostBackupRun.

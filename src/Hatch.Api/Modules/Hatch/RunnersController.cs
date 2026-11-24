@@ -554,7 +554,7 @@ public class RunnersController(
         if (kind == EfHatchRunner.LoopKind)
         {
             // What this beat found failing, kept; a `once` beat touches nothing.
-            await RunnerFailures.ReconcileAsync(db, key.Id, key.Name, session, request, failureMessages, now, ct);
+            await RunnerFailures.ReconcileAsync(db, key.Id, key.Name, key.OwnerPersonId, session, request, failureMessages, now, ct);
 
             foreach (var retired in await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct))
                 await stateLog.RecordAsync(db, keys, retired, now, ct);

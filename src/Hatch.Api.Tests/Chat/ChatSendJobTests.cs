@@ -448,6 +448,101 @@ public class ChatSendJobTests
     }
 
     [Fact]
+    public async Task ADirectMessage_GoesToTheConversation_AndAnEditUsesTheStoredId()
+    {
+        var h = await WithOneLinkAsync();
+        await h.QueueDirectAsync("failure:1", "Cannot reach its forge");
+
+        await h.TickAsync();
+
+        var post = Assert.Single(h.Provider.Sends);
+        Assert.Equal(("post", FakeChatProvider.AcmeToken, "D-U1", null), (post.Kind, post.Token, post.ChannelId, post.MessageId));
+        Assert.Equal("ts-1", (await h.OnlyRowAsync()).ExternalId);
+
+        await h.QueueDirectAsync("failure:1", "Ended: Cannot reach its forge");
+        await h.TickAsync();
+
+        var edit = h.Provider.Sends[1];
+        Assert.Equal(("update", "D-U1", "ts-1"), (edit.Kind, edit.ChannelId, edit.MessageId));
+        Assert.Equal(2, (await h.OnlyRowAsync()).SentRevision);
+    }
+
+    [Fact]
+    public async Task ARefusedDirectMessage_IsWrittenOnTheLinkAlone_AndASendClearsIt()
+    {
+        var h = await WithOneLinkAsync();
+        var refusing = true;
+        h.Provider.Script = _ => refusing
+            ? ChatSendResult.Failed(ChatSendOutcome.RoomRefused, "cannot_dm_bot")
+            : ChatSendResult.Sent("ts-ok");
+        await h.QueueDirectAsync("failure:1", "one");
+
+        await h.TickAsync();
+
+        var link = await h.Db.ChatLinks.SingleAsync();
+        Assert.Equal(("cannot_dm_bot", Now), (link.LastRefusal, link.LastRefusalAt));
+        var workspace = await h.Db.ChatWorkspaces.SingleAsync();
+        Assert.Null(workspace.LastRefusal);
+        Assert.Null(workspace.LastRefusalAt);
+        Assert.Null(workspace.SendFailingSince);
+        Assert.Equal(1, (await h.OnlyRowAsync()).Attempts);
+
+        refusing = false;
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.TickAsync();
+
+        link = await h.Db.ChatLinks.SingleAsync();
+        Assert.Null(link.LastRefusal);
+        Assert.Null(link.LastRefusalAt);
+        Assert.Equal(1, (await h.OnlyRowAsync()).SentRevision);
+    }
+
+    [Fact]
+    public async Task ARetryAfterOnADirectMessage_HoldsTheWorkspace()
+    {
+        var h = await WithOneLinkAsync();
+        h.Provider.Script = _ => ChatSendResult.Throttled(TimeSpan.FromSeconds(7), "slow down");
+        await h.QueueDirectAsync("failure:1", "one");
+
+        await h.TickAsync();
+
+        Assert.Equal(Now + TimeSpan.FromSeconds(7), (await h.Db.ChatWorkspaces.SingleAsync()).HoldUntil);
+        Assert.Null((await h.Db.ChatLinks.SingleAsync()).LastRefusal);
+        Assert.Equal(0, (await h.OnlyRowAsync()).Attempts);
+    }
+
+    [Fact]
+    public async Task ADirectMessageThatWaitedADay_IsDropped_NotSent()
+    {
+        var h = await WithOneLinkAsync();
+        h.Provider.Script = _ => ChatSendResult.Failed(ChatSendOutcome.Unreachable, "down");
+        await h.QueueDirectAsync("failure:1", "one");
+        await h.TickAsync();
+
+        h.Provider.Script = null;
+        h.Provider.Sends.Clear();
+        h.Time.Advance(TimeSpan.FromDays(1));
+        await h.TickAsync();
+
+        Assert.Equal(h.Time.GetUtcNow(), (await h.OnlyRowAsync()).DroppedAt);
+        Assert.Empty(h.Provider.Sends);
+    }
+
+    [Fact]
+    public async Task ARoomAndALinkInOneWorkspace_EachSendInATick()
+    {
+        var h = await WithOneRoomAsync();
+        var workspace = (await h.Db.ChatWorkspaces.SingleAsync()).Id;
+        h.Links.Add(await h.Seed.LinkAsync(workspace, Guid.NewGuid()));
+        await h.QueueAsync("issue:1", "room news");
+        await h.QueueDirectAsync("failure:1", "direct news");
+
+        await h.TickAsync();
+
+        Assert.Equal(["C1", "D-U1"], h.Provider.Sends.Select(s => s.ChannelId).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task AMessageJustUnderADay_IsStillTried()
     {
         var h = await WithOneRoomAsync();
@@ -621,6 +716,15 @@ public class ChatSendJobTests
         return h;
     }
 
+    private static async Task<Harness> WithOneLinkAsync()
+    {
+        var h = await NewHarnessAsync();
+        var workspace = await h.Seed.WorkspaceAsync("TACME");
+        await h.SealAsync(workspace);
+        h.Links.Add(await h.Seed.LinkAsync(workspace, Guid.NewGuid()));
+        return h;
+    }
+
     private static Task<Harness> NewHarnessAsync()
     {
         var db = new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -649,6 +753,15 @@ public class ChatSendJobTests
         public ChatSendJob Job { get; }
         public CapturingLogger Log { get; } = new();
         public int Project { get; set; }
+
+        /// <summary>The links a direct message goes to.</summary>
+        public List<int> Links { get; } = [];
+
+        public async Task QueueDirectAsync(string subject, string title)
+        {
+            await Outbox.QueueToLinksAsync(ChatMessageKind.Direct, subject, Links, ChatOutboxTests.Content(title), default);
+            await Db.SaveChangesAsync();
+        }
 
         /// <summary>Seals a token for the workspace, the way the controller does, so the job can open it.</summary>
         public async Task SealAsync(int workspaceId, string token = FakeChatProvider.AcmeToken)

@@ -128,6 +128,7 @@ public class ScopeRouteMatrixTests
         ("MeChatController.GetMembers", MeChatNamesNoProject),
         ("MeChatController.GetSuggestion", MeChatNamesNoProject),
         ("MeChatController.PostLink", MeChatNamesNoProject),
+        ("MeChatController.PutLink", MeChatNamesNoProject),
         ("MeHomeController.PutHome", "sets the caller's own home screen; it names no project and returns none"),
         ("ProjectsController.CreateProject", "names no project; it makes one"),
         ("RunnerController.Download", RunnerBinary),
