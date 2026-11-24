@@ -81,8 +81,10 @@ public class ChatPageTests(ITestOutputHelper output)
             provider.Channels[FakeChatProvider.AcmeNewToken] = provider.Channels[FakeChatProvider.AcmeToken];
             provider.Channels[FakeChatProvider.GlobexToken] = [new("C9", "lobby", false, true)];
             provider.PostRefusals["C2"] = NotInvitedSentence;
-            // Acme's app token listens with the fake's default script. Globex's is refused.
+            // Acme's app token listens with the fake's default script. Globex's is refused. Initech's never opens and never
+            // refuses, so its row stays at Not listening yet.
             provider.Listens[FakeChatProvider.GlobexAppToken] = new ListenScript { End = ChatListenEnd.Refused(SocketModeOffSentence) };
+            provider.Listens[FakeChatProvider.InitechAppToken] = new ListenScript { CallOpened = false };
 
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline, services =>
@@ -170,7 +172,7 @@ public class ChatPageTests(ITestOutputHelper output)
             await AssertFitsAsync(harness, deadline, profile);
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "chat-two-workspaces"));
 
-            await AssertListeningShownAsync(harness, deadline, profile);
+            await AssertListeningShownAsync(harness, deadline, profile, provider);
 
             await BindAndSetUpRoomsAsync(harness, deadline, baseUrl, provider, profile);
 
@@ -358,11 +360,21 @@ public class ChatPageTests(ITestOutputHelper output)
     /// <summary>
     /// Whether Hatch is listening is shown in the app token cell. Acme already holds an app token and the fake
     /// provider lets it listen, so it reads Listening. Globex is given one through the page, and the fake refuses
-    /// it, so it reads Not listening with the sentence it was refused with. Nothing is seeded: the listener runs
+    /// it, so it reads Not listening with the sentence it was refused with. Initech is connected here and given one,
+    /// and the fake neither opens nor refuses it, so it reads Not listening yet. Nothing is seeded: the listener runs
     /// in this host and would write over the columns within one tick.
     /// </summary>
-    private async Task AssertListeningShownAsync(E2eHarness harness, Deadline deadline, DeviceProfile? profile)
+    private async Task AssertListeningShownAsync(E2eHarness harness, Deadline deadline, DeviceProfile? profile, FakeChatProvider provider)
     {
+        // Initech joins only now, so the row counts asserted earlier in the case stay as they were.
+        await ConnectAsync(harness, deadline, FakeChatProvider.InitechToken);
+        await harness.WaitForVisibleAsync(deadline, "td strong:text-is(\"Initech\")");
+        await deadline.BoundAsync(
+            "typing Initech's app-level token",
+            () => harness.Page!.FillAsync("input[aria-label=\"App-level token for Initech\"]", FakeChatProvider.InitechAppToken));
+        await harness.ClickAsync(deadline, "tr:has-text(\"Initech\") button:has-text(\"Set app token\")");
+        await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Initech\") .hatch-chat-apptoken__state:text-is(\"App token set\")");
+
         await deadline.BoundAsync(
             "typing Globex's app-level token",
             () => harness.Page!.FillAsync("input[aria-label=\"App-level token for Globex\"]", FakeChatProvider.GlobexAppToken));
@@ -370,14 +382,17 @@ public class ChatPageTests(ITestOutputHelper output)
         await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Globex\") .hatch-chat-apptoken__state:text-is(\"App token set\")");
 
         // The listener looks every few seconds and the page asks every thirty; open the page again until both have moved.
-        string acme = "", globex = "";
+        string acme = "", globex = "", initech = "";
         while (true)
         {
             await harness.GoToAsync(deadline, "/chat");
             await harness.WaitForVisibleAsync(deadline, "td strong:text-is(\"Globex\")");
             acme = await TextAsync(harness, deadline, "main tbody tr:has-text(\"Acme\") td.hatch-chat-apptoken-cell");
             globex = await TextAsync(harness, deadline, "main tbody tr:has-text(\"Globex\") td.hatch-chat-apptoken-cell");
-            if (acme.Contains("opened") && globex.Contains($"Slack said: {SocketModeOffSentence}")) break;
+            initech = await TextAsync(harness, deadline, "main tbody tr:has-text(\"Initech\") td.hatch-chat-apptoken-cell");
+            bool initechLooked;
+            lock (provider.ListenCalls) initechLooked = provider.ListenCalls.Contains(FakeChatProvider.InitechAppToken);
+            if (acme.Contains("opened") && globex.Contains($"Slack said: {SocketModeOffSentence}") && initechLooked) break;
             await deadline.BoundAsync("waiting for the listener", () => Task.Delay(500));
         }
 
@@ -389,11 +404,24 @@ public class ChatPageTests(ITestOutputHelper output)
         Assert.DoesNotContain("Not listening yet", globex);
         Assert.Matches(@"first failed (just now|\d+ (second|minute)s? ago)", globex);
         Assert.DoesNotContain("opened", globex);
-        Assert.Equal(2, await CountAsync(harness, deadline, "main tbody .hatch-chat-listen"));
+
+        // The listener has looked at Initech and heard nothing, so it has neither opened nor failed.
+        Assert.Contains("Not listening yet", initech);
+        Assert.DoesNotContain("first failed", initech);
+        Assert.DoesNotContain("opened", initech);
+        Assert.DoesNotContain("Slack said", initech);
+        Assert.Equal(0, await CountAsync(harness, deadline, "main tbody tr:has-text(\"Initech\") td.hatch-chat-apptoken-cell .text-danger"));
+        Assert.Equal(3, await CountAsync(harness, deadline, "main tbody .hatch-chat-listen"));
 
         await AssertNoTokenOnPageAsync(harness, deadline);
         await AssertFitsAsync(harness, deadline, profile);
         output.WriteLine("screenshot: " + await harness.FullPageScreenshotAsync(deadline, "chat-listening"));
+
+        // On a wide screen the page scrolls inside its frame, so the full-page shot ends at the fold. Bring the rows up and take the screen again.
+        await harness.EvaluateAsync<bool>(
+            deadline, "bringing the workspaces into view",
+            "() => { document.querySelector('main tbody').scrollIntoView(); return true; }");
+        output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "chat-listening-rows"));
     }
 
     /// <summary>
@@ -433,10 +461,10 @@ public class ChatPageTests(ITestOutputHelper output)
             2,
             await CountAsync(harness, deadline, "[aria-label=\"Rooms on Globex\"] section[aria-label=\"Room lobby\"] [aria-label=\"What it posts\"] input:checked"));
         Assert.Equal(
-            2,
+            3,
             await harness.EvaluateAsync<int>(deadline, "counting the rows", "() => document.querySelectorAll('main tbody tr').length"));
         Assert.Equal(
-            2,
+            3,
             await harness.EvaluateAsync<int>(
                 deadline, "counting Token set",
                 "() => [...document.querySelectorAll('main tbody td')].filter(td => td.textContent === 'Token set').length"));
@@ -572,7 +600,7 @@ public class ChatPageTests(ITestOutputHelper output)
 
         foreach (var token in new[]
         {
-            FakeChatProvider.AcmeToken, FakeChatProvider.AcmeNewToken, FakeChatProvider.GlobexToken, FakeChatProvider.RefusedToken,
+            FakeChatProvider.AcmeToken, FakeChatProvider.AcmeNewToken, FakeChatProvider.GlobexToken, FakeChatProvider.InitechToken, FakeChatProvider.RefusedToken,
         })
         {
             Assert.DoesNotContain(token, shown);
@@ -581,7 +609,7 @@ public class ChatPageTests(ITestOutputHelper output)
 
         foreach (var appToken in new[]
         {
-            FakeChatProvider.AcmeAppToken, FakeChatProvider.AcmeNewAppToken, FakeChatProvider.GlobexAppToken, FakeChatProvider.RefusedAppToken,
+            FakeChatProvider.AcmeAppToken, FakeChatProvider.AcmeNewAppToken, FakeChatProvider.GlobexAppToken, FakeChatProvider.InitechAppToken, FakeChatProvider.RefusedAppToken,
         })
         {
             Assert.DoesNotContain(appToken, shown);
