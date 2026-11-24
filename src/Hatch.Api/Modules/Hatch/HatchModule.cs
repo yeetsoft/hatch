@@ -1,7 +1,9 @@
 using Hatch.Api.Common;
+using Hatch.Api.Ef;
 using Hatch.Api.Jobs;
 using Hatch.Api.Services.Chat;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -13,6 +15,11 @@ public static class HatchModule
 {
     public static IServiceCollection AddHatchModule(this IServiceCollection services, IConfiguration configuration)
     {
+        // TryAdd: Program.cs already registers its own instance, built off
+        // the same configuration, before this runs - a host built without
+        // Program.cs (a module-only test, say) still resolves one.
+        services.TryAddSingleton(DatabaseConnections.From(configuration));
+
         services.AddModuleContext<HatchContext>(configuration, HatchContext.Schema);
 
         // Scoped, because it reads and rewrites rows through the request's own

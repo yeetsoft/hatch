@@ -35,9 +35,15 @@ namespace Hatch.Api.Tests.Hatch;
 /// Sets <c>Hatch:SecretKey</c>. Left out, the host has no secret key, which is
 /// the install nobody has configured and the one that refuses to save a secret.
 /// </param>
+/// <param name="settings">
+/// Applied with <c>UseSetting</c>, after the ones above - a case that wants
+/// one of the four <c>Database:*</c> pool settings, say, sets it here rather
+/// than this constructor growing a parameter per setting.
+/// </param>
 internal sealed class MinimalFactory(
     string hatch, string quartz, CapturedLogs logs, string? webRoot = null, bool walled = false,
-    Action<IServiceCollection>? services = null, string? secretKey = null)
+    Action<IServiceCollection>? services = null, string? secretKey = null,
+    IReadOnlyDictionary<string, string>? settings = null)
     : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -49,6 +55,9 @@ internal sealed class MinimalFactory(
         builder.UseSetting("ConnectionStrings:Quartz", quartz);
         builder.UseSetting("Auth:Enabled", walled ? "true" : "false");
         if (secretKey is not null) builder.UseSetting("Hatch:SecretKey", secretKey);
+        if (settings is not null)
+            foreach (var (key, value) in settings)
+                builder.UseSetting(key, value);
 
         builder.ConfigureLogging(logging => logging.AddProvider(logs));
 
