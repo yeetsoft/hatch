@@ -2,14 +2,15 @@
 title: Hatch in Slack
 section: Running agents
 order: 60
-summary: Connect a Slack workspace to Hatch from the Chat screen, bind projects to it, set channels up as rooms, and send a test message.
+summary: Connect a Slack workspace to Hatch from the Chat screen, bind projects to it, set channels up as rooms, send a test message, and see what a changelog message says.
 ---
 
 Hatch can be connected to a Slack workspace. Connecting gives Hatch a workspace
 to speak in. An admin then binds projects to the workspace and sets channels up
 as **rooms**, each room taking the kinds of message and the projects it should
-carry. The only thing the Chat screen posts is a **test message**, to show that
-a room can be reached.
+carry. The Chat screen itself posts only a **test message**, to show that a
+room can be reached. The other messages come from the board, as
+[the changelog message](#changelog-messages-in-a-room) describes.
 
 The **Chat** screen, at `/chat`, is where an admin does it. It is under
 **Manage**, after **Users**, and only an admin sees it. A key never reads or
@@ -143,6 +144,32 @@ refused one with, and how long ago. A workspace with none of the three shows
 nothing there. The numbers refresh every half minute while the page is open.
 An admin who may see only some projects counts only the messages about those
 projects.
+
+## Changelog messages in a room
+
+A room with the **Changelog** switch on, and a project it carries, hears about
+each issue of that project as it ships. The message says the issue's type and
+title, for example **story shipped: Tickets in a human voice**. It shows the
+release note under it when the issue has one, and names the issue's key, as a
+link when [links are on](#links-in-messages).
+
+- Only an issue with no parent is news, as in the changelog. A task or story
+  closing under a parent posts nothing.
+- A task Hatch files to bring a changelog file current posts nothing when it
+  closes.
+- An import posts nothing. Issues that arrive already closed are history.
+- An issue posts once. Reopening it and closing it again adds no second post,
+  and edits nothing if its words are the same.
+- When the release note changes after the post, the message is edited to carry
+  it. A note changed on an issue that was never announced posts nothing, so
+  writing a note on an old issue does not announce it.
+- A room added later hears nothing about issues that closed before it was
+  added, and gets no edit to them either.
+
+Every way of closing an issue counts: a move on the board, an edit, a bulk
+edit, a merge, a landing on the trunk, and making a column a done column. The
+message is queued in the same save as the close, and sent after, as
+[the sending section](#when-slack-is-down) describes.
 
 ## Links in messages
 

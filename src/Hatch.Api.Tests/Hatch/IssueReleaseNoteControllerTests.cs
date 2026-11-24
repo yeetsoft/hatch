@@ -3,8 +3,12 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
+using Hatch.Api.Tests.Chat;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -16,6 +20,64 @@ namespace Hatch.Api.Tests.Hatch;
 /// </summary>
 public class IssueReleaseNoteControllerTests
 {
+    // ---- The changelog message ----
+
+    [Fact]
+    public async Task ANoteChangedAfterTheIssueShipped_EditsTheMessage_ToCarryIt()
+    {
+        var h = await NewAsync();
+        await h.ChangelogRoomAsync();
+        var issue = await h.FileAsync();
+        await h.CloseAsync(issue.Key);
+        var before = Assert.Single(await h.MessagesAsync());
+        Assert.Null(ChatMessageContent.Read(before.Content)!.Body);
+        Assert.Equal(1, before.Revision);
+
+        await h.SetAsync(issue.Key, "Now you can ship faster.");
+
+        var after = Assert.Single(await h.MessagesAsync());
+        Assert.Equal(2, after.Revision);
+        var content = ChatMessageContent.Read(after.Content)!;
+        Assert.Equal("epic shipped: the epic", content.Title);
+        Assert.Equal("Now you can ship faster.", content.Body);
+    }
+
+    [Fact]
+    public async Task ANoteOnAnIssueThatWasNeverAnnounced_PostsNothing()
+    {
+        var h = await NewAsync();
+        await h.ChangelogRoomAsync();
+        var issue = await h.FileAsync();
+
+        await h.SetAsync(issue.Key, "Written before it shipped.");
+        Assert.Empty(await h.MessagesAsync());
+
+        // Closed with a note already written: the one post carries it.
+        await h.CloseAsync(issue.Key);
+        var row = Assert.Single(await h.MessagesAsync());
+        Assert.Equal("Written before it shipped.", ChatMessageContent.Read(row.Content)!.Body);
+        Assert.Equal(1, row.Revision);
+    }
+
+    [Fact]
+    public async Task ANoteOnAnIssueClosedBeforeMessagesExisted_PostsNothing()
+    {
+        var h = await NewAsync();
+        await h.ChangelogRoomAsync();
+        var issue = await h.FileAsync();
+        var row = await h.RowAsync(issue.Key);
+        var done = await h.Db.Statuses.SingleAsync(s => s.IsTerminal);
+        var tracked = await h.Db.Issues.SingleAsync(i => i.Id == row.Id);
+        tracked.StatusId = done.Id;
+        tracked.ClosedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        await h.SetAsync(issue.Key, "An old issue gets a note.");
+
+        Assert.Empty(await h.MessagesAsync());
+        Assert.Empty(await h.Db.ChatSubjects.ToListAsync());
+    }
+
     // ---- Setting and clearing it ----
 
     [Fact]
@@ -444,6 +506,23 @@ public class IssueReleaseNoteControllerTests
             return task.Key;
         }
 
+        /// <summary>A workspace bound to the project, with one room that carries its changelog.</summary>
+        public async Task ChangelogRoomAsync()
+        {
+            var seed = new ChatOutboxSeed(Db, Now);
+            var workspace = await seed.WorkspaceAsync("TACME", ProjectId);
+            await seed.RoomAsync(workspace, "C1", changelog: true);
+        }
+
+        /// <summary>The drag into the done column.</summary>
+        public async Task CloseAsync(string key)
+        {
+            var done = await Db.Statuses.SingleAsync(s => s.IsTerminal);
+            Assert.NotNull((await Issues.MoveIssue(key, new IssueMoveRequest(done.Id, null, null), default)).Value);
+        }
+
+        public Task<List<EfHatchChatMessage>> MessagesAsync() => Db.ChatMessages.IgnoreQueryFilters().AsNoTracking().ToListAsync();
+
         public async Task<IssueDto> SetAsync(string key, string? note, Guid? heldToken = null) =>
             Value(await Notes.PutIssueReleaseNote(key, new ReleaseNoteRequest(note), heldToken, default));
 
@@ -479,12 +558,14 @@ public class IssueReleaseNoteControllerTests
         var caller = new StubCallerIdentity { Person = new EfPerson { Name = "a person", CreatedAt = Now, UpdatedAt = Now } };
         var actors = new StubActorDirectory();
 
+        var chat = new ChangelogMessages(new ChatOutbox(db, time), new ChatLinks(Options.Create(new HatchOptions())), db);
+
         return new Harness
         {
             Db = db,
             Caller = caller,
-            Notes = new IssueReleaseNoteController(db, actors, TestClaims.With(), caller, time),
-            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors)),
+            Notes = new IssueReleaseNoteController(db, actors, TestClaims.With(), caller, time, chat),
+            Issues = new IssuesController(db, new RankService(db), actors, TestClaims.With(), caller, time, new ProjectAccess(db, actors), chat),
             Thread = new IssueThreadController(db, caller, time),
             Time = time,
             ProjectId = project.Id,
