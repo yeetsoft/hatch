@@ -338,11 +338,13 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
         var cipher = new SecretCipher(current, previous);
         var settings = new Dictionary<string, string?> { ["ConnectionStrings:Hatch"] = connectionString };
         if (migrate) settings["HATCH_MIGRATE"] = "1";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
         return new SecretReseal(
             new SecretProtector(cipher),
             cipher,
-            new ConfigurationBuilder().AddInMemoryCollection(settings).Build(),
+            configuration,
+            DatabaseConnections.From(configuration),
             LoggerFactory.Create(b => b.AddProvider(logs)).CreateLogger<SecretReseal>());
     }
 

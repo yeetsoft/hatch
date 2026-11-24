@@ -5391,7 +5391,7 @@ public sealed class FamilyGate
     /// child's <c>serves_changed</c> or <c>created</c> - are not in that list,
     /// so they cannot reopen it.
     /// </summary>
-    private static async Task<Dictionary<long, DateTimeOffset>> SettledPassesAsync(
+    internal static async Task<Dictionary<long, DateTimeOffset>> SettledPassesAsync(
         HatchContext db, List<EfHatchStatus> statuses, Dictionary<long, List<long>> children, CancellationToken ct)
     {
         var settled = new Dictionary<long, DateTimeOffset>();

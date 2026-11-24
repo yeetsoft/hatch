@@ -20,6 +20,8 @@ API expects of a cluster, and what an operator writes.
     `\c quartz` line (line 5).
   - For a managed Postgres instead of one you run yourself, see [Backup,
     restore and replication](backup-restore-and-replication).
+  - Size it for the pools the API opens: [Sizing
+    Postgres](deployment-overview#sizing-postgres).
   - To have Hatch back itself up, mount a volume into the pod and set
     `Hatch__BackupPath` to where it is mounted; or use your own Postgres
     backups and leave it unset ([Backup, restore and
@@ -57,7 +59,9 @@ API expects of a cluster, and what an operator writes.
 - **One replica.** Quartz's scheduler instance id is never configured, so
   every replica's check-in collapses onto one cluster row
   (`Jobs/SchedulerCheckout.cs:21-25`). The sign-in rate limiter is per
-  process (`Program.cs:284-288`).
+  process (`Program.cs:284-288`). The database pool defaults are sized for
+  one replica too - more than one divides them: [Sizing
+  Postgres](deployment-overview#sizing-postgres).
 
 ## The secret key
 
