@@ -364,7 +364,7 @@ public class ChatSendJob(
         }
     }
 
-    private static string Short(string sentence) =>
+    internal static string Short(string sentence) =>
         sentence.Length <= EfHatchChatWorkspace.MaxRefusalLength ? sentence : sentence[..(EfHatchChatWorkspace.MaxRefusalLength - 1)] + "…";
 }
 

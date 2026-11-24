@@ -248,6 +248,86 @@ internal static class PostgresAdvisoryLock
         return null;
     }
 
+    /// <summary>
+    /// <see cref="TryAcquireAsync"/>, for a lock that is held for the life of a
+    /// process rather than one sweep: the hold can be asked whether its session
+    /// is still alive, since a session that has died has lost the lock.
+    /// <paramref name="afterTaking"/> runs on the connection once the lock is
+    /// taken, before the hold is returned; if it throws the lock is released and
+    /// the exception goes up.
+    /// </summary>
+    public static async Task<AdvisoryHold?> TryHoldAsync(
+        string connectionString, long key, Func<NpgsqlConnection, CancellationToken, Task>? afterTaking, CancellationToken ct)
+    {
+        var connection = new NpgsqlConnection(connectionString);
+        try
+        {
+            await connection.OpenAsync(ct);
+
+            await using (var command = new NpgsqlCommand("SELECT pg_try_advisory_lock(@key)", connection))
+            {
+                command.Parameters.AddWithValue("key", key);
+                if (!(bool)(await command.ExecuteScalarAsync(ct))!)
+                {
+                    await connection.DisposeAsync();
+                    return null;
+                }
+            }
+
+            if (afterTaking is not null) await afterTaking(connection, ct);
+
+            return new AdvisoryHold(connection, key);
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    /// <summary>A lock taken by <see cref="TryHoldAsync"/>. Disposing it releases the lock.</summary>
+    internal sealed class AdvisoryHold(NpgsqlConnection connection, long key) : IAsyncDisposable
+    {
+        /// <summary>The session the lock is held on.</summary>
+        internal NpgsqlConnection Connection => connection;
+
+        /// <summary>
+        /// Whether the session is still there: a round trip on it. False when it
+        /// cannot be made - the connection is gone, and the lock with it.
+        /// </summary>
+        public async Task<bool> StillHeldAsync(CancellationToken ct)
+        {
+            try
+            {
+                await using var command = new NpgsqlCommand("SELECT 1", connection);
+                await command.ExecuteScalarAsync(ct);
+                return true;
+            }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+                return false;
+            }
+        }
+
+        public ValueTask DisposeAsync() => ReleaseAsync(connection, key);
+    }
+
+    private static async ValueTask ReleaseAsync(NpgsqlConnection connection, long key)
+    {
+        try
+        {
+            await using var command = new NpgsqlCommand("SELECT pg_advisory_unlock(@key)", connection);
+            command.Parameters.AddWithValue("key", key);
+            await command.ExecuteScalarAsync();
+        }
+        catch
+        {
+            // A connection that cannot say so has already lost the lock with its session.
+        }
+
+        await connection.DisposeAsync();
+    }
+
     private sealed class Held(NpgsqlConnection connection, long key) : IAsyncDisposable
     {
         public async ValueTask DisposeAsync()

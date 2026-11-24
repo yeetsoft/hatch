@@ -171,6 +171,12 @@ public static class HatchModule
         services.AddScoped<IAppJob, ChatSendJob>();
         services.AddSingleton<IChatSendLock, PostgresChatSendLock>();
 
+        // The chat listener, which runs for the life of the server: one hosted
+        // service, and a lock that holds one connection of its own while it listens.
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IChatListenLock, PostgresChatListenLock>();
+        services.AddHostedService<ChatListenService>();
+
         // Scoped like Dispatch: it holds a scoped HatchContext, and its one
         // cached ReadySnapshot is meant to live no longer than the sweep that
         // built it - see ReadyWork's own remarks.

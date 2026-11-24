@@ -153,25 +153,50 @@ internal sealed class FakeChatProvider : IChatProvider
     /// <summary>What <see cref="ListenAsync"/> does for an app-level token. A token with no script calls <c>opened</c> and waits to be cancelled.</summary>
     public Dictionary<string, ListenScript> Listens { get; } = new();
 
+    /// <summary>
+    /// What the next listens with a token do, one script each, ahead of <see cref="Listens"/>:
+    /// a script that refuses, then one that stays open.
+    /// </summary>
+    public Dictionary<string, Queue<ListenScript>> ListenQueues { get; } = new();
+
     /// <summary>Every app-level token listened with, in order.</summary>
     public List<string> ListenCalls { get; } = [];
+
+    private int listening;
+
+    /// <summary>How many listens are running now: begun and not yet returned.</summary>
+    public int Listening => Volatile.Read(ref listening);
 
     public async Task<ChatListenEnd> ListenAsync(
         string appToken, Func<CancellationToken, Task> opened, Action<ChatPress> pressed, CancellationToken ct)
     {
-        ListenCalls.Add(appToken);
-        var script = Listens.GetValueOrDefault(appToken) ?? new ListenScript();
+        ListenScript script;
+        lock (ListenCalls)
+        {
+            ListenCalls.Add(appToken);
+            script = ListenQueues.TryGetValue(appToken, out var queue) && queue.Count > 0
+                ? queue.Dequeue()
+                : Listens.GetValueOrDefault(appToken) ?? new ListenScript();
+        }
 
+        Interlocked.Increment(ref listening);
         try
         {
             if (script.CallOpened) await opened(ct);
             foreach (var press in script.Presses) pressed(press);
             if (script.End is { } end) return end;
 
+            // A listener that does not heed its token: the case a stop has to give up on.
+            if (script.IgnoresCancellation) await new TaskCompletionSource().Task;
+
             await Task.Delay(Timeout.Infinite, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            Interlocked.Decrement(ref listening);
         }
 
         return ChatListenEnd.Stopped();
@@ -198,4 +223,7 @@ internal sealed class ListenScript
     public IReadOnlyList<ChatPress> Presses { get; init; } = [];
 
     public ChatListenEnd? End { get; init; }
+
+    /// <summary>With no <see cref="End"/>, wait for ever and let cancellation go by.</summary>
+    public bool IgnoresCancellation { get; init; }
 }
