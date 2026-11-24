@@ -58,6 +58,8 @@ public class ReportReadCostTests
     /// <summary>The podium the leaderboard asks for beside its table.</summary>
     private const int LeaderboardTop = 5;
 
+    private static readonly DateTimeOffset WindowStart = Now.AddDays(-ReadCostSeed.WindowDays);
+
     private static readonly string From = Now.AddDays(-ReadCostSeed.WindowDays).ToString("O");
     private static readonly string To = Now.ToString("O");
 
@@ -104,6 +106,24 @@ public class ReportReadCostTests
         ["GET /api/work-log/by-playbook"] = (
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=300")),
+        // The health poll's own trail reads (HA-2783): the window off the event indexes, and for each
+        // issue and kind one probe of (IssueId, Kind, At) for the newest earlier event. The same rows
+        // at both sizes, and the large board reads no more of any table than the small one.
+        ["BoardHealthTrail.MovesAsync"] = (
+            new(3, 1, 904, 704, "IssueEvents=704;Issues=600"),
+            new(3, 1, 904, 704, "IssueEvents=704;Issues=600")),
+        ["BoardHealthTrail.ReadAsync (claims)"] = (
+            new(3, 2, 550, 150, "IssueEvents=150;Issues=600"),
+            new(3, 2, 550, 150, "IssueEvents=150;Issues=600")),
+        ["BoardHealthTrail.LevelsAsync"] = (
+            new(3, 1, 450, 250, "IssueEvents=250;Issues=600"),
+            new(3, 1, 450, 250, "IssueEvents=250;Issues=600")),
+        ["BoardHealthTrail.RecordsAsync"] = (
+            new(3, 1, 450, 250, "IssueEvents=250;Issues=600"),
+            new(3, 1, 450, 250, "IssueEvents=250;Issues=600")),
+        ["BoardHealthTrail.RunnerStatesAsync"] = (
+            new(4, 0, 21, 21, "RunnerStates=96"),
+            new(4, 0, 21, 21, "RunnerStates=21")),
     };
 
     /// <summary>
@@ -131,16 +151,16 @@ public class ReportReadCostTests
     {
         // Every status change, with no time bound (HA-2784, HA-2787).
         ["GET /api/reports/timeline"] = (
-            new(11, 3, 1536, 956, "Comments=220;IssueEvents=1294;Issues=1001;Projects=8;Statuses=24"),
-            new(11, 3, 3536, 2956, "Comments=720;IssueEvents=3294;Issues=1200;Projects=8;Statuses=24")),
+            new(11, 3, 1536, 956, "Comments=220;IssueEvents=1794;Issues=1001;Projects=8;Statuses=24"),
+            new(11, 3, 3536, 2956, "Comments=720;IssueEvents=5314;Issues=1200;Projects=8;Statuses=24")),
         ["GET /api/reports/cumulative-flow"] = (
-            new(3, 1, 1150, 950, "IssueEvents=1294;Issues=400;Projects=2;Statuses=6"),
-            new(3, 1, 3150, 2950, "IssueEvents=3294;Issues=400;Projects=2;Statuses=6")),
+            new(3, 1, 1150, 950, "IssueEvents=1794;Issues=400;Projects=2;Statuses=6"),
+            new(3, 1, 3150, 2950, "IssueEvents=5314;Issues=400;Projects=2;Statuses=6")),
         // Every status change with no time bound (HA-2784), and QuestionTrail with no range,
         // so every question and answer: no range index can serve either.
         ["GET /api/reports/flow"] = (
-            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=1369;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
-            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=3369;Issues=1200;Projects=2;Statuses=6;WorkLogEntries=300")),
+            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=1869;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
+            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=5389;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=300")),
         // QuestionTrail.ReadAsync with no range, so every question and every answer.
         ["GET /api/reports/changelog (epic level)"] = (
             new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
@@ -153,18 +173,20 @@ public class ReportReadCostTests
             new(15, 7, 421, 12, "Comments=1561;Issues=1450;Projects=4;Statuses=42")),
         // Every status change with no time bound (HA-2787).
         ["GET /api/reports/activity"] = (
-            new(12, 3, 1735, 1161, "Comments=220;IssueEvents=3088;Issues=1401;Projects=8;Statuses=18"),
-            new(12, 3, 1735, 1161, "Comments=720;IssueEvents=4448;Issues=1600;Projects=8;Statuses=18")),
-        // The OR read of the claim trail (HA-2783), and status changes with no time bound.
+            new(12, 3, 1861, 1281, "Comments=220;IssueEvents=4088;Issues=1401;Projects=8;Statuses=18"),
+            new(12, 3, 1861, 1281, "Comments=720;IssueEvents=6588;Issues=1600;Projects=8;Statuses=18")),
+        // The trail reads are bounded (HA-2783, see the BoardHealthTrail lines above). What still
+        // grows is the status changes with no time bound, ColumnNormals (HA-2786) and the dispatch
+        // and family-gate reads (HA-2790).
         ["GET /api/board/health"] = (
-            new(38, 7, 3075, 1982, "Comments=1782;IssueEvents=9373;Issues=2003;Projects=16;Statuses=30"),
-            new(38, 7, 5075, 3982, "Comments=1923;IssueEvents=82623;Issues=2603;Projects=16;Statuses=30")),
+            new(61, 17, 6115, 3022, "Comments=1782;IssueEvents=3845;Issues=5402;LegacyRunners=3;Projects=22;RunnerStates=27;Statuses=30"),
+            new(61, 17, 8115, 5022, "Comments=1923;IssueEvents=7257;Issues=6002;LegacyRunners=3;Projects=22;RunnerStates=3;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(40, 7, 3084, 2020, "Comments=1782;IssueEvents=13649;Issues=2204;Projects=20;Statuses=30"),
-            new(40, 7, 5084, 4020, "Comments=1923;IssueEvents=114099;Issues=2804;Projects=20;Statuses=30")),
+            new(65, 18, 6076, 2972, "Comments=1782;IssueEvents=3889;Issues=5804;LegacyRunners=3;Projects=28;RunnerStates=27;Statuses=30"),
+            new(65, 18, 8076, 4972, "Comments=1923;IssueEvents=7301;Issues=6404;LegacyRunners=3;Projects=28;RunnerStates=3;Statuses=30")),
         ["ColumnNormals.ForAsync"] = (
-            new(2, 1, 1144, 944, "IssueEvents=1294;Issues=200;Projects=2"),
-            new(2, 1, 3144, 2944, "IssueEvents=3294;Issues=200;Projects=2")),
+            new(2, 1, 1144, 944, "IssueEvents=1794;Issues=200;Projects=2"),
+            new(2, 1, 3144, 2944, "IssueEvents=5314;Issues=200;Projects=2")),
     };
 
     private sealed record Read(string Name, Func<Harness, Task> Call);
@@ -197,6 +219,15 @@ public class ReportReadCostTests
         new("GET /api/board/health", h => Ok(h.Health.GetBoardHealth("24h", null, default))),
         new("GET /api/board/health?project", h => Ok(h.Health.GetBoardHealth("24h", [ReadCostSeed.KeyA], default))),
         new("ColumnNormals.ForAsync", async h => await new ColumnNormals().ForAsync(h.Db, h.Statuses, Now, default)),
+        // The poll's own trail reads, apart from the rest of the poll (HA-2783).
+        new("BoardHealthTrail.MovesAsync", async h => await BoardHealthTrail.MovesAsync(h.Db, WindowStart, null, default)),
+        new("BoardHealthTrail.ReadAsync (claims)", async h => await BoardHealthTrail.ReadAsync(
+            h.Db, [EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimReleased], WindowStart, null, null, default,
+            olderOnlyIf: EfHatchIssueEvent.ClaimTaken)),
+        new("BoardHealthTrail.LevelsAsync", async h => await BoardHealthTrail.LevelsAsync(h.Db, WindowStart, default)),
+        new("BoardHealthTrail.RecordsAsync", async h => await BoardHealthTrail.RecordsAsync(h.Db, WindowStart, null, default)),
+        new("BoardHealthTrail.RunnerStatesAsync", async h => await BoardHealthTrail.RunnerStatesAsync(
+            h.Db, [.. Enumerable.Range(1, ReadCostSeed.Runners).Select(r => $"runner-{r}")], WindowStart, default)),
     ];
 
     private static async Task Ok<T>(Task<ActionResult<T>> call)
@@ -223,9 +254,12 @@ public class ReportReadCostTests
         // The two boards differ only before the window. Said out loud here, so
         // a change to the seed that breaks it breaks this and not the numbers.
         var (sm, lg) = (sizes["small"], sizes["large"]);
-        if (sm.WindowMoves != lg.WindowMoves || sm.WindowSessions != lg.WindowSessions)
+        if (sm.WindowMoves != lg.WindowMoves || sm.WindowSessions != lg.WindowSessions
+            || sm.WindowLevels != lg.WindowLevels || sm.WindowRecords != lg.WindowRecords
+            || sm.WindowRunnerStates != lg.WindowRunnerStates)
             failures.Add($"the window differs between the sizes: {sm} and {lg}");
-        if (lg.OldMoves < 5 * sm.OldMoves || lg.OldSessions < 5 * sm.OldSessions || lg.OldComments < 5 * sm.OldComments)
+        if (lg.OldMoves < 5 * sm.OldMoves || lg.OldSessions < 5 * sm.OldSessions || lg.OldComments < 5 * sm.OldComments
+            || lg.OldLevels < 5 * sm.OldLevels || lg.OldRecords < 5 * sm.OldRecords || lg.OldRunnerStates < 5 * sm.OldRunnerStates)
             failures.Add($"the large size holds less than five times the small one's history: {sm} and {lg}");
         if (sm.WindowSessions < 10 * ReadCostSeed.WindowDays)
             failures.Add($"the window holds {sm.WindowSessions} sessions, fewer than ten per day bucket");
@@ -307,7 +341,10 @@ public class ReportReadCostTests
     private sealed record Measurement(Row Row, IReadOnlyList<ReadCounter.Statement> Statements);
 
     /// <summary>What a seed holds: its window and its history before the window.</summary>
-    private sealed record Seeded(long WindowMoves, long OldMoves, long WindowSessions, long OldSessions, long OldComments);
+    private sealed record Seeded(
+        long WindowMoves, long OldMoves, long WindowSessions, long OldSessions, long OldComments,
+        long WindowLevels, long OldLevels, long WindowRecords, long OldRecords,
+        long WindowRunnerStates, long OldRunnerStates);
 
     private static readonly Dictionary<string, Seeded> sizes = [];
 
@@ -316,10 +353,15 @@ public class ReportReadCostTests
         var windowStart = Now.AddDays(-ReadCostSeed.WindowDays);
         await using var db = new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options);
         var moves = db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.StatusChanged);
+        var levels = db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.PreApprovalChanged);
+        var records = db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.PullRequestChanged);
         return new Seeded(
             await moves.CountAsync(e => e.At >= windowStart), await moves.CountAsync(e => e.At < windowStart),
             await db.WorkLog.CountAsync(w => w.StartedAt >= windowStart), await db.WorkLog.CountAsync(w => w.StartedAt < windowStart),
-            await db.Comments.CountAsync(c => c.Kind == EfHatchComment.Note && c.CreatedAt < windowStart));
+            await db.Comments.CountAsync(c => c.Kind == EfHatchComment.Note && c.CreatedAt < windowStart),
+            await levels.CountAsync(e => e.At >= windowStart), await levels.CountAsync(e => e.At < windowStart),
+            await records.CountAsync(e => e.At >= windowStart), await records.CountAsync(e => e.At < windowStart),
+            await db.RunnerStates.CountAsync(r => r.At >= windowStart), await db.RunnerStates.CountAsync(r => r.At < windowStart));
     }
 
     private static async Task<Dictionary<string, Measurement>> MeasureAllAsync(ReadCostSeed.Size size)
