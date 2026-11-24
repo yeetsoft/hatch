@@ -6,7 +6,9 @@ import {
   getChatDelivery,
   getChatManifest,
   getChatWorkspaces,
+  removeChatAppToken,
   replaceChatToken,
+  setChatAppToken,
 } from '../api/client';
 import { ChatBindings } from '../components/ChatBindings';
 import { ChatRooms } from '../components/ChatRooms';
@@ -92,6 +94,30 @@ export function ChatPage() {
     }
   }
 
+  async function setAppToken(workspace: ChatWorkspace, typed: string) {
+    setBusy(true);
+    try {
+      await setChatAppToken(workspace.id, typed);
+    } finally {
+      setBusy(false);
+      await loadAll();
+    }
+  }
+
+  // No dialog: an app-level token costs nothing to paste again.
+  async function removeAppToken(workspace: ChatWorkspace) {
+    setBusy(true);
+    try {
+      await removeChatAppToken(workspace.id);
+      setFailure(null);
+    } catch (err) {
+      setFailure(message(err));
+    } finally {
+      setBusy(false);
+      await loadAll();
+    }
+  }
+
   function bound(workspace: ChatWorkspace, projectIds: number[]) {
     setWorkspaces((rows) => rows?.map((w) => (w.id === workspace.id ? { ...w, projectIds } : w)) ?? rows);
   }
@@ -145,6 +171,8 @@ export function ChatPage() {
             busy={busy}
             onBound={bound}
             onReplace={replace}
+            onSetAppToken={setAppToken}
+            onRemoveAppToken={removeAppToken}
             onRemove={setPending}
           />
         </Card>
@@ -235,6 +263,8 @@ export function WorkspaceTable({
   busy,
   onBound,
   onReplace,
+  onSetAppToken,
+  onRemoveAppToken,
   onRemove,
 }: {
   workspaces: ChatWorkspace[];
@@ -247,6 +277,9 @@ export function WorkspaceTable({
   onBound: (workspace: ChatWorkspace, projectIds: number[]) => void;
   /** Rejects with the service's sentence when the token is refused. */
   onReplace: (workspace: ChatWorkspace, token: string) => Promise<void>;
+  /** Rejects with the service's sentence when the app-level token is refused. */
+  onSetAppToken: (workspace: ChatWorkspace, token: string) => Promise<void>;
+  onRemoveAppToken: (workspace: ChatWorkspace) => void;
   onRemove: (workspace: ChatWorkspace) => void;
 }) {
   return (
@@ -255,6 +288,7 @@ export function WorkspaceTable({
         <tr>
           <th>Workspace</th>
           <th>Token</th>
+          <th>App token</th>
           <th>Projects</th>
           <th>Sending</th>
           <th>Connected</th>
@@ -268,6 +302,14 @@ export function WorkspaceTable({
               <strong>{workspace.name}</strong>
             </td>
             <td>{workspace.hasToken ? 'Token set' : <Text tone="muted">No token</Text>}</td>
+            <td className="hatch-chat-apptoken-cell">
+              <AppTokenCell
+                workspace={workspace}
+                busy={busy}
+                onSet={onSetAppToken}
+                onRemove={onRemoveAppToken}
+              />
+            </td>
             <td className="hatch-chat-projects-cell">
               <ChatBindings workspace={workspace} projects={projects} busy={busy} onChange={onBound} />
             </td>
@@ -362,6 +404,75 @@ export function ReplaceTokenForm({
       <Button type="submit" disabled={busy || token.trim() === ''}>
         Replace token
       </Button>
+      {failure && <p className="text-danger hatch-chat-replace__failure">{failure}</p>}
+    </form>
+  );
+}
+
+/** A workspace's app-level token: which of three states it is in, a box to
+    paste or replace it, and Remove while one is held. Like the bot token it is
+    typed into a password input, emptied before the answer, and never drawn
+    back: no placeholder or hint here looks like a token. Removing asks nothing,
+    since the token can be pasted again. */
+export function AppTokenCell({
+  workspace,
+  busy,
+  onSet,
+  onRemove,
+}: {
+  workspace: ChatWorkspace;
+  busy: boolean;
+  /** Rejects with the service's sentence when the token is refused. */
+  onSet: (workspace: ChatWorkspace, token: string) => Promise<void>;
+  onRemove: (workspace: ChatWorkspace) => void;
+}) {
+  const [token, setToken] = useState('');
+  const [failure, setFailure] = useState<string | null>(null);
+  const held = workspace.hasAppToken || workspace.appTokenUnreadable;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (token.trim() === '') return;
+    const typed = token;
+    setToken('');
+    try {
+      await onSet(workspace, typed);
+      setFailure(null);
+    } catch (err) {
+      setFailure(message(err));
+    }
+  }
+
+  return (
+    <form className="hatch-chat-replace" onSubmit={(e) => void submit(e)}>
+      {workspace.appTokenUnreadable ? (
+        <p className="hatch-chat-apptoken__state text-danger">
+          The app token cannot be read. Paste it again.
+        </p>
+      ) : workspace.hasAppToken ? (
+        <p className="hatch-chat-apptoken__state">App token set</p>
+      ) : (
+        <Text tone="muted" className="hatch-chat-apptoken__state">
+          No app token
+        </Text>
+      )}
+      <input
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="App-level token"
+        aria-label={`App-level token for ${workspace.name}`}
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+      />
+      <Button type="submit" disabled={busy || token.trim() === ''}>
+        {workspace.hasAppToken ? 'Replace app token' : 'Set app token'}
+      </Button>
+      {held && (
+        <Button type="button" disabled={busy} onClick={() => onRemove(workspace)}>
+          Remove app token
+        </Button>
+      )}
       {failure && <p className="text-danger hatch-chat-replace__failure">{failure}</p>}
     </form>
   );

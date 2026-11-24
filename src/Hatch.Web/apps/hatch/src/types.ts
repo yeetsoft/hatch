@@ -3904,6 +3904,10 @@ export interface ChatWorkspace {
   externalId: string;
   name: string;
   hasToken: boolean;
+  /** Whether an app-level token is held. As with the bot token, none comes back. */
+  hasAppToken: boolean;
+  /** An app-level token is held but cannot be opened; it has to be pasted again. */
+  appTokenUnreadable: boolean;
   createdAt: string;
   projectIds: number[];
 }

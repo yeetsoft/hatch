@@ -133,6 +133,32 @@ public class ChatPageTests(ITestOutputHelper output)
                 "() => document.querySelector('input[aria-label=\"New token for Acme\"]').value === ''");
             await AssertNoTokenOnPageAsync(harness, deadline);
 
+            // Both start with no app-level token. Acme is given one; Globex stays without, so the page
+            // shows one of each.
+            await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Acme\") .hatch-chat-apptoken__state:text-is(\"No app token\")");
+            await deadline.BoundAsync(
+                "typing the app-level token",
+                () => harness.Page!.FillAsync("input[aria-label=\"App-level token for Acme\"]", FakeChatProvider.AcmeAppToken));
+            await harness.ClickAsync(deadline, "tr:has-text(\"Acme\") button:has-text(\"Set app token\")");
+            await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Acme\") .hatch-chat-apptoken__state:text-is(\"App token set\")");
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for the app token box to empty",
+                "() => document.querySelector('input[aria-label=\"App-level token for Acme\"]').value === ''");
+            await AssertNoTokenOnPageAsync(harness, deadline);
+
+            // A refused app-level token says the provider's sentence, leaves the box empty, and changes nothing.
+            await deadline.BoundAsync(
+                "typing the refused app-level token",
+                () => harness.Page!.FillAsync("input[aria-label=\"App-level token for Acme\"]", FakeChatProvider.RefusedAppToken));
+            await harness.ClickAsync(deadline, "tr:has-text(\"Acme\") button:has-text(\"Replace app token\")");
+            await harness.WaitForVisibleAsync(deadline, $"tr:has-text(\"Acme\") .text-danger:text-is(\"{FakeChatProvider.AppRefusalSentence}\")");
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for the app token box to empty after the refusal",
+                "() => document.querySelector('input[aria-label=\"App-level token for Acme\"]').value === ''");
+            await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Acme\") .hatch-chat-apptoken__state:text-is(\"App token set\")");
+            await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Globex\") .hatch-chat-apptoken__state:text-is(\"No app token\")");
+            await AssertNoTokenOnPageAsync(harness, deadline);
+
             await AssertFitsAsync(harness, deadline, profile);
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "chat-two-workspaces"));
 
@@ -501,5 +527,17 @@ public class ChatPageTests(ITestOutputHelper output)
             Assert.DoesNotContain(token, shown);
             Assert.DoesNotContain(token["xoxb-".Length..], shown);
         }
+
+        foreach (var appToken in new[]
+        {
+            FakeChatProvider.AcmeAppToken, FakeChatProvider.AcmeNewAppToken, FakeChatProvider.GlobexAppToken, FakeChatProvider.RefusedAppToken,
+        })
+        {
+            Assert.DoesNotContain(appToken, shown);
+            Assert.DoesNotContain(appToken["xapp-".Length..], shown);
+        }
+
+        // Nothing on the page is shaped like an app-level token, so no placeholder or hint can have one.
+        Assert.DoesNotContain("xapp-", shown);
     }
 }
