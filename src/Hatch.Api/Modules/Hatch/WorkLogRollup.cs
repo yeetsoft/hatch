@@ -117,9 +117,14 @@ public static class WorkLogRollup
     /// check. An empty bucket is a zero and never an omission: an hour in which
     /// nothing ran cost nothing, which is a measurement.
     ///
-    /// One query for the fold, plus two single-row reads for the bounds - which
+    /// One summed read, which answers a row per bucket that holds a session -
+    /// never a row per session - plus two single-row reads for the bounds, which
     /// deliberately ignore the range, so a page can tell "nothing has ever run"
-    /// from "nothing ran in the range you asked for".
+    /// from "nothing ran in the range you asked for". The database does the
+    /// adding (see <see cref="WorkLogSums"/>); this fills the empty buckets in
+    /// with a zero and adds the buckets into the headline, which is exact for
+    /// every field in it. <see cref="SeriesFoldedAsync"/> is the same answer
+    /// folded in memory, kept as what the database is checked against.
     /// </remarks>
     /// <param name="projectIds">
     /// Narrows to sessions whose issue is in any of these projects; null or
@@ -135,6 +140,57 @@ public static class WorkLogRollup
     /// <see cref="SessionsAsync"/> states it.
     /// </param>
     public static async Task<WorkLogHistoryDto> SeriesAsync(
+        HatchContext db,
+        WorkLogWindow window,
+        WorkLogBucketSize bucket,
+        long? ancestorId,
+        IReadOnlyList<int>? projectIds,
+        string? outcome,
+        CancellationToken ct)
+    {
+        var to = window.From + window.Length * window.Buckets;
+
+        // Null is no IssueId filter at all - the whole log, which is the
+        // ordinary case here and never the case in TotalsAsync. Resolved once
+        // and shared with the bound reads below, so an ancestor costs one tree
+        // walk rather than three.
+        var scope = ancestorId is { } id ? await ScopeAsync(db, id, includeDescendants: true, ct) : null;
+
+        // The range filter is what guarantees every bucket index lands inside.
+        var byBucket = await WorkLogSums.ByBucketAsync(
+            ByOutcome(Scoped(db, scope, projectIds), outcome)
+                .AsNoTracking()
+                .Where(w => w.EndedAt >= window.From && w.EndedAt < to),
+            window.From,
+            window.Length,
+            ct);
+
+        var buckets = new List<WorkLogBucketDto>((int)window.Buckets);
+        for (var i = 0; i < window.Buckets; i++)
+        {
+            var start = window.From + window.Length * i;
+            buckets.Add(new WorkLogBucketDto(
+                start,
+                start + window.Length,
+                byBucket.GetValueOrDefault(i) ?? WorkLogSums.None));
+        }
+
+        return new WorkLogHistoryDto(
+            window.From,
+            to,
+            Name(bucket),
+            WorkLogSums.Add(byBucket.Values),
+            await FirstEndedAsync(db, scope, projectIds, ascending: true, ct),
+            await FirstEndedAsync(db, scope, projectIds, ascending: false, ct),
+            buckets);
+    }
+
+    /// <summary>
+    /// <see cref="SeriesAsync"/>, folded in memory: every session in the range
+    /// is read and added up here. The answer it must agree with to the digit,
+    /// and what the database's is checked against on a real Postgres.
+    /// </summary>
+    internal static async Task<WorkLogHistoryDto> SeriesFoldedAsync(
         HatchContext db,
         WorkLogWindow window,
         WorkLogBucketSize bucket,
@@ -191,15 +247,25 @@ public static class WorkLogRollup
     /// so a session on a boundary lands the same way in the table and in the
     /// graph.
     ///
-    /// The fold runs over every row in the filter and <em>before</em> the cap.
-    /// That is what makes a capped table's total honest: a hundred rows drawn
-    /// under a total of five hundred sessions is a cap, and the page says so,
-    /// but the number itself is never a sample.
+    /// The totals cover every row in the filter and are worked out <em>before</em>
+    /// the cap. That is what makes a capped table's total honest: a hundred rows
+    /// drawn under a total of five hundred sessions is a cap, and the page says
+    /// so, but the number itself is never a sample.
     ///
-    /// Sorted and summed in memory for the reason this file already states at
-    /// <see cref="Fold"/>: EF's in-memory provider does not sum a decimal
-    /// projection the way Npgsql does, and the work log grows by one row per
-    /// increment.
+    /// Four reads, and none returns a row per session in the range: the totals
+    /// (one row, summed by the database), the page (already sorted and cut to
+    /// <paramref name="limit"/>), the top reads (see below) and the two bounds.
+    /// The page's order is the one <see cref="SessionsFoldedAsync"/> sorts by,
+    /// which stays as the in-memory answer it is checked against: the sort
+    /// column descending with a row that has none last, then <c>EndedAt</c>
+    /// descending, then id descending.
+    ///
+    /// The top reads are folded by Postgres - the entries' <c>Reads</c> lists
+    /// are unnested and summed there, see <see cref="WorkLogSums.TopReadsAsync"/>
+    /// - and so the long 27-column row, and the column of reads with it, is never
+    /// read for the whole range. The in-memory provider has no jsonb, so there
+    /// the <c>Reads</c> column alone is read and folded by
+    /// <see cref="FoldReads"/>.
     /// </remarks>
     /// <param name="projectIds">
     /// Narrows to sessions whose issue is in any of these projects; null or
@@ -214,6 +280,97 @@ public static class WorkLogRollup
     /// describe the log and ignore the range.
     /// </param>
     public static async Task<WorkLogSessionsDto> SessionsAsync(
+        HatchContext db,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        long? ancestorId,
+        IReadOnlyList<int>? projectIds,
+        WorkLogSort sort,
+        int limit,
+        string? outcome,
+        CancellationToken ct)
+    {
+        // One tree walk, shared with the two bound reads below - as SeriesAsync
+        // does it.
+        var scope = ancestorId is { } id ? await ScopeAsync(db, id, includeDescendants: true, ct) : null;
+
+        var entries = ByOutcome(Scoped(db, scope, projectIds), outcome)
+            .AsNoTracking()
+            .Where(w => w.EndedAt >= from && w.EndedAt < to);
+
+        var totals = await WorkLogSums.TotalsAsync(entries, ct);
+
+        // The sort column descending, a row without one last: -1 is below any
+        // real value, as it is in SessionsFoldedAsync.
+        var ranked = sort switch
+        {
+            WorkLogSort.Cost => entries.OrderByDescending(w => w.CostUsd ?? -1m),
+            WorkLogSort.Ended => entries.OrderByDescending(w => w.EndedAt),
+            WorkLogSort.Requests => entries.OrderByDescending(w => w.Requests ?? -1),
+            WorkLogSort.PeakContext => entries.OrderByDescending(w => w.PeakContextTokens ?? -1),
+            _ => entries.OrderByDescending(w =>
+                w.InputTokens + w.OutputTokens + w.CacheCreationTokens + w.CacheReadTokens),
+        };
+
+        var page = await ranked
+            // Every sort is descending, and both tiebreaks are too - so two
+            // reads of one filter come back in one order.
+            .ThenByDescending(w => w.EndedAt)
+            .ThenByDescending(w => w.Id)
+            .Take(limit)
+            .Select(w => new SessionRow(
+                w.Id,
+                w.SessionId,
+                w.Issue!.Project!.Key,
+                w.Issue!.Number,
+                w.Issue!.Title,
+                w.StartedAt,
+                w.EndedAt,
+                w.DurationMs,
+                w.Title,
+                w.Described,
+                w.IsError,
+                w.Turns,
+                w.CostUsd,
+                w.InputTokens,
+                w.OutputTokens,
+                w.CacheCreationTokens,
+                w.CacheReadTokens,
+                w.Requests,
+                w.PeakContextTokens,
+                w.PromptChars,
+                w.Agent,
+                w.DispatchModel,
+                w.ModelPlacement,
+                w.ModelDigest,
+                // The page does not draw them; the top reads are their own read.
+                null,
+                w.Outcome,
+                w.Reason))
+            .ToListAsync(ct);
+
+        var topReads = db.Database.IsNpgsql()
+            ? await WorkLogSums.TopReadsAsync(db, entries, ct)
+            : FoldReads(await entries.Select(w => w.Reads).ToListAsync(ct));
+
+        return new WorkLogSessionsDto(
+            from,
+            to,
+            Name(sort),
+            totals,
+            await FirstEndedAsync(db, scope, projectIds, ascending: true, ct),
+            await FirstEndedAsync(db, scope, projectIds, ascending: false, ct),
+            page.ConvertAll(Dto),
+            topReads);
+    }
+
+    /// <summary>
+    /// <see cref="SessionsAsync"/>, folded in memory: every session in the range
+    /// is read with all its columns, then sorted, cut, summed and its reads
+    /// folded here. The answer the database's must agree with, ties and all, and
+    /// what it is checked against on a real Postgres.
+    /// </summary>
+    internal static async Task<WorkLogSessionsDto> SessionsFoldedAsync(
         HatchContext db,
         DateTimeOffset from,
         DateTimeOffset to,
@@ -309,6 +466,12 @@ public static class WorkLogRollup
     ///
     /// <paramref name="outcome"/> narrows the sessions folded, and the totals
     /// with them, as <see cref="SessionsAsync"/> states it.
+    ///
+    /// This one stays a fold in C# over its range, and it is not an oversight.
+    /// The medians in each row need every value of the group, which no sum
+    /// answers, and it is asked for under one filter, so its rows are the range
+    /// narrowed once rather than the log. The leaderboard's other two reads are
+    /// summed by the database.
     /// </remarks>
     /// <param name="ancestorId">
     /// One issue and everything beneath it, that issue included - resolved and
@@ -583,11 +746,12 @@ public static class WorkLogRollup
     /// headline cannot drift apart.
     /// </summary>
     /// <remarks>
-    /// Summed in memory rather than by the database, which is the one place this
-    /// differs from what a production-sized table would want and is the same
-    /// trade every other fold in the module makes: EF's in-memory provider does
-    /// not implement Sum over a decimal projection the way Npgsql does, and a
-    /// work log is one row per increment.
+    /// Summed in memory, and kept for what still wants it: an issue's own
+    /// meter (<see cref="TotalsAsync"/>, one issue's rows), and the folded
+    /// answers <see cref="SeriesFoldedAsync"/> and <see cref="SessionsFoldedAsync"/>
+    /// that the database's sums are checked against. The leaderboard's totals
+    /// and buckets are summed by the database, in <see cref="WorkLogSums"/>, and
+    /// must come to what this does to the digit.
     /// </remarks>
     private static WorkLogTotalsDto Fold(IReadOnlyCollection<Row> rows)
     {

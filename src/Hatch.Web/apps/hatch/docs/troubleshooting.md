@@ -636,7 +636,8 @@ and a meter for anything that reads numbers.
   - `queue`: the queue, and the takers it lists for each step.
   - `attention`: the Attention page.
   - `claim-heartbeat`: a runner's heartbeat asking whether its claim should
-    yield to emergency work.
+    yield to emergency work. It scans only while an open emergency issue
+    exists, so on a board with none this counter stays at zero.
   - `goose`: the goose's sweep.
 
   One caller far above the rest is where to look. A queue asked for with takers, on a
@@ -659,6 +660,14 @@ and a meter for anything that reads numbers.
   tagged with `caller`; a tree built outside a scan carries the route pattern
   instead. The `api` image does not carry `dotnet-counters`, so reading the meter
   from inside the container needs the tool added to it.
+
+- **Expect no scan from the merge-train poll.** Every runner polls
+  `GET /work/review` every few seconds, so it is built to cost the same on a
+  board of fifty issues and on one of two thousand. It runs no scan and builds no
+  priority tree: with nothing in review or merging for the caller it sends two
+  statements, and with rows there it reads only those rows and the issues above
+  them. A `Dispatch reads on api/work/review` line, or any `TreeBuilds` count on
+  that route, means the poll has started reading the whole board again.
 
 ## A psql shell
 
