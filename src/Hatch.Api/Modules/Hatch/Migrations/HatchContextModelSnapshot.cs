@@ -845,6 +845,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasIndex("IssueId", "CreatedAt");
 
+                    b.HasIndex(new[] { "CreatedAt" }, "IX_Comments_Answers")
+                        .HasFilter("\"AnswersId\" IS NOT NULL");
+
+                    b.HasIndex(new[] { "CreatedAt" }, "IX_Comments_Questions")
+                        .HasFilter("\"Kind\" = 'question'");
+
                     b.ToTable("Comments", "hatch");
                 });
 
@@ -1571,6 +1577,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasIndex("At", "Id");
 
                     b.HasIndex("IssueId", "At");
+
+                    b.HasIndex("Kind", "At");
+
+                    b.HasIndex("IssueId", "Kind", "At");
 
                     b.ToTable("IssueEvents", "hatch");
                 });
@@ -3399,6 +3409,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ChangeEventId");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_WorkLogEntries_FailedSessions")
+                        .HasFilter("\"IsError\"");
+
+                    b.HasIndex("EndedAt");
 
                     b.HasIndex("IssueId")
                         .HasDatabaseName("IX_WorkLogEntries_SettledPasses")

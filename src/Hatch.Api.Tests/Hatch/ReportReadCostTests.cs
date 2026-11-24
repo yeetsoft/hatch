@@ -29,12 +29,16 @@ namespace Hatch.Api.Tests.Hatch;
 /// comments and, for each issue, five more trips to review and back (so about
 /// five times the moves) - the history a long-running board accumulates.</para>
 ///
-/// <para><b>How the test reads.</b> A read in <see cref="Same"/> costs the same
-/// at both sizes, and the test says what. A read in <see cref="Grows"/> costs
-/// more at the large size, and the test says both costs. The test fails when a
-/// read in <see cref="Grows"/> stops growing, so the list has to be edited, and
-/// when a read outside it starts. A read that gets cheaper is a line moved from
-/// the one list to the other.</para>
+/// <para><b>How the test reads.</b> A read in <see cref="Same"/> does not grow
+/// with history: it sends the same statements and returns the same rows at both
+/// sizes, and Postgres reads no more of any table at the large size than at the
+/// small one. It may read less, because on a table of a few hundred rows the
+/// planner reads the whole table where it would use an index on a large one, so
+/// both costs are written down. A read in <see cref="Grows"/> costs more at the
+/// large size, and the test says both costs. The test fails when a read in
+/// <see cref="Grows"/> stops growing, so the list has to be edited, and when a
+/// read outside it starts. A read that gets cheaper is a line moved from the
+/// one list to the other.</para>
 ///
 /// <para>The health reads build their API-key checks on an in-memory
 /// <c>AppDbContext</c>, which this counter does not see; they are not part of
@@ -70,68 +74,97 @@ public class ReportReadCostTests
     // that return the same rows at both sizes and still read more are the ones
     // whose WHERE throws rows away after reading them.
 
-    /// <summary>Reads that cost the same at both sizes.</summary>
-    private static readonly Dictionary<string, Row> Same = new();
+    /// <summary>Reads that do not grow with history: the small cost, then the large.</summary>
+    private static readonly Dictionary<string, (Row Small, Row Large)> Same = new()
+    {
+        // The rows in the range, off the end-time index (HA-2782), and the two bounds. The small
+        // board reads its whole table, for the reason in the summary above.
+        ["GET /api/reports/consumption"] = (
+            new(5, 2, 307, 97, "Issues=400;Projects=2;WorkLogEntries=550"),
+            new(5, 2, 307, 97, "Issues=400;Projects=2;WorkLogEntries=350")),
+        ["GET /api/reports/consumption.csv"] = (
+            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=500"),
+            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=300")),
+        // Summed by the database: a row per bucket that holds a session, and the
+        // two bounds. Reads the window and one row off each end of the end-time index.
+        ["GET /api/work-log/history"] = (
+            new(3, 0, 32, 32, "Issues=200;WorkLogEntries=502"),
+            new(3, 0, 32, 32, "Issues=200;WorkLogEntries=302")),
+        // The totals, the page, the paths read and the two bounds: at most
+        // twenty rows of page, one of totals, one per distinct path, two bounds.
+        ["GET /api/work-log/sessions"] = (
+            new(5, 0, 24, 24, "Issues=600;Projects=1;WorkLogEntries=1502"),
+            new(5, 0, 24, 24, "Issues=600;Projects=1;WorkLogEntries=902")),
+        // The same, and the heaviest five: one more read, five more rows, and
+        // still the totals, the paths and the bounds once - what the
+        // leaderboard asks instead of the line above twice.
+        ["GET /api/work-log/sessions?top"] = (
+            new(6, 0, 29, 29, "Issues=800;Projects=2;WorkLogEntries=2002"),
+            new(6, 0, 29, 29, "Issues=800;Projects=2;WorkLogEntries=1202")),
+        ["GET /api/work-log/by-playbook"] = (
+            new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
+            new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=300")),
+    };
+
+    /// <summary>
+    /// Whether the large cost is more than the small one: a different number of
+    /// statements or rows, or more rows read of any table. Less read is not
+    /// growth - see the class summary.
+    /// </summary>
+    private static bool Grew(Row small, Row large)
+    {
+        if (small.Statements != large.Statements || small.IssueLoads != large.IssueLoads
+            || small.Rows != large.Rows || small.RowsOutsideIssueLoads != large.RowsOutsideIssueLoads)
+            return true;
+
+        var before = ReadPerTable(small.Read);
+        return ReadPerTable(large.Read).Any(t => t.Value > before.GetValueOrDefault(t.Key));
+    }
+
+    private static Dictionary<string, long> ReadPerTable(string read) =>
+        read.Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('='))
+            .ToDictionary(part => part[0], part => long.Parse(part[1]));
 
     /// <summary>Reads that still grow with history: the small cost, then the large.</summary>
     private static readonly Dictionary<string, (Row Small, Row Large)> Grows = new()
     {
+        // Every status change, with no time bound (HA-2784, HA-2787).
         ["GET /api/reports/timeline"] = (
             new(11, 3, 1536, 956, "Comments=220;IssueEvents=1294;Issues=1001;Projects=8;Statuses=24"),
             new(11, 3, 3536, 2956, "Comments=720;IssueEvents=3294;Issues=1200;Projects=8;Statuses=24")),
         ["GET /api/reports/cumulative-flow"] = (
             new(3, 1, 1150, 950, "IssueEvents=1294;Issues=400;Projects=2;Statuses=6"),
             new(3, 1, 3150, 2950, "IssueEvents=3294;Issues=400;Projects=2;Statuses=6")),
+        // Every status change with no time bound (HA-2784), and QuestionTrail with no range,
+        // so every question and answer: no range index can serve either.
         ["GET /api/reports/flow"] = (
-            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=2663;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
-            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=6663;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=1500")),
+            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=1369;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
+            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=3369;Issues=1200;Projects=2;Statuses=6;WorkLogEntries=300")),
+        // QuestionTrail.ReadAsync with no range, so every question and every answer.
         ["GET /api/reports/changelog (epic level)"] = (
             new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
-            new(13, 5, 417, 12, "Comments=2221;Issues=1223;Projects=3;Statuses=36")),
+            new(13, 5, 417, 12, "Comments=1561;Issues=1223;Projects=3;Statuses=36")),
         ["GET /api/reports/changelog (story level)"] = (
             new(15, 7, 621, 12, "Comments=720;Issues=1244;Projects=3;Statuses=42"),
-            new(15, 7, 621, 12, "Comments=2221;Issues=1443;Projects=3;Statuses=42")),
+            new(15, 7, 621, 12, "Comments=1561;Issues=1443;Projects=3;Statuses=42")),
         ["GET /api/reports/changelog (loose=true)"] = (
             new(15, 7, 421, 12, "Comments=720;Issues=1251;Projects=4;Statuses=42"),
-            new(15, 7, 421, 12, "Comments=2221;Issues=1450;Projects=4;Statuses=42")),
+            new(15, 7, 421, 12, "Comments=1561;Issues=1450;Projects=4;Statuses=42")),
+        // Every status change with no time bound (HA-2787).
         ["GET /api/reports/activity"] = (
             new(12, 3, 1735, 1161, "Comments=220;IssueEvents=3088;Issues=1401;Projects=8;Statuses=18"),
             new(12, 3, 1735, 1161, "Comments=720;IssueEvents=4448;Issues=1600;Projects=8;Statuses=18")),
-        ["GET /api/reports/consumption"] = (
-            new(5, 2, 307, 97, "Issues=800;Projects=2;WorkLogEntries=1500"),
-            new(5, 2, 307, 97, "Issues=800;Projects=2;WorkLogEntries=4500")),
-        ["GET /api/reports/consumption.csv"] = (
-            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=500"),
-            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=1500")),
-        // Summed by the database: a row per bucket that holds a session, and the
-        // two bounds. Still reads the whole table, until the end-time index.
-        ["GET /api/work-log/history"] = (
-            new(3, 0, 32, 32, "Issues=600;WorkLogEntries=1500"),
-            new(3, 0, 32, 32, "Issues=600;WorkLogEntries=4500")),
-        // The totals, the page, the paths read and the two bounds: at most
-        // twenty rows of page, one of totals, one per distinct path, two bounds.
-        ["GET /api/work-log/sessions"] = (
-            new(5, 0, 24, 24, "Issues=1000;Projects=1;WorkLogEntries=2500"),
-            new(5, 0, 24, 24, "Issues=1000;Projects=1;WorkLogEntries=7500")),
-        // The same, and the heaviest five: one more read, five more rows, and
-        // still the totals, the paths and the bounds once - what the
-        // leaderboard asks instead of the line above twice.
-        ["GET /api/work-log/sessions?top"] = (
-            new(6, 0, 29, 29, "Issues=1200;Projects=2;WorkLogEntries=3000"),
-            new(6, 0, 29, 29, "Issues=1200;Projects=2;WorkLogEntries=9000")),
-        ["GET /api/work-log/by-playbook"] = (
-            new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
-            new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=1500")),
+        // The OR read of the claim trail (HA-2783), and status changes with no time bound.
         ["GET /api/board/health"] = (
-            new(38, 7, 3075, 1982, "Comments=1782;IssueEvents=19856;Issues=3002;Projects=16;Statuses=30"),
-            new(38, 7, 5075, 3982, "Comments=3963;IssueEvents=109146;Issues=3602;Projects=16;Statuses=30")),
+            new(38, 7, 3075, 1982, "Comments=1782;IssueEvents=9373;Issues=2003;Projects=16;Statuses=30"),
+            new(38, 7, 5075, 3982, "Comments=1923;IssueEvents=82623;Issues=2603;Projects=16;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(40, 7, 3084, 2020, "Comments=1782;IssueEvents=25160;Issues=3202;Projects=24;Statuses=30"),
-            new(40, 7, 5084, 4020, "Comments=3963;IssueEvents=143250;Issues=3802;Projects=24;Statuses=30")),
+            new(40, 7, 3084, 2020, "Comments=1782;IssueEvents=13649;Issues=2204;Projects=20;Statuses=30"),
+            new(40, 7, 5084, 4020, "Comments=1923;IssueEvents=114099;Issues=2804;Projects=20;Statuses=30")),
         ["ColumnNormals.ForAsync"] = (
             new(2, 1, 1144, 944, "IssueEvents=1294;Issues=200;Projects=2"),
             new(2, 1, 3144, 2944, "IssueEvents=3294;Issues=200;Projects=2")),
-
     };
 
     private sealed record Read(string Name, Func<Harness, Task> Call);
@@ -209,12 +242,13 @@ public class ReportReadCostTests
                 failures.Add($"{read.Name} is in {(listedSame ? "both" : "neither")} of the lists");
             else if (listedSame)
             {
-                if (s.Row != l.Row) failures.Add($"{read.Name} is listed as the same at both sizes, but grew: {s.Row} -> {l.Row}");
-                else if (s.Row != same) failures.Add($"{read.Name} costs {s.Row}, the table says {same}");
+                if (Grew(s.Row, l.Row)) failures.Add($"{read.Name} is listed as not growing, but grew: {s.Row} -> {l.Row}");
+                else if (s.Row != same.Small || l.Row != same.Large)
+                    failures.Add($"{read.Name} costs {s.Row} then {l.Row}, the table says {same.Small} then {same.Large}");
             }
             else
             {
-                if (s.Row == l.Row) failures.Add($"{read.Name} is listed as growing, but costs {s.Row} at both sizes - move it to the list that does not");
+                if (!Grew(s.Row, l.Row)) failures.Add($"{read.Name} is listed as growing, but costs {s.Row} then {l.Row} - move it to the list that does not");
                 else if (s.Row != grows.Small || l.Row != grows.Large)
                     failures.Add($"{read.Name} costs {s.Row} then {l.Row}, the table says {grows.Small} then {grows.Large}");
             }
@@ -237,8 +271,7 @@ public class ReportReadCostTests
         // grow with the sessions in the window: history is a row per bucket that
         // holds a session plus the two bounds, and sessions is the page, one row
         // of totals, a row per distinct path read, and the two bounds. Checked
-        // apart from the table, whose Read column still grows until the end-time
-        // index exists - these rows do not.
+        // apart from the table, which is about what Postgres read - these rows do not grow.
         foreach (var (size, measured) in new[] { ("small", small), ("large", large) })
         {
             var history = measured["GET /api/work-log/history"].Row.Rows;
@@ -252,8 +285,7 @@ public class ReportReadCostTests
                 failures.Add($"sessions returned {sessions} rows at the {size} size, more than the page, the totals, the paths read and the two bounds ({sessionsBound})");
 
             // The one request the leaderboard makes for both lists: the same,
-            // and the top five besides. Its Read column grows like the table's
-            // until the end-time index exists, so what is held equal is what it
+            // and the top five besides. What is held equal here is what it
             // returns and how many statements it takes.
             var withTop = measured["GET /api/work-log/sessions?top"].Row;
             var withTopBound = LeaderboardLimit + LeaderboardTop + 1 + ReadCostSeed.DistinctReadPaths + 2;
@@ -323,8 +355,8 @@ public class ReportReadCostTests
         foreach (var read in Reads)
         {
             var (s, l) = (small[read.Name].Row, large[read.Name].Row);
-            if (s == l)
-                same.AppendLine($"        [\"{read.Name}\"] = {Literal(s)},");
+            if (!Grew(s, l))
+                same.AppendLine($"        [\"{read.Name}\"] = ({Environment.NewLine}            {Literal(s)},{Environment.NewLine}            {Literal(l)}),");
             else
                 grows.AppendLine($"        [\"{read.Name}\"] = ({Environment.NewLine}            {Literal(s)},{Environment.NewLine}            {Literal(l)}),");
         }

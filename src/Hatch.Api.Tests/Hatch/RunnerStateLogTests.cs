@@ -408,7 +408,7 @@ public class RunnerStateLogTests
         var runners = new RunnersController(
             db, rule, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = false }), new StubSiteSettings(), keys,
             sessions, new Dispatch(db, actors, claims, time), new StubHatchRevision(), new StubRunnerBuilds(),
-            new RunnerStateLog(rule), NullLogger<RunnersController>.Instance);
+            new RunnerStateLog(rule), global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(db, time), NullLogger<RunnersController>.Instance);
 
         return new Harness { Runners = runners, Db = db, Time = time, Keys = keys, Rule = rule, Caller = caller, CoreDb = coreDb };
     }

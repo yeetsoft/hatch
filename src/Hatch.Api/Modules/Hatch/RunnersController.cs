@@ -46,7 +46,7 @@ public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
     TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,
     RunnerSessions sessions, Dispatch dispatch, IHatchRevision revision, IRunnerBuilds builds,
-    RunnerStateLog stateLog, ILogger<RunnersController> logger) : ControllerBase
+    RunnerStateLog stateLog, RunnerFailureMessages failureMessages, ILogger<RunnersController> logger) : ControllerBase
 {
     /// <summary>
     /// Every runner this Hatch knows of: one entry per visible key - revoked
@@ -554,7 +554,7 @@ public class RunnersController(
         if (kind == EfHatchRunner.LoopKind)
         {
             // What this beat found failing, kept; a `once` beat touches nothing.
-            await RunnerFailures.ReconcileAsync(db, key.Id, session, request, now, ct);
+            await RunnerFailures.ReconcileAsync(db, key.Id, key.Name, session, request, failureMessages, now, ct);
 
             foreach (var retired in await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct))
                 await stateLog.RecordAsync(db, keys, retired, now, ct);

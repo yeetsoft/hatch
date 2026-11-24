@@ -2882,6 +2882,13 @@ public class EfHatchChangeOutcome
 [Index(nameof(IssueId), nameof(At))]
 [Index(nameof(At), nameof(Id))]
 [Index(nameof(Actor), nameof(At))]
+// The reports and the health poll read the trail by kind from a time on
+// (HA-2782): status changes, stalls, answers, the claim kinds. Without it each
+// read walks every kind to keep one.
+[Index(nameof(Kind), nameof(At))]
+// "The newest earlier event of one kind, per issue" stops at one row only with
+// all three columns; (IssueId, At) reads an issue's whole old trail first.
+[Index(nameof(IssueId), nameof(Kind), nameof(At))]
 public class EfHatchIssueEvent
 {
     public const int MaxKindLength = 32;
@@ -3971,6 +3978,9 @@ public class EfHatchIssueRunnerOmission
 [Index(nameof(IssueId), nameof(SessionId), IsUnique = true)]
 // The issue page's one query: this issue's entries, newest first.
 [Index(nameof(IssueId), nameof(EndedAt))]
+// The reports read sessions by the time they ended (HA-2782), across issues,
+// and the first and last end time is one row off either end of this index.
+[Index(nameof(EndedAt))]
 public class EfHatchWorkLogEntry
 {
     public const int MaxSessionIdLength = 64;

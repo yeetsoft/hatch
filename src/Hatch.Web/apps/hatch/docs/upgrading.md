@@ -70,6 +70,18 @@ ambition's worked passes in `WorkLogEntries`) built in well under a second, and
 a writer committing every ten milliseconds waited about as long as the build
 took.
 
+The migration `ReportRangeReadIndexes` adds six more, for the reads behind the
+reports and the health poll. They are plain `CREATE INDEX` statements too, so
+the same lock applies. At 130,000 events, 9,000 work-log entries and 20,000
+comments the six built in about a fifth of a second together: the two on
+`IssueEvents` took about 100 ms each and the four on `WorkLogEntries` and
+`Comments` under 10 ms each. A write to one of those tables during a build
+waited for it; reads did not.
+
+- `IssueEvents`: (`Kind`, `At`), and (`IssueId`, `Kind`, `At`).
+- `WorkLogEntries`: (`EndedAt`), and (`CreatedAt`) for failed sessions only.
+- `Comments`: (`CreatedAt`) for questions only, and (`CreatedAt`) for answers only.
+
 On the shipped stack nothing waits: `migrate` finishes before `api` starts. If
 you run the migration while the API is still up, expect the writes that touch
 the table - claims, comments, moves - to stall for as long as the build takes,
