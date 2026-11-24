@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   chatSectionApplies,
   confirmedWords,
@@ -8,7 +8,10 @@ import {
   linkRanOut,
   memberWords,
   readChatLink,
+  refusalLine,
   refusalWords,
+  RUNNER_FAILURES_HINT,
+  saveRunnerFailures,
   standing,
   stripChatLink,
 } from './chatLinks';
@@ -17,8 +20,24 @@ import type { MeChatLink, MeChatMember, MeChatWorkspace } from '../types';
 
 const NOW = Date.parse('2026-06-01T12:00:00Z');
 const workspace = (link: MeChatLink | null): MeChatWorkspace => ({ id: 3, name: 'Acme', link });
-const waiting = (expiresAt: string | null): MeChatLink => ({ id: 9, state: 'waiting', memberName: 'Ada Reed', expiresAt });
-const linked: MeChatLink = { id: 9, state: 'linked', memberName: 'Ada Reed', expiresAt: null };
+const waiting = (expiresAt: string | null): MeChatLink => ({
+  id: 9,
+  state: 'waiting',
+  memberName: 'Ada Reed',
+  expiresAt,
+  runnerFailures: true,
+  lastRefusal: null,
+  lastRefusalAt: null,
+});
+const linked: MeChatLink = {
+  id: 9,
+  state: 'linked',
+  memberName: 'Ada Reed',
+  expiresAt: null,
+  runnerFailures: true,
+  lastRefusal: null,
+  lastRefusalAt: null,
+};
 const member = (id: string, name: string, displayName: string | null = null): MeChatMember => ({
   id,
   name,
@@ -131,5 +150,46 @@ describe('refusalWords', () => {
 describe('the links-off sentence', () => {
   it('names the variable', () => {
     expect(LINKS_OFF_WORDS).toContain('HATCH_PUBLIC_URL');
+  });
+});
+
+describe('refusalLine', () => {
+  it('is null where no refusal is on file', () => {
+    expect(refusalLine(linked)).toBeNull();
+  });
+
+  it('gives the sentence and when, in a pinned locale and zone', () => {
+    const refused: MeChatLink = { ...linked, lastRefusal: 'channel_not_found', lastRefusalAt: '2026-06-01T12:00:00Z' };
+    const line = refusalLine(refused, 'en-US', 'UTC');
+    expect(line).toBe('Slack could not send to this account: channel_not_found. (Jun 1, 2026, 12:00 PM)');
+  });
+
+  it('adds no second full stop to a sentence that already has one', () => {
+    const refused: MeChatLink = { ...linked, lastRefusal: 'The channel is archived.', lastRefusalAt: '2026-06-01T12:00:00Z' };
+    const line = refusalLine(refused, 'en-US', 'UTC');
+    expect(line).toContain('account: The channel is archived. (');
+  });
+});
+
+describe('saveRunnerFailures', () => {
+  it('calls the client once with the new value and returns the updated link', async () => {
+    const updated: MeChatLink = { ...linked, runnerFailures: false };
+    const send = vi.fn().mockResolvedValue(updated);
+    const result = await saveRunnerFailures(linked, false, send);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(linked.id, { runnerFailures: false });
+    expect(result).toEqual({ ok: true, link: updated });
+  });
+
+  it("says why on a failure, in the server's own words for a 409", async () => {
+    const send = vi.fn().mockRejectedValue(new HttpError('That link is still waiting.', 409));
+    const result = await saveRunnerFailures(linked, false, send);
+    expect(result).toEqual({ ok: false, words: 'That link is still waiting.' });
+  });
+});
+
+describe('the runner failures hint', () => {
+  it('says what the switch does', () => {
+    expect(RUNNER_FAILURES_HINT).toContain('Direct messages');
   });
 });

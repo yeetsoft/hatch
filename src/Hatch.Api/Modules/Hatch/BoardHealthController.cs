@@ -77,9 +77,12 @@ public class BoardHealthController(
             .ThenBy(s => s.Id)
             .ToListAsync(ct);
 
-        // The one full read: a row per issue, every project the caller can see,
-        // since a parent outside the scope still carries a level down.
-        var issues = await BoardHealthTrail.IssuesAsync(db, ct);
+        // The one full read of Issues, and the only one: the priority tree, every project. The
+        // strip's rows are its rows kept to the projects the caller can see (a parent outside
+        // the scope still carries a level down), the column normals take all of them, and the
+        // wait history takes the strip's.
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
+        var issues = BoardHealthTrail.IssuesFrom(tree, db);
 
         var moves = await BoardHealthTrail.MovesAsync(db, previous, scope, ct);
 
@@ -95,17 +98,16 @@ public class BoardHealthController(
 
         var questions = await QuestionTrail.ReadAsync(db, axis.From, axis.To, ct);
 
-        var table = await normals.ForAsync(db, statuses, now, ct);
+        var table = await normals.ForAsync(db, statuses, now, ct, BoardHealthTrail.RowsFrom(tree));
         var normalOf = table.Where(n => n.Seconds is not null).ToDictionary(n => n.StatusId, n => n.Seconds!.Value);
-
-        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         // Leaf-ness is taken for every scoped row, not only those in flight now:
         // the oldest in flight reads cards that have since moved on.
         var leaves = new HashSet<long>();
         if (Columns.Implementation(statuses) is not null)
         {
-            var gate = await FamilyGate.ForAsync(db, actors, statuses, ct, tree);
+            // Structure only: leaf-ness never asks which tasks the board filed or which passes settled.
+            var gate = await FamilyGate.ForAsync(db, actors, statuses, ct, tree, structureOnly: true);
             foreach (var i in issues)
             {
                 if (scope is not null && !scope.Contains(i.Row.ProjectKey)) continue;
@@ -118,7 +120,7 @@ public class BoardHealthController(
         // When anything last waited: this window's own answer, and the kept thirty days behind it.
         var windowWaited = BoardHealthReport.LastWaited(
             issues, moves, records, levels, questions, statuses, axis.From, now, scope);
-        var keptWaited = await waits.ForAsync(db, statuses, scope, now, ct);
+        var keptWaited = await waits.ForAsync(db, statuses, scope, now, ct, issues);
         var scopedIssues = scope is null ? issues : issues.Where(i => scope.Contains(i.Row.ProjectKey)).ToList();
         var (waitedAt, waitedIsFloor) = BoardHealthReport.Settle(
             windowWaited, keptWaited, attention.PullRequests + attention.Questions,

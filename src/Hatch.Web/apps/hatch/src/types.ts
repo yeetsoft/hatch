@@ -3915,6 +3915,13 @@ export interface MeChatLink {
   state: 'waiting' | 'linked';
   memberName: string;
   expiresAt: string | null;
+  /** Whether a failing runner is told to this person here. Mirrors MeChatLinkDto.RunnerFailures. */
+  runnerFailures: boolean;
+  /** What Slack last said when it refused to send to this link, or null until one is refused, and
+      again after the next one is sent. Mirrors MeChatLinkDto.LastRefusal. */
+  lastRefusal: string | null;
+  /** When `lastRefusal` happened, or null alongside it. Mirrors MeChatLinkDto.LastRefusalAt. */
+  lastRefusalAt: string | null;
 }
 
 /** A workspace the caller may see, and their link in it. Mirrors MeChatWorkspaceDto. */

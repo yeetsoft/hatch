@@ -236,23 +236,36 @@ internal static class AttentionReviews
                 .Select(c => c.ParentId!.Value).Distinct().ToListAsync(ct))
                 .ToHashSet();
 
-        // With a load, every distinct project among the candidates is resolved
-        // once here rather than once a card, and the match below is made
-        // against those rows in memory - no further database read (HA-2797).
-        // Without one, the per-card MatchAsync below runs as it always has.
+        // The playbook each of those cards would meet on the way into the merge column, and the
+        // fleet that would judge its dependencies: read once for the whole column, and only
+        // where a project lets a passing check approve the merge and a card stands in it,
+        // so a board with none runs neither read, and a board with many runs each once.
+        // With a load, the playbooks come from it - one read of the projects, the rest in
+        // memory - and the match is made against those rows (HA-2797); without one, the
+        // matcher reads the column's playbooks itself.
+        var approving = reviewCandidates.Where(i => Columns.Approves(statuses, review, i.CheckApprovesMerge) is not null).ToList();
+        PlaybookMatcher? matcher = null;
         Dictionary<int, List<EfHatchPlaybook>>? playbooksByProject = null;
-        if (load is not null)
+        var approvedColumn = approving.Count > 0 ? Columns.Approves(statuses, review, true) : null;
+        if (approvedColumn is not null)
         {
-            var candidateProjectIds = reviewCandidates.Select(i => i.ProjectId).Distinct().ToList();
-            var projects = candidateProjectIds.Count == 0
-                ? []
-                : await db.Projects.AsNoTracking().Include(p => p.Repositories)
-                    .Where(p => candidateProjectIds.Contains(p.Id)).ToListAsync(ct);
+            var approvingProjectIds = approving.Select(i => i.ProjectId).Distinct().ToList();
+            if (load is not null)
+            {
+                var projects = await db.Projects.AsNoTracking().Include(p => p.Repositories)
+                    .Where(p => approvingProjectIds.Contains(p.Id)).ToListAsync(ct);
 
-            playbooksByProject = [];
-            foreach (var project in projects)
-                playbooksByProject[project.Id] = await dispatch.PlaybooksForAsync(load, project, ct);
+                playbooksByProject = [];
+                foreach (var project in projects)
+                    playbooksByProject[project.Id] = await dispatch.PlaybooksForAsync(load, project, ct);
+            }
+            else
+            {
+                matcher = await dispatch.MatcherAsync(review.Id, approvedColumn.Id, approvingProjectIds, ct);
+            }
         }
+
+        IReadOnlyList<RunnerDeclaration>? fleet = null;
 
         var reviews = new List<(long IssueId, string ProjectKey, ReviewDto Dto)>();
         foreach (var i in reviewCandidates)
@@ -261,11 +274,11 @@ internal static class AttentionReviews
             // passing check approves the merge" is not a person's row here -
             // the move itself speaks for it, the same question Dispatch.ScanAsync
             // and WorkController.RouteAsync ask for the same row.
-            if (Columns.Approves(statuses, review, i.CheckApprovesMerge) is { } approved)
+            if (approvedColumn is not null && Columns.Approves(statuses, review, i.CheckApprovesMerge) is not null)
             {
                 var checkPlaybook = playbooksByProject is not null
-                    ? Dispatch.Match(playbooksByProject.GetValueOrDefault(i.ProjectId, []), review.Id, approved.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId)
-                    : (await dispatch.MatchAsync(review.Id, approved.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId, ct))?.Playbook;
+                    ? Dispatch.Match(playbooksByProject.GetValueOrDefault(i.ProjectId, []), review.Id, approvedColumn.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId)
+                    : matcher?.Match(i.Type, hasChildren.Contains(i.Id), i.ProjectId).Playbook;
                 if (checkPlaybook is { IsCheck: true }) continue;
             }
 
@@ -306,7 +319,13 @@ internal static class AttentionReviews
                 string? fleetLacks = null;
                 if (dependencyCheck is { DependencyFileContent: { } content }
                     && DependencyDeclaration.Parse(Encoding.UTF8.GetBytes(content)) is { Dependencies: { } needs })
-                    fleetLacks = await dispatch.FleetLacksAsync(needs, dependencyCheck.Canonical, runners.Cutoff(now), ct);
+                {
+                    if (needs.Count > 0)
+                    {
+                        fleet ??= await dispatch.FleetDeclarationsAsync(runners.Cutoff(now), ct);
+                        fleetLacks = Dispatch.FleetLacks(needs, dependencyCheck.Canonical, fleet);
+                    }
+                }
 
                 var judged = MergeWork.Judge(repos, issueMerges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now, review.Name, pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.RecordedBranch, fleetLacks: fleetLacks);
                 if (judged.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending) continue;

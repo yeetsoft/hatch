@@ -1,7 +1,17 @@
-import { useEffect, useState } from 'react';
-import { Button, Card, Modal } from '@hatch/ui';
-import { getChatMembers, getChatSuggestion, linkChatMember, unlinkChat } from '../api/client';
-import { chatSectionApplies, filterMembers, LINKS_OFF_WORDS, memberWords, refusalWords, standing } from '../lib/chatLinks';
+import { useEffect, useId, useState } from 'react';
+import { Button, Card, Modal, Text } from '@hatch/ui';
+import { getChatMembers, getChatSuggestion, linkChatMember, setChatLinkSwitches, unlinkChat } from '../api/client';
+import {
+  chatSectionApplies,
+  filterMembers,
+  LINKS_OFF_WORDS,
+  memberWords,
+  refusalLine,
+  refusalWords,
+  RUNNER_FAILURES_HINT,
+  saveRunnerFailures,
+  standing,
+} from '../lib/chatLinks';
 import type { ConfirmOutcome } from '../lib/chatLinks';
 import type { MeChat, MeChatLink, MeChatMember, MeChatWorkspace } from '../types';
 
@@ -33,6 +43,17 @@ export function ChatAccountsCard({
   const [unlinkOf, setUnlinkOf] = useState<{ workspace: MeChatWorkspace; link: MeChatLink } | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [saving, setSaving] = useState<number | null>(null);
+  const [pending, setPending] = useState<{ id: number; on: boolean } | null>(null);
+
+  // Keeps the optimistic value on screen until the reload onChanged() triggers
+  // brings a link whose own runnerFailures agrees with it, so the switch never
+  // flashes back to the old value while the list is still in flight.
+  useEffect(() => {
+    if (!pending || !chat) return;
+    const current = chat.workspaces.find((w) => w.link?.id === pending.id)?.link;
+    if (current && current.runnerFailures === pending.on) setPending(null);
+  }, [chat, pending]);
 
   if (!chatSectionApplies(chat)) {
     return notice ? <ChatLinkNotice notice={notice} /> : null;
@@ -52,6 +73,20 @@ export function ChatAccountsCard({
     }
   }
 
+  async function switchRunnerFailures(link: MeChatLink, on: boolean) {
+    setFailure(null);
+    setSaving(link.id);
+    setPending({ id: link.id, on });
+    const result = await saveRunnerFailures(link, on, setChatLinkSwitches);
+    setSaving(null);
+    if (result.ok) {
+      onChanged();
+    } else {
+      setPending(null);
+      setFailure(result.words);
+    }
+  }
+
   return (
     <>
       {notice && <ChatLinkNotice notice={notice} />}
@@ -63,25 +98,32 @@ export function ChatAccountsCard({
         </p>
         {!chat.linksOn && <p>{LINKS_OFF_WORDS}</p>}
         <ul className="hatch-slack-accounts">
-          {chat.workspaces.map((workspace) => (
-            <AccountRow
-              key={workspace.id}
-              workspace={workspace}
-              linksOn={chat.linksOn}
-              now={now}
-              open={linking === workspace.id}
-              onLink={() => {
-                setFailure(null);
-                setLinking(workspace.id);
-              }}
-              onClose={() => setLinking(null)}
-              onUnlink={(link) => setUnlinkOf({ workspace, link })}
-              onLinked={() => {
-                setLinking(null);
-                onChanged();
-              }}
-            />
-          ))}
+          {chat.workspaces.map((workspace) => {
+            const link = workspace.link;
+            const runnerFailuresChecked = link !== null && pending?.id === link.id ? pending.on : (link?.runnerFailures ?? false);
+            return (
+              <AccountRow
+                key={workspace.id}
+                workspace={workspace}
+                linksOn={chat.linksOn}
+                now={now}
+                open={linking === workspace.id}
+                runnerFailuresChecked={runnerFailuresChecked}
+                runnerFailuresSaving={link !== null && saving === link.id}
+                onSwitchRunnerFailures={(on) => link && void switchRunnerFailures(link, on)}
+                onLink={() => {
+                  setFailure(null);
+                  setLinking(workspace.id);
+                }}
+                onClose={() => setLinking(null)}
+                onUnlink={(l) => setUnlinkOf({ workspace, link: l })}
+                onLinked={() => {
+                  setLinking(null);
+                  onChanged();
+                }}
+              />
+            );
+          })}
         </ul>
         {failure && <p className="text-danger">{failure}</p>}
       </Card>
@@ -104,12 +146,16 @@ export function ChatLinkNotice({ notice }: { notice: ConfirmOutcome }) {
   );
 }
 
-/** One workspace: its name, where the link stands, and the buttons that fit. */
+/** One workspace: its name, where the link stands, the buttons that fit, and - on a linked
+    row - the Runner failures switch and what Slack last said when it refused the account. */
 export function AccountRow({
   workspace,
   linksOn,
   now,
   open,
+  runnerFailuresChecked,
+  runnerFailuresSaving,
+  onSwitchRunnerFailures,
   onLink,
   onClose,
   onUnlink,
@@ -119,6 +165,9 @@ export function AccountRow({
   linksOn: boolean;
   now: number;
   open: boolean;
+  runnerFailuresChecked: boolean;
+  runnerFailuresSaving: boolean;
+  onSwitchRunnerFailures: (on: boolean) => void;
   onLink: () => void;
   onClose: () => void;
   onUnlink: (link: MeChatLink) => void;
@@ -126,6 +175,8 @@ export function AccountRow({
 }) {
   const state = standing(workspace, now);
   const link = workspace.link;
+  const hintId = useId();
+  const line = link ? refusalLine(link) : null;
   return (
     <li className="hatch-slack-account">
       <div className="hatch-slack-account__head">
@@ -142,6 +193,24 @@ export function AccountRow({
           {link && state.canUnlink && <Button onClick={() => onUnlink(link)}>Unlink</Button>}
         </div>
       </div>
+      {link && link.state === 'linked' && (
+        <div className="hatch-slack-account__option">
+          <label>
+            <input
+              type="checkbox"
+              checked={runnerFailuresChecked}
+              disabled={runnerFailuresSaving}
+              aria-describedby={hintId}
+              onChange={(e) => onSwitchRunnerFailures(e.target.checked)}
+            />
+            Runner failures
+          </label>
+          <Text tone="muted" as="span" id={hintId} className="hatch-slack-account__hint">
+            {RUNNER_FAILURES_HINT}
+          </Text>
+          {line && <p className="text-muted">{line}</p>}
+        </div>
+      )}
       {open && <LinkFlow workspace={workspace} onClose={onClose} onLinked={onLinked} />}
     </li>
   );
