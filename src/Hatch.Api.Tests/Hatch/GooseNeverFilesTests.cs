@@ -88,6 +88,7 @@ public class GooseNeverFilesTests
                 new QuestionsWaitingCheck(Db, options, Time),
                 new StandingStillCheck(Db, work, options, Time),
                 new ChatSendsFailingCheck(Db, options, Time),
+                new ChatListenFailingCheck(Db, options, Time),
             ];
             Job = new GooseJob(Db, checks, new FreeLock(), options, Time, NullLogger<GooseJob>.Instance);
         }

@@ -5662,8 +5662,8 @@ The file-a-bug button is `FindingBugDialog`, shared with the attention panel.
 
 A finding is a stored row a person can read and act on, with the evidence
 beside it - `train-ready` below is the first check that opens one, `ready-unclaimed`,
-`ready-no-runner`, `claim-repeating`, `questions-waiting`, `standing-still` and
-`chat-sends-failing` follow it, and a person files a bug from one (**Filing a bug**, below). `FindingCheck` (`GooseFindings.cs`) is the one
+`ready-no-runner`, `claim-repeating`, `questions-waiting`, `standing-still`,
+`chat-sends-failing` and `chat-listen-failing` follow it, and a person files a bug from one (**Filing a bug**, below). `FindingCheck` (`GooseFindings.cs`) is the one
 reconciler every such check shares, so none of them can disagree about when a
 clock starts, when a row opens, or when it closes: a subclass says only what it
 is watching (`ReadAsync`: a sentence for the run, the check's own bound, and
@@ -5970,6 +5970,29 @@ wait. It has no closing code of its own: the sender clears `SendFailingSince` on
 a success, and removing the room or workspace drops the candidate, so the base
 closes the finding. `FindingBugs` titles a bug from it `Messages to a chat room
 are not getting through`.
+
+#### `chat-listen-failing`
+
+The goose's finding for a chat workspace whose connection keeps failing to open
+(`ChatListenFailingCheck`, HA-2807). It reads the listener's own state:
+`ListenFailingSince` on a workspace, with an app-level token set. One candidate
+per such workspace (subject `workspace:{id}`), token `failing`, no project, and
+`Began` is `ListenFailingSince`, so the clock is the listener's and does not
+restart on a sweep. A workspace with no app-level token never gets a candidate:
+not having set one up is not a failure.
+
+Its bound is `Hatch__GooseChatListenMinutes` (default 60, because the
+listener's own wait tops out at 10 minutes, so an hour is six full retries; `0`
+turns the check off and returns no candidate, a negative falls back to 60). The
+sentence names the workspace, how long, and what Slack last said
+(`ListenLastRefusal`); the evidence is the workspace. Unlike `chat-sends-failing`,
+it keeps no room out, so the finding is posted to the rooms that take problems
+belonging to no project, this workspace's own among them - sending still works
+when listening does not. It has no closing code of its own: the listener
+clears `ListenFailingSince` on a connection that opens, and removing the
+workspace or its app-level token drops the candidate, so the base closes the
+finding. `FindingBugs` titles a bug from it `Hatch is not listening to a chat
+workspace`.
 
 ## Reports
 

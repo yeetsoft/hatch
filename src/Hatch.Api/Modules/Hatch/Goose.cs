@@ -156,6 +156,15 @@ public static class GooseSettings
     /// </summary>
     public static TimeSpan ChatSendBound(HatchOptions options) => TimeSpan.FromMinutes(
         options.GooseChatSendMinutes >= 0 ? options.GooseChatSendMinutes : new HatchOptions().GooseChatSendMinutes);
+
+    /// <summary>
+    /// How long a chat workspace's connection may keep failing before
+    /// <see cref="ChatListenFailingCheck"/> opens a finding. Zero turns the check
+    /// off, as <see cref="ChatSendBound"/>'s zero does, and only a negative falls
+    /// back to the default.
+    /// </summary>
+    public static TimeSpan ChatListenBound(HatchOptions options) => TimeSpan.FromMinutes(
+        options.GooseChatListenMinutes >= 0 ? options.GooseChatListenMinutes : new HatchOptions().GooseChatListenMinutes);
 }
 
 /// <summary>One label and value a <see cref="FindingCheck"/> reported for a finding, as stored in <see cref="EfHatchGooseFinding.Evidence"/>.</summary>
