@@ -519,6 +519,12 @@ describe('getWorkLogSessions', () => {
     expect(await urlOf({ ...range, ancestorKey: null, sort: 'tokens', limit: 5 })).toBe(base + '&sort=tokens&limit=5');
   });
 
+  it('sends top when it is asked for and leaves it out when it is not', async () => {
+    expect(await urlOf({ ...range, sort: 'ended', limit: 100, top: 5 })).toBe(base + '&sort=ended&limit=100&top=5');
+    expect(await urlOf({ ...range, top: null })).toBe(base);
+    expect(await urlOf({ ...range })).toBe(base);
+  });
+
   it('repeats projectId once per id', async () => {
     expect(await urlOf({ ...range, projectId: [3, 5] })).toBe(base + '&projectId=3&projectId=5');
   });

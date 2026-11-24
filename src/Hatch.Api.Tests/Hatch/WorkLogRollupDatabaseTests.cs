@@ -62,20 +62,23 @@ public class WorkLogRollupDatabaseTests
         foreach (var sort in Sorts)
         foreach (var filter in Filters(s))
         foreach (var limit in new[] { 3, 100 })
+        // Without a top, and with one: the same table either way, and the top
+        // ranked by tokens in every sort, ties and all.
+        foreach (var top in new int?[] { null, 4 })
         {
             var ancestor = filter.Ancestor ? s.Epic : (long?)null;
-            var label = $"{sort} / {filter.Name} / limit {limit}";
+            var label = $"{sort} / {filter.Name} / limit {limit} / top {top}";
 
             var folded = await WorkLogRollup.SessionsFoldedAsync(
-                s.Db, from, to, ancestor, filter.Projects, sort, limit, filter.Outcome, default);
+                s.Db, from, to, ancestor, filter.Projects, sort, limit, filter.Outcome, top, default);
             var summed = await WorkLogRollup.SessionsAsync(
-                s.Db, from, to, ancestor, filter.Projects, sort, limit, filter.Outcome, default);
+                s.Db, from, to, ancestor, filter.Projects, sort, limit, filter.Outcome, top, default);
 
             AssertSameSessions(folded, summed, label);
             checkedAny++;
         }
 
-        Assert.Equal(Sorts.Length * Filters(s).Length * 2, checkedAny);
+        Assert.Equal(Sorts.Length * Filters(s).Length * 2 * 2, checkedAny);
     }
 
     [SkippableFact]
@@ -90,9 +93,9 @@ public class WorkLogRollupDatabaseTests
         foreach (var sort in Sorts)
         {
             var folded = await WorkLogRollup.SessionsFoldedAsync(
-                s.Db, from, to, null, null, sort, 20, null, default);
+                s.Db, from, to, null, null, sort, 20, null, 5, default);
             var summed = await WorkLogRollup.SessionsAsync(
-                s.Db, from, to, null, null, sort, 20, null, default);
+                s.Db, from, to, null, null, sort, 20, null, 5, default);
 
             AssertSameSessions(folded, summed, $"{sort} / wide");
         }
@@ -171,7 +174,7 @@ public class WorkLogRollupDatabaseTests
         await using var s = await SeedAsync();
 
         var all = await WorkLogRollup.SessionsAsync(
-            s.Db, T0 - TimeSpan.FromDays(1), T0 + TimeSpan.FromDays(5), null, null, WorkLogSort.Tokens, 1, null, default);
+            s.Db, T0 - TimeSpan.FromDays(1), T0 + TimeSpan.FromDays(5), null, null, WorkLogSort.Tokens, 1, null, null, default);
 
         // Added here from the rows themselves, not by either implementation.
         var rows = await s.Db.WorkLog.AsNoTracking().ToListAsync();
@@ -190,7 +193,7 @@ public class WorkLogRollupDatabaseTests
         await using var s = await SeedAsync();
 
         var all = await WorkLogRollup.SessionsAsync(
-            s.Db, T0 - TimeSpan.FromDays(1), T0 + TimeSpan.FromDays(5), null, null, WorkLogSort.Tokens, 1, null, default);
+            s.Db, T0 - TimeSpan.FromDays(1), T0 + TimeSpan.FromDays(5), null, null, WorkLogSort.Tokens, 1, null, null, default);
 
         Assert.Equal(WorkLogRollup.MaxTopReads, all.TopReads.Count);
 
@@ -217,6 +220,17 @@ public class WorkLogRollupDatabaseTests
 
         for (var i = 0; i < folded.Sessions.Count; i++)
             Assert.True(folded.Sessions[i] == summed.Sessions[i], $"{label}, row {i}: {folded.Sessions[i]} then {summed.Sessions[i]}");
+
+        Assert.Equal(folded.Top is null, summed.Top is null);
+        if (folded.Top is not null && summed.Top is not null)
+        {
+            Assert.True(
+                folded.Top.Select(r => r.Id).SequenceEqual(summed.Top.Select(r => r.Id)),
+                $"{label}: top {string.Join(",", folded.Top.Select(r => r.Id))} then {string.Join(",", summed.Top.Select(r => r.Id))}");
+
+            for (var i = 0; i < folded.Top.Count; i++)
+                Assert.True(folded.Top[i] == summed.Top[i], $"{label}, top row {i}: {folded.Top[i]} then {summed.Top[i]}");
+        }
 
         Assert.True(
             folded.TopReads.SequenceEqual(summed.TopReads),
