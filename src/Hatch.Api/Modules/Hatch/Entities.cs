@@ -5583,3 +5583,99 @@ public class EfHatchChatProblem
     /// <summary>When it ended, or null while it stands.</summary>
     public DateTimeOffset? EndedAt { get; set; }
 }
+
+/// <summary>
+/// One person's Slack member in one workspace: who Hatch may send a direct
+/// message to on their behalf. Waiting until the person opens the link in the
+/// confirmation message, then confirmed. Nothing but that one message is sent
+/// to a waiting link.
+/// </summary>
+/// <remarks>
+/// <para>Belongs to a workspace and cascades off it, as <see cref="EfHatchChatRoom"/>
+/// does. <see cref="PersonId"/> is a bare <see cref="Guid"/>, for the reason
+/// <see cref="EfHatchPersonHome.PersonId"/> is one. It names no project, so it has
+/// no query filter.</para>
+///
+/// <para>At most one link per person per workspace, and at most one
+/// <em>confirmed</em> link per member: two people may each wait on one member,
+/// and the first to confirm holds it. The secret is stored only as its hash and
+/// is cleared on confirm, so a used secret finds no row.</para>
+/// </remarks>
+[Table("ChatLinks")]
+[Index(nameof(WorkspaceId), nameof(PersonId), IsUnique = true)]
+[Index(nameof(SecretHash), IsUnique = true)]
+public class EfHatchChatLink
+{
+    public const int MaxMemberIdLength = 64;
+    public const int MaxMemberNameLength = 200;
+    public const int MaxConversationIdLength = 64;
+
+    /// <summary>How long a confirmation link works, from <see cref="CreatedAt"/>.</summary>
+    public static readonly TimeSpan SecretLife = TimeSpan.FromHours(24);
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public int WorkspaceId { get; set; }
+    public EfHatchChatWorkspace? Workspace { get; set; }
+
+    /// <summary>The person the link is for. A bare id, not a foreign key.</summary>
+    public Guid PersonId { get; set; }
+
+    /// <summary>The service's own id for the member - a Slack user id.</summary>
+    [MaxLength(MaxMemberIdLength)]
+    public required string MemberId { get; set; }
+
+    /// <summary>The member's name as last seen. Display only: nothing is looked up by it.</summary>
+    [MaxLength(MaxMemberNameLength)]
+    public required string MemberName { get; set; }
+
+    /// <summary>The service's id for the direct message conversation with the member.</summary>
+    [MaxLength(MaxConversationIdLength)]
+    public required string ConversationId { get; set; }
+
+    /// <summary>When the confirmation message was sent: the start of the secret's day.</summary>
+    public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>When the person opened the link, or null while it waits.</summary>
+    public DateTimeOffset? ConfirmedAt { get; set; }
+
+    /// <summary>The SHA-256 of the secret in the confirmation link. Null once confirmed, so a used secret finds no row.</summary>
+    [MaxLength(global::Hatch.Api.Ef.AuthHash.Length)]
+    public byte[]? SecretHash { get; set; }
+
+    /// <summary>When the secret stops working. Null once confirmed.</summary>
+    public DateTimeOffset? SecretExpiresAt { get; set; }
+}
+
+/// <summary>
+/// One confirmation message sent for a person. It counts the five an hour: the
+/// link row cannot, since a replace rewrites it and an unlink deletes it. Per
+/// person, because the message goes to whichever member they name. Rows over an
+/// hour old are deleted on each write.
+/// </summary>
+[Table("ChatLinkSends")]
+[Index(nameof(PersonId), nameof(SentAt))]
+public class EfHatchChatLinkSend
+{
+    /// <summary>The most confirmation messages a person may send in <see cref="Window"/>.</summary>
+    public const int Limit = 5;
+
+    public static readonly TimeSpan Window = TimeSpan.FromHours(1);
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary>A bare id, as <see cref="EfHatchChatLink.PersonId"/> is.</summary>
+    public Guid PersonId { get; set; }
+
+    public DateTimeOffset SentAt { get; set; }
+}
+
+/// <summary>The links that stand: confirmed by the person, so a message may be sent to them.</summary>
+public static class ChatLinkQueries
+{
+    /// <summary>A waiting link is left out: nothing but its own confirmation message is ever sent to it.</summary>
+    public static IQueryable<EfHatchChatLink> Confirmed(this IQueryable<EfHatchChatLink> links) =>
+        links.Where(l => l.ConfirmedAt != null);
+}

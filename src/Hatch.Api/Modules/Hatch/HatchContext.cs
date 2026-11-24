@@ -144,6 +144,12 @@ public class HatchContext : DbContext, IModuleContext
     /// <summary>Problems that belong to no project, and whether each is still standing - see <see cref="EfHatchChatProblem"/>.</summary>
     public DbSet<EfHatchChatProblem> ChatProblems => Set<EfHatchChatProblem>();
 
+    /// <summary>A person's Slack member in a workspace, waiting or confirmed - see <see cref="EfHatchChatLink"/>.</summary>
+    public DbSet<EfHatchChatLink> ChatLinks => Set<EfHatchChatLink>();
+
+    /// <summary>The confirmation messages a person has sent, kept an hour to count them - see <see cref="EfHatchChatLinkSend"/>.</summary>
+    public DbSet<EfHatchChatLinkSend> ChatLinkSends => Set<EfHatchChatLinkSend>();
+
     /// <summary>
     /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
     /// end of a relationship to a filtered <c>Projects</c>. It is the one table
@@ -667,6 +673,22 @@ public class HatchContext : DbContext, IModuleContext
                 .HasFilter("\"EndedAt\" IS NULL");
         });
 
+        // A link is a workspace's, and goes with it. A member may be confirmed for
+        // one person only: the index covers the confirmed rows, so two people may
+        // each wait on one member and the first to confirm holds it.
+        modelBuilder.Entity<EfHatchChatLink>(e =>
+        {
+            e.HasOne(l => l.Workspace)
+                .WithMany()
+                .HasForeignKey(l => l.WorkspaceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(l => new { l.WorkspaceId, l.MemberId })
+                .IsUnique()
+                .HasDatabaseName("IX_ChatLinks_WorkspaceId_MemberId_Confirmed")
+                .HasFilter("\"ConfirmedAt\" IS NOT NULL");
+        });
+
         // A verdict is about an issue and means nothing without it, the same
         // as its events: deleting the issue takes them.
         modelBuilder.Entity<EfHatchMergeCheck>(e =>
@@ -914,7 +936,7 @@ public class HatchContext : DbContext, IModuleContext
         //
         // Deliberately unfiltered: Statuses, WipLimits, PersonHomes,
         // the runner tables (RunnerFailures among them), ChatWorkspaces and
-        // ChatRooms and ChatSubjects and ChatProblems (none names a project), PersonScopes and
+        // ChatRooms and ChatSubjects and ChatProblems and ChatLinks and ChatLinkSends (none names a project), PersonScopes and
         // PersonScopeProjects (the resolver reads them), and the core schema.
         modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
         modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));

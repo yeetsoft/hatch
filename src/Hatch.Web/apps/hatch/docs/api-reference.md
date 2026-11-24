@@ -1676,6 +1676,12 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | POST | `/backup/run` | **person** | Runs one backup attempt, capped at two minutes, and answers the same shape `GET /backup` does |
 | GET | `/me` | key | Who, or what, is calling - a browser or a key or a runner - for the nav strip |
 | PUT | `/me/home` | **person** | Sets the caller's own home screen, `board` or `ambitions`, and answers the fresh `/me` |
+| GET | `/me/chat` | **person** | The caller's own Slack links, `{ linksOn, workspaces: [{ id, name, link }] }`. `linksOn` is whether `HATCH_PUBLIC_URL` is set. `link` is `null`, or `{ id, state, memberName, expiresAt }` with `state` `waiting` or `linked`, and `expiresAt` null once linked. A workspace is listed when the caller sees every project, or a project they can see is bound to it, or they hold a link there |
+| GET | `/me/chat/workspaces/{id}/suggestion` | **person** | `{ member }`: the Slack member whose email is one the caller has signed in with, newest sign-in first, stopping at the first match; `member` is `{ id, name, displayName }` or `null`. The local person has no sign-in email, so is answered `null` without a call to Slack. `404` for a workspace the caller may not see, `409` if the token cannot be read, `502` with Slack's sentence for a refusal |
+| GET | `/me/chat/workspaces/{id}/members` | **person** | The members of the workspace a message could go to, `[{ id, name, displayName }]`, by name. Deactivated members, bots and Slackbot are left out, and no email is given. Same `404`, `409` and `502` as the suggestion |
+| POST | `/me/chat/links` | **person** | Links the caller to a Slack member; body `{ workspaceId, memberId }`. Sends that member a direct message with a link to confirm, and keeps a link waiting a day for it; a waiting link of the caller's is replaced. Nothing is stored unless the message was sent. `404` for a workspace the caller may not see, `409` naming `HATCH_PUBLIC_URL` when none is set, `409` for a link already confirmed here (unlink first) or a member already confirmed for somebody else, `400` for a member that is not in the workspace's list (a bot, or an id nobody has), `429` after five messages in an hour, `502` with Slack's sentence for any refusal, throttle or outage. Answers the link, `{ id, state, memberName, expiresAt }` |
+| POST | `/me/chat/links/confirm` | **person** | Confirms a link; body `{ secret }`, the secret from the message, in the body and never the URL. `410` for a secret that was used, replaced or ran out, `403` for another person's secret, which leaves the link as it was, `409` when somebody else confirmed the member first. No `GET` confirms anything |
+| DELETE | `/me/chat/links/{id}` | **person** | Removes the caller's own link, waiting or confirmed, even from a workspace that has left their scope; `204`. Another person's id is `404` |
 
 A claim heartbeat under a key touches the key's live session at the claim's
 checkout. If the sweep has already ended that session while the claim was still
@@ -2349,7 +2355,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **48** person-only paths on this page,
+on this page with both) - there are **54** person-only paths on this page,
 across both halves together:
 
 ```
@@ -2398,6 +2404,12 @@ DELETE /runners/{name}/order
 GET    /settings
 PUT    /settings
 PUT    /me/home
+GET    /me/chat
+GET    /me/chat/workspaces/{id}/suggestion
+GET    /me/chat/workspaces/{id}/members
+POST   /me/chat/links
+POST   /me/chat/links/confirm
+DELETE /me/chat/links/{id}
 POST   /backup/run
 POST   /playbooks
 PATCH  /playbooks/{id}
@@ -2405,9 +2417,9 @@ DELETE /playbooks/{id}
 ```
 
 Thirty-eight belong to a project, a column, the WIP section, a ticket's own
-fields, or attachment delete; the other ten are a runner's own record (now
+fields, or attachment delete; the other sixteen are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`),
-Hatch's settings on both verbs, the home screen, running a backup, and the
+Hatch's settings on both verbs, the home screen, a person's own Slack links (six), running a backup, and the
 three playbook writes.
 
 Two writes that look like the same shape are deliberately **not** on this
