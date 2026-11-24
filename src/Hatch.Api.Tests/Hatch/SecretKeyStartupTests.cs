@@ -197,11 +197,6 @@ public class SecretKeyStartupTests
 
     private static async Task AssertEveryValueIsUnderAsync(IServiceProvider services, byte[] key, Dictionary<string, string> plaintexts)
     {
-        // Stopping a host while its Quartz scheduler is still starting can hang the stop for a
-        // minute. The other cases here stop theirs about as fast, but they have less to do.
-        var scheduler = await services.GetRequiredService<ISchedulerFactory>().GetScheduler();
-        for (var waited = 0; !scheduler.IsStarted && waited < 100; waited++) await Task.Delay(50);
-
         var connectionString = services.GetRequiredService<IConfiguration>().GetConnectionString("Hatch")!;
         var protector = new SecretProtector(new SecretCipher(key, null));
 
@@ -296,6 +291,12 @@ public class SecretKeyStartupTests
 
             if (failure is null && whenUp is not null)
                 await deadline.BoundAsync("inspecting the host", () => whenUp(derived.Services));
+
+            // Stopping a host with the jobs' first firings still running can hang Quartz's
+            // shutdown for the rest of the budget, so they finish first, as MinimalStartupTests
+            // has them finish. A host that did not come up has no scheduler to wait on.
+            if (failure is null)
+                await deadline.BoundAsync("letting the jobs' first firings finish", () => FirstFirings.SettleAsync(derived.Services.GetRequiredService<IScheduler>()));
         }
         finally
         {
