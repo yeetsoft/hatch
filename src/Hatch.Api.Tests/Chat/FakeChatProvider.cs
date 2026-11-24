@@ -15,6 +15,12 @@ internal sealed class FakeChatProvider : IChatProvider
     public const string GlobexToken = "xoxb-3333-globexSecretPart";
     public const string RefusedToken = "xoxb-9999-refusedSecretPart";
 
+    public const string AcmeAppToken = "xapp-1-A1111-1111-acmeAppSecretPart";
+    public const string AcmeNewAppToken = "xapp-1-A1111-2222-acmeNewAppSecretPart";
+    public const string GlobexAppToken = "xapp-1-A3333-3333-globexAppSecretPart";
+    public const string RefusedAppToken = "xapp-1-A9999-9999-refusedAppSecretPart";
+
+    public const string AppRefusalSentence = "the fake refused that app-level token";
     public const string RefusalSentence = "the fake refused that token";
     public const string ManifestText = "{\"fake\":true}";
 
@@ -24,6 +30,12 @@ internal sealed class FakeChatProvider : IChatProvider
         [AcmeNewToken] = ("TACME", "Acme"),
         [GlobexToken] = ("TGLOBEX", "Globex"),
     };
+
+    /// <summary>The app-level tokens the fake accepts.</summary>
+    public HashSet<string> AppTokens { get; } = [AcmeAppToken, AcmeNewAppToken, GlobexAppToken];
+
+    /// <summary>Every app-level token checked, in order, whatever the answer.</summary>
+    public List<string> AppChecks { get; } = [];
 
     /// <summary>Every channel a token can see, keyed by the token. A token with no entry sees none.</summary>
     public Dictionary<string, List<ChatChannel>> Channels { get; } = new();
@@ -79,6 +91,15 @@ internal sealed class FakeChatProvider : IChatProvider
         return Task.FromResult(Workspaces.TryGetValue(token, out var w)
             ? ChatTokenCheck.Workspace(w.Id, w.Name)
             : ChatTokenCheck.Refused(RefusalSentence));
+    }
+
+    public Task<ChatAppTokenCheck> CheckAppTokenAsync(string appToken, CancellationToken ct)
+    {
+        AppChecks.Add(appToken);
+
+        return Task.FromResult(appToken.StartsWith("xapp-", StringComparison.Ordinal) && AppTokens.Contains(appToken)
+            ? ChatAppTokenCheck.Accepted()
+            : ChatAppTokenCheck.Refused(AppRefusalSentence));
     }
 
     public Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct) =>

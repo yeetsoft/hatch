@@ -29,6 +29,9 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
 
     public const string ConversationsOpenEndpoint = "https://slack.com/api/conversations.open";
 
+    /// <summary>Asks Slack for a socket address. Used only to learn whether an app-level token is good; the address is never read.</summary>
+    public const string AppsConnectionsOpenEndpoint = "https://slack.com/api/apps.connections.open";
+
     /// <summary>Slackbot reports <c>is_bot: false</c>, so it is named.</summary>
     public const string SlackbotId = "USLACKBOT";
 
@@ -49,6 +52,9 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
 
     /// <summary>A bot token's prefix. A user token (<c>xoxp-</c>) would act as a person, which is not what is wanted.</summary>
     public const string BotTokenPrefix = "xoxb-";
+
+    /// <summary>An app-level token's prefix, the kind that opens a socket connection.</summary>
+    public const string AppTokenPrefix = "xapp-";
 
     public const string AppName = "Hatch";
 
@@ -88,6 +94,20 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
         ["cannot_dm_bot"] = "Slack does not allow a direct message to a bot",
     };
 
+    /// <summary>
+    /// What <c>apps.connections.open</c> refusals mean for an app-level token.
+    /// The bot token sentences in <see cref="Refusals"/> say to install the app
+    /// again, which would not help here.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> AppTokenRefusals = new Dictionary<string, string>
+    {
+        ["invalid_auth"] = "Slack did not accept that app-level token; check it was copied whole, or make a new one",
+        ["not_authed"] = "Slack did not receive an app-level token; make a new one",
+        ["token_revoked"] = "That app-level token has been revoked in Slack; make a new one",
+        ["token_expired"] = "That app-level token has expired; make a new one",
+        ["missing_scope"] = "That app-level token lacks the connections:write scope; make a new one with it",
+    };
+
     private const string ThrottledSentence = "Slack asked Hatch to slow down; it will try again";
 
     private static readonly HashSet<string> ThrottleCodes = ["ratelimited", "rate_limited"];
@@ -120,13 +140,31 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
             },
             ["settings"] = new Dictionary<string, object?>
             {
-                ["socket_mode_enabled"] = false,
+                ["socket_mode_enabled"] = true,
+                ["interactivity"] = new Dictionary<string, object?> { ["is_enabled"] = true },
                 ["org_deploy_enabled"] = false,
                 ["token_rotation_enabled"] = false,
             },
         };
 
         return JsonSerializer.Serialize(manifest, Indented);
+    }
+
+    public async Task<ChatAppTokenCheck> CheckAppTokenAsync(string appToken, CancellationToken ct)
+    {
+        // Before any request: a token of the wrong kind is not sent to Slack.
+        if (!appToken.StartsWith(AppTokenPrefix, StringComparison.Ordinal))
+            return ChatAppTokenCheck.Refused($"That is not an app-level token; a Slack app-level token starts with {AppTokenPrefix}");
+
+        // No body. Only whether Slack said ok is read: the reply carries a
+        // one-use socket address, which is never read, kept or logged.
+        var reply = await CallAsync("apps.connections.open", appToken,
+            () => new HttpRequestMessage(HttpMethod.Post, AppsConnectionsOpenEndpoint), ct);
+
+        if (reply.Refusal is null) return ChatAppTokenCheck.Accepted();
+
+        return ChatAppTokenCheck.Refused(
+            reply.Code is not null && AppTokenRefusals.TryGetValue(reply.Code, out var sentence) ? sentence : reply.Refusal);
     }
 
     public async Task<ChatTokenCheck> CheckTokenAsync(string token, CancellationToken ct)

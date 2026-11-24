@@ -7,8 +7,8 @@ namespace Hatch.Api.Tests.Chat;
 /// <summary>
 /// The Slack app manifest an admin pastes into Slack's own screen. It asks for
 /// six bot scopes and nothing that needs Slack to call Hatch: no events, no
-/// interactivity, no redirect and no request URL, and so no address of this
-/// install in it.
+/// redirect and no request URL, and so no address of this install in it. Socket
+/// mode and interactivity are on, since Hatch reaches Slack and not the other way.
 /// </summary>
 public class ChatManifestTests
 {
@@ -57,7 +57,7 @@ public class ChatManifestTests
         using var document = JsonDocument.Parse(Manifest());
         var text = Manifest();
 
-        foreach (var name in new[] { "event_subscriptions", "interactivity", "redirect_urls", "request_url" })
+        foreach (var name in new[] { "event_subscriptions", "redirect_urls", "request_url" })
         {
             Assert.DoesNotContain(name, text);
             Assert.False(document.RootElement.TryGetProperty(name, out _), name);
@@ -67,12 +67,13 @@ public class ChatManifestTests
     }
 
     [Fact]
-    public void TheManifest_TurnsSocketModeOrgDeployAndTokenRotationOff()
+    public void TheManifest_TurnsSocketModeAndInteractivityOn_OrgDeployAndTokenRotationOff()
     {
         using var document = JsonDocument.Parse(Manifest());
         var settings = document.RootElement.GetProperty("settings");
 
-        Assert.Equal(JsonValueKind.False, settings.GetProperty("socket_mode_enabled").ValueKind);
+        Assert.Equal(JsonValueKind.True, settings.GetProperty("socket_mode_enabled").ValueKind);
+        Assert.Equal(JsonValueKind.True, settings.GetProperty("interactivity").GetProperty("is_enabled").ValueKind);
         Assert.Equal(JsonValueKind.False, settings.GetProperty("org_deploy_enabled").ValueKind);
         Assert.Equal(JsonValueKind.False, settings.GetProperty("token_rotation_enabled").ValueKind);
     }

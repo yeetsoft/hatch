@@ -1,5 +1,7 @@
 using System.Net;
 using Hatch.Api.Services.Chat;
+using Hatch.Api.Tests.Hatch;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Hatch.Api.Tests.Chat;
@@ -255,6 +257,132 @@ public class SlackChatProviderTests
         Assert.Contains("invited", result.Refusal);
         Assert.DoesNotContain("not_in_channel", result.Refusal);
     }
+
+    private const string AppToken = "xapp-1-A1111-1111-secretAppValue";
+    private const string SocketAddress = "wss://socket.example/link/?ticket=one-use-ticket";
+    private const string OpenedBody = """{"ok":true,"url":"wss://socket.example/link/?ticket=one-use-ticket"}""";
+
+    [Fact]
+    public async Task AnAppToken_IsSentToConnectionsOpen_AsABearerHeader_WithNoBodyAndNothingInTheUrl()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, OpenedBody));
+
+        await NewProvider(handler).CheckAppTokenAsync(AppToken, default);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("POST", request.Method);
+        Assert.Equal("https://slack.com/api/apps.connections.open", request.Url);
+        Assert.Equal($"Bearer {AppToken}", Assert.Single(handler.AuthorizationHeaders));
+        Assert.DoesNotContain("secretAppValue", request.Url);
+        Assert.Equal("", request.Body);
+    }
+
+    [Fact]
+    public async Task AnAcceptedAppToken_IsAccepted_AndTheAddressSlackAnswersWithIsInNothing()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, OpenedBody));
+        var logs = new CapturedLogs();
+
+        var check = await NewProvider(handler, logs).CheckAppTokenAsync(AppToken, default);
+
+        Assert.True(check.IsAccepted);
+        Assert.Null(check.Refusal);
+        Assert.DoesNotContain("one-use-ticket", check.ToString());
+        AssertNothingSecret(check, logs);
+    }
+
+    [Theory]
+    [InlineData("invalid_auth", "did not accept")]
+    [InlineData("not_authed", "did not receive")]
+    [InlineData("token_revoked", "revoked")]
+    [InlineData("token_expired", "expired")]
+    [InlineData("missing_scope", "connections:write")]
+    public async Task EachKnownAppTokenError_GivesASentenceAboutAnAppLevelToken(string code, string fragment)
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, $$"""{"ok":false,"error":"{{code}}"}"""));
+        var logs = new CapturedLogs();
+
+        var check = await NewProvider(handler, logs).CheckAppTokenAsync(AppToken, default);
+
+        Assert.False(check.IsAccepted);
+        Assert.Contains(fragment, check.Refusal);
+        Assert.Contains("app-level token", check.Refusal);
+        Assert.DoesNotContain("install the app again", check.Refusal);
+        Assert.DoesNotContain(code, check.Refusal);
+        AssertNothingSecret(check, logs);
+    }
+
+    [Fact]
+    public async Task AnUnknownAppTokenError_NamesTheCode_AndNothingElseFromTheBody()
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK,
+            """{"ok":false,"error":"something_new","url":"wss://socket.example/link/?ticket=one-use-ticket"}"""));
+        var logs = new CapturedLogs();
+
+        var check = await NewProvider(handler, logs).CheckAppTokenAsync(AppToken, default);
+
+        Assert.False(check.IsAccepted);
+        Assert.Equal("Slack refused: something_new", check.Refusal);
+        AssertNothingSecret(check, logs);
+    }
+
+    [Theory]
+    [InlineData(429, """{"ok":false,"error":"ratelimited"}""")]
+    [InlineData(200, """{"ok":false,"error":"ratelimited"}""")]
+    public async Task AThrottledAppTokenCheck_SaysSlackAskedForAPause(int status, string body)
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json((HttpStatusCode)status, body));
+        var logs = new CapturedLogs();
+
+        var check = await NewProvider(handler, logs).CheckAppTokenAsync(AppToken, default);
+
+        Assert.False(check.IsAccepted);
+        Assert.Contains("Slack asked Hatch to", check.Refusal);
+        AssertNothingSecret(check, logs);
+    }
+
+    [Fact]
+    public async Task AnUnreachableSlack_IsCouldNotBeReached_ForAnAppToken_NotAnException()
+    {
+        var logs = new CapturedLogs();
+        var transport = await NewProvider(new ThrowingHandler(new HttpRequestException($"refused for {AppToken} at {SocketAddress}")), logs)
+            .CheckAppTokenAsync(AppToken, default);
+        var notJson = await NewProvider(new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.BadGateway, "<html>bad gateway</html>")), logs)
+            .CheckAppTokenAsync(AppToken, default);
+
+        Assert.Equal("Slack could not be reached; try again", transport.Refusal);
+        Assert.Equal("Slack could not be reached; try again", notJson.Refusal);
+        AssertNothingSecret(transport, logs);
+        AssertNothingSecret(notJson, logs);
+    }
+
+    [Theory]
+    [InlineData("xoxb-1234-a-bot-token")]
+    [InlineData("not-a-token")]
+    [InlineData("XAPP-upper")]
+    public async Task ATokenThatIsNotAnAppToken_IsRefusedBeforeAnyCall(string token)
+    {
+        var handler = new StubHttpMessageHandler(StubHttpMessageHandler.Json(HttpStatusCode.OK, OpenedBody));
+
+        var check = await NewProvider(handler).CheckAppTokenAsync(token, default);
+
+        Assert.Empty(handler.Requests);
+        Assert.False(check.IsAccepted);
+        Assert.Contains("app-level token", check.Refusal);
+        Assert.Contains("xapp-", check.Refusal);
+        Assert.DoesNotContain(token, check.Refusal);
+    }
+
+    private static void AssertNothingSecret(ChatAppTokenCheck check, CapturedLogs logs)
+    {
+        var said = new[] { check.Refusal ?? "", check.ToString() }.Concat(logs.Messages).ToList();
+
+        Assert.DoesNotContain(said, l => l.Contains("secretAppValue") || l.Contains("xapp-"));
+        Assert.DoesNotContain(said, l => l.Contains("one-use-ticket") || l.Contains("socket.example"));
+    }
+
+    private static SlackChatProvider NewProvider(HttpMessageHandler handler, CapturedLogs logs) =>
+        new(new StubHttpClientFactory(handler), LoggerFactory.Create(b => b.AddProvider(logs)).CreateLogger<SlackChatProvider>());
 
     private static SlackChatProvider NewProvider(HttpMessageHandler handler) =>
         new(new StubHttpClientFactory(handler), NullLogger<SlackChatProvider>.Instance);

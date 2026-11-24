@@ -5330,6 +5330,9 @@ public class EfHatchChatWorkspace
     /// <summary>The bot token, sealed as <c>v2</c> for the row name <c>SecretStores.ChatWorkspace</c> gives. A value stored before sealing is <c>v1</c> and still reads.</summary>
     public required string Token { get; set; }
 
+    /// <summary>The app-level token, sealed as <c>v2</c> for the row name <c>SecretStores.ChatWorkspaceAppToken</c> gives. Null while none is set. Nothing uses it yet; the socket connection will.</summary>
+    public string? AppToken { get; set; }
+
     public const int MaxRefusalLength = 500;
 
     /// <summary>The sender sends nothing for this workspace until then: a throttle, or the wait after a failure. Null for no wait.</summary>

@@ -72,9 +72,9 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
             Assert.Equal(seeded.Plaintexts[row], protector.Unprotect(stored, row)?.Reveal());
         }
 
-        // The two already under the current key were not rewritten.
+        // The three already under the current key were not rewritten.
         foreach (var kept in seeded.CurrentKept) Assert.Equal(seeded.Stored[kept], first[kept]);
-        Assert.Contains(logs.Messages, m => m.Contains($"Resealed 5 stored secrets under key {SecretKeys.KeyId(KeyB)}; 0 could not be opened."));
+        Assert.Contains(logs.Messages, m => m.Contains($"Resealed 6 stored secrets under key {SecretKeys.KeyId(KeyB)}; 0 could not be opened."));
 
         await Service(KeyB, KeyA, connectionString, new CapturedLogs()).StartAsync(CancellationToken.None);
 
@@ -113,7 +113,7 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
         release.SetResult();
         await running.WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.Contains(firstLogs.Messages, m => m.Contains("Resealed 5 stored secrets"));
+        Assert.Contains(firstLogs.Messages, m => m.Contains("Resealed 6 stored secrets"));
         Assert.DoesNotContain(firstLogs.Messages, m => m.Contains("Another instance"));
     }
 
@@ -358,9 +358,11 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
     }
 
     /// <summary>
-    /// Seven rows across both stores: a <c>v1</c>, an untagged and a previous-key
+    /// Nine rows across the three stores: a <c>v1</c>, an untagged and a previous-key
     /// value in the settings, a <c>v1</c> and a previous-key value on workspaces,
-    /// and one under the current key in each store. Five of them need resealing.
+    /// an app-level token under the previous key and one under the current key,
+    /// and one under the current key in each of the other two stores. Six of them
+    /// need resealing.
     /// </summary>
     private static async Task<Seeded> SeedAsync(string connectionString)
     {
@@ -371,6 +373,7 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
         var plaintexts = new Dictionary<string, string>();
         var settings = new Dictionary<string, string>();
         var workspaces = new Dictionary<(string, string), string>();
+        var appTokens = new Dictionary<(string, string), string>();
 
         void Setting(string key, string plaintext, Func<string, string, string> stored)
         {
@@ -386,6 +389,13 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
             workspaces[("slack", externalId)] = stored(plaintext, row);
         }
 
+        void AppToken(string externalId, string plaintext, Func<string, string, string> stored)
+        {
+            var row = SecretStores.ChatWorkspaceAppToken("slack", externalId);
+            plaintexts[row] = plaintext;
+            appTokens[("slack", externalId)] = stored(plaintext, row);
+        }
+
         Setting(SiteSettingKeys.AnthropicApiKey, "setting-one", (p, _) => "v1:" + SecretObfuscator.Obfuscate(p));
         Setting(SiteSettingKeys.XaiApiKey, "setting-two", (p, _) => SecretObfuscator.Obfuscate(p));
         Setting(SiteSettingKeys.CodexApiKey, "setting-three", (p, r) => V2(previous, p, r));
@@ -393,6 +403,8 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
         Workspace("T1", "workspace-one", (p, _) => "v1:" + SecretObfuscator.Obfuscate(p));
         Workspace("T2", "workspace-two", (p, r) => V2(previous, p, r));
         Workspace("T3", "workspace-three", (p, r) => V2(current, p, r));
+        AppToken("T2", "app-token-two", (p, r) => V2(previous, p, r));
+        AppToken("T3", "app-token-three", (p, r) => V2(current, p, r));
 
         foreach (var (key, value) in settings) await UpsertSettingAsync(connectionString, key, value);
         foreach (var ((provider, externalId), value) in workspaces)
@@ -403,9 +415,16 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
                 ("p", provider), ("e", externalId), ("t", value));
         }
 
+        foreach (var ((provider, externalId), value) in appTokens)
+        {
+            await ExecuteAsync(connectionString,
+                "UPDATE hatch.\"ChatWorkspaces\" SET \"AppToken\" = @t WHERE \"Provider\" = @p AND \"ExternalId\" = @e",
+                ("p", provider), ("e", externalId), ("t", value));
+        }
+
         var stored = await ReadAsync(connectionString);
         return new Seeded(plaintexts, stored,
-            [SecretStores.SiteSetting(SiteSettingKeys.GoogleClientSecret), SecretStores.ChatWorkspace("slack", "T3")]);
+            [SecretStores.SiteSetting(SiteSettingKeys.GoogleClientSecret), SecretStores.ChatWorkspace("slack", "T3"), SecretStores.ChatWorkspaceAppToken("slack", "T3")]);
     }
 
     /// <summary>The raw value of one SiteSettings row, whether or not its key is a secret.</summary>
@@ -423,7 +442,7 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
             "INSERT INTO \"SiteSettings\" (\"Key\", \"Value\") VALUES (@k, @v) ON CONFLICT (\"Key\") DO UPDATE SET \"Value\" = EXCLUDED.\"Value\"",
             ("k", key), ("v", value));
 
-    /// <summary>Every stored secret in both stores, by row name.</summary>
+    /// <summary>Every stored secret in all three stores, by row name.</summary>
     internal static async Task<Dictionary<string, string>> ReadAsync(string connectionString)
     {
         var stored = new Dictionary<string, string>();
@@ -444,10 +463,16 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
             while (await reader.ReadAsync()) stored[SecretStores.ChatWorkspace(reader.GetString(0), reader.GetString(1))] = reader.GetString(2);
         }
 
+        await using (var command = new NpgsqlCommand("SELECT \"Provider\", \"ExternalId\", \"AppToken\" FROM hatch.\"ChatWorkspaces\" WHERE \"AppToken\" IS NOT NULL AND \"AppToken\" <> ''", connection))
+        {
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) stored[SecretStores.ChatWorkspaceAppToken(reader.GetString(0), reader.GetString(1))] = reader.GetString(2);
+        }
+
         return stored;
     }
 
-    /// <summary>Seeds the migrated database at <paramref name="connectionString"/> with a value sealed under <paramref name="sealedUnder"/> in every secret setting and on one workspace, for the host test; returns their plaintexts by row name.</summary>
+    /// <summary>Seeds the migrated database at <paramref name="connectionString"/> with a value sealed under <paramref name="sealedUnder"/> in every secret setting and on one workspace (its bot token and its app-level token), for the host test; returns their plaintexts by row name.</summary>
     internal static async Task<Dictionary<string, string>> SeedForRotationAsync(string connectionString, byte[] sealedUnder)
     {
         var cipher = new SecretCipher(sealedUnder, null);
@@ -466,6 +491,12 @@ public class SecretResealTests(SecretResealTests.Scratch scratch) : IClassFixtur
             "INSERT INTO hatch.\"ChatWorkspaces\" (\"Provider\", \"ExternalId\", \"Name\", \"Token\", \"CreatedAt\", \"UpdatedAt\") " +
             "VALUES ('slack', 'T9', 'Workspace', @t, now(), now())",
             ("t", $"v2:{cipher.Seal(plaintexts[workspace], workspace)}"));
+
+        var appToken = SecretStores.ChatWorkspaceAppToken("slack", "T9");
+        plaintexts[appToken] = "plaintext of the app-level token";
+        await ExecuteAsync(connectionString,
+            "UPDATE hatch.\"ChatWorkspaces\" SET \"AppToken\" = @t WHERE \"Provider\" = 'slack' AND \"ExternalId\" = 'T9'",
+            ("t", $"v2:{cipher.Seal(plaintexts[appToken], appToken)}"));
 
         return plaintexts;
     }

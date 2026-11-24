@@ -145,11 +145,14 @@ public record PersonScopeWriteRequest(string? Mode, IReadOnlyList<int>? ProjectI
 /// <summary>
 /// A chat workspace Hatch is connected to. There is no token field: the bot
 /// token goes in and never comes back out, <c>HasToken</c> says only that one
-/// is held. <c>ProjectIds</c> is the caller's own view: a project hidden from
+/// is held. <c>HasAppToken</c> says the same of the app-level token, and
+/// <c>AppTokenUnreadable</c> that one is stored but cannot be opened with the
+/// current key. <c>ProjectIds</c> is the caller's own view: a project hidden from
 /// a scoped admin is not counted here either.
 /// </summary>
 public record ChatWorkspaceDto(
-    int Id, string Provider, string ExternalId, string Name, bool HasToken, DateTimeOffset CreatedAt, IReadOnlyList<int> ProjectIds);
+    int Id, string Provider, string ExternalId, string Name, bool HasToken, bool HasAppToken, bool AppTokenUnreadable,
+    DateTimeOffset CreatedAt, IReadOnlyList<int> ProjectIds);
 
 /// <summary>
 /// What is waiting to be sent to one workspace, and what the chat service last

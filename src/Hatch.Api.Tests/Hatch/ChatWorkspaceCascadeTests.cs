@@ -262,6 +262,9 @@ public class ChatWorkspaceCascadeDatabaseTests
         public Task<ChatTokenCheck> CheckTokenAsync(string token, CancellationToken ct) =>
             Task.FromResult(ChatTokenCheck.Workspace("TACME", "Acme"));
 
+        public Task<ChatAppTokenCheck> CheckAppTokenAsync(string appToken, CancellationToken ct) =>
+            Task.FromResult(ChatAppTokenCheck.Accepted());
+
         public Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct) =>
             Task.FromResult(ChatChannelList.Of([]));
 

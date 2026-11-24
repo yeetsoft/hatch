@@ -113,6 +113,8 @@ public class ScopeRouteMatrixTests
         ("ChatController.GetWorkspaces", ChatBoundIdsPinned),
         ("ChatController.RemoveWorkspace", ChatWorkspaces),
         ("ChatController.ReplaceToken", ChatBoundIdsPinned),
+        ("ChatController.PutAppToken", ChatBoundIdsPinned),
+        ("ChatController.RemoveAppToken", ChatWorkspaces),
         ("ChatController.GetChannels", ChatRoomRoutesNameNoProject),
         ("ChatController.PostTestMessage", ChatRoomRoutesNameNoProject),
         ("ChatController.RemoveRoom", ChatRoomRoutesNameNoProject),
