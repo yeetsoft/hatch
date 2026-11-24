@@ -51,6 +51,14 @@ public class HatchContext : DbContext, IModuleContext
     /// </summary>
     public bool ScopeUnbounded => Unbounded;
 
+    /// <summary>
+    /// Whether this context's own scope reaches a project - the same test the
+    /// query filters open with, for a reader that built a row off a house-wide
+    /// tree rather than a filtered query and has to apply the scope itself:
+    /// see <see cref="IssueClaims.LineageAsync"/>.
+    /// </summary>
+    public bool CanSeeProject(int projectId) => Unbounded || Visible.Contains(projectId);
+
     public DbSet<EfHatchProject> Projects => Set<EfHatchProject>();
     public DbSet<EfHatchProjectRepository> ProjectRepositories => Set<EfHatchProjectRepository>();
     public DbSet<EfHatchProjectMember> ProjectMembers => Set<EfHatchProjectMember>();

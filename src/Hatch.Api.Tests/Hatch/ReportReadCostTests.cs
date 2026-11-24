@@ -156,12 +156,14 @@ public class ReportReadCostTests
             new(12, 3, 1735, 1161, "Comments=220;IssueEvents=3088;Issues=1401;Projects=8;Statuses=18"),
             new(12, 3, 1735, 1161, "Comments=720;IssueEvents=4448;Issues=1600;Projects=8;Statuses=18")),
         // The OR read of the claim trail (HA-2783), and status changes with no time bound.
+        // One statement and one issue load fewer than before HA-2796: FamilyGate.ForAsync
+        // now reads every row off the tree it is handed rather than Issues a second time.
         ["GET /api/board/health"] = (
-            new(38, 7, 3075, 1982, "Comments=1782;IssueEvents=9373;Issues=2003;Projects=16;Statuses=30"),
-            new(38, 7, 5075, 3982, "Comments=1923;IssueEvents=82623;Issues=2603;Projects=16;Statuses=30")),
+            new(37, 6, 2875, 1982, "Comments=1782;IssueEvents=9373;Issues=1803;Projects=14;Statuses=30"),
+            new(37, 6, 4875, 3982, "Comments=1923;IssueEvents=82623;Issues=2403;Projects=14;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(40, 7, 3084, 2020, "Comments=1782;IssueEvents=13649;Issues=2204;Projects=20;Statuses=30"),
-            new(40, 7, 5084, 4020, "Comments=1923;IssueEvents=114099;Issues=2804;Projects=20;Statuses=30")),
+            new(39, 6, 2884, 2020, "Comments=1782;IssueEvents=13649;Issues=2004;Projects=18;Statuses=30"),
+            new(39, 6, 4884, 4020, "Comments=1923;IssueEvents=114099;Issues=2604;Projects=18;Statuses=30")),
         ["ColumnNormals.ForAsync"] = (
             new(2, 1, 1144, 944, "IssueEvents=1294;Issues=200;Projects=2"),
             new(2, 1, 3144, 2944, "IssueEvents=3294;Issues=200;Projects=2")),

@@ -22,10 +22,6 @@ public class QueryFilterAuditTests
     /// </summary>
     private static readonly Dictionary<string, (int Calls, string Why)> Sites = new()
     {
-        ["Wip.LoadAsync"] = (2,
-            "The house-wide work-in-progress count. The limit is the house's, so a count that left out a hidden "
-            + "project's cards would let a scoped caller push past it. It reads ids and parents and returns "
-            + "numbers. Its priority tree is read the same way, through PriorityTree.ForAsync."),
         ["AncestorChains.ForAsync"] = (1,
             "A merge-train poll's rows and the issues above them, read a level at a time for the priority and "
             + "one-pull-request walks. A level on an ancestor in a project the caller cannot see still applies, "
@@ -58,15 +54,15 @@ public class QueryFilterAuditTests
             "Rank placement. A column is shared by every project, so a rank placed against only the visible "
             + "cards could land on a hidden card's rank, and a renumber would reorder the two sets against each "
             + "other. What leaves is a rank."),
-        ["Dispatch.ForAsync"] = (4,
-            "The dependency gate and the priority tree it, the family gate, the work-in-progress count and every "
-            + "projection lean on. A blocker in a project the caller cannot see still blocks, a level on an ancestor "
-            + "there still applies, and a hidden issue missing from the tree would read as unpaused and unblocked. "
-            + "The dispatcher reads the tree whole, whatever the calling key's owner may see; the projections read "
-            + "it whole too, with the reader's own scope laid over it, so what leaves is a level or a flag that a "
-            + "value came from outside the scope, never a hidden key. The family gate is the fourth: a child in a "
-            + "project the caller cannot see still counts as open, so an epic is not closed over it. What leaves is "
-            + "a count and an id."),
+        ["Dispatch.ForAsync"] = (3,
+            "The priority tree every projection leans on, and the dependency gate's own edges. A blocker in a "
+            + "project the caller cannot see still blocks, a level on an ancestor there still applies, and a hidden "
+            + "issue missing from the tree would read as unpaused and unblocked. The dispatcher reads the tree "
+            + "whole, whatever the calling key's owner may see; the projections read it whole too, with the "
+            + "reader's own scope laid over it, so what leaves is a level or a flag that a value came from outside "
+            + "the scope, never a hidden key. The family gate and the work-in-progress count no longer open their "
+            + "own: both take the one tree, and a child or a row in a project the caller cannot see still counts "
+            + "through it."),
         ["Preemption.AnyOpenEmergencyAsync"] = (2,
             "Whether any open issue is at emergency level, on its own row or an ancestor's: the emergency rows, "
             + "then their children a generation at a time. A level on an ancestor in a project the caller cannot "

@@ -763,20 +763,23 @@ public class WorkController(
         var now = time.GetUtcNow();
         var (signs, forges) = await CallerAnswersAsync(signing, signingWhy, forge, forgeWhy, runner, ct);
 
-        // Its own gate rather than the scan's, because nothing scanned here -
-        // built from the same rows and the same rule, so a named dispatch and a
-        // pass cannot disagree about what an issue is waiting on.
+        // One tree for the whole resolution, handed to every gate below rather
+        // than each building its own - the same rows and the same rule, so a
+        // named dispatch and a pass cannot disagree about what an issue is
+        // waiting on.
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
+
         return await ResolveAsync(
             issue,
             statuses,
             null,
             null,
-            await DependencyGate.ForAsync(db, actors, statuses, ct),
-            await FamilyGate.ForAsync(db, actors, statuses, ct),
-            new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, actors, now, ct)),
+            await DependencyGate.ForAsync(db, actors, statuses, ct, tree),
+            await FamilyGate.ForAsync(db, actors, statuses, ct, tree),
+            new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, actors, now, ct, tree)),
             RepositoryDeclaration.From(remote, standing, clones),
-            await Wip.LoadAsync(db, actors, claims, statuses, now, ct),
-            await Wip.EpicsAsync(db, [issue.ParentId], ct),
+            await Wip.LoadAsync(db, actors, claims, statuses, now, ct, tree),
+            Wip.Epics(tree, [issue.ParentId]),
             tags,
             models,
             hasDeclared,
@@ -835,7 +838,11 @@ public class WorkController(
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var now = time.GetUtcNow();
 
-        var family = await FamilyGate.ForAsync(db, actors, statuses, ct);
+        // One tree for the whole hop, handed to every gate below rather than
+        // each building its own - see GetWork.
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
+
+        var family = await FamilyGate.ForAsync(db, actors, statuses, ct, tree);
 
         var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
         var merged = inReview ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
@@ -847,12 +854,12 @@ public class WorkController(
 
         var landing = inReview && (await _dispatch.LandedAsync([issue], now, ct)).TryGetValue(issue.Id, out var landed) ? landed : (MergeWork.Judgement?)null;
 
-        var wip = await Wip.LoadAsync(db, actors, claims, statuses, now, ct);
+        var wip = await Wip.LoadAsync(db, actors, claims, statuses, now, ct, tree);
         var parent = family.ParentOf(issue.Id);
         var sendBackStreak = Columns.Implementation(statuses) is { } implementation
             ? await SendBackStreak.ForIssueAsync(db, issue.Id, implementation.Name, ct)
             : 0;
-        var gate = await DependencyGate.ForAsync(db, actors, statuses, ct);
+        var gate = await DependencyGate.ForAsync(db, actors, statuses, ct, tree);
         var (preApprovalLevel, preApprovalFromKey) = gate.EffectivePreApproval(issue.Id);
         var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, preApprovalLevel, merged, built, now,
             await _dispatch.ImplementationPlaybookAsync(statuses, from, issue, family, ct));
@@ -871,12 +878,12 @@ public class WorkController(
             null,
             gate,
             family,
-            new ClaimGate(claims, now, null, await claims.LineageAsync(db, actors, now, ct)),
+            new ClaimGate(claims, now, null, await claims.LineageAsync(db, actors, now, ct, tree)),
             Columns.Implementation(statuses),
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses,
             wip,
-            await Wip.EpicsAsync(db, [issue.ParentId], ct),
+            Wip.Epics(tree, [issue.ParentId]),
             driver: driver,
             landing: landing,
             tags: tags,

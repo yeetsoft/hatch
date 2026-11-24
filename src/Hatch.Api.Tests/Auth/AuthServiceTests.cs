@@ -412,6 +412,38 @@ public class AuthServiceTests
         Assert.Equal("Ada", listed.Person!.Name);
     }
 
+    [Fact]
+    public async Task ApiKeyListIsMemoizedOneInstanceAtATime()
+    {
+        var (service, _, _) = NewService();
+        await service.CreateApiKeyAsync("runner-0", null, CancellationToken.None);
+
+        // Two lists off one instance read the database once and return the same
+        // object - the whole point of the memo, since several helpers inside one
+        // scan each ask who holds a key.
+        var first = await service.ListApiKeysAsync(CancellationToken.None);
+        var second = await service.ListApiKeysAsync(CancellationToken.None);
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public async Task ApiKeyListIsFreshAfterACreateOrARevoke()
+    {
+        var (service, _, _) = NewService();
+        var before = await service.ListApiKeysAsync(CancellationToken.None);
+        Assert.Empty(before);
+
+        var created = await service.CreateApiKeyAsync("runner-0", null, CancellationToken.None);
+        var afterCreate = await service.ListApiKeysAsync(CancellationToken.None);
+        Assert.NotSame(before, afterCreate);
+        Assert.Single(afterCreate);
+
+        await service.RevokeApiKeyAsync(created!.Key.Id, CancellationToken.None);
+        var afterRevoke = await service.ListApiKeysAsync(CancellationToken.None);
+        Assert.NotSame(afterCreate, afterRevoke);
+        Assert.NotNull(Assert.Single(afterRevoke).RevokedAt);
+    }
+
     private static async Task<EfPerson> AddPerson(AppDbContext db, string name)
     {
         var person = new EfPerson { Name = name, CreatedAt = Now, UpdatedAt = Now };
