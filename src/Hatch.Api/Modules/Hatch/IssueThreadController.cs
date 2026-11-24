@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,7 +19,9 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/issues/{key}")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class IssueThreadController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
+public class IssueThreadController(
+    HatchContext db, ICallerIdentity caller, TimeProvider time,
+    ChatOutbox? chatOutbox = null, ChatLinks? links = null) : ControllerBase
 {
     [HttpGet("comments")]
     public async Task<ActionResult<IReadOnlyList<CommentDto>>> GetComments(string key, CancellationToken ct)
@@ -89,6 +92,11 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
 
         if (InvalidOptions(request.Options) is { } optionError) return BadRequest(optionError);
 
+        long answeredQuestionId = 0;
+        string? answeredQuestionBody = null;
+        IReadOnlyList<QuestionOptionDto>? answeredQuestionOptions = null;
+        string? answeredQuestionLevel = null;
+
         if (kind == EfHatchComment.Answer)
         {
             if (request.AnswersId is not { } answersId)
@@ -98,11 +106,16 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
             // an answer on a thread nobody reading the question can see.
             var question = await db.Comments.AsNoTracking()
                 .Where(c => c.Id == answersId && c.IssueId == issueId && c.Kind == EfHatchComment.Question)
-                .Select(c => (long?)c.Id)
+                .Select(c => new { c.Id, c.Body, c.Options, c.Level })
                 .FirstOrDefaultAsync(ct);
 
             if (question is null)
                 return BadRequest($"comment {answersId} is not an open question on {key}");
+
+            answeredQuestionId = question.Id;
+            answeredQuestionBody = question.Body;
+            answeredQuestionOptions = Questions.ReadOptions(question.Options);
+            answeredQuestionLevel = QuestionLevels.Normalise(question.Level);
         }
 
         var actor = await caller.ActorNameAsync(ct);
@@ -143,7 +156,46 @@ public class IssueThreadController(HatchContext db, ICallerIdentity caller, Time
             At = now,
         });
 
-        await db.SaveChangesAsync(ct);
+        if (kind == EfHatchComment.Question)
+        {
+            // The subject needs the comment's own id, which does not exist
+            // until it is saved - mint it, queue the message, then save again,
+            // all inside one transaction.
+            await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+
+            await db.SaveChangesAsync(ct);
+
+            if (chatOutbox is not null && links is not null)
+            {
+                var forChat = await db.Issues.AsNoTracking().Where(i => i.Id == issueId)
+                    .Select(i => new { i.ProjectId, i.Title }).FirstAsync(ct);
+                var content = QuestionChatContent.Build(
+                    links, key, forChat.Title, comment.Body,
+                    Questions.ReadOptions(comment.Options), QuestionLevels.Normalise(comment.Level));
+                await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{comment.Id}", forChat.ProjectId, content, ct);
+            }
+
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+        }
+        else
+        {
+            if (kind == EfHatchComment.Answer && chatOutbox is not null && links is not null)
+            {
+                var forChat = await db.Issues.AsNoTracking().Where(i => i.Id == issueId)
+                    .Select(i => new { i.ProjectId, i.Title, IsTerminal = i.Status!.IsTerminal }).FirstAsync(ct);
+                var priorAuthorKinds = await db.Comments.AsNoTracking()
+                    .Where(a => a.AnswersId == answeredQuestionId).Select(a => a.AuthorKind).ToListAsync(ct);
+                var lookBack = Questions.IsLookBack(
+                    answeredQuestionLevel, forChat.IsTerminal, [..priorAuthorKinds, authorKind]);
+                var content = QuestionChatContent.Build(
+                    links, key, forChat.Title, answeredQuestionBody!, answeredQuestionOptions, answeredQuestionLevel!,
+                    actor, comment.Body, lookBack);
+                await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{answeredQuestionId}", forChat.ProjectId, content, ct);
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
 
         return new CommentDto(
             comment.Id, comment.Author, comment.Body, comment.Kind, comment.AnswersId,

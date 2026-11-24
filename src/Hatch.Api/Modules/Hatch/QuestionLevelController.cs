@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,7 +29,8 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/issues")]
 public class QuestionLevelController(
-    HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
+    HatchContext db, ICallerIdentity caller, TimeProvider time,
+    ChatOutbox? chatOutbox = null, ChatLinks? links = null) : ControllerBase
 {
     /// <summary>
     /// Set a question's level, by name - see <see cref="QuestionLevels"/> and
@@ -88,6 +90,13 @@ public class QuestionLevelController(
             });
 
             row.Level = to;
+
+            if (chatOutbox is not null && links is not null)
+            {
+                var content = QuestionChatContent.Build(links, key, issue.Title, row.Body, Questions.ReadOptions(row.Options), to);
+                await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{id}", issue.ProjectId, content, ct);
+            }
+
             await db.SaveChangesAsync(ct);
         }
 

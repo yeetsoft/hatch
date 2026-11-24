@@ -15217,6 +15217,39 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task VerdictWork_SecondConsecutiveFail_WithChatWired_QueuesAQuestionsRoomMessage()
+    {
+        var h = await NewAsync();
+        var seed = new ChatOutboxSeed(h.Db, Now);
+        var workspace = await seed.WorkspaceAsync("TACME", h.ProjectId);
+        await seed.RoomAsync(workspace, "C1", questions: true);
+        var outbox = new ChatOutbox(h.Db, h.Time);
+        var links = new ChatLinks(Options.Create(new HatchOptions()));
+        var work = new WorkController(
+            h.Db, h.Actors, TestClaims.With(), h.Time, Options.Create(new HatchOptions()), new RankService(h.Db),
+            h.Caller, new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision()),
+            h.Keys, h.Sessions, chatOutbox: outbox, links: links);
+
+        var playbookId = await h.CheckingAsync();
+        var issue = await h.FileAsync("task", "being checked a second time", h.Checking);
+
+        await h.LogEventAsync(
+            issue, EfHatchIssueEvent.StatusChanged,
+            new { from = "checking", to = "in progress", verdict = CheckVerdicts.Fail, playbookId },
+            h.Time.GetUtcNow().AddMinutes(-10));
+
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Fail, findings: "still broken");
+
+        Value(await work.VerdictWork(Key(issue), token, ct: default));
+
+        var row = await h.Db.ChatMessages.SingleAsync();
+        var question = await h.Db.Comments.SingleAsync(c => c.IssueId == issue.Id && c.Kind == EfHatchComment.Question);
+        Assert.Equal($"comment:{question.Id}", row.Subject);
+        Assert.Contains("still broken", ChatMessageContent.Read(row.Content)!.Body);
+    }
+
+    [Fact]
     public async Task VerdictWork_AnAnsweredEventBetweenTwoFails_ResetsTheStreak()
     {
         var h = await NewAsync();
