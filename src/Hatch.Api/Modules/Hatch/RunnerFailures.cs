@@ -52,7 +52,7 @@ public static class RunnerFailures
     /// cleared, and a seeded session that inherited a standing pause.</para>
     /// </remarks>
     public static async Task ReconcileAsync(
-        HatchContext db, Guid apiKeyId, string keyName, EfHatchRunnerSession session, RunnerHeartbeatRequest request,
+        HatchContext db, Guid apiKeyId, string keyName, Guid? ownerPersonId, EfHatchRunnerSession session, RunnerHeartbeatRequest request,
         RunnerFailureMessages messages, DateTimeOffset now, CancellationToken ct)
     {
         var where = session.Where ?? "";
@@ -60,7 +60,7 @@ public static class RunnerFailures
 
         try
         {
-            await SettleAsync(db, apiKeyId, keyName, where, verdicts, messages, now, ct);
+            await SettleAsync(db, apiKeyId, keyName, ownerPersonId, where, verdicts, messages, now, ct);
         }
         catch (DbUpdateException)
         {
@@ -70,17 +70,17 @@ public static class RunnerFailures
             // attempt reads what is there. The save was one transaction, so
             // nothing of it persisted; this only clears the context.
             foreach (var entry in db.ChangeTracker.Entries()
-                .Where(e => e.Entity is EfHatchRunnerFailure or EfHatchChatSubject or EfHatchChatMessage)
+                .Where(e => e.Entity is EfHatchRunnerFailure or EfHatchChatSubject or EfHatchChatMessage or EfHatchChatLink)
                 .ToList())
                 entry.State = EntityState.Detached;
 
-            await SettleAsync(db, apiKeyId, keyName, where, verdicts, messages, now, ct);
+            await SettleAsync(db, apiKeyId, keyName, ownerPersonId, where, verdicts, messages, now, ct);
         }
     }
 
     /// <summary>One attempt: read the open rows, apply the verdicts, save once, trim if a row ended.</summary>
     private static async Task SettleAsync(
-        HatchContext db, Guid apiKeyId, string keyName, string where,
+        HatchContext db, Guid apiKeyId, string keyName, Guid? ownerPersonId, string where,
         IReadOnlyList<(string Kind, Verdict Verdict, string? Why)> verdicts,
         RunnerFailureMessages messages, DateTimeOffset now, CancellationToken ct)
     {
@@ -99,11 +99,16 @@ public static class RunnerFailures
                 case Verdict.Failing when row is null:
                     var opened = Open(apiKeyId, where, kind, why, now);
                     db.RunnerFailures.Add(opened);
-                    await messages.OpenedAsync(opened, keyName, ct);
+                    await messages.OpenedAsync(opened, keyName, ownerPersonId, ct);
                     break;
                 case Verdict.Failing:
                     row.LastReportedAt = now;
-                    row.Why = why;
+                    if (row.Why != why)
+                    {
+                        row.Why = why;
+                        await messages.RefreshedAsync(row, keyName, ct);
+                    }
+
                     break;
                 case Verdict.Fine when row is not null:
                     row.EndedAt = now;
@@ -165,8 +170,8 @@ public static class RunnerFailures
     /// own save carries it, so the row, its chat message and the pause commit together.
     /// </summary>
     public static async Task OpenBoardPauseAsync(
-        HatchContext db, Guid apiKeyId, string keyName, string? where, string? why, RunnerFailureMessages messages,
-        DateTimeOffset now, CancellationToken ct)
+        HatchContext db, Guid apiKeyId, string keyName, Guid? ownerPersonId, string? where, string? why,
+        RunnerFailureMessages messages, DateTimeOffset now, CancellationToken ct)
     {
         var at = where ?? "";
         var row = await db.RunnerFailures.FirstOrDefaultAsync(
@@ -176,12 +181,16 @@ public static class RunnerFailures
         {
             var opened = Open(apiKeyId, at, RunnerFailureKinds.BoardPaused, why, now);
             db.RunnerFailures.Add(opened);
-            await messages.OpenedAsync(opened, keyName, ct);
+            await messages.OpenedAsync(opened, keyName, ownerPersonId, ct);
         }
         else
         {
             row.LastReportedAt = now;
-            row.Why = why;
+            if (row.Why != why)
+            {
+                row.Why = why;
+                await messages.RefreshedAsync(row, keyName, ct);
+            }
         }
     }
 

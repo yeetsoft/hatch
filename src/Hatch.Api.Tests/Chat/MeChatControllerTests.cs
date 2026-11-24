@@ -558,6 +558,66 @@ public class MeChatControllerTests
         Assert.Null(Value(await h.Bob.Get(default)).Workspaces[0].Link);
     }
 
+    // ---- What a link is for ----
+
+    [Fact]
+    public async Task ALinkIsOnForRunnerFailures_ByDefault_AndTheSwitchIsReadAndWritten()
+    {
+        var h = New();
+        var acme = await h.WorkspaceAsync("TACME", "Acme");
+        h.Provider.Members[Token] = [Ada];
+        var waiting = Value(await h.Ada.PostLink(new MeChatLinkRequest(acme, Ada.Id), default));
+        Assert.True(waiting.RunnerFailures);
+        Assert.Equal((null, null), (waiting.LastRefusal, waiting.LastRefusalAt));
+        await h.Ada.ConfirmLink(new MeChatConfirmRequest(SecretFrom(h.Provider)), default);
+
+        var off = Value(await h.Ada.PutLink(waiting.Id, new MeChatLinkPatchRequest(false), default));
+
+        Assert.Equal(("linked", false), (off.State, off.RunnerFailures));
+        Assert.False((await h.Db.ChatLinks.SingleAsync()).RunnerFailures);
+        var listed = Assert.Single(Value(await h.Ada.Get(default)).Workspaces).Link!;
+        Assert.False(listed.RunnerFailures);
+
+        var on = Value(await h.Ada.PutLink(waiting.Id, new MeChatLinkPatchRequest(true), default));
+        Assert.True(on.RunnerFailures);
+    }
+
+    [Fact]
+    public async Task AFieldLeftOut_LeavesTheSwitchAlone_AndALastRefusalIsShown()
+    {
+        var h = New();
+        var acme = await h.WorkspaceAsync("TACME", "Acme");
+        h.Db.ChatLinks.Add(WaitingLink(acme, h.AdaId));
+        await h.Db.SaveChangesAsync();
+        var row = await h.Db.ChatLinks.SingleAsync();
+        row.ConfirmedAt = Now;
+        row.RunnerFailures = false;
+        row.LastRefusal = "cannot_dm_bot";
+        row.LastRefusalAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var answer = Value(await h.Ada.PutLink(row.Id, new MeChatLinkPatchRequest(null), default));
+
+        Assert.Equal((false, "cannot_dm_bot", (DateTimeOffset?)Now), (answer.RunnerFailures, answer.LastRefusal, answer.LastRefusalAt));
+        Assert.False((await h.Db.ChatLinks.SingleAsync()).RunnerFailures);
+    }
+
+    [Fact]
+    public async Task TheSwitch_IsTheCallersOwnToSet_AndAWaitingLinkTakesNone()
+    {
+        var h = New();
+        var acme = await h.WorkspaceAsync("TACME", "Acme");
+        h.Db.ChatLinks.Add(WaitingLink(acme, h.AdaId));
+        await h.Db.SaveChangesAsync();
+        var link = await h.Db.ChatLinks.SingleAsync();
+
+        Assert.IsType<NotFoundResult>((await h.Bob.PutLink(link.Id, new MeChatLinkPatchRequest(false), default)).Result);
+        Assert.IsType<NotFoundResult>((await h.Ada.PutLink(link.Id + 100, new MeChatLinkPatchRequest(false), default)).Result);
+        Assert.IsType<ConflictObjectResult>((await h.Ada.PutLink(link.Id, new MeChatLinkPatchRequest(false), default)).Result);
+
+        Assert.True((await h.Db.ChatLinks.SingleAsync()).RunnerFailures);
+    }
+
     // ---- A removed person ----
 
     [Fact]
@@ -660,6 +720,7 @@ public class MeChatControllerTests
             (await h.Ada.GetMembers(acme, default)).Result as ObjectResult,
             (await h.Ada.PostLink(new MeChatLinkRequest(acme, Ada.Id), default)).Result as ObjectResult,
             (await h.Ada.ConfirmLink(new MeChatConfirmRequest("x"), default)).Result as ObjectResult,
+            (await h.Ada.PutLink(1, new MeChatLinkPatchRequest(false), default)).Result as ObjectResult,
             await h.Ada.DeleteLink(1, default) as ObjectResult,
         };
 
@@ -686,6 +747,7 @@ public class MeChatControllerTests
             (await h.Ada.GetMembers(acme, default)).Result as ObjectResult,
             (await h.Ada.PostLink(new MeChatLinkRequest(acme, Ada.Id), default)).Result as ObjectResult,
             (await h.Ada.ConfirmLink(new MeChatConfirmRequest("x"), default)).Result as ObjectResult,
+            (await h.Ada.PutLink(1, new MeChatLinkPatchRequest(false), default)).Result as ObjectResult,
             await h.Ada.DeleteLink(1, default) as ObjectResult,
         };
 

@@ -71,7 +71,7 @@ public sealed class ChatSendsFailingCheck(HatchContext db, IOptions<HatchOptions
         // is behind the revision queued.
         var waiting = await Db.ChatMessages.AsNoTracking()
             .Where(m => m.DroppedAt == null && m.SentRevision < m.Revision)
-            .Where(m => workspaceIds.Contains(m.WorkspaceId) || roomIds.Contains(m.RoomId))
+            .Where(m => workspaceIds.Contains(m.WorkspaceId) || m.RoomId != null && roomIds.Contains(m.RoomId.Value))
             .Select(m => new { m.WorkspaceId, m.RoomId })
             .ToListAsync(ct);
 

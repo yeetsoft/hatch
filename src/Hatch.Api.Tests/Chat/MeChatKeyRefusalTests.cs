@@ -23,7 +23,7 @@ public class MeChatKeyRefusalTests
 {
     private static readonly string[] Actions =
     [
-        "ConfirmLink", "DeleteLink", "Get", "GetMembers", "GetSuggestion", "PostLink",
+        "ConfirmLink", "DeleteLink", "Get", "GetMembers", "GetSuggestion", "PostLink", "PutLink",
     ];
 
     [Fact]
@@ -68,6 +68,7 @@ public class MeChatKeyRefusalTests
             (HttpMethod.Get, "/api/me/chat/workspaces/1/members", null),
             (HttpMethod.Post, "/api/me/chat/links", """{"workspaceId":1,"memberId":"U1"}"""),
             (HttpMethod.Post, "/api/me/chat/links/confirm", """{"secret":"not-a-secret"}"""),
+            (HttpMethod.Put, "/api/me/chat/links/1", """{"runnerFailures":false}"""),
             (HttpMethod.Delete, "/api/me/chat/links/1", null),
         };
 
@@ -113,6 +114,7 @@ public class MeChatKeyRefusalTests
             (await controller.GetMembers(1, default)).Result as ObjectResult,
             (await controller.PostLink(new MeChatLinkRequest(1, "U1"), default)).Result as ObjectResult,
             (await controller.ConfirmLink(new MeChatConfirmRequest("x"), default)).Result as ObjectResult,
+            (await controller.PutLink(1, new MeChatLinkPatchRequest(false), default)).Result as ObjectResult,
             await controller.DeleteLink(1, default) as ObjectResult,
         };
 

@@ -139,7 +139,7 @@ public class QueryFilterAuditTests
             + "column made terminal loads no project, and a patch that moves one changes it after the issue was "
             + "loaded; the writer's scope may hide the project, and the message must name the same key whoever "
             + "closed the issue. What leaves is one key string, no row."),
-        ["ChatOutbox.QueueCoreAsync"] = (1,
+        ["ChatOutbox.ChangeAsync"] = (1,
             "The rows already queued for a thing, read so a change edits them instead of adding a second. Who "
             + "hears a thing is the rooms' to say and not the writer's, so a writer whose scope hides the project "
             + "must still find the rows its own earlier write queued, or a repeat would add a duplicate. Nothing "

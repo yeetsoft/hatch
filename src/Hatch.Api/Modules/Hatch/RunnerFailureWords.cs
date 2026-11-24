@@ -18,6 +18,27 @@ public static class RunnerFailureWords
         [RunnerFailureKinds.BoardPaused] = "Paused by the board",
     };
 
+    /// <summary>
+    /// What to do about each kind, word for word as <c>runnerFailureAdvice</c> in the web app says it,
+    /// so a person is told the same thing in a message as on the page.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> Advices = new Dictionary<string, string>
+    {
+        [RunnerFailureKinds.Forge] = "Sign gh in on that machine.",
+        [RunnerFailureKinds.Signing] = "Fix signing on that machine, or allow unsigned commits on the project.",
+        [RunnerFailureKinds.AgentSignedOut] = "Sign the agent in on that machine.",
+        [RunnerFailureKinds.AgentNotStarting] = "Read what the agent said, on the runner's page.",
+        [RunnerFailureKinds.BoardPaused] = "Read why on the runner's page, where the pause can be lifted.",
+    };
+
+    private const string DefaultAdvice = "Open the runner's page to see what it cannot do.";
+
+    /// <summary>Whether this kind has its own advice. A test holds every kind in <see cref="RunnerFailureKinds.All"/> to it.</summary>
+    public static bool HasAdvice(string kind) => Advices.ContainsKey(kind);
+
+    /// <summary>What to do about a failure of this kind; a kind this build does not know gets a pointer to the runner's page.</summary>
+    public static string Advice(string kind) => Advices.TryGetValue(kind, out var words) ? words : DefaultAdvice;
+
     /// <summary>Whether this kind has a sentence. A test holds every kind in <see cref="RunnerFailureKinds.All"/> to it.</summary>
     public static bool Has(string kind) => Sentences.ContainsKey(kind);
 

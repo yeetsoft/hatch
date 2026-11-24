@@ -1,5 +1,7 @@
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Chat;
+using Hatch.Api.Tests.Hatch;
 using Hatch.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -22,8 +24,10 @@ public class RunnerFailureMessagesTests
     private const string Tree = "C:/work/secret-client/repo";
 
     /// <summary>The messages over this context, for a test that builds a controller of its own.</summary>
-    internal static RunnerFailureMessages For(HatchContext db, TimeProvider time, string publicBaseUrl = Origin) =>
-        new(new ChatOutbox(db, time), new ChatLinks(Options.Create(new HatchOptions { PublicBaseUrl = publicBaseUrl })));
+    internal static RunnerFailureMessages For(
+        HatchContext db, TimeProvider time, string publicBaseUrl = Origin, bool wall = false, IActorDirectory? actors = null) =>
+        new(new ChatOutbox(db, time), new ChatLinks(Options.Create(new HatchOptions { PublicBaseUrl = publicBaseUrl })),
+            db, actors ?? new StubActorDirectory(), Options.Create(new AuthOptions { Enabled = wall }));
 
     [Fact]
     public void EveryKind_HasItsOwnWords()
@@ -35,6 +39,45 @@ public class RunnerFailureMessagesTests
         }
 
         Assert.Equal("a-kind-from-later", RunnerFailureWords.Sentence("a-kind-from-later"));
+    }
+
+    [Fact]
+    public void EveryKind_HasItsOwnAdvice_AndAnUnknownOneAPointerToThePage()
+    {
+        foreach (var kind in RunnerFailureKinds.All)
+        {
+            Assert.True(RunnerFailureWords.HasAdvice(kind), $"{kind} has no advice");
+            Assert.NotEqual(RunnerFailureWords.Advice("a-kind-from-later"), RunnerFailureWords.Advice(kind));
+        }
+
+        Assert.Equal("Open the runner's page to see what it cannot do.", RunnerFailureWords.Advice("a-kind-from-later"));
+    }
+
+    [Fact]
+    public void EachAdviceSentence_IsTheOneTheRunnersPageGives()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), "src", "Hatch.Web", "apps", "hatch", "src", "lib", "runnerFailureRows.ts"));
+
+        foreach (var kind in RunnerFailureKinds.All)
+        {
+            var sentence = RunnerFailureWords.Advice(kind);
+
+            // The page writes a sentence with an apostrophe in double quotes and any other in single quotes.
+            Assert.True(
+                source.Contains($"'{sentence}'") || source.Contains($"\"{sentence}\""),
+                $"runnerFailureRows.ts does not say, for {kind}: {sentence}");
+        }
+
+        Assert.Contains($"\"{RunnerFailureWords.Advice("a-kind-from-later")}\"", source);
+    }
+
+    private static string RepositoryRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Makefile"))) dir = dir.Parent;
+
+        return dir?.FullName ?? throw new InvalidOperationException("the repository root was not found above the test binary");
     }
 
     [Fact]
@@ -57,7 +100,7 @@ public class RunnerFailureMessagesTests
         await h.Seed.RoomAsync(workspace, "C2", problems: true, changelog: true);
         var second = await h.Seed.RoomAsync(workspace, "C3", unownedProblems: true);
 
-        await h.Messages.OpenedAsync(h.Row(kind), RunnerName, default);
+        await h.Messages.OpenedAsync(h.Row(kind), RunnerName, null, default);
         await h.Db.SaveChangesAsync();
 
         var rows = await h.RowsAsync();
@@ -81,7 +124,7 @@ public class RunnerFailureMessagesTests
         var workspace = await h.Seed.WorkspaceAsync("TACME");
         await h.Seed.RoomAsync(workspace, "C1", problems: true, changelog: true, questions: true);
 
-        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Forge), RunnerName, default);
+        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Forge), RunnerName, null, default);
         await h.Db.SaveChangesAsync();
 
         Assert.Empty(await h.RowsAsync());
@@ -94,7 +137,7 @@ public class RunnerFailureMessagesTests
         var one = await h.Seed.RoomAsync(await h.Seed.WorkspaceAsync("TONE"), "C1", unownedProblems: true);
         var two = await h.Seed.RoomAsync(await h.Seed.WorkspaceAsync("TTWO"), "C2", unownedProblems: true);
 
-        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Signing), RunnerName, default);
+        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Signing), RunnerName, null, default);
         await h.Db.SaveChangesAsync();
 
         var rows = await h.RowsAsync();
@@ -108,7 +151,7 @@ public class RunnerFailureMessagesTests
         var h = NewHarness();
         await h.Seed.RoomAsync(await h.Seed.WorkspaceAsync("TACME"), "C1", unownedProblems: true);
         var row = h.Row(RunnerFailureKinds.AgentSignedOut);
-        await h.Messages.OpenedAsync(row, RunnerName, default);
+        await h.Messages.OpenedAsync(row, RunnerName, null, default);
         await h.Db.SaveChangesAsync();
 
         var ended = Now.AddMinutes(30);
@@ -130,12 +173,12 @@ public class RunnerFailureMessagesTests
         var h = NewHarness();
         await h.Seed.RoomAsync(await h.Seed.WorkspaceAsync("TACME"), "C1", unownedProblems: true);
         var first = h.Row(RunnerFailureKinds.Forge);
-        await h.Messages.OpenedAsync(first, RunnerName, default);
+        await h.Messages.OpenedAsync(first, RunnerName, null, default);
         await h.Messages.EndedAsync(first, RunnerName, Now.AddMinutes(5), default);
         await h.Db.SaveChangesAsync();
 
         h.Time.Advance(TimeSpan.FromMinutes(10));
-        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Forge), RunnerName, default);
+        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Forge), RunnerName, null, default);
         await h.Db.SaveChangesAsync();
 
         var rows = await h.RowsAsync();
@@ -168,7 +211,7 @@ public class RunnerFailureMessagesTests
         var row = h.Row(RunnerFailureKinds.Forge);
         row.Why = "gh said: could not resolve host git.client.example for account jdoe";
 
-        await h.Messages.OpenedAsync(row, RunnerName, default);
+        await h.Messages.OpenedAsync(row, RunnerName, null, default);
         await h.Db.SaveChangesAsync();
         var standing = Assert.Single(await h.RowsAsync()).Content;
 
@@ -190,7 +233,7 @@ public class RunnerFailureMessagesTests
         var h = NewHarness(publicBaseUrl: "");
         await h.Seed.RoomAsync(await h.Seed.WorkspaceAsync("TACME"), "C1", unownedProblems: true);
 
-        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Signing), RunnerName, default);
+        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Signing), RunnerName, null, default);
         await h.Db.SaveChangesAsync();
 
         var content = ChatMessageContent.Read(Assert.Single(await h.RowsAsync()).Content)!;
@@ -206,7 +249,7 @@ public class RunnerFailureMessagesTests
         var h = NewHarness();
         await h.Seed.RoomAsync(await h.Seed.WorkspaceAsync("TACME"), "C1", unownedProblems: true);
 
-        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Forge), name, default);
+        await h.Messages.OpenedAsync(h.Row(RunnerFailureKinds.Forge), name, null, default);
         await h.Db.SaveChangesAsync();
 
         var text = SlackChatProvider.Format(ChatMessageContent.Read(Assert.Single(await h.RowsAsync()).Content)!);
@@ -214,6 +257,28 @@ public class RunnerFailureMessagesTests
         Assert.DoesNotContain("<!channel>", title);
         Assert.DoesNotContain("<https://x.test|click>", title);
         Assert.Contains("&lt;", title);
+    }
+
+    [Fact]
+    public async Task ADirectMessage_EscapesTheRunnersNameAndTheToolsWords()
+    {
+        var h = NewHarness();
+        var person = Guid.NewGuid();
+        var actors = new StubActorDirectory();
+        actors.AddPerson("Ada", person);
+        var messages = For(h.Db, h.Time, actors: actors);
+        var workspace = await h.Seed.WorkspaceAsync("TACME");
+        await h.Seed.LinkAsync(workspace, person);
+
+        var row = h.Row(RunnerFailureKinds.Forge);
+        row.Why = "gh said <@U1> and <!channel> and <https://x.test|click>";
+        await messages.OpenedAsync(row, "<!here>", null, default);
+        await h.Db.SaveChangesAsync();
+
+        var text = SlackChatProvider.Format(ChatMessageContent.Read(Assert.Single(await h.RowsAsync()).Content)!);
+        foreach (var live in new[] { "<!here>", "<@U1>", "<!channel>", "<https://x.test|click>" })
+            Assert.DoesNotContain(live, text);
+        Assert.Contains("&lt;@U1&gt;", text);
     }
 
     private static Harness NewHarness(string publicBaseUrl = Origin) => new(publicBaseUrl);

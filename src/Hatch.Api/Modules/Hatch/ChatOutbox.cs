@@ -9,6 +9,9 @@ public enum ChatMessageKind
     Changelog,
     Question,
     Problem,
+
+    /// <summary>A direct message to one person, through a confirmed link. Never a room's.</summary>
+    Direct,
 }
 
 /// <summary>
@@ -46,6 +49,8 @@ public sealed class ChatOutbox(HatchContext db, TimeProvider time)
         ChatMessageKind kind, string subject, int? projectId, ChatMessageContent content, CancellationToken ct,
         int? exceptRoomId = null, int? exceptWorkspaceId = null)
     {
+        if (kind == ChatMessageKind.Direct)
+            throw new ArgumentException("A direct message goes to links: use QueueToLinksAsync.", nameof(kind));
         if (projectId is null && kind != ChatMessageKind.Problem)
             throw new ArgumentException("Only a problem may belong to no project.", nameof(projectId));
 
@@ -73,10 +78,66 @@ public sealed class ChatOutbox(HatchContext db, TimeProvider time)
         int? exceptRoomId = null, int? exceptWorkspaceId = null)
     {
         ArgumentNullException.ThrowIfNull(projectIds);
+        if (kind == ChatMessageKind.Direct)
+            throw new ArgumentException("A direct message goes to links: use QueueToLinksAsync.", nameof(kind));
         if (projectIds.Count == 0)
             throw new ArgumentException("Name at least one project; a message about none is QueueAsync with a null project.", nameof(projectIds));
 
         return QueueCoreAsync(kind, subject, projectIds, content, exceptRoomId, exceptWorkspaceId, ct);
+    }
+
+    /// <summary>
+    /// Queues <paramref name="content"/> as a direct message to each of these
+    /// links, about <paramref name="subject"/>. The links are the caller's choice:
+    /// who is eligible is not decided here. The first call for a subject adds one
+    /// row per link, filed under the link's workspace and no project; every later
+    /// call is a change, as in <see cref="QueueAsync"/>, so a link made afterwards
+    /// never receives an edit as a fresh post.
+    /// </summary>
+    /// <param name="kind">Only <see cref="ChatMessageKind.Direct"/>.</param>
+    /// <param name="linkIds">Read on the first call for the subject only.</param>
+    public async Task QueueToLinksAsync(
+        ChatMessageKind kind, string subject, IReadOnlyCollection<int> linkIds, ChatMessageContent content, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(linkIds);
+        if (kind != ChatMessageKind.Direct)
+            throw new ArgumentException("Only a direct message goes to links.", nameof(kind));
+
+        ValidateSubject(subject, content);
+        var kindName = KindName(kind);
+        var json = content.Write();
+        var now = time.GetUtcNow();
+
+        if (!await KnowsAsync(kind, subject, ct))
+        {
+            var ids = linkIds.Distinct().ToArray();
+            var links = ids.Length == 0
+                ? []
+                : await db.ChatLinks.Where(l => ids.Contains(l.Id)).OrderBy(l => l.Id).ToListAsync(ct);
+
+            db.ChatSubjects.Add(new EfHatchChatSubject { Kind = kindName, Subject = subject, CreatedAt = now });
+
+            foreach (var link in links)
+            {
+                db.ChatMessages.Add(new EfHatchChatMessage
+                {
+                    LinkId = link.Id,
+                    WorkspaceId = link.WorkspaceId,
+                    ProjectId = null,
+                    Kind = kindName,
+                    Subject = subject,
+                    Content = json,
+                    Revision = 1,
+                    SentRevision = 0,
+                    QueuedAt = now,
+                    PendingSince = now,
+                });
+            }
+
+            return;
+        }
+
+        await ChangeAsync(kindName, subject, json, now, ct);
     }
 
     /// <summary>
@@ -86,7 +147,7 @@ public sealed class ChatOutbox(HatchContext db, TimeProvider time)
     /// </summary>
     public async Task<bool> KnowsAsync(ChatMessageKind kind, string subject, CancellationToken ct)
     {
-        var kindName = kind.ToString().ToLowerInvariant();
+        var kindName = KindName(kind);
         return db.ChatSubjects.Local.Any(s => s.Kind == kindName && s.Subject == subject)
             || await db.ChatSubjects.AnyAsync(s => s.Kind == kindName && s.Subject == subject, ct);
     }
@@ -95,12 +156,9 @@ public sealed class ChatOutbox(HatchContext db, TimeProvider time)
         ChatMessageKind kind, string subject, IReadOnlyCollection<int> projectIds, ChatMessageContent content,
         int? exceptRoomId, int? exceptWorkspaceId, CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        ArgumentNullException.ThrowIfNull(content);
-        if (subject.Length > EfHatchChatSubject.MaxSubjectLength)
-            throw new ArgumentException($"A chat subject is at most {EfHatchChatSubject.MaxSubjectLength} characters.", nameof(subject));
+        ValidateSubject(subject, content);
 
-        var kindName = kind.ToString().ToLowerInvariant();
+        var kindName = KindName(kind);
         var json = content.Write();
         var now = time.GetUtcNow();
 
@@ -133,6 +191,22 @@ public sealed class ChatOutbox(HatchContext db, TimeProvider time)
             return;
         }
 
+        await ChangeAsync(kindName, subject, json, now, ct);
+    }
+
+    private static string KindName(ChatMessageKind kind) => kind.ToString().ToLowerInvariant();
+
+    private static void ValidateSubject(string subject, ChatMessageContent content)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subject);
+        ArgumentNullException.ThrowIfNull(content);
+        if (subject.Length > EfHatchChatSubject.MaxSubjectLength)
+            throw new ArgumentException($"A chat subject is at most {EfHatchChatSubject.MaxSubjectLength} characters.", nameof(subject));
+    }
+
+    /// <summary>The change half, shared by every destination: edits each row of this kind and subject.</summary>
+    private async Task ChangeAsync(string kindName, string subject, string json, DateTimeOffset now, CancellationToken ct)
+    {
         // The tracked rows cover what this unit of work has added and the query
         // covers the rest; a row in both is the one instance.
         var rows = await db.ChatMessages.IgnoreQueryFilters()
@@ -143,7 +217,8 @@ public sealed class ChatOutbox(HatchContext db, TimeProvider time)
 
         foreach (var row in rows)
         {
-            if (row.DroppedAt is not null || row.Content == json) continue;
+            // A row being deleted in this unit of work (its link's person is gone) is not edited.
+            if (row.DroppedAt is not null || row.Content == json || db.Entry(row).State == EntityState.Deleted) continue;
 
             var wasSent = row.SentRevision == row.Revision;
             row.Content = json;

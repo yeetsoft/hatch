@@ -152,6 +152,35 @@ public class ChatWorkspaceCascadeDatabaseTests
     }
 
     [SkippableFact]
+    public async Task RemovingAWorkspace_RemovesTheDirectMessagesOfItsLinks()
+    {
+        var connection = await PrepareAsync();
+        await using var db = Open(connection);
+        var chat = NewController(db);
+
+        var acme = (await chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default)).Value!;
+        var link = new EfHatchChatLink
+        {
+            WorkspaceId = acme.Id, PersonId = Guid.NewGuid(), MemberId = "U1", MemberName = "U1", ConversationId = "D1",
+            CreatedAt = DateTimeOffset.UtcNow, ConfirmedAt = DateTimeOffset.UtcNow,
+        };
+        db.ChatLinks.Add(link);
+        await db.SaveChangesAsync();
+        db.ChatMessages.Add(new EfHatchChatMessage
+        {
+            LinkId = link.Id, WorkspaceId = acme.Id, Kind = "direct", Subject = "failure:1", Content = "{}",
+            QueuedAt = DateTimeOffset.UtcNow, PendingSince = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        Assert.IsType<NoContentResult>(await chat.RemoveWorkspace(acme.Id, default));
+
+        await using var read = Open(connection);
+        Assert.Empty(await read.ChatLinks.ToListAsync());
+        Assert.Empty(await read.ChatMessages.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [SkippableFact]
     public async Task RemovingAProject_RemovesItsBindingsAndChosenRows_AndLeavesTheRoomAndWorkspace()
     {
         var connection = await PrepareAsync();
