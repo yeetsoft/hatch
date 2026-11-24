@@ -185,7 +185,7 @@ public class DispatchTests
         emergency.Priority = global::Hatch.Contracts.PriorityLevels.Emergency;
         await h.Db.SaveChangesAsync();
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Equal(
             new[] { emergency, expeditedProjectsNormal, normalProjectsExpedited, pausedProjectsRow }.Select(i => i.Id),
@@ -213,7 +213,7 @@ public class DispatchTests
         await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet");
         var otherIssue = await h.FileAsync("story", "a table-sourced project's own issue", h.Todo, projectId: otherProjectId);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var expected = $"{h.ProjectKey} is repo-sourced but is bound to no repository - bind one on the Projects page";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
@@ -237,7 +237,7 @@ public class DispatchTests
         var inTodo = await h.FileAsync("story", "in todo", h.Todo);
         var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var expected = $"{h.ProjectKey} names no base branch and more than one .hatch/playbooks.yaml trunk exists " +
                        $"for {repo.Canonical} - set the base branch on the Projects page";
@@ -257,7 +257,7 @@ public class DispatchTests
         var inTodo = await h.FileAsync("story", "in todo", h.Todo);
         var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var expected = $"no runner has read .hatch/playbooks.yaml on main of {repo.Remote} yet";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
@@ -276,7 +276,7 @@ public class DispatchTests
         var inTodo = await h.FileAsync("story", "in todo", h.Todo);
         var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var expected = $".hatch/playbooks.yaml is missing on main at {file.Sha}";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
@@ -295,7 +295,7 @@ public class DispatchTests
         var inTodo = await h.FileAsync("story", "in todo", h.Todo);
         var inProgress = await h.FileAsync("story", "in progress", h.InProgress);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var expected = "entry 1: \"from\" is not a column - fix it on the trunk";
         Assert.Equal(expected, RowFor(scan, inTodo).Blocked);
@@ -316,7 +316,7 @@ public class DispatchTests
 
         var issue = await h.FileAsync("story", "in todo", h.Todo);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, issue).Blocked);
     }
@@ -333,7 +333,7 @@ public class DispatchTests
 
         var issue = await h.FileAsync("story", "in progress", h.InProgress);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Equal(
             "no playbook covers \"in progress\" to \"review\" for a story - add one to .hatch/playbooks.yaml on main, or a board-wide one on the Playbooks page",
@@ -359,7 +359,7 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in progress", h.InProgress);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(has));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(has));
 
         var row = RowFor(scan, issue);
         Assert.Equal($"{TagSentence} {required} - this runner advertises {advertised}", row.Blocked);
@@ -378,7 +378,7 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in progress", h.InProgress);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             tags: TagDeclaration.Of(declared.Split(',')));
 
         Assert.Null(RowFor(scan, issue).Blocked);
@@ -393,7 +393,7 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in progress", h.InProgress);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
 
         Assert.Equal($"{TagSentence} a, b and c - this runner advertises none", RowFor(scan, issue).Blocked);
     }
@@ -406,7 +406,7 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in progress", h.InProgress);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
 
         Assert.Null(RowFor(scan, issue).Blocked);
     }
@@ -420,9 +420,9 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in todo", h.Todo);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
         var clear = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["macos", "xcode"]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["macos", "xcode"]));
 
         Assert.Equal(
             $"{TagSentence} macos and xcode - this runner advertises none", RowFor(folded, issue).Blocked);
@@ -438,11 +438,11 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in inbox", h.Inbox);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
         var clear = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["macos", "xcode"]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["macos", "xcode"]));
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
 
         Assert.Equal(
             $"{TagSentence} macos and xcode - this runner advertises none", RowFor(folded, issue).Blocked);
@@ -460,11 +460,11 @@ public class DispatchTests
         await h.TickExpressSkipsAsync(h.Todo);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
         var clear = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["macos", "xcode"]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["macos", "xcode"]));
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
 
         Assert.Equal(
             $"{TagSentence} macos and xcode - this runner advertises none", RowFor(folded, issue).Blocked);
@@ -482,7 +482,7 @@ public class DispatchTests
         var epic = await h.FileAsync("epic", "E", h.Todo, parentId: ambition.Id);
         await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.True(RowFor(scan, epic).Hop);
         Assert.Equal(HopKinds.Epic, RowFor(scan, epic).HopKind);
@@ -498,7 +498,7 @@ public class DispatchTests
         var epic = await h.FileAsync("epic", "E", h.Todo, parentId: ambition.Id);
         await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, epic).HopKind);
         Assert.Equal("its parent epic is not running, so nothing pulls it in", RowFor(scan, epic).Blocked);
@@ -515,11 +515,11 @@ public class DispatchTests
         await h.FileAsync("story", "under E", h.Todo, parentId: epic.Id);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
         var clear = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["macos", "xcode"]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["macos", "xcode"]));
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
 
         Assert.Equal(
             $"{IssueKey.Format(h.ProjectKey, epic.Number)} is worked only by a runner advertising macos and xcode - this runner advertises none",
@@ -538,9 +538,9 @@ public class DispatchTests
         await h.AddPlaybookAsync(h.InProgress, h.Review);
         var issue = await h.FileAsync("story", "in progress", h.InProgress);
 
-        var none = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var none = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
 
         Assert.Null(RowFor(none, issue).Blocked);
         Assert.Null(RowFor(unjudged, issue).Blocked);
@@ -555,7 +555,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Conflicted);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
 
         var row = RowFor(scan, issue);
         Assert.Equal($"{TagSentence} macos and xcode - this runner advertises none", row.Blocked);
@@ -570,7 +570,7 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in review", h.Review);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
 
         Assert.Equal("no runner has checked its branch against the trunk yet", RowFor(scan, issue).Blocked);
     }
@@ -586,7 +586,7 @@ public class DispatchTests
         await h.AddContributionAsync(issue, "https://example.com/o/r/pull/9");
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Conflicted);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
         Assert.Equal(ReviewWork.ContributionHeld, row.Blocked);
         Assert.Equal(BlockedKinds.Person, row.BlockedKind);
@@ -602,7 +602,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(issue, BuildVerdicts.Failed);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
         Assert.Equal(ReviewWork.ContributionHeld, row.Blocked);
         Assert.Equal(BlockedKinds.Person, row.BlockedKind);
@@ -622,7 +622,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(failing, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(failing, BuildVerdicts.Failed);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, conflicted).Blocked);
         Assert.Equal(WorkKinds.Conflicts, RowFor(scan, conflicted).Kind);
@@ -639,9 +639,9 @@ public class DispatchTests
         await h.AddContributionAsync(conflicted, null);
         await h.AddMergeCheckAsync(conflicted, MergeVerdicts.Conflicted);
 
-        var off = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var off = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         await h.RunnersWorkContributionsAsync();
-        var on = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var on = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(off, conflicted).Blocked);
         Assert.Null(RowFor(on, conflicted).Blocked);
@@ -656,7 +656,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
         Assert.Equal("its branch merges cleanly with main and its build passes - nothing for an agent to do; it waits for an owner or approver to approve it", row.Blocked);
         Assert.Equal(BlockedKinds.Other, row.BlockedKind);
@@ -671,7 +671,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
         Assert.Equal(
             "its branch merges cleanly with main and its build passes - nothing for an agent to do; express does not carry it past review, so it waits for an owner or approver to approve it",
@@ -687,7 +687,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
         Assert.Equal("its branch merges cleanly with main and its build passes - nothing for an agent to do", row.Blocked);
     }
@@ -732,7 +732,7 @@ public class DispatchTests
         var h = await NewAsync();
         var (epic, story, task) = await DeadEndShapeAsync(h);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
 
         var key = IssueKey.Format(h.ProjectKey, task.Number);
         var row = RowFor(scan, task);
@@ -755,7 +755,7 @@ public class DispatchTests
         var h = await NewAsync();
         var (_, _, task) = await DeadEndShapeAsync(h);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
 
         Assert.False(row.Deadlocked);
         Assert.Equal(string.Format(DeadEndSentence, IssueKey.Format(h.ProjectKey, task.Number)), row.Blocked);
@@ -769,7 +769,7 @@ public class DispatchTests
         h.Db.BuildChecks.RemoveRange(h.Db.BuildChecks.Where(b => b.IssueId == task.Id));
         await h.Db.SaveChangesAsync();
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
 
         Assert.Equal(
             "its branch merges cleanly with main, but it is pre-approved with no pull request recorded, " +
@@ -847,7 +847,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
         Assert.True(row.WaitsOnApprover);
         Assert.Equal(
@@ -865,7 +865,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
         Assert.False(row.WaitsOnApprover);
         Assert.Equal(PlainSentence, row.Blocked);
@@ -879,7 +879,7 @@ public class DispatchTests
         await h.FileAsync("task", "to do", h.Todo);
         var noChecks = await h.FileAsync("task", "no check yet", h.Review);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.NotEmpty(scan.Rows);
         Assert.All(scan.Rows, r => Assert.False(r.WaitsOnApprover));
@@ -894,7 +894,7 @@ public class DispatchTests
         task.PullRequestUrl = "https://example.com/o/r/pull/2";
         await h.Db.SaveChangesAsync();
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
 
         Assert.Equal(HopKinds.Approve, RowFor(scan, task).HopKind);
         Assert.Null(RowFor(scan, task).Blocked);
@@ -911,7 +911,7 @@ public class DispatchTests
         task.NoCode = "nothing to change";
         await h.Db.SaveChangesAsync();
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
 
         Assert.Equal(HopKinds.Close, RowFor(scan, task).HopKind);
         Assert.Null(RowFor(scan, task).Blocked);
@@ -929,7 +929,7 @@ public class DispatchTests
         task.PreApproval = level;
         await h.Db.SaveChangesAsync();
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true), task);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true), task);
 
         Assert.Equal(PlainSentence + tail, row.Blocked);
         Assert.False(row.Deadlocked);
@@ -947,7 +947,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(story, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(story, BuildVerdicts.Passed);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
 
         Assert.Equal(HopKinds.Close, RowFor(scan, story).HopKind);
         Assert.Null(RowFor(scan, story).Blocked);
@@ -966,7 +966,7 @@ public class DispatchTests
         await h.AddMergeCheckAsync(story, MergeVerdicts.Clean);
         await h.AddBuildCheckAsync(story, BuildVerdicts.Passed);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
 
         Assert.Equal(PlainSentence, row.Blocked);
     }
@@ -980,7 +980,7 @@ public class DispatchTests
         task.PullRequestClosedAt = Now;
         await h.Db.SaveChangesAsync();
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
 
         Assert.Null(RowFor(scan, task).HopKind);
         Assert.Equal(PlainSentence, RowFor(scan, task).Blocked);
@@ -993,7 +993,7 @@ public class DispatchTests
         var h = await NewAsync();
         var (epic, story, task) = await DeadEndShapeAsync(h, mergeColumn: false);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, markDeadlocks: true);
 
         Assert.Equal(PlainSentence, RowFor(scan, task).Blocked);
         Assert.False(RowFor(scan, task).Deadlocked);
@@ -1008,7 +1008,7 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "clean, no build verdict", h.Review);
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
 
         Assert.Equal(
             "its branch merges cleanly with main - nothing for an agent to do; it waits for an owner or approver to approve it",
@@ -1025,7 +1025,7 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in progress", h.InProgress);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.From(["https://example.com/other"], false, false), false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.From(["https://example.com/other"], false, false), false, default,
             tags: TagDeclaration.Of([]));
 
         Assert.Equal(
@@ -1046,10 +1046,10 @@ public class DispatchTests
         await h.DependsAsync(x, p);
 
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, tags: TagDeclaration.Unjudged);
         var judged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, tags: TagDeclaration.Of([]));
 
         foreach (var scan in new[] { unjudged, judged })
@@ -1072,7 +1072,7 @@ public class DispatchTests
         var key = IssueKey.Format(h.ProjectKey, issue.Number);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
 
         var row = RowFor(scan, issue);
         Assert.Equal(
@@ -1092,9 +1092,9 @@ public class DispatchTests
         await h.TickExpressSkipsAsync(h.Todo);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
         var clear = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
 
         Assert.Equal(
             $"{key} in todo is worked only by a runner advertising gpu - this runner advertises none",
@@ -1117,10 +1117,10 @@ public class DispatchTests
         await h.DependsAsync(x, p);
 
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, tags: TagDeclaration.Unjudged);
         var judged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, tags: TagDeclaration.Of([]));
 
         foreach (var scan in new[] { unjudged, judged })
@@ -1154,11 +1154,11 @@ public class DispatchTests
         await OmitAsync(h, issue, "gpu-1", by: "gpu-1");
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
         var other = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
         var unnamed = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Equal($"{key} is not worked by gpu-1 - it recused itself 3 minutes ago (no toolchain)", RowFor(folded, issue).Blocked);
         Assert.Equal(BlockedKinds.Other, RowFor(folded, issue).BlockedKind);
@@ -1179,9 +1179,9 @@ public class DispatchTests
         await OmitAsync(h, epic, "gpu-1", by: "operator");
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
         var other = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
 
         Assert.Equal(
             $"{key} is not worked by gpu-1 - operator omitted it on {epicKey} 3 minutes ago (no toolchain)",
@@ -1201,9 +1201,9 @@ public class DispatchTests
         await OmitAsync(h, issue, "gpu-1", by: "operator", reason: null);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
         var other = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
 
         Assert.Equal($"{key} is not worked by gpu-1 - operator omitted it 3 minutes ago", RowFor(folded, issue).Blocked);
         Assert.False(RowFor(folded, issue).Hop);
@@ -1222,7 +1222,7 @@ public class DispatchTests
         await OmitAsync(h, issue, "gpu-1", by: "operator");
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             tags: TagDeclaration.Of([]), asking: Asking("gpu-1"));
 
         Assert.Equal(
@@ -1244,7 +1244,7 @@ public class DispatchTests
         await OmitAsync(h, c, "gpu-1", by: "operator");
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, asking: Asking("gpu-1"));
 
         foreach (var issue in new[] { p, c, x })
@@ -1272,7 +1272,7 @@ public class DispatchTests
         var key = IssueKey.Format(h.ProjectKey, issue.Number);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             tags: TagDeclaration.Of([], refusesDangerous: true));
 
         var row = RowFor(scan, issue);
@@ -1292,7 +1292,7 @@ public class DispatchTests
         var key = IssueKey.Format(h.ProjectKey, task.Number);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             tags: TagDeclaration.Of([], refusesDangerous: true));
 
         Assert.Equal(
@@ -1311,7 +1311,7 @@ public class DispatchTests
         foreach (var tags in new[] { TagDeclaration.Of([]), TagDeclaration.Unjudged })
         {
             var scan = await h.Dispatch.ScanAsync(
-                0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: tags);
+                new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: tags);
 
             Assert.Null(RowFor(scan, issue).Blocked);
         }
@@ -1326,7 +1326,7 @@ public class DispatchTests
         await FlagAsync(h, issue);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             tags: TagDeclaration.Of([], refusesDangerous: true));
 
         Assert.Null(RowFor(scan, issue).Blocked);
@@ -1343,7 +1343,7 @@ public class DispatchTests
         await h.TickExpressSkipsAsync(h.Todo);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             tags: TagDeclaration.Of(["gpu"], refusesDangerous: true));
 
         var row = RowFor(scan, issue);
@@ -1365,10 +1365,10 @@ public class DispatchTests
         await h.DependsAsync(x, p);
 
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, tags: TagDeclaration.Unjudged);
         var judged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, tags: TagDeclaration.Of([], refusesDangerous: true));
 
         foreach (var scan in new[] { unjudged, judged })
@@ -1441,13 +1441,13 @@ public class DispatchTests
         var key = IssueKey.Format(h.ProjectKey, issue.Number);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
         Assert.Equal(
             $"{key} is worked only by a runner advertising gpu - this runner advertises none",
             RowFor(folded, issue).Blocked);
 
         var clear = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
         Assert.Null(RowFor(clear, issue).Blocked);
     }
 
@@ -1468,7 +1468,7 @@ public class DispatchTests
         var key = IssueKey.Format(h.ProjectKey, issue.Number);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(has));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(has));
 
         Assert.StartsWith($"{key} is worked only by a runner advertising linux, gpu and macos", RowFor(scan, issue).Blocked);
     }
@@ -1485,7 +1485,7 @@ public class DispatchTests
         await h.TagAsync(issue, "macos");
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             tags: TagDeclaration.Of(["linux", "gpu", "macos", "extra"]));
 
         Assert.Null(RowFor(scan, issue).Blocked);
@@ -1502,9 +1502,9 @@ public class DispatchTests
         var key = IssueKey.Format(h.ProjectKey, issue.Number);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
         var clear = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
 
         Assert.Equal(
             $"{key} is worked only by a runner advertising gpu - this runner advertises none",
@@ -1524,9 +1524,9 @@ public class DispatchTests
         await h.TickExpressSkipsAsync(h.Todo);
 
         var folded = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of([]));
         var clear = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Of(["gpu"]));
 
         Assert.Equal(
             $"{key} is worked only by a runner advertising gpu - this runner advertises none",
@@ -1550,10 +1550,10 @@ public class DispatchTests
         await h.DependsAsync(x, p);
 
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, tags: TagDeclaration.Unjudged);
         var judged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, tags: TagDeclaration.Of([]));
 
         foreach (var scan in new[] { unjudged, judged })
@@ -1573,9 +1573,9 @@ public class DispatchTests
         await h.AddPlaybookAsync(h.InProgress, h.Review);
         var issue = await h.FileAsync("story", "in progress", h.InProgress, parentId: epic.Id);
 
-        var none = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var none = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         var unjudged = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, tags: TagDeclaration.Unjudged);
 
         Assert.Null(RowFor(none, issue).Blocked);
         Assert.Null(RowFor(unjudged, issue).Blocked);
@@ -1591,7 +1591,7 @@ public class DispatchTests
         var issue = await h.FileAsync("story", "in todo", h.Todo);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: [h.ProjectKey]);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: [h.ProjectKey]);
 
         Assert.Null(RowFor(scan, issue).Blocked);
     }
@@ -1611,7 +1611,7 @@ public class DispatchTests
             if (project != h.ProjectKey) await h.AddProjectAsync(project);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: bound);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: bound);
 
         var row = RowFor(scan, issue);
         Assert.Equal($"{key} is in project {h.ProjectKey} - this runner is bound to {list}", row.Blocked);
@@ -1626,9 +1626,9 @@ public class DispatchTests
         await h.AddPlaybookAsync(h.Todo, h.InProgress);
         var issue = await h.FileAsync("story", "in todo", h.Todo);
 
-        var none = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var none = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         var empty = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: []);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: []);
 
         Assert.Null(RowFor(none, issue).Blocked);
         Assert.Null(RowFor(empty, issue).Blocked);
@@ -1640,7 +1640,7 @@ public class DispatchTests
         var h = await NewAsync();
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["NOPE"]);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["NOPE"]);
 
         Assert.Contains("NOPE", scan.Failure);
     }
@@ -1659,7 +1659,7 @@ public class DispatchTests
         await h.DependsAsync(x, p);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default,
             markDeadlocks: true, projects: ["FIL"]);
 
         foreach (var issue in new[] { p, c, x })
@@ -1680,7 +1680,7 @@ public class DispatchTests
         var task = await h.FileAsync("task", "t", h.Todo, projectId: filId, parentId: story.Id);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, IssueKey.Format("FIL", epic.Number), null, RepositoryDeclaration.Undeclared, false, default,
+            new ScanCaller("test"), 0, IssueKey.Format("FIL", epic.Number), null, RepositoryDeclaration.Undeclared, false, default,
             projects: [h.ProjectKey]);
 
         Assert.Null(scan.Failure);
@@ -1702,9 +1702,9 @@ public class DispatchTests
         await h.Db.SaveChangesAsync();
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
 
-        var unbound = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var unbound = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         var bound = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["FIL"]);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["FIL"]);
 
         var sentence = RowFor(bound, issue).Blocked;
         Assert.DoesNotContain("bound to", sentence);
@@ -1723,7 +1723,7 @@ public class DispatchTests
         var key = IssueKey.Format(h.ProjectKey, issue.Number);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["FIL"]);
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["FIL"]);
 
         var row = RowFor(scan, issue);
         Assert.Equal($"{key} is in project {h.ProjectKey} - this runner is bound to FIL", row.Blocked);
@@ -1797,7 +1797,7 @@ public class DispatchTests
         await h.Db.SaveChangesAsync();
         await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var row = RowFor(scan, issue);
         Assert.False(row.Hop);
@@ -2580,7 +2580,7 @@ public class DispatchTests
         var honoured = await TaskUnder(ada.Id);
         var passed = await TaskUnder(Guid.NewGuid());
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Equal(HopKinds.Express, RowFor(scan, honoured).HopKind);
         Assert.Null(RowFor(scan, passed).HopKind);
@@ -2613,7 +2613,7 @@ public class DispatchTests
         var (_, honoured) = await ReviewStoryUnderOtherEpicAsync(h, other, ada.Id);
         var (_, passed) = await ReviewStoryUnderOtherEpicAsync(h, other, Guid.NewGuid());
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Equal(HopKinds.Approve, RowFor(scan, honoured).HopKind);
         Assert.Null(RowFor(scan, passed).HopKind);
@@ -2639,7 +2639,7 @@ public class DispatchTests
         var honoured = await Closable(ada.Id);
         var passed = await Closable(null);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Equal(HopKinds.Close, RowFor(scan, honoured).HopKind);
         Assert.Null(RowFor(scan, passed).HopKind);
@@ -2650,7 +2650,7 @@ public class DispatchTests
     /// <summary>A scan as a key whose owner can see only <paramref name="projects"/> would run it.</summary>
     private static Task<Scan> ScanAsAsync(Harness h, params int[] projects) =>
         new Dispatch(ScopeSeed.Request(h.Options, ScopeSeed.Only(projects)), h.Actors, TestClaims.With(), new FakeTimeProvider(Now))
-            .ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+            .ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
     [Fact]
     public async Task ScanAsync_AKeyWhoseOwnerSeesOneProject_IsDispatchedTheLevelOfAHiddenAncestor_AndClosesTheSameHop()
@@ -2666,7 +2666,7 @@ public class DispatchTests
         var story = await h.FileAsync("story", "ready to close", h.Review, parentId: epic.Id);
         await h.FileAsync("task", "the only child", h.Done, parentId: story.Id);
 
-        var whole = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var whole = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         var narrow = await ScanAsAsync(h, h.ProjectId);
 
         Assert.Equal(HopKinds.Close, RowFor(whole, story).HopKind);
@@ -2688,7 +2688,7 @@ public class DispatchTests
         await h.SetLevelAsync(epic, PreApprovalLevels.None, ada.Id, priority: PriorityLevels.Emergency);
         var under = await h.FileAsync("story", "under the emergency", h.Todo, rank: 2048, parentId: epic.Id);
 
-        var whole = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var whole = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         var narrow = await ScanAsAsync(h, h.ProjectId);
 
         Assert.Equal(PriorityLevels.Emergency, RowFor(whole, under).EffectivePriority);
@@ -2720,7 +2720,7 @@ public class DispatchTests
         await h.FileAsync("task", "done", h.Done, parentId: hidden.Id);
         await h.FileAsync("task", "not done, hidden", h.Todo, projectId: other, parentId: hidden.Id);
 
-        var whole = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var whole = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         var narrow = await ScanAsAsync(h, h.ProjectId);
 
         Assert.Equal(HopKinds.Close, RowFor(whole, closable).HopKind);
@@ -2747,7 +2747,7 @@ public class DispatchTests
         var (epic, child) = await ReviewStoryUnderOtherEpicAsync(h, other, stranger.Id);
         var epicKey = IssueKey.Format("OTH", epic.Number);
 
-        var first = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+        var first = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
 
         Assert.False(first.Hop);
         Assert.Null(first.HopKind);
@@ -2758,7 +2758,7 @@ public class DispatchTests
         await h.MemberAsync(h.ProjectId, approver.Id, ProjectMemberRole.Approver);
         await h.SetLevelAsync(child, PreApprovalLevels.PreApproved, approver.Id);
 
-        var second = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+        var second = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
 
         Assert.Equal(HopKinds.Approve, second.HopKind);
         Assert.Null(second.Blocked);
@@ -2793,7 +2793,7 @@ public class DispatchTests
         await h.ExpressAsync(epic);
         var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, story).HopKind);
         Assert.Equal(
@@ -2812,7 +2812,7 @@ public class DispatchTests
         var epic = await h.FileAsync("epic", "E", h.InProgress, projectId: other);
         var story = await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, story).HopKind);
         Assert.Equal(PullSentence(IssueKey.Format("OTH", epic.Number)), RowFor(scan, story).Blocked);
@@ -2831,7 +2831,7 @@ public class DispatchTests
         await h.FileAsync("story", "under sub", h.Todo, parentId: sub.Id);
         var task = await h.FileAsync("task", "T", h.Todo, parentId: running.Id);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, sub).HopKind);
         Assert.Equal(PullSentence(IssueKey.Format("OTH", running.Number)), RowFor(scan, sub).Blocked);
@@ -2919,7 +2919,7 @@ public class DispatchTests
         var starter = await StarterAsync(h, kind, other, third);
         var (parent, child) = await RunningAcrossTheLineAsync(h, hop, other, starter);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
 
         Assert.False(row.Hop);
         Assert.Null(row.HopKind);
@@ -2938,7 +2938,7 @@ public class DispatchTests
         var ada = h.Actors.AddPerson("Ada");
         var (_, child) = await RunningAcrossTheLineAsync(h, hop, other, ada.Id);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
 
         Assert.True(row.Hop);
         Assert.Equal(KindOf(hop), row.HopKind);
@@ -2954,7 +2954,7 @@ public class DispatchTests
         var (parent, child) = await RunningAcrossTheLineAsync(h, Hop.Parent, other, ada.Id);
 
         async Task<ScanRow> ScanAsync() =>
-            RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+            RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
 
         Assert.Equal(HopKinds.Parent, (await ScanAsync()).HopKind);
 
@@ -3001,7 +3001,7 @@ public class DispatchTests
         var epic = await h.FileAsync("epic", "waiting", h.Todo, projectId: other);
         var task = await h.FileAsync("task", "T", h.Todo, parentId: epic.Id);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), task);
 
         Assert.Null(row.HopKind);
         Assert.Equal(ParentNotStartedSentence, row.Blocked);
@@ -3021,7 +3021,7 @@ public class DispatchTests
         var starter = roleless ? h.Actors.AddPerson("Ada").Id : (Guid?)null;
         var (_, child) = await RunningAcrossTheLineAsync(h, hop, h.ProjectId, starter);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), child);
 
         Assert.Equal(KindOf(hop), row.HopKind);
         Assert.Null(row.Blocked);
@@ -3125,7 +3125,7 @@ public class DispatchTests
         Assert.Equal(everyone.EpicFold(epic.Id, statuses), scoped.EpicFold(epic.Id, statuses));
         Assert.Single(scoped.EpicOpenChildren(epic.Id, statuses));
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         Assert.NotEqual(HopKinds.Close, RowFor(scan, epic).HopKind);
     }
 
@@ -3139,7 +3139,7 @@ public class DispatchTests
         var story = await h.FileAsync("story", "S", h.InProgress, parentId: epic.Id);
         await h.AddPlaybookAsync(h.InProgress, h.Review, projectId: h.ProjectId);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var row = RowFor(scan, story);
         Assert.Null(row.Blocked);
@@ -3176,7 +3176,7 @@ public class DispatchTests
     {
         var (h, ambition) = await PassAsync(limit, openEpics, closedEpics, deferredEpics);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var row = RowFor(scan, ambition);
         Assert.Null(row.Blocked);
@@ -3195,7 +3195,7 @@ public class DispatchTests
     {
         var (h, ambition) = await PassAsync(limit, openEpics, deferredEpics: deferredEpics);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         var row = RowFor(scan, ambition);
         Assert.Equal(sentence, row.Blocked);
@@ -3415,7 +3415,7 @@ public class DispatchTests
     private static string MovedTo(int toId) => $$"""{"to":"x","from":"y","toId":{{toId}},"fromId":1}""";
 
     private static async Task<ScanRow> PassRowForAsync(Harness h, EfHatchIssue ambition) =>
-        RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), ambition);
+        RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), ambition);
 
     [Theory]
     [InlineData(0)]
@@ -3574,7 +3574,7 @@ public class DispatchTests
         var epic = await h.FileAsync("epic", "E", h.InProgress);
         await h.FileAsync("story", "S", h.Todo, parentId: epic.Id);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Equal("its only child is not done - an epic is verified once its stories are", RowFor(scan, epic).Blocked);
         Assert.NotEqual(RowFor(scan, epic).From.Id, RowFor(scan, epic).To?.Id);
@@ -3805,7 +3805,7 @@ public class DispatchTests
         var otherEpic = await h.FileAsync("epic", "F", h.Todo, parentId: other.Id);
         await QuestionAsync(h, otherEpic, QuestionLevels.BuildName);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.Null(RowFor(scan, ambition).Answering);
         Assert.Equal(WorkKinds.Answer, RowFor(scan, other).Kind);
@@ -3833,7 +3833,7 @@ public class DispatchTests
         await h.AddPlaybookAsync(h.Todo, h.InProgress);
         await QuestionAsync(h, ambition, QuestionLevels.HoldName);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.DoesNotContain("unanswered question", RowFor(scan, epic).Blocked ?? "");
         Assert.DoesNotContain("unanswered question", RowFor(scan, story).Blocked ?? "");
@@ -3885,7 +3885,7 @@ public class DispatchTests
         await SpendBudgetAsync(h, ambition);
         await QuestionAsync(h, ambition, QuestionLevels.HoldName);
 
-        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var scan = await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
 
         Assert.DoesNotContain("unanswered question", RowFor(scan, epic).Blocked ?? "");
         Assert.DoesNotContain("unanswered question", RowFor(scan, story).Blocked ?? "");
@@ -3898,7 +3898,7 @@ public class DispatchTests
         await h.AddPlaybookAsync(h.Todo, h.InProgress);
         await QuestionAsync(h, epic, QuestionLevels.HoldName);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
 
         Assert.Equal(
             $"1 unanswered question on {IssueKey.Format(h.ProjectKey, epic.Number)} - it is waiting on a person, not on an agent",
@@ -3914,7 +3914,7 @@ public class DispatchTests
         await FlagAsync(h, story);
         await QuestionAsync(h, ambition, QuestionLevels.HoldName);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
 
         Assert.Equal(
             $"1 unanswered question on {IssueKey.Format(h.ProjectKey, ambition.Number)}, and it is flagged dangerous (load-tests the API) - a person answers before any of it moves",
@@ -3936,7 +3936,7 @@ public class DispatchTests
         await h.AddBuildCheckAsync(story, BuildVerdicts.Passed);
         await QuestionAsync(h, ambition, QuestionLevels.BuildName);
 
-        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
+        var row = RowFor(await h.Dispatch.ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default), story);
 
         Assert.Equal(HopKinds.Approve, row.HopKind);
         Assert.Null(row.Blocked);
@@ -4902,7 +4902,7 @@ public class DispatchTests
         var issue = await h.FileAsync("task", "nobody to leave it for", h.Todo);
 
         var scan = await h.Dispatch.ScanAsync(
-            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: new RunnerAsking("someone", Now));
+            new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: new RunnerAsking("someone", Now));
 
         Assert.Null(RowFor(scan, issue).Blocked);
     }

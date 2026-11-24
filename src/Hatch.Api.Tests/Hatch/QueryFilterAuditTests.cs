@@ -133,6 +133,11 @@ public class QueryFilterAuditTests
             + "against it. A finding is the install's and not the writer's, and a job's context reads every "
             + "project anyway, so a later caller must build the same message a job would. What leaves is a key "
             + "that is only ever shown in a message to a room, never returned to the caller."),
+        ["TrunkBuildMessages.QueueAsync"] = (1,
+            "The ids of the projects that bind a repository, read so a failing trunk reaches every room that "
+            + "carries any of them. A repository's trunk is nobody's issue and the rooms are the install's, so a "
+            + "scoped writer must reach the same rooms anyone else would - the rule the trunk row's own visibility "
+            + "follows. What leaves is a list of project ids, handed to the queue and never returned to the caller."),
         ["GooseJob.SweepAsync"] = (1,
             "The goose's own retention prune of closed findings, on a timer with no request and no caller scope "
             + "at all - the same reason the run pruning beside it reads every project. Nothing leaves the "
