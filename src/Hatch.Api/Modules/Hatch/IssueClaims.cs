@@ -177,7 +177,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// are two whole expressions rather than one negating the other - each
     /// comment below names the exact comparison <see cref="Takeable"/> flips.
     /// </summary>
-    private Expression<Func<EfHatchIssue, bool>> Live(DateTimeOffset now)
+    internal Expression<Func<EfHatchIssue, bool>> Live(DateTimeOffset now)
     {
         var cutoff = Cutoff(now);
         var globalCutoff = QuietCutoff(now);
@@ -275,40 +275,38 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// </remarks>
     public async Task<ClaimLineage> LineageAsync(HatchContext db, IActorDirectory actors, DateTimeOffset now, CancellationToken ct, PriorityTree? priorities = null)
     {
-        var tree = await db.Issues.AsNoTracking()
-            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Select(i => new { i.Id, i.ParentId, ProjectKey = i.Project!.Key, i.Number })
-            .ToListAsync(ct);
+        priorities ??= await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
-        var live = await db.Issues.AsNoTracking()
-            .Where(Live(now))
-            .Select(i => new
-            {
-                i.Id,
-                Claim = new ClaimSnapshot(
-                    i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
-            })
-            .ToListAsync(ct);
+        // Off the house-wide tree rather than a scoped read of Issues, with the
+        // caller's own scope applied here instead: an id outside it is left out
+        // of parents and keys exactly as the old scoped query left it out of
+        // its own result, so a hidden ancestor still stops a climb and a hidden
+        // descendant is never named. The live set comes the same way, by
+        // IsLive against the claim the tree already carries - no second read.
+        var parents = new Dictionary<long, long?>();
+        var keys = new Dictionary<long, string>();
+        var live = new Dictionary<long, ClaimSnapshot>();
 
-        var parents = new Dictionary<long, long?>(tree.Count);
-        var keys = new Dictionary<long, string>(tree.Count);
-        var children = new Dictionary<long, List<long>>();
-
-        foreach (var row in tree)
+        foreach (var id in priorities.OrderedIds)
         {
-            parents[row.Id] = row.ParentId;
-            keys[row.Id] = IssueKey.Format(row.ProjectKey, row.Number);
+            if (!priorities.TryGet(id, out var row) || !db.CanSeeProject(priorities.ProjectOf(id))) continue;
+
+            parents[id] = row.ParentId;
+            keys[id] = row.Key;
+
+            if (priorities.Claim(id) is { } claim && IsLive(claim, now)) live[id] = claim;
         }
 
-        foreach (var row in tree)
+        var children = new Dictionary<long, List<long>>();
+        foreach (var id in priorities.OrderedIds)
         {
-            // A parent id pointing at nothing is a root, as it is in Rollup.
-            if (row.ParentId is not { } parent || !parents.ContainsKey(parent)) continue;
+            // A parent id pointing at nothing, or outside the scope above, is
+            // a root, as it is in Rollup.
+            if (!parents.TryGetValue(id, out var parentId)) continue;
+            if (parentId is not { } parent || !parents.ContainsKey(parent)) continue;
 
             if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
-            siblings.Add(row.Id);
+            siblings.Add(id);
         }
 
         // Which tasks share a parent's branch, and which parent: two of them
@@ -316,13 +314,10 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         // holds a claim at all - a lineage with nobody in it never asks.
         var shared = new Dictionary<long, long>();
         if (live.Count > 0)
-        {
-            priorities ??= await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
             foreach (var id in keys.Keys)
                 if (priorities.SharedStoryOf(id) is { } story) shared[id] = story;
-        }
 
-        return new ClaimLineage(this, now, parents, keys, children, live.ToDictionary(r => r.Id, r => r.Claim), shared);
+        return new ClaimLineage(this, now, parents, keys, children, live, shared);
     }
 
     /// <summary>

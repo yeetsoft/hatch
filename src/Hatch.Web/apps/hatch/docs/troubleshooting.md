@@ -625,7 +625,7 @@ and a meter for anything that reads numbers.
   docker compose logs api | grep "Dispatch reads on"
   ```
 
-  For example: *Dispatch reads on api/work/next: 1 scans, 2 tree builds, 30
+  For example: *Dispatch reads on api/work/next: 1 scans, 1 tree builds, 18
   statements, 33 ms in scans, 49 ms in all, by caller next=1*.
 
 - **Read the fields.**

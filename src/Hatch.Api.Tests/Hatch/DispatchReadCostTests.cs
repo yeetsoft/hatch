@@ -67,59 +67,62 @@ public class DispatchReadCostTests
     // Every statement of the call counts, the scans of peers included. A failure
     // prints the measured table in this shape, ready to paste.
     //
-    // One scan of the board is 32 statements, here and at either size: it is what
+    // One scan of the board is 18 statements, here and at either size: it is what
     // each peer adds to next and to the takers read, and half of what each adds to
     // attention. The rest of every number is what the route does with the scan.
     //
-    // It was 30 before HA-2795. The candidates were one statement that joined each
-    // issue to its project, its repositories and its contribution, and carried every
-    // description with it. They are now three: the issues without their description
-    // or search vector, the projects they name with their repositories, and the
-    // contributions. Two more statements a scan, and no description read - this
-    // seed sets no description and no brief limit, so the scan never loads one.
+    // It was 32 before HA-2796. ScanCoreAsync read Issues five times over for the
+    // tree, the claim lineage, the dependency gate, the family gate and the WIP
+    // section, and Statuses twice over - once for itself and once inside each of
+    // the two priority trees it built. One PriorityTree now carries every one of
+    // those reads, kept in (Rank, Id) order with the nine claim columns and each
+    // epic's own WIP limit riding along, and its own Statuses read is the only
+    // one taken - so IssueClaims.LineageAsync, FamilyGate.ForAsync and
+    // Wip.LoadAsync each walk the one tree instead of reading Issues or Statuses
+    // again. Fourteen statements fewer a scan: the four extra Issues reads, the
+    // extra Statuses read, ProjectMembers, PersonScopes and PersonScopeProjects
+    // (each read once per tree build, now built once), the second Playbooks read
+    // Wip's own tree build used to make, and the key list, now read once a
+    // request rather than once a helper that asks for it.
 
     private static readonly Dictionary<(string Read, int Board, int Fleet), int> Pinned = new()
     {
-        // next: its own scan (32), then resolving the one row it returns - the brief,
-        // the row's notes and questions, its ancestors, its playbook (51), and one
-        // statement more than before HA-2795: the scan's rows carry no description,
-        // so the one issue it answers with is read for its own. A runner that is not
+        // next: its own scan (18), then resolving the one row it returns - the brief,
+        // the row's notes and questions, its ancestors, its playbook, and the one
+        // issue it answers with, read for its own description. A runner that is not
         // preferred asks each preferred peer whether it could take a row before
         // keeping it, and the row picked here is one no peer can take, so every peer
-        // is scanned, once each: 32 more for each.
-        [(Next, 100, 1)] = 84,
-        [(Next, 100, 4)] = 180,
-        [(Next, 1000, 1)] = 84,
-        [(Next, 1000, 4)] = 180,
+        // is scanned, once each: 18 more for each.
+        [(Next, 100, 1)] = 70,
+        [(Next, 100, 4)] = 124,
+        [(Next, 1000, 1)] = 70,
+        [(Next, 1000, 4)] = 124,
 
-        // queue: its own scan (32), then the projection of every row it returns -
-        // issues, comments, claims, the merge-train notes (19), and one statement
-        // more than before HA-2795: with the default descriptions=true the rows'
-        // descriptions are read together, once, for the answer. descriptions=false
-        // would make it 51. No runner is named, so no peer is asked and the fleet
-        // does not show.
-        [(Queue, 100, 1)] = 52,
-        [(Queue, 100, 4)] = 52,
-        [(Queue, 1000, 1)] = 52,
-        [(Queue, 1000, 4)] = 52,
+        // queue: its own scan (18), then the projection of every row it returns -
+        // issues, comments, claims, the merge-train notes, and (descriptions=true,
+        // the default) every row's description, read together once. No runner is
+        // named, so no peer is asked and the fleet does not show.
+        [(Queue, 100, 1)] = 38,
+        [(Queue, 100, 4)] = 38,
+        [(Queue, 1000, 1)] = 38,
+        [(Queue, 1000, 4)] = 38,
 
-        // queue?takers=true: the queue (52), the unnarrowed scan of the whole board
-        // (32), and one scan for every live runner (32 each), plus three statements
+        // queue?takers=true: the queue (38), the unnarrowed scan of the whole board
+        // (18), and one scan for every live runner (18 each), plus three statements
         // to read the fleet. That is 2 + runners scans, as the proof above counts.
-        [(Takers, 100, 1)] = 119,
-        [(Takers, 100, 4)] = 215,
-        [(Takers, 1000, 1)] = 119,
-        [(Takers, 1000, 4)] = 215,
+        [(Takers, 100, 1)] = 77,
+        [(Takers, 100, 4)] = 131,
+        [(Takers, 1000, 1)] = 77,
+        [(Takers, 1000, 4)] = 131,
 
         // attention: six scans with one runner (deadlocks, the project line, runner
-        // capacity, who is waiting on a runner), and two more, 64 statements, for
-        // every further one. Two statements a scan more than before HA-2795, so 12
-        // more with one runner and 24 more with four. The rest is what the route
-        // reads besides scans. It also grows with the board: see GrowsWithBoardSize.
-        [(Attention, 100, 1)] = 243,
-        [(Attention, 100, 4)] = 435,
-        [(Attention, 1000, 1)] = 358,
-        [(Attention, 1000, 4)] = 550,
+        // capacity, who is waiting on a runner), and two more, 36 statements, for
+        // every further one. The rest is what the route reads besides scans. It
+        // also grows with the board: see GrowsWithBoardSize.
+        [(Attention, 100, 1)] = 158,
+        [(Attention, 100, 4)] = 266,
+        [(Attention, 1000, 1)] = 273,
+        [(Attention, 1000, 4)] = 381,
     };
 
     // ---- The shape ----
@@ -242,6 +245,63 @@ public class DispatchReadCostTests
 
         if (failures.Count > 0)
             Assert.Fail(string.Join(Environment.NewLine, failures) + Environment.NewLine + Environment.NewLine + Table(calls));
+    }
+
+    // ---- One scan, one load ----
+
+    /// <summary>Tables a scan may read more than once: a repo-sourced project's own playbook file and dependency file, once per project it meets - never Issues, which this test caps on its own.</summary>
+    private static readonly string[] UnboundedPerProject = ["PlaybookFiles", "DependencyFiles"];
+
+    /// <summary>
+    /// HA-2796's own claim, measured directly on <see cref="Dispatch.ScanAsync"/>
+    /// rather than through a route: with no ancestor key, one scan reads
+    /// <c>Issues</c> at most twice and every other table at most once, named
+    /// exceptions aside. Run twice - once answering for nobody, and once naming a
+    /// runner with <c>foldLetGo: false</c>, the shape every peer's own scan takes -
+    /// since the two read different helpers and both have to hold.
+    /// </summary>
+    [SkippableFact]
+    public async Task OneScan_ReadsIssuesAtMostTwice_AndEveryOtherTableAtMostOnce()
+    {
+        Skip.IfNot(
+            HatchDatabase.Available,
+            "HATCH_TEST_DATABASE_URL is unset - the counts come from a real Postgres. Run `make test-api-db`, " +
+            "or point the variable at a scratch database that may be dropped.");
+
+        var (connectionString, _) = await ReadCostSeed.SeedAsync(
+            ReadCostSeed.Small, Now, Boards[0], async (db, columns, issues) => await SeedDispatchAsync(db, columns, issues));
+        var keyIds = await SetFleetAsync(connectionString, 1);
+
+        await AssertOneScanAsync(connectionString, keyIds, asking: null, foldLetGo: true);
+        await AssertOneScanAsync(connectionString, keyIds, asking: RunnerName(0), foldLetGo: false);
+    }
+
+    private static async Task AssertOneScanAsync(string connectionString, Dictionary<string, Guid> keyIds, string? asking, bool foldLetGo)
+    {
+        var counter = new ReadCounter();
+        await using var db = new HatchContext(counter.Options(connectionString, StatementCounter.Instance));
+        var time = new FakeTimeProvider(Now);
+        var h = Harness.On(db, time, keyIds);
+
+        counter.Reset();
+        using var scope = ScanTally.Begin("one-scan");
+        await h.Dispatch.ScanAsync(
+            ScanCaller.Next, 0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            asking: asking is null ? null : new RunnerAsking(asking, Now.AddMinutes(-10)), foldLetGo: foldLetGo);
+
+        Assert.True(scope.Tally.TreeBuilds == 1, $"one scan built {scope.Tally.TreeBuilds} priority trees, not one");
+
+        var byTable = counter.Statements.GroupBy(s => s.Table).ToDictionary(g => g.Key, g => g.Count());
+        string Detail() => string.Join(", ", byTable.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => $"{kv.Key} x{kv.Value}"));
+
+        var issues = byTable.GetValueOrDefault("Issues");
+        Assert.True(issues <= 2, $"Issues was read {issues} times in one scan (asking: {asking ?? "nobody"}) - read by table: {Detail()}");
+
+        foreach (var (table, count) in byTable)
+        {
+            if (table == "Issues" || UnboundedPerProject.Contains(table)) continue;
+            Assert.True(count <= 1, $"{table} was read {count} times in one scan (asking: {asking ?? "nobody"}) - read by table: {Detail()}");
+        }
     }
 
     // ---- One call ----
@@ -479,6 +539,7 @@ public class DispatchReadCostTests
     {
         public required WorkController Work { get; init; }
         public required AttentionController Attention { get; init; }
+        public required Dispatch Dispatch { get; init; }
 
         public static Harness On(HatchContext db, FakeTimeProvider time, Dictionary<string, Guid> keyIds)
         {
@@ -519,6 +580,7 @@ public class DispatchReadCostTests
                     new ChangelogMessages(new ChatOutbox(db, time), new ChatLinks(hatchOptions), db)),
                 Attention = new AttentionController(
                     db, actors, runners, time, dispatch, backup, keys, new GooseWatch(time), hatchOptions, caller, sessions, authOptions),
+                Dispatch = dispatch,
             };
         }
     }
