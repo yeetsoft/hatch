@@ -10,6 +10,10 @@ internal sealed class CapturedLogs : ILoggerProvider
 
     public IReadOnlyCollection<string> Messages => [.. lines.Select(l => l.Message)];
 
+    /// <summary>The messages written at exactly this level.</summary>
+    public IReadOnlyCollection<string> AtLevel(LogLevel level) =>
+        [.. lines.Where(l => l.Level == level).Select(l => l.Message)];
+
     public IReadOnlyCollection<string> AtErrorOrAbove =>
         [.. lines.Where(l => l.Level >= LogLevel.Error).Select(l => $"[{l.Level}] {l.Category}: {l.Message}")];
 

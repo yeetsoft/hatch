@@ -6153,6 +6153,37 @@ public class WorkControllerTests
         Assert.Equal(b, entry.Untaken!.Single().Runner);
     }
 
+    /// <summary>
+    /// HA-2792: what a takers queue costs, counted by who asked. The meter is
+    /// the way a later change that removes a scan proves it did.
+    /// </summary>
+    [Fact]
+    public async Task Queue_WithTakersAndTwoLiveRunners_CountsFourScansAllNamedQueue()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "one clear row", h.InProgress);
+        await AddLoopRunnerAsync(h, RunnerName());
+        await AddLoopRunnerAsync(h, RunnerName());
+        h.Caller.Key = null;
+
+        using var probe = new ScanMeterProbe();
+        await h.Work.GetQueue(0, null, default, takers: true);
+
+        // Four, each by the queue and by nobody else:
+        //   1  WorkController.GetQueue's own scan, the rows it returns.
+        //   2  Dispatch.TakersWithRowsAsync's undeclared scan of the whole board.
+        //   3-4  Dispatch.PeerRowsAsync, one scan per live runner, so two.
+        Assert.Equal(new Dictionary<string, long> { ["queue"] = 4 }, probe.Scans.ToDictionary(p => p.Key, p => p.Value));
+        Assert.Equal(4, probe.Tally.Scans);
+        Assert.Equal(new Dictionary<string, int> { ["queue"] = 4 }, probe.Tally.ByCaller.ToDictionary(p => p.Key, p => p.Value));
+
+        // Trees built inside those scans are tagged queue. The controller builds
+        // one of its own outside any scan, so it carries the route - here the
+        // probe's stand-in, "test".
+        Assert.True(probe.TreeBuilds["queue"] > 0);
+        Assert.Equal(new[] { "queue", "test" }, probe.TreeBuilds.Keys.Order());
+    }
+
     [Fact]
     public async Task Next_ACallWithNoKey_AnswersForATagRequiringProject()
     {
@@ -12733,7 +12764,7 @@ public class WorkControllerTests
     private static async Task<ScanRow> ScanRowAsync(Harness h, EfHatchIssue issue)
     {
         var scan = await new Dispatch(h.Db, h.Actors, TestClaims.With(), h.Time)
-            .ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+            .ScanAsync(new ScanCaller("test"), 0, null, null, RepositoryDeclaration.Undeclared, false, default);
         return scan.Rows.Single(r => r.Issue.Id == issue.Id);
     }
 

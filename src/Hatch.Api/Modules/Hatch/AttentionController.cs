@@ -81,7 +81,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // The queue's own verdict, unnarrowed, so the scan runs the fixpoint over
         // its own rows and this list and the queue's marked rows cannot disagree.
         // Whatever the board's shape: a ring needs no review column to be read.
-        var deadlocked = (await dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct, markDeadlocks: true))
+        var deadlocked = (await dispatch.ScanAsync(ScanCaller.Attention, 0, null, null, RepositoryDeclaration.Undeclared, false, ct, markDeadlocks: true))
             .Rows
             .Where(r => r.Deadlocked)
             .Select(r => new DeadlockedDto(IssueKey.Format(r.Issue.Project!.Key, r.Issue.Number), r.Issue.Title, r.Issue.Type, r.Blocked!))
@@ -90,13 +90,13 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // The moves every live runner's own declaration folds on a model or a
         // development dependency, and nothing else - whatever the board's shape.
         // The controller holds Runners, so the cutoff comes from here.
-        var waitingOnARunner = await dispatch.WaitingOnARunnerAsync(0, runners.Cutoff(time.GetUtcNow()), ct);
+        var waitingOnARunner = await dispatch.WaitingOnARunnerAsync(ScanCaller.Attention, 0, runners.Cutoff(time.GetUtcNow()), ct);
 
         // The issues held only because a level or pull from another project is
         // not honoured, read for this reader: an ancestor they cannot see is
         // never named. Whatever the board's shape, as the list above is.
         var reader = tree.WithVisible(await PriorityTree.VisibleIdsAsync(db, ct));
-        var heldAtProjectLine = (await dispatch.HeldAtProjectLineAsync(ct))
+        var heldAtProjectLine = (await dispatch.HeldAtProjectLineAsync(ScanCaller.Attention, ct))
             .Select(h =>
             {
                 var hide = reader.Disclose(h.Row.Issue.Id).Key(DisclosedValues.PreApprovalPassedOver, h.Line.FromKey) is null;
@@ -115,7 +115,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         var goose = await GooseAsync(ct);
 
         // The projects whose clear implementation steps one live runner, or none, can take.
-        var runnerCapacity = await dispatch.RunnerCapacityAsync(0, runners.Cutoff(time.GetUtcNow()), ct);
+        var runnerCapacity = await dispatch.RunnerCapacityAsync(ScanCaller.Attention, 0, runners.Cutoff(time.GetUtcNow()), ct);
 
         // Every issue a person held or the board marked stalled, in board order,
         // whatever the board's shape - the fold is the queue's own, so this list

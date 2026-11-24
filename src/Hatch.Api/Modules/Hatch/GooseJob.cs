@@ -44,7 +44,7 @@ public class GooseJob(
     {
         try
         {
-            await SweepAsync(ct);
+            await SweepCountedAsync(ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -52,6 +52,24 @@ public class GooseJob(
         catch (Exception e)
         {
             logger.LogWarning(e, "The goose's sweep failed - the next one tries again");
+        }
+    }
+
+    /// <summary>
+    /// A sweep is a request with no route: its scans are counted the same way
+    /// and written through the same line. Begun before the lock is taken, so a
+    /// sweep that finds the lock held scans nothing and writes nothing.
+    /// </summary>
+    private async Task SweepCountedAsync(CancellationToken ct)
+    {
+        using var tally = ScanTally.Begin("goose");
+        try
+        {
+            await SweepAsync(ct);
+        }
+        finally
+        {
+            tally.Tally.Log(logger);
         }
     }
 

@@ -284,6 +284,46 @@ public class GooseJobTests
         await job.RunAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task RunAsync_ASweepThatRanAScan_WritesOneDispatchLineNamingTheGoose()
+    {
+        var h = NewHarness();
+        var logs = new CapturedLogs();
+        var job = new GooseJob(
+            h.Db, [new ScanningCheck()], h.Lock, Options.Create(new HatchOptions()), h.Time, logs.CreateLogger("goose").AsLogger<GooseJob>());
+
+        await job.RunAsync(CancellationToken.None);
+
+        var line = Assert.Single(logs.AtLevel(Microsoft.Extensions.Logging.LogLevel.Information));
+        Assert.Contains("Dispatch reads on goose: 1 scans, 0 tree builds,", line);
+        Assert.Contains("by caller goose=1", line);
+    }
+
+    [Fact]
+    public async Task RunAsync_ASweepThatScannedNothing_WritesNoDispatchLine()
+    {
+        var h = NewHarness();
+        var logs = new CapturedLogs();
+        var job = new GooseJob(
+            h.Db, [new StubCheck("quiet", h.Time)], h.Lock, Options.Create(new HatchOptions()), h.Time, logs.CreateLogger("goose").AsLogger<GooseJob>());
+
+        await job.RunAsync(CancellationToken.None);
+
+        Assert.Empty(logs.AtLevel(Microsoft.Extensions.Logging.LogLevel.Information));
+    }
+
+    /// <summary>A check standing in for ReadyWork: it runs inside the sweep's tally and records one scan.</summary>
+    private sealed class ScanningCheck : IGooseCheck
+    {
+        public string Name => "scanning";
+
+        public Task<GooseObservation> RunAsync(CancellationToken ct)
+        {
+            ScanTally.Current!.RecordScan(ScanCaller.Goose, outermost: true, elapsedTicks: 0);
+            return Task.FromResult(new GooseObservation("looked", "concluded"));
+        }
+    }
+
     private static EfHatchGooseRun OldRun(DateTimeOffset last) => new()
     {
         FirstRanAt = last,
