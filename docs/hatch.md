@@ -5451,13 +5451,16 @@ unpriced count beside its total.
 ### The two reads behind it
 
 ```
-GET /api/work-log/sessions?from=&to=&ancestorKey=&sort=&limit=&outcome=
+GET /api/work-log/sessions?from=&to=&ancestorKey=&sort=&limit=&outcome=&top=
 GET /api/work-log/history?from=&to=&ancestorKey=&bucket=&offsetMinutes=&outcome=
 GET /api/work-log/by-playbook?from=&to=&ancestorKey=&projectId=&outcome=
 ```
 
 The first two are what the page draws; the third is [what each playbook
-costs](#what-each-playbook-costs).
+costs](#what-each-playbook-costs). The page asks `sessions` once: the table at
+the URL's sort comes back in `sessions`, and `top=5` adds the five heaviest by
+tokens in `top`, whatever the sort is, so the range is walked and summed once
+and the top five is never ranked from the capped table.
 
 All three take the same range and the same `ancestorKey`, and **`ancestorKey`
 means the same thing on all three**: the issue itself *and* everything

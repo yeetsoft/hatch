@@ -3369,6 +3369,9 @@ export interface WorkLogSessions {
   firstSessionAt: string | null;
   lastSessionAt: string | null;
   sessions: WorkLogSession[];
+  /** The heaviest sessions by total tokens, descending, whatever `sort` is -
+      the same filter as `sessions`. Null unless the request asked for `top`. */
+  top: WorkLogSession[] | null;
 }
 
 /** One equal slice of the work log's time axis, and what ended inside it.
