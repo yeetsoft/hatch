@@ -111,14 +111,14 @@ public class ReportReadCostTests
         // The totals, the page, the paths read and the two bounds: at most
         // twenty rows of page, one of totals, one per distinct path, two bounds.
         ["GET /api/work-log/sessions"] = (
-            new(5, 0, 24, 24, "Issues=1000;Projects=1;WorkLogEntries=3000"),
-            new(5, 0, 24, 24, "Issues=1000;Projects=1;WorkLogEntries=9000")),
+            new(5, 0, 24, 24, "Issues=1000;Projects=1;WorkLogEntries=2500"),
+            new(5, 0, 24, 24, "Issues=1000;Projects=1;WorkLogEntries=7500")),
         // The same, and the heaviest five: one more read, five more rows, and
         // still the totals, the paths and the bounds once - what the
         // leaderboard asks instead of the line above twice.
         ["GET /api/work-log/sessions?top"] = (
-            new(6, 0, 29, 29, "Issues=1200;Projects=2;WorkLogEntries=3500"),
-            new(6, 0, 29, 29, "Issues=1200;Projects=2;WorkLogEntries=10500")),
+            new(6, 0, 29, 29, "Issues=1200;Projects=2;WorkLogEntries=3000"),
+            new(6, 0, 29, 29, "Issues=1200;Projects=2;WorkLogEntries=9000")),
         ["GET /api/work-log/by-playbook"] = (
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=1500")),
