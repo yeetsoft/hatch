@@ -221,7 +221,7 @@ public class SlackChatProviderSendTests
     {
         var links = new ChatLinks(Options.Create(new HatchOptions { PublicBaseUrl = "https://hatch.example" }));
         var content = QuestionChatContent.Build(
-            links, "HA-1", "A long question", new string('x', 10_000),
+            links, 7, "HA-1", "A long question", new string('x', 10_000),
             [new QuestionOptionDto("leaf-weighted", Recommended: true), new QuestionOptionDto("child-weighted")],
             QuestionLevels.HoldName);
 
@@ -230,6 +230,129 @@ public class SlackChatProviderSendTests
         Assert.True(text.Length <= SlackChatProvider.MaxTextLength, $"{text.Length} characters");
         Assert.EndsWith("\n<https://hatch.example/issues/HA-1|HA-1> · <https://hatch.example/ballot|Answer it>", text);
         Assert.StartsWith("*HA-1 A long question*", text);
+    }
+
+    private static ChatMessageContent WithButtons(params ChatAction[] actions) =>
+        new("HA-1 Q", "which?", ["Line"], [new ChatLink("HA-1", "https://hatch.example/issues/HA-1")], actions);
+
+    private static System.Text.Json.JsonElement BlocksOf(StubHttpMessageHandler handler) =>
+        System.Text.Json.JsonDocument.Parse(handler.LastForm["blocks"]).RootElement;
+
+    private static StubHttpMessageHandler Ok() =>
+        new(StubHttpMessageHandler.Json(HttpStatusCode.OK, """{"ok":true,"channel":"C1","ts":"1700000000.000100"}"""));
+
+    [Fact]
+    public async Task APostWithButtons_SendsASectionAndARowOfButtons_AndStillTheText()
+    {
+        var handler = Ok();
+        var content = WithButtons(
+            new ChatAction("hatch.answer:7:r", "Accept recommended", Primary: true), new ChatAction("hatch.answer:7:0", "Five words"));
+
+        await NewProvider(handler).PostAsync(Token, "C1", content, default);
+
+        Assert.Equal(SlackChatProvider.Format(content), handler.LastForm["text"]);
+        var blocks = BlocksOf(handler);
+        Assert.Equal(2, blocks.GetArrayLength());
+        Assert.Equal("section", blocks[0].GetProperty("type").GetString());
+        Assert.Equal("mrkdwn", blocks[0].GetProperty("text").GetProperty("type").GetString());
+        Assert.Equal(SlackChatProvider.Format(content, SlackChatProvider.MaxBlockTextLength), blocks[0].GetProperty("text").GetProperty("text").GetString());
+        Assert.Equal("actions", blocks[1].GetProperty("type").GetString());
+        var buttons = blocks[1].GetProperty("elements");
+        Assert.Equal(2, buttons.GetArrayLength());
+        Assert.Equal("button", buttons[0].GetProperty("type").GetString());
+        Assert.Equal("hatch.answer:7:r", buttons[0].GetProperty("action_id").GetString());
+        Assert.Equal("primary", buttons[0].GetProperty("style").GetString());
+        Assert.Equal("Accept recommended", buttons[0].GetProperty("text").GetProperty("text").GetString());
+        Assert.Equal("plain_text", buttons[0].GetProperty("text").GetProperty("type").GetString());
+        Assert.False(buttons[0].GetProperty("text").GetProperty("emoji").GetBoolean());
+        Assert.False(buttons[1].TryGetProperty("style", out _));
+        Assert.False(buttons[1].TryGetProperty("value", out _));
+    }
+
+    [Fact]
+    public async Task AnEditWithButtons_SendsThemToo()
+    {
+        var handler = Ok();
+
+        await NewProvider(handler).UpdateAsync(Token, "C1", "1.1", WithButtons(new ChatAction("hatch.answer:7:0", "A")), default);
+
+        Assert.Equal(2, BlocksOf(handler).GetArrayLength());
+    }
+
+    [Fact]
+    public async Task AnEditWithNone_SendsAnEmptyList_ToTakeOldButtonsAway()
+    {
+        var handler = Ok();
+
+        await NewProvider(handler).UpdateAsync(Token, "C1", "1.1", Message("Done"), default);
+
+        Assert.Equal("[]", handler.LastForm["blocks"]);
+    }
+
+    [Fact]
+    public async Task APostWithNone_SendsNoBlocksAtAll()
+    {
+        var handler = Ok();
+
+        await NewProvider(handler).PostAsync(Token, "C1", Message("Done"), default);
+
+        Assert.DoesNotContain("blocks", handler.LastForm.Keys);
+    }
+
+    [Fact]
+    public async Task ALongLabel_IsCutTo75_WithAnEllipsis()
+    {
+        var handler = Ok();
+
+        await NewProvider(handler).PostAsync(Token, "C1", WithButtons(new ChatAction("hatch.answer:7:0", new string('w', 120))), default);
+
+        var label = BlocksOf(handler)[1].GetProperty("elements")[0].GetProperty("text").GetProperty("text").GetString()!;
+        Assert.Equal(75, label.Length);
+        Assert.EndsWith("…", label);
+    }
+
+    [Fact]
+    public async Task ALabel_IsPlainText_NeverEscaped()
+    {
+        var handler = Ok();
+        const string label = "<@U1> <http://x|y> & more";
+
+        await NewProvider(handler).PostAsync(Token, "C1", WithButtons(new ChatAction("hatch.answer:7:0", label)), default);
+
+        var sent = BlocksOf(handler)[1].GetProperty("elements")[0].GetProperty("text");
+        Assert.Equal("plain_text", sent.GetProperty("type").GetString());
+        Assert.Equal(label, sent.GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task ALongQuestion_HasASectionOfAtMost3000_WithItsLinksKept_AndTheTextItsOwnLength()
+    {
+        var handler = Ok();
+        var links = new ChatLinks(Options.Create(new HatchOptions { PublicBaseUrl = "https://hatch.example" }));
+        var content = QuestionChatContent.Build(
+            links, 7, "HA-1", "A long question", new string('x', 10_000),
+            [new QuestionOptionDto("leaf-weighted", Recommended: true), new QuestionOptionDto("child-weighted")],
+            QuestionLevels.HoldName);
+
+        await NewProvider(handler).PostAsync(Token, "C1", content, default);
+
+        var section = BlocksOf(handler)[0].GetProperty("text").GetProperty("text").GetString()!;
+        Assert.True(section.Length <= SlackChatProvider.MaxBlockTextLength, $"{section.Length} characters");
+        Assert.EndsWith("\n<https://hatch.example/issues/HA-1|HA-1> · <https://hatch.example/ballot|Answer it>", section);
+        Assert.True(handler.LastForm["text"].Length > SlackChatProvider.MaxBlockTextLength);
+        Assert.Equal(SlackChatProvider.Format(content), handler.LastForm["text"]);
+    }
+
+    [Fact]
+    public async Task EightOptionsAndAcceptRecommended_AreNineButtonsInOneRow()
+    {
+        var handler = Ok();
+        var options = Enumerable.Range(0, QuestionOptionDto.MaxPerQuestion).Select(i => new QuestionOptionDto($"Option {i}", Recommended: i == 0)).ToList();
+        var content = QuestionChatContent.Build(new ChatLinks(Options.Create(new HatchOptions())), 7, "HA-1", "Q", "which?", options, QuestionLevels.HoldName);
+
+        await NewProvider(handler).PostAsync(Token, "C1", content, default);
+
+        Assert.Equal(QuestionOptionDto.MaxPerQuestion + 1, BlocksOf(handler)[1].GetProperty("elements").GetArrayLength());
     }
 
     [Fact]

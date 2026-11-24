@@ -240,7 +240,7 @@ public class QuestionLevelControllerTests
         var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Project!.Key == "AER");
         await outbox.QueueAsync(
             ChatMessageKind.Question, $"comment:{id}", h.ProjectId,
-            QuestionChatContent.Build(links, key, issue.Title, "Which way?", Recommended, QuestionLevels.HoldName),
+            QuestionChatContent.Build(links, id, key, issue.Title, "Which way?", Recommended, QuestionLevels.HoldName),
             default);
         await h.Db.SaveChangesAsync();
         var before = await h.Db.ChatMessages.SingleAsync();

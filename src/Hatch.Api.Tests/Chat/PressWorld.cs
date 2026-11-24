@@ -102,7 +102,7 @@ internal sealed class PressWorld
 
         var time = new FakeTimeProvider(Now);
         var content = QuestionChatContent.Build(
-            new ChatLinks(Options.Create(new HatchOptions())), "HA-1", issue.Title, question.Body,
+            new ChatLinks(Options.Create(new HatchOptions())), question.Id, "HA-1", issue.Title, question.Body,
             Questions.ReadOptions(question.Options), level);
         await new ChatOutbox(db, time).QueueAsync(ChatMessageKind.Question, $"comment:{question.Id}", project, content, default);
         await db.SaveChangesAsync();

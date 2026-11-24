@@ -9,8 +9,7 @@ This page takes you from no Slack app to a room that got a message from Hatch.
 Follow [the steps](#set-up-slack-start-to-finish) in order. The rest of the page
 is for after: [what a message looks like](#what-a-message-looks-like),
 [how to turn answering on](#turn-answering-on),
-[what to do when something is wrong](#when-something-is-wrong), and
-[what is not here yet](#not-here-yet).
+and [what to do when something is wrong](#when-something-is-wrong).
 
 Connecting gives Hatch a workspace to speak in. An admin binds projects to the
 workspace and sets channels up as **rooms**. Each room takes the kinds of
@@ -98,9 +97,10 @@ shows what it posts.
 
 Answering a question from Slack needs a second secret: an **app-level token**.
 It lets Hatch hold a **Socket Mode** connection to Slack, which is how Slack
-sends it a button press without Hatch needing a public address. The buttons are
-not here yet (HA-2720), so storing the token changes nothing you can see in a
-room today. It is worth doing now so the workspace is ready.
+sends it a button press without Hatch needing a public address. A question in a
+room of a workspace that holds the token carries buttons: see
+[A question](#a-question). A workspace with no token gets the same message
+without them.
 
 1. **Make sure the app asks for Socket Mode and Interactivity.** A new app made
    from the manifest on the Chat screen already does. An app made from an
@@ -145,8 +145,8 @@ of these, and says nothing while no app token is held:
 
 Slack closes a connection every few hours and Hatch opens another, so a brief
 gap, or a new **opened** time, is not a fault. The cell is read again every half
-minute while the page is open. The buttons are not here yet (HA-2720), so
-listening changes nothing you can see in a room today.
+minute while the page is open. Buttons are drawn while a token is held, whether
+or not Hatch is listening at that moment.
 
 ## What a message looks like
 
@@ -179,7 +179,10 @@ DEMO-12
 
 Asking a question posts a message to each room with **Questions** on and the
 issue's project. It names the ticket, gives the question, lists the options with
-the recommended one marked, and the level:
+the recommended one marked, and the level. In a workspace with an
+[app-level token](#turn-answering-on) it also carries a button for each option,
+in the order of the lines, and **Accept recommended** first when exactly one
+option is recommended:
 
 ```
 DEMO-12 Tickets in a human voice
@@ -188,10 +191,15 @@ Five words (recommended)
 One sentence
 Level: hold
 DEMO-12 · Answer it
+[Accept recommended] [Five words] [One sentence]
 ```
 
+A question asked in prose has no buttons, and a question that recommends
+nothing has no **Accept recommended**. A button reads its option's label, cut
+with an ellipsis if it is long; the line above always gives the whole label.
+
 When somebody answers, the same message is edited. It gains the latest answer
-and who gave it:
+and who gave it, and the buttons go:
 
 ```
 DEMO-12 Tickets in a human voice
@@ -352,13 +360,6 @@ When sends to a workspace or room keep failing, [the goose](the-goose) opens a
 finding after `Hatch__GooseChatSendMinutes` of failing: 60 by default, and `0`
 turns it off. See [the goose](the-goose#chat-sends-failing). The finding is
 not posted to the room or workspace it is about, since that room cannot hear it.
-
-## Not here yet
-
-- **Answering from Slack** (HA-2720). Today a question in a room links to the
-  Ballot, and it is answered there. The app-level token it needs can be stored
-  now: see [Turn answering on](#turn-answering-on). The buttons are not here
-  yet.
 
 ## Change a token
 
@@ -554,6 +555,19 @@ level change updates the message's level line alone.
 
 A long question is cut to fit Slack's own limit, the same as any message, and
 its links are always kept.
+
+### Who may press
+
+A button answers the question as the person who pressed it, so the person needs
+two things: a confirmed link between their Slack account and their Hatch
+account (see [Link your Slack account](#link-your-slack-account)), and a Hatch
+account that can see the issue's project. Anyone else in the room can see the
+buttons and press them, and gets a reply saying why it did not work: see
+[When a press is refused](#when-a-press-is-refused) for each one.
+
+A message sent before its workspace held an app-level token has no buttons.
+Setting the token sends nothing again. The message gains its buttons the next
+time it is edited, which a change of its question's level does.
 
 ### When a press is refused
 

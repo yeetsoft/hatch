@@ -93,7 +93,7 @@ public class QuestionLevelController(
 
             if (chatOutbox is not null && links is not null)
             {
-                var content = QuestionChatContent.Build(links, key, issue.Title, row.Body, Questions.ReadOptions(row.Options), to);
+                var content = QuestionChatContent.Build(links, id, key, issue.Title, row.Body, Questions.ReadOptions(row.Options), to);
                 await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{id}", issue.ProjectId, content, ct);
             }
 

@@ -95,7 +95,7 @@ public class QuestionChatMessageTests
         await h.Db.SaveChangesAsync();
         await h.Outbox.QueueAsync(
             ChatMessageKind.Question, $"comment:{question.Id}", h.ProjectId,
-            QuestionChatContent.Build(h.Links, h.Key, h.Issue.Title, question.Body, null, QuestionLevels.MergeName),
+            QuestionChatContent.Build(h.Links, question.Id, h.Key, h.Issue.Title, question.Body, null, QuestionLevels.MergeName),
             default);
         await h.Db.SaveChangesAsync();
         var before = await h.Db.ChatMessages.SingleAsync();
@@ -124,7 +124,7 @@ public class QuestionChatMessageTests
         await h.Db.SaveChangesAsync();
         await h.Outbox.QueueAsync(
             ChatMessageKind.Question, $"comment:{question.Id}", h.ProjectId,
-            QuestionChatContent.Build(h.Links, h.Key, h.Issue.Title, question.Body, Questions.ReadOptions(question.Options), QuestionLevels.HoldName),
+            QuestionChatContent.Build(h.Links, question.Id, h.Key, h.Issue.Title, question.Body, Questions.ReadOptions(question.Options), QuestionLevels.HoldName),
             default);
         await h.Db.SaveChangesAsync();
         var before = await h.Db.ChatMessages.SingleAsync();

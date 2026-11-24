@@ -87,7 +87,7 @@ public sealed class QuestionAnswers(
                 .Where(a => a.AnswersId == question.Id).Select(a => a.AuthorKind).ToListAsync(ct);
             var lookBack = Questions.IsLookBack(level, forChat.IsTerminal, [.. priorAuthorKinds, by.Kind]);
             var content = QuestionChatContent.Build(
-                links, IssueKey.Format(forChat.ProjectKey, forChat.Number), forChat.Title, question.Body,
+                links, question.Id, IssueKey.Format(forChat.ProjectKey, forChat.Number), forChat.Title, question.Body,
                 Questions.ReadOptions(question.Options), level, by.Name, comment.Body, lookBack);
             await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{question.Id}", forChat.ProjectId, content, ct);
         }

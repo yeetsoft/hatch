@@ -705,6 +705,78 @@ public class ChatSendJobTests
         Assert.Equal(TimeSpan.FromSeconds(5), job.Interval);
     }
 
+    private static ChatMessageContent WithButtons(string title) =>
+        new(title, null, [], [], [new ChatAction("hatch.answer:7:0", "Five words")]);
+
+    private static async Task QueueButtonsAsync(Harness h, string title, ChatMessageContent? content = null)
+    {
+        await h.Outbox.QueueAsync(ChatMessageKind.Changelog, "issue:1", h.Project, content ?? WithButtons(title), default);
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task AWorkspaceWithNoAppToken_GetsAMessageWithNoButtons()
+    {
+        var h = await WithOneRoomAsync();
+        await QueueButtonsAsync(h, "Asked");
+
+        await h.TickAsync();
+
+        var call = Assert.Single(h.Provider.Sends);
+        Assert.Null(call.Content.Actions);
+        Assert.Contains("hatch.answer:7:0", (await h.OnlyRowAsync()).Content);
+    }
+
+    [Fact]
+    public async Task AWorkspaceWithAnAppToken_GetsTheButtons()
+    {
+        var h = await WithOneRoomAsync();
+        (await h.Db.ChatWorkspaces.SingleAsync()).AppToken = "sealed";
+        await QueueButtonsAsync(h, "Asked");
+
+        await h.TickAsync();
+
+        var actions = Assert.Single(h.Provider.Sends).Content.Actions;
+        Assert.Equal(["hatch.answer:7:0"], actions!.Select(a => a.Id));
+    }
+
+    [Fact]
+    public async Task AnAnswersEdit_HasNoButtons_EvenWithAnAppToken()
+    {
+        var h = await WithOneRoomAsync();
+        (await h.Db.ChatWorkspaces.SingleAsync()).AppToken = "sealed";
+        await QueueButtonsAsync(h, "Asked");
+        await h.TickAsync();
+
+        await QueueButtonsAsync(h, "Answered", ChatOutboxTests.Content("Answered"));
+        await h.TickAsync();
+
+        Assert.Equal(["post", "update"], h.Provider.Sends.Select(s => s.Kind));
+        Assert.NotNull(h.Provider.Sends[0].Content.Actions);
+        Assert.Null(h.Provider.Sends[1].Content.Actions);
+    }
+
+    [Fact]
+    public async Task AnAppTokenSetAfterTheSend_SendsNothingAgain_ButTheNextEditCarriesTheButtons()
+    {
+        var h = await WithOneRoomAsync();
+        await QueueButtonsAsync(h, "Asked");
+        await h.TickAsync();
+        Assert.Null(Assert.Single(h.Provider.Sends).Content.Actions);
+
+        (await h.Db.ChatWorkspaces.SingleAsync()).AppToken = "sealed";
+        await h.Db.SaveChangesAsync();
+        await h.TickAsync();
+        Assert.Single(h.Provider.Sends);
+
+        // A change of level: the same buttons, a new line.
+        await QueueButtonsAsync(h, "Asked again");
+        await h.TickAsync();
+
+        Assert.Equal(["post", "update"], h.Provider.Sends.Select(s => s.Kind));
+        Assert.Equal(["hatch.answer:7:0"], h.Provider.Sends[1].Content.Actions!.Select(a => a.Id));
+    }
+
     private static async Task<Harness> WithOneRoomAsync()
     {
         var h = await NewHarnessAsync();

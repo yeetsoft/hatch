@@ -17,11 +17,13 @@ public static class QuestionChatContent
     public static string AnswerLine(string? answeredBy, string answerBody, bool lookBack) =>
         $"{(lookBack ? "A program" : answeredBy)} answered: {answerBody}";
 
+    /// <param name="questionId">The question comment's id, written into every button's action id.</param>
+    /// <param name="options">The stored options, in order: a button's place in an action id is its index here.</param>
     /// <param name="answeredBy">The answer's author, shown unless <paramref name="lookBack"/>. Null while unanswered.</param>
     /// <param name="answerBody">The latest answer's own text, with no history of earlier ones. Null while unanswered.</param>
     /// <param name="lookBack">True when every answer so far is a key's - see <see cref="Questions.IsLookBack"/> - so the message names no key.</param>
     public static ChatMessageContent Build(
-        ChatLinks links, string issueKey, string issueTitle, string body,
+        ChatLinks links, long questionId, string issueKey, string issueTitle, string body,
         IReadOnlyList<QuestionOptionDto>? options, string level,
         string? answeredBy = null, string? answerBody = null, bool lookBack = false)
     {
@@ -35,10 +37,23 @@ public static class QuestionChatContent
         if (answerBody is not null)
             lines.Add(AnswerLine(answeredBy, answerBody, lookBack));
 
+        // Buttons only while unanswered. Accept recommended needs exactly one recommendation,
+        // the rule a press of it is read by.
+        List<ChatAction>? actions = null;
+        if (answerBody is null && options is { Count: > 0 })
+        {
+            actions = [];
+            if (options.Count(o => o.Recommended) == 1)
+                actions.Add(new ChatAction(ChatPressAction.WriteRecommended(questionId), "Accept recommended", Primary: true));
+            for (var i = 0; i < options.Count; i++)
+                actions.Add(new ChatAction(ChatPressAction.Write(questionId, i), options[i].Label));
+        }
+
         return new ChatMessageContent(
             $"{issueKey} {issueTitle}",
             body,
             lines,
-            [new ChatLink(issueKey, links.Issue(issueKey)), new ChatLink("Answer it", links.Ballot())]);
+            [new ChatLink(issueKey, links.Issue(issueKey)), new ChatLink("Answer it", links.Ballot())],
+            actions);
     }
 }
