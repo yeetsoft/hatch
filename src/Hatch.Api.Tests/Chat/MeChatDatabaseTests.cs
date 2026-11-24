@@ -99,12 +99,13 @@ public class MeChatDatabaseTests
         await seed.SaveChangesAsync();
 
         await using var firstDb = Open(connection);
-        var firstController = Controller(firstDb, first);
+        var people = People(first, second);
+        var firstController = Controller(firstDb, first, people);
         var confirmed = await firstController.ConfirmLink(new MeChatConfirmRequest("first-secret"), default);
         Assert.Equal("linked", confirmed.Value?.State);
 
         await using var secondDb = Open(connection);
-        var secondController = Controller(secondDb, second);
+        var secondController = Controller(secondDb, second, people);
         var refused = await secondController.ConfirmLink(new MeChatConfirmRequest("second-secret"), default);
 
         Assert.IsType<ConflictObjectResult>(refused.Result);
@@ -133,15 +134,48 @@ public class MeChatDatabaseTests
         Assert.Equal([kept], await read.ChatLinks.Select(l => l.WorkspaceId).ToListAsync());
     }
 
+    [SkippableFact]
+    public async Task AfterTheHolderIsRemoved_ASecondPersonConfirmsTheSameMemberAtOnce()
+    {
+        var connection = await PrepareAsync();
+        await using var seed = Open(connection);
+        var workspace = await WorkspaceAsync(seed, "TACME");
+        var removed = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        seed.ChatLinks.AddRange(Link(workspace, removed, "U1", confirmed: true), Link(workspace, second, "U1", secret: "second-secret"));
+        await seed.SaveChangesAsync();
+
+        // Only the second person is in the people table: the holder was removed, and nothing cascaded.
+        await using var db = Open(connection);
+        var confirmed = await Controller(db, second, People(second)).ConfirmLink(new MeChatConfirmRequest("second-secret"), default);
+
+        Assert.Equal("linked", confirmed.Value?.State);
+        await using var read = Open(connection);
+        var rows = await read.ChatLinks.ToListAsync();
+        Assert.Equal([second], rows.Select(l => l.PersonId));
+        Assert.NotNull(rows[0].ConfirmedAt);
+    }
+
+    /// <summary>A people table holding exactly these people.</summary>
+    private static AppDbContext People(params Guid[] ids)
+    {
+        var app = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        app.People.AddRange(ids.Select(id => new EfPerson { Id = id, Name = "P", Role = PersonRole.User, CreatedAt = Now, UpdatedAt = Now }));
+        app.SaveChanges();
+
+        return app;
+    }
+
     /// <summary>The controller for one person, over a real context. Only the confirm route is used, which reads nothing from Slack.</summary>
-    private static MeChatController Controller(HatchContext db, Guid personId) =>
-        new(db, new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options),
+    private static MeChatController Controller(HatchContext db, Guid personId, AppDbContext app) =>
+        new(db, app,
             new FakeChatProvider(),
             new MeScopeTests.StubCaller(null, new EfPerson { Id = personId, Name = "P", Role = PersonRole.User, CreatedAt = Now, UpdatedAt = Now }, null),
             new StubActorDirectory { Principal = new Actor(ActorKind.Person, personId, "P") },
             new MeScopeTests.FixedScope(VisibleProjects.Everything),
             new SecretProtector(new SecretCipher(RandomNumberGenerator.GetBytes(32), null)),
             new ChatLinks(Options.Create(new HatchOptions { PublicBaseUrl = "https://hatch.example" })),
+            RosterSeed.For(db, app),
             new FakeTimeProvider(Now), NullLogger<MeChatController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },

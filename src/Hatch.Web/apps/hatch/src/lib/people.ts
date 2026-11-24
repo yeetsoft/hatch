@@ -62,6 +62,16 @@ export function deleteSentence(person: Pick<Person, 'name' | 'sessionCount'>): s
   return `${person.name} will be removed. ${sessions}`;
 }
 
+/** The Slack links a person holds, out of every person's. */
+export const linksOf = <T extends { personId: string }>(links: readonly T[], personId: string): T[] =>
+  links.filter((l) => l.personId === personId);
+
+/** What removing a Slack link says: whose, in which workspace, to which member,
+    and that nothing is sent to it afterwards. The person may link again. */
+export function unlinkSentence(person: Pick<Person, 'name'>, link: { workspaceName: string; memberName: string }): string {
+  return `${person.name}'s link to ${link.memberName} in ${link.workspaceName} will be removed. Nothing is sent to it afterwards. ${person.name} can link again from Settings.`;
+}
+
 /** Whether the Add user form may be submitted: an address is all it needs. The
     server judges the address; this only keeps an empty form from posting. */
 export function canAddUser(email: string): boolean {

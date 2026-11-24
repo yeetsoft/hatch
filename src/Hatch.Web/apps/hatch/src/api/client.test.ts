@@ -3,6 +3,8 @@ import type { Issue, Runner, Status } from '../types';
 import {
   confirmChatLink,
   createChatWorkspace,
+  deleteChatLink,
+  getChatLinks,
   getChatMembers,
   getChatSuggestion,
   getMyChat,
@@ -1008,5 +1010,25 @@ describe('my Slack links', () => {
     const fetchMock = stub(null, 204);
     await unlinkChat(9);
     expect(fetchMock).toHaveBeenCalledWith('/api/me/chat/links/9', expect.objectContaining({ method: 'DELETE' }));
+  });
+});
+
+describe("everybody's Slack links", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reads every link', async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(getChatLinks()).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/links', expect.anything());
+  });
+
+  it('DELETEs a link by id on the admin route', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await deleteChatLink(9);
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/links/9', expect.objectContaining({ method: 'DELETE' }));
   });
 });
