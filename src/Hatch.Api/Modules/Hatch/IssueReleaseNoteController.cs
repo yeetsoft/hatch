@@ -33,7 +33,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/issues")]
 public class IssueReleaseNoteController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
-    TimeProvider time) : ControllerBase
+    TimeProvider time, ChangelogMessages? chat = null) : ControllerBase
 {
     /// <summary>
     /// Set the note, trimmed; null, empty or whitespace clears it. Setting the
@@ -87,6 +87,9 @@ public class IssueReleaseNoteController(
 
             issue.ReleaseNote = note;
             issue.UpdatedAt = now;
+
+            // Edits the message that announced the issue, if one did.
+            if (chat is not null) await chat.QueueNoteAsync(issue, ct);
             await db.SaveChangesAsync(ct);
         }
 

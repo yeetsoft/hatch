@@ -28,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
     IOptions<HatchOptions> hatchOptions, RankService ranks, ICallerIdentity caller, Runners runners,
-    IAuthService? keys = null, RunnerSessions? sessions = null,
+    IAuthService? keys = null, RunnerSessions? sessions = null, ChangelogMessages? chat = null,
     ChatOutbox? chatOutbox = null, ChatLinks? links = null) : ControllerBase
 {
     private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions, runners);
@@ -918,6 +918,7 @@ public class WorkController(
         if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
             issue.Events.Add(cleared);
         issue.UpdatedAt = now;
+        if (closedNow && chat is not null) await chat.QueueClosedAsync([issue], ct);
         await db.SaveChangesAsync(ct);
         if (closedNow) await ChangelogTasks.FileForAsync(db, actors, ranks, time, [issue], ct);
 
@@ -1246,6 +1247,10 @@ public class WorkController(
             }
         }
 
+        // Queued with the close, so the message lands or fails with it. The
+        // story's waiting tasks that close here are children and post nothing.
+        if (closedNow && chat is not null) await chat.QueueClosedAsync([issue], ct);
+
         try
         {
             await db.SaveChangesAsync(ct);
@@ -1432,6 +1437,7 @@ public class WorkController(
         if (NoCode.ClearOnMove(issue, to, statuses, actor, now) is { } cleared)
             issue.Events.Add(cleared);
         issue.UpdatedAt = now;
+        if (closedNow && chat is not null) await chat.QueueClosedAsync([issue], ct);
         await db.SaveChangesAsync(ct);
         if (closedNow) await ChangelogTasks.FileForAsync(db, actors, ranks, time, [issue], ct);
 

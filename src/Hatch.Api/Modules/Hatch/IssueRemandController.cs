@@ -14,7 +14,8 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/issues/{key}/remand")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class IssueRemandController(HatchContext db, IActorDirectory actors, RankService ranks, ICallerIdentity caller, TimeProvider time) : ControllerBase
+public class IssueRemandController(HatchContext db, IActorDirectory actors, RankService ranks, ICallerIdentity caller, TimeProvider time,
+    ChangelogMessages? chat = null) : ControllerBase
 {
     /// <summary>The same cap a bulk edit keeps, for the same reason.</summary>
     private const int MaxKeys = 500;
@@ -138,6 +139,7 @@ public class IssueRemandController(HatchContext db, IActorDirectory actors, Rank
         // waiting on one of these is told once, on their own ticket.
         await Deferrals.NoteAsync(db, shelved, target, actor, now, ct);
 
+        if (chat is not null) await chat.QueueClosedAsync(closed, ct);
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
         await ChangelogTasks.FileForAsync(db, actors, ranks, time, closed, ct);

@@ -113,6 +113,11 @@ public class QueryFilterAuditTests
             "Whether an issue was filed as the bug for some finding, asked board-wide so every check agrees on "
             + "the answer regardless of the caller's own scope - a job's context already reads every project, "
             + "but a later caller must get the same answer a job would. What leaves is one bool, no row."),
+        ["ChangelogMessages.ContentAsync"] = (1,
+            "The key of the project an issue belongs to, read so the message can name and link the issue. A "
+            + "column made terminal loads no project, and a patch that moves one changes it after the issue was "
+            + "loaded; the writer's scope may hide the project, and the message must name the same key whoever "
+            + "closed the issue. What leaves is one key string, no row."),
         ["ChatOutbox.QueueAsync"] = (1,
             "The rows already queued for a thing, read so a change edits them instead of adding a second. Who "
             + "hears a thing is the rooms' to say and not the writer's, so a writer whose scope hides the project "
