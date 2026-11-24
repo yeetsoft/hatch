@@ -325,6 +325,21 @@ describe('describe, capability events', () => {
   });
 });
 
+describe('describe, an answer', () => {
+  /* An answer carries { questionId }, and { via } when it came from outside the
+     page and a key. The history reads only the keys it names, so a row with the
+     new field reads the same as every row before it. */
+  it('reads an answered row the same with and without where it came from', () => {
+    const plain = describeEvent(event({ kind: 'answered', payload: { questionId: 42 } }));
+    const fromChat = describeEvent(event({ kind: 'answered', payload: { questionId: 42, via: 'slack' } }));
+    expect(fromChat).toBe(plain);
+  });
+
+  it('reads an old answered row that has no payload at all', () => {
+    expect(() => describeEvent(event({ kind: 'answered', payload: null }))).not.toThrow();
+  });
+});
+
 describe('short', () => {
   it('reads null and undefined as none', () => {
     expect(short(null)).toBe('none');

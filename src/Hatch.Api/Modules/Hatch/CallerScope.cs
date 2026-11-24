@@ -72,6 +72,52 @@ public sealed class RequestScope(IHttpContextAccessor? accessor = null)
 }
 
 /// <summary>
+/// Which projects a named person sees - the rule <see cref="CallerScope"/>
+/// applies to the caller, written once so the two cannot disagree: no scope
+/// row or <c>all</c> is every project, <c>none</c> is nothing, <c>some</c> is
+/// the projects named, less any that are gone. The wall being off is
+/// <see cref="SeesAsync"/>'s to say, since it is a fact about the house and not
+/// about the person.
+/// </summary>
+public static class PersonScope
+{
+    /// <summary>
+    /// Reads <paramref name="personId"/>'s scope row. The join to the projects
+    /// ignores the context's query filters, so the answer is the same inside a
+    /// request as outside one: which projects a person sees is not for the
+    /// reader's own scope to narrow. <c>some</c> joins to <c>db.Projects</c> so a project that
+    /// is gone cannot linger in the answer, whether or not the provider cascades
+    /// the delete.
+    /// </summary>
+    public static async Task<VisibleProjects> ReadAsync(HatchContext db, Guid personId, CancellationToken ct)
+    {
+        var row = await db.PersonScopes.AsNoTracking().FirstOrDefaultAsync(s => s.PersonId == personId, ct);
+        if (row is null or { Mode: PersonScopeMode.All or PersonScopeMode.None }) return Read(row?.Mode, new HashSet<int>());
+
+        var ids = await db.PersonScopeProjects.AsNoTracking()
+            .Where(p => p.PersonId == personId)
+            .Join(db.Projects.IgnoreQueryFilters(), p => p.ProjectId, project => project.Id, (p, _) => p.ProjectId)
+            .ToListAsync(ct);
+        return Read(row.Mode, ids.ToHashSet());
+    }
+
+    /// <summary>Whether <paramref name="personId"/> sees <paramref name="projectId"/>. With the wall off a person sees everything.</summary>
+    public static async Task<bool> SeesAsync(
+        HatchContext db, IOptions<AuthOptions> auth, Guid personId, int projectId, CancellationToken ct) =>
+        !auth.Value.Enabled || (await ReadAsync(db, personId, ct)).Sees(projectId);
+
+    /// <summary>The rule on rows already read: <paramref name="mode"/> is a scope row's mode, or null for no row.</summary>
+    public static bool Sees(string? mode, IReadOnlySet<int> chosen, int projectId) => Read(mode, chosen).Sees(projectId);
+
+    private static VisibleProjects Read(string? mode, IReadOnlySet<int> chosen) => mode switch
+    {
+        null or PersonScopeMode.All => VisibleProjects.Everything,
+        PersonScopeMode.None => VisibleProjects.Nothing,
+        _ => new VisibleProjects(false, chosen),
+    };
+}
+
+/// <summary>
 /// Answers about the caller, never about an arbitrary person, as
 /// <see cref="ProjectAccess"/> does. The rules, in order:
 /// no HTTP context is unbounded; a wall that is off is unbounded; a person
@@ -120,19 +166,6 @@ public class CallerScope(
         if (!auth.Value.Enabled) return VisibleProjects.Everything;
         if (await actors.PrincipalAsync(ct) is not { } principal) return VisibleProjects.Everything;
 
-        var row = await db.PersonScopes.AsNoTracking().FirstOrDefaultAsync(s => s.PersonId == principal.Id, ct);
-        switch (row?.Mode)
-        {
-            case null or PersonScopeMode.All:
-                return VisibleProjects.Everything;
-            case PersonScopeMode.None:
-                return VisibleProjects.Nothing;
-            default:
-                var ids = await db.PersonScopeProjects.AsNoTracking()
-                    .Where(p => p.PersonId == principal.Id)
-                    .Join(db.Projects, p => p.ProjectId, project => project.Id, (p, _) => p.ProjectId)
-                    .ToListAsync(ct);
-                return new VisibleProjects(false, ids.ToHashSet());
-        }
+        return await PersonScope.ReadAsync(db, principal.Id, ct);
     }
 }

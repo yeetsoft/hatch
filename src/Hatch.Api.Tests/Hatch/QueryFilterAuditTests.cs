@@ -33,6 +33,16 @@ public class QueryFilterAuditTests
             + "project the caller cannot see still holds the work beneath it, so a read that left it out would "
             + "honour no question there. What leaves is a level and a count, which the dispatcher folds into a "
             + "sentence naming the ancestor's key, as it does for a dangerous reason."),
+        ["Questions.StandingAsync"] = (1,
+            "Where one question stands, read only when the caller asks it to. A caller that has already judged "
+            + "who may answer by other means - the named person's own scope - must not have the question "
+            + "vanish because of whose request it runs in. What leaves is a standing: the issue's id, the "
+            + "latest answer's author and its kind, to a caller that holds the question's id already."),
+        ["CallerScope.ReadAsync"] = (1,
+            "The projects a named person's scope row chooses, joined to the projects that exist so one that is "
+            + "gone cannot linger. Which projects a person sees is not for the reader's own scope to narrow: "
+            + "a person scoped to one project asking about another person must not read that person's list "
+            + "short. What leaves is a set of project ids that the caller then asks about one project."),
         ["AnswerQuestions.ForAsync"] = (2,
             "The open question an ambition is aimed at, and the work log rows that name a question already "
             + "answered. A question on an issue in a project the caller cannot see still stands beneath the "

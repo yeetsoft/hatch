@@ -92,30 +92,25 @@ public class IssueThreadController(
 
         if (InvalidOptions(request.Options) is { } optionError) return BadRequest(optionError);
 
-        long answeredQuestionId = 0;
-        string? answeredQuestionBody = null;
-        IReadOnlyList<QuestionOptionDto>? answeredQuestionOptions = null;
-        string? answeredQuestionLevel = null;
-
         if (kind == EfHatchComment.Answer)
         {
             if (request.AnswersId is not { } answersId)
                 return BadRequest("an answer needs the id of the question it answers");
 
-            // Same issue, and actually a question. A cross-issue link would put
-            // an answer on a thread nobody reading the question can see.
-            var question = await db.Comments.AsNoTracking()
-                .Where(c => c.Id == answersId && c.IssueId == issueId && c.Kind == EfHatchComment.Question)
-                .Select(c => new { c.Id, c.Body, c.Options, c.Level })
-                .FirstOrDefaultAsync(ct);
+            var answerer = new AnsweringActor(
+                await caller.ActorNameAsync(ct),
+                await caller.IsProgramAsync(ct) ? ActorKind.Key : ActorKind.Person);
 
-            if (question is null)
+            var answer = await new QuestionAnswers(db, time, chatOutbox, links)
+                .WriteAsync(issueId, answersId, body, answerer, via: null, ct);
+
+            if (answer is null)
                 return BadRequest($"comment {answersId} is not an open question on {key}");
 
-            answeredQuestionId = question.Id;
-            answeredQuestionBody = question.Body;
-            answeredQuestionOptions = Questions.ReadOptions(question.Options);
-            answeredQuestionLevel = QuestionLevels.Normalise(question.Level);
+            return new CommentDto(
+                answer.Id, answer.Author, answer.Body, answer.Kind, answer.AnswersId,
+                Questions.ReadOptions(answer.Options), answer.CreatedAt,
+                AuthorKind: answer.AuthorKind);
         }
 
         var actor = await caller.ActorNameAsync(ct);
@@ -146,13 +141,10 @@ public class IssueThreadController(
             Kind = kind switch
             {
                 EfHatchComment.Question => EfHatchIssueEvent.Asked,
-                EfHatchComment.Answer => EfHatchIssueEvent.Answered,
                 EfHatchComment.Message => EfHatchIssueEvent.Messaged,
                 _ => EfHatchIssueEvent.Commented,
             },
-            Payload = kind == EfHatchComment.Answer
-                ? JsonSerializer.Serialize(new { questionId = request.AnswersId })
-                : null,
+            Payload = null,
             At = now,
         });
 
@@ -180,20 +172,6 @@ public class IssueThreadController(
         }
         else
         {
-            if (kind == EfHatchComment.Answer && chatOutbox is not null && links is not null)
-            {
-                var forChat = await db.Issues.AsNoTracking().Where(i => i.Id == issueId)
-                    .Select(i => new { i.ProjectId, i.Title, IsTerminal = i.Status!.IsTerminal }).FirstAsync(ct);
-                var priorAuthorKinds = await db.Comments.AsNoTracking()
-                    .Where(a => a.AnswersId == answeredQuestionId).Select(a => a.AuthorKind).ToListAsync(ct);
-                var lookBack = Questions.IsLookBack(
-                    answeredQuestionLevel, forChat.IsTerminal, [..priorAuthorKinds, authorKind]);
-                var content = QuestionChatContent.Build(
-                    links, key, forChat.Title, answeredQuestionBody!, answeredQuestionOptions, answeredQuestionLevel!,
-                    actor, comment.Body, lookBack);
-                await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{answeredQuestionId}", forChat.ProjectId, content, ct);
-            }
-
             await db.SaveChangesAsync(ct);
         }
 
