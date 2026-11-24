@@ -21,4 +21,7 @@ public sealed class ChatLinks(IOptions<HatchOptions> options)
 
     /// <summary>The page where questions are answered, or null.</summary>
     public string? Ballot() => Origin is { } origin ? $"{origin}/ballot" : null;
+
+    /// <summary>The goose's page, where its findings are read, or null.</summary>
+    public string? Goose() => Origin is { } origin ? $"{origin}/goose" : null;
 }

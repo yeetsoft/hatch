@@ -12,8 +12,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// it, since <see cref="Token"/> is the project's newest <c>claim_taken</c>
 /// event.
 /// </summary>
-public sealed class ReadyUnclaimedCheck(HatchContext db, ReadyWork work, IOptions<HatchOptions> options, TimeProvider time)
-    : FindingCheck(db, time)
+public sealed class ReadyUnclaimedCheck(HatchContext db, ReadyWork work, IOptions<HatchOptions> options, TimeProvider time, FindingMessages? messages = null)
+    : FindingCheck(db, time, messages)
 {
     public override string Name => "ready-unclaimed";
 
@@ -78,8 +78,8 @@ public sealed class ReadyUnclaimedCheck(HatchContext db, ReadyWork work, IOption
 /// nobody", not any one step or claim, so nothing about it restarts the
 /// clock the way a claim does for <see cref="ReadyUnclaimedCheck"/>.
 /// </summary>
-public sealed class ReadyNoRunnerCheck(HatchContext db, ReadyWork work, IOptions<HatchOptions> options, TimeProvider time)
-    : FindingCheck(db, time)
+public sealed class ReadyNoRunnerCheck(HatchContext db, ReadyWork work, IOptions<HatchOptions> options, TimeProvider time, FindingMessages? messages = null)
+    : FindingCheck(db, time, messages)
 {
     public override string Name => "ready-no-runner";
 

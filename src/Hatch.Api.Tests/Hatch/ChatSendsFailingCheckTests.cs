@@ -43,7 +43,7 @@ public class ChatSendsFailingCheckTests
         Assert.Null(finding.ProjectId);
         Assert.Null(finding.ClosedAt);
         Assert.Contains("workspace Acme", finding.Sentence);
-        Assert.Contains("60 minutes", finding.Sentence);
+        Assert.Contains("since 2026-11-23 11:01 UTC", finding.Sentence);
         Assert.Contains("ratelimited", finding.Sentence);
 
         var evidence = GooseFindingEvidence.Read(finding.Evidence);
@@ -65,7 +65,7 @@ public class ChatSendsFailingCheckTests
 
         var roomFinding = findings[0];
         Assert.Contains("room releases in workspace Acme", roomFinding.Sentence);
-        Assert.Contains("75 minutes", roomFinding.Sentence);
+        Assert.Contains("since 2026-11-23 10:45 UTC", roomFinding.Sentence);
         Assert.Contains("not_in_channel", roomFinding.Sentence);
         Assert.Null(roomFinding.ProjectId);
     }

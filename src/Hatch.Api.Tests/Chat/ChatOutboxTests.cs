@@ -310,6 +310,114 @@ public class ChatOutboxTests
     }
 
     [Fact]
+    public async Task ARoomCarryingTwoProjects_GetsOneRow_FiledUnderTheLowestOfThem()
+    {
+        var h = NewHarness();
+        var aer = await h.Seed.ProjectAsync("AER");
+        var oth = await h.Seed.ProjectAsync("OTH");
+        var workspace = await h.Seed.WorkspaceAsync("TACME", aer, oth);
+        var both = await h.Seed.RoomAsync(workspace, "C1", problems: true);
+        var onlyOther = await h.Seed.RoomAsync(workspace, "C2", problems: true, allProjects: false, chosen: [oth]);
+        var neither = await h.Seed.RoomAsync(workspace, "C3", problems: true, allProjects: false, chosen: []);
+
+        await h.Outbox.QueueForProjectsAsync(ChatMessageKind.Problem, "x:1", [oth, aer], Content("Hello"), default);
+        await h.Db.SaveChangesAsync();
+
+        var rows = await h.Db.ChatMessages.OrderBy(m => m.RoomId).ToListAsync();
+        Assert.Equal([both, onlyOther], rows.Select(r => r.RoomId));
+        Assert.Equal([aer, oth], rows.Select(r => r.ProjectId!.Value));
+        Assert.DoesNotContain(rows, r => r.RoomId == neither);
+    }
+
+    [Fact]
+    public async Task AWorkspaceBoundToOneOfTheProjects_IsReached_AndOneBoundToNoneIsNot()
+    {
+        var h = NewHarness();
+        var aer = await h.Seed.ProjectAsync("AER");
+        var oth = await h.Seed.ProjectAsync("OTH");
+        var third = await h.Seed.ProjectAsync("THD");
+        var bound = await h.Seed.WorkspaceAsync("TA", oth);
+        var unbound = await h.Seed.WorkspaceAsync("TB", third);
+        var reached = await h.Seed.RoomAsync(bound, "C1", problems: true);
+        await h.Seed.RoomAsync(unbound, "C2", problems: true);
+
+        await h.Outbox.QueueForProjectsAsync(ChatMessageKind.Problem, "x:1", [aer, oth], Content("Hello"), default);
+        await h.Db.SaveChangesAsync();
+
+        var row = await h.Db.ChatMessages.SingleAsync();
+        Assert.Equal((reached, oth), (row.RoomId, row.ProjectId));
+    }
+
+    [Fact]
+    public async Task QueueForProjects_WithNoProject_IsRefused()
+    {
+        var h = NewHarness();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            h.Outbox.QueueForProjectsAsync(ChatMessageKind.Problem, "x:1", [], Content("Hello"), default));
+    }
+
+    [Fact]
+    public async Task TheLaterCallsOfQueueForProjects_AreChanges_LikeQueueAsync()
+    {
+        var h = NewHarness();
+        var aer = await h.Seed.ProjectAsync("AER");
+        var oth = await h.Seed.ProjectAsync("OTH");
+        var workspace = await h.Seed.WorkspaceAsync("TACME", aer, oth);
+        await h.Seed.RoomAsync(workspace, "C1", problems: true);
+
+        await h.Outbox.QueueForProjectsAsync(ChatMessageKind.Problem, "x:1", [aer, oth], Content("First"), default);
+        await h.Db.SaveChangesAsync();
+        await h.Outbox.QueueForProjectsAsync(ChatMessageKind.Problem, "x:1", [aer, oth], Content("Second"), default);
+        await h.Db.SaveChangesAsync();
+
+        var row = await h.Db.ChatMessages.SingleAsync();
+        Assert.Equal(2, row.Revision);
+    }
+
+    [Fact]
+    public async Task TheExceptions_LeaveOutThatRoom_OrEveryRoomInThatWorkspace_OnTheFirstCallOnly()
+    {
+        var h = NewHarness();
+        var project = await h.Seed.ProjectAsync("AER");
+        var workspace = await h.Seed.WorkspaceAsync("TA", project);
+        var other = await h.Seed.WorkspaceAsync("TB", project);
+        var skipped = await h.Seed.RoomAsync(workspace, "C1", problems: true);
+        var kept = await h.Seed.RoomAsync(workspace, "C2", problems: true);
+        var elsewhere = await h.Seed.RoomAsync(other, "C3", problems: true);
+
+        await h.Outbox.QueueAsync(ChatMessageKind.Problem, "x:1", project, Content("One"), default, exceptRoomId: skipped);
+        await h.Outbox.QueueForProjectsAsync(ChatMessageKind.Problem, "x:2", [project], Content("Two"), default, exceptWorkspaceId: workspace);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal([kept, elsewhere], await h.Db.ChatMessages.Where(m => m.Subject == "x:1").Select(m => m.RoomId).OrderBy(id => id).ToListAsync());
+        Assert.Equal([elsewhere], await h.Db.ChatMessages.Where(m => m.Subject == "x:2").Select(m => m.RoomId).ToListAsync());
+
+        // Later calls edit the rows that exist, whatever they name to leave out.
+        await h.Outbox.QueueAsync(ChatMessageKind.Problem, "x:1", project, Content("One, changed"), default, exceptRoomId: kept);
+        await h.Db.SaveChangesAsync();
+
+        Assert.All(await h.Db.ChatMessages.Where(m => m.Subject == "x:1").ToListAsync(), m => Assert.Equal(2, m.Revision));
+    }
+
+    [Fact]
+    public async Task Knows_IsTrueOnceAFirstCallHasBeenMade_TrackedOrStored_EvenWhenNoRoomHeardIt()
+    {
+        var h = NewHarness();
+        var project = await h.Seed.ProjectAsync("AER");
+
+        Assert.False(await h.Outbox.KnowsAsync(ChatMessageKind.Problem, "x:1", default));
+
+        await h.Outbox.QueueAsync(ChatMessageKind.Problem, "x:1", project, Content("Hello"), default);
+        Assert.True(await h.Outbox.KnowsAsync(ChatMessageKind.Problem, "x:1", default));
+        Assert.False(await h.Outbox.KnowsAsync(ChatMessageKind.Changelog, "x:1", default));
+
+        await h.Db.SaveChangesAsync();
+        Assert.True(await h.Outbox.KnowsAsync(ChatMessageKind.Problem, "x:1", default));
+        Assert.False(await h.Outbox.KnowsAsync(ChatMessageKind.Problem, "x:2", default));
+    }
+
+    [Fact]
     public void TheContent_RoundTripsAsJson_AndTheSameContentWritesTheSameText()
     {
         var content = new ChatMessageContent("Title", "Body", ["one", "two"], [new ChatLink("Open", "https://hatch.test/issues/AER-1"), new ChatLink("Plain", null)]);
@@ -336,6 +444,7 @@ public class ChatOutboxTests
         Assert.False(links.On);
         Assert.Null(links.Issue("AER-1"));
         Assert.Null(links.Ballot());
+        Assert.Null(links.Goose());
     }
 
     [Theory]
@@ -349,6 +458,7 @@ public class ChatOutboxTests
         Assert.True(links.On);
         Assert.Equal("https://hatch.test/issues/AER-1", links.Issue("AER-1"));
         Assert.Equal("https://hatch.test/ballot", links.Ballot());
+        Assert.Equal("https://hatch.test/goose", links.Goose());
     }
 
     internal static readonly DateTimeOffset Now = new(2026, 11, 23, 12, 0, 0, TimeSpan.Zero);

@@ -20,8 +20,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// begins at the first sweep that sees a question past the bound - at most one
 /// sweep interval after it, the same clock <see cref="TrainReadyCheck"/> has.
 /// </remarks>
-public sealed class QuestionsWaitingCheck(HatchContext db, IOptions<HatchOptions> options, TimeProvider time)
-    : FindingCheck(db, time)
+public sealed class QuestionsWaitingCheck(HatchContext db, IOptions<HatchOptions> options, TimeProvider time, FindingMessages? messages = null)
+    : FindingCheck(db, time, messages)
 {
     private const string BoardSubject = "board";
     private const string PastBoundToken = "past-bound";

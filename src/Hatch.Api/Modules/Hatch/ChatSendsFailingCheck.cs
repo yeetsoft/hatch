@@ -1,4 +1,5 @@
 using System.Globalization;
+using Hatch.Api.Services.Chat;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -26,8 +27,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// not to a project, so the finding is about the board and is seen by everyone
 /// who can see findings.</para>
 /// </remarks>
-public sealed class ChatSendsFailingCheck(HatchContext db, IOptions<HatchOptions> options, TimeProvider time)
-    : FindingCheck(db, time)
+public sealed class ChatSendsFailingCheck(HatchContext db, IOptions<HatchOptions> options, TimeProvider time, FindingMessages? messages = null)
+    : FindingCheck(db, time, messages)
 {
     /// <summary>The check's name.</summary>
     public const string CheckName = "chat-sends-failing";
@@ -98,14 +99,28 @@ public sealed class ChatSendsFailingCheck(HatchContext db, IOptions<HatchOptions
         return ($"{workspaces.Count} workspaces and {rooms.Count} rooms failing to send", bound, candidates);
     }
 
+    protected override (int? RoomId, int? WorkspaceId) KeepOut(EfHatchGooseFinding finding)
+    {
+        // The subject is the room's or the workspace's own id: the finding is
+        // not sent to the place it says cannot be sent to.
+        if (finding.Subject.StartsWith(RoomPrefix, StringComparison.Ordinal)
+            && int.TryParse(finding.Subject.AsSpan(RoomPrefix.Length), CultureInfo.InvariantCulture, out var roomId))
+            return (roomId, null);
+
+        if (finding.Subject.StartsWith(WorkspacePrefix, StringComparison.Ordinal)
+            && int.TryParse(finding.Subject.AsSpan(WorkspacePrefix.Length), CultureInfo.InvariantCulture, out var workspaceId))
+            return (null, workspaceId);
+
+        return (null, null);
+    }
+
     protected override Task<(string Sentence, IReadOnlyList<GooseFindingEvidence> Evidence)> DescribeAsync(
         FindingCandidate candidate, DateTimeOffset began, CancellationToken ct)
     {
         var seen = failing[candidate.Subject];
-        var minutes = (int)Math.Max(0, (Time.GetUtcNow() - began).TotalMinutes);
 
         var said = string.IsNullOrWhiteSpace(seen.Said) ? "" : $" Slack said: {seen.Said.Trim()}";
-        var sentence = $"Messages to {seen.Where} have not got through for {minutes} minutes.{said}";
+        var sentence = $"Messages to {seen.Where} have not got through since {ChatText.When(began)}.{said}";
 
         IReadOnlyList<GooseFindingEvidence> evidence =
         [
