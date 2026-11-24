@@ -37,11 +37,16 @@ public static class SendBackStreak
         return streak;
     }
 
-    /// <summary>The single-issue query <see cref="Count"/> is run against, for a named dispatch.</summary>
+    /// <summary>
+    /// The single-issue query <see cref="Count"/> is run against, for a named
+    /// dispatch. It asks for <c>status_changed</c> events only: <see cref="Count"/>
+    /// skips every other kind, so the answer is the same and the rest of the
+    /// trail is not read.
+    /// </summary>
     public static async Task<int> ForIssueAsync(HatchContext db, long issueId, string implementationName, CancellationToken ct)
     {
         var events = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.IssueId == issueId)
+            .Where(e => e.IssueId == issueId && e.Kind == EfHatchIssueEvent.StatusChanged)
             .OrderByDescending(e => e.At).ThenByDescending(e => e.Id)
             .Select(e => new { e.Kind, e.Payload })
             .ToListAsync(ct);
@@ -54,13 +59,14 @@ public static class SendBackStreak
     /// query, grouped, with <see cref="Count"/> run once a group. Ungated,
     /// unlike <see cref="LetGo.CountsAsync"/>: no <c>StalledAt</c>-shaped
     /// pre-filter exists for a send-back streak, so this runs over every id
-    /// it is handed.
+    /// it is handed - but over their <c>status_changed</c> events alone, the
+    /// only kind <see cref="Count"/> reads.
     /// </summary>
     public static async Task<Dictionary<long, int>> CountsAsync(
         HatchContext db, IReadOnlyList<long> issueIds, string implementationName, CancellationToken ct)
     {
         var events = await db.IssueEvents.AsNoTracking()
-            .Where(e => issueIds.Contains(e.IssueId))
+            .Where(e => issueIds.Contains(e.IssueId) && e.Kind == EfHatchIssueEvent.StatusChanged)
             .OrderByDescending(e => e.At).ThenByDescending(e => e.Id)
             .Select(e => new { e.IssueId, e.Kind, e.Payload })
             .ToListAsync(ct);
