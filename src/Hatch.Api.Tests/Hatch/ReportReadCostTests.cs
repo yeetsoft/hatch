@@ -86,14 +86,14 @@ public class ReportReadCostTests
             new(8, 1, 1645, 1445, "Comments=440;IssueEvents=3882;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
             new(8, 1, 3645, 3445, "Comments=780;IssueEvents=7242;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=1500")),
         ["GET /api/reports/changelog (epic level)"] = (
-            new(13, 5, 418, 12, "Comments=720;Issues=1203;Projects=3;Statuses=36"),
-            new(13, 5, 418, 12, "Comments=2221;Issues=1402;Projects=3;Statuses=36")),
+            new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
+            new(13, 5, 417, 12, "Comments=2221;Issues=1223;Projects=3;Statuses=36")),
         ["GET /api/reports/changelog (story level)"] = (
             new(15, 7, 621, 12, "Comments=720;Issues=1244;Projects=3;Statuses=42"),
             new(15, 7, 621, 12, "Comments=2221;Issues=1443;Projects=3;Statuses=42")),
         ["GET /api/reports/changelog (loose=true)"] = (
-            new(15, 7, 424, 12, "Comments=720;Issues=1609;Projects=4;Statuses=42"),
-            new(15, 7, 424, 12, "Comments=2221;Issues=1808;Projects=4;Statuses=42")),
+            new(15, 7, 421, 12, "Comments=720;Issues=1251;Projects=4;Statuses=42"),
+            new(15, 7, 421, 12, "Comments=2221;Issues=1450;Projects=4;Statuses=42")),
         ["GET /api/reports/activity"] = (
             new(12, 3, 1735, 1161, "Comments=220;IssueEvents=3088;Issues=1401;Projects=8;Statuses=18"),
             new(12, 3, 1735, 1161, "Comments=720;IssueEvents=4448;Issues=1600;Projects=8;Statuses=18")),
