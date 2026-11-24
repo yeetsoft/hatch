@@ -150,6 +150,33 @@ internal sealed class FakeChatProvider : IChatProvider
     public Task<ChatSendResult> UpdateAsync(string token, string channelId, string messageId, ChatMessageContent content, CancellationToken ct) =>
         Send(new SendCall("update", token, channelId, messageId, content));
 
+    /// <summary>What <see cref="ListenAsync"/> does for an app-level token. A token with no script calls <c>opened</c> and waits to be cancelled.</summary>
+    public Dictionary<string, ListenScript> Listens { get; } = new();
+
+    /// <summary>Every app-level token listened with, in order.</summary>
+    public List<string> ListenCalls { get; } = [];
+
+    public async Task<ChatListenEnd> ListenAsync(
+        string appToken, Func<CancellationToken, Task> opened, Action<ChatPress> pressed, CancellationToken ct)
+    {
+        ListenCalls.Add(appToken);
+        var script = Listens.GetValueOrDefault(appToken) ?? new ListenScript();
+
+        try
+        {
+            if (script.CallOpened) await opened(ct);
+            foreach (var press in script.Presses) pressed(press);
+            if (script.End is { } end) return end;
+
+            await Task.Delay(Timeout.Infinite, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+
+        return ChatListenEnd.Stopped();
+    }
+
     private Task<ChatSendResult> Send(SendCall call)
     {
         Sends.Add(call);
@@ -162,3 +189,13 @@ internal sealed class FakeChatProvider : IChatProvider
 
 /// <summary>One post (no message id) or edit (the id it edits), as the provider was asked.</summary>
 internal sealed record SendCall(string Kind, string Token, string ChannelId, string? MessageId, ChatMessageContent Content);
+
+/// <summary>What the fake listener does: whether it says it opened, which presses it reports, and how it ends (null: it waits to be cancelled).</summary>
+internal sealed class ListenScript
+{
+    public bool CallOpened { get; init; } = true;
+
+    public IReadOnlyList<ChatPress> Presses { get; init; } = [];
+
+    public ChatListenEnd? End { get; init; }
+}

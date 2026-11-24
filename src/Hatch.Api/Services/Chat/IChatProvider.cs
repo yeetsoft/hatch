@@ -73,6 +73,68 @@ public interface IChatProvider
     /// the token in what it returns.
     /// </summary>
     Task<ChatSendResult> UpdateAsync(string token, string channelId, string messageId, ChatMessageContent content, CancellationToken ct);
+
+    /// <summary>
+    /// Opens the service's live connection with an app-level token and listens
+    /// until it ends: <paramref name="opened"/> is awaited once the service says
+    /// the connection is ready, and <paramref name="pressed"/> is called, and
+    /// returns at once, for each button press. Every message the service sends is
+    /// acknowledged before anything else is done with it. Never throws; both
+    /// callbacks may, and a throw from one does not end the listening. The
+    /// token, the connection address and a press's reply address are never in a
+    /// log line, an exception or what it returns.
+    /// </summary>
+    Task<ChatListenEnd> ListenAsync(
+        string appToken, Func<CancellationToken, Task> opened, Action<ChatPress> pressed, CancellationToken ct);
+}
+
+/// <summary>
+/// One button press, as the service reported it. <see cref="ReplyUrl"/> is an
+/// address the service gave for answering this press only: it is left out of
+/// <see cref="ToString"/> so that logging a press never writes it down.
+/// </summary>
+/// <param name="MemberId">The service's id for the person who pressed.</param>
+/// <param name="ChannelId">The channel the message is in.</param>
+/// <param name="MessageId">The service's id for the message the button is on.</param>
+/// <param name="ActionId">The id the button was given when the message was sent.</param>
+/// <param name="Value">The value the button was given, or null when it had none.</param>
+/// <param name="ReplyUrl">Where to answer this press. Never log it.</param>
+public record ChatPress(string MemberId, string ChannelId, string MessageId, string ActionId, string? Value, string ReplyUrl)
+{
+    public override string ToString() =>
+        $"ChatPress {{ MemberId = {MemberId}, ChannelId = {ChannelId}, MessageId = {MessageId}, ActionId = {ActionId}, Value = {Value} }}";
+}
+
+/// <summary>How a listen ended, in the terms the caller acts on.</summary>
+public enum ChatListenEndKind
+{
+    /// <summary>The connection was working and ended: reopen it at once.</summary>
+    Reopen,
+
+    /// <summary>It could not be opened, or ended before it was ready: back off. <see cref="ChatListenEnd.RetryAfter"/> is how long a throttle asked for.</summary>
+    Refused,
+
+    /// <summary>The service says this app has the connection turned off: keep trying, at the longest wait.</summary>
+    LinkDisabled,
+
+    /// <summary>The caller cancelled.</summary>
+    Stopped,
+}
+
+/// <summary>
+/// How a listen ended. <see cref="Sentence"/> is plain, says why, and never
+/// holds the token or an address. <see cref="RetryAfter"/> is how long a
+/// throttle asked for, or null.
+/// </summary>
+public record ChatListenEnd(ChatListenEndKind Kind, string? Sentence, TimeSpan? RetryAfter)
+{
+    public static ChatListenEnd Reopen(string sentence) => new(ChatListenEndKind.Reopen, sentence, null);
+
+    public static ChatListenEnd Refused(string sentence, TimeSpan? retryAfter = null) => new(ChatListenEndKind.Refused, sentence, retryAfter);
+
+    public static ChatListenEnd LinkDisabled(string sentence) => new(ChatListenEndKind.LinkDisabled, sentence, null);
+
+    public static ChatListenEnd Stopped() => new(ChatListenEndKind.Stopped, null, null);
 }
 
 /// <summary>

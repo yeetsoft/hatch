@@ -285,6 +285,20 @@ public class ChatWorkspaceCascadeDatabaseTests
 
         public Task<ChatSendResult> UpdateAsync(string token, string channelId, string messageId, ChatMessageContent content, CancellationToken ct) =>
             Task.FromResult(ChatSendResult.Sent(messageId));
+
+        public async Task<ChatListenEnd> ListenAsync(
+            string appToken, Func<CancellationToken, Task> opened, Action<ChatPress> pressed, CancellationToken ct)
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            return ChatListenEnd.Stopped();
+        }
     }
 
     /// <summary>Inserts the same workspace through a connection of its own, once, just before the first save lands.</summary>
