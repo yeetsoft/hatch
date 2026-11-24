@@ -252,6 +252,19 @@ public class HatchContext : DbContext, IModuleContext
             // jsonb for the reason the event payload is - see
             // EfHatchComment.Options.
             e.Property(c => c.Options).HasColumnType("jsonb");
+
+            // QuestionTrail.ReadAsync's two reads of the thread (HA-2782). Each
+            // index holds only the rows its read wants - the questions, the
+            // answers - so a long thread of ordinary comments costs the reads
+            // nothing, and a write of an ordinary comment pays nothing.
+            //
+            // Named in the model, not only in the database: both are on the
+            // same column, and EF would otherwise read the second HasIndex as
+            // the first and keep only one.
+            e.HasIndex([nameof(EfHatchComment.CreatedAt)], "IX_Comments_Questions")
+                .HasFilter($"\"Kind\" = '{EfHatchComment.Question}'");
+            e.HasIndex([nameof(EfHatchComment.CreatedAt)], "IX_Comments_Answers")
+                .HasFilter("\"AnswersId\" IS NOT NULL");
         });
 
         modelBuilder.Entity<EfHatchIssueEvent>(e =>
@@ -500,6 +513,14 @@ public class HatchContext : DbContext, IModuleContext
                 .IncludeProperties(w => new { w.EndedAt, w.PlaybookFromStatusId, w.PlaybookToStatusId })
                 .HasFilter($"\"IssueType\" = 'ambition' AND \"Outcome\" = '{ClaimOutcomes.Worked}' AND \"QuestionId\" IS NULL AND \"ChangeEventId\" IS NULL")
                 .HasDatabaseName("IX_WorkLogEntries_SettledPasses");
+
+            // BoardHealthController.LanesAsync's read of failed sessions from a
+            // time on (HA-2782). EF writes the filter as "IsError" AND ..., so
+            // the index is filtered the same way and Postgres can prove it.
+            // Failed sessions are few, so it stays small whatever the log's size.
+            e.HasIndex(w => w.CreatedAt)
+                .HasFilter("\"IsError\"")
+                .HasDatabaseName("IX_WorkLogEntries_FailedSessions");
         });
 
         // Matches AddProjectLanding's own defaultValue, for the same reason as
