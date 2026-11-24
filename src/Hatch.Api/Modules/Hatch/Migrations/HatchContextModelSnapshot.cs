@@ -1442,6 +1442,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Payload")
+                        .HasFilter("\"Kind\" = 'claim_released'");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Payload"), "gin");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Payload"), new[] { "jsonb_path_ops" });
+
                     b.HasIndex("Actor", "At");
 
                     b.HasIndex("At", "Id");
@@ -3275,6 +3281,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ChangeEventId");
+
+                    b.HasIndex("IssueId")
+                        .HasDatabaseName("IX_WorkLogEntries_SettledPasses")
+                        .HasFilter("\"IssueType\" = 'ambition' AND \"Outcome\" = 'worked' AND \"QuestionId\" IS NULL AND \"ChangeEventId\" IS NULL");
+
+                    NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("IssueId"), new[] { "EndedAt", "PlaybookFromStatusId", "PlaybookToStatusId" });
 
                     b.HasIndex("QuestionId");
 

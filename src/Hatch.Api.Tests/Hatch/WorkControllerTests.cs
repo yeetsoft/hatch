@@ -2314,6 +2314,39 @@ public class WorkControllerTests
         Assert.Equal(h.Todo, moved.StatusId);
     }
 
+    /// <summary>
+    /// The send-back reads ask for <c>status_changed</c> events only (HA-2801),
+    /// and answer what the fold gives over the whole trail: comments, claims
+    /// and releases between the round trips neither count nor break the streak.
+    /// </summary>
+    [Fact]
+    public async Task SendBackStreak_WithOtherKindsBetweenTheStatusChanges_CountsAsTheWholeTrailDoes()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "bounced twice, with a session and a comment between", h.InProgress);
+        var other = await h.FileAsync("story", "another trail, never sent back", h.InProgress);
+
+        await RoundTripsAsync(h, issue, Now, 1);
+        await h.LogEventAsync(issue, EfHatchIssueEvent.ClaimTaken, new { runner = "r" }, Now.AddMinutes(3));
+        await h.LogEventAsync(issue, EfHatchIssueEvent.Commented, new { }, Now.AddMinutes(4));
+        await h.LogEventAsync(issue, EfHatchIssueEvent.ClaimReleased, new { outcome = "dropped", runner = "r" }, Now.AddMinutes(5));
+        await RoundTripsAsync(h, issue, Now.AddMinutes(10), 1);
+        await h.LogEventAsync(issue, EfHatchIssueEvent.Commented, new { }, Now.AddMinutes(20));
+        await h.LogEventAsync(other, EfHatchIssueEvent.Commented, new { }, Now.AddMinutes(21));
+
+        var whole = (await h.Db.IssueEvents.Where(e => e.IssueId == issue.Id)
+                .OrderByDescending(e => e.At).ThenByDescending(e => e.Id).ToListAsync())
+            .Select(e => (e.Kind, e.Payload));
+        var expected = SendBackStreak.Count(whole, "in progress");
+        Assert.Equal(2, expected);
+
+        Assert.Equal(expected, await SendBackStreak.ForIssueAsync(h.Db, issue.Id, "in progress", default));
+
+        var counts = await SendBackStreak.CountsAsync(h.Db, [issue.Id, other.Id], "in progress", default);
+        Assert.Equal(expected, counts[issue.Id]);
+        Assert.False(counts.ContainsKey(other.Id));
+    }
+
     // ---- Refusals ----
 
     /// <summary>
