@@ -1209,6 +1209,8 @@ export const confirmChatLink = (secret: string) =>
   fetchJson<MeChatLink>('/api/me/chat/links/confirm', { method: 'POST', ...asJson({ secret }) });
 export const unlinkChat = (linkId: number) =>
   fetchJson<void>(`/api/me/chat/links/${seg(String(linkId))}`, { method: 'DELETE' });
+export const setChatLinkSwitches = (linkId: number, body: { runnerFailures: boolean }) =>
+  fetchJson<MeChatLink>(`/api/me/chat/links/${seg(String(linkId))}`, { method: 'PUT', ...asJson(body) });
 
 /** Every person's Slack links, for an admin; a key is refused. */
 export const getChatLinks = () => fetchJson<ChatLinkRow[]>('/api/chat/links');

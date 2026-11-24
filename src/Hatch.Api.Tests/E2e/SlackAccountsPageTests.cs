@@ -6,6 +6,7 @@ using Hatch.Api.Services.Chat;
 using Hatch.Api.Tests.Chat;
 using Hatch.Api.Tests.Hatch;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit.Abstractions;
@@ -15,9 +16,11 @@ namespace Hatch.Api.Tests.E2e;
 /// <summary>
 /// The Slack accounts section on <c>/settings</c>, rendered, with a fake chat provider standing in for
 /// Slack. Two workspaces are connected through the API. Acme is linked and confirmed through the API,
-/// with the secret taken from the message the fake recorded. Globex is linked through the page by typing
-/// into the picker, and left waiting. Then <c>/settings?chatLink=...</c> is opened with Globex's secret,
-/// and the page reads it as linked and takes the secret out of the address.
+/// with the secret taken from the message the fake recorded. Acme's Runner failures switch is flipped
+/// off and back on, each saved and surviving a reload, and a seeded refusal is shown under its row.
+/// Globex is linked through the page by typing into the picker, and left waiting. Then
+/// <c>/settings?chatLink=...</c> is opened with Globex's secret, and the page reads it as linked and
+/// takes the secret out of the address.
 /// <para>
 /// The wall is off, so the person is the local person, who is never offered a member by email: only the
 /// picker path is shown here. The email suggestion and the signed-out redirect are covered by the
@@ -120,6 +123,34 @@ public class SlackAccountsPageTests(ITestOutputHelper output)
             await AssertFitsAsync(harness, deadline, profile);
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "settings-slack-linked"));
 
+            // Acme's Runner failures switch is on by default; Globex, still waiting for a member, has none.
+            Assert.Equal(1, await CountAsync(harness, deadline, $"{Row}:has-text(\"Acme\") input:checked"));
+            Assert.Equal(0, await CountAsync(harness, deadline, $"{Row}:has-text(\"Globex\") input[type=checkbox]"));
+
+            // Switched off, saved, and still off after a reload.
+            await SetRunnerFailuresAsync(harness, deadline, "Acme", wanted: false);
+            await harness.GoToAsync(deadline, "/settings");
+            await harness.WaitForVisibleAsync(deadline, $"{Row}:has-text(\"Acme\")");
+            Assert.Equal(0, await CountAsync(harness, deadline, $"{Row}:has-text(\"Acme\") input:checked"));
+
+            // Switched on again, saved, and still on after a reload.
+            await SetRunnerFailuresAsync(harness, deadline, "Acme", wanted: true);
+            await harness.GoToAsync(deadline, "/settings");
+            await harness.WaitForVisibleAsync(deadline, $"{Row}:has-text(\"Acme\")");
+            Assert.Equal(1, await CountAsync(harness, deadline, $"{Row}:has-text(\"Acme\") input:checked"));
+
+            // A refusal on file is shown under the row, with Slack's own sentence.
+            await SeedRefusalAsync(harness.Services, "Acme", "channel_not_found");
+            await harness.GoToAsync(deadline, "/settings");
+            await harness.WaitForVisibleAsync(
+                deadline, $"{Row}:has-text(\"Acme\"):has-text(\"Slack could not send to this account: channel_not_found\")");
+            await AssertFitsAsync(harness, deadline, profile);
+            // The section sits below the token cards: bring it into the frame so the picture shows the switch and the refusal.
+            await harness.EvaluateAsync<bool>(
+                deadline, "scrolling the Slack accounts section into view",
+                "() => { document.querySelector('.hatch-slack-accounts')?.scrollIntoView({ block: 'center' }); return true; }");
+            output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "settings-slack-refusal"));
+
             // Link Globex through the page: the local person is offered nobody, so the picker opens at once.
             // The link call above listed members itself, to check the one chosen, so count from here.
             var readsBefore = provider.MemberListReads;
@@ -196,6 +227,32 @@ public class SlackAccountsPageTests(ITestOutputHelper output)
     /// <summary>The secret in the link of the last message the fake was asked to send.</summary>
     private static string SecretFromLastMessage(FakeChatProvider provider) =>
         QueryHelpers.ParseQuery(new Uri(provider.Sends[^1].Content.Links[0].Url!).Query)["chatLink"].ToString();
+
+    /// <summary>Clicks the Runner failures checkbox on the named workspace's row, and waits for it to be in the
+    /// wanted state and enabled again: a saved change.</summary>
+    private static async Task SetRunnerFailuresAsync(E2eHarness harness, Deadline deadline, string workspaceName, bool wanted)
+    {
+        var row = $"{Row}:has-text(\"{workspaceName}\")";
+        await harness.ClickAsync(deadline, $"{row} input[type=checkbox]");
+        await harness.WaitForFunctionAsync(
+            deadline, $"waiting for {workspaceName}'s Runner failures switch to be {(wanted ? "ticked" : "unticked")}",
+            "([r, w]) => { const rows = [...document.querySelectorAll('.hatch-slack-account')]; " +
+            "const row = rows.find(x => x.textContent.includes(r)); const i = row && row.querySelector('input[type=checkbox]'); " +
+            "return !!i && i.checked === w && !i.disabled; }",
+            new object[] { workspaceName, wanted });
+    }
+
+    /// <summary>Sets a workspace's Slack link's last refusal, as a real refusal would leave it.</summary>
+    private static async Task SeedRefusalAsync(IServiceProvider services, string workspaceName, string refusal)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<HatchContext>();
+        var workspace = await db.ChatWorkspaces.SingleAsync(w => w.Name == workspaceName);
+        var link = await db.ChatLinks.SingleAsync(l => l.WorkspaceId == workspace.Id);
+        link.LastRefusal = refusal;
+        link.LastRefusalAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+    }
 
     /// <summary>How many elements match a Playwright selector, so <c>:text-is</c> works.</summary>
     private static Task<int> CountAsync(E2eHarness harness, Deadline deadline, string selector) =>

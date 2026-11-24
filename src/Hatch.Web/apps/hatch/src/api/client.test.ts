@@ -9,6 +9,7 @@ import {
   getChatSuggestion,
   getMyChat,
   linkChatMember,
+  setChatLinkSwitches,
   unlinkChat,
   createRunner,
   deleteChatWorkspace,
@@ -1010,6 +1011,15 @@ describe('my Slack links', () => {
     const fetchMock = stub(null, 204);
     await unlinkChat(9);
     expect(fetchMock).toHaveBeenCalledWith('/api/me/chat/links/9', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('PUTs a switch by id', async () => {
+    const fetchMock = stub({ id: 9 });
+    await setChatLinkSwitches(9, { runnerFailures: false });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me/chat/links/9',
+      expect.objectContaining({ method: 'PUT', body: '{"runnerFailures":false}' }),
+    );
   });
 });
 

@@ -107,3 +107,33 @@ export const confirmedWords = (link: MeChatLink): ConfirmOutcome => ({
 });
 
 export const confirmFailedWords = (err: unknown): ConfirmOutcome => ({ words: refusalWords(err), failed: true });
+
+/** The line under the Runner failures switch. */
+export const RUNNER_FAILURES_HINT = 'Direct messages when one of your runners cannot work.';
+
+/** What a linked row says Slack last told it when a direct message to it was refused, with when
+    in the viewer's own time - or null where no refusal is on file. */
+export function refusalLine(link: MeChatLink, locale?: string, timeZone?: string): string | null {
+  if (link.lastRefusal === null || link.lastRefusalAt === null) return null;
+  const sentence = link.lastRefusal.endsWith('.') ? link.lastRefusal : `${link.lastRefusal}.`;
+  const when = new Date(link.lastRefusalAt).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone });
+  return `Slack could not send to this account: ${sentence} (${when})`;
+}
+
+/** What a flip of the Runner failures switch comes to: the updated link, or a refusal's words. */
+export type RunnerFailuresSave = { ok: true; link: MeChatLink } | { ok: false; words: string };
+
+/** Saves the switch through `send`, the client's own PUT, and reads a refusal's words off the
+    error so the card can show them without knowing the shape of a failure. */
+export async function saveRunnerFailures(
+  link: MeChatLink,
+  on: boolean,
+  send: (linkId: number, body: { runnerFailures: boolean }) => Promise<MeChatLink>,
+): Promise<RunnerFailuresSave> {
+  try {
+    const updated = await send(link.id, { runnerFailures: on });
+    return { ok: true, link: updated };
+  } catch (err) {
+    return { ok: false, words: refusalWords(err) };
+  }
+}
