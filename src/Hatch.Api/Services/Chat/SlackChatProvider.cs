@@ -206,6 +206,9 @@ public class SlackChatProvider(
             || address.Scheme != Uri.UriSchemeWss)
             return ChatListenEnd.Refused(Unreachable("Slack apps.connections.open named no usable address"));
 
+        // A stop that lands while the open call is in flight must not go on to connect.
+        if (ct.IsCancellationRequested) return ChatListenEnd.Stopped();
+
         ISocketConnection connection;
         try
         {
