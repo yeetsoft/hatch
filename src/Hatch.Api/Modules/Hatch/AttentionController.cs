@@ -61,7 +61,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // board too short to have one. The same failing rule the branch builds
         // use: a check that has failed counts while the rest are still running.
         var failingTrunks = await db.TrunkBuilds.AsNoTracking()
-            .Where(t => t.Verdict == BuildVerdicts.Failed || (t.Verdict == BuildVerdicts.Pending && t.Failing != null))
+            .Where(TrunkBuildFailing.Where)
             .Include(t => t.BugIssue).ThenInclude(i => i!.Project)
             .OrderBy(t => t.Canonical).ThenBy(t => t.Trunk)
             .ToListAsync(ct);
