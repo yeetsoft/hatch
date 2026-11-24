@@ -46,12 +46,12 @@ import {
 } from '../lib/workLog';
 import type { Board, SessionSort, WorkLogByPlaybook, WorkLogHistory, WorkLogSession, WorkLogSessions } from '../types';
 
-/** The podium, the table, the graph and the dropped fold, arriving together so
-    a half-drawn page is never a state - and so the four cannot end up
-    describing different windows. `byPlaybook` is null whenever the control is
-    not at Moved nothing, which is also when nothing asked for it. */
+/** The table with its podium, the graph and the dropped fold, arriving together
+    so a half-drawn page is never a state - and so they cannot end up
+    describing different windows. The podium is `table.top`, which one request
+    answers beside the table. `byPlaybook` is null whenever the control is not
+    at Moved nothing, which is also when nothing asked for it. */
 interface LeaderboardView {
-  podium: WorkLogSessions;
   table: WorkLogSessions;
   history: WorkLogHistory;
   byPlaybook: WorkLogByPlaybook | null;
@@ -84,7 +84,7 @@ const COLUMNS: { key: SessionSort; label: string }[] = [
  * an API key and the server refuses a browser outright. The absence is the
  * guarantee - do not add one for symmetry.
  *
- * Under a scoped tab the three reads and the picker's candidates are all
+ * Under a scoped tab the page's reads and the picker's candidates are all
  * narrowed to the scope's projects - nothing is fetched until the project
  * list is known, so the first request is already the right one. The body is
  * a component of its own so that wait is not inside `load`.
@@ -122,19 +122,18 @@ function LeaderboardBody({
     [search, offsetMinutes],
   );
 
-  /* Two reads over one range and one ancestorKey, in one Promise.all. The
-     podium is pinned to the top five by tokens and the table takes the sort
-     from the URL, because a "top billing" list that turned into "the five most
-     recent" when somebody sorted the table by time would be a different page
-     wearing the same caption - and re-sorting the table's capped rows here
-     would rank a sample. When the table happens to be sorted by tokens the two
-     overlap, and that redundancy is bought deliberately: one behaviour in every
-     sort beats a branch that only sometimes fetches. */
+  /* One sessions read over one range and one ancestorKey, beside the graph's
+     in one Promise.all. The table takes the sort from the URL, and `top` asks
+     the server for the five heaviest by tokens in the same answer, whatever
+     that sort is: a "top billing" list that turned into "the five most recent"
+     when somebody sorted the table by time would be a different page wearing
+     the same caption - and re-sorting the table's capped rows here would rank
+     a sample. The server ranks the whole range for it, so the range is walked
+     and summed once rather than once per list. */
   const load = useCallback(async (): Promise<LeaderboardView> => {
     const window = sessionWindow(query, ids);
-    const [podium, table, history, byPlaybook] = await Promise.all([
-      getWorkLogSessions({ ...window, sort: 'tokens', limit: PODIUM }),
-      getWorkLogSessions({ ...window, sort: query.sort, limit: TABLE_LIMIT }),
+    const [table, history, byPlaybook] = await Promise.all([
+      getWorkLogSessions({ ...window, sort: query.sort, limit: TABLE_LIMIT, top: PODIUM }),
       /* No bucket size is sent: the server chooses it from the length of the
          range and names it back, and the graph labels its axis from that. The
          offset is the one the presets were computed on, so the daily grid the
@@ -146,7 +145,7 @@ function LeaderboardBody({
       query.outcome === 'dropped' ? getWorkLogByPlaybook(window) : Promise.resolve(null),
     ]);
 
-    return { podium, table, history, byPlaybook };
+    return { table, history, byPlaybook };
   }, [query, offsetMinutes, ids]);
 
   const { data, error } = useLoaded<LeaderboardView>(load);
@@ -178,9 +177,9 @@ function LeaderboardBody({
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
 
-  const { podium, table, history, byPlaybook } = data;
+  const { table, history, byPlaybook } = data;
   const empty = emptiness(table, query.issue);
-  const top = rankedTop(podium.sessions);
+  const top = rankedTop(table.top ?? []);
   const errors = errorPhrase(table.totals);
   const cap = capPhrase(table.totals, table.sessions.length);
   const dropped = query.outcome === 'dropped' ? foldDropped(byPlaybook?.rows ?? []) : null;
@@ -301,7 +300,7 @@ function LeaderboardBody({
 
           <Card>
             <h2 className="hatch-section-title">Top billing</h2>
-            <p className="hatch-section-hint text-muted">{rankingCaption(podium.totals, top.length)}</p>
+            <p className="hatch-section-hint text-muted">{rankingCaption(table.totals, top.length)}</p>
 
             <ol className="hatch-leaderboard-podium">
               {top.map((session) => (

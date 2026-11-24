@@ -928,11 +928,11 @@ export const getWorkLog = (key: string) => fetchJson<WorkLog>(`/api/issues/${seg
 
 /** What a range of the log holds, ranked - and what that whole range cost.
 
-    The leaderboard asks this twice over one range: once pinned to the top five
-    by tokens for the ranking, and once at the URL's own sort for the table. Two
-    reads rather than one re-sorted in the browser, because a browser re-ranking
-    a capped hundred rows would be ranking a sample and calling it a
-    leaderboard.
+    The leaderboard asks this once over its range: the table at the URL's own
+    sort in `sessions`, and with `top` the heaviest by tokens in `top`. The
+    server ranks the second rather than the browser re-sorting the first,
+    because a browser re-ranking a capped hundred rows would be ranking a
+    sample and calling it a leaderboard.
 
     Anything null or undefined is left out rather than sent empty - the rule
     `searchIssues` states, and it matters here for the same reason: an empty
@@ -1152,6 +1152,10 @@ export interface WorkLogSessionQuery {
   /** One of the claim outcomes, or `none` for sessions with no outcome; left
       out of the URL rather than sent empty when unset. */
   outcome?: string | null;
+  /** How many of the heaviest sessions by tokens to answer in `top`, 1 to 500,
+      whatever `sort` and `limit` are; left out of the URL when unset, and
+      `top` comes back null. */
+  top?: number | null;
 }
 
 /** One row per playbook/transition/type/model/effort/outcome/reason

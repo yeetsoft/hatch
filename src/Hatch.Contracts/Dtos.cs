@@ -4816,7 +4816,10 @@ public record WorkLogSessionDto(
 /// Nothing is snapped here, deliberately unlike <see cref="WorkLogHistoryDto"/>:
 /// there is no bucket grid on this read to align to.
 /// </remarks>
-/// <param name="Sort">The sort as resolved - <c>tokens</c>, <c>cost</c> or <c>ended</c>.</param>
+/// <param name="Sort">
+/// The sort as resolved - <c>tokens</c>, <c>cost</c>, <c>ended</c>, <c>requests</c>
+/// or <c>peakContext</c>.
+/// </param>
 /// <param name="FirstSessionAt">
 /// The earliest session in the population <c>ancestorKey</c> names,
 /// <em>ignoring the range</em>, or null when that population is empty. Read
@@ -4830,6 +4833,12 @@ public record WorkLogSessionDto(
 /// across sessions, heaviest-count-first then path ascending, capped at
 /// <see cref="WorkLogRollup.MaxTopReads"/>.
 /// </param>
+/// <param name="Top">
+/// The heaviest sessions by total tokens, descending, whatever <paramref name="Sort"/>
+/// is, when the caller asked for them; null when it did not. The same rows as
+/// <paramref name="Sessions"/> and narrowed by the same filter, so a page can
+/// draw its table and its ranking from one read.
+/// </param>
 public record WorkLogSessionsDto(
     DateTimeOffset From,
     DateTimeOffset To,
@@ -4838,7 +4847,8 @@ public record WorkLogSessionsDto(
     DateTimeOffset? FirstSessionAt,
     DateTimeOffset? LastSessionAt,
     IReadOnlyList<WorkLogSessionDto> Sessions,
-    IReadOnlyList<WorkLogReadDto> TopReads);
+    IReadOnlyList<WorkLogReadDto> TopReads,
+    IReadOnlyList<WorkLogSessionDto>? Top = null);
 
 /// <summary>
 /// The sessions in a range, folded by the playbook they ran under: one row per
