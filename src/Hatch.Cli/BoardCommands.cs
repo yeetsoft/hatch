@@ -258,7 +258,7 @@ public sealed class BoardCommands(Cli cli)
 
         if (await NoScope.SaidAsync(cli, ct)) return 0;
 
-        var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine, cli.RunnerName, takers: true);
+        var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine, cli.RunnerName, takers: true, descriptions: false);
 
         // Best-effort, as Idle.cs reads it: the rows below are the answer this
         // command exists to give, and a line that did not arrive must not turn

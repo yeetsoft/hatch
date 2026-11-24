@@ -29,7 +29,7 @@ public sealed class Idle(
         {
             try
             {
-                queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, clones, mine, runner);
+                queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, clones, mine, runner, descriptions: false);
             }
             catch (HatchException)
             {

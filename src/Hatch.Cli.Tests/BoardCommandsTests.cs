@@ -309,6 +309,36 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public async Task The_queue_asks_for_descriptions_unless_the_caller_says_it_has_no_use_for_them()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
+
+        await h.Board.QueueAsync([], null, 0, default);
+        await h.Board.QueueAsync([], null, 0, default, descriptions: false);
+
+        var calls = h.Wire.To("GET", "/api/work/queue");
+        Assert.DoesNotContain("descriptions", calls[0].Query, StringComparison.Ordinal);
+        Assert.Contains("&descriptions=false", calls[1].Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>Nothing the idle report, the queue command or the pick prints or reads is a queue entry's description.</summary>
+    [Fact]
+    public async Task The_queue_command_and_the_idle_report_send_descriptions_false()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+        await new Idle(h.Board, h.Cli.Say, []).ReportAsync(null, null, 0, default);
+
+        Assert.All(
+            h.Wire.To("GET", "/api/work/queue"),
+            c => Assert.Contains("descriptions=false", c.Query, StringComparison.Ordinal));
+        Assert.Equal(2, h.Wire.To("GET", "/api/work/queue").Count);
+    }
+
+    [Fact]
     public async Task Mine_and_an_ancestor_key_combine()
     {
         using var h = new CliHarness();
