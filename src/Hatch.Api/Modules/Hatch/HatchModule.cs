@@ -121,6 +121,8 @@ public static class HatchModule
         services.AddScoped<IProjectAccess, ProjectAccess>();
         services.AddScoped<ICallerScope, CallerScope>();
         services.AddScoped<QuestionAnswers>();
+        services.AddScoped<QuestionPresses>();
+        services.AddScoped<IChatPressHandler, QuestionPressHandler>();
 
         // Scoped, so the filter that resolves the caller's scope and the
         // HatchContext whose query filters read it share one holder for the

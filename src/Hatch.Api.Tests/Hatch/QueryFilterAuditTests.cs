@@ -163,6 +163,13 @@ public class QueryFilterAuditTests
             + "install's and not the writer's, so a scoped writer must queue for the same rooms as anyone else, or "
             + "the same change would reach different rooms by who made it. What leaves is a room id and its "
             + "workspace id, which become the queued row's."),
+        ["QuestionPresses.AnswerAsync"] = (3,
+            "The question a press names, the queued row that proves Hatch sent its message, and the answers it "
+            + "already has. A press is handled by the listener with no request behind it, so the context would hide "
+            + "no project from it anyway; the reads go past the filters so that stays true whoever runs it. Who may "
+            + "answer is decided apart, by PersonScope for the linked person, before anything is written. What leaves "
+            + "is a case, the issue key, and for an answered question its latest answer, and only once the person "
+            + "is known to see the project."),
         ["FindingMessages.LinksAsync"] = (1,
             "The key of the project a finding belongs to, read so the finding's own issue link can be checked "
             + "against it. A finding is the install's and not the writer's, and a job's context reads every "

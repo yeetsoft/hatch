@@ -194,7 +194,7 @@ public sealed class ChatOutbox(HatchContext db, TimeProvider time)
         await ChangeAsync(kindName, subject, json, now, ct);
     }
 
-    private static string KindName(ChatMessageKind kind) => kind.ToString().ToLowerInvariant();
+    internal static string KindName(ChatMessageKind kind) => kind.ToString().ToLowerInvariant();
 
     private static void ValidateSubject(string subject, ChatMessageContent content)
     {
