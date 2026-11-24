@@ -13,10 +13,12 @@ namespace Hatch.Api.Modules.Hatch;
 /// the board's normal is that answer, so the flow page and the board cannot
 /// disagree about it.
 ///
-/// A class rather than a static because it keeps its last answer: the read
-/// walks every issue and every status change, and a board is refetched after
-/// every action. Like <see cref="DoneHorizon"/>, it takes the instant it is
-/// judging against and never reads a clock.
+/// A class rather than a static because it keeps its last answer: a board is
+/// refetched after every action. The read is every issue and, for the issues
+/// with no children, the status changes the thirty days need
+/// (<see cref="FlowRead.MovesAsync"/>), not the whole trail. Like
+/// <see cref="DoneHorizon"/>, it takes the instant it is judging against and
+/// never reads a clock.
 /// </summary>
 public sealed class ColumnNormals
 {
@@ -70,9 +72,6 @@ public sealed class ColumnNormals
         return (read - enteredAt).TotalSeconds * 2 < normal ? Healthy : Aging;
     }
 
-    /// <summary>The two lists <see cref="Fold"/> reads, as <see cref="ReadAsync"/> returns them.</summary>
-    private sealed record Rows(List<TimelineReport.Row> Issues, List<FlowReport.Event> Moves);
-
     private readonly SemaphoreSlim _one = new(1, 1);
     private IReadOnlyList<Normal>? _answer;
     private DateTimeOffset _madeAt;
@@ -89,8 +88,7 @@ public sealed class ColumnNormals
     {
         // A parent's own stay is its children's work over again, and says nothing
         // about how long a piece of work normally waits.
-        var parents = rows.Where(r => r.ParentId is not null).Select(r => r.ParentId!.Value).ToHashSet();
-        var kept = rows.Where(r => !parents.Contains(r.Id)).ToList();
+        var kept = Leaves(rows);
 
         var flow = FlowReport.Fold(kept, events, [], [], statuses, now - Window, now, null, null);
         var byColumn = flow.Columns.ToDictionary(c => c.StatusId);
@@ -123,8 +121,11 @@ public sealed class ColumnNormals
             if (_answer is { } held && _fingerprint == fingerprint && now - _madeAt < Lifetime)
                 return held;
 
-            var read = await ReadAsync(db, ct);
-            var answer = Fold(read.Issues, read.Moves, statuses, now);
+            var rows = await ReadAsync(db, ct);
+            var leaves = Leaves(rows);
+            var moves = await FlowRead.MovesAsync(
+                db, leaves, statuses, now - Window, now, leaves.Select(r => r.Id).ToList(), true, ct);
+            var answer = Fold(rows, moves, statuses, now);
 
             _answer = answer;
             _madeAt = now;
@@ -146,9 +147,15 @@ public sealed class ColumnNormals
             .OrderBy(s => s.SortOrder).ThenBy(s => s.Id)
             .Select(s => $"{s.Id},{s.SortOrder},{s.IsTerminal},{s.IsDeferred}"));
 
-    private static async Task<Rows> ReadAsync(HatchContext db, CancellationToken ct)
+    /// <summary>The rows no other row names as its parent: a parent's own stay is its children's work over again.</summary>
+    private static List<TimelineReport.Row> Leaves(IReadOnlyList<TimelineReport.Row> rows)
     {
-        var issues = (await db.Issues.IgnoreQueryFilters().AsNoTracking()
+        var parents = rows.Where(r => r.ParentId is not null).Select(r => r.ParentId!.Value).ToHashSet();
+        return rows.Where(r => !parents.Contains(r.Id)).ToList();
+    }
+
+    private static async Task<List<TimelineReport.Row>> ReadAsync(HatchContext db, CancellationToken ct) =>
+        (await db.Issues.IgnoreQueryFilters().AsNoTracking()
                 .Select(i => new
                 {
                     i.Id,
@@ -167,17 +174,4 @@ public sealed class ColumnNormals
                 i.Id, i.ParentId, i.ProjectId, i.ProjectKey, i.Number, i.Type,
                 i.StatusId, i.Rank, i.CreatedAt, i.CreatedBy))
             .ToList();
-
-        var moves = (await db.IssueEvents.IgnoreQueryFilters().AsNoTracking()
-                .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
-                .Select(e => new { e.IssueId, e.Id, e.Kind, e.At, e.Payload })
-                .ToListAsync(ct))
-            .OrderBy(e => e.IssueId)
-            .ThenBy(e => e.At)
-            .ThenBy(e => e.Id)
-            .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
-            .ToList();
-
-        return new Rows(issues, moves);
-    }
 }

@@ -96,11 +96,19 @@ public class QueryFilterAuditTests
             + "the ambition, not about who asks, so a scoped caller whose scope hides one of its epics must read "
             + "the same figure as everyone else - and the later refusal that stops work on it must not be talked "
             + "past by a narrower read. What leaves is a sum, a count and a flag; no row and no key does."),
-        ["ColumnNormals.ReadAsync"] = (2,
-            "Every issue and every status change, to work out how long a column's stays normally last. A column "
+        ["ColumnNormals.ReadAsync"] = (1,
+            "Every issue, to work out how long a column's stays normally last. A column "
             + "is shared by every project, as its WIP count is, so a scoped reader must get the same normal as "
             + "anyone else - and the first reader to ask fills the cache for everyone. What leaves is a duration, "
             + "never a row."),
+        ["BoardHealthTrail.Events"] = (1,
+            "The events a column's normal is worked out from, when the caller asks for every project's "
+            + "(HA-2786). A column is shared by every project, so a scoped reader must get the same normal as "
+            + "anyone else, and only a duration leaves. A caller that does not ask reads on its own filters."),
+        ["BoardHealthTrail.Issues"] = (1,
+            "The issues the thirty-day read of status changes is driven from, when the caller asks for every "
+            + "project's (HA-2786). A column is shared by every project, so a scoped reader must get the same "
+            + "normal as anyone else, and only a duration leaves. A caller that does not ask reads on its own filters."),
         ["TrunkBuildController.PutTrunkBuild"] = (1,
             "Whether a row for this repository and trunk is stored, so a put naming a repository only a hidden "
             + "project binds is answered as a fresh row and not by the unique index failing. What is read is an "

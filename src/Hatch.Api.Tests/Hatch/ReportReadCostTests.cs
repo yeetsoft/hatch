@@ -130,6 +130,12 @@ public class ReportReadCostTests
         ["GET /api/reports/cumulative-flow"] = (
             new(5, 2, 1110, 710, "IssueEvents=704;Issues=800;Projects=2;Statuses=6"),
             new(5, 2, 1110, 710, "IssueEvents=704;Issues=800;Projects=2;Statuses=6")),
+        // The column normals read the thirty days' moves alone (HA-2786): the issues once for the rows,
+        // and the trail's probe, which reads them again. The same rows at both sizes. Unlike the flow
+        // report, the read opts out of the query filters, so no join to Issues changes the plan.
+        ["ColumnNormals.ForAsync"] = (
+            new(4, 2, 923, 563, "IssueEvents=704;Issues=400;Projects=2"),
+            new(4, 2, 923, 563, "IssueEvents=664;Issues=400;Projects=2")),
     };
 
     /// <summary>
@@ -186,19 +192,15 @@ public class ReportReadCostTests
             new(12, 3, 1861, 1281, "Comments=220;IssueEvents=4088;Issues=1401;Projects=8;Statuses=18"),
             new(12, 3, 1861, 1281, "Comments=720;IssueEvents=6588;Issues=1600;Projects=8;Statuses=18")),
         // The trail reads are bounded (HA-2783, see the BoardHealthTrail lines above). What still
-        // grows is the status changes with no time bound, ColumnNormals (HA-2786) and the dispatch
-        // and family-gate reads (HA-2790). One statement and one issue load fewer than before
-        // HA-2796: FamilyGate.ForAsync reads every row off the tree it is handed rather than
-        // Issues a second time.
+        // grows is the dispatch and family-gate reads (HA-2790). The column normals (HA-2786) are bounded
+        // now, so the rows returned are the same at both sizes; what is left is Postgres reading more of
+        // Issues at the large size, and Comments.
         ["GET /api/board/health"] = (
-            new(60, 16, 5915, 3022, "Comments=1782;IssueEvents=3845;Issues=5202;LegacyRunners=3;Projects=20;RunnerStates=27;Statuses=30"),
-            new(60, 16, 7915, 5022, "Comments=1923;IssueEvents=7257;Issues=5802;LegacyRunners=3;Projects=20;RunnerStates=3;Statuses=30")),
+            new(63, 18, 5894, 2641, "Comments=1782;IssueEvents=2755;Issues=5602;LegacyRunners=3;Projects=22;RunnerStates=27;Statuses=30"),
+            new(63, 18, 5894, 2641, "Comments=1923;IssueEvents=2607;Issues=6202;LegacyRunners=3;Projects=22;RunnerStates=3;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(64, 17, 5876, 2972, "Comments=1782;IssueEvents=3889;Issues=5604;LegacyRunners=3;Projects=26;RunnerStates=27;Statuses=30"),
-            new(64, 17, 7876, 4972, "Comments=1923;IssueEvents=7301;Issues=6204;LegacyRunners=3;Projects=26;RunnerStates=3;Statuses=30")),
-        ["ColumnNormals.ForAsync"] = (
-            new(2, 1, 1144, 944, "IssueEvents=1794;Issues=200;Projects=2"),
-            new(2, 1, 3144, 2944, "IssueEvents=5314;Issues=200;Projects=2")),
+            new(67, 19, 5855, 2591, "Comments=1782;IssueEvents=2799;Issues=6004;LegacyRunners=3;Projects=28;RunnerStates=27;Statuses=30"),
+            new(67, 19, 5855, 2591, "Comments=1923;IssueEvents=2651;Issues=6604;LegacyRunners=3;Projects=28;RunnerStates=3;Statuses=30")),
     };
 
     private sealed record Read(string Name, Func<Harness, Task> Call);

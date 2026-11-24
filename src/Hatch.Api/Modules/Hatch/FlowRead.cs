@@ -46,14 +46,7 @@ internal static class FlowRead
         var narrowed = (projectIds is not null && projectIds.Count > 0) || type is not null;
         var issueIds = narrowed ? kept.Select(r => r.Id).ToList() : null;
 
-        var moves = await BoardHealthTrail.ReadAsync(
-            db, [EfHatchIssueEvent.StatusChanged], start, null, issueIds, ct, until: end, wholeInstant: true);
-        moves.AddRange(await WalkBackAsync(db, kept, moves, statuses, start, end, ct));
-
-        var events = moves
-            .OrderBy(e => e.IssueId).ThenBy(e => e.At).ThenBy(e => e.Id)
-            .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
-            .ToList();
+        var events = await MovesAsync(db, kept, statuses, start, end, issueIds, false, ct);
 
         var questions = await QuestionTrail.ReadAsync(db, start, end, ct, laterAnswerBeatsLapse: true);
 
@@ -67,6 +60,28 @@ internal static class FlowRead
     }
 
     /// <summary>
+    /// The status changes <see cref="FlowReport.Fold"/> needs for <c>[start, end)</c>
+    /// over <paramref name="kept"/>: the window's, the newest instant before it and
+    /// the walk back, in the fold's order. <paramref name="issueIds"/> narrows the
+    /// read, null for every issue. <paramref name="everyProject"/> reads every
+    /// project and not the caller's own; <see cref="ColumnNormals"/> asks for it.
+    /// </summary>
+    internal static async Task<List<FlowReport.Event>> MovesAsync(
+        HatchContext db, IReadOnlyList<TimelineReport.Row> kept, IReadOnlyList<EfHatchStatus> statuses,
+        DateTimeOffset start, DateTimeOffset end, List<long>? issueIds, bool everyProject, CancellationToken ct)
+    {
+        var moves = await BoardHealthTrail.ReadAsync(
+            db, [EfHatchIssueEvent.StatusChanged], start, null, issueIds, ct,
+            until: end, wholeInstant: true, everyProject: everyProject);
+        moves.AddRange(await WalkBackAsync(db, kept, moves, statuses, start, end, everyProject, ct));
+
+        return moves
+            .OrderBy(e => e.IssueId).ThenBy(e => e.At).ThenBy(e => e.Id)
+            .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
+            .ToList();
+    }
+
+    /// <summary>
     /// The earlier moves of the issues whose stay that leaves inside the window
     /// may have been measured from too early a start - see the class remarks.
     /// An issue is looked at when the cut holds a move before the window. Its
@@ -77,8 +92,8 @@ internal static class FlowRead
     /// that does not write moves from a column into itself.
     /// </summary>
     private static async Task<List<BoardHealthTrail.Ev>> WalkBackAsync(
-        HatchContext db, List<TimelineReport.Row> kept, List<BoardHealthTrail.Ev> moves,
-        IReadOnlyList<EfHatchStatus> statuses, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+        HatchContext db, IReadOnlyList<TimelineReport.Row> kept, List<BoardHealthTrail.Ev> moves,
+        IReadOnlyList<EfHatchStatus> statuses, DateTimeOffset start, DateTimeOffset end, bool everyProject, CancellationToken ct)
     {
         var board = TimelineReport.IndexOf(statuses);
         var rowOf = kept.ToDictionary(r => r.Id);
@@ -101,7 +116,7 @@ internal static class FlowRead
                 var open = stretches.FindIndex(s => s.From < start && (s.To is null || s.To >= start));
                 if (open != 0 || !stretches[0].Resolved || stretches[0].To is not { } leaves || leaves >= end) break;
 
-                var earlier = await BoardHealthTrail.EarlierAsync(db, EfHatchIssueEvent.StatusChanged, trail.Key, earliest, ct);
+                var earlier = await BoardHealthTrail.EarlierAsync(db, EfHatchIssueEvent.StatusChanged, trail.Key, earliest, ct, everyProject);
                 if (earlier.Count == 0) break;
 
                 cut.AddRange(earlier);
