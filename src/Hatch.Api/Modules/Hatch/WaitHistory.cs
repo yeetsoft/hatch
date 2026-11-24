@@ -38,8 +38,14 @@ public sealed class WaitHistory
     /// or whose columns changed, is read again; concurrent callers wait for one
     /// read. Nothing is kept if the read throws or is cancelled.
     /// </summary>
+    /// <param name="issues">
+    /// The caller's own rows when it already holds them (a health poll takes them off its
+    /// priority tree, see <see cref="BoardHealthTrail.IssuesFrom"/>); read here when null.
+    /// Only a fresh read uses them.
+    /// </param>
     public async Task<DateTimeOffset?> ForAsync(
-        HatchContext db, List<EfHatchStatus> statuses, HashSet<string>? scope, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, List<EfHatchStatus> statuses, HashSet<string>? scope, DateTimeOffset now, CancellationToken ct,
+        List<BoardHealthReport.Issue>? issues = null)
     {
         var visible = await db.Projects.AsNoTracking().Select(p => p.Key).ToListAsync(ct);
         var wanted = scope is null ? visible : visible.Where(scope.Contains).ToList();
@@ -63,7 +69,7 @@ public sealed class WaitHistory
             if (stale.Count > 0)
             {
                 var since = now - BoardHealthReport.WaitLookback;
-                var issues = await BoardHealthTrail.IssuesAsync(db, ct);
+                issues ??= await BoardHealthTrail.IssuesAsync(db, ct);
                 var moves = await BoardHealthTrail.MovesAsync(db, since, stale, ct);
                 var records = await BoardHealthTrail.RecordsAsync(db, since, stale, ct);
                 var levels = await BoardHealthTrail.LevelsAsync(db, since, ct);

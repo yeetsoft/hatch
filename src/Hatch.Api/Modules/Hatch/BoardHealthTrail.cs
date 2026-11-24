@@ -44,6 +44,54 @@ internal static class BoardHealthTrail
                 !string.IsNullOrWhiteSpace(i.PullRequestUrl)))
             .ToList();
 
+    /// <summary>
+    /// The same rows as <see cref="IssuesAsync"/>, taken off the house-wide
+    /// <paramref name="tree"/> a poll has already read, with the caller's own scope applied here:
+    /// <paramref name="db"/>'s <see cref="HatchContext.CanSeeProject"/> is the test the query
+    /// filter opens with, as <see cref="IssueClaims.LineageAsync"/> applies it to a row off the
+    /// same tree. In board order. A row the tree holds no health facts for is left out.
+    /// </summary>
+    internal static List<BoardHealthReport.Issue> IssuesFrom(PriorityTree tree, HatchContext db)
+    {
+        var issues = new List<BoardHealthReport.Issue>();
+        foreach (var id in tree.OrderedIds)
+        {
+            if (!tree.TryGet(id, out var row) || tree.Health(id) is not { } facts) continue;
+
+            var family = tree.TryGetFamily(id, out var f) ? f : default;
+            var projectId = tree.ProjectOf(id);
+            if (!db.CanSeeProject(projectId)) continue;
+
+            issues.Add(new BoardHealthReport.Issue(
+                new TimelineReport.Row(
+                    id, row.ParentId, projectId, facts.ProjectKey, facts.Number, family.Type,
+                    family.StatusId, facts.Rank, facts.CreatedAt, facts.CreatedBy),
+                row.PreApproval,
+                facts.HasPullRequestUrl));
+        }
+
+        return issues;
+    }
+
+    /// <summary>
+    /// Every project's rows off the tree, whatever the caller may see: what
+    /// <see cref="ColumnNormals"/> reads, since its figure is the house's and not the caller's.
+    /// </summary>
+    internal static List<TimelineReport.Row> RowsFrom(PriorityTree tree)
+    {
+        var rows = new List<TimelineReport.Row>();
+        foreach (var id in tree.OrderedIds)
+        {
+            if (!tree.TryGet(id, out var row) || tree.Health(id) is not { } facts || !tree.TryGetFamily(id, out var family)) continue;
+
+            rows.Add(new TimelineReport.Row(
+                id, row.ParentId, family.ProjectId, facts.ProjectKey, facts.Number, family.Type,
+                family.StatusId, facts.Rank, facts.CreatedAt, facts.CreatedBy));
+        }
+
+        return rows;
+    }
+
     /// <summary>The status changes from <paramref name="since"/>, with the newest one before it for each issue.</summary>
     internal static async Task<List<BoardHealthReport.Move>> MovesAsync(
         HatchContext db, DateTimeOffset since, HashSet<string>? scope, CancellationToken ct) =>
