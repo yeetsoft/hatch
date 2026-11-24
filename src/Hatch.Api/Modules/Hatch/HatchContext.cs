@@ -265,6 +265,17 @@ public class HatchContext : DbContext, IModuleContext
             // the day someone asks "which issues moved out of review twice"
             // that is a query against this column rather than a migration.
             e.Property(x => x.Payload).HasColumnType("jsonb");
+
+            // LetGo.ByAsync's prefilter: the release events whose payload
+            // contains { outcome, runner }, read on every next and queue that
+            // names its runner. A GIN index over only the release events, so
+            // every other kind's write pays nothing for it and it stays small.
+            // The filter is the read's own Kind predicate, written as the
+            // literal EF inlines, so Postgres can prove the read implies it.
+            e.HasIndex(x => x.Payload)
+                .HasMethod("gin")
+                .HasOperators("jsonb_path_ops")
+                .HasFilter($"\"Kind\" = '{EfHatchIssueEvent.ClaimReleased}'");
         });
 
         // Restrict for the same reason issues restrict: a column is deleted
@@ -477,6 +488,18 @@ public class HatchContext : DbContext, IModuleContext
             // Read by AmbitionChanges for the rows that name a change; no
             // foreign key, for the same reason.
             e.HasIndex(w => w.ChangeEventId);
+
+            // FamilyGate.SettledPassesAsync's read: an ambition's worked
+            // passes, which ran from the implementation column to itself and
+            // named no question or change. The index holds only those rows -
+            // a few, whatever the log's size - and carries the columns the
+            // read judges, so it is answered without the table. The playbook
+            // ids are parameters in the read, so they are included rather than
+            // filtered on; the rest are the literals EF inlines.
+            e.HasIndex(w => w.IssueId)
+                .IncludeProperties(w => new { w.EndedAt, w.PlaybookFromStatusId, w.PlaybookToStatusId })
+                .HasFilter($"\"IssueType\" = 'ambition' AND \"Outcome\" = '{ClaimOutcomes.Worked}' AND \"QuestionId\" IS NULL AND \"ChangeEventId\" IS NULL")
+                .HasDatabaseName("IX_WorkLogEntries_SettledPasses");
         });
 
         // Matches AddProjectLanding's own defaultValue, for the same reason as
