@@ -265,11 +265,35 @@ public sealed class Dispatch(
             query = query.Where(i => visible.Contains(i.ProjectId));
         }
 
-        var candidates = await query
-            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Include(i => i.Project).ThenInclude(p => p!.Repositories)
-            .Include(i => i.Contribution)
-            .ToListAsync(ct);
+        // Untracked and without the descriptions: a scan judges by columns and
+        // reads a description only for its length, see ScanCandidates.
+        var read = await ScanCandidates.ReadAsync(db, query.OrderBy(i => i.Rank).ThenBy(i => i.Id), ct);
+        var candidates = read.Issues;
+
+        // A repo-sourced project's own resolution is needed to know which brief
+        // limits could apply to its rows, so it is resolved here for every project
+        // with a candidate - the same statements the walk would have made on first
+        // sight of the project, and none for a project that is not repo-sourced.
+        async Task ResolveRepoSourcedOnceAsync(EfHatchProject project)
+        {
+            if (repoSourced.ContainsKey(project.Id)) return;
+            var (resolved, fileRows, _) = await ResolveRepoSourcedAsync(project, ct);
+            repoSourced[project.Id] = resolved;
+            repoSourcedRows[project.Id] = fileRows;
+        }
+
+        foreach (var project in candidates.Where(i => i.Project is not null).Select(i => i.Project!).DistinctBy(p => p.Id))
+            await ResolveRepoSourcedOnceAsync(project);
+
+        // Every Match and ImplementationPlaybook call below draws from this list, so
+        // the smallest limit in it is a ceiling no matched playbook's limit is under.
+        await ScanCandidates.LoadBriefsAsync(db, read, projectId =>
+        {
+            var list = repoSourced.GetValueOrDefault(projectId) is null
+                ? playbooks.Where(p => p.ProjectId == null || p.ProjectId == projectId)
+                : repoSourcedRows[projectId].Concat(boardWidePlaybooks);
+            return list.Where(p => p.BriefLimit is not null).Select(p => p.BriefLimit).Min();
+        }, ct);
 
         var byColumn = candidates.GroupBy(i => i.StatusId).ToDictionary(g => g.Key, g => g.ToList());
 
@@ -437,10 +461,8 @@ public sealed class Dispatch(
 
                     if (!repoSourced.TryGetValue(issue.ProjectId, out var projectRepoSourced))
                     {
-                        IReadOnlyList<EfHatchPlaybook> fileRows;
-                        (projectRepoSourced, fileRows, _) = await ResolveRepoSourcedAsync(issue.Project!, ct);
-                        repoSourced[issue.ProjectId] = projectRepoSourced;
-                        repoSourcedRows[issue.ProjectId] = fileRows;
+                        await ResolveRepoSourcedOnceAsync(issue.Project!);
+                        projectRepoSourced = repoSourced[issue.ProjectId];
                     }
 
                     var candidatePlaybooks = projectRepoSourced is null

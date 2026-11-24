@@ -200,6 +200,10 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
+        // The scan's rows carry no description. The one issue this answers with
+        // gets its own, in one statement.
+        await ScanCandidates.LoadDescriptionAsync(db, clear.Issue, ct);
+
         return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, scan.Models ?? ModelDeclaration.Unjudged, hasDeclared, Asking(runner), scan.Refusal, scan.Signing ?? signs, scan.Forge ?? forges, ct);
     }
 
@@ -306,6 +310,12 @@ public class WorkController(
     /// it - see <see cref="Dispatch.TakersAsync"/>. False leaves both null,
     /// the one scan a bare read never pays for.
     /// </param>
+    /// <param name="descriptions">
+    /// Whether each entry's <c>issue.description</c> is filled. True, the default
+    /// and what the route always answered, reads every description in one statement
+    /// made for this route alone; the scan itself reads none. False leaves the
+    /// field empty and makes no such read - for a caller that never shows it.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -331,7 +341,8 @@ public class WorkController(
         [FromQuery] string? signing = null,
         [FromQuery] string? signingWhy = null,
         [FromQuery] string? forge = null,
-        [FromQuery] string? forgeWhy = null)
+        [FromQuery] string? forgeWhy = null,
+        [FromQuery] bool descriptions = true)
     {
         if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
 
@@ -399,6 +410,15 @@ public class WorkController(
         var taken = takers
             ? await _dispatch.TakersAsync(ScanCaller.Queue, offsetMinutes, runners.Cutoff(time.GetUtcNow()), ct)
             : null;
+
+        // The scan's rows carry no description, or only the ones a brief limit
+        // asked for. The default answer carries every one, read once here.
+        // Without them, a row whose text the scan did read for its brief limit is
+        // emptied too, so the field means one thing whichever rows were read.
+        if (descriptions)
+            await ScanCandidates.LoadDescriptionsAsync(db, scan.Rows.Select(r => r.Issue).ToList(), ct);
+        else
+            foreach (var row in scan.Rows) row.Issue.Description = "";
 
         // One projection for the whole list. The per-issue one would be three
         // queries a row, which is what makes a scan of a board a thing nobody
