@@ -141,6 +141,9 @@ public class HatchContext : DbContext, IModuleContext
     /// <summary>Messages queued for rooms - see <see cref="EfHatchChatMessage"/>.</summary>
     public DbSet<EfHatchChatMessage> ChatMessages => Set<EfHatchChatMessage>();
 
+    /// <summary>Problems that belong to no project, and whether each is still standing - see <see cref="EfHatchChatProblem"/>.</summary>
+    public DbSet<EfHatchChatProblem> ChatProblems => Set<EfHatchChatProblem>();
+
     /// <summary>
     /// EF warns, at every start, that <c>PersonScopeProjects</c> is the required
     /// end of a relationship to a filtered <c>Projects</c>. It is the one table
@@ -630,6 +633,17 @@ public class HatchContext : DbContext, IModuleContext
                 .HasFilter("\"DroppedAt\" IS NULL AND \"SentRevision\" < \"Revision\"");
         });
 
+        // One open problem per kind, even across instances: the index covers only
+        // the rows that have not ended, so the same kind may begin again once the
+        // last one has ended.
+        modelBuilder.Entity<EfHatchChatProblem>(e =>
+        {
+            e.HasIndex(p => p.Kind)
+                .IsUnique()
+                .HasDatabaseName("IX_ChatProblems_Kind_Open")
+                .HasFilter("\"EndedAt\" IS NULL");
+        });
+
         // A verdict is about an issue and means nothing without it, the same
         // as its events: deleting the issue takes them.
         modelBuilder.Entity<EfHatchMergeCheck>(e =>
@@ -877,7 +891,7 @@ public class HatchContext : DbContext, IModuleContext
         //
         // Deliberately unfiltered: Statuses, WipLimits, PersonHomes,
         // the runner tables (RunnerFailures among them), ChatWorkspaces and
-        // ChatRooms and ChatSubjects (none names a project), PersonScopes and
+        // ChatRooms and ChatSubjects and ChatProblems (none names a project), PersonScopes and
         // PersonScopeProjects (the resolver reads them), and the core schema.
         modelBuilder.Entity<EfHatchProject>().HasQueryFilter(e => Unbounded || Visible.Contains(e.Id));
         modelBuilder.Entity<EfHatchIssue>().HasQueryFilter(e => Unbounded || Visible.Contains(e.ProjectId));

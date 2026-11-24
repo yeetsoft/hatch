@@ -2092,7 +2092,13 @@ accepts and is null on every other row - see "An ambition's changes" above; a ro
 change is left out of `GET /issues/{key}/passes`. `/work-log/history` buckets by `hour` or `day`, chosen from the
 range's length unless named, and answers the bucket size it actually used;
 `/work-log/sessions` ranks by `tokens` (the default), `cost`, `ended`,
-`requests` or `peakContext`, each descending. All three take an optional
+`requests` or `peakContext`, each descending. It also takes an optional `top`,
+1 to 500, which adds the heaviest sessions to the answer as a second list in
+`top`: ranked by `tokens` whatever `sort` and `limit` are, ties broken on end
+time then id, and narrowed by the same filters as `sessions`. Without `top` the
+field is `null` and nothing else in the answer changes. The leaderboard asks
+for its table and its top five in this one request, so the range is walked,
+summed and its reads folded once. All three take an optional
 `ancestorKey`, read inclusive of the issue itself - deliberately unlike the
 same parameter on `GET /issues` - so the graph, the table and the by-playbook
 fold can never describe different populations. All three also take a
