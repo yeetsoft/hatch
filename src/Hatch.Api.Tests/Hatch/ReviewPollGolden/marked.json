@@ -1,0 +1,229 @@
+[
+  {
+    "key": "AER-2",
+    "repositories": [
+      {
+        "remote": "git@forge.test:acme/widget.git",
+        "canonical": "forge.test/acme/widget",
+        "baseBranch": null,
+        "primary": true,
+        "matchedRemote": "git@forge.test:acme/widget.git",
+        "playbookFilePath": null
+      }
+    ],
+    "mergeChecks": [],
+    "buildChecks": [],
+    "pullRequestUrl": "https://forge.test/acme/widget/pull/2",
+    "mergeWork": null,
+    "projectKey": "AER",
+    "landing": "pull-request",
+    "branchKey": "AER-2",
+    "branchTitle": "shares one pull request",
+    "landings": null,
+    "landingWork": null,
+    "pullRequestMergeState": "CLEAN",
+    "pullRequestReviewDecision": "APPROVED",
+    "pullRequestHeadSha": "0000000000000000000000000000000000000002",
+    "pullRequestHeadSince": "2026-03-10T10:00:00+00:00",
+    "branch": "ha-2-branch",
+    "waitingPullRequest": null
+  },
+  {
+    "key": "AER-4",
+    "repositories": [
+      {
+        "remote": "git@forge.test:acme/widget.git",
+        "canonical": "forge.test/acme/widget",
+        "baseBranch": null,
+        "primary": true,
+        "matchedRemote": "git@forge.test:acme/widget.git",
+        "playbookFilePath": null
+      }
+    ],
+    "mergeChecks": [],
+    "buildChecks": [],
+    "pullRequestUrl": "https://forge.test/acme/widget/pull/4",
+    "mergeWork": null,
+    "projectKey": "AER",
+    "landing": "pull-request",
+    "branchKey": "AER-4",
+    "branchTitle": "up for review",
+    "landings": null,
+    "landingWork": null,
+    "pullRequestMergeState": "CLEAN",
+    "pullRequestReviewDecision": "APPROVED",
+    "pullRequestHeadSha": "0000000000000000000000000000000000000004",
+    "pullRequestHeadSince": "2026-03-10T10:00:00+00:00",
+    "branch": "ha-4-branch",
+    "waitingPullRequest": null
+  },
+  {
+    "key": "AER-8",
+    "repositories": [
+      {
+        "remote": "git@forge.test:acme/widget.git",
+        "canonical": "forge.test/acme/widget",
+        "baseBranch": null,
+        "primary": true,
+        "matchedRemote": "git@forge.test:acme/widget.git",
+        "playbookFilePath": null
+      }
+    ],
+    "mergeChecks": [
+      {
+        "remote": "git@forge.test:acme/widget.git",
+        "canonical": "forge.test/acme/widget",
+        "trunk": "main",
+        "trunkSha": "1111111111111111111111111111111111111111",
+        "verdict": "clean",
+        "branch": "ha-8-branch",
+        "branchSha": "0000000000000000000000000000000000000008",
+        "files": [],
+        "holdsTrunk": null,
+        "checkedAt": "2026-03-10T11:30:00+00:00",
+        "runner": "runner-1",
+        "checkedBy": "runner-1",
+        "playbookFilePath": null,
+        "dependencyFilePath": null,
+        "dependencyFileContent": null
+      }
+    ],
+    "buildChecks": [],
+    "pullRequestUrl": "https://forge.test/acme/widget/pull/8",
+    "mergeWork": {
+      "kind": "update",
+      "sentence": "bringing its branch current from main",
+      "isHead": true
+    },
+    "projectKey": "AER",
+    "landing": "pull-request",
+    "branchKey": "AER-8",
+    "branchTitle": "behind it on the train",
+    "landings": null,
+    "landingWork": null,
+    "pullRequestMergeState": "CLEAN",
+    "pullRequestReviewDecision": "APPROVED",
+    "pullRequestHeadSha": "0000000000000000000000000000000000000008",
+    "pullRequestHeadSince": "2026-03-10T10:00:00+00:00",
+    "branch": "ha-8-branch",
+    "waitingPullRequest": null
+  },
+  {
+    "key": "AER-5",
+    "repositories": [
+      {
+        "remote": "git@forge.test:acme/widget.git",
+        "canonical": "forge.test/acme/widget",
+        "baseBranch": null,
+        "primary": true,
+        "matchedRemote": "git@forge.test:acme/widget.git",
+        "playbookFilePath": null
+      }
+    ],
+    "mergeChecks": [
+      {
+        "remote": "git@forge.test:acme/widget.git",
+        "canonical": "forge.test/acme/widget",
+        "trunk": "main",
+        "trunkSha": "1111111111111111111111111111111111111111",
+        "verdict": "clean",
+        "branch": "ha-5-branch",
+        "branchSha": "0000000000000000000000000000000000000005",
+        "files": [],
+        "holdsTrunk": null,
+        "checkedAt": "2026-03-10T11:30:00+00:00",
+        "runner": "runner-1",
+        "checkedBy": "runner-1",
+        "playbookFilePath": null,
+        "dependencyFilePath": null,
+        "dependencyFileContent": null
+      }
+    ],
+    "buildChecks": [],
+    "pullRequestUrl": "https://forge.test/acme/widget/pull/5",
+    "mergeWork": {
+      "kind": "update",
+      "sentence": "bringing its branch current from main",
+      "isHead": false
+    },
+    "projectKey": "AER",
+    "landing": "pull-request",
+    "branchKey": "AER-5",
+    "branchTitle": "at the head of the train",
+    "landings": null,
+    "landingWork": null,
+    "pullRequestMergeState": "CLEAN",
+    "pullRequestReviewDecision": "APPROVED",
+    "pullRequestHeadSha": "0000000000000000000000000000000000000005",
+    "pullRequestHeadSince": "2026-03-10T10:00:00+00:00",
+    "branch": "ha-5-branch",
+    "waitingPullRequest": null
+  },
+  {
+    "key": "AER-6",
+    "repositories": [
+      {
+        "remote": "git@forge.test:acme/widget.git",
+        "canonical": "forge.test/acme/widget",
+        "baseBranch": null,
+        "primary": true,
+        "matchedRemote": "git@forge.test:acme/widget.git",
+        "playbookFilePath": null
+      }
+    ],
+    "mergeChecks": [],
+    "buildChecks": [],
+    "pullRequestUrl": "https://forge.test/acme/widget/pull/6",
+    "mergeWork": null,
+    "projectKey": "AER",
+    "landing": "pull-request",
+    "branchKey": "AER-6",
+    "branchTitle": "has a pull request of its own",
+    "landings": null,
+    "landingWork": null,
+    "pullRequestMergeState": "CLEAN",
+    "pullRequestReviewDecision": "APPROVED",
+    "pullRequestHeadSha": "0000000000000000000000000000000000000006",
+    "pullRequestHeadSince": "2026-03-10T10:00:00+00:00",
+    "branch": "ha-6-branch",
+    "waitingPullRequest": null
+  },
+  {
+    "key": "AER-7",
+    "repositories": [
+      {
+        "remote": "git@forge.test:acme/widget.git",
+        "canonical": "forge.test/acme/widget",
+        "baseBranch": null,
+        "primary": true,
+        "matchedRemote": "git@forge.test:acme/widget.git",
+        "playbookFilePath": null
+      }
+    ],
+    "mergeChecks": [],
+    "buildChecks": [],
+    "pullRequestUrl": null,
+    "mergeWork": null,
+    "projectKey": "AER",
+    "landing": "pull-request",
+    "branchKey": "AER-7",
+    "branchTitle": "written, not opened",
+    "landings": null,
+    "landingWork": null,
+    "pullRequestMergeState": null,
+    "pullRequestReviewDecision": null,
+    "pullRequestHeadSha": null,
+    "pullRequestHeadSince": null,
+    "branch": null,
+    "waitingPullRequest": {
+      "title": "A pull request, written and waiting",
+      "body": "What it changes.",
+      "branch": "ha-9-parked",
+      "sha": "2222222222222222222222222222222222222222",
+      "remote": "git@forge.test:acme/widget.git",
+      "runner": "runner-1",
+      "why": "the forge was out of reach",
+      "at": "2026-03-10T09:00:00+00:00"
+    }
+  }
+]
