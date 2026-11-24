@@ -160,16 +160,9 @@ public sealed class SetterAuthority
     private bool Holds(Guid person, int projectId, string role) =>
         _roles.TryGetValue((projectId, person), out var held) && held.Contains(role);
 
-    // CallerScope.ReadAsync's rule, for any person: no row or all is every
-    // project, none is nothing, some is the projects named.
+    // PersonScope's rule, the one CallerScope reads too.
     private bool InScope(Guid person, int projectId) =>
-        !_scopes.TryGetValue(person, out var scope)
-        || scope.Mode switch
-        {
-            PersonScopeMode.None => false,
-            PersonScopeMode.Some => scope.Projects.Contains(projectId),
-            _ => true,
-        };
+        !_scopes.TryGetValue(person, out var scope) || PersonScope.Sees(scope.Mode, scope.Projects, projectId);
 
     /// <summary>
     /// The caller's person id: the person <see cref="IActorDirectory.MeAsync"/>

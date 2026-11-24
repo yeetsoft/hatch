@@ -676,7 +676,9 @@ issue stands in, open or closed. It answers with a `QuestionOverturnDto`: `Quest
 question's `QuestionDto` now answered, and `TaskKey`, the key of the task filed. Whoever may
 answer may overturn, so a key may, as it may post a comment. In one save it writes the
 answer as a comment of kind `answer` under the caller's name, with the body as sent, and an
-`answered` event as any answer writes, and files one task. The task is filed from the issue
+`answered` event as any answer writes (payload `{ questionId }`, plus `via` for an answer that came
+from outside the page and a key, naming where, as `slack` for a press in chat; and `lapsed: true` on an old
+row written before the stall mark replaced lapsing), and files one task. The task is filed from the issue
 (`filedFromKey`) and hangs under it; where the issue is a task and cannot take one, it hangs
 under the nearest ancestor that can, and under nothing where none can. It lands where a
 filing lands: the leftmost column for a person, the agents' column for a key. Its title is

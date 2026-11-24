@@ -137,7 +137,7 @@ public class QuestionOverturnController(
                 IssueId = issue.Id,
                 Actor = actor,
                 Kind = EfHatchIssueEvent.Answered,
-                Payload = JsonSerializer.Serialize(new { questionId = id }),
+                Payload = JsonSerializer.Serialize(IssueEventPayload.Answered(id)),
                 At = now,
             };
             var task = new EfHatchIssue

@@ -53,6 +53,19 @@ public static class IssueEventPayload
     }
 
     /// <summary>
+    /// The payload of an <see cref="EfHatchIssueEvent.Answered"/> row: the
+    /// question's id, and <c>via</c> only when the answer came from somewhere
+    /// other than the Ballot or a key. Without <paramref name="via"/> it
+    /// serialises to <c>{"questionId":N}</c>, as every row written before it did.
+    /// </summary>
+    public static Dictionary<string, object?> Answered(long questionId, string? via = null)
+    {
+        var payload = new Dictionary<string, object?> { ["questionId"] = questionId };
+        if (!string.IsNullOrEmpty(via)) payload["via"] = via;
+        return payload;
+    }
+
+    /// <summary>
     /// The payload of a <see cref="EfHatchIssueEvent.ContributionFiled"/> row.
     /// Every field is written, in this order, with JSON null where the record
     /// holds none, so a reader finds the same keys on every row.
@@ -67,4 +80,11 @@ public static class IssueEventPayload
         ["originProjectKey"] = c.OriginProjectKey,
         ["originKey"] = c.OriginKey,
     };
+}
+
+/// <summary>Where an answer came from, when the answer is not the Ballot's or a key's. Stored as the <c>via</c> of an <c>answered</c> event.</summary>
+public static class AnswerVia
+{
+    /// <summary>A press on the question's message in chat.</summary>
+    public const string Slack = "slack";
 }
