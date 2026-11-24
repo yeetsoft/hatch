@@ -587,7 +587,7 @@ public class ReportsController(
                 return BadRequest($"there is no project {string.Join(", ", missing)}");
         }
 
-        var first = await db.IssueEvents.AsNoTracking().MinAsync(e => (DateTimeOffset?)e.At, ct);
+        var first = await FirstEventAtAsync(db, ct);
         start = RangeBounds.ClampStart(start, end, first);
 
         var bucketSize = WorkLogRollup.ChooseBucketSize(start, end);
@@ -659,6 +659,17 @@ public class ReportsController(
             new ActivityEstimateDto(
                 result.Estimate.Sessions, result.Estimate.Minutes, gap, lead, result.Estimate.WindowDays));
     }
+
+    /// <summary>
+    /// When the first event this caller can see happened, or none. The oldest by time, read
+    /// off the (At, Id) index as one row: <c>MIN(At)</c> says the same, but through the query
+    /// filter's join to Issues it reads every event, which grows with the history (HA-2817).
+    /// </summary>
+    internal static Task<DateTimeOffset?> FirstEventAtAsync(HatchContext db, CancellationToken ct) =>
+        db.IssueEvents.AsNoTracking()
+            .OrderBy(e => e.At)
+            .Select(e => (DateTimeOffset?)e.At)
+            .FirstOrDefaultAsync(ct);
 
     /// <summary>
     /// The events a hand typed under the keys a person owns, in range - none
