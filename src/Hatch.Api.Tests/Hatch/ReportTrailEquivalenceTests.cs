@@ -208,6 +208,185 @@ public class ReportTrailEquivalenceTests
     }
 
     /// <summary>
+    /// The board's column normals read the thirty days' moves alone
+    /// (<see cref="ColumnNormals.ForAsync"/>). At many instants, the fold over
+    /// every move there is and the read give the same normals, and so does the
+    /// flow fold over the leaves, which is what a normal is made of.
+    /// </summary>
+    [SkippableFact]
+    public async Task TheColumnNormals_AreTheSame_FromThirtyDaysOfMoves_AsFromEveryMove()
+    {
+        Skip.IfNot(
+            HatchDatabase.Available,
+            "HATCH_TEST_DATABASE_URL is unset - the read is built of probes that need a real Postgres. " +
+            "Run `make test-api-db`, or point the variable at a scratch database that may be dropped.");
+
+        var connectionString = await HatchDatabase.PrepareAsync();
+        var rng = new Random(2785);
+
+        await using var db = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options);
+
+        var instants = await SeedAsync(db, rng);
+        await SeedNormalsAsync(db);
+
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
+        var rows = await LoadRowsAsync(db);
+
+        var everyMove = (await db.IssueEvents.AsNoTracking()
+                .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
+                .OrderBy(e => e.IssueId).ThenBy(e => e.At).ThenBy(e => e.Id)
+                .Select(e => new { e.IssueId, e.Id, e.Kind, e.At, e.Payload })
+                .ToListAsync())
+            .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
+            .ToList();
+
+        var parents = rows.Where(r => r.ParentId is not null).Select(r => r.ParentId!.Value).ToHashSet();
+        var leaves = rows.Where(r => !parents.Contains(r.Id)).ToList();
+        var leafIds = leaves.Select(r => r.Id).ToList();
+
+        var first = rows.Min(r => r.CreatedAt);
+        var latest = instants.Max();
+
+        // Ends of the generated windows, which fall inside the history, then some past it.
+        var nows = WindowsOf(rng, instants, first).Select(w => w.End).ToList();
+        nows.AddRange([latest.AddDays(10), latest.AddDays(35), latest.AddDays(100), Base.AddDays(62), Base.AddDays(75)]);
+
+        var failures = new List<string>();
+        var withNormal = 0;
+        var reachedMinimum = 0;
+        var withoutWalkBack = 0;
+
+        foreach (var now in nows)
+        {
+            var start = now - ColumnNormals.Window;
+
+            var whole = ColumnNormals.Fold(rows, everyMove, statuses, now);
+            var read = await new ColumnNormals().ForAsync(db, statuses, now, default);
+            Compare(failures, "column normals", 0, start, now, whole, read);
+
+            // The flow fold a normal is made of, so an answer with no normal in it still proves something.
+            var flowWhole = FlowReport.Fold(leaves, everyMove, [], [], statuses, start, now, null, null);
+            var moves = await FlowRead.MovesAsync(db, leaves, statuses, start, now, leafIds, true, default);
+            var flowRead = FlowReport.Fold(leaves, moves, [], [], statuses, start, now, null, null);
+            Compare(
+                failures, "leaf stays", 0, start, now,
+                flowWhole.Columns.Select(c => (c.StatusId, c.Dwelled, c.P90DwellSeconds)).ToList(),
+                flowRead.Columns.Select(c => (c.StatusId, c.Dwelled, c.P90DwellSeconds)).ToList());
+
+            if (whole.Any(n => n.Seconds is not null)) withNormal++;
+            if (flowWhole.Columns.Any(c => c.Dwelled >= ColumnNormals.MinimumStays)) reachedMinimum++;
+
+            // The control: the same fold on the cut without the walk back.
+            var cut = (await BoardHealthTrail.ReadAsync(
+                    db, [EfHatchIssueEvent.StatusChanged], start, null, leafIds, default,
+                    until: now, wholeInstant: true, everyProject: true))
+                .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
+                .OrderBy(e => e.IssueId).ThenBy(e => e.At).ThenBy(e => e.EventId)
+                .ToList();
+            var uncorrected = FlowReport.Fold(leaves, cut, [], [], statuses, start, now, null, null);
+            if (JsonSerializer.Serialize(uncorrected.Columns) != JsonSerializer.Serialize(flowWhole.Columns)) withoutWalkBack++;
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+        Assert.True(withNormal > 0 && reachedMinimum > 0,
+            $"no column has a normal at any instant (normals {withNormal}, columns at the minimum {reachedMinimum}), so equal answers prove nothing");
+        Assert.True(withoutWalkBack > 0, "no instant needed the walk back, so the hand-written stays prove nothing");
+    }
+
+    /// <summary>
+    /// A caller whose scope hides a project reads the column normals an unscoped
+    /// caller does: a column is shared by every project.
+    /// </summary>
+    [SkippableFact]
+    public async Task AScopedCaller_ReadsTheSameColumnNormals_AsAnUnscopedOne()
+    {
+        Skip.IfNot(HatchDatabase.Available, "HATCH_TEST_DATABASE_URL is unset - run `make test-api-db`.");
+
+        var connectionString = await HatchDatabase.PrepareAsync();
+        var options = new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options;
+
+        await using var db = new HatchContext(options);
+        var instants = await SeedAsync(db, new Random(2785));
+        await SeedNormalsAsync(db);
+
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
+        var visible = await db.Projects.AsNoTracking().OrderBy(p => p.Id).Select(p => p.Id).FirstAsync();
+        await using var scoped = ScopeSeed.Request(options, ScopeSeed.Only(visible));
+
+        Assert.True(await scoped.Issues.CountAsync() < await db.Issues.CountAsync(), "the scope hides nothing");
+
+        var latest = instants.Max();
+        var withNormal = 0;
+        foreach (var now in new[] { Base.AddDays(62), Base.AddDays(75), latest.AddDays(10) })
+        {
+            var all = await new ColumnNormals().ForAsync(db, statuses, now, default);
+            var seen = await new ColumnNormals().ForAsync(scoped, statuses, now, default);
+
+            Assert.Equal(JsonSerializer.Serialize(all), JsonSerializer.Serialize(seen));
+            if (all.Any(n => n.Seconds is not null)) withNormal++;
+        }
+
+        Assert.True(withNormal > 0, "no column has a normal, so equal answers prove nothing");
+    }
+
+    /// <summary>
+    /// Leaves with stays in the thirty days before the instants the normals are
+    /// read at, written by hand beside the generated trails: twelve that stand in
+    /// a column a day or more and leave it, and two whose stay began before the
+    /// window and ended inside it, one through a move into the column itself.
+    /// </summary>
+    private static async Task SeedNormalsAsync(HatchContext db)
+    {
+        var project = await db.Projects.OrderBy(p => p.Id).LastAsync();
+        var todo = await db.Statuses.FirstAsync(s => s.Name == "todo");
+        var doing = await db.Statuses.FirstAsync(s => s.Name == "doing");
+        var review = await db.Statuses.FirstAsync(s => s.Name == "review");
+        var done = await db.Statuses.FirstAsync(s => s.Name == "done");
+        var number = await db.Issues.Where(i => i.ProjectId == project.Id).MaxAsync(i => i.Number);
+
+        EfHatchIssue Leaf(int n) => new()
+        {
+            ProjectId = project.Id, Number = number + n, Type = "task", Title = "task", Description = "",
+            StatusId = done.Id, Rank = 10_000 + n, CreatedBy = "ann", CreatedAt = Base.AddDays(-40), UpdatedAt = Base.AddDays(-40),
+        };
+
+        var leaves = Enumerable.Range(1, 14).Select(Leaf).ToList();
+        db.Issues.AddRange(leaves);
+        await db.SaveChangesAsync();
+
+        string Payload(EfHatchStatus from, EfHatchStatus to) =>
+            JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, to));
+
+        EfHatchIssueEvent Move(EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, DateTimeOffset at) => new()
+        {
+            IssueId = issue.Id, Actor = "ann", Kind = EfHatchIssueEvent.StatusChanged, At = at, Payload = Payload(from, to),
+        };
+
+        var moves = new List<EfHatchIssueEvent>();
+
+        // Twelve stays in doing of different lengths, in the days after day 60.
+        for (var n = 0; n < 12; n++)
+        {
+            moves.Add(Move(leaves[n], todo, doing, Base.AddDays(60 + n)));
+            moves.Add(Move(leaves[n], doing, review, Base.AddDays(61 + n + n % 4)));
+            moves.Add(Move(leaves[n], review, done, Base.AddDays(63 + n + n % 4)));
+        }
+
+        // A stay in review that began before the thirty days and ended inside them.
+        moves.Add(Move(leaves[12], todo, review, Base.AddDays(20)));
+        moves.Add(Move(leaves[12], review, done, Base.AddDays(75)));
+
+        // The same, with a move from the column into itself after the stay began.
+        moves.Add(Move(leaves[13], todo, review, Base.AddDays(21)));
+        moves.Add(Move(leaves[13], review, review, Base.AddDays(50)));
+        moves.Add(Move(leaves[13], review, done, Base.AddDays(76)));
+
+        db.IssueEvents.AddRange(moves);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
     /// Releases (some dropped), sessions (some errors) and questions, spread over
     /// the same stretch of time as the moves, some on a move's own instant.
     /// </summary>
