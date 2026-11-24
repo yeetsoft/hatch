@@ -473,6 +473,10 @@ Each workspace is one row, with its name, where your link stands, and a button:
 - **Linked as** a name offers **Unlink**. Unlinking asks first, and removes
   only what Hatch holds. Nothing in Slack is touched.
 
+An admin can remove anybody's link on **Manage → Users**, in the **Slack**
+column of that person's row. Removing a person removes their links too.
+[People, roles and keys](people-roles-and-keys) has the page.
+
 ### How a member is offered
 
 **Link** first asks which Slack member has an email you have signed in to Hatch

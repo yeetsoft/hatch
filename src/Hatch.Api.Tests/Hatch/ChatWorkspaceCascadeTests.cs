@@ -247,7 +247,8 @@ public class ChatWorkspaceCascadeDatabaseTests
 
     private static ChatController NewController(HatchContext db) =>
         new(db, new AcmeProvider(), new StubCaller(), new FakeTimeProvider(new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero)), Protector,
-            new ChatLinks(Microsoft.Extensions.Options.Options.Create(new HatchOptions())), NullLogger<ChatController>.Instance)
+            new ChatLinks(Microsoft.Extensions.Options.Options.Create(new HatchOptions())),
+            global::Hatch.Api.Tests.Chat.RosterSeed.For(db, global::Hatch.Api.Tests.Chat.RosterSeed.NewAppDb()), NullLogger<ChatController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };

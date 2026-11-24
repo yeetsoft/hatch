@@ -618,6 +618,42 @@ public class MeChatControllerTests
         Assert.True((await h.Db.ChatLinks.SingleAsync()).RunnerFailures);
     }
 
+    // ---- A removed person ----
+
+    [Fact]
+    public async Task AfterThePersonHoldingAMemberIsRemoved_ASecondPersonLinksThatMemberAtOnce()
+    {
+        var h = New();
+        var acme = await h.WorkspaceAsync("TACME", "Acme");
+        h.Provider.Members[Token] = [Ada];
+        await h.Bob.PostLink(new MeChatLinkRequest(acme, Ada.Id), default);
+        await h.Bob.ConfirmLink(new MeChatConfirmRequest(SecretFrom(h.Provider)), default);
+        Assert.IsType<ConflictObjectResult>((await h.Ada.PostLink(new MeChatLinkRequest(acme, Ada.Id), default)).Result);
+
+        await h.RemovePersonAsync(h.BobId);
+
+        var posted = Value(await h.Ada.PostLink(new MeChatLinkRequest(acme, Ada.Id), default));
+        Assert.Equal("waiting", posted.State);
+        Assert.Equal("linked", Value(await h.Ada.ConfirmLink(new MeChatConfirmRequest(SecretFrom(h.Provider)), default)).State);
+        Assert.Equal([h.AdaId], (await h.Db.ChatLinks.ToListAsync()).Select(l => l.PersonId));
+    }
+
+    [Fact]
+    public async Task AfterThePersonHoldingAMemberIsRemoved_ASecondPersonWaitingOnThemConfirmsAtOnce()
+    {
+        var h = New();
+        var acme = await h.WorkspaceAsync("TACME", "Acme");
+        h.Provider.Members[Token] = [Ada];
+        await h.Ada.PostLink(new MeChatLinkRequest(acme, Ada.Id), default);
+        var adaSecret = SecretFrom(h.Provider);
+        await h.Bob.PostLink(new MeChatLinkRequest(acme, Ada.Id), default);
+        await h.Bob.ConfirmLink(new MeChatConfirmRequest(SecretFrom(h.Provider)), default);
+        await h.RemovePersonAsync(h.BobId);
+
+        Assert.Equal("linked", Value(await h.Ada.ConfirmLink(new MeChatConfirmRequest(adaSecret), default)).State);
+        Assert.Equal([h.AdaId], (await h.Db.ChatLinks.ToListAsync()).Select(l => l.PersonId));
+    }
+
     // ---- Unlinking ----
 
     [Fact]
@@ -787,6 +823,12 @@ public class MeChatControllerTests
             Db = new HatchContext(options);
             Time = new FakeTimeProvider(Now);
             Logs = new CapturedLogs();
+            // Both are people, as a real caller is: a link whose person is not in the
+            // table counts for nothing.
+            foreach (var (id, name) in new[] { (AdaId, "Ada"), (BobId, "Bob") })
+                appDb.People.Add(new EfPerson { Id = id, Name = name, Role = PersonRole.User, CreatedAt = Now, UpdatedAt = Now });
+            appDb.SaveChanges();
+
             Ada = Controller(Db, AdaId, "Ada", VisibleProjects.Everything);
             Bob = Controller(Db, BobId, "Bob", VisibleProjects.Everything);
         }
@@ -800,6 +842,13 @@ public class MeChatControllerTests
         public MeChatController Ada { get; }
         public MeChatController Bob { get; }
 
+        /// <summary>Removes a person the way <c>PeopleController</c> does: their row goes, and nothing here follows.</summary>
+        public async Task RemovePersonAsync(Guid id)
+        {
+            appDb.People.Remove(await appDb.People.SingleAsync(p => p.Id == id));
+            await appDb.SaveChangesAsync();
+        }
+
         /// <summary>Ada, as a request whose scope resolved to <paramref name="visible"/> sees the data.</summary>
         public MeChatController Narrowed(VisibleProjects visible) =>
             Controller(ScopeSeed.Request(options, visible), AdaId, "Ada", visible);
@@ -812,7 +861,7 @@ public class MeChatControllerTests
 
             return new MeChatController(
                 db, appDb, Provider, new MeScopeTests.StubCaller(null, key is null ? person : null, key), actors,
-                new MeScopeTests.FixedScope(visible), protector, links, Time,
+                new MeScopeTests.FixedScope(visible), protector, links, RosterSeed.For(db, appDb), Time,
                 new LoggerFactory([Logs]).CreateLogger<MeChatController>())
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },

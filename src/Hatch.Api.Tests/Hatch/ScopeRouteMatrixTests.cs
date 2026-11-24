@@ -81,6 +81,7 @@ public class ScopeRouteMatrixTests
     private const string ChatWorkspaces = "a workspace names no project";
     private const string ChatBoundIdsPinned = "bound ids come through the query filter; pinned in ChatControllerTests";
     private const string ChatRoomRoutesNameNoProject = "channels, test and DELETE room read no project";
+    private const string ChatLinksNameNoProject = "a Slack link names a person and a workspace, never a project; an admin sees every one";
     private const string MeChatNamesNoProject = "the caller's own Slack links; workspaces are narrowed by the bound projects the caller sees, pinned in MeChatControllerTests";
     private const string HouseSettings = "house settings and the agent credentials; no project";
     private const string HouseBackup = "the house backup; no project";
@@ -115,6 +116,8 @@ public class ScopeRouteMatrixTests
         ("ChatController.GetChannels", ChatRoomRoutesNameNoProject),
         ("ChatController.PostTestMessage", ChatRoomRoutesNameNoProject),
         ("ChatController.RemoveRoom", ChatRoomRoutesNameNoProject),
+        ("ChatController.GetLinks", ChatLinksNameNoProject),
+        ("ChatController.RemoveLink", ChatLinksNameNoProject),
         ("ImagesController.GetImage", Ha2388),
         ("ImportController.Preview", "parses the files it is sent and reads no project"),
         ("ImportController.PreviewText", "parses the text it is sent and reads no project"),

@@ -583,6 +583,8 @@ public class AdminSurfaceTests
         "ChatController.PatchRoom",
         "ChatController.RemoveRoom",
         "ChatController.PostTestMessage",
+        "ChatController.GetLinks",
+        "ChatController.RemoveLink",
 
         // A related edge, cut the same way and for a different reason: under
         // the loop's "people only" rule an assignee is a dispatch gate, so a
@@ -881,6 +883,8 @@ public class AdminSurfaceTests
         "ChatController.PatchRoom",
         "ChatController.RemoveRoom",
         "ChatController.PostTestMessage",
+        "ChatController.GetLinks",
+        "ChatController.RemoveLink",
 
         // Choosing a home screen is a person's own, never a key's or a
         // keyless runner's. See MeHomeController.PutHome.
@@ -1139,6 +1143,8 @@ public class AdminSurfaceTests
         "ChatController.PatchRoom",
         "ChatController.RemoveRoom",
         "ChatController.PostTestMessage",
+        "ChatController.GetLinks",
+        "ChatController.RemoveLink",
     ];
 
     private static readonly string[] UserOutsideHatch =

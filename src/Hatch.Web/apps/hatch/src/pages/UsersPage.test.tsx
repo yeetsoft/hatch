@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { PendingDialog, ScopeChecklist, ScopeSelect, UsersPage } from './UsersPage';
-import type { Person, PersonScope, Project } from '../types';
+import { PendingDialog, ScopeChecklist, ScopeSelect, SlackLinks, UsersPage } from './UsersPage';
+import { linksOf, unlinkSentence } from '../lib/people';
+import type { ChatLinkRow, Person, PersonScope, Project } from '../types';
 
 // The client reaches lib/clientLogger, which reads `window` at import, and
 // there is no jsdom here.
@@ -103,5 +104,73 @@ describe('the Add user form', () => {
     expect(html).toContain('Scope');
     expect(html).toMatch(/<option value="all" selected="">all<\/option>/);
     expect(html).not.toContain('type="checkbox"');
+  });
+});
+
+const link = (id: number, personId: string, workspaceName: string, memberName: string, state: ChatLinkRow['state']): ChatLinkRow => ({
+  id,
+  personId,
+  workspaceId: id,
+  workspaceName,
+  memberName,
+  state,
+  expiresAt: state === 'waiting' ? '2026-11-25T09:00:00Z' : null,
+});
+
+const LINKS = [
+  link(1, 'ada', 'Acme', 'Ada Lovelace', 'linked'),
+  link(2, 'ada', 'Globex', 'ada.l', 'waiting'),
+  link(3, 'bob', 'Acme', 'Bob Hope', 'linked'),
+];
+
+describe('the Slack column', () => {
+  it('counts the links each person holds', () => {
+    expect(linksOf(LINKS, 'ada')).toHaveLength(2);
+    expect(linksOf(LINKS, 'bob')).toHaveLength(1);
+    expect(linksOf(LINKS, 'nobody')).toHaveLength(0);
+  });
+
+  it('is not drawn before anything is read, so a Hatch with no Slack shows nothing new', () => {
+    const html = renderToStaticMarkup(<UsersPage />);
+    expect(html).not.toContain('Slack');
+  });
+});
+
+describe("a person's Slack links", () => {
+  it('lists the workspace, the Slack member and where each link stands, with a Remove button', () => {
+    const html = renderToStaticMarkup(<SlackLinks links={linksOf(LINKS, 'ada')} disabled={false} onRemove={() => {}} />);
+    expect(html).toContain('Acme');
+    expect(html).toContain('Ada Lovelace');
+    expect(html).toContain('>linked<');
+    expect(html).toContain('Globex');
+    expect(html).toContain('ada.l');
+    expect(html).toContain('>waiting<');
+    expect(html.match(/>Remove</g)).toHaveLength(2);
+  });
+
+  it('offers nothing to make or confirm a link for somebody else', () => {
+    const html = renderToStaticMarkup(<SlackLinks links={LINKS} disabled={false} onRemove={() => {}} />);
+    expect(html).not.toMatch(/>(Link|Confirm|Add)/);
+  });
+
+  it('says so when the person holds none', () => {
+    expect(renderToStaticMarkup(<SlackLinks links={[]} disabled={false} onRemove={() => {}} />)).toContain('No Slack links.');
+  });
+
+  it('disables Remove while a write is in flight', () => {
+    expect(renderToStaticMarkup(<SlackLinks links={LINKS} disabled onRemove={() => {}} />).match(/disabled=""/g)).toHaveLength(3);
+  });
+});
+
+describe('the Slack link removal confirmation', () => {
+  it('names the person, the workspace and the member, and says nothing is sent afterwards', () => {
+    const html = renderToStaticMarkup(
+      <PendingDialog pending={{ kind: 'unlink', person: ADA, link: LINKS[1] }} busy={false} onClose={() => {}} onConfirm={() => {}} />,
+    );
+    expect(html).toContain('Remove Ada&#x27;s Slack link?');
+    expect(html).toContain(unlinkSentence(ADA, LINKS[1]).replaceAll("'", '&#x27;'));
+    expect(html).toContain('Ada&#x27;s link to ada.l in Globex will be removed. Nothing is sent to it afterwards.');
+    expect(html).toContain('Leave it');
+    expect(html).toContain('>Remove<');
   });
 });

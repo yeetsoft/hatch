@@ -5707,7 +5707,11 @@ public class EfHatchChatLinkSend
 /// <summary>The links that stand: confirmed by the person, so a message may be sent to them.</summary>
 public static class ChatLinkQueries
 {
-    /// <summary>A waiting link is left out: nothing but its own confirmation message is ever sent to it.</summary>
+    /// <summary>
+    /// A waiting link is left out: nothing but its own confirmation message is ever sent to it.
+    /// This does not drop the links of people who are gone. To choose who is sent a
+    /// message, read <see cref="ChatLinkRoster.ConfirmedAsync"/> instead.
+    /// </summary>
     public static IQueryable<EfHatchChatLink> Confirmed(this IQueryable<EfHatchChatLink> links) =>
         links.Where(l => l.ConfirmedAt != null);
 }

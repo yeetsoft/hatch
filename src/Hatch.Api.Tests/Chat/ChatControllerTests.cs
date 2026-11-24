@@ -722,7 +722,10 @@ public class ChatControllerTests
 
         /// <summary>A second controller over the same database, scoped as <paramref name="visible"/> sees it.</summary>
         public ChatController ScopedChat(VisibleProjects visible) =>
-            new(ScopeSeed.Request(Options, visible), Provider, new StubCaller("Root"), Time, Protector, Links, Log)
+            Scoped(ScopeSeed.Request(Options, visible));
+
+        private ChatController Scoped(HatchContext scoped) =>
+            new(scoped, Provider, new StubCaller("Root"), Time, Protector, Links, RosterSeed.For(scoped, RosterSeed.NewAppDb()), Log)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             };
@@ -743,7 +746,7 @@ public class ChatControllerTests
 
         return new Harness
         {
-            Chat = new ChatController(db, provider, new StubCaller("Root"), time, protector, links, log)
+            Chat = new ChatController(db, provider, new StubCaller("Root"), time, protector, links, RosterSeed.For(db, RosterSeed.NewAppDb()), log)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             },

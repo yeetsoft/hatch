@@ -224,6 +224,14 @@ public record MeChatLinkDto(
 /// <param name="RunnerFailures">Whether a failing runner is told to the caller through this link.</param>
 public record MeChatLinkPatchRequest(bool? RunnerFailures);
 
+/// <summary>
+/// One person's Slack link, as an admin sees it. <c>State</c> is <c>waiting</c>
+/// or <c>linked</c>; <c>ExpiresAt</c> is when a waiting link stops working, and
+/// null once linked. Carries no member id, conversation id or secret.
+/// </summary>
+public record ChatLinkRowDto(
+    int Id, Guid PersonId, int WorkspaceId, string WorkspaceName, string MemberName, string State, DateTimeOffset? ExpiresAt);
+
 /// <summary>A Slack member, for the caller to pick themselves from. Never carries an email.</summary>
 public record MeChatMemberDto(string Id, string Name, string? DisplayName);
 
