@@ -203,6 +203,12 @@ public class HatchContext : DbContext, IModuleContext
             .OnDelete(DeleteBehavior.SetNull);
         issue.HasIndex(i => i.FiledFromId);
 
+        // The claim heartbeat's one cheap question - is any open issue at
+        // emergency level - reads only these rows (Preemption), so the index
+        // holds only them: nearly every issue is normal and has no entry.
+        issue.HasIndex(i => i.Priority)
+            .HasFilter($"\"Priority\" = {(global::Hatch.Contracts.PriorityLevels.Emergency)}");
+
         // Mirrors EfHatchProject.RunnerTags' own default below, for the same
         // reason: EnsureCreated must leave the same empty-array default a
         // migrated row carries.
