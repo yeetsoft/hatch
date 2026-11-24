@@ -184,6 +184,60 @@ public class ChatController(
         return Dto(row, await BoundProjectIdsAsync(row.Id, ct));
     }
 
+    /// <summary>
+    /// Stores, or replaces, a workspace's app-level token. The service is asked
+    /// whether it accepts it first, and a token it refuses is not stored. The
+    /// bot token is left as it is.
+    /// </summary>
+    [HttpPut("workspaces/{id:int}/app-token")]
+    [RequireAdmin]
+    public async Task<ActionResult<ChatWorkspaceDto>> PutAppToken(int id, ChatTokenRequest request, CancellationToken ct)
+    {
+        if (!protector.CanSeal) return BadRequest(NoSecretKeyForAppToken);
+
+        var row = await db.ChatWorkspaces.FirstOrDefaultAsync(w => w.Id == id, ct);
+        if (row is null) return NotFound();
+
+        var token = request.Token?.Trim();
+        if (string.IsNullOrEmpty(token)) return BadRequest("an app-level token is needed");
+
+        var check = await provider.CheckAppTokenAsync(token, ct);
+        if (!check.IsAccepted) return BadRequest(check.Refusal ?? "the app-level token was not accepted");
+
+        if (!protector.TrySeal(token, SecretStores.ChatWorkspaceAppToken(row.Provider, row.ExternalId), out var sealedToken))
+            return BadRequest(NoSecretKeyForAppToken);
+
+        row.AppToken = sealedToken;
+        row.UpdatedAt = time.GetUtcNow();
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("Chat workspace {WorkspaceId} ({Provider}) given an app-level token by {Actor}",
+            row.Id, row.Provider, await caller.ActorNameAsync(ct));
+
+        return Dto(row, await BoundProjectIdsAsync(row.Id, ct));
+    }
+
+    /// <summary>Clears a workspace's app-level token. No content, also when none was set.</summary>
+    [HttpDelete("workspaces/{id:int}/app-token")]
+    [RequireAdmin]
+    public async Task<IActionResult> RemoveAppToken(int id, CancellationToken ct)
+    {
+        var row = await db.ChatWorkspaces.FirstOrDefaultAsync(w => w.Id == id, ct);
+        if (row is null) return NotFound();
+
+        if (row.AppToken is not null)
+        {
+            row.AppToken = null;
+            row.UpdatedAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+
+            logger.LogInformation("Chat workspace {WorkspaceId} ({Provider}) had its app-level token removed by {Actor}",
+                row.Id, row.Provider, await caller.ActorNameAsync(ct));
+        }
+
+        return NoContent();
+    }
+
     /// <summary>Removes a workspace. Whatever hangs off it goes with it, in the database.</summary>
     [HttpDelete("workspaces/{id:int}")]
     [RequireAdmin]
@@ -471,6 +525,9 @@ public class ChatController(
     private const string NoSecretKey =
         "a bot token cannot be saved until HATCH_SECRET_KEY is set; set it and restart";
 
+    private const string NoSecretKeyForAppToken =
+        "an app-level token cannot be saved until HATCH_SECRET_KEY is set; set it and restart";
+
     private const string AlreadyConnected = "that workspace is already connected; replace its token instead";
     internal const string TokenUnreadable = "the token for this workspace cannot be read; replace it";
     private const string ChannelAlreadyARoom = "that channel is already a room here";
@@ -524,8 +581,15 @@ public class ChatController(
             .GroupBy(p => p.RoomId)
             .ToDictionary(g => g.Key, g => g.Select(p => p.ProjectId).Order().ToList());
 
-    private static ChatWorkspaceDto Dto(EfHatchChatWorkspace w, IReadOnlyList<int> projectIds) =>
-        new(w.Id, w.Provider, w.ExternalId, w.Name, !string.IsNullOrEmpty(w.Token), w.CreatedAt, projectIds);
+    private ChatWorkspaceDto Dto(EfHatchChatWorkspace w, IReadOnlyList<int> projectIds)
+    {
+        // Nothing stored is neither held nor unreadable; something stored that
+        // will not open is unreadable, and is not held.
+        var unreadable = !protector.TryUnprotect(w.AppToken, SecretStores.ChatWorkspaceAppToken(w.Provider, w.ExternalId), out var secret);
+        var hasAppToken = !unreadable && secret is not null;
+
+        return new(w.Id, w.Provider, w.ExternalId, w.Name, !string.IsNullOrEmpty(w.Token), hasAppToken, unreadable, w.CreatedAt, projectIds);
+    }
 
     private static ChatRoomDto Dto(EfHatchChatRoom r, IReadOnlyList<int> projectIds) =>
         new(r.Id, r.WorkspaceId, r.ExternalId, r.Name, r.Changelog, r.Questions, r.Problems, r.UnownedProblems, r.AllProjects,

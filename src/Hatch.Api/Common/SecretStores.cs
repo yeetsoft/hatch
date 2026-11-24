@@ -29,8 +29,11 @@ public static class SecretStores
     /// <summary>The chat workspace bot token, named by provider and the service's own id for the workspace.</summary>
     public static readonly SecretStore ChatWorkspaces = new("hatch", "ChatWorkspaces", nameof(EfHatchChatWorkspace.Token), [nameof(EfHatchChatWorkspace.Provider), nameof(EfHatchChatWorkspace.ExternalId)], id => ChatWorkspace(id[0], id[1]));
 
+    /// <summary>The chat workspace app-level token, in the same row as the bot token and named by the same two columns, under its own row name.</summary>
+    public static readonly SecretStore ChatWorkspaceAppTokens = new("hatch", "ChatWorkspaces", nameof(EfHatchChatWorkspace.AppToken), [nameof(EfHatchChatWorkspace.Provider), nameof(EfHatchChatWorkspace.ExternalId)], id => ChatWorkspaceAppToken(id[0], id[1]));
+
     /// <summary>Every store, in no order that matters.</summary>
-    public static readonly IReadOnlyList<SecretStore> All = [SiteSettings, ChatWorkspaces];
+    public static readonly IReadOnlyList<SecretStore> All = [SiteSettings, ChatWorkspaces, ChatWorkspaceAppTokens];
 
     /// <summary>The row name of the site setting <paramref name="key"/>: <c>site-setting/&lt;key&gt;</c>.</summary>
     public static string SiteSetting(string key)
@@ -49,5 +52,17 @@ public static class SecretStores
         ArgumentException.ThrowIfNullOrEmpty(provider);
         ArgumentException.ThrowIfNullOrEmpty(externalId);
         return $"chat-workspace/{provider}/{externalId}";
+    }
+
+    /// <summary>
+    /// The row name of a chat workspace's app-level token:
+    /// <c>chat-workspace-app-token/&lt;provider&gt;/&lt;external id&gt;</c>. Not the bot token's name,
+    /// so one token does not open in the other's place.
+    /// </summary>
+    public static string ChatWorkspaceAppToken(string provider, string externalId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(provider);
+        ArgumentException.ThrowIfNullOrEmpty(externalId);
+        return $"chat-workspace-app-token/{provider}/{externalId}";
     }
 }

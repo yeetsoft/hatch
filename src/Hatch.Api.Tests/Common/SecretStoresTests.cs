@@ -19,14 +19,22 @@ public class SecretStoresTests
     }
 
     [Fact]
-    public void The_list_has_the_two_tables_and_each_names_a_row_the_same_way_the_helpers_do()
+    public void A_chat_workspace_app_token_is_named_apart_from_the_bot_token()
     {
-        Assert.Equal(["SiteSettings", "ChatWorkspaces"], SecretStores.All.Select(s => s.Table));
-        Assert.Equal(["Value", "Token"], SecretStores.All.Select(s => s.Column));
-        Assert.Equal([null, "hatch"], SecretStores.All.Select(s => s.Schema));
-        Assert.Equal([["Key"], ["Provider", "ExternalId"]], SecretStores.All.Select(s => s.IdColumns));
+        Assert.Equal("chat-workspace-app-token/slack/T123", SecretStores.ChatWorkspaceAppToken("slack", "T123"));
+        Assert.NotEqual(SecretStores.ChatWorkspace("slack", "T123"), SecretStores.ChatWorkspaceAppToken("slack", "T123"));
+    }
+
+    [Fact]
+    public void The_list_has_the_three_stores_and_each_names_a_row_the_same_way_the_helpers_do()
+    {
+        Assert.Equal(["SiteSettings", "ChatWorkspaces", "ChatWorkspaces"], SecretStores.All.Select(s => s.Table));
+        Assert.Equal(["Value", "Token", "AppToken"], SecretStores.All.Select(s => s.Column));
+        Assert.Equal([null, "hatch", "hatch"], SecretStores.All.Select(s => s.Schema));
+        Assert.Equal([["Key"], ["Provider", "ExternalId"], ["Provider", "ExternalId"]], SecretStores.All.Select(s => s.IdColumns));
         Assert.Equal("site-setting/XaiApiKey", SecretStores.SiteSettings.RowName(["XaiApiKey"]));
         Assert.Equal("chat-workspace/slack/T123", SecretStores.ChatWorkspaces.RowName(["slack", "T123"]));
+        Assert.Equal("chat-workspace-app-token/slack/T123", SecretStores.ChatWorkspaceAppTokens.RowName(["slack", "T123"]));
     }
 
     [Fact]
@@ -42,5 +50,6 @@ public class SecretStoresTests
     {
         Assert.Equal(SiteSettingKeys.Secrets, SecretStores.SiteSettings.OnlyKeys);
         Assert.Null(SecretStores.ChatWorkspaces.OnlyKeys);
+        Assert.Null(SecretStores.ChatWorkspaceAppTokens.OnlyKeys);
     }
 }

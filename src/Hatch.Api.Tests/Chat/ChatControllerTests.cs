@@ -29,6 +29,9 @@ public class ChatControllerTests
     private const string AcmeNewToken = FakeChatProvider.AcmeNewToken;
     private const string GlobexToken = FakeChatProvider.GlobexToken;
     private const string RefusedToken = FakeChatProvider.RefusedToken;
+    private const string AcmeAppToken = FakeChatProvider.AcmeAppToken;
+    private const string AcmeNewAppToken = FakeChatProvider.AcmeNewAppToken;
+    private const string RefusedAppToken = FakeChatProvider.RefusedAppToken;
 
     [Fact]
     public async Task TwoWorkspaces_Connect_AndBothAreListed_OldestFirst()
@@ -129,7 +132,7 @@ public class ChatControllerTests
         Assert.Equal("TACME", row.ExternalId);
         Assert.Equal("fake", row.Provider);
         Assert.Equal(Now, row.CreatedAt);
-        AssertWorkspace(new ChatWorkspaceDto(acme.Id, "fake", "TACME", "Acme Renamed", true, Now, []), replaced);
+        AssertWorkspace(new ChatWorkspaceDto(acme.Id, "fake", "TACME", "Acme Renamed", true, false, false, Now, []), replaced);
     }
 
     [Fact]
@@ -169,6 +172,194 @@ public class ChatControllerTests
 
         Assert.IsType<NotFoundResult>(result.Result);
         Assert.Equal(0, h.Provider.Checks);
+    }
+
+    [Fact]
+    public async Task AnAppToken_IsSet_ThenReplaced_ThenRemoved()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        Assert.False(acme.HasAppToken);
+        Assert.False(acme.AppTokenUnreadable);
+        h.Time.Advance(TimeSpan.FromHours(1));
+
+        var set = Value(await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest($"  {AcmeAppToken}\n"), default));
+
+        Assert.True(set.HasAppToken);
+        Assert.False(set.AppTokenUnreadable);
+        Assert.True(set.HasToken);
+        var row = await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync();
+        Assert.Equal(AcmeAppToken, h.OpenApp(row.AppToken));
+        Assert.Equal(Now.AddHours(1), row.UpdatedAt);
+        Assert.Equal(AcmeAppToken, Assert.Single(h.Provider.AppChecks));
+
+        var replaced = Value(await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeNewAppToken), default));
+
+        Assert.True(replaced.HasAppToken);
+        Assert.Equal(AcmeNewAppToken, h.OpenApp((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).AppToken));
+
+        Assert.IsType<NoContentResult>(await h.Chat.RemoveAppToken(acme.Id, default));
+
+        Assert.Null((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).AppToken);
+        Assert.False(Assert.Single(Value(await h.Chat.GetWorkspaces(default))).HasAppToken);
+    }
+
+    [Fact]
+    public async Task AnAppToken_IsSealedUnderItsOwnRowName_NotTheBotTokens()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeAppToken), default);
+
+        var stored = (await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).AppToken!;
+
+        Assert.StartsWith("v2:", stored, StringComparison.Ordinal);
+        Assert.DoesNotContain("acmeAppSecretPart", stored);
+        Assert.Null(h.Protector.Unprotect(stored, SecretStores.ChatWorkspace("fake", "TACME")));
+        Assert.Null(h.Protector.Unprotect(stored, SecretStores.ChatWorkspaceAppToken("fake", "TGLOBEX")));
+    }
+
+    [Fact]
+    public async Task AnAppToken_ThatIsRefused_StoresNothing()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeAppToken), default);
+
+        var result = await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(RefusedAppToken), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal(FakeChatProvider.AppRefusalSentence, bad.Value);
+        // The earlier one is kept.
+        Assert.Equal(AcmeAppToken, h.OpenApp((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).AppToken));
+    }
+
+    [Fact]
+    public async Task AnAppToken_OfTheWrongShape_IsABadRequest_AndStoresNothing()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+
+        var result = await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeToken), default);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Null((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).AppToken);
+    }
+
+    [Fact]
+    public async Task ABlankAppToken_IsABadRequest_AndCallsNothing()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+
+        foreach (var token in new string?[] { null, "", "   " })
+        {
+            Assert.IsType<BadRequestObjectResult>((await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(token), default)).Result);
+        }
+
+        Assert.Empty(h.Provider.AppChecks);
+    }
+
+    [Fact]
+    public async Task WithNoKey_AnAppToken_IsABadRequestNamingTheKey_AndNeverCallsTheProvider()
+    {
+        var h = NewHarness(withKey: false);
+        var row = new EfHatchChatWorkspace
+        {
+            Provider = "fake", ExternalId = "TACME", Name = "Acme", Token = "", CreatedAt = Now, UpdatedAt = Now,
+        };
+        h.Db.ChatWorkspaces.Add(row);
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.Chat.PutAppToken(row.Id, new ChatTokenRequest(AcmeAppToken), default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Contains("HATCH_SECRET_KEY", (string)bad.Value!);
+        Assert.Empty(h.Provider.AppChecks);
+        Assert.Null((await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync()).AppToken);
+    }
+
+    [Fact]
+    public async Task TheAppToken_OfAnUnknownWorkspace_IsNotFound_OnBothRoutes()
+    {
+        var h = NewHarness();
+
+        Assert.IsType<NotFoundResult>((await h.Chat.PutAppToken(404, new ChatTokenRequest(AcmeAppToken), default)).Result);
+        Assert.IsType<NotFoundResult>(await h.Chat.RemoveAppToken(404, default));
+        Assert.Empty(h.Provider.AppChecks);
+    }
+
+    [Fact]
+    public async Task RemovingAnAppToken_NoneWasSet_IsStillNoContent()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+
+        Assert.IsType<NoContentResult>(await h.Chat.RemoveAppToken(acme.Id, default));
+        Assert.IsType<NoContentResult>(await h.Chat.RemoveAppToken(acme.Id, default));
+    }
+
+    [Fact]
+    public async Task ReplacingTheBotToken_KeepsTheAppToken()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeAppToken), default);
+
+        var replaced = Value(await h.Chat.ReplaceToken(acme.Id, new ChatTokenRequest(AcmeNewToken), default));
+
+        Assert.True(replaced.HasAppToken);
+        var row = await h.Db.ChatWorkspaces.AsNoTracking().SingleAsync();
+        Assert.Equal(AcmeNewToken, h.Open(row.Token));
+        Assert.Equal(AcmeAppToken, h.OpenApp(row.AppToken));
+    }
+
+    [Fact]
+    public async Task AnUnreadableAppToken_ReadsAsNotSet_AndANewOneClearsThat()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeAppToken), default);
+        var row = await h.Db.ChatWorkspaces.SingleAsync();
+        // Sealed for another row, so it does not open here.
+        Assert.True(h.Protector.TrySeal(AcmeAppToken, SecretStores.ChatWorkspaceAppToken("fake", "TELSEWHERE"), out var other));
+        row.AppToken = other;
+        await h.Db.SaveChangesAsync();
+
+        var listed = Assert.Single(Value(await h.Chat.GetWorkspaces(default)));
+
+        Assert.False(listed.HasAppToken);
+        Assert.True(listed.AppTokenUnreadable);
+
+        var fixedUp = Value(await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeNewAppToken), default));
+
+        Assert.True(fixedUp.HasAppToken);
+        Assert.False(fixedUp.AppTokenUnreadable);
+    }
+
+    [Fact]
+    public async Task RemovingTheWorkspace_LeavesNoAppToken()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeAppToken), default);
+
+        await h.Chat.RemoveWorkspace(acme.Id, default);
+
+        Assert.Empty(await h.Db.ChatWorkspaces.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task SettingAnAppToken_AnswersWithTheBoundProjects()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        await h.Chat.PutProjects(acme.Id, new ChatProjectsRequest([a]), default);
+
+        var set = Value(await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeAppToken), default));
+
+        Assert.Equal([a], set.ProjectIds);
     }
 
     [Fact]
@@ -263,10 +454,16 @@ public class ChatControllerTests
         bodies.Add(Text(await h.Chat.ReplaceToken(404, new ChatTokenRequest(AcmeToken), default)));
         bodies.Add(Text(await h.Chat.GetWorkspaces(default)));
         bodies.Add(Text(h.Chat.GetManifest()));
+        bodies.Add(Text(await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(AcmeAppToken), default)));
+        bodies.Add(Text(await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest(RefusedAppToken), default)));
+        bodies.Add(Text(await h.Chat.PutAppToken(acme.Id, new ChatTokenRequest("xapp-1-not-sent-anywhere"), default)));
+        bodies.Add(Text(await h.Chat.PutAppToken(404, new ChatTokenRequest(AcmeAppToken), default)));
+        bodies.Add(Text(await h.Chat.GetWorkspaces(default)));
+        bodies.Add(Text(await h.Chat.RemoveAppToken(acme.Id, default)));
         await h.Chat.RemoveWorkspace(acme.Id, default);
 
         Assert.NotEmpty(h.Log.Lines);
-        foreach (var token in new[] { AcmeToken, AcmeNewToken, GlobexToken, RefusedToken })
+        foreach (var token in new[] { AcmeToken, AcmeNewToken, GlobexToken, RefusedToken, AcmeAppToken, RefusedAppToken })
         foreach (var part in Parts(token))
         {
             Assert.DoesNotContain(bodies, b => b.Contains(part, StringComparison.Ordinal));
@@ -289,7 +486,7 @@ public class ChatControllerTests
     [Fact]
     public void TheDto_HasNoTokenMember()
     {
-        Assert.DoesNotContain(typeof(ChatWorkspaceDto).GetProperties(), p => p.Name.Contains("Token") && p.Name != "HasToken");
+        Assert.DoesNotContain(typeof(ChatWorkspaceDto).GetProperties(), p => p.Name.Contains("Token") && p.Name is not ("HasToken" or "HasAppToken" or "AppTokenUnreadable"));
     }
 
     [Fact]
@@ -731,6 +928,9 @@ public class ChatControllerTests
             };
 
         /// <summary>The plaintext of a stored token, opened for the Acme workspace's row.</summary>
+        public string? OpenApp(string? stored) => Protector.Unprotect(stored, SecretStores.ChatWorkspaceAppToken("fake", "TACME"))?.Reveal();
+
+        /// <summary>The plaintext of a stored token, opened for the Acme workspace row.</summary>
         public string? Open(string stored) => Protector.Unprotect(stored, SecretStores.ChatWorkspace("fake", "TACME"))?.Reveal();
     }
 

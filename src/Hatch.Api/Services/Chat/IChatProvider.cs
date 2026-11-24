@@ -21,6 +21,14 @@ public interface IChatProvider
     Task<ChatTokenCheck> CheckTokenAsync(string token, CancellationToken ct);
 
     /// <summary>
+    /// Asks the service whether an app-level token is good. The shape check is
+    /// here, so a token of the wrong kind is refused without being sent. Fail-soft
+    /// like <see cref="CheckTokenAsync"/>; the token, and any address the service
+    /// answers with, is never in what it returns.
+    /// </summary>
+    Task<ChatAppTokenCheck> CheckAppTokenAsync(string appToken, CancellationToken ct);
+
+    /// <summary>
     /// Every channel the token can see, archived ones excluded. Fail-soft like
     /// <see cref="CheckTokenAsync"/>: never throws for a refusal, a throttle or
     /// a dead network.
@@ -78,6 +86,19 @@ public record ChatTokenCheck(string? WorkspaceId, string? WorkspaceName, string?
     public static ChatTokenCheck Refused(string sentence) => new(null, null, sentence);
 
     public bool Accepted => Refusal is null && !string.IsNullOrEmpty(WorkspaceId);
+}
+
+/// <summary>
+/// The answer to "is this app-level token good": accepted, or one plain
+/// sentence saying why not. It carries no connection address.
+/// </summary>
+public record ChatAppTokenCheck(string? Refusal)
+{
+    public static ChatAppTokenCheck Accepted() => new((string?)null);
+
+    public static ChatAppTokenCheck Refused(string sentence) => new(sentence);
+
+    public bool IsAccepted => Refusal is null;
 }
 
 /// <summary>One channel the token can see.</summary>

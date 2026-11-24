@@ -4,7 +4,7 @@
 
 Hatch keeps a few secrets in its own database: the agent credentials and the
 other secret settings on the Settings page, and each chat workspace's bot
-token. They are rows in Postgres, sealed with AES-256-GCM under a key the
+token and app-level token. They are rows in Postgres, sealed with AES-256-GCM under a key the
 operator holds **outside** the database.
 
 So a reader of this document can say three things:
@@ -143,6 +143,7 @@ and nowhere else.
 |---|---|---|---|
 | `SiteSettings` | `SiteSettings.Value` | `site-setting/<key>` | the keys in `SiteSettingKeys.Secrets` |
 | `ChatWorkspaces` | `hatch.ChatWorkspaces.Token` | `chat-workspace/<provider>/<external id>` | every row |
+| `ChatWorkspaces` | `hatch.ChatWorkspaces.AppToken` | `chat-workspace-app-token/<provider>/<external id>` | every row with one set |
 
 `SiteSettings` holds ordinary settings as well as secrets - a name, a time
 zone, a token limit - in the same table and column. The limit keeps the

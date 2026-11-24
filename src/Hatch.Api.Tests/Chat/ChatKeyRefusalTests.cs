@@ -23,7 +23,8 @@ public class ChatKeyRefusalTests
     private static readonly string[] Actions =
     [
         "ConnectWorkspace", "CreateRoom", "GetChannels", "GetDelivery", "GetLinks", "GetManifest", "GetRooms", "GetWorkspaces",
-        "PatchRoom", "PostTestMessage", "PutProjects", "RemoveLink", "RemoveRoom", "RemoveWorkspace", "ReplaceToken",
+        "PatchRoom", "PostTestMessage", "PutAppToken", "PutProjects", "RemoveAppToken", "RemoveLink", "RemoveRoom", "RemoveWorkspace",
+        "ReplaceToken",
     ];
 
     [Fact]
@@ -64,6 +65,8 @@ public class ChatKeyRefusalTests
             (HttpMethod.Get, "/api/chat/workspaces", null),
             (HttpMethod.Post, "/api/chat/workspaces", """{"token":"xoxb-1-not-sent-anywhere"}"""),
             (HttpMethod.Put, "/api/chat/workspaces/1/token", """{"token":"xoxb-1-not-sent-anywhere"}"""),
+            (HttpMethod.Put, "/api/chat/workspaces/1/app-token", """{"token":"xapp-1-not-sent-anywhere"}"""),
+            (HttpMethod.Delete, "/api/chat/workspaces/1/app-token", null),
             (HttpMethod.Delete, "/api/chat/workspaces/1", null),
             (HttpMethod.Get, "/api/chat/manifest", null),
             (HttpMethod.Get, "/api/chat/delivery", null),
