@@ -80,8 +80,7 @@ public static class FlowReport
         var dwell = new List<long>[columns.Count];
         for (var i = 0; i < dwell.Length; i++) dwell[i] = [];
 
-        var kept = rows.Where(r =>
-            (projectIds is null || projectIds.Count == 0 || projectIds.Contains(r.ProjectId)) && (type is null || r.Type == type));
+        var kept = Kept(rows, projectIds, type);
 
         var dropped = 0;
         var hopCounts = HopKindOrder.ToDictionary(k => k, _ => 0);
@@ -177,6 +176,12 @@ public static class FlowReport
 
         return new Result(cols, window, unresolved);
     }
+
+    /// <summary>The rows the filters keep: these projects when any are named, and this type when one is.</summary>
+    internal static IEnumerable<TimelineReport.Row> Kept(
+        IEnumerable<TimelineReport.Row> rows, IReadOnlyList<int>? projectIds, string? type) =>
+        rows.Where(r =>
+            (projectIds is null || projectIds.Count == 0 || projectIds.Contains(r.ProjectId)) && (type is null || r.Type == type));
 
     /// <summary>
     /// A <c>status_changed</c> payload's hop flag, or null where it carries
