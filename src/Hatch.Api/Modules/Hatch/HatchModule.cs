@@ -32,6 +32,7 @@ public static class HatchModule
         // read an options value and hold nothing, so they are a singleton.
         services.AddScoped<ChatOutbox>();
         services.AddScoped<FindingMessages>();
+        services.AddScoped<TrunkBuildMessages>();
         services.AddScoped<ChangelogMessages>();
         services.AddSingleton<ChatLinks>();
 
