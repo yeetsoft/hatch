@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
+using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Chat;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Tests.Chat;
 
@@ -212,6 +214,22 @@ public class SlackChatProviderSendTests
         Assert.EndsWith("\n<https://hatch.example/issues/HA-1|HA-1>", text);
         Assert.Contains("…\na fact\n", text);
         Assert.StartsWith("*Long*\nxxx", text);
+    }
+
+    [Fact]
+    public void ALongQuestion_IsCut_WithItsIssueAndBallotLinksKept()
+    {
+        var links = new ChatLinks(Options.Create(new HatchOptions { PublicBaseUrl = "https://hatch.example" }));
+        var content = QuestionChatContent.Build(
+            links, "HA-1", "A long question", new string('x', 10_000),
+            [new QuestionOptionDto("leaf-weighted", Recommended: true), new QuestionOptionDto("child-weighted")],
+            QuestionLevels.HoldName);
+
+        var text = SlackChatProvider.Format(content);
+
+        Assert.True(text.Length <= SlackChatProvider.MaxTextLength, $"{text.Length} characters");
+        Assert.EndsWith("\n<https://hatch.example/issues/HA-1|HA-1> · <https://hatch.example/ballot|Answer it>", text);
+        Assert.StartsWith("*HA-1 A long question*", text);
     }
 
     [Fact]

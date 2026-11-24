@@ -177,6 +177,23 @@ A message names its ticket. It links to the ticket only when Hatch knows the
 address people open it at, which is `HATCH_PUBLIC_URL`. Without it, the Chat
 screen says messages name the ticket with no link.
 
+## Questions in a room
+
+Asking a question - from a comment, or from a check that has failed twice in a
+row - posts one message to each **Questions** room bound to the issue's
+project. It names the ticket, the question itself, its options with the
+recommended one marked (a question asked in prose shows no options), and its
+level, and links to the ticket and to the Ballot.
+
+Answering, overturning or changing the level edits that same message rather
+than posting a new one. An answered message shows the latest answer alone, not
+a history of earlier ones, and who gave it - unless every answer so far is a
+key's, in which case it says a program answered rather than naming one. A
+level change updates the message's level line alone.
+
+A long question is cut to fit Slack's own limit, the same as any message, and
+its links are always kept.
+
 ## Remove a workspace
 
 **Remove** asks first, and names the workspace. Confirming removes the
