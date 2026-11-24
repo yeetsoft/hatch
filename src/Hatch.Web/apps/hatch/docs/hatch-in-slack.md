@@ -118,6 +118,38 @@ or says why not, in these words:
   app again from the manifest.
 - Anything else is shown as Slack gave it.
 
+## When Slack is down
+
+Hatch writes a message into a queue in the same step as the change that causes
+it, so a change on the board never fails because Slack is slow or away. A
+sender then delivers the queue, and what it does when Slack refuses is this:
+
+- A message that fails waits and is tried again after 10 seconds, then after
+  twice the wait each time, up to 10 minutes.
+- A `429` from Slack holds the whole workspace for the time Slack names, since
+  every room in it is throttled together.
+- An app that is not in the channel is retried too, because adding the app to
+  the channel mends it; the message goes out on the next try.
+- A message still unsent after a day is dropped, and counted on `/chat` as
+  **dropped**.
+- A finding opens after `Hatch__GooseChatSendMinutes` of failing (60 by
+  default, and `0` turns it off). See [the goose](the-goose#chat-sends-failing).
+
+## What the counts on Chat mean
+
+Each workspace row has a **Sending** cell. It shows how many messages are
+**waiting** to be sent, how many were **dropped**, and the last sentence Slack
+refused one with, and how long ago. A workspace with none of the three shows
+nothing there. The numbers refresh every half minute while the page is open.
+An admin who may see only some projects counts only the messages about those
+projects.
+
+## Links in messages
+
+A message names its ticket. It links to the ticket only when Hatch knows the
+address people open it at, which is `HATCH_PUBLIC_URL`. Without it, the Chat
+screen says messages name the ticket with no link.
+
 ## Remove a workspace
 
 **Remove** asks first, and names the workspace. Confirming removes the

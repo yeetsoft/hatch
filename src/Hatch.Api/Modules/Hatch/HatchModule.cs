@@ -170,6 +170,7 @@ public static class HatchModule
         services.AddScoped<IGooseCheck, RepeatClaimsCheck>();
         services.AddScoped<IGooseCheck, QuestionsWaitingCheck>();
         services.AddScoped<IGooseCheck, StandingStillCheck>();
+        services.AddScoped<IGooseCheck, ChatSendsFailingCheck>();
 
         return services;
     }

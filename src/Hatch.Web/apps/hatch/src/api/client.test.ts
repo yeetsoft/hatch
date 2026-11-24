@@ -4,6 +4,7 @@ import {
   createChatWorkspace,
   createRunner,
   deleteChatWorkspace,
+  getChatDelivery,
   getChatManifest,
   getChatWorkspaces,
   replaceChatToken,
@@ -883,6 +884,19 @@ describe('chat page calls', () => {
     await expect(getChatWorkspaces()).resolves.toEqual([workspace]);
 
     expect(fetchMock).toHaveBeenCalledWith('/api/chat/workspaces', expect.anything());
+  });
+
+  it('getChatDelivery GETs the delivery state', async () => {
+    const delivery = {
+      linksOn: false,
+      workspaces: [{ workspaceId: 4, waiting: 2, dropped: 1, lastSaid: 'ratelimited', lastSaidAt: null, failingSince: null }],
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(delivery), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getChatDelivery()).resolves.toEqual(delivery);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/delivery', expect.anything());
   });
 
   it('createChatWorkspace POSTs the token alone and returns the workspace', async () => {

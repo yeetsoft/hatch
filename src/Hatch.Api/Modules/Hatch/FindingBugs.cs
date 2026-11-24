@@ -41,6 +41,9 @@ public static class FindingBugs
             f => $"Ticket standing still: {f.Subject}",
             o => Hours(GooseSettings.StandingBound(o)),
             "it opens a finding once a ticket has stood in one column that long with nothing set to move it"),
+        [ChatSendsFailingCheck.CheckName] = new(
+            _ => "Messages to a chat room are not getting through",
+            o => Minutes(GooseSettings.ChatSendBound(o)), StoodThatLong),
     };
 
     /// <summary>Whether <paramref name="check"/> has its own entry, rather than the fallback title.</summary>

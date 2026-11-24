@@ -3905,6 +3905,24 @@ export interface ChatWorkspace {
   projectIds: number[];
 }
 
+/** What is waiting to be sent to one workspace, and what the chat service last
+    said. Mirrors ChatWorkspaceDeliveryDto. */
+export interface ChatWorkspaceDelivery {
+  workspaceId: number;
+  waiting: number;
+  dropped: number;
+  lastSaid: string | null;
+  lastSaidAt: string | null;
+  failingSince: string | null;
+}
+
+/** Delivery state for every workspace, and whether messages can link back to a
+    ticket. Mirrors ChatDeliveryDto. */
+export interface ChatDelivery {
+  linksOn: boolean;
+  workspaces: ChatWorkspaceDelivery[];
+}
+
 /** One channel a workspace's token can see. Mirrors ChatChannelDto. */
 export interface ChatChannel {
   id: string;

@@ -67,6 +67,7 @@ import type {
   ChatRoomCreate,
   ChatRoomPatch,
   ChatTestResult,
+  ChatDelivery,
   ChatWorkspace,
   PersonCreateRequest,
   PersonScope,
@@ -1215,6 +1216,7 @@ export const replaceChatToken = (id: number, token: string) =>
 export const deleteChatWorkspace = (id: number) =>
   fetchJson<void>(`/api/chat/workspaces/${seg(String(id))}`, { method: 'DELETE' });
 export const getChatManifest = () => fetchJson<ChatManifest>('/api/chat/manifest');
+export const getChatDelivery = () => fetchJson<ChatDelivery>('/api/chat/delivery');
 export const setChatProjects = (id: number, projectIds: number[]) =>
   fetchJson<number[]>(`/api/chat/workspaces/${seg(String(id))}/projects`, { method: 'PUT', ...asJson({ projectIds }) });
 export const getChatChannels = (id: number) =>

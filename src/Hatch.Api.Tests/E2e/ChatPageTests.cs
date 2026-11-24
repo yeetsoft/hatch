@@ -2,9 +2,11 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Hatch.Contracts;
+using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Chat;
 using Hatch.Api.Tests.Chat;
 using Hatch.Api.Tests.Hatch;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit.Abstractions;
@@ -135,6 +137,8 @@ public class ChatPageTests(ITestOutputHelper output)
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "chat-two-workspaces"));
 
             await BindAndSetUpRoomsAsync(harness, deadline, baseUrl, provider, profile);
+
+            await AssertDeliveryShownAsync(harness, deadline, profile);
 
             // Remove asks first, names the workspace, and removes nothing until it is confirmed.
             await harness.ClickAsync(deadline, "tr:has-text(\"Globex\") button:text-is(\"Remove\")");
@@ -306,6 +310,74 @@ public class ChatPageTests(ITestOutputHelper output)
         await harness.ClickAsync(deadline, "[aria-modal=\"true\"] button:text-is(\"Remove room\")");
         await harness.WaitForHiddenAsync(deadline, announcements);
         Assert.True(await harness.IsVisibleAsync(deadline, general), "the other room went with it");
+    }
+
+    /// <summary>
+    /// What waits to be sent is shown in the workspace's own row. Acme is given two messages waiting, one dropped and
+    /// a refusal; Globex is given nothing. The host has no public address, so the page says messages carry no link and
+    /// names the variable that sets one.
+    /// </summary>
+    private async Task AssertDeliveryShownAsync(E2eHarness harness, Deadline deadline, DeviceProfile? profile)
+    {
+        await deadline.BoundAsync("seeding what waits to be sent", () => SeedDeliveryAsync(harness.Services));
+
+        // The page reads the delivery state when it opens, and on a timer; open it again.
+        await harness.GoToAsync(deadline, "/chat");
+        await harness.WaitForVisibleAsync(deadline, "td strong:text-is(\"Acme\")");
+        await harness.WaitForVisibleAsync(deadline, "td.hatch-chat-delivery-cell:has-text(\"2 waiting\")");
+
+        var acme = await TextAsync(harness, deadline, "main tbody tr:has-text(\"Acme\") td.hatch-chat-delivery-cell");
+        Assert.Contains("2 waiting", acme);
+        Assert.Contains("1 dropped", acme);
+        Assert.Contains("Slack said: ratelimited", acme);
+        Assert.Matches("minutes? ago", acme);
+
+        // Globex has none of the three, so its cell is empty, and the page adds no row of its own.
+        Assert.Equal("", (await TextAsync(harness, deadline, "main tbody tr:has-text(\"Globex\") td.hatch-chat-delivery-cell")).Trim());
+        Assert.Equal(
+            2,
+            await harness.EvaluateAsync<int>(deadline, "counting the rows", "() => document.querySelectorAll('main tbody tr').length"));
+        Assert.Equal(
+            2,
+            await harness.EvaluateAsync<int>(
+                deadline, "counting Token set",
+                "() => [...document.querySelectorAll('main tbody td')].filter(td => td.textContent === 'Token set').length"));
+
+        // No public address is set on this host.
+        var note = await TextAsync(harness, deadline, "p.hatch-chat-links-note");
+        Assert.Contains("no link", note);
+        Assert.Contains("HATCH_PUBLIC_URL", note);
+
+        await AssertNoTokenOnPageAsync(harness, deadline);
+        await AssertFitsAsync(harness, deadline, profile);
+        output.WriteLine("screenshot: " + await harness.FullPageScreenshotAsync(deadline, "chat-delivery"));
+    }
+
+    /// <summary>Gives the Acme workspace a room with two messages waiting and one dropped, and the last thing Slack said; leaves Globex alone.</summary>
+    private static async Task SeedDeliveryAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<HatchContext>();
+        var now = DateTimeOffset.UtcNow;
+
+        var acme = await db.ChatWorkspaces.SingleAsync(w => w.Name == "Acme");
+        var room = new EfHatchChatRoom { WorkspaceId = acme.Id, ExternalId = "C7", Name = "seeded", CreatedAt = now, UpdatedAt = now };
+        db.ChatRooms.Add(room);
+        await db.SaveChangesAsync();
+
+        EfHatchChatMessage Message(string subject, bool dropped = false) => new()
+        {
+            RoomId = room.Id, WorkspaceId = acme.Id, Kind = "problem", Subject = subject, Content = "{}",
+            QueuedAt = now, PendingSince = now, DroppedAt = dropped ? now : null,
+            // Not due for a day, so the host's own sender leaves them waiting for the case to see.
+            NextAttemptAt = now.AddDays(1),
+        };
+
+        db.ChatMessages.AddRange(Message("finding:1"), Message("finding:2"), Message("finding:3", dropped: true));
+        acme.LastRefusal = "ratelimited";
+        acme.LastRefusalAt = now.AddMinutes(-3);
+        acme.SendFailingSince = now.AddMinutes(-3);
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Files three projects, as the Projects screen would.</summary>
