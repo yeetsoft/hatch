@@ -640,6 +640,57 @@ public class SlackChatProvider(
         SendAsync(UpdateMessageEndpoint, "chat.update", token,
             new Dictionary<string, string> { ["channel"] = channelId, ["ts"] = messageId }, content, ct);
 
+    public async Task<ChatSendResult> ReplyAsync(string replyUrl, ChatMessageContent content, CancellationToken ct)
+    {
+        // The address came over Slack's own socket. It is the only credential this call has, so it is
+        // never logged, never in a sentence, and never sent anywhere that is not https.
+        if (!Uri.TryCreate(replyUrl, UriKind.Absolute, out var address) || address.Scheme != Uri.UriSchemeHttps)
+            return ChatSendResult.Failed(ChatSendOutcome.RoomRefused, "Slack gave no usable address to reply to");
+
+        try
+        {
+            var client = httpClientFactory.CreateClient(HttpClientName);
+            var payload = JsonSerializer.Serialize(new Dictionary<string, object>
+            {
+                ["text"] = Format(content),
+                ["response_type"] = "ephemeral",
+                ["replace_original"] = false,
+            });
+            using var request = new HttpRequestMessage(HttpMethod.Post, address)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+            };
+            using var response = await client.SendAsync(request, ct);
+            var status = (int)response.StatusCode;
+
+            if (status is >= 200 and < 300) return ChatSendResult.Sent(null);
+
+            if (status == 429)
+            {
+                logger.LogWarning("Slack press reply was throttled");
+                return ChatSendResult.Throttled(RetryAfterOf(response), "Slack asked Hatch to slow down; this reply was dropped");
+            }
+
+            if (status >= 500)
+            {
+                logger.LogWarning("Slack press reply answered {Status}", status);
+                return ChatSendResult.Failed(ChatSendOutcome.Unreachable, TransportSentence);
+            }
+
+            // Slack answers a refusal with a plain-text code. Anything else is not read.
+            var body = (await response.Content.ReadAsStringAsync(ct)).Trim();
+            var code = System.Text.RegularExpressions.Regex.IsMatch(body, "^[a-z_]{1,40}$") ? body : $"http_{status}";
+            logger.LogWarning("Slack press reply was refused: {Code}", code);
+            return ChatSendResult.Failed(ChatSendOutcome.RoomRefused, RefusalSentenceFor(code, "Slack refused"));
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException) && !ct.IsCancellationRequested)
+        {
+            // The exception's type alone: its message can carry the address.
+            logger.LogWarning("Slack press reply could not be completed: {Kind}", ex.GetType().Name);
+            return ChatSendResult.Failed(ChatSendOutcome.Unreachable, TransportSentence);
+        }
+    }
+
     private async Task<ChatSendResult> SendAsync(
         string endpoint, string method, string token, Dictionary<string, string> form, ChatMessageContent content, CancellationToken ct)
     {

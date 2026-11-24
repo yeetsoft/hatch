@@ -286,6 +286,9 @@ public class ChatWorkspaceCascadeDatabaseTests
         public Task<ChatSendResult> UpdateAsync(string token, string channelId, string messageId, ChatMessageContent content, CancellationToken ct) =>
             Task.FromResult(ChatSendResult.Sent(messageId));
 
+        public Task<ChatSendResult> ReplyAsync(string replyUrl, ChatMessageContent content, CancellationToken ct) =>
+            throw new NotSupportedException();
+
         public async Task<ChatListenEnd> ListenAsync(
             string appToken, Func<CancellationToken, Task> opened, Action<ChatPress> pressed, CancellationToken ct)
         {

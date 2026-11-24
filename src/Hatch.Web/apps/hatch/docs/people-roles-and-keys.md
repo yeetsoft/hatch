@@ -274,6 +274,9 @@ name, that HA-1937 retires.
   settings, playbook source and members; Hatch's own settings; a runner's
   record; attachment delete; choosing a home screen; linking and unlinking a
   Slack account, which only the person it speaks for may do; running a backup.
+  Answering a question from a Slack button is a write only a person makes, too:
+  it is made as the person whose confirmed Slack link the press came from, and
+  never as a key.
   [`api-reference`](api-reference) has the route-by-route version.
 - **Which runners a key sees.** A key reads the runners of its owner, an
   admin's key reads every runner, and a key with no owner reads only the

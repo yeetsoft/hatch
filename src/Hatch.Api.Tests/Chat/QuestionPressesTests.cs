@@ -217,6 +217,22 @@ public class QuestionPressesTests
         Assert.Equal(ActorKind.Key, outcome.AnsweredByKind);
     }
 
+    [Theory]
+    [InlineData(QuestionLevels.MergeName, "hatch-agent", ActorKind.Key, true)]
+    [InlineData(QuestionLevels.MergeName, "Grace", ActorKind.Person, false)]
+    [InlineData(QuestionLevels.HoldName, "hatch-agent", ActorKind.Key, false)]
+    public async Task AnAlreadyAnsweredOutcome_SaysWhetherTheMessageWouldCallItAProgramsAnswer(
+        string level, string author, string kind, bool lookBack)
+    {
+        var (db, appDb, w) = await NewAsync(level: level);
+        await AnswerAsync(db, w, author, kind, "leaf-weighted");
+
+        var outcome = await PressWorld.Presses(db, appDb).AnswerAsync(w.WorkspaceId, w.Press(), default);
+
+        Assert.Equal(PressCase.AlreadyAnswered, outcome.Case);
+        Assert.Equal(lookBack, outcome.LookBack);
+    }
+
     [Fact]
     public async Task ThePressDeliveredTwice_AnswersOnce_AndTheSecondIsCase8()
     {
