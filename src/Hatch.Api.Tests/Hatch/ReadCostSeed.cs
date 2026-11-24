@@ -65,6 +65,13 @@ internal static class ReadCostSeed
     /// </summary>
     public const int WindowSessions = 300;
 
+    /// <summary>
+    /// How many different paths the sessions' reads name: one, on one session in
+    /// five. The leaderboard's top reads are at most this many rows, and a read
+    /// that returned every session's list would return far more.
+    /// </summary>
+    public const int DistinctReadPaths = 1;
+
     /// <summary>The key of the first project, the one the scoped board health read is asked for.</summary>
     public const string KeyA = "AER";
 

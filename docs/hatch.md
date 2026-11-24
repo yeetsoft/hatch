@@ -5217,8 +5217,9 @@ not counted in `inReviewWithoutPullRequest` either: its pull request is written
 and only needs opening, which is a fact the issue page carries, not a thing
 forgotten. It is not a `reviews` row, because those need a recorded url.
 
-The control keeps itself current on a sixty-second poll and on
-`visibilitychange`, the way [the battery](#the-battery) does, and a read that
+The control keeps itself current on a sixty-second poll while the tab is on
+screen, the way [the battery](#the-battery) does. A tab nobody is looking at
+asks nothing, and asks once when it is brought forward. A read that
 fails leaves the last answer drawn and says nothing at all. The bar is not
 where a fetch failure gets announced.
 
@@ -7904,10 +7905,12 @@ second copy to fall out of step with the first.
 All five of these hold, or the heartbeating runner is told nothing:
 
 1. Some [emergency](#issue)-level issue is actionable and unclaimed — asked
-   through `Dispatch.ScanAsync` itself, never re-derived, with `offsetMinutes`
-   pinned to `0`: the heartbeat carries no timezone the way `work/next` does,
-   so a ready-dated emergency issue near a day boundary is judged against the
-   UTC day rather than the caller's own.
+   through `Dispatch.ScanAsync` itself, never re-derived, and only when one
+   cheap query finds an open issue at emergency level on its own row or an
+   ancestor's (see "A heartbeat that does not scan" below). The scan runs with
+   `offsetMinutes` pinned to `0`: the heartbeat carries no timezone the way
+   `work/next` does, so a ready-dated emergency issue near a day boundary is
+   judged against the UTC day rather than the caller's own.
 2. The heartbeating runner's own issue is below emergency. Emergency work is
    never preempted, which is what makes this a surplus queue rather than a
    cascade.
@@ -7927,6 +7930,28 @@ All five of these hold, or the heartbeating runner is told nothing:
    free runner takes the emergency ticket on its own next pass, because
    emergency is the top of the walk, so preempting while one exists would
    spend a session to gain nothing.
+
+**A heartbeat that does not scan.** A scan reads every issue on the board, and
+nearly every beat finds no emergency issue to judge. So the first thing
+`Preemption` does is ask the database one question: is any *open* issue at
+emergency level, on its own row or through an ancestor? Open means neither
+terminal nor deferred. The first read takes the issues whose own row is
+emergency, through a partial index on that level. If one is open, the answer is
+yes. If every one is closed or shelved, the question walks down their children
+one generation at a time, since an open child of a finished emergency epic
+inherits its level. No emergency row, or none with anything open under it,
+answers null and scans nothing. The question may say yes too often — an
+emergency issue that is blocked, or a level not honoured across a project line —
+which costs one scan and never a wrong answer, and it never says no where the
+scan would have found an emergency issue. It is asked of the database on every
+beat and never answered from a remembered result. The `claim-heartbeat` scan
+counter on the dispatch meter shows how often it said yes.
+
+**How soon.** An emergency issue reaches a working runner within one heartbeat
+interval of becoming actionable: 30 seconds on default settings, since
+`Claim.Interval` (`src/Hatch.Cli/Claim.cs`) beats every fifth of the lease or
+third of the runner-gone horizon, whichever is smaller, and each beat asks the
+question afresh.
 
 **"Already told" is read off the trail, not stored.** The `claim_preempted`
 event a preempted heartbeat writes (see [Claim](#claim)) doubles as the record

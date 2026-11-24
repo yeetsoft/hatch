@@ -2141,6 +2141,168 @@ public class IssueClaimTests
             (await h.Claims.Heartbeat(heartbeating, new ClaimHeartbeatRequest(token, null), default)).Result);
     }
 
+    // ---- The cheap question ahead of the scan ----
+    //
+    // A heartbeat scans the board only when an open issue stands at emergency
+    // level, on its own row or an ancestor's - see Preemption.AnyOpenEmergencyAsync.
+
+    private static async Task<IActionResult?> BeatAsync(Harness h, string key, Guid token) =>
+        (await h.Claims.Heartbeat(key, new ClaimHeartbeatRequest(token, null), default)).Result;
+
+    [SkippableFact]
+    public async Task AnEmergencyOnAnOpenGrandparent_StillTellsTheRunner()
+    {
+        await using var h = await NewAsync();
+        var grand = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var parent = await h.FileAsync(parent: grand);
+        var child = await h.FileAsync(parent: parent);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+
+        Assert.Contains(told.Key, new[] { grand, parent, child });
+    }
+
+    [SkippableFact]
+    public async Task AnEmergencyOnAnOpenParent_StillTellsTheRunner()
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var child = await h.FileAsync(parent: parent);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+
+        Assert.Contains(told.Key, new[] { parent, child });
+    }
+
+    [SkippableFact]
+    public async Task AnEmergencyOnATerminalParent_WithAnOpenChild_StillTellsTheRunner()
+    {
+        await using var h = await NewAsync();
+        var columns = await AddReviewColumnsAsync(h);
+        var parent = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var child = await h.FileAsync(parent: parent);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+        await StandAsync(h, parent, columns.Done, declared: false);
+
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+
+        Assert.Equal(child, told.Key);
+    }
+
+    [SkippableFact]
+    public async Task AnEmergencyOnATerminalGrandparent_WithAnOpenGrandchild_StillTellsTheRunner()
+    {
+        await using var h = await NewAsync();
+        var columns = await AddReviewColumnsAsync(h);
+        var grand = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var parent = await h.FileAsync(parent: grand);
+        var child = await h.FileAsync(parent: parent);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+        await StandAsync(h, grand, columns.Done, declared: false);
+        await StandAsync(h, parent, columns.Done, declared: false);
+
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+
+        Assert.Equal(child, told.Key);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatFromAnEmergencyIssue_IsJudgedAndToldNothing()
+    {
+        await using var h = await NewAsync();
+        await h.FileAsync(priority: PriorityLevels.Emergency);
+        var heartbeating = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var token = await h.TakeAsync(heartbeating);
+
+        using var probe = new ScanMeterProbe();
+        Assert.IsType<NoContentResult>(await BeatAsync(h, heartbeating, token));
+
+        // Rule 2 is judged on a scan: the question said yes, then the rule said nothing.
+        Assert.Equal(1, probe.Scans["claim-heartbeat"]);
+    }
+
+    [SkippableFact]
+    public async Task WithNoEmergencyIssue_AHeartbeatStartsNoScan()
+    {
+        await using var h = await NewAsync();
+        await h.FileAsync();
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+
+        using var probe = new ScanMeterProbe();
+        Assert.IsType<NoContentResult>(await BeatAsync(h, victim, token));
+
+        Assert.DoesNotContain("claim-heartbeat", probe.Scans.Keys);
+    }
+
+    [SkippableTheory]
+    [InlineData("done")]
+    [InlineData("shelved")]
+    [InlineData("done, with every child done")]
+    public async Task AClosedOrShelvedEmergencyIssue_WithNothingOpenUnderIt_StartsNoScan(string where)
+    {
+        await using var h = await NewAsync();
+        var columns = await AddReviewColumnsAsync(h);
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim);
+
+        await StandAsync(h, emergency, where == "shelved" ? columns.Shelved : columns.Done, declared: false);
+        if (where.Contains("child"))
+        {
+            var child = await h.FileAsync(parent: emergency);
+            var grandchild = await h.FileAsync(parent: child);
+            await StandAsync(h, child, columns.Done, declared: false);
+            await StandAsync(h, grandchild, columns.Done, declared: false);
+        }
+
+        using var probe = new ScanMeterProbe();
+        Assert.IsType<NoContentResult>(await BeatAsync(h, victim, token));
+
+        Assert.DoesNotContain("claim-heartbeat", probe.Scans.Keys);
+    }
+
+    /// <summary>
+    /// The same heartbeat on a board of 50 issues and on one of 2,000, with no
+    /// emergency issue on either: the same statements, and the same few
+    /// <c>Issues</c> rows read by Postgres. The two boards are made one after
+    /// the other because the test database is shared and emptied by each.
+    /// </summary>
+    [SkippableFact]
+    public async Task WithNoEmergencyIssue_AHeartbeatCostsTheSameOnABoardOf50AndOf2000()
+    {
+        async Task<ReadCounter.Cost> CostAsync(int issues)
+        {
+            await using var h = await NewAsync();
+            var victim = await h.FileAsync();
+            var token = await h.TakeAsync(victim);
+            await h.FillAsync(issues - 1);
+
+            // A one-page table of 50 rows is rightly read end to end by the
+            // planner, whatever indexes it has, so the measured connection
+            // is told not to: what is pinned is that every statement has an
+            // index to answer from, which is what a board of thousands uses.
+            var measured = await ReadCounter.MeasureAsync(h.ConnectionString + ";Options=-c enable_seqscan=off", async db =>
+                Assert.IsType<NoContentResult>(
+                    (await h.ClaimsOn(db).Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default)).Result));
+            return measured.Cost;
+        }
+
+        var small = await CostAsync(50);
+        var large = await CostAsync(2000);
+
+        Assert.Equal(small.Statements, large.Statements);
+        Assert.Equal(small.Read, large.Read);
+        Assert.Equal(6, small.Statements);
+        Assert.Equal("Issues=2;Projects=1;Statuses=1", small.Read);
+    }
+
     [SkippableFact]
     public async Task OnlyTheLastHeldIssueInBoardOrder_IsTold()
     {
@@ -4115,13 +4277,48 @@ public class IssueClaimTests
         /// </summary>
         public IssueClaimController Claims
         {
-            get
+            get => ClaimsOn(Connect());
+        }
+
+        /// <summary>
+        /// The same controller on a context the caller supplies - the one a
+        /// <see cref="ReadCounter"/> hands over, so a test can count what a
+        /// heartbeat sends.
+        /// </summary>
+        public IssueClaimController ClaimsOn(HatchContext db)
+        {
+            var dispatch = new Dispatch(db, Actors, Rule, Time);
+            var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time, Keys);
+            return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch, new RunnerSessions(RunnersRule), Keys, new RunnerStateLog(RunnersRule));
+        }
+
+        /// <summary>
+        /// <paramref name="count"/> more normal issues in one write, then
+        /// <c>VACUUM (ANALYZE)</c> so the planner has the same statistics on
+        /// every run, as <see cref="ReadCostSeed"/> does.
+        /// </summary>
+        public async Task FillAsync(int count)
+        {
+            var db = Connect();
+            for (var i = 0; i < count; i++)
             {
-                var db = Connect();
-                var dispatch = new Dispatch(db, Actors, Rule, Time);
-                var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time, Keys);
-                return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch, new RunnerSessions(RunnersRule), Keys, new RunnerStateLog(RunnersRule));
+                var number = next++;
+                db.Issues.Add(new EfHatchIssue
+                {
+                    ProjectId = ProjectId,
+                    Number = number,
+                    Type = "story",
+                    Title = "filler",
+                    StatusId = StatusId,
+                    Rank = 1024 * number,
+                    CreatedBy = "operator",
+                    CreatedAt = Now,
+                    UpdatedAt = Now,
+                });
             }
+
+            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlRawAsync("VACUUM (ANALYZE)");
         }
 
         public IssueThreadController Thread => new(Connect(), Caller, Time);

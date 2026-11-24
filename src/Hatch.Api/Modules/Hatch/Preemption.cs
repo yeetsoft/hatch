@@ -11,6 +11,10 @@ namespace Hatch.Api.Modules.Hatch;
 /// board on one runner instead of a saga. See docs/hatch.md, "The
 /// dispatcher", for the argument; the five rules below are its "Preemption"
 /// section, in the order they are checked.
+/// <para>The whole judgement runs on a dispatch scan, and a scan reads every
+/// issue on the board, so it runs only when <see cref="AnyOpenEmergencyAsync"/>
+/// says an open issue stands at emergency level on its own row or an
+/// ancestor's. A board with none answers null from a few indexed reads.</para>
 /// </summary>
 /// <remarks>
 /// A scoped service, for the reason <see cref="Dispatch"/> is: it holds a
@@ -28,6 +32,11 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
     {
         var now = time.GetUtcNow();
 
+        // The cheap question, asked of the database on every beat and never
+        // remembered: no open issue at emergency level means rule 1 cannot
+        // find one, so nothing below needs the board.
+        if (!await AnyOpenEmergencyAsync(ct)) return null;
+
         // "actionable for some unattended pass" - the same question GetQueue
         // asks, not "actionable for this caller's own checkout": the caller's
         // own repository situation is what its own next call, after freeing
@@ -43,7 +52,8 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
         // scan.Rows enumerates it.
         if (scan.Gate.Effective(issue.Id).Level >= PriorityLevels.Emergency) return null;
 
-        // Rule 1: some emergency issue is actionable and unclaimed.
+        // Rule 1: some emergency issue is actionable and unclaimed. The scan
+        // above ran only because AnyOpenEmergencyAsync said one might be.
         var emergencyRows = scan.Rows
             .Where(r => r.EffectivePriority == PriorityLevels.Emergency && r.Blocked is null)
             .ToList();
@@ -89,6 +99,54 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
         if (await AnyRunnerFreeAsync(now, ct)) return null;
 
         return emergencyRows[0].Issue;
+    }
+
+    /// <summary>
+    /// Whether any open issue is at emergency level, on its own row or
+    /// through an ancestor - a superset of what rule 1 can find, so it may say
+    /// yes when the scan then finds nothing (an emergency issue that is
+    /// blocked, or a level not honoured across a project line), and never says
+    /// no where the scan would have found one.
+    /// </summary>
+    /// <remarks>
+    /// <c>PriorityTree.Effective</c> gives an issue the nearest level that is
+    /// not normal, from its own row or an ancestor's, so an emergency row on
+    /// the issue or an ancestor covers everything rule 1 reads. "Open" is
+    /// neither terminal nor deferred, the two flags the scan's walkable
+    /// columns are drawn from. The first read takes the emergency rows,
+    /// through a partial index. Only when every one is closed or shelved does
+    /// the walk go down a generation at a time through <c>ParentId</c>, so a
+    /// finished emergency epic with an open task under it still says yes. Each
+    /// read is whole-board for the reason the scan's tree is: a level on a
+    /// hidden ancestor still applies.
+    /// </remarks>
+    private async Task<bool> AnyOpenEmergencyAsync(CancellationToken ct)
+    {
+        var rows = await db.Issues.IgnoreQueryFilters().AsNoTracking()
+            .Where(i => i.Priority == PriorityLevels.Emergency)
+            .Select(i => new { i.Id, Open = !i.Status!.IsTerminal && !i.Status.IsDeferred })
+            .ToListAsync(ct);
+
+        if (rows.Count == 0) return false;
+        if (rows.Any(r => r.Open)) return true;
+
+        var seen = rows.Select(r => r.Id).ToHashSet();
+        var frontier = seen.ToList();
+
+        while (frontier.Count > 0)
+        {
+            var below = await db.Issues.IgnoreQueryFilters().AsNoTracking()
+                .Where(i => i.ParentId != null && frontier.Contains(i.ParentId.Value))
+                .Select(i => new { i.Id, Open = !i.Status!.IsTerminal && !i.Status.IsDeferred })
+                .ToListAsync(ct);
+
+            if (below.Any(r => r.Open)) return true;
+
+            // The seen set is what stops a parent cycle.
+            frontier = below.Select(r => r.Id).Where(seen.Add).ToList();
+        }
+
+        return false;
     }
 
     /// <summary>
