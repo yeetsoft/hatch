@@ -55,11 +55,12 @@ description, the reports are its [work log](watching-the-loop), and the runner
 is read from the event that released each session. A session from before a
 release named its runner shows none.
 
-The page reads again every minute, the attention control's own interval. A
-caller who reaches only some of the projects sees the findings of their
-projects and no runs, with one line saying that runs cover the whole board.
-Each empty list says so: no runs yet, nothing open, nothing closed in the days
-kept.
+The page reads again every minute, the attention control's own interval,
+while the tab is on screen; a tab nobody is looking at asks nothing, and asks
+once when it is brought forward. A caller who reaches only some of the
+projects sees the findings of their projects and no runs, with one line saying
+that runs cover the whole board. Each empty list says so: no runs yet, nothing
+open, nothing closed in the days kept.
 
 ## How to read a run
 

@@ -463,7 +463,8 @@ public class ReportsController(
         }
 
         var closed = db.Issues.AsNoTracking()
-            .Where(i => i.Type == "epic" && i.Status!.IsTerminal && i.ClosedAt != null);
+            .Where(i => i.Type == "epic" && i.Status!.IsTerminal && i.ClosedAt != null
+                && i.ClosedAt >= start && i.ClosedAt < end);
 
         if (ids.Count > 0) closed = closed.Where(i => ids.Contains(i.ProjectId));
 
@@ -486,6 +487,7 @@ public class ReportsController(
         {
             var closedLoose = db.Issues.AsNoTracking()
                 .Where(i => i.Status!.IsTerminal && i.ClosedAt != null
+                    && i.ClosedAt >= start && i.ClosedAt < end
                     && (i.Type == "bug" || (i.Type == "story" && i.ParentId == null)));
             if (ids.Count > 0) closedLoose = closedLoose.Where(i => ids.Contains(i.ProjectId));
 

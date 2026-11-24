@@ -48,6 +48,9 @@ public class ReportReadCostTests
 {
     private static readonly DateTimeOffset Now = new(2026, 1, 31, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>The limit the leaderboard read below is asked for.</summary>
+    private const int LeaderboardLimit = 20;
+
     private static readonly string From = Now.AddDays(-ReadCostSeed.WindowDays).ToString("O");
     private static readonly string To = Now.ToString("O");
 
@@ -83,26 +86,30 @@ public class ReportReadCostTests
             new(8, 1, 1645, 1445, "Comments=440;IssueEvents=3882;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
             new(8, 1, 3645, 3445, "Comments=780;IssueEvents=7242;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=1500")),
         ["GET /api/reports/changelog (epic level)"] = (
-            new(13, 5, 418, 12, "Comments=720;Issues=1203;Projects=3;Statuses=36"),
-            new(13, 5, 418, 12, "Comments=2221;Issues=1402;Projects=3;Statuses=36")),
+            new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
+            new(13, 5, 417, 12, "Comments=2221;Issues=1223;Projects=3;Statuses=36")),
         ["GET /api/reports/changelog (story level)"] = (
             new(15, 7, 621, 12, "Comments=720;Issues=1244;Projects=3;Statuses=42"),
             new(15, 7, 621, 12, "Comments=2221;Issues=1443;Projects=3;Statuses=42")),
         ["GET /api/reports/changelog (loose=true)"] = (
-            new(15, 7, 424, 12, "Comments=720;Issues=1609;Projects=4;Statuses=42"),
-            new(15, 7, 424, 12, "Comments=2221;Issues=1808;Projects=4;Statuses=42")),
+            new(15, 7, 421, 12, "Comments=720;Issues=1251;Projects=4;Statuses=42"),
+            new(15, 7, 421, 12, "Comments=2221;Issues=1450;Projects=4;Statuses=42")),
         ["GET /api/reports/activity"] = (
             new(12, 3, 1735, 1161, "Comments=220;IssueEvents=3088;Issues=1401;Projects=8;Statuses=18"),
             new(12, 3, 1735, 1161, "Comments=720;IssueEvents=4448;Issues=1600;Projects=8;Statuses=18")),
         ["GET /api/reports/consumption.csv"] = (
             new(3, 2, 510, 300, "Issues=600;Projects=2;WorkLogEntries=500"),
             new(3, 2, 510, 300, "Issues=600;Projects=2;WorkLogEntries=1500")),
+        // Summed by the database: a row per bucket that holds a session, and the
+        // two bounds. Still reads the whole table, until the end-time index.
         ["GET /api/work-log/history"] = (
-            new(3, 0, 302, 302, "Issues=600;WorkLogEntries=1500"),
-            new(3, 0, 302, 302, "Issues=600;WorkLogEntries=4500")),
+            new(3, 0, 32, 32, "Issues=600;WorkLogEntries=1500"),
+            new(3, 0, 32, 32, "Issues=600;WorkLogEntries=4500")),
+        // The totals, the page, the paths read and the two bounds: at most
+        // twenty rows of page, one of totals, one per distinct path, two bounds.
         ["GET /api/work-log/sessions"] = (
-            new(3, 0, 302, 302, "Issues=600;Projects=2;WorkLogEntries=1500"),
-            new(3, 0, 302, 302, "Issues=600;Projects=2;WorkLogEntries=4500")),
+            new(5, 0, 24, 24, "Issues=1000;Projects=2;WorkLogEntries=2500"),
+            new(5, 0, 24, 24, "Issues=1000;Projects=2;WorkLogEntries=7500")),
         ["GET /api/work-log/by-playbook"] = (
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=1500")),
@@ -141,7 +148,7 @@ public class ReportReadCostTests
             Assert.IsType<FileContentResult>(result);
         }),
         new("GET /api/work-log/history", h => Ok(h.WorkLog.GetHistory(From, To, null, 0, null, null, null, default))),
-        new("GET /api/work-log/sessions", h => Ok(h.WorkLog.GetSessions(From, To, null, null, 20, null, null, default))),
+        new("GET /api/work-log/sessions", h => Ok(h.WorkLog.GetSessions(From, To, null, null, LeaderboardLimit, null, null, default))),
         new("GET /api/work-log/by-playbook", h => Ok(h.WorkLog.GetByPlaybook(From, To, null, null, null, default))),
         new("GET /api/board/health", h => Ok(h.Health.GetBoardHealth("24h", null, default))),
         new("GET /api/board/health?project", h => Ok(h.Health.GetBoardHealth("24h", [ReadCostSeed.KeyA], default))),
@@ -200,6 +207,25 @@ public class ReportReadCostTests
                 else if (s.Row != grows.Small || l.Row != grows.Large)
                     failures.Add($"{read.Name} costs {s.Row} then {l.Row}, the table says {grows.Small} then {grows.Large}");
             }
+        }
+
+        // The leaderboard is summed by the database, so what it returns does not
+        // grow with the sessions in the window: history is a row per bucket that
+        // holds a session plus the two bounds, and sessions is the page, one row
+        // of totals, a row per distinct path read, and the two bounds. Checked
+        // apart from the table, whose Read column still grows until the end-time
+        // index exists - these rows do not.
+        foreach (var (size, measured) in new[] { ("small", small), ("large", large) })
+        {
+            var history = measured["GET /api/work-log/history"].Row.Rows;
+            var historyBound = ReadCostSeed.WindowDays + 1 + 2;
+            if (history > historyBound)
+                failures.Add($"history returned {history} rows at the {size} size, more than a row per bucket and the two bounds ({historyBound})");
+
+            var sessions = measured["GET /api/work-log/sessions"].Row.Rows;
+            var sessionsBound = LeaderboardLimit + 1 + ReadCostSeed.DistinctReadPaths + 2;
+            if (sessions > sessionsBound)
+                failures.Add($"sessions returned {sessions} rows at the {size} size, more than the page, the totals, the paths read and the two bounds ({sessionsBound})");
         }
 
         if (failures.Count > 0)

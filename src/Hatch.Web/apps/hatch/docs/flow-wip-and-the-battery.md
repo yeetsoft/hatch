@@ -149,9 +149,10 @@ person with two runners has one account, so the freshest whole reading wins
 rather than a merge of the two.
 
 **How soon the page follows.** The page itself re-reads every thirty
-seconds, matching the claim heartbeat's own interval, and again on
-`visibilitychange`, so an operator watching the console sees the battery
-move within about a minute of them.
+seconds, matching the claim heartbeat's own interval, while the tab is on
+screen. A tab nobody is looking at asks nothing, and asks once when it is
+brought forward, so an operator watching the console sees the battery move
+within about a minute of them.
 
 **What it shows.** The colour is decided on the client from the percentage
 used: green under 50%, yellow from 50% to 79%, red from 80%. The battery takes
