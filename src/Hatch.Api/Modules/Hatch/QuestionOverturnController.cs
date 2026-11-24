@@ -3,6 +3,7 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,7 +27,8 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/issues/{key}")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class QuestionOverturnController(
-    HatchContext db, RankService ranks, ICallerIdentity caller, TimeProvider time) : ControllerBase
+    HatchContext db, RankService ranks, ICallerIdentity caller, TimeProvider time,
+    ChatOutbox? chatOutbox = null, ChatLinks? links = null) : ControllerBase
 {
     /// <summary>Same bound as <see cref="IssuesController"/>'s, for the same reason.</summary>
     private const int MintAttempts = 5;
@@ -104,6 +106,16 @@ public class QuestionOverturnController(
         var programAnswer = answers.Count > 0 ? Questions.FirstLine(answers[0].Body) : null;
         var title = $"Bring {key} in line with the answer";
         var description = Describe(key, id, question.Body, recommended, programAnswer, answer, actor, now);
+
+        if (chatOutbox is not null && links is not null)
+        {
+            var lookBack = Questions.IsLookBack(
+                question.Level, issue.Status!.IsTerminal, [..answers.Select(a => a.AuthorKind), authorKind]);
+            var content = QuestionChatContent.Build(
+                links, key, issue.Title, question.Body, Questions.ReadOptions(question.Options),
+                QuestionLevels.Normalise(question.Level), actor, answer, lookBack);
+            await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{id}", issue.ProjectId, content, ct);
+        }
 
         for (var attempt = 1; ; attempt++)
         {

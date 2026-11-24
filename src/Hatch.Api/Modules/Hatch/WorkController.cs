@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -27,7 +28,8 @@ namespace Hatch.Api.Modules.Hatch;
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
     IOptions<HatchOptions> hatchOptions, RankService ranks, ICallerIdentity caller, Runners runners,
-    IAuthService? keys = null, RunnerSessions? sessions = null) : ControllerBase
+    IAuthService? keys = null, RunnerSessions? sessions = null,
+    ChatOutbox? chatOutbox = null, ChatLinks? links = null) : ControllerBase
 {
     private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions, runners);
 
@@ -972,6 +974,14 @@ public class WorkController(
         var actor = await caller.ActorNameAsync(ct);
         var now = time.GetUtcNow();
 
+        // The question branch's chat subject needs its own comment's id, which
+        // does not exist until it is saved - so the whole verdict is wrapped
+        // in one transaction, with a mint-then-use save in between where a
+        // question is actually asked.
+        await using var transaction = db.Database.IsRelational() ? await db.Database.BeginTransactionAsync(ct) : null;
+
+        EfHatchComment? question = null;
+
         if (verdict.Verdict == CheckVerdicts.Pass)
         {
             var approvedColumn = Columns.Approves(statuses, from, issue.Project!.CheckApprovesMerge);
@@ -1059,7 +1069,7 @@ public class WorkController(
                 At = now,
             });
 
-            db.Comments.Add(new EfHatchComment
+            question = new EfHatchComment
             {
                 IssueId = issue.Id,
                 Author = actor,
@@ -1068,7 +1078,8 @@ public class WorkController(
                     $"First: \"{previousFindings}\" Second: \"{verdict.Findings}\" - how should {key} proceed?",
                 Options = null,
                 CreatedAt = now,
-            });
+            };
+            db.Comments.Add(question);
 
             issue.Events.Add(new EfHatchIssueEvent
             {
@@ -1089,7 +1100,21 @@ public class WorkController(
 
         verdict.AppliedAt = now;
         issue.UpdatedAt = now;
+
+        if (question is not null)
+        {
+            await db.SaveChangesAsync(ct);
+
+            if (chatOutbox is not null && links is not null)
+            {
+                var content = QuestionChatContent.Build(
+                    links, key, issue.Title, question.Body, null, QuestionLevels.Normalise(question.Level));
+                await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{question.Id}", issue.ProjectId, content, ct);
+            }
+        }
+
         await db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct);
 
         return await IssueProjection.ToDtoAsync(db, actors, issue, claims, now, ct);
     }

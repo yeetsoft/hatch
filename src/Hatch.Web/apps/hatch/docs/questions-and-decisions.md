@@ -38,6 +38,9 @@ a person for nothing. [What a session is
 told](what-a-session-is-told#when-you-cannot-decide) has the instruction as the
 session reads it, and [the CLI reference](cli-reference#ask) has the flags.
 
+Asking, answering, overturning and changing a question's level can also post
+to a Slack room and keep it current - see [Hatch in Slack](hatch-in-slack#questions-in-a-room).
+
 ## What an open question blocks
 
 A question is open when no comment answers it. That is worked out on each read

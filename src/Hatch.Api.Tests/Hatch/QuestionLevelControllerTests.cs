@@ -4,9 +4,12 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
+using Hatch.Api.Tests.Chat;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -219,6 +222,35 @@ public class QuestionLevelControllerTests
         Assert.Equal("setting a question's level is a person's call, not an agent's", obj.Value);
         Assert.Null((await h.Db.Comments.AsNoTracking().SingleAsync(c => c.Id == id)).Level);
         Assert.Empty(await h.EventsAsync());
+    }
+
+    [Fact]
+    public async Task WithChatWired_AChangeEditsTheQuestionsRoomMessage()
+    {
+        var h = await NewAsync();
+        var seed = new ChatOutboxSeed(h.Db, Now);
+        var workspace = await seed.WorkspaceAsync("TACME", h.ProjectId);
+        await seed.RoomAsync(workspace, "C1", questions: true);
+        var outbox = new ChatOutbox(h.Db, h.Time);
+        var links = new ChatLinks(Options.Create(new HatchOptions()));
+        var controller = new QuestionLevelController(h.Db, h.Caller, h.Time, outbox, links);
+
+        var key = await h.FileAsync();
+        var id = await h.AskAsync(key, Recommended);
+        var issue = await h.Db.Issues.AsNoTracking().SingleAsync(i => i.Project!.Key == "AER");
+        await outbox.QueueAsync(
+            ChatMessageKind.Question, $"comment:{id}", h.ProjectId,
+            QuestionChatContent.Build(links, key, issue.Title, "Which way?", Recommended, QuestionLevels.HoldName),
+            default);
+        await h.Db.SaveChangesAsync();
+        var before = await h.Db.ChatMessages.SingleAsync();
+
+        Value(await controller.PutQuestionLevel(key, id, new QuestionLevelRequest(QuestionLevels.BuildName), default));
+
+        var after = await h.Db.ChatMessages.SingleAsync();
+        Assert.Equal(before.Id, after.Id);
+        Assert.Equal(2, after.Revision);
+        Assert.Equal("Level: build", ChatMessageContent.Read(after.Content)!.Lines.Single(l => l.StartsWith("Level:")));
     }
 
     [Fact]

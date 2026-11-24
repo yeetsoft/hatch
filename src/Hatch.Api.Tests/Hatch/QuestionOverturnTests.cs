@@ -1,11 +1,14 @@
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
 using Hatch.Api.Common;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Tests.Chat;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -190,6 +193,34 @@ public class QuestionOverturnTests
         Assert.Equal("Keep the first store", result.Body);
 
         Assert.Empty((await h.Ballot.GetBallot(null, default)).Value!.Questions);
+    }
+
+    [Fact]
+    public async Task WithChatWired_OverturningEditsTheQuestionsRoomMessage()
+    {
+        var h = await NewAsync();
+        var seed = new ChatOutboxSeed(h.Db, Now);
+        var workspace = await seed.WorkspaceAsync("TACME", h.ProjectId);
+        await seed.RoomAsync(workspace, "C1", questions: true);
+        var outbox = new ChatOutbox(h.Db, new FakeTimeProvider(Now));
+        var links = new ChatLinks(Options.Create(new HatchOptions()));
+        var controller = new QuestionOverturnController(h.Db, new RankService(h.Db), h.Caller, new FakeTimeProvider(Now), outbox, links);
+
+        var story = await h.FileAsync("story", h.Done, closedAt: Now.AddHours(-1));
+        var question = await h.AskAsync(story, QuestionLevels.MergeName);
+        await outbox.QueueAsync(
+            ChatMessageKind.Question, $"comment:{question.Id}", h.ProjectId,
+            QuestionChatContent.Build(links, $"AER-{story.Number}", story.Title, question.Body, Questions.ReadOptions(question.Options), QuestionLevels.MergeName),
+            default);
+        await h.Db.SaveChangesAsync();
+        var before = await h.Db.ChatMessages.SingleAsync();
+
+        Assert.IsType<OkObjectResult>((await controller.Overturn($"AER-{story.Number}", question.Id, new QuestionOverturnRequest("Use the other store"), default)).Result);
+
+        var after = await h.Db.ChatMessages.SingleAsync();
+        Assert.Equal(before.Id, after.Id);
+        Assert.Equal(2, after.Revision);
+        Assert.Contains("answered: Use the other store", ChatMessageContent.Read(after.Content)!.Lines[^1]);
     }
 
     [Fact]
