@@ -33,7 +33,7 @@ public class ScanTallyTests
         await middleware.InvokeAsync(new DefaultHttpContext());
 
         var line = Assert.Single(logs.AtLevel(LogLevel.Information));
-        Assert.Contains("Dispatch reads on unrouted: 2 scans, 1 tree builds, 2 statements, 0 ms in scans,", line);
+        Assert.Contains("Dispatch reads on unrouted: 2 scans, 0 loads, 1 tree builds, 2 statements, 0 ms in scans,", line);
         Assert.Contains("by caller queue=2", line);
     }
 

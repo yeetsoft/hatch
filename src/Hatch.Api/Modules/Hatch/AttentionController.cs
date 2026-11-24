@@ -37,11 +37,6 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
     [HttpGet]
     public async Task<ActionResult<AttentionDto>> GetAttention(CancellationToken ct)
     {
-        var statuses = await db.Statuses.AsNoTracking()
-            .OrderBy(s => s.SortOrder)
-            .ThenBy(s => s.Id)
-            .ToListAsync(ct);
-
         // Every open question still waiting on somebody - not one on an issue
         // that has already shipped, which nobody is going to answer.
         var questions = await Questions.ProjectAsync(db, Questions.Waiting(db), ct);
@@ -51,10 +46,17 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // What is wrong with the runners this reader is sent - whatever the board's shape.
         var runnerFailures = await RunnerFailuresAsync(ct);
 
+        // One load for the whole request (HA-2797): every board-wide fold below
+        // - the deadlock scan, waiting-on-a-runner, the project line, runner
+        // capacity, this reader's own tree and the review column's match - folds
+        // it in memory rather than reading its own.
+        var load = await dispatch.LoadAsync(ScanCaller.Attention, ct);
+        var statuses = load.Statuses;
+
         // Only the ancestor walk MergeWork.Judge needs below, for a
         // pre-approved review row - not the full DependencyGate, which this
         // endpoint has no dependency-gating need for.
-        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
+        var tree = load.Tree;
 
         // A repository's trunk is nobody's issue, so this does not wait on
         // there being a review column at all - a person's row here even on a
@@ -81,7 +83,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // The queue's own verdict, unnarrowed, so the scan runs the fixpoint over
         // its own rows and this list and the queue's marked rows cannot disagree.
         // Whatever the board's shape: a ring needs no review column to be read.
-        var deadlocked = (await dispatch.ScanAsync(ScanCaller.Attention, 0, null, null, RepositoryDeclaration.Undeclared, false, ct, markDeadlocks: true))
+        var deadlocked = (await dispatch.ScanAsync(ScanCaller.Attention, 0, null, null, RepositoryDeclaration.Undeclared, false, ct, markDeadlocks: true, load: load))
             .Rows
             .Where(r => r.Deadlocked)
             .Select(r => new DeadlockedDto(IssueKey.Format(r.Issue.Project!.Key, r.Issue.Number), r.Issue.Title, r.Issue.Type, r.Blocked!))
@@ -90,13 +92,13 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // The moves every live runner's own declaration folds on a model or a
         // development dependency, and nothing else - whatever the board's shape.
         // The controller holds Runners, so the cutoff comes from here.
-        var waitingOnARunner = await dispatch.WaitingOnARunnerAsync(ScanCaller.Attention, 0, runners.Cutoff(time.GetUtcNow()), ct);
+        var waitingOnARunner = await dispatch.WaitingOnARunnerAsync(ScanCaller.Attention, 0, runners.Cutoff(time.GetUtcNow()), ct, load);
 
         // The issues held only because a level or pull from another project is
         // not honoured, read for this reader: an ancestor they cannot see is
         // never named. Whatever the board's shape, as the list above is.
         var reader = tree.WithVisible(await PriorityTree.VisibleIdsAsync(db, ct));
-        var heldAtProjectLine = (await dispatch.HeldAtProjectLineAsync(ScanCaller.Attention, ct))
+        var heldAtProjectLine = (await dispatch.HeldAtProjectLineAsync(ScanCaller.Attention, ct, load))
             .Select(h =>
             {
                 var hide = reader.Disclose(h.Row.Issue.Id).Key(DisclosedValues.PreApprovalPassedOver, h.Line.FromKey) is null;
@@ -115,7 +117,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         var goose = await GooseAsync(ct);
 
         // The projects whose clear implementation steps one live runner, or none, can take.
-        var runnerCapacity = await dispatch.RunnerCapacityAsync(ScanCaller.Attention, 0, runners.Cutoff(time.GetUtcNow()), ct);
+        var runnerCapacity = await dispatch.RunnerCapacityAsync(ScanCaller.Attention, 0, runners.Cutoff(time.GetUtcNow()), ct, load);
 
         // Every issue a person held or the board marked stalled, in board order,
         // whatever the board's shape - the fold is the queue's own, so this list
@@ -145,7 +147,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
         // where the eye already found it on the board.
-        var read = await AttentionReviews.ReadAsync(db, dispatch, runners, time.GetUtcNow(), tree, statuses, review, ct);
+        var read = await AttentionReviews.ReadAsync(db, dispatch, runners, time.GetUtcNow(), tree, statuses, review, ct, load);
         var inReview = read.InReview;
         var bound = read.Bound;
         var landingsByIssue = read.LandingsByIssue;
@@ -159,7 +161,7 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
         var reviews = read.Reviews.Select(r => r.Dto).ToList();
 
         var closesTo = Columns.Closes(statuses, review);
-        var family = closesTo is not null ? await FamilyGate.ForAsync(db, actors, statuses, ct) : null;
+        var family = closesTo is not null ? load.Family : null;
 
         // A trunk-landing issue stops being "without a pull request" once its
         // landing is recorded: it was never going to have one, and where it

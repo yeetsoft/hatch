@@ -402,13 +402,15 @@ public class WorkController(
             (signs, forges) = await CallerAnswersAsync(signing, signingWhy, forge, forgeWhy, runner, ct);
         }
 
+        var load = await _dispatch.LoadAsync(ScanCaller.Queue, ct);
+
         var scan = await _dispatch.ScanAsync(ScanCaller.Queue, offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects,
             asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models, has: hasDeclared,
-            refusal: asRefusal, signing: signs, forge: forges);
+            refusal: asRefusal, signing: signs, forge: forges, load: load);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         var taken = takers
-            ? await _dispatch.TakersAsync(ScanCaller.Queue, offsetMinutes, runners.Cutoff(time.GetUtcNow()), ct)
+            ? await _dispatch.TakersAsync(ScanCaller.Queue, offsetMinutes, runners.Cutoff(time.GetUtcNow()), ct, load)
             : null;
 
         // The scan's rows carry no description, or only the ones a brief limit

@@ -59,7 +59,7 @@ internal static class AttentionReviews
 
     internal static async Task<Read> ReadAsync(
         HatchContext db, Dispatch dispatch, Runners runners, DateTimeOffset now, PriorityTree tree,
-        List<EfHatchStatus> statuses, EfHatchStatus review, CancellationToken ct)
+        List<EfHatchStatus> statuses, EfHatchStatus review, CancellationToken ct, ScanLoad? load = null)
     {
         var inReview = await db.Issues.AsNoTracking()
             .Where(i => i.StatusId == review.Id)
@@ -240,10 +240,30 @@ internal static class AttentionReviews
         // fleet that would judge its dependencies: read once for the whole column, and only
         // where a project lets a passing check approve the merge and a card stands in it,
         // so a board with none runs neither read, and a board with many runs each once.
+        // With a load, the playbooks come from it - one read of the projects, the rest in
+        // memory - and the match is made against those rows (HA-2797); without one, the
+        // matcher reads the column's playbooks itself.
         var approving = reviewCandidates.Where(i => Columns.Approves(statuses, review, i.CheckApprovesMerge) is not null).ToList();
         PlaybookMatcher? matcher = null;
-        if (approving.Count > 0 && Columns.Approves(statuses, review, true) is { } approvedColumn)
-            matcher = await dispatch.MatcherAsync(review.Id, approvedColumn.Id, approving.Select(i => i.ProjectId).ToList(), ct);
+        Dictionary<int, List<EfHatchPlaybook>>? playbooksByProject = null;
+        var approvedColumn = approving.Count > 0 ? Columns.Approves(statuses, review, true) : null;
+        if (approvedColumn is not null)
+        {
+            var approvingProjectIds = approving.Select(i => i.ProjectId).Distinct().ToList();
+            if (load is not null)
+            {
+                var projects = await db.Projects.AsNoTracking().Include(p => p.Repositories)
+                    .Where(p => approvingProjectIds.Contains(p.Id)).ToListAsync(ct);
+
+                playbooksByProject = [];
+                foreach (var project in projects)
+                    playbooksByProject[project.Id] = await dispatch.PlaybooksForAsync(load, project, ct);
+            }
+            else
+            {
+                matcher = await dispatch.MatcherAsync(review.Id, approvedColumn.Id, approvingProjectIds, ct);
+            }
+        }
 
         IReadOnlyList<RunnerDeclaration>? fleet = null;
 
@@ -254,10 +274,13 @@ internal static class AttentionReviews
             // passing check approves the merge" is not a person's row here -
             // the move itself speaks for it, the same question Dispatch.ScanAsync
             // and WorkController.RouteAsync ask for the same row.
-            if (matcher is not null
-                && Columns.Approves(statuses, review, i.CheckApprovesMerge) is not null
-                && matcher.Match(i.Type, hasChildren.Contains(i.Id), i.ProjectId).Playbook is { IsCheck: true })
-                continue;
+            if (approvedColumn is not null && Columns.Approves(statuses, review, i.CheckApprovesMerge) is not null)
+            {
+                var checkPlaybook = playbooksByProject is not null
+                    ? Dispatch.Match(playbooksByProject.GetValueOrDefault(i.ProjectId, []), review.Id, approvedColumn.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId)
+                    : matcher?.Match(i.Type, hasChildren.Contains(i.Id), i.ProjectId).Playbook;
+                if (checkPlaybook is { IsCheck: true }) continue;
+            }
 
             var repos = bound.TryGetValue(i.ProjectId, out var r) ? r : [];
             var issueMerges = mergesByIssue.TryGetValue(i.Id, out var m) ? (IReadOnlyList<EfHatchMergeCheck>)m : [];

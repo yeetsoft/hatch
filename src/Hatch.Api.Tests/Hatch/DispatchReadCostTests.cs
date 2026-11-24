@@ -67,9 +67,14 @@ public class DispatchReadCostTests
     // Every statement of the call counts, the scans of peers included. A failure
     // prints the measured table in this shape, ready to paste.
     //
-    // One scan of the board is 18 statements, here and at either size: it is what
-    // each peer adds to next and to the takers read, and half of what each adds to
-    // attention. The rest of every number is what the route does with the scan.
+    // HA-2797 (peers judged from one load) is why none of the four grows with
+    // the fleet any more: the board is loaded once a call - FoldBundleAsync's
+    // own cache of the candidates, their briefs, the merge and build verdicts
+    // and everything else a fold reads that is a function of scope and within
+    // alone - and every peer's own fold draws on that one reading rather than
+    // repeating it. A peer still folds its own declaration against what was
+    // read, in memory, so the count below does not multiply by how many
+    // runners are live, at either board size.
     //
     // It was 32 before HA-2796. ScanCoreAsync read Issues five times over for the
     // tree, the claim lineage, the dependency gate, the family gate and the WIP
@@ -87,42 +92,46 @@ public class DispatchReadCostTests
 
     private static readonly Dictionary<(string Read, int Board, int Fleet), int> Pinned = new()
     {
-        // next: its own scan (18), then resolving the one row it returns - the brief,
+        // next: its own scan, then resolving the one row it returns - the brief,
         // the row's notes and questions, its ancestors, its playbook, and the one
         // issue it answers with, read for its own description. A runner that is not
         // preferred asks each preferred peer whether it could take a row before
-        // keeping it, and the row picked here is one no peer can take, so every peer
-        // is scanned, once each: 18 more for each.
-        [(Next, 100, 1)] = 70,
-        [(Next, 100, 4)] = 124,
-        [(Next, 1000, 1)] = 70,
-        [(Next, 1000, 4)] = 124,
+        // keeping it, and the row picked here is one no peer can take - every peer
+        // is asked, from the one load the asker's own scan already read, so asking
+        // more of them costs nothing further.
+        [(Next, 100, 1)] = 68,
+        [(Next, 100, 4)] = 68,
+        [(Next, 1000, 1)] = 68,
+        [(Next, 1000, 4)] = 68,
 
-        // queue: its own scan (18), then the projection of every row it returns -
+        // queue: its own scan, then the projection of every row it returns -
         // issues, comments, claims, the merge-train notes, and (descriptions=true,
         // the default) every row's description, read together once. No runner is
-        // named, so no peer is asked and the fleet does not show.
-        [(Queue, 100, 1)] = 38,
-        [(Queue, 100, 4)] = 38,
-        [(Queue, 1000, 1)] = 38,
-        [(Queue, 1000, 4)] = 38,
+        // named, so no peer is asked and the fleet does not show. One statement
+        // more than before HA-2797: the load now carries every runner's own
+        // config too, the same one RunnerConfigs read Runner.JoinAsync always
+        // made, so a name any fold asks about - the queue's own deadlock
+        // marking included - answers from memory rather than a query.
+        [(Queue, 100, 1)] = 39,
+        [(Queue, 100, 4)] = 39,
+        [(Queue, 1000, 1)] = 39,
+        [(Queue, 1000, 4)] = 39,
 
-        // queue?takers=true: the queue (38), the unnarrowed scan of the whole board
-        // (18), and one scan for every live runner (18 each), plus three statements
-        // to read the fleet. That is 2 + runners scans, as the proof above counts.
-        [(Takers, 100, 1)] = 77,
-        [(Takers, 100, 4)] = 131,
-        [(Takers, 1000, 1)] = 77,
-        [(Takers, 1000, 4)] = 131,
+        // queue?takers=true: the queue (39), and every live runner's own fold
+        // from the one load - no further statement, whatever the fleet.
+        [(Takers, 100, 1)] = 41,
+        [(Takers, 100, 4)] = 41,
+        [(Takers, 1000, 1)] = 41,
+        [(Takers, 1000, 4)] = 41,
 
-        // attention: six scans with one runner (deadlocks, the project line, runner
-        // capacity, who is waiting on a runner), and two more, 36 statements, for
-        // every further one. The rest is what the route reads besides scans. It
-        // also grows with the board: see GrowsWithBoardSize.
-        [(Attention, 100, 1)] = 158,
-        [(Attention, 100, 4)] = 266,
-        [(Attention, 1000, 1)] = 273,
-        [(Attention, 1000, 4)] = 381,
+        // attention: one load for the whole request, and every fold that draws
+        // on it - deadlocks, the project line, runner capacity, who is waiting
+        // on a runner - plus what the route reads besides. It still grows with
+        // the board: see GrowsWithBoardSize.
+        [(Attention, 100, 1)] = 50,
+        [(Attention, 100, 4)] = 50,
+        [(Attention, 1000, 1)] = 165,
+        [(Attention, 1000, 4)] = 165,
     };
 
     // ---- The shape ----
@@ -142,20 +151,16 @@ public class DispatchReadCostTests
     /// </summary>
     private static readonly string[] GrowsWithBoardSize = [Attention];
 
-    /// <summary>
-    /// Reads whose count is greater at four runners than at one, on each board.
-    /// <para>HA-2797 (peers judged from one load, under HA-2765) makes these equal: every peer's
-    /// fold is made in memory from the one load, not by a scan of its own. Whoever lands it moves
-    /// the three names to <see cref="FlatInFleet"/> and edits the numbers above, in the same diff.</para>
-    /// </summary>
-    private static readonly string[] GrowsWithFleet = [Next, Takers, Attention];
+    /// <summary>Reads whose count is greater at four runners than at one, on each board. HA-2797 left this empty: see <see cref="FlatInFleet"/>.</summary>
+    private static readonly string[] GrowsWithFleet = [];
 
     /// <summary>
-    /// Reads whose count is the same at one runner and at four, on each board. <c>queue</c> names
-    /// no runner, so it asks no peer; the queue a runner asks for scans the peers it defers to, and
-    /// is not one of the sixteen.
+    /// Reads whose count is the same at one runner and at four, on each board. <c>queue</c> names no
+    /// runner, so it asks no peer. HA-2797 (peers judged from one load, under HA-2765) puts the other
+    /// three here too: every peer's fold is made in memory from the one load <c>FoldBundleAsync</c>
+    /// read for the call, not by a scan of its own, so asking more live runners costs nothing further.
     /// </summary>
-    private static readonly string[] FlatInFleet = [Queue];
+    private static readonly string[] FlatInFleet = [Next, Queue, Takers, Attention];
 
     /// <summary>One call: what it cost, and what it showed it did.</summary>
     private sealed record Call(
@@ -274,6 +279,90 @@ public class DispatchReadCostTests
 
         await AssertOneScanAsync(connectionString, keyIds, asking: null, foldLetGo: true);
         await AssertOneScanAsync(connectionString, keyIds, asking: RunnerName(0), foldLetGo: false);
+    }
+
+    /// <summary>
+    /// HA-2797's own claim: a peer's fold starts no folds of its own, measured
+    /// rather than taken on faith. Two folds of the same <see cref="ScanLoad"/>,
+    /// under two different declarations - the shape every peer's own scan
+    /// takes beside the asker's - and the second sends no statement at all:
+    /// the board-wide read the first fold made (the candidates, their briefs,
+    /// the merge and build verdicts, and everything else <c>FoldBundleAsync</c>
+    /// shares) is reused in memory, and neither declaration here asks for
+    /// anything further of its own.
+    /// </summary>
+    [SkippableFact]
+    public async Task TwoFoldsOfTheSameLoad_TheSecondSendsNoStatementAtAll()
+    {
+        Skip.IfNot(
+            HatchDatabase.Available,
+            "HATCH_TEST_DATABASE_URL is unset - the counts come from a real Postgres. Run `make test-api-db`, " +
+            "or point the variable at a scratch database that may be dropped.");
+
+        var (connectionString, _) = await ReadCostSeed.SeedAsync(
+            ReadCostSeed.Small, Now, Boards[0], async (db, columns, issues) => await SeedDispatchAsync(db, columns, issues));
+        var keyIds = await SetFleetAsync(connectionString, 1);
+
+        var counter = new ReadCounter();
+        await using var db = new HatchContext(counter.Options(connectionString, StatementCounter.Instance));
+        var time = new FakeTimeProvider(Now);
+        var h = Harness.On(db, time, keyIds);
+
+        using var scope = ScanTally.Begin("two-folds");
+        var load = await h.Dispatch.LoadAsync(ScanCaller.Next, default);
+
+        counter.Reset();
+        await h.Dispatch.ScanAsync(
+            ScanCaller.Next, 0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            asking: null, foldLetGo: true, load: load);
+
+        counter.Reset();
+        await h.Dispatch.ScanAsync(
+            ScanCaller.Next, 0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            asking: new RunnerAsking(RunnerName(0), Now.AddMinutes(-10)), foldLetGo: false, load: load);
+
+        Assert.True(
+            counter.Statements.Count == 0,
+            $"the second fold of the same load sent {counter.Statements.Count} statements, not none - " +
+            $"read by table: {string.Join(", ", counter.Statements.GroupBy(s => s.Table).Select(g => $"{g.Key} x{g.Count()}"))}");
+    }
+
+    /// <summary>
+    /// Acceptance criterion 1: <c>queue?takers=true</c> and <c>GET /api/attention</c>
+    /// each make exactly one load, whatever the fleet - measured through the
+    /// counter HA-2792 built, which <see cref="ScanTally.RecordLoad"/> feeds.
+    /// </summary>
+    [SkippableTheory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public async Task TakersAndAttention_EachMakeExactlyOneLoad(int fleet)
+    {
+        Skip.IfNot(
+            HatchDatabase.Available,
+            "HATCH_TEST_DATABASE_URL is unset - the counts come from a real Postgres. Run `make test-api-db`, " +
+            "or point the variable at a scratch database that may be dropped.");
+
+        var (connectionString, _) = await ReadCostSeed.SeedAsync(
+            ReadCostSeed.Small, Now, Boards[0], async (db, columns, issues) => await SeedDispatchAsync(db, columns, issues));
+        var keyIds = await SetFleetAsync(connectionString, fleet);
+
+        await using var takersDb = new HatchContext(new ReadCounter().Options(connectionString, StatementCounter.Instance));
+        var takersTime = new FakeTimeProvider(Now);
+        var takersHarness = Harness.On(takersDb, takersTime, keyIds);
+        using (var takersScope = ScanTally.Begin("takers-loads"))
+        {
+            var result = await takersHarness.Work.GetQueue(takers: true);
+            Assert.True(result.Value is { Count: > 0 }, "queue?takers=true returned no rows, so the load count is of a call that stopped early");
+            Assert.Equal(1, takersScope.Tally.Loads);
+        }
+
+        await using var attentionDb = new HatchContext(new ReadCounter().Options(connectionString, StatementCounter.Instance));
+        var attentionTime = new FakeTimeProvider(Now);
+        var attentionHarness = Harness.On(attentionDb, attentionTime, keyIds);
+        using var attentionScope = ScanTally.Begin("attention-loads");
+        var attention = await attentionHarness.Attention.GetAttention(default);
+        Assert.True(attention.Value is not null, $"attention was refused ({attention.Result?.GetType().Name})");
+        Assert.Equal(1, attentionScope.Tally.Loads);
     }
 
     private static async Task AssertOneScanAsync(string connectionString, Dictionary<string, Guid> keyIds, string? asking, bool foldLetGo)
