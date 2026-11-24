@@ -61,6 +61,26 @@ public class GooseWatch(TimeProvider? clock = null)
 {
     /// <summary>When this process started.</summary>
     public DateTimeOffset StartedAt { get; } = (clock ?? TimeProvider.System).GetUtcNow();
+
+    /// <summary>
+    /// When the goose last swept and whether it has stopped, at <paramref name="now"/>:
+    /// stopped is the newest run's last sweep being older than three intervals,
+    /// or - with no run stored - the server having been up that long. The one
+    /// rule, read by the attention page and by <see cref="ChatProblemWatch"/>.
+    /// Read through <c>GooseRuns</c>, which has no query filter, so a narrowed
+    /// caller still learns the goose has stopped. The sweep writes nothing for it.
+    /// </summary>
+    public static async Task<AttentionGooseDto> JudgeAsync(
+        HatchContext db, GooseWatch watch, HatchOptions options, DateTimeOffset now, CancellationToken ct)
+    {
+        var lastRan = await db.GooseRuns.AsNoTracking()
+            .OrderByDescending(r => r.LastRanAt)
+            .Select(r => (DateTimeOffset?)r.LastRanAt)
+            .FirstOrDefaultAsync(ct);
+        var interval = GooseSettings.IntervalSeconds(options);
+        var stopped = now - (lastRan ?? watch.StartedAt) > TimeSpan.FromSeconds(3L * interval);
+        return new AttentionGooseDto(lastRan, interval, stopped);
+    }
 }
 
 /// <summary>

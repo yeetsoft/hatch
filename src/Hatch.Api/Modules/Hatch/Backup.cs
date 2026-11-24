@@ -357,15 +357,27 @@ public sealed class BackupService
     /// <see cref="BackupStatus.Listing"/>, so a poll every few seconds lists
     /// it once a minute at most; <see cref="Copies"/> stays uncached.
     /// </summary>
-    public BackupAttentionDto? Attention()
+    public BackupAttentionDto? Attention() => Judge().Attention;
+
+    /// <summary>
+    /// <see cref="Attention"/> and, from the same cached listing, the time of the
+    /// newest copy (null when there is none). <see cref="ChatProblemWatch"/> needs
+    /// both: the last attempt is kept per process, so it closes a backup problem
+    /// only on a copy newer than the problem's start. Not configured is
+    /// <c>(null, null)</c>.
+    /// </summary>
+    public (BackupAttentionDto? Attention, DateTimeOffset? NewestCopyAt) Judge()
     {
         if (string.IsNullOrEmpty(_options.BackupPath))
         {
-            return null;
+            return (null, null);
         }
 
         var now = _clock.GetUtcNow();
-        return BackupWatch.Judge(_options.BackupPath, _status.Last, _status.Listing(now, Copies), _status.StartedAt, now);
+        var copies = _status.Listing(now, Copies);
+        DateTimeOffset? newest = copies.Items.Count > 0 ? copies.Items.Max(c => c.At) : null;
+
+        return (BackupWatch.Judge(_options.BackupPath, _status.Last, copies, _status.StartedAt, now), newest);
     }
 
     /// <summary>
