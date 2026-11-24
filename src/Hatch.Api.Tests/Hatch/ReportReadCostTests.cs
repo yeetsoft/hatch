@@ -65,10 +65,7 @@ public class ReportReadCostTests
     // whose WHERE throws rows away after reading them.
 
     /// <summary>Reads that cost the same at both sizes.</summary>
-    private static readonly Dictionary<string, Row> Same = new()
-    {
-        ["GET /api/reports/consumption"] = new(5, 2, 512, 302, "Issues=1000;Projects=2;WorkLogEntries=1500"),
-    };
+    private static readonly Dictionary<string, Row> Same = new();
 
     /// <summary>Reads that still grow with history: the small cost, then the large.</summary>
     private static readonly Dictionary<string, (Row Small, Row Large)> Grows = new()
@@ -94,9 +91,12 @@ public class ReportReadCostTests
         ["GET /api/reports/activity"] = (
             new(12, 3, 1735, 1161, "Comments=220;IssueEvents=3088;Issues=1401;Projects=8;Statuses=18"),
             new(12, 3, 1735, 1161, "Comments=720;IssueEvents=4448;Issues=1600;Projects=8;Statuses=18")),
+        ["GET /api/reports/consumption"] = (
+            new(5, 2, 307, 97, "Issues=800;Projects=2;WorkLogEntries=1500"),
+            new(5, 2, 307, 97, "Issues=800;Projects=2;WorkLogEntries=4500")),
         ["GET /api/reports/consumption.csv"] = (
-            new(3, 2, 510, 300, "Issues=600;Projects=2;WorkLogEntries=500"),
-            new(3, 2, 510, 300, "Issues=600;Projects=2;WorkLogEntries=1500")),
+            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=500"),
+            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=1500")),
         ["GET /api/work-log/history"] = (
             new(3, 0, 302, 302, "Issues=600;WorkLogEntries=1500"),
             new(3, 0, 302, 302, "Issues=600;WorkLogEntries=4500")),
@@ -200,6 +200,19 @@ public class ReportReadCostTests
                 else if (s.Row != grows.Small || l.Row != grows.Large)
                     failures.Add($"{read.Name} costs {s.Row} then {l.Row}, the table says {grows.Small} then {grows.Large}");
             }
+        }
+
+        // Neither consumption route sends a candidate or descendant id list -
+        // the bound reads page instead (see ReportsController.BoundSessionAsync)
+        // - and this request names no project, so no array parameter should
+        // reach the database at all.
+        foreach (var name in new[] { "GET /api/reports/consumption", "GET /api/reports/consumption.csv" })
+        {
+            var worst = Math.Max(
+                small[name].Statements.Max(s => s.MaxArrayParameter),
+                large[name].Statements.Max(s => s.MaxArrayParameter));
+            if (worst != 0)
+                failures.Add($"{name} sends an array parameter of length {worst} - no id list should reach the database here");
         }
 
         if (failures.Count > 0)

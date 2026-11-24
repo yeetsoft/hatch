@@ -755,28 +755,15 @@ public class ReportsController(
 
         var inputs = await LoadConsumptionInputsAsync(resolvedType, statusIds, projectIds, start, end, offsetMinutes, ct);
 
-        var result = ConsumptionReport.Fold(inputs.Sessions, inputs.Candidates, inputs.ParentOf, inputs.Window, resolvedSort);
+        var result = ConsumptionReport.FoldSums(inputs.Sums, inputs.Candidates, inputs.ParentOf, inputs.Window, resolvedSort);
 
         // Ignores the window and respects the rest of the filter, the same two
         // extra bound reads WorkLogRollup.FirstEndedAsync already makes -
         // scoped to every candidate and everything beneath it, so "nothing has
         // ever run here" reads apart from "nothing ran in the range asked for".
-        var scopeIdSet = new HashSet<long>();
-        var children = ChildrenOf(inputs.ParentOf);
-        foreach (var c in inputs.Candidates)
-        {
-            scopeIdSet.Add(c.Id);
-            scopeIdSet.UnionWith(Descend(children, c.Id));
-        }
-
-        var scopeIds = scopeIdSet.ToList();
-        var boundsQuery = db.WorkLog.AsNoTracking().Where(w => scopeIds.Contains(w.IssueId));
-        if (projectIds.Count > 0) boundsQuery = boundsQuery.Where(w => projectIds.Contains(w.Issue!.ProjectId));
-
-        var firstSessionAt = await boundsQuery.OrderBy(w => w.EndedAt)
-            .Select(w => (DateTimeOffset?)w.EndedAt).FirstOrDefaultAsync(ct);
-        var lastSessionAt = await boundsQuery.OrderByDescending(w => w.EndedAt)
-            .Select(w => (DateTimeOffset?)w.EndedAt).FirstOrDefaultAsync(ct);
+        var candidateIds = inputs.Candidates.Select(c => c.Id).ToHashSet();
+        var firstSessionAt = await BoundSessionAsync(inputs.ParentOf, candidateIds, projectIds, ascending: true, ct);
+        var lastSessionAt = await BoundSessionAsync(inputs.ParentOf, candidateIds, projectIds, ascending: false, ct);
 
         var rows = result.Rows
             .Take(limit)
@@ -838,7 +825,7 @@ public class ReportsController(
 
         var inputs = await LoadConsumptionInputsAsync(resolvedType, statusIds, projectIds, start, end, offsetMinutes, ct);
 
-        var result = ConsumptionReport.Fold(inputs.Sessions, inputs.Candidates, inputs.ParentOf, inputs.Window, resolvedSort);
+        var result = ConsumptionReport.FoldSums(inputs.Sums, inputs.Candidates, inputs.ParentOf, inputs.Window, resolvedSort);
 
         var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(ConsumptionCsv.Write(result.Rows))).ToArray();
         var fileName = $"consumption-{start.ToUniversalTime():yyyy-MM-dd}-{end.ToUniversalTime():yyyy-MM-dd}.csv";
@@ -900,7 +887,7 @@ public class ReportsController(
         return (new ConsumptionScope(statusIds, projectIds), null);
     }
 
-    /// <summary>The candidates, every issue's parent, the sessions in the window and the window itself - what <see cref="ConsumptionReport.Fold"/> needs, loaded once for both routes.</summary>
+    /// <summary>The candidates, every issue's parent, the work log summed per issue per bucket and the window itself - what <see cref="ConsumptionReport.FoldSums"/> needs, loaded once for both routes.</summary>
     private async Task<ConsumptionInputs> LoadConsumptionInputsAsync(
         string resolvedType, List<int> statusIds, List<int> projectIds,
         DateTimeOffset start, DateTimeOffset end, int offsetMinutes, CancellationToken ct)
@@ -924,25 +911,60 @@ public class ReportsController(
             .Select(i => new { i.Id, i.ParentId })
             .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
 
-        var sessionsQuery = db.WorkLog.AsNoTracking().Where(w => w.EndedAt >= start && w.EndedAt < end);
-        if (projectIds.Count > 0) sessionsQuery = sessionsQuery.Where(w => projectIds.Contains(w.Issue!.ProjectId));
-
-        var sessions = (await sessionsQuery
-                .Select(w => new
-                {
-                    w.IssueId, w.EndedAt, w.IsError, w.InputTokens, w.OutputTokens,
-                    w.CacheCreationTokens, w.CacheReadTokens, w.CostUsd, w.DurationMs,
-                })
-                .ToListAsync(ct))
-            .Select(w => new ConsumptionReport.Session(
-                w.IssueId, w.EndedAt, w.IsError, w.InputTokens, w.OutputTokens,
-                w.CacheCreationTokens, w.CacheReadTokens, w.CostUsd, w.DurationMs))
-            .ToList();
-
         var bucketSize = WorkLogRollup.ChooseBucketSize(start, end);
         var window = WorkLogRollup.Align(start, end, bucketSize, offsetMinutes);
 
-        return new ConsumptionInputs(candidates, parentOf, sessions, window);
+        var sums = await WorkLogSums.ReadAsync(
+            db, start, end, window.From, window.Length, projectIds, groupByIssue: true, ct);
+
+        return new ConsumptionInputs(candidates, parentOf, sums, window);
+    }
+
+    /// <summary>
+    /// The number of sessions one page of a bound read checks before giving up
+    /// and moving to the next - small enough that a filter matching nothing in
+    /// the earliest or latest sessions still answers in one or two round trips,
+    /// and large enough that the ordinary case, a filter some session meets, is
+    /// one statement.
+    /// </summary>
+    private const int ConsumptionBoundPageSize = 25;
+
+    /// <summary>
+    /// The earliest or latest session that is a candidate or sits beneath one -
+    /// <see cref="GetConsumption"/>'s own replacement for the two id-list bound
+    /// reads <see cref="WorkLogRollup.FirstEndedAsync"/> makes for an ancestor,
+    /// which this filter cannot express as one: "scope" here is a candidate or
+    /// anything beneath one, read off <paramref name="parentOf"/> rather than a
+    /// list of every id that counts.
+    /// </summary>
+    /// <remarks>
+    /// Pages <see cref="ConsumptionBoundPageSize"/> sessions at a time, oldest
+    /// or newest first, and tests each against <see cref="ConsumptionReport.HasCandidateAbove"/>
+    /// in memory - exact, and one statement in the ordinary case where the
+    /// filter matches within the first page.
+    /// </remarks>
+    private async Task<DateTimeOffset?> BoundSessionAsync(
+        Dictionary<long, long?> parentOf, HashSet<long> candidateIds, List<int> projectIds,
+        bool ascending, CancellationToken ct)
+    {
+        var scoped = db.WorkLog.AsNoTracking().AsQueryable();
+        if (projectIds.Count > 0) scoped = scoped.Where(w => projectIds.Contains(w.Issue!.ProjectId));
+
+        var ordered = ascending ? scoped.OrderBy(w => w.EndedAt) : scoped.OrderByDescending(w => w.EndedAt);
+
+        for (var offset = 0; ; offset += ConsumptionBoundPageSize)
+        {
+            var page = await ordered
+                .Skip(offset).Take(ConsumptionBoundPageSize)
+                .Select(w => new { w.IssueId, w.EndedAt })
+                .ToListAsync(ct);
+
+            foreach (var row in page)
+                if (ConsumptionReport.HasCandidateAbove(row.IssueId, candidateIds, parentOf))
+                    return row.EndedAt;
+
+            if (page.Count < ConsumptionBoundPageSize) return null;
+        }
     }
 
     /// <summary>The bound, the offset, the type and the sort, resolved - <see cref="ParseConsumptionBounds"/>'s own success shape.</summary>
@@ -952,11 +974,11 @@ public class ReportsController(
     /// <summary>The status and project ids, resolved - <see cref="ResolveConsumptionScopeAsync"/>'s own success shape.</summary>
     private readonly record struct ConsumptionScope(List<int> StatusIds, List<int> ProjectIds);
 
-    /// <summary>What <see cref="ConsumptionReport.Fold"/> needs - <see cref="LoadConsumptionInputsAsync"/>'s own shape.</summary>
+    /// <summary>What <see cref="ConsumptionReport.FoldSums"/> needs - <see cref="LoadConsumptionInputsAsync"/>'s own shape.</summary>
     private readonly record struct ConsumptionInputs(
         List<ConsumptionReport.Candidate> Candidates,
         Dictionary<long, long?> ParentOf,
-        List<ConsumptionReport.Session> Sessions,
+        List<WorkLogSums.SessionSum> Sums,
         WorkLogWindow Window);
 
     /// <summary>
@@ -1099,53 +1121,6 @@ public class ReportsController(
 
     /// <summary>The card the loose work is drawn under: no issue, so nothing on it is real.</summary>
     private static readonly IssueCardDto OtherCard = new("other", "", "epic", "Other", 0, 0, null, null, null);
-
-    /// <summary>Shared, because a childless issue is the common case and each one would otherwise allocate a list to say so.</summary>
-    private static readonly List<long> NoChildren = [];
-
-    /// <summary><paramref name="parentOf"/>, inverted - every issue's direct children, for <see cref="GetConsumption"/>'s own descent.</summary>
-    private static Dictionary<long, List<long>> ChildrenOf(Dictionary<long, long?> parentOf)
-    {
-        var children = new Dictionary<long, List<long>>();
-
-        foreach (var (id, parentId) in parentOf)
-        {
-            if (parentId is not { } parent) continue;
-            if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
-            siblings.Add(id);
-        }
-
-        return children;
-    }
-
-    /// <summary>
-    /// Every issue below <paramref name="rootId"/>, at any depth, and not the
-    /// issue itself - <see cref="Rollup"/>'s own descent, copied rather than
-    /// reached into since that walk is private there. The same <c>seen</c>-set
-    /// guard against a cycle that got in some other way than parenting ever
-    /// refuses to make.
-    /// </summary>
-    private static List<long> Descend(Dictionary<long, List<long>> children, long rootId)
-    {
-        var seen = new HashSet<long> { rootId };
-        var found = new List<long>();
-        var generation = new List<long> { rootId };
-
-        while (generation.Count > 0)
-        {
-            var next = new List<long>();
-
-            foreach (var id in generation)
-            foreach (var child in children.TryGetValue(id, out var kids) ? kids : NoChildren)
-                if (seen.Add(child))
-                    next.Add(child);
-
-            found.AddRange(next);
-            generation = next;
-        }
-
-        return found;
-    }
 
     private static void CollectIds(TimelineReport.Node node, HashSet<long> ids)
     {

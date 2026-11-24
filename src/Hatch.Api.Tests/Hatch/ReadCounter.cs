@@ -38,11 +38,18 @@ internal sealed class ReadCounter : DbCommandInterceptor
     private readonly List<Statement> statements = [];
     private bool counting = true;
 
-    /// <summary>One command: its text, and how many rows it returned.</summary>
+    /// <summary>One command: its text, how many rows it returned, and the longest array-valued parameter it sent.</summary>
     public sealed class Statement(string sql)
     {
         public string Sql { get; } = sql;
         public long Rows { get; set; }
+
+        /// <summary>
+        /// The length of the longest collection-valued parameter this statement
+        /// sent, or zero when none of its parameters are a collection - how a
+        /// test tells an id list sent as a filter from one sent as a scope.
+        /// </summary>
+        public int MaxArrayParameter { get; set; }
 
         /// <summary>Whether <c>Issues</c> is the table this statement reads from.</summary>
         public bool LoadsIssues => IssuesSource.IsMatch(Sql);
@@ -149,9 +156,21 @@ internal sealed class ReadCounter : DbCommandInterceptor
     {
         if (!counting) return;
 
-        var statement = new Statement(command.CommandText);
+        var statement = new Statement(command.CommandText) { MaxArrayParameter = MaxArrayParameterOf(command) };
         owners.AddOrUpdate(command, statement);
         lock (statements) statements.Add(statement);
+    }
+
+    /// <summary>The longest collection-valued parameter a command carries, or zero when it carries none.</summary>
+    private static int MaxArrayParameterOf(DbCommand command)
+    {
+        var max = 0;
+
+        foreach (DbParameter parameter in command.Parameters)
+            if (parameter.Value is System.Collections.ICollection collection)
+                max = Math.Max(max, collection.Count);
+
+        return max;
     }
 
     /// <summary>Forgets what was counted, and starts counting.</summary>
