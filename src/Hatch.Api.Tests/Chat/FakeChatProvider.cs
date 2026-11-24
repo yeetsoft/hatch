@@ -43,6 +43,27 @@ internal sealed class FakeChatProvider : IChatProvider
     /// </summary>
     public Func<SendCall, ChatSendResult>? Script { get; set; }
 
+    /// <summary>Every member a token can list, keyed by the token. A token with no entry lists none.</summary>
+    public Dictionary<string, List<ChatMember>> Members { get; } = new();
+
+    /// <summary>Per token, the member each email belongs to. An email with no entry has no member.</summary>
+    public Dictionary<string, Dictionary<string, ChatMember>> Emails { get; } = new();
+
+    /// <summary>A sentence to refuse a token's member list and email lookups with.</summary>
+    public Dictionary<string, string> MemberRefusals { get; } = new();
+
+    /// <summary>A sentence to refuse opening a direct message to a member id with.</summary>
+    public Dictionary<string, string> OpenRefusals { get; } = new();
+
+    /// <summary>Every email looked up, in order.</summary>
+    public List<(string Token, string Email)> Lookups { get; } = [];
+
+    /// <summary>How many times the member list was read.</summary>
+    public int MemberListReads { get; private set; }
+
+    /// <summary>Every direct message opened, in order, whatever the answer.</summary>
+    public List<(string Token, string MemberId)> Opens { get; } = [];
+
     private int posted;
 
     public int Checks { get; private set; }
@@ -64,6 +85,34 @@ internal sealed class FakeChatProvider : IChatProvider
         Task.FromResult(Workspaces.ContainsKey(token)
             ? ChatChannelList.Of(Channels.GetValueOrDefault(token, []))
             : ChatChannelList.Refused(RefusalSentence));
+
+    public Task<ChatMemberFound> FindMemberByEmailAsync(string token, string email, CancellationToken ct)
+    {
+        Lookups.Add((token, email));
+
+        if (MemberRefusals.TryGetValue(token, out var refusal)) return Task.FromResult(ChatMemberFound.Refused(refusal));
+
+        return Task.FromResult(ChatMemberFound.Of(
+            Emails.TryGetValue(token, out var table) && table.TryGetValue(email, out var member) ? member : null));
+    }
+
+    public Task<ChatMemberList> ListMembersAsync(string token, CancellationToken ct)
+    {
+        MemberListReads++;
+
+        if (MemberRefusals.TryGetValue(token, out var refusal)) return Task.FromResult(ChatMemberList.Refused(refusal));
+
+        return Task.FromResult(ChatMemberList.Of(Members.GetValueOrDefault(token, [])));
+    }
+
+    public Task<ChatConversationOpened> OpenDirectMessageAsync(string token, string memberId, CancellationToken ct)
+    {
+        Opens.Add((token, memberId));
+
+        return Task.FromResult(OpenRefusals.TryGetValue(memberId, out var refusal)
+            ? ChatConversationOpened.Refused(refusal)
+            : ChatConversationOpened.Of($"D-{memberId}"));
+    }
 
     public Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct)
     {

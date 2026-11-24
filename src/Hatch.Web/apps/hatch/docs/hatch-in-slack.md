@@ -456,6 +456,65 @@ level change updates the message's level line alone.
 A long question is cut to fit Slack's own limit, the same as any message, and
 its links are always kept.
 
+## Link your Slack account
+
+Any signed-in person can tell Hatch which Slack member they are, in each
+workspace. This is on **Settings**, at `/settings`, in the **Slack accounts**
+section after **Home screen**. It is drawn only where a workspace is connected,
+and a key never reads or writes it.
+
+Each workspace is one row, with its name, where your link stands, and a button:
+
+- **Not linked** offers **Link**.
+- **Waiting** says which Slack member a message went to, and offers **Link**
+  again, which sends a new message. A link that was not opened in a day reads
+  **ran out** and offers **Link** the same way.
+- **Linked as** a name offers **Unlink**. Unlinking asks first, and removes
+  only what Hatch holds. Nothing in Slack is touched.
+
+An admin can remove anybody's link on **Manage → Users**, in the **Slack**
+column of that person's row. Removing a person removes their links too.
+[People, roles and keys](people-roles-and-keys) has the page.
+
+### How a member is offered
+
+**Link** first asks which Slack member has an email you have signed in to Hatch
+with. If one does, it is shown by name, with **Link as** that member, or **Pick
+someone else**. If none does, or you pick someone else, a list of the
+workspace's members opens. It is read once, when the list opens, and typing
+filters it as you go, on name and display name, whatever the case. A row shows a
+name and display name only, never an email. Where there is no sign-in at all,
+Hatch has no email to match, so nobody is offered and the list opens at once.
+
+### What the message says
+
+Choosing a member sends that member one direct message from Hatch, titled
+**Link your Slack account to Hatch**. It says who asked to link the account,
+tells anyone who did not ask to ignore it, and carries a **Confirm the link**
+link back to Settings. The link is good for a day. Open it while signed in to
+Hatch, and the page confirms it, says **Linked as** the member above the section,
+and takes the secret out of the address, so going back does not use it again.
+Open it signed out and Hatch asks you to sign in first, then brings you back to
+it.
+
+### When it is refused
+
+- **Hatch has no address to send.** `HATCH_PUBLIC_URL` is not set, so a message
+  could not carry a link. The section says so and shows no **Link** button. See
+  [Links are missing](#links-are-missing).
+- **Five an hour.** Hatch sends at most five of these messages an hour for one
+  person. Try again later.
+- **Linked already, or held by somebody else.** If you are already linked in
+  that workspace, unlink first. If that member is linked to somebody else, an
+  admin can remove their link. The sentence on screen says which.
+- **Slack refused.** The sentence is Slack's own, for instance that the app may
+  not message that member. Nothing is stored, so nothing is left waiting.
+- **The link was used, replaced or ran out.** A newer **Link** replaces an older
+  message's link, and each works once. Press **Link** again for a new message.
+- **The link belongs to somebody else's request.** It was sent for another
+  person's request, so it did nothing here and your own link is as it was.
+- **That workspace is not one you can see.** Reload the list.
+
 ## Remove a workspace
 
 **Remove** asks first, and names the workspace. Confirming removes the

@@ -22,8 +22,8 @@ public class ChatKeyRefusalTests
 {
     private static readonly string[] Actions =
     [
-        "ConnectWorkspace", "CreateRoom", "GetChannels", "GetDelivery", "GetManifest", "GetRooms", "GetWorkspaces",
-        "PatchRoom", "PostTestMessage", "PutProjects", "RemoveRoom", "RemoveWorkspace", "ReplaceToken",
+        "ConnectWorkspace", "CreateRoom", "GetChannels", "GetDelivery", "GetLinks", "GetManifest", "GetRooms", "GetWorkspaces",
+        "PatchRoom", "PostTestMessage", "PutProjects", "RemoveLink", "RemoveRoom", "RemoveWorkspace", "ReplaceToken",
     ];
 
     [Fact]
@@ -74,6 +74,8 @@ public class ChatKeyRefusalTests
             (HttpMethod.Patch, "/api/chat/rooms/1", """{}"""),
             (HttpMethod.Delete, "/api/chat/rooms/1", null),
             (HttpMethod.Post, "/api/chat/rooms/1/test", null),
+            (HttpMethod.Get, "/api/chat/links", null),
+            (HttpMethod.Delete, "/api/chat/links/1", null),
         };
 
         var failures = new List<string>();

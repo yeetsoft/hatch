@@ -58,6 +58,8 @@ public class ReportReadCostTests
     /// <summary>The podium the leaderboard asks for beside its table.</summary>
     private const int LeaderboardTop = 5;
 
+    private static readonly DateTimeOffset WindowStart = Now.AddDays(-ReadCostSeed.WindowDays);
+
     private static readonly string From = Now.AddDays(-ReadCostSeed.WindowDays).ToString("O");
     private static readonly string To = Now.ToString("O");
 
@@ -104,6 +106,30 @@ public class ReportReadCostTests
         ["GET /api/work-log/by-playbook"] = (
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=300")),
+        // The health poll's own trail reads (HA-2783): the window off the event indexes, and for each
+        // issue and kind one probe of (IssueId, Kind, At) for the newest earlier event. The same rows
+        // at both sizes, and the large board reads no more of any table than the small one.
+        ["BoardHealthTrail.MovesAsync"] = (
+            new(3, 1, 904, 704, "IssueEvents=704;Issues=600"),
+            new(3, 1, 904, 704, "IssueEvents=704;Issues=600")),
+        ["BoardHealthTrail.ReadAsync (claims)"] = (
+            new(3, 2, 550, 150, "IssueEvents=150;Issues=600"),
+            new(3, 2, 550, 150, "IssueEvents=150;Issues=600")),
+        ["BoardHealthTrail.LevelsAsync"] = (
+            new(3, 1, 450, 250, "IssueEvents=250;Issues=600"),
+            new(3, 1, 450, 250, "IssueEvents=250;Issues=600")),
+        ["BoardHealthTrail.RecordsAsync"] = (
+            new(3, 1, 450, 250, "IssueEvents=250;Issues=600"),
+            new(3, 1, 450, 250, "IssueEvents=250;Issues=600")),
+        ["BoardHealthTrail.RunnerStatesAsync"] = (
+            new(4, 0, 21, 21, "RunnerStates=96"),
+            new(4, 0, 21, 21, "RunnerStates=21")),
+        // The status changes the range needs and no more (HA-2784): the window, the newest move before
+        // it per issue, and for an issue that has not moved by its end the first one after. Two loads
+        // of Issues: the report's rows, and BoardHealthTrail's probe, one row per issue each.
+        ["GET /api/reports/cumulative-flow"] = (
+            new(5, 2, 1110, 710, "IssueEvents=704;Issues=800;Projects=2;Statuses=6"),
+            new(5, 2, 1110, 710, "IssueEvents=704;Issues=800;Projects=2;Statuses=6")),
     };
 
     /// <summary>
@@ -129,18 +155,18 @@ public class ReportReadCostTests
     /// <summary>Reads that still grow with history: the small cost, then the large.</summary>
     private static readonly Dictionary<string, (Row Small, Row Large)> Grows = new()
     {
-        // Every status change, with no time bound (HA-2784, HA-2787).
+        // Its status changes are bounded to the range (HA-2784): IssueEvents is the same at both sizes,
+        // and the test below holds it so. It stays here for the cards, which read Comments, and the
+        // priority tree, which reads Issues, both with no range. Four loads of Issues: the report's
+        // rows, BoardHealthTrail's probe, the cards and the priority tree.
         ["GET /api/reports/timeline"] = (
-            new(11, 3, 1536, 956, "Comments=220;IssueEvents=1294;Issues=1001;Projects=8;Statuses=24"),
-            new(11, 3, 3536, 2956, "Comments=720;IssueEvents=3294;Issues=1200;Projects=8;Statuses=24")),
-        ["GET /api/reports/cumulative-flow"] = (
-            new(3, 1, 1150, 950, "IssueEvents=1294;Issues=400;Projects=2;Statuses=6"),
-            new(3, 1, 3150, 2950, "IssueEvents=3294;Issues=400;Projects=2;Statuses=6")),
-        // Every status change with no time bound (HA-2784), and QuestionTrail with no range,
+            new(13, 4, 1496, 716, "Comments=220;IssueEvents=704;Issues=1401;Projects=8;Statuses=24"),
+            new(13, 4, 1496, 716, "Comments=720;IssueEvents=704;Issues=1600;Projects=8;Statuses=24")),
+        // Every status change with no time bound (HA-2785), and QuestionTrail with no range,
         // so every question and answer: no range index can serve either.
         ["GET /api/reports/flow"] = (
-            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=1369;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
-            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=3369;Issues=1200;Projects=2;Statuses=6;WorkLogEntries=300")),
+            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=1869;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
+            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=5389;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=300")),
         // QuestionTrail.ReadAsync with no range, so every question and every answer.
         ["GET /api/reports/changelog (epic level)"] = (
             new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
@@ -153,20 +179,22 @@ public class ReportReadCostTests
             new(15, 7, 421, 12, "Comments=1561;Issues=1450;Projects=4;Statuses=42")),
         // Every status change with no time bound (HA-2787).
         ["GET /api/reports/activity"] = (
-            new(12, 3, 1735, 1161, "Comments=220;IssueEvents=3088;Issues=1401;Projects=8;Statuses=18"),
-            new(12, 3, 1735, 1161, "Comments=720;IssueEvents=4448;Issues=1600;Projects=8;Statuses=18")),
-        // The OR read of the claim trail (HA-2783), and status changes with no time bound.
-        // One statement and one issue load fewer than before HA-2796: FamilyGate.ForAsync
-        // now reads every row off the tree it is handed rather than Issues a second time.
+            new(12, 3, 1861, 1281, "Comments=220;IssueEvents=4088;Issues=1401;Projects=8;Statuses=18"),
+            new(12, 3, 1861, 1281, "Comments=720;IssueEvents=6588;Issues=1600;Projects=8;Statuses=18")),
+        // The trail reads are bounded (HA-2783, see the BoardHealthTrail lines above). What still
+        // grows is the status changes with no time bound, ColumnNormals (HA-2786) and the dispatch
+        // and family-gate reads (HA-2790). One statement and one issue load fewer than before
+        // HA-2796: FamilyGate.ForAsync reads every row off the tree it is handed rather than
+        // Issues a second time.
         ["GET /api/board/health"] = (
-            new(37, 6, 2875, 1982, "Comments=1782;IssueEvents=9373;Issues=1803;Projects=14;Statuses=30"),
-            new(37, 6, 4875, 3982, "Comments=1923;IssueEvents=82623;Issues=2403;Projects=14;Statuses=30")),
+            new(60, 16, 5915, 3022, "Comments=1782;IssueEvents=3845;Issues=5202;LegacyRunners=3;Projects=20;RunnerStates=27;Statuses=30"),
+            new(60, 16, 7915, 5022, "Comments=1923;IssueEvents=7257;Issues=5802;LegacyRunners=3;Projects=20;RunnerStates=3;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(39, 6, 2884, 2020, "Comments=1782;IssueEvents=13649;Issues=2004;Projects=18;Statuses=30"),
-            new(39, 6, 4884, 4020, "Comments=1923;IssueEvents=114099;Issues=2604;Projects=18;Statuses=30")),
+            new(64, 17, 5876, 2972, "Comments=1782;IssueEvents=3889;Issues=5604;LegacyRunners=3;Projects=26;RunnerStates=27;Statuses=30"),
+            new(64, 17, 7876, 4972, "Comments=1923;IssueEvents=7301;Issues=6204;LegacyRunners=3;Projects=26;RunnerStates=3;Statuses=30")),
         ["ColumnNormals.ForAsync"] = (
-            new(2, 1, 1144, 944, "IssueEvents=1294;Issues=200;Projects=2"),
-            new(2, 1, 3144, 2944, "IssueEvents=3294;Issues=200;Projects=2")),
+            new(2, 1, 1144, 944, "IssueEvents=1794;Issues=200;Projects=2"),
+            new(2, 1, 3144, 2944, "IssueEvents=5314;Issues=200;Projects=2")),
     };
 
     private sealed record Read(string Name, Func<Harness, Task> Call);
@@ -199,6 +227,15 @@ public class ReportReadCostTests
         new("GET /api/board/health", h => Ok(h.Health.GetBoardHealth("24h", null, default))),
         new("GET /api/board/health?project", h => Ok(h.Health.GetBoardHealth("24h", [ReadCostSeed.KeyA], default))),
         new("ColumnNormals.ForAsync", async h => await new ColumnNormals().ForAsync(h.Db, h.Statuses, Now, default)),
+        // The poll's own trail reads, apart from the rest of the poll (HA-2783).
+        new("BoardHealthTrail.MovesAsync", async h => await BoardHealthTrail.MovesAsync(h.Db, WindowStart, null, default)),
+        new("BoardHealthTrail.ReadAsync (claims)", async h => await BoardHealthTrail.ReadAsync(
+            h.Db, [EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimReleased], WindowStart, null, null, default,
+            olderOnlyIf: EfHatchIssueEvent.ClaimTaken)),
+        new("BoardHealthTrail.LevelsAsync", async h => await BoardHealthTrail.LevelsAsync(h.Db, WindowStart, default)),
+        new("BoardHealthTrail.RecordsAsync", async h => await BoardHealthTrail.RecordsAsync(h.Db, WindowStart, null, default)),
+        new("BoardHealthTrail.RunnerStatesAsync", async h => await BoardHealthTrail.RunnerStatesAsync(
+            h.Db, [.. Enumerable.Range(1, ReadCostSeed.Runners).Select(r => $"runner-{r}")], WindowStart, default)),
     ];
 
     private static async Task Ok<T>(Task<ActionResult<T>> call)
@@ -225,9 +262,12 @@ public class ReportReadCostTests
         // The two boards differ only before the window. Said out loud here, so
         // a change to the seed that breaks it breaks this and not the numbers.
         var (sm, lg) = (sizes["small"], sizes["large"]);
-        if (sm.WindowMoves != lg.WindowMoves || sm.WindowSessions != lg.WindowSessions)
+        if (sm.WindowMoves != lg.WindowMoves || sm.WindowSessions != lg.WindowSessions
+            || sm.WindowLevels != lg.WindowLevels || sm.WindowRecords != lg.WindowRecords
+            || sm.WindowRunnerStates != lg.WindowRunnerStates)
             failures.Add($"the window differs between the sizes: {sm} and {lg}");
-        if (lg.OldMoves < 5 * sm.OldMoves || lg.OldSessions < 5 * sm.OldSessions || lg.OldComments < 5 * sm.OldComments)
+        if (lg.OldMoves < 5 * sm.OldMoves || lg.OldSessions < 5 * sm.OldSessions || lg.OldComments < 5 * sm.OldComments
+            || lg.OldLevels < 5 * sm.OldLevels || lg.OldRecords < 5 * sm.OldRecords || lg.OldRunnerStates < 5 * sm.OldRunnerStates)
             failures.Add($"the large size holds less than five times the small one's history: {sm} and {lg}");
         if (sm.WindowSessions < 10 * ReadCostSeed.WindowDays)
             failures.Add($"the window holds {sm.WindowSessions} sessions, fewer than ten per day bucket");
@@ -300,6 +340,26 @@ public class ReportReadCostTests
         if (topSmall.Statements != topLarge.Statements || topSmall.Rows != topLarge.Rows)
             failures.Add($"sessions?top costs {topSmall.Statements} statements and {topSmall.Rows} rows at the small size and {topLarge.Statements} and {topLarge.Rows} at the large - it should be the same");
 
+        // Both reports read the moves their range needs and no more (HA-2784), so
+        // the rows of IssueEvents are the same at both sizes. Timeline stays in
+        // the Grows list for its cards and priority tree, so the shared Grew
+        // check cannot see this figure alone, and it is held apart. Issues is loaded as many
+        // times as the lines in the table say: the report's rows and the trail's
+        // probe for cumulative flow (2), and those and the cards and the priority
+        // tree for the timeline (4).
+        foreach (var (name, loads) in new[] { ("GET /api/reports/timeline", 4), ("GET /api/reports/cumulative-flow", 2) })
+        {
+            var (before, after) = (small[name].Row, large[name].Row);
+            var (eventsBefore, eventsAfter) = (
+                ReadPerTable(before.Read).GetValueOrDefault("IssueEvents"),
+                ReadPerTable(after.Read).GetValueOrDefault("IssueEvents"));
+            if (eventsBefore != eventsAfter || eventsBefore == 0)
+                failures.Add($"{name} read {eventsBefore} IssueEvents rows at the small size and {eventsAfter} at the large - " +
+                    "the same number is the point, and none would mean the read was not measured");
+            if (before.IssueLoads != loads || after.IssueLoads != loads)
+                failures.Add($"{name} loads Issues {before.IssueLoads} then {after.IssueLoads} times, not {loads}");
+        }
+
         if (failures.Count > 0)
             Assert.Fail(
                 string.Join(Environment.NewLine, failures) + Environment.NewLine + Environment.NewLine
@@ -309,7 +369,10 @@ public class ReportReadCostTests
     private sealed record Measurement(Row Row, IReadOnlyList<ReadCounter.Statement> Statements);
 
     /// <summary>What a seed holds: its window and its history before the window.</summary>
-    private sealed record Seeded(long WindowMoves, long OldMoves, long WindowSessions, long OldSessions, long OldComments);
+    private sealed record Seeded(
+        long WindowMoves, long OldMoves, long WindowSessions, long OldSessions, long OldComments,
+        long WindowLevels, long OldLevels, long WindowRecords, long OldRecords,
+        long WindowRunnerStates, long OldRunnerStates);
 
     private static readonly Dictionary<string, Seeded> sizes = [];
 
@@ -318,10 +381,15 @@ public class ReportReadCostTests
         var windowStart = Now.AddDays(-ReadCostSeed.WindowDays);
         await using var db = new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options);
         var moves = db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.StatusChanged);
+        var levels = db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.PreApprovalChanged);
+        var records = db.IssueEvents.Where(e => e.Kind == EfHatchIssueEvent.PullRequestChanged);
         return new Seeded(
             await moves.CountAsync(e => e.At >= windowStart), await moves.CountAsync(e => e.At < windowStart),
             await db.WorkLog.CountAsync(w => w.StartedAt >= windowStart), await db.WorkLog.CountAsync(w => w.StartedAt < windowStart),
-            await db.Comments.CountAsync(c => c.Kind == EfHatchComment.Note && c.CreatedAt < windowStart));
+            await db.Comments.CountAsync(c => c.Kind == EfHatchComment.Note && c.CreatedAt < windowStart),
+            await levels.CountAsync(e => e.At >= windowStart), await levels.CountAsync(e => e.At < windowStart),
+            await records.CountAsync(e => e.At >= windowStart), await records.CountAsync(e => e.At < windowStart),
+            await db.RunnerStates.CountAsync(r => r.At >= windowStart), await db.RunnerStates.CountAsync(r => r.At < windowStart));
     }
 
     private static async Task<Dictionary<string, Measurement>> MeasureAllAsync(ReadCostSeed.Size size)

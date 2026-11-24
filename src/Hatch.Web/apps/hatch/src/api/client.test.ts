@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Issue, Runner, Status } from '../types';
 import {
+  confirmChatLink,
   createChatWorkspace,
+  deleteChatLink,
+  getChatLinks,
+  getChatMembers,
+  getChatSuggestion,
+  getMyChat,
+  linkChatMember,
+  unlinkChat,
   createRunner,
   deleteChatWorkspace,
   getChatDelivery,
@@ -946,5 +954,81 @@ describe('chat page calls', () => {
     await expect(getChatManifest()).resolves.toEqual(manifest);
 
     expect(fetchMock).toHaveBeenCalledWith('/api/chat/manifest', expect.anything());
+  });
+});
+
+describe('my Slack links', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const stub = (body: unknown, status = 200) => {
+    const fetchMock = vi.fn(async () => new Response(body === null ? null : JSON.stringify(body), { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('reads the list', async () => {
+    const fetchMock = stub({ linksOn: true, workspaces: [] });
+    await getMyChat();
+    expect(fetchMock).toHaveBeenCalledWith('/api/me/chat', expect.anything());
+  });
+
+  it('reads the suggestion of one workspace', async () => {
+    const fetchMock = stub({ member: null });
+    await getChatSuggestion(4);
+    expect(fetchMock).toHaveBeenCalledWith('/api/me/chat/workspaces/4/suggestion', expect.anything());
+  });
+
+  it('reads the members of one workspace', async () => {
+    const fetchMock = stub([]);
+    await getChatMembers(4);
+    expect(fetchMock).toHaveBeenCalledWith('/api/me/chat/workspaces/4/members', expect.anything());
+  });
+
+  it('POSTs the workspace and member to link', async () => {
+    const fetchMock = stub({ id: 1 });
+    await linkChatMember(4, 'U1');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me/chat/links',
+      expect.objectContaining({ method: 'POST', body: '{"workspaceId":4,"memberId":"U1"}' }),
+    );
+  });
+
+  it('POSTs the secret in the body, never in the address', async () => {
+    const fetchMock = stub({ id: 1 });
+    await confirmChatLink('s3cret');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me/chat/links/confirm',
+      expect.objectContaining({ method: 'POST', body: '{"secret":"s3cret"}' }),
+    );
+    const [address] = fetchMock.mock.calls[0] as unknown as [string];
+    expect(address).not.toContain('s3cret');
+  });
+
+  it('DELETEs a link by id', async () => {
+    const fetchMock = stub(null, 204);
+    await unlinkChat(9);
+    expect(fetchMock).toHaveBeenCalledWith('/api/me/chat/links/9', expect.objectContaining({ method: 'DELETE' }));
+  });
+});
+
+describe("everybody's Slack links", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reads every link', async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(getChatLinks()).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/links', expect.anything());
+  });
+
+  it('DELETEs a link by id on the admin route', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await deleteChatLink(9);
+    expect(fetchMock).toHaveBeenCalledWith('/api/chat/links/9', expect.objectContaining({ method: 'DELETE' }));
   });
 });

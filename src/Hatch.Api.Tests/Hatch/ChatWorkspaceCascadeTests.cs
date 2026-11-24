@@ -17,7 +17,7 @@ namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
 /// Removing a workspace is one delete, and what hangs off it goes with it in
-/// the database, not in controller code. There is no such table yet; these keep
+/// the database, not in controller code. These keep
 /// that true on the day one is added: a foreign key to a workspace that is not
 /// a cascade fails the model audit, and on a real Postgres the same is read back
 /// out of the schema.
@@ -218,7 +218,8 @@ public class ChatWorkspaceCascadeDatabaseTests
 
     private static ChatController NewController(HatchContext db) =>
         new(db, new AcmeProvider(), new StubCaller(), new FakeTimeProvider(new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero)), Protector,
-            new ChatLinks(Microsoft.Extensions.Options.Options.Create(new HatchOptions())), NullLogger<ChatController>.Instance)
+            new ChatLinks(Microsoft.Extensions.Options.Options.Create(new HatchOptions())),
+            global::Hatch.Api.Tests.Chat.RosterSeed.For(db, global::Hatch.Api.Tests.Chat.RosterSeed.NewAppDb()), NullLogger<ChatController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
@@ -234,6 +235,15 @@ public class ChatWorkspaceCascadeDatabaseTests
 
         public Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct) =>
             Task.FromResult(ChatChannelList.Of([]));
+
+        public Task<ChatMemberFound> FindMemberByEmailAsync(string token, string email, CancellationToken ct) =>
+            Task.FromResult(ChatMemberFound.Of(null));
+
+        public Task<ChatMemberList> ListMembersAsync(string token, CancellationToken ct) =>
+            Task.FromResult(ChatMemberList.Of([]));
+
+        public Task<ChatConversationOpened> OpenDirectMessageAsync(string token, string memberId, CancellationToken ct) =>
+            Task.FromResult(ChatConversationOpened.Of("D1"));
 
         public Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct) =>
             Task.FromResult(ChatPostResult.Delivered());

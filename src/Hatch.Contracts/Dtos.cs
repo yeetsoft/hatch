@@ -199,6 +199,42 @@ public record ChatRoomPatchRequest(
 /// <summary>Whether a test message was delivered, and the sentence if it was not.</summary>
 public record ChatTestResultDto(bool Delivered, string? Reason);
 
+/// <summary>
+/// The caller's own Slack links: whether Hatch can send a link back at all, and
+/// each workspace the caller may see with where their link stands there.
+/// </summary>
+public record MeChatDto(bool LinksOn, IReadOnlyList<MeChatWorkspaceDto> Workspaces);
+
+/// <summary>One workspace the caller may see, and their link in it, or null for none.</summary>
+public record MeChatWorkspaceDto(int Id, string Name, MeChatLinkDto? Link);
+
+/// <summary>
+/// The caller's link in a workspace. <c>State</c> is <c>waiting</c> or
+/// <c>linked</c>; <c>ExpiresAt</c> is when a waiting link stops working, and
+/// null once linked.
+/// </summary>
+public record MeChatLinkDto(int Id, string State, string MemberName, DateTimeOffset? ExpiresAt);
+
+/// <summary>
+/// One person's Slack link, as an admin sees it. <c>State</c> is <c>waiting</c>
+/// or <c>linked</c>; <c>ExpiresAt</c> is when a waiting link stops working, and
+/// null once linked. Carries no member id, conversation id or secret.
+/// </summary>
+public record ChatLinkRowDto(
+    int Id, Guid PersonId, int WorkspaceId, string WorkspaceName, string MemberName, string State, DateTimeOffset? ExpiresAt);
+
+/// <summary>A Slack member, for the caller to pick themselves from. Never carries an email.</summary>
+public record MeChatMemberDto(string Id, string Name, string? DisplayName);
+
+/// <summary>The member whose email is one the caller signed in with, or null when none matched.</summary>
+public record MeChatSuggestionDto(MeChatMemberDto? Member);
+
+/// <summary>The Slack member the caller chose in a workspace.</summary>
+public record MeChatLinkRequest(int WorkspaceId, string? MemberId);
+
+/// <summary>The secret from a confirmation link. In the body, never the URL.</summary>
+public record MeChatConfirmRequest(string? Secret);
+
 /// <summary>A write to a project's landing settings - <c>null</c> on a field leaves it alone.</summary>
 /// <param name="Landing">One of <see cref="Landings"/>.</param>
 /// <param name="OnePullRequest">The project default for whether a story's tasks share its branch and one pull request - see <see cref="EfHatchProject.OnePullRequest"/>. Null leaves it alone.</param>

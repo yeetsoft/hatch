@@ -25,7 +25,12 @@ internal static class ReadCostSeed
     /// <param name="PairsPerIssue">How many times each issue went to review and back to in progress before the window.</param>
     /// <param name="OldSessions">Work-log sessions before the window, spread over every issue.</param>
     /// <param name="OldComments">Comments before the window, spread over every issue.</param>
-    public sealed record Size(string Name, int PairsPerIssue, int OldSessions, int OldComments);
+    /// <param name="OldLevels">Pre-approval changes before the window, for every issue.</param>
+    /// <param name="OldRecords">Pull request record changes before the window, for every issue.</param>
+    /// <param name="OldRunnerStates">State rows before the window, for each of the seeded runners.</param>
+    public sealed record Size(
+        string Name, int PairsPerIssue, int OldSessions, int OldComments,
+        int OldLevels = 1, int OldRecords = 1, int OldRunnerStates = 2);
 
     /// <summary>
     /// 440 moves, 200 sessions and 100 comments from before the window: each
@@ -38,7 +43,8 @@ internal static class ReadCostSeed
     /// sessions and 600 comments from before the window: five and a half times
     /// the moves, and six times the rest.
     /// </summary>
-    public static readonly Size Large = new("large", PairsPerIssue: 5, OldSessions: 1200, OldComments: 600);
+    public static readonly Size Large = new("large", PairsPerIssue: 5, OldSessions: 1200, OldComments: 600,
+        OldLevels: 5, OldRecords: 5, OldRunnerStates: 500);
 
     // ---- What is the same at both sizes ----
 
@@ -54,6 +60,15 @@ internal static class ReadCostSeed
 
     /// <summary>Claim taken and released events inside the window: 75 of each.</summary>
     public const int ClaimPairs = 75;
+
+    /// <summary>Pre-approval changes and pull request records inside the window, on this many issues each.</summary>
+    public const int WindowLevelIssues = 60;
+
+    /// <summary>The runners the seed gives a beat and a state record, named like the claim payloads' runner.</summary>
+    public const int Runners = 3;
+
+    /// <summary>State rows each runner has inside the window.</summary>
+    public const int WindowRunnerStates = 6;
 
     /// <summary>Questions inside the window, each answered.</summary>
     public const int QuestionPairs = 60;
@@ -243,7 +258,67 @@ internal static class ReadCostSeed
             });
         }
 
+        // ---- Pre-approval changes and pull request records ----
+        // Before the window, each issue has size.OldLevels of each, the last
+        // one ending in a level (or a recorded request) the window opens on.
+        // Inside it, a few issues change again, the same at every size.
+        string Level(int n) => n % 3 == 0 ? PreApprovalLevels.NoneName : n % 3 == 1 ? PreApprovalLevels.ExpressName : PreApprovalLevels.PreApprovedName;
+        EfHatchIssueEvent Change(EfHatchIssue issue, string kind, string from, string to, DateTimeOffset at) => new()
+        {
+            IssueId = issue.Id, Actor = Actor, Kind = kind, At = at,
+            Payload = string.Create(CultureInfo.InvariantCulture, $"{{\"from\":\"{from}\",\"to\":\"{to}\"}}"),
+        };
+
+        for (var i = epics; i < total; i++)
+        {
+            var issue = all[i];
+            for (var n = 0; n < size.OldLevels; n++)
+                events.Add(Change(issue, EfHatchIssueEvent.PreApprovalChanged, Level(n), Level(n + 1),
+                    now.AddDays(-95) + TimeSpan.FromHours(n * 7) + TimeSpan.FromMinutes(i)));
+            for (var n = 0; n < size.OldRecords; n++)
+                events.Add(Change(issue, EfHatchIssueEvent.PullRequestChanged,
+                    n % 2 == 0 ? "" : "https://forge.invalid/pr/" + i, n % 2 == 0 ? "https://forge.invalid/pr/" + i : "",
+                    now.AddDays(-90) + TimeSpan.FromHours(n * 5) + TimeSpan.FromMinutes(i)));
+
+            if (i - epics >= WindowLevelIssues) continue;
+            var inside = windowStart.AddDays(2) + TimeSpan.FromHours(i * 3);
+            events.Add(Change(issue, EfHatchIssueEvent.PreApprovalChanged, Level(size.OldLevels), Level(size.OldLevels + 1), inside));
+            events.Add(Change(issue, EfHatchIssueEvent.PullRequestChanged,
+                size.OldRecords % 2 == 0 ? "" : "https://forge.invalid/pr/" + i,
+                size.OldRecords % 2 == 0 ? "https://forge.invalid/pr/" + i : "", inside.AddHours(1)));
+        }
+
         db.IssueEvents.AddRange(events);
+        await db.SaveChangesAsync();
+
+        // ---- Runners ----
+        // A beat with no key (AdoptedAt unset), so the lanes show it, and a state
+        // record: the same few rows in the window at every size, more before it
+        // in the large one.
+        for (var r = 1; r <= Runners; r++)
+        {
+            var name = $"runner-{r}";
+            db.LegacyRunners.Add(new EfHatchRunner
+            {
+                Name = name, Kind = EfHatchRunner.LoopKind, FirstSeenAt = now.AddDays(-100), LastSeenAt = now.AddMinutes(-r),
+                State = EfHatchRunner.Running,
+            });
+
+            for (var n = 0; n < size.OldRunnerStates; n++)
+                db.RunnerStates.Add(new EfHatchRunnerState
+                {
+                    Runner = name, At = now.AddDays(-100) + TimeSpan.FromHours(n * 3 + r),
+                    State = n % 2 == 0 ? RunnerStateRule.Running : RunnerStateRule.Paused,
+                });
+
+            for (var n = 0; n < WindowRunnerStates; n++)
+                db.RunnerStates.Add(new EfHatchRunnerState
+                {
+                    Runner = name, At = windowStart.AddDays(1) + TimeSpan.FromHours(n * 20 + r),
+                    State = n % 2 == 0 ? RunnerStateRule.Running : RunnerStateRule.Paused,
+                });
+        }
+
         await db.SaveChangesAsync();
 
         // ---- Questions ----

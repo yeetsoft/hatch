@@ -69,6 +69,16 @@ it had. The keys stay listed on **Runners** as revoked, with no owner, so an old
 event still has a name to point to. A delete that is refused, such as the last
 `admin`, revokes nothing.
 
+Once anybody has linked a Slack account, **Manage → Users** also has a **Slack**
+column, showing how many Slack links each person holds. Press the count to open
+that row's links: the workspace, the Slack member, and whether the link is
+`linked` or `waiting`. **Remove** takes one away, after asking. Nothing is sent
+to it afterwards, and the person can link again from Settings. There is no
+button to make or confirm a link for somebody else: a link is its person's own
+choice. Deleting a person removes their links too, and a second person can then
+confirm a link to the same Slack member at once. The column is admin-only, like
+the rest of the page, and a key is refused.
+
 An admin also sees **Manage → Chat**, where a Slack workspace is connected. [Hatch in Slack](hatch-in-slack)
 has the steps.
 
@@ -262,7 +272,8 @@ name, that HA-1937 retires.
   browser specifically, not merely a signed-in session with no UI; a
   column's settings; a project's repositories, logo, landing and auto-heal
   settings, playbook source and members; Hatch's own settings; a runner's
-  record; attachment delete; choosing a home screen; running a backup.
+  record; attachment delete; choosing a home screen; linking and unlinking a
+  Slack account, which only the person it speaks for may do; running a backup.
   [`api-reference`](api-reference) has the route-by-route version.
 - **Which runners a key sees.** A key reads the runners of its owner, an
   admin's key reads every runner, and a key with no owner reads only the

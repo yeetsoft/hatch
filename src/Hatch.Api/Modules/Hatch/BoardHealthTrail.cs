@@ -87,33 +87,192 @@ internal static class BoardHealthTrail
     /// never loaded.
     /// </summary>
     /// <remarks>
-    /// <paramref name="olderOnlyIf"/> keeps that older one only when it is of
-    /// this kind. The newest is still found over every kind asked for, so a
-    /// take that a later release closed before the window is not read as open.
+    /// <para>Three reads, not one filter. The window is a range on the event
+    /// indexes. The older ones are driven from <c>Issues</c>: for each issue and
+    /// kind, one probe of (<c>IssueId</c>, <c>Kind</c>, <c>At</c>) for the time of
+    /// the newest event before <paramref name="since"/>, and then one read of the
+    /// rows at those times, which settles a tie by <c>Id</c>. The probe reads
+    /// every issue, visible or not, and the read of the rows applies the
+    /// caller's project visibility, so what is returned is the same. An <c>OR</c> against a per-row subquery cannot use an index,
+    /// so the filter this replaced visited every event of these kinds.</para>
+    /// <para>The newest is the latest by <c>At</c>, then by <c>Id</c>, over every
+    /// kind asked for. <paramref name="olderOnlyIf"/> keeps it only when it is
+    /// of this kind, so a take that a later release closed before the window is
+    /// dropped and not read as open.</para>
+    /// <para><paramref name="until"/> closes the window, for a report that folds a
+    /// range and not an open-ended tail. The window then ends at <paramref name="until"/>
+    /// inclusive - a change at that instant opens a stretch the fold counts - and,
+    /// for each issue with no event of these kinds at or before it, the first one
+    /// after it is read too: that move's <c>from</c> is the column the issue stood
+    /// in throughout. One is enough, and later ones are never read. Left null, the
+    /// statements are the ones above and nothing changes. It has no meaning beside
+    /// <paramref name="olderOnlyIf"/>, which decides what to keep of the newest
+    /// before the window, so naming both is refused.</para>
+    /// <para>An event whose payload names no column on either side is dropped by
+    /// the fold's parser, and a cut keeps only the newest before the window; if
+    /// that one were such an event the state before it would be lost. Every writer
+    /// goes through <c>IssueEventPayload.StatusChanged</c>, which writes both
+    /// sides, so none exists; this has not been checked against production rows.</para>
     /// </remarks>
     internal static async Task<List<Ev>> ReadAsync(
         HatchContext db, string[] kinds, DateTimeOffset since, HashSet<string>? scope, List<long>? issueIds,
-        CancellationToken ct, string? olderOnlyIf = null)
+        CancellationToken ct, string? olderOnlyIf = null, DateTimeOffset? until = null)
     {
-        var events = db.IssueEvents.AsNoTracking()
-            .Where(e => kinds.Contains(e.Kind))
-            .Where(e => e.At >= since
-                || ((olderOnlyIf == null || e.Kind == olderOnlyIf)
-                    && e.Id == db.IssueEvents
-                        .Where(x => x.IssueId == e.IssueId && kinds.Contains(x.Kind) && x.At < since)
-                        .Max(x => (long?)x.Id)));
+        if (until is not null && olderOnlyIf is not null)
+            throw new ArgumentException("until and olderOnlyIf have no meaning together", nameof(until));
+
+        var window = db.IssueEvents.AsNoTracking()
+            .Where(e => e.At >= since && kinds.Contains(e.Kind));
+
+        if (until is { } closed) window = window.Where(e => e.At <= closed);
+
+        var drivers = db.Issues.AsNoTracking().AsQueryable();
 
         if (scope is not null)
         {
             var keys = scope.ToList();
-            events = events.Where(e => keys.Contains(e.Issue!.Project!.Key));
+            window = window.Where(e => keys.Contains(e.Issue!.Project!.Key));
+            drivers = drivers.Where(i => keys.Contains(i.Project!.Key));
         }
 
-        if (issueIds is not null) events = events.Where(e => issueIds.Contains(e.IssueId));
+        if (issueIds is not null)
+        {
+            window = window.Where(e => issueIds.Contains(e.IssueId));
+            drivers = drivers.Where(i => issueIds.Contains(i.Id));
+        }
 
-        return await events
+        var found = await window
             .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
             .ToListAsync(ct);
+
+        // One probe per issue and kind: the time of the newest event before the
+        // window, as a correlated scalar MAX, which Postgres answers with one
+        // backward probe of (IssueId, Kind, At). Two shapes were tried and
+        // dropped: ORDER BY At, Id LIMIT 1 is matched exactly by the table-wide
+        // (At, Id) index, which the planner then walks backward for every issue
+        // that has no earlier event of the kind; and an At = (max) join is
+        // flattened into a scan of every older event of the kind. The opt-out of the
+        // query filters is query-wide, so the probe reads every issue and not just
+        // the caller's; it only finds instants, and the read of the rows below
+        // applies the caller's own filter, so nothing hidden is returned.
+        var newest = new Dictionary<(long IssueId, string Kind), DateTimeOffset>();
+        var after = new Dictionary<(long IssueId, string Kind), DateTimeOffset>();
+        foreach (var kind in kinds)
+        {
+            var k = kind;
+            // With a closed window the same statement also probes the first event
+            // after it, one column more. Without one it is the statement it always
+            // was: a second shape, not a null parameter, so the SQL does not change.
+            var probed = until is { } closes
+                ? await drivers
+                    .Select(i => new
+                    {
+                        i.Id,
+                        At = db.IssueEvents.IgnoreQueryFilters()
+                            .Where(x => x.IssueId == i.Id && x.Kind == k && x.At < since)
+                            .Max(x => (DateTimeOffset?)x.At),
+                        After = db.IssueEvents.IgnoreQueryFilters()
+                            .Where(x => x.IssueId == i.Id && x.Kind == k && x.At > closes)
+                            .Min(x => (DateTimeOffset?)x.At),
+                    })
+                    .ToListAsync(ct)
+                : await drivers
+                    .Select(i => new
+                    {
+                        i.Id,
+                        At = db.IssueEvents.IgnoreQueryFilters()
+                            .Where(x => x.IssueId == i.Id && x.Kind == k && x.At < since)
+                            .Max(x => (DateTimeOffset?)x.At),
+                        After = (DateTimeOffset?)null,
+                    })
+                    .ToListAsync(ct);
+            foreach (var p in probed)
+            {
+                if (p.At is { } at) newest[(p.Id, k)] = at;
+                if (p.After is { } later) after[(p.Id, k)] = later;
+            }
+        }
+
+        if (newest.Count > 0)
+        {
+            // The rows at those instants for those issues: the probed ones, and any
+            // other of the same kind at the same instant, so the tie is settled by
+            // Id here. A few more that match an instant but not their own issue's
+            // are dropped below.
+            var instants = newest.Values.Distinct().ToList();
+            var owners = newest.Keys.Select(k => k.IssueId).Distinct().ToList();
+            var atThose = await db.IssueEvents.AsNoTracking()
+                .Where(e => kinds.Contains(e.Kind) && owners.Contains(e.IssueId) && instants.Contains(e.At) && e.At < since)
+                .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
+                .ToListAsync(ct);
+
+            var latestOfKind = atThose
+                .Where(e => newest.TryGetValue((e.IssueId, e.Kind), out var at) && at == e.At)
+                .GroupBy(e => (e.IssueId, e.Kind))
+                .Select(g => g.OrderByDescending(e => e.Id).First());
+
+            foreach (var latest in latestOfKind
+                         .GroupBy(e => e.IssueId)
+                         .Select(g => g.OrderByDescending(e => e.At).ThenByDescending(e => e.Id).First()))
+            {
+                if (olderOnlyIf is null || latest.Kind == olderOnlyIf) found.Add(latest);
+            }
+        }
+
+        if (until is { } end && after.Count > 0)
+        {
+            // An issue with nothing at or before the end of the window stood in
+            // its first move's from column throughout: read that one move. Only
+            // issues with a first event after the end and none before it get here.
+            var seen = found.Select(e => e.IssueId).ToHashSet();
+            var bare = after.Where(a => !seen.Contains(a.Key.IssueId)).ToList();
+
+            if (bare.Count > 0)
+            {
+                var instants = bare.Select(a => a.Value).Distinct().ToList();
+                var owners = bare.Select(a => a.Key.IssueId).Distinct().ToList();
+                var atThose = await db.IssueEvents.AsNoTracking()
+                    .Where(e => kinds.Contains(e.Kind) && owners.Contains(e.IssueId) && instants.Contains(e.At) && e.At > end)
+                    .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
+                    .ToListAsync(ct);
+
+                // The earliest across kinds, by At and then Id, the fold's order.
+                var wanted = bare.ToDictionary(a => (a.Key.IssueId, a.Key.Kind), a => a.Value);
+                found.AddRange(atThose
+                    .Where(e => wanted.TryGetValue((e.IssueId, e.Kind), out var at) && at == e.At)
+                    .GroupBy(e => e.IssueId)
+                    .Select(g => g.OrderBy(e => e.At).ThenBy(e => e.Id).First()));
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// The state rows of these runners at or after <paramref name="from"/>, plus
+    /// for each name the newest one before it, in time order. Probes
+    /// (<c>Runner</c>, <c>At</c>, <c>Id</c>) once per name, so a long history
+    /// is never read.
+    /// </summary>
+    internal static async Task<List<EfHatchRunnerState>> RunnerStatesAsync(
+        HatchContext db, List<string> names, DateTimeOffset from, CancellationToken ct)
+    {
+        var rows = await db.RunnerStates.AsNoTracking()
+            .Where(s => s.At >= from && names.Contains(s.Runner))
+            .ToListAsync(ct);
+
+        foreach (var name in names.Distinct(StringComparer.Ordinal))
+        {
+            var n = name;
+            var before = await db.RunnerStates.AsNoTracking()
+                .Where(x => x.Runner == n && x.At < from)
+                .OrderByDescending(x => x.At).ThenByDescending(x => x.Id)
+                .Take(1)
+                .ToListAsync(ct);
+            rows.AddRange(before);
+        }
+
+        return rows.OrderBy(s => s.At).ThenBy(s => s.Id).ToList();
     }
 
     /// <summary>The <c>from</c> and <c>to</c> of a change payload, as text; null when it will not parse.</summary>

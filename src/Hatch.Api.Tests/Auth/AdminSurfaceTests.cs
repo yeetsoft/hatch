@@ -350,6 +350,14 @@ public class AdminSurfaceTests
         // MeHomeController.PutHome.
         "MeHomeController.PutHome",
 
+        // A person's own Slack links, never a key's - see MeChatController.
+        "MeChatController.ConfirmLink",
+        "MeChatController.DeleteLink",
+        "MeChatController.Get",
+        "MeChatController.GetMembers",
+        "MeChatController.GetSuggestion",
+        "MeChatController.PostLink",
+
         // What shipped, a window at a time - key-accepting and open to a
         // person the same way WorkLogController's read is. See
         // ChangelogController.
@@ -574,6 +582,8 @@ public class AdminSurfaceTests
         "ChatController.PatchRoom",
         "ChatController.RemoveRoom",
         "ChatController.PostTestMessage",
+        "ChatController.GetLinks",
+        "ChatController.RemoveLink",
 
         // A related edge, cut the same way and for a different reason: under
         // the loop's "people only" rule an assignee is a dispatch gate, so a
@@ -872,10 +882,20 @@ public class AdminSurfaceTests
         "ChatController.PatchRoom",
         "ChatController.RemoveRoom",
         "ChatController.PostTestMessage",
+        "ChatController.GetLinks",
+        "ChatController.RemoveLink",
 
         // Choosing a home screen is a person's own, never a key's or a
         // keyless runner's. See MeHomeController.PutHome.
         "MeHomeController.PutHome",
+
+        // A person's own Slack links, never a key's or a keyless runner's. See MeChatController.
+        "MeChatController.ConfirmLink",
+        "MeChatController.DeleteLink",
+        "MeChatController.Get",
+        "MeChatController.GetMembers",
+        "MeChatController.GetSuggestion",
+        "MeChatController.PostLink",
 
         // Running a backup is the operator's own act, never a key's or a
         // keyless runner's. See BackupController.PostBackupRun.
@@ -1121,6 +1141,8 @@ public class AdminSurfaceTests
         "ChatController.PatchRoom",
         "ChatController.RemoveRoom",
         "ChatController.PostTestMessage",
+        "ChatController.GetLinks",
+        "ChatController.RemoveLink",
     ];
 
     private static readonly string[] UserOutsideHatch =

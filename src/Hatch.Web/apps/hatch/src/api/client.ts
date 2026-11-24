@@ -69,6 +69,11 @@ import type {
   ChatTestResult,
   ChatDelivery,
   ChatWorkspace,
+  ChatLinkRow,
+  MeChat,
+  MeChatLink,
+  MeChatMember,
+  MeChatSuggestion,
   PersonCreateRequest,
   PersonScope,
   PersonScopeWriteRequest,
@@ -1188,6 +1193,28 @@ export interface WorkLogByPlaybookQuery {
 /** A person's own home screen; a key is refused. Answers the fresh `/api/me`. */
 export const putMyHome = (home: 'board' | 'ambitions') =>
   fetchJson<Me>('/api/me/home', { method: 'PUT', ...asJson({ home }) });
+
+/**
+ * The caller's own Slack links; person-only, a key is refused. The secret of a
+ * confirmation link goes up in the body, never in the address.
+ */
+export const getMyChat = () => fetchJson<MeChat>('/api/me/chat');
+export const getChatSuggestion = (workspaceId: number) =>
+  fetchJson<MeChatSuggestion>(`/api/me/chat/workspaces/${seg(String(workspaceId))}/suggestion`);
+export const getChatMembers = (workspaceId: number) =>
+  fetchJson<MeChatMember[]>(`/api/me/chat/workspaces/${seg(String(workspaceId))}/members`);
+export const linkChatMember = (workspaceId: number, memberId: string) =>
+  fetchJson<MeChatLink>('/api/me/chat/links', { method: 'POST', ...asJson({ workspaceId, memberId }) });
+export const confirmChatLink = (secret: string) =>
+  fetchJson<MeChatLink>('/api/me/chat/links/confirm', { method: 'POST', ...asJson({ secret }) });
+export const unlinkChat = (linkId: number) =>
+  fetchJson<void>(`/api/me/chat/links/${seg(String(linkId))}`, { method: 'DELETE' });
+
+/** Every person's Slack links, for an admin; a key is refused. */
+export const getChatLinks = () => fetchJson<ChatLinkRow[]>('/api/chat/links');
+/** Removes anybody's link, waiting or linked. The person can link again. */
+export const deleteChatLink = (linkId: number) =>
+  fetchJson<void>(`/api/chat/links/${seg(String(linkId))}`, { method: 'DELETE' });
 
 // ---- People ----
 //
