@@ -261,6 +261,27 @@ public class FindingMessagesTests
     }
 
     [Fact]
+    public async Task AFindingAboutAWorkspacesListening_ReachesItsOwnUnownedProblemsRoom_AndAnotherWorkspaces_ButNotARoomThatDoesNotTakeThem()
+    {
+        var h = await NewHarnessAsync();
+        var own = await h.Seed.RoomAsync(h.Workspace, "C1", unownedProblems: true);
+        await h.Seed.RoomAsync(h.Workspace, "C2", problems: true);
+        var elsewhere = await h.Seed.WorkspaceAsync("TELSE");
+        var reached = await h.Seed.RoomAsync(elsewhere, "C3", unownedProblems: true);
+        var failingWorkspace = await h.Db.ChatWorkspaces.SingleAsync(w => w.Id == h.Workspace);
+        failingWorkspace.AppToken = "sealed";
+        failingWorkspace.ListenFailingSince = Now.AddHours(-2);
+        await h.Db.SaveChangesAsync();
+
+        var check = new ChatListenFailingCheck(h.Db, Options.Create(new HatchOptions()), h.Time, h.Messages);
+        await check.RunAsync(CancellationToken.None);
+        await h.Db.SaveChangesAsync();
+
+        var rows = await h.RowsAsync();
+        Assert.Equal([own, reached], rows.Select(r => r.RoomId).OrderBy(id => id));
+    }
+
+    [Fact]
     public async Task TheChatSendsSentence_NamesTheMomentItBegan_SoTheMessageIsNotEditedEverySweep()
     {
         var h = await NewHarnessAsync();
