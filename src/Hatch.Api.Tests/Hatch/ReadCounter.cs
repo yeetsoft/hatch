@@ -69,9 +69,13 @@ internal sealed class ReadCounter : DbCommandInterceptor
         get { lock (statements) return [.. statements]; }
     }
 
-    /// <summary>The options for a context whose every command this counter sees.</summary>
-    public DbContextOptions<HatchContext> Options(string connectionString) =>
-        new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).AddInterceptors(this).Options;
+    /// <summary>
+    /// The options for a context whose every command this counter sees, and
+    /// <paramref name="more"/> beside it: a test that counts through the
+    /// application's own interceptor as well passes it here.
+    /// </summary>
+    public DbContextOptions<HatchContext> Options(string connectionString, params IInterceptor[] more) =>
+        new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).AddInterceptors([this, .. more]).Options;
 
     public override InterceptionResult<DbDataReader> ReaderExecuting(
         DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
