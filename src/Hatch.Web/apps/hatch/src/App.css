@@ -4794,6 +4794,14 @@ button.hatch-chip {
   gap: var(--sp-2);
 }
 
+.hatch-slack-account__option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .hatch-slack-flow {
   display: flex;
   flex-direction: column;

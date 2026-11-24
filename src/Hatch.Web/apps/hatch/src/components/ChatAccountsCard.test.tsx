@@ -10,8 +10,24 @@ vi.mock('../lib/clientLogger', () => ({ clientLogger: { error: () => {} } }));
 
 const NOW = Date.parse('2026-06-01T12:00:00Z');
 const noop = () => {};
-const waiting: MeChatLink = { id: 2, state: 'waiting', memberName: 'Bo Tan', expiresAt: '2026-06-01T13:00:00Z' };
-const linked: MeChatLink = { id: 1, state: 'linked', memberName: 'Ada Reed', expiresAt: null };
+const waiting: MeChatLink = {
+  id: 2,
+  state: 'waiting',
+  memberName: 'Bo Tan',
+  expiresAt: '2026-06-01T13:00:00Z',
+  runnerFailures: true,
+  lastRefusal: null,
+  lastRefusalAt: null,
+};
+const linked: MeChatLink = {
+  id: 1,
+  state: 'linked',
+  memberName: 'Ada Reed',
+  expiresAt: null,
+  runnerFailures: true,
+  lastRefusal: null,
+  lastRefusalAt: null,
+};
 const member = (id: string, name: string, displayName: string | null = null): MeChatMember => ({
   id,
   name,
@@ -95,6 +111,9 @@ describe('ChatAccountsCard', () => {
         linksOn
         now={NOW}
         open={false}
+        runnerFailuresChecked={false}
+        runnerFailuresSaving={false}
+        onSwitchRunnerFailures={noop}
         onLink={noop}
         onClose={noop}
         onUnlink={noop}
@@ -102,6 +121,31 @@ describe('ChatAccountsCard', () => {
       />,
     );
     expect(html).not.toContain('Find yourself');
+  });
+
+  it('draws the Runner failures switch only on a linked row', () => {
+    const html = draw({ linksOn: true, workspaces: [acme(linked), globex(waiting)] });
+    expect(html).toContain('Runner failures');
+    expect(html).toContain('Direct messages when one of your runners cannot work.');
+    const globexHtml = draw({ linksOn: true, workspaces: [globex(waiting)] });
+    expect(globexHtml).not.toContain('Runner failures');
+  });
+
+  it('draws no switch on an empty row', () => {
+    expect(draw({ linksOn: true, workspaces: [globex(null)] })).not.toContain('Runner failures');
+  });
+
+  it('checks the switch when runnerFailures is true, and leaves it unchecked when false', () => {
+    const on = draw({ linksOn: true, workspaces: [acme(linked)] });
+    expect(on).toContain('checked=""');
+    const off = draw({ linksOn: true, workspaces: [acme({ ...linked, runnerFailures: false })] });
+    expect(off).not.toContain('checked=""');
+  });
+
+  it('draws the refusal line with its sentence and when, and hides it once a send works', () => {
+    const refused = { ...linked, lastRefusal: 'channel_not_found', lastRefusalAt: '2026-06-01T12:00:00Z' };
+    expect(draw({ linksOn: true, workspaces: [acme(refused)] })).toContain('Slack could not send to this account');
+    expect(draw({ linksOn: true, workspaces: [acme(linked)] })).not.toContain('Slack could not send to this account');
   });
 });
 
