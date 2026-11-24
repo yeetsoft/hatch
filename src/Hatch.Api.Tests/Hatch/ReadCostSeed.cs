@@ -82,15 +82,33 @@ internal static class ReadCostSeed
     public const string Actor = "bo";
 
     /// <summary>What the seed made, by name, so a test can read ids off it.</summary>
-    public sealed record Board(int ProjectA, int ProjectB, int Doing, int Review);
+    public sealed record Board(int ProjectA, int ProjectB, int Doing, int Review, int Inbox, int Todo, int Done, int Later);
 
     /// <summary>
     /// Empties the database, writes the board at this size, and runs
     /// <c>VACUUM (ANALYZE)</c> so the planner has the same statistics every time.
     /// Returns the connection string. Ids restart, so both sizes share them.
+    ///
+    /// <para><paramref name="issues"/> is how many issues the board holds, in the
+    /// same tiers at every count: a twentieth of them epics, three twentieths
+    /// stories, a tenth bugs, the rest tasks. At the default that is 10, 30, 20
+    /// and 140. Everything else - the window, the history, the questions and
+    /// sessions - is the same at every count.</para>
+    ///
+    /// <para><paramref name="extend"/> runs after the board is written and before
+    /// the statistics are settled, with the issues in the order they were made
+    /// (epics first, then stories, tasks and bugs). It is for a test that needs
+    /// more on the board than a report reads: playbooks, dependencies, runners.</para>
     /// </summary>
-    public static async Task<(string ConnectionString, Board Board)> SeedAsync(Size size, DateTimeOffset now)
+    public static async Task<(string ConnectionString, Board Board)> SeedAsync(
+        Size size, DateTimeOffset now, int issues = Issues,
+        Func<HatchContext, Board, IReadOnlyList<EfHatchIssue>, Task>? extend = null)
     {
+        var total = issues;
+        var epics = total / 20;
+        var stories = total * 3 / 20;
+        var bugs = total / 10;
+
         var connectionString = await HatchDatabase.PrepareAsync();
 
         await using var db = new HatchContext(
@@ -120,20 +138,20 @@ internal static class ReadCostSeed
         };
 
         // ---- Issues ----
-        // The first ten are epics, then stories, tasks and bugs. A story's parent
+        // The first twentieth are epics, then stories, tasks and bugs. A story's parent
         // is an epic, a task's a story, a bug's an epic or nothing.
-        var issues = new List<EfHatchIssue>();
+        var all = new List<EfHatchIssue>();
         var plans = new List<Plan>();
         var numbers = new Dictionary<int, int>();
 
-        for (var i = 0; i < Issues; i++)
+        for (var i = 0; i < total; i++)
         {
-            var type = i < Epics ? "epic" : i < Epics + Stories ? "story" : i < Issues - Bugs ? "task" : "bug";
+            var type = i < epics ? "epic" : i < epics + stories ? "story" : i < total - bugs ? "task" : "bug";
             var parent = type switch
             {
-                "story" => issues[(i - Epics) % Epics],
-                "task" => issues[Epics + (i - Epics - Stories) % Stories],
-                "bug" => i % 2 == 0 ? issues[i % Epics] : null,
+                "story" => all[(i - epics) % epics],
+                "task" => all[epics + (i - epics - stories) % stories],
+                "bug" => i % 2 == 0 ? all[i % epics] : null,
                 _ => null,
             };
 
@@ -154,19 +172,19 @@ internal static class ReadCostSeed
                 ClosedAt = plan.ClosedAt, CreatedBy = Actor, CreatedAt = now.AddDays(-110), UpdatedAt = now,
             };
 
-            issues.Add(issue);
+            all.Add(issue);
             plans.Add(plan);
 
             // A parent's id is needed by its children, so each tier is written
             // before the next is built.
-            if (i + 1 == Epics || i + 1 == Epics + Stories)
+            if (i + 1 == epics || i + 1 == epics + stories)
             {
-                db.Issues.AddRange(issues.Where(x => x.Id == 0));
+                db.Issues.AddRange(all.Where(x => x.Id == 0));
                 await db.SaveChangesAsync();
             }
         }
 
-        db.Issues.AddRange(issues.Where(x => x.Id == 0));
+        db.Issues.AddRange(all.Where(x => x.Id == 0));
         await db.SaveChangesAsync();
 
         // ---- Moves ----
@@ -178,9 +196,9 @@ internal static class ReadCostSeed
                 $"{{\"from\":\"{names[from]}\",\"to\":\"{names[to]}\",\"fromId\":{from},\"toId\":{to}}}"),
         };
 
-        for (var i = 0; i < Issues; i++)
+        for (var i = 0; i < total; i++)
         {
-            var issue = issues[i];
+            var issue = all[i];
             var plan = plans[i];
 
             events.Add(new EfHatchIssueEvent
@@ -211,7 +229,7 @@ internal static class ReadCostSeed
         // ---- Claims ----
         for (var c = 0; c < ClaimPairs; c++)
         {
-            var issue = issues[Epics + Stories + c % (Issues - Epics - Stories)];
+            var issue = all[epics + stories + c % (total - epics - stories)];
             var at = windowStart.AddHours(5 + c * 9);
             events.Add(new EfHatchIssueEvent
             {
@@ -231,7 +249,7 @@ internal static class ReadCostSeed
         // ---- Questions ----
         for (var q = 0; q < QuestionPairs; q++)
         {
-            var issue = issues[Epics + q % (Issues - Epics)];
+            var issue = all[epics + q % (total - epics)];
             var at = windowStart.AddHours(12 + q * 11);
             var asked = new EfHatchComment
             {
@@ -251,7 +269,7 @@ internal static class ReadCostSeed
         for (var n = 0; n < size.OldComments; n++)
             db.Comments.Add(new EfHatchComment
             {
-                IssueId = issues[n % Issues].Id, Author = "ann", Body = "a note", Kind = EfHatchComment.Note,
+                IssueId = all[n % total].Id, Author = "ann", Body = "a note", Kind = EfHatchComment.Note,
                 CreatedAt = now.AddDays(-100).AddHours(n),
             });
 
@@ -277,12 +295,19 @@ internal static class ReadCostSeed
         // 300 sessions over fifteen-session runs on eight issues is about fifty
         // (issue, day) pairs, not three hundred.
         for (var n = 0; n < WindowSessions; n++)
-            db.WorkLog.Add(Session(issues[Epics + (n / 15) % 8], windowStart.AddHours(2 + n * 2.3), n));
+            db.WorkLog.Add(Session(all[epics + (n / 15) % 8], windowStart.AddHours(2 + n * 2.3), n));
 
         for (var n = 0; n < size.OldSessions; n++)
-            db.WorkLog.Add(Session(issues[n % Issues], now.AddDays(-100).AddHours(n), n + 1000));
+            db.WorkLog.Add(Session(all[n % total], now.AddDays(-100).AddHours(n), n + 1000));
 
         await db.SaveChangesAsync();
+
+        var board = new Board(a.Id, b.Id, doing.Id, review.Id, inbox.Id, todo.Id, done.Id, later.Id);
+        if (extend is not null)
+        {
+            await extend(db, board, all);
+            await db.SaveChangesAsync();
+        }
 
         // Statistics for the planner, and the visibility map for index-only
         // scans, both settled now. Left to autovacuum, the second is set
@@ -294,7 +319,7 @@ internal static class ReadCostSeed
         // first read.
         await ReadCounter.FlushAsync(db.Database.GetDbConnection());
 
-        return (connectionString, new Board(a.Id, b.Id, doing.Id, review.Id));
+        return (connectionString, board);
     }
 
     /// <summary>Where an issue ends up, and when it closed, worked out from its place in the line.</summary>
