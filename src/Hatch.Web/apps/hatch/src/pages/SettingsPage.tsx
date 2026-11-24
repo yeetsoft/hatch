@@ -1,10 +1,13 @@
-import { useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button, Card, Field, PageHeader } from '@hatch/ui';
-import { getBackup, getHatchSettings, putHatchSettings, putMyHome, runBackup } from '../api/client';
+import { confirmChatLink, getBackup, getHatchSettings, getMyChat, putHatchSettings, putMyHome, runBackup } from '../api/client';
+import { ChatAccountsCard } from '../components/ChatAccountsCard';
 import { Command } from '../components/Command';
 import { backupState, canRunNow, errorWords, folderWords, keptWords, lastSuccessWords, OFF_WORDS } from '../lib/backup';
+import { confirmedWords, confirmFailedWords, readChatLink, stripChatLink } from '../lib/chatLinks';
+import type { ConfirmOutcome } from '../lib/chatLinks';
 import { LIFETIME_CHOICES, readLifetime, writeLifetime } from '../lib/confirmationLifetime';
 import type { Lifetime } from '../lib/confirmationLifetime';
 import { message } from '../lib/errors';
@@ -33,7 +36,7 @@ import { useAttentionContext } from '../lib/useAttentionContext';
 import { useLoaded } from '../lib/useLoaded';
 import { useMe } from '../lib/useMe';
 import { compactTokens, TOKEN_FIELD_HINT } from '../lib/workLog';
-import type { BackupStatus, HatchSettings, HatchSettingsWriteRequest } from '../types';
+import type { BackupStatus, HatchSettings, HatchSettingsWriteRequest, MeChat } from '../types';
 
 /** One agent's credential card: what it is called, and how an operator gets one. */
 const AGENT_CREDENTIALS: {
@@ -182,6 +185,40 @@ export function SettingsPage() {
     error: backupError,
     reload: reloadBackup,
   } = useLoaded<BackupStatus>(getBackup);
+  // Its own load too, so it failing hides nothing else and nothing else failing hides it.
+  // When a waiting link is judged to have run out: read again with every load of the list.
+  const [chatNow, setChatNow] = useState(() => Date.now());
+  const loadChat = useCallback(async () => {
+    const loaded = await getMyChat();
+    setChatNow(Date.now());
+    return loaded;
+  }, []);
+  const { data: chat, error: chatError, reload: reloadChat } = useLoaded<MeChat>(loadChat);
+  const [chatNotice, setChatNotice] = useState<ConfirmOutcome | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  // One POST per confirmation link, though React runs an effect twice in development.
+  const confirming = useRef(false);
+
+  useEffect(() => {
+    const secret = readChatLink(location.search);
+    if (secret === null || confirming.current) return;
+    confirming.current = true;
+    // The secret leaves the address before anything else, so Back does not bring it
+    // back. It lives only in this closure: never stored, never drawn.
+    navigate(
+      { pathname: location.pathname, search: stripChatLink(location.search), hash: location.hash },
+      { replace: true },
+    );
+    confirmChatLink(secret)
+      .then((link) => setChatNotice(confirmedWords(link)))
+      .catch((err) => setChatNotice(confirmFailedWords(err)))
+      .finally(() => {
+        confirming.current = false;
+        void reloadChat();
+      });
+  }, [location.search, location.pathname, location.hash, navigate, reloadChat]);
+
   const { reload: reloadAttention } = useAttentionContext();
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupRunError, setBackupRunError] = useState<string | null>(null);
@@ -349,6 +386,9 @@ export function SettingsPage() {
           onChoose={(home) => void onChooseHome(home)}
         />
       )}
+
+      <ChatAccountsCard chat={chat} notice={chatNotice} now={chatNow} onChanged={() => void reloadChat()} />
+      {chatError && homeCardApplies(me) && <p className="text-danger">{chatError}</p>}
 
       <Card>
         <h2 className="hatch-section-title">Confirmations</h2>

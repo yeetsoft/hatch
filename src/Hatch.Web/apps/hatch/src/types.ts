@@ -3908,6 +3908,40 @@ export interface ChatWorkspace {
   projectIds: number[];
 }
 
+/** The caller's link in a chat workspace. Mirrors MeChatLinkDto. `expiresAt`
+    is when a waiting link stops working; null once linked. */
+export interface MeChatLink {
+  id: number;
+  state: 'waiting' | 'linked';
+  memberName: string;
+  expiresAt: string | null;
+}
+
+/** A workspace the caller may see, and their link in it. Mirrors MeChatWorkspaceDto. */
+export interface MeChatWorkspace {
+  id: number;
+  name: string;
+  link: MeChatLink | null;
+}
+
+/** Where the caller's Slack links stand. Mirrors MeChatDto. */
+export interface MeChat {
+  linksOn: boolean;
+  workspaces: MeChatWorkspace[];
+}
+
+/** A Slack member to pick oneself from. Mirrors MeChatMemberDto; no email. */
+export interface MeChatMember {
+  id: string;
+  name: string;
+  displayName: string | null;
+}
+
+/** The member whose email the caller signed in with, or null. Mirrors MeChatSuggestionDto. */
+export interface MeChatSuggestion {
+  member: MeChatMember | null;
+}
+
 /** What is waiting to be sent to one workspace, and what the chat service last
     said. Mirrors ChatWorkspaceDeliveryDto. */
 export interface ChatWorkspaceDelivery {
