@@ -22,6 +22,9 @@ public sealed class ChatLinks(IOptions<HatchOptions> options)
     /// <summary>The page where questions are answered, or null.</summary>
     public string? Ballot() => Origin is { } origin ? $"{origin}/ballot" : null;
 
+    /// <summary>The Settings page, where a Slack account is linked, or null.</summary>
+    public string? Settings() => Origin is { } origin ? $"{origin}/settings" : null;
+
     /// <summary>
     /// Where a person confirms a Slack link: Settings, with the secret in the
     /// query, which the page reads and posts. Null when there is no address.

@@ -153,6 +153,19 @@ internal sealed class FakeChatProvider : IChatProvider
     public Task<ChatSendResult> UpdateAsync(string token, string channelId, string messageId, ChatMessageContent content, CancellationToken ct) =>
         Send(new SendCall("update", token, channelId, messageId, content));
 
+    /// <summary>Every reply to a button press, in order, whatever the script answered.</summary>
+    public List<(string Url, ChatMessageContent Content)> Replies { get; } = [];
+
+    /// <summary>Answers each reply; may throw. Unset, a reply is sent.</summary>
+    public Func<string, ChatMessageContent, ChatSendResult>? ReplyScript { get; set; }
+
+    public Task<ChatSendResult> ReplyAsync(string replyUrl, ChatMessageContent content, CancellationToken ct)
+    {
+        Replies.Add((replyUrl, content));
+
+        return Task.FromResult(ReplyScript?.Invoke(replyUrl, content) ?? ChatSendResult.Sent(null));
+    }
+
     /// <summary>What <see cref="ListenAsync"/> does for an app-level token. A token with no script calls <c>opened</c> and waits to be cancelled.</summary>
     public Dictionary<string, ListenScript> Listens { get; } = new();
 

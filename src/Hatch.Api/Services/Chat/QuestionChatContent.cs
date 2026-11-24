@@ -10,6 +10,13 @@ namespace Hatch.Api.Services.Chat;
 /// </summary>
 public static class QuestionChatContent
 {
+    /// <summary>
+    /// The line saying who answered and with what. A reply to a refused press uses
+    /// this too, so the two cannot be worded apart.
+    /// </summary>
+    public static string AnswerLine(string? answeredBy, string answerBody, bool lookBack) =>
+        $"{(lookBack ? "A program" : answeredBy)} answered: {answerBody}";
+
     /// <param name="answeredBy">The answer's author, shown unless <paramref name="lookBack"/>. Null while unanswered.</param>
     /// <param name="answerBody">The latest answer's own text, with no history of earlier ones. Null while unanswered.</param>
     /// <param name="lookBack">True when every answer so far is a key's - see <see cref="Questions.IsLookBack"/> - so the message names no key.</param>
@@ -26,7 +33,7 @@ public static class QuestionChatContent
         lines.Add($"Level: {level}");
 
         if (answerBody is not null)
-            lines.Add($"{(lookBack ? "A program" : answeredBy)} answered: {answerBody}");
+            lines.Add(AnswerLine(answeredBy, answerBody, lookBack));
 
         return new ChatMessageContent(
             $"{issueKey} {issueTitle}",

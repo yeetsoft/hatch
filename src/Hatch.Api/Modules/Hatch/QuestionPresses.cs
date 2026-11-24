@@ -41,13 +41,15 @@ public enum PressCase
 /// <param name="AnsweredBy">For <see cref="PressCase.AlreadyAnswered"/>: who gave the latest answer.</param>
 /// <param name="AnsweredByKind">For <see cref="PressCase.AlreadyAnswered"/>: an <see cref="ActorKind"/>.</param>
 /// <param name="AnswerBody">For <see cref="PressCase.AlreadyAnswered"/>: what the latest answer said.</param>
+/// <param name="LookBack">For <see cref="PressCase.AlreadyAnswered"/>: true when the question's message would say a program answered.</param>
 public sealed record PressOutcome(
     PressCase Case,
     string? IssueKey = null,
     long? QuestionId = null,
     string? AnsweredBy = null,
     string? AnsweredByKind = null,
-    string? AnswerBody = null);
+    string? AnswerBody = null,
+    bool LookBack = false);
 
 /// <summary>
 /// Answers a question from a press on its button in chat, as the person whose
@@ -145,7 +147,12 @@ public sealed class QuestionPresses(
             .Select(a => new { a.Author, a.AuthorKind, a.Body })
             .ToListAsync(ct);
         if (given.LastOrDefault() is { } latest)
-            return new PressOutcome(PressCase.AlreadyAnswered, issueKey, questionId, latest.Author, latest.AuthorKind, latest.Body);
+        {
+            // The rule the message is built with, so the reply words the answer the same way.
+            var lookBack = Questions.IsLookBack(question.Level, question.IsTerminal, given.Select(g => g.AuthorKind).ToList());
+            return new PressOutcome(
+                PressCase.AlreadyAnswered, issueKey, questionId, latest.Author, latest.AuthorKind, latest.Body, lookBack);
+        }
 
         if (Questions.IsLookBack(question.Level, question.IsTerminal, [])) return Outcome(PressCase.WorkWentAhead);
 

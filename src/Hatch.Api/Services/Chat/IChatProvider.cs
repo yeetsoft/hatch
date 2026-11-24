@@ -75,6 +75,14 @@ public interface IChatProvider
     Task<ChatSendResult> UpdateAsync(string token, string channelId, string messageId, ChatMessageContent content, CancellationToken ct);
 
     /// <summary>
+    /// Answers one button press, in a reply only the presser sees, at the address
+    /// the service gave for that press. The address is the credential, so there is
+    /// no token. Never throws, and never puts the address in a log line or in what
+    /// it returns. A reply that cannot be sent is dropped: the caller does not retry.
+    /// </summary>
+    Task<ChatSendResult> ReplyAsync(string replyUrl, ChatMessageContent content, CancellationToken ct);
+
+    /// <summary>
     /// Opens the service's live connection with an app-level token and listens
     /// until it ends: <paramref name="opened"/> is awaited once the service says
     /// the connection is ready, and <paramref name="pressed"/> is called, and

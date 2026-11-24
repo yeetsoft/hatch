@@ -555,6 +555,39 @@ level change updates the message's level line alone.
 A long question is cut to fit Slack's own limit, the same as any message, and
 its links are always kept.
 
+### When a press is refused
+
+A press on a button that answers the question gets no reply. A press that
+answers nothing gets one reply, in words that say why, and only the person who
+pressed can see it. It does not change the question's message, and nothing in
+the channel shows it. Each reply is below, headed by its title, then what it
+means and what to do.
+
+A reply is not sent again if it fails. Slack may have refused it, or been out of
+reach. Nothing is queued, no finding opens, and the press's answer, if it made
+one, stands. If you see no reply, answer from the ticket or the
+[Ballot](questions-and-decisions#looking-back) instead.
+
+- **Link your Slack account to answer from here.** Hatch does not know which
+  person you are in this workspace, so it will not answer as you. Link your
+  account in **Settings**, as in [Link your Slack account](#link-your-slack-account),
+  then press the button again. The reply links to Settings where Hatch has a
+  public address, and names it where it has none.
+- **Your Hatch account cannot see this project.** Ask an admin to add you to it,
+  then press the button again. The reply names no ticket, project or question,
+  because you cannot see them.
+- **This question already has an answer.** It says who answered and with what,
+  the same way the question's message does: a program is not named. Nothing is
+  needed. To change the answer, use the ticket or the Ballot.
+- **The work already went ahead on this question.** The ticket closed before
+  anybody answered. An answer now would overturn that
+  decision, so the button does not make it. Open the **Ballot** to keep the
+  decision or overturn it.
+- **This button no longer works.** The message is not one Hatch sent, or the
+  option is no longer on the question. Hatch cannot act on it. Answer the
+  question from Hatch. The reply links to the ticket where Hatch has found one,
+  and to the Ballot where it has not.
+
 ## Link your Slack account
 
 Any signed-in person can tell Hatch which Slack member they are, in each
