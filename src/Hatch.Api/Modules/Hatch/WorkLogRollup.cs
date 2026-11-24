@@ -255,6 +255,9 @@ public static class WorkLogRollup
     /// Four reads, and none returns a row per session in the range: the totals
     /// (one row, summed by the database), the page (already sorted and cut to
     /// <paramref name="limit"/>), the top reads (see below) and the two bounds.
+    /// A <paramref name="top"/> adds one more, the heaviest sessions by tokens -
+    /// its own read in every sort, so the totals, the top reads and the bounds
+    /// are still worked out once.
     /// The page's order is the one <see cref="SessionsFoldedAsync"/> sorts by,
     /// which stays as the in-memory answer it is checked against: the sort
     /// column descending with a row that has none last, then <c>EndedAt</c>
@@ -279,6 +282,11 @@ public static class WorkLogRollup
     /// rows and the totals but not the <c>first</c>/<c>last</c> bounds, which
     /// describe the log and ignore the range.
     /// </param>
+    /// <param name="top">
+    /// How many of the heaviest sessions by total tokens to answer in
+    /// <see cref="WorkLogSessionsDto.Top"/>, whatever <paramref name="sort"/> is;
+    /// null leaves it null. Ties break as the page's do.
+    /// </param>
     public static async Task<WorkLogSessionsDto> SessionsAsync(
         HatchContext db,
         DateTimeOffset from,
@@ -288,6 +296,7 @@ public static class WorkLogRollup
         WorkLogSort sort,
         int limit,
         string? outcome,
+        int? top,
         CancellationToken ct)
     {
         // One tree walk, shared with the two bound reads below - as SeriesAsync
@@ -312,42 +321,26 @@ public static class WorkLogRollup
                 w.InputTokens + w.OutputTokens + w.CacheCreationTokens + w.CacheReadTokens),
         };
 
-        var page = await ranked
+        var page = await AsRows(ranked
             // Every sort is descending, and both tiebreaks are too - so two
             // reads of one filter come back in one order.
             .ThenByDescending(w => w.EndedAt)
             .ThenByDescending(w => w.Id)
-            .Take(limit)
-            .Select(w => new SessionRow(
-                w.Id,
-                w.SessionId,
-                w.Issue!.Project!.Key,
-                w.Issue!.Number,
-                w.Issue!.Title,
-                w.StartedAt,
-                w.EndedAt,
-                w.DurationMs,
-                w.Title,
-                w.Described,
-                w.IsError,
-                w.Turns,
-                w.CostUsd,
-                w.InputTokens,
-                w.OutputTokens,
-                w.CacheCreationTokens,
-                w.CacheReadTokens,
-                w.Requests,
-                w.PeakContextTokens,
-                w.PromptChars,
-                w.Agent,
-                w.DispatchModel,
-                w.ModelPlacement,
-                w.ModelDigest,
-                // The page does not draw them; the top reads are their own read.
-                null,
-                w.Outcome,
-                w.Reason))
+            .Take(limit))
             .ToListAsync(ct);
+
+        // Asked for, the top is its own read in every sort - the headline
+        // descending, whatever the table is sorted by - so the page never ranks
+        // a capped sample. Same order, same shape as a tokens page.
+        var topRows = top is { } n
+            ? await AsRows(entries
+                .OrderByDescending(w =>
+                    w.InputTokens + w.OutputTokens + w.CacheCreationTokens + w.CacheReadTokens)
+                .ThenByDescending(w => w.EndedAt)
+                .ThenByDescending(w => w.Id)
+                .Take(n))
+                .ToListAsync(ct)
+            : null;
 
         var topReads = db.Database.IsNpgsql()
             ? await WorkLogSums.TopReadsAsync(db, entries, ct)
@@ -361,8 +354,44 @@ public static class WorkLogRollup
             await FirstEndedAsync(db, scope, projectIds, ascending: true, ct),
             await FirstEndedAsync(db, scope, projectIds, ascending: false, ct),
             page.ConvertAll(Dto),
-            topReads);
+            topReads,
+            topRows?.ConvertAll(Dto));
     }
+
+    /// <summary>
+    /// A page of sessions as the rows the table draws: the same columns for the
+    /// table and for the top, and no <c>Reads</c> - the top reads are their own
+    /// read.
+    /// </summary>
+    private static IQueryable<SessionRow> AsRows(IQueryable<EfHatchWorkLogEntry> page) =>
+        page.Select(w => new SessionRow(
+            w.Id,
+            w.SessionId,
+            w.Issue!.Project!.Key,
+            w.Issue!.Number,
+            w.Issue!.Title,
+            w.StartedAt,
+            w.EndedAt,
+            w.DurationMs,
+            w.Title,
+            w.Described,
+            w.IsError,
+            w.Turns,
+            w.CostUsd,
+            w.InputTokens,
+            w.OutputTokens,
+            w.CacheCreationTokens,
+            w.CacheReadTokens,
+            w.Requests,
+            w.PeakContextTokens,
+            w.PromptChars,
+            w.Agent,
+            w.DispatchModel,
+            w.ModelPlacement,
+            w.ModelDigest,
+            null,
+            w.Outcome,
+            w.Reason));
 
     /// <summary>
     /// <see cref="SessionsAsync"/>, folded in memory: every session in the range
@@ -379,6 +408,7 @@ public static class WorkLogRollup
         WorkLogSort sort,
         int limit,
         string? outcome,
+        int? top,
         CancellationToken ct)
     {
         // One tree walk, shared with the two bound reads below - as SeriesAsync
@@ -444,7 +474,15 @@ public static class WorkLogRollup
             await FirstEndedAsync(db, scope, projectIds, ascending: true, ct),
             await FirstEndedAsync(db, scope, projectIds, ascending: false, ct),
             ordered,
-            FoldReads(rows.Select(r => r.Reads)));
+            FoldReads(rows.Select(r => r.Reads)),
+            top is { } n
+                ? rows.OrderByDescending(Tokens)
+                    .ThenByDescending(r => r.EndedAt)
+                    .ThenByDescending(r => r.Id)
+                    .Take(n)
+                    .Select(Dto)
+                    .ToList()
+                : null);
     }
 
     /// <summary>

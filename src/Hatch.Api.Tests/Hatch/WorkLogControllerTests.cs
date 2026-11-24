@@ -892,6 +892,105 @@ public class WorkLogControllerTests
         Assert.Equal("a limit is between 1 and 500 - not 501", await h.SessionRefusalAsync(limit: 501));
     }
 
+    // ---- The top, asked for beside the table ----
+
+    [Fact]
+    public async Task WithoutATop_TheAnswerCarriesNone()
+    {
+        var h = await NewAsync();
+        await h.SpendAsync(await h.FileAsync(), 1_000, Now.AddHours(-1));
+
+        Assert.Null((await h.SessionsAsync()).Top);
+    }
+
+    [Fact]
+    public async Task ATop_IsRankedByTokens_WhateverTheTableIsSortedByOrCappedTo_AndTheTotalsAreTheSame()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.SpendAsync(issue, 5_000, Now.AddHours(-4));
+        await h.SpendAsync(issue, 90_000, Now.AddHours(-3));
+        await h.SpendAsync(issue, 7_000, Now.AddHours(-2));
+        await h.SpendAsync(issue, 30_000, Now.AddHours(-1));
+
+        var plain = await h.SessionsAsync(sort: "ended", limit: 2);
+        var asked = await h.SessionsAsync(sort: "ended", limit: 2, top: 3);
+
+        Assert.Equal([30_000, 7_000], asked.Sessions.Select(s => s.TotalTokens));
+        Assert.Equal([90_000, 30_000, 7_000], asked.Top!.Select(s => s.TotalTokens));
+        Assert.Equal(plain.Sessions, asked.Sessions);
+        Assert.Equal(plain.Totals, asked.Totals);
+        Assert.Equal(plain.TopReads, asked.TopReads);
+        Assert.Equal(4, asked.Totals.Sessions);
+    }
+
+    [Fact]
+    public async Task ATop_AtTheTokensSort_IsTheSameRowsAsTheTable()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        for (var i = 1; i <= 4; i++) await h.SpendAsync(issue, i * 1_000, Now.AddHours(-i));
+
+        var sessions = await h.SessionsAsync(sort: "tokens", limit: 3, top: 3);
+
+        Assert.Equal(sessions.Sessions, sessions.Top);
+    }
+
+    [Fact]
+    public async Task ATop_BreaksATieOnTokens_OnEndedThenId()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var older = await h.SpendAsync(issue, 4_000, Now.AddHours(-3));
+        var newer = await h.SpendAsync(issue, 4_000, Now.AddHours(-1));
+        var sameEndA = await h.SpendAsync(issue, 4_000, Now.AddHours(-2));
+        var sameEndB = await h.SpendAsync(issue, 4_000, Now.AddHours(-2));
+
+        var top = (await h.SessionsAsync(sort: "cost", top: 4)).Top!;
+
+        Assert.Equal([newer, sameEndB, sameEndA, older], top.Select(s => s.Id));
+    }
+
+    [Fact]
+    public async Task ATop_IsNarrowedByTheOutcomeTheProjectAndTheAncestor_AsTheTableIs()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the effort");
+        var story = await h.FileAsync("story", "under it", parentKey: epic.Key);
+        var elsewhere = await h.FileAsync("epic", "another effort");
+        var (b, _) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+
+        await h.SpendAsync(story, 1_000, Now.AddHours(-5), outcome: "dropped");
+        await h.SpendAsync(story, 2_000, Now.AddHours(-4), outcome: "worked");
+        await h.SpendAsync(elsewhere, 900_000, Now.AddHours(-3), outcome: "dropped");
+        await h.SpendAsync(inB, 800_000, Now.AddHours(-2), outcome: "dropped");
+
+        var byOutcome = await h.SessionsAsync(outcome: "dropped", top: 5);
+        var byProject = await h.SessionsAsync(projectIds: [h.ProjectId], top: 5);
+        var byAncestor = await h.SessionsAsync(ancestorKey: epic.Key, top: 5);
+        var both = await h.SessionsAsync(ancestorKey: epic.Key, outcome: "dropped", top: 5);
+
+        Assert.Equal([900_000, 800_000, 1_000], byOutcome.Top!.Select(s => s.TotalTokens));
+        Assert.Equal([900_000, 2_000, 1_000], byProject.Top!.Select(s => s.TotalTokens));
+        Assert.Equal([2_000, 1_000], byAncestor.Top!.Select(s => s.TotalTokens));
+        Assert.Equal([1_000], both.Top!.Select(s => s.TotalTokens));
+        Assert.Equal(byOutcome.Sessions, byOutcome.Top);
+        Assert.Equal(byAncestor.Sessions, byAncestor.Top);
+    }
+
+    [Fact]
+    public async Task ATopOutsideTheCap_IsRefusedWithTheCapInIt()
+    {
+        var h = await NewAsync();
+
+        Assert.Equal("a top is between 1 and 500 - not 0", await h.SessionRefusalAsync(top: 0));
+        Assert.Equal("a top is between 1 and 500 - not 501", await h.SessionRefusalAsync(top: 501));
+    }
+
     // ---- Folded by playbook ----
 
     [Fact]
@@ -1433,9 +1532,10 @@ public class WorkLogControllerTests
             string? sort = null,
             int limit = 100,
             IReadOnlyList<int>? projectIds = null,
-            string? outcome = null) =>
+            string? outcome = null,
+            int? top = null) =>
             Value(await History.GetSessions(
-                from, to, ancestorKey, sort, limit, projectIds?.ToList(), outcome, default));
+                from, to, ancestorKey, sort, limit, projectIds?.ToList(), outcome, top, default));
 
         public async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
             string? from = null,
@@ -1459,10 +1559,11 @@ public class WorkLogControllerTests
             string? sort = null,
             int limit = 100,
             IReadOnlyList<int>? projectIds = null,
-            string? outcome = null)
+            string? outcome = null,
+            int? top = null)
         {
             var result = await History.GetSessions(
-                from, to, ancestorKey, sort, limit, projectIds?.ToList(), outcome, default);
+                from, to, ancestorKey, sort, limit, projectIds?.ToList(), outcome, top, default);
             return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
         }
 
