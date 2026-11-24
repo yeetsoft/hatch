@@ -4757,6 +4757,31 @@ button.hatch-chip {
   }
 }
 
+/* What waits to be sent to a workspace, in the row. Wraps in place, so a long
+   sentence from Slack never widens the page. */
+.hatch-chat-delivery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-chat-links-note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 40rem) {
+  .hatch-chat-delivery-cell:empty {
+    display: none;
+  }
+
+  .hatch-chat-delivery-cell {
+    grid-column: 1 / -1;
+  }
+}
+
 /* The projects a workspace is bound to, and the rooms it posts to. Every flex
    row wraps and may shrink to nothing, so a long project or channel name wraps
    in place instead of widening the page. */

@@ -5656,8 +5656,8 @@ The file-a-bug button is `FindingBugDialog`, shared with the attention panel.
 
 A finding is a stored row a person can read and act on, with the evidence
 beside it - `train-ready` below is the first check that opens one, `ready-unclaimed`,
-`ready-no-runner`, `claim-repeating`, `questions-waiting` and `standing-still`
-follow it, and a person files a bug from one (**Filing a bug**, below). `FindingCheck` (`GooseFindings.cs`) is the one
+`ready-no-runner`, `claim-repeating`, `questions-waiting`, `standing-still` and
+`chat-sends-failing` follow it, and a person files a bug from one (**Filing a bug**, below). `FindingCheck` (`GooseFindings.cs`) is the one
 reconciler every such check shares, so none of them can disagree about when a
 clock starts, when a row opens, or when it closes: a subclass says only what it
 is watching (`ReadAsync`: a sentence for the run, the check's own bound, and
@@ -5944,6 +5944,26 @@ the first `claim_released` or `claim_cleared` after it, or `not released`; or
 `none`) and `pull request` (the recorded url, or `none recorded`). The check
 moves, claims and files nothing. `FindingBugs` titles a bug from it `Ticket
 standing still: <key>`.
+
+#### `chat-sends-failing`
+
+The goose's finding for a chat workspace or room whose messages keep failing to
+send (`ChatSendsFailingCheck`, HA-2777). It reads the sender's own state:
+`SendFailingSince` on a workspace (the account or the network) and on a room
+(one channel while the workspace's others work). One candidate per workspace
+with it set (subject `workspace:{id}`) and per room with it set (`room:{id}`),
+token `failing`, no project, and `Began` is `SendFailingSince`, so the clock is
+the sender's and does not restart on a sweep.
+
+Its bound is `Hatch__GooseChatSendMinutes` (default 60, because the sender's
+backoff tops out at 10 minutes, so an hour is six full retries; `0` turns the
+check off and returns no candidate, a negative falls back to 60). The sentence
+names the workspace or the room and its workspace, how long, and what Slack said
+(`LastRefusal`); the evidence is the workspace or room and how many messages
+wait. It has no closing code of its own: the sender clears `SendFailingSince` on
+a success, and removing the room or workspace drops the candidate, so the base
+closes the finding. `FindingBugs` titles a bug from it `Messages to a chat room
+are not getting through`.
 
 ## Reports
 

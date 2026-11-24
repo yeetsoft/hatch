@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Chat;
@@ -366,6 +367,88 @@ public class ChatControllerTests
     }
 
     [Fact]
+    public async Task GetDelivery_CountsWaitingAndDropped_PerWorkspace_AndCarriesWhatSlackSaid()
+    {
+        var h = NewHarness(publicUrl: "https://hatch.example.com");
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var globex = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(GlobexToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        var room = await AddRoomAsync(h.Db, acme.Id);
+
+        h.Db.ChatMessages.AddRange(
+            Message(room, acme.Id, a, "issue:1"),
+            Message(room, acme.Id, a, "issue:2"),
+            Message(room, acme.Id, a, "issue:3", sent: true),
+            Message(room, acme.Id, a, "issue:4", dropped: true));
+        var row = await h.Db.ChatWorkspaces.SingleAsync(w => w.Id == acme.Id);
+        row.LastRefusal = "ratelimited";
+        row.LastRefusalAt = Now;
+        row.SendFailingSince = Now.AddMinutes(-5);
+        await h.Db.SaveChangesAsync();
+
+        var delivery = Value(await h.Chat.GetDelivery(default));
+
+        Assert.True(delivery.LinksOn);
+        var acmeRow = delivery.Workspaces.Single(w => w.WorkspaceId == acme.Id);
+        Assert.Equal(2, acmeRow.Waiting);
+        Assert.Equal(1, acmeRow.Dropped);
+        Assert.Equal("ratelimited", acmeRow.LastSaid);
+        Assert.Equal(Now, acmeRow.LastSaidAt);
+        Assert.Equal(Now.AddMinutes(-5), acmeRow.FailingSince);
+
+        var globexRow = delivery.Workspaces.Single(w => w.WorkspaceId == globex.Id);
+        Assert.Equal(0, globexRow.Waiting);
+        Assert.Equal(0, globexRow.Dropped);
+        Assert.Null(globexRow.LastSaid);
+        Assert.Null(globexRow.FailingSince);
+    }
+
+    [Fact]
+    public async Task GetDelivery_WithNoPublicAddress_SaysLinksAreOff()
+    {
+        var h = NewHarness();
+
+        Assert.False(Value(await h.Chat.GetDelivery(default)).LinksOn);
+    }
+
+    [Fact]
+    public async Task GetDelivery_AScopedAdmin_CountsOnlyWhatIsAboutAProjectTheySee()
+    {
+        var h = NewHarness();
+        var acme = Value(await h.Chat.ConnectWorkspace(new ChatTokenRequest(AcmeToken), default));
+        var a = await AddProjectAsync(h.Db, "AAA");
+        var b = await AddProjectAsync(h.Db, "BBB");
+        var room = await AddRoomAsync(h.Db, acme.Id);
+        h.Db.ChatMessages.AddRange(
+            Message(room, acme.Id, a, "issue:1"),
+            Message(room, acme.Id, b, "issue:2"),
+            Message(room, acme.Id, b, "issue:3", dropped: true));
+        await h.Db.SaveChangesAsync();
+
+        var everything = Value(await h.Chat.GetDelivery(default)).Workspaces.Single();
+        var scoped = Value(await h.ScopedChat(new VisibleProjects(false, new HashSet<int> { a })).GetDelivery(default)).Workspaces.Single();
+
+        Assert.Equal((2, 1), (everything.Waiting, everything.Dropped));
+        Assert.Equal((1, 0), (scoped.Waiting, scoped.Dropped));
+    }
+
+    private static async Task<int> AddRoomAsync(HatchContext db, int workspaceId)
+    {
+        var room = new EfHatchChatRoom { WorkspaceId = workspaceId, ExternalId = "C1", Name = "general", CreatedAt = Now, UpdatedAt = Now };
+        db.ChatRooms.Add(room);
+        await db.SaveChangesAsync();
+
+        return room.Id;
+    }
+
+    private static EfHatchChatMessage Message(int room, int workspace, int project, string subject, bool sent = false, bool dropped = false) => new()
+    {
+        RoomId = room, WorkspaceId = workspace, ProjectId = project, Kind = "changelog", Subject = subject,
+        Content = "{}", QueuedAt = Now, PendingSince = Now,
+        SentRevision = sent ? 1 : 0, DroppedAt = dropped ? Now : null,
+    };
+
+    [Fact]
     public async Task GetChannels_ListsFromTheProvider()
     {
         var h = NewHarness();
@@ -601,10 +684,11 @@ public class ChatControllerTests
         public required CapturingLogger Log { get; init; }
         public required DbContextOptions<HatchContext> Options { get; init; }
         public required SecretProtector Protector { get; init; }
+        public required ChatLinks Links { get; init; }
 
         /// <summary>A second controller over the same database, scoped as <paramref name="visible"/> sees it.</summary>
         public ChatController ScopedChat(VisibleProjects visible) =>
-            new(ScopeSeed.Request(Options, visible), Provider, new StubCaller("Root"), Time, Protector, Log)
+            new(ScopeSeed.Request(Options, visible), Provider, new StubCaller("Root"), Time, Protector, Links, Log)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             };
@@ -613,18 +697,19 @@ public class ChatControllerTests
         public string? Open(string stored) => Protector.Unprotect(stored, SecretStores.ChatWorkspace("fake", "TACME"))?.Reveal();
     }
 
-    private static Harness NewHarness(bool withKey = true)
+    private static Harness NewHarness(bool withKey = true, string publicUrl = "")
     {
         var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         var db = new HatchContext(options);
         var provider = new FakeChatProvider();
         var time = new FakeTimeProvider(Now);
         var log = new CapturingLogger();
+        var links = new ChatLinks(Options.Create(new HatchOptions { PublicBaseUrl = publicUrl }));
         var protector = new SecretProtector(new SecretCipher(withKey ? RandomNumberGenerator.GetBytes(32) : null, null));
 
         return new Harness
         {
-            Chat = new ChatController(db, provider, new StubCaller("Root"), time, protector, log)
+            Chat = new ChatController(db, provider, new StubCaller("Root"), time, protector, links, log)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
             },
@@ -634,6 +719,7 @@ public class ChatControllerTests
             Log = log,
             Options = options,
             Protector = protector,
+            Links = links,
         };
     }
 

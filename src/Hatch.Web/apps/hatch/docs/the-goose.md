@@ -97,6 +97,7 @@ All eight are server settings, set in the environment like any other
 | `Hatch__GooseNoRunnerMinutes` | `15` | How long a project may have ready work that no live runner can take before the `ready-no-runner` check below opens a finding. `0` turns the check off; a negative value falls back to `15`. |
 | `Hatch__GooseRepeatClaims` | `5` | How many claims by one runner on one ticket, with the ticket not moving, make the `claim-repeating` check below open a finding. `0` turns the check off; less than that falls back to `5`. |
 | `Hatch__GooseQuestionHours` | `24` | How long a question may wait before the `questions-waiting` check below opens a finding. `0` turns the check off; less than that falls back to `24`. |
+| `Hatch__GooseChatSendMinutes` | `60` | How many minutes sends to a chat workspace or room may keep failing before the `chat-sends-failing` check below opens a finding. `0` turns the check off; less than that falls back to `60`. |
 | `Hatch__GooseStandingHours` | `4` | How many hours a ticket may stand in one column, with no runner on it and nobody it is waiting for, before the `standing-still` check below opens a finding. `0` turns the check off; less than that falls back to `4`. |
 
 Each sweep also deletes the runs whose last sweep is older than the keep
@@ -268,6 +269,24 @@ ticket changes column, when a runner claims it, or when it stops being watched.
 
 The check only says what it saw. It moves nothing, claims nothing and files
 nothing.
+
+### `chat-sends-failing`
+
+Watches the chat workspaces and rooms that messages are failing to reach (see
+[Hatch in Slack](hatch-in-slack#when-slack-is-down)). The sender keeps when a
+run of failures began on the workspace, for an account or network failure, and
+on the room, for one channel failing while the rest work. The check opens one
+finding per workspace and per room whose run has lasted
+`Hatch__GooseChatSendMinutes` (default 60). Sixty because the sender's wait
+tops out at ten minutes, so an hour is six full retries and not a blip.
+
+The sentence names the workspace, or the room and its workspace, how long it
+has been failing, and what Slack said. The evidence gives the workspace or room
+and how many messages wait. It names no project, so only a caller who may see
+everything reads it. It closes by itself when a send to that room or workspace
+works, or when the room or workspace is removed. `0` turns the check off and
+closes what is open. A bug filed from it is titled *Messages to a chat room are
+not getting through*.
 
 ### How a finding reaches the panel
 

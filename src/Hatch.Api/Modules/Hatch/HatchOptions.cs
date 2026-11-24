@@ -242,6 +242,19 @@ public class HatchOptions
     public int GooseStandingHours { get; set; } = 4;
 
     /// <summary>
+    /// How many minutes sends to a chat workspace or room may keep failing
+    /// before the <c>chat-sends-failing</c> check opens a finding - see
+    /// <see cref="ChatSendsFailingCheck"/>.
+    /// </summary>
+    /// <remarks>
+    /// Sixty, because the sender's backoff tops out at ten minutes, so an hour is
+    /// six full retries and not a blip. Zero turns the check off, as
+    /// <see cref="GooseTrainReadyMinutes"/>'s zero does. A negative falls back to
+    /// the default. The guard is <see cref="GooseSettings.ChatSendBound"/>.
+    /// </remarks>
+    public int GooseChatSendMinutes { get; set; } = 60;
+
+    /// <summary>
     /// Absolute base URL of this Hatch install as it should be *printed* -
     /// e.g. "https://home.example.com". Empty by default and supplied at
     /// deploy (compose.yaml passes <c>Hatch__PublicBaseUrl</c> from the

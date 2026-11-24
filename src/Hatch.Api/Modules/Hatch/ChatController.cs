@@ -34,7 +34,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/chat")]
 public class ChatController(
     HatchContext db, IChatProvider provider, ICallerIdentity caller, TimeProvider time,
-    SecretProtector protector, ILogger<ChatController> logger) : ControllerBase
+    SecretProtector protector, ChatLinks links, ILogger<ChatController> logger) : ControllerBase
 {
     /// <summary>Every connected workspace, oldest first.</summary>
     [HttpGet("workspaces")]
@@ -45,6 +45,42 @@ public class ChatController(
         var bound = await BoundProjectsByWorkspaceAsync(ct);
 
         return rows.Select(w => Dto(w, bound.GetValueOrDefault(w.Id, []))).ToList();
+    }
+
+    /// <summary>
+    /// What is waiting to be sent, what was dropped, and what the chat service
+    /// last said, per workspace. Its own route, because these numbers move every
+    /// few seconds and the workspace list does not. The counts come from the
+    /// message query filter, so a scoped admin does not count a message about a
+    /// project hidden from them.
+    /// </summary>
+    [HttpGet("delivery")]
+    [RequireAdmin]
+    public async Task<ActionResult<ChatDeliveryDto>> GetDelivery(CancellationToken ct)
+    {
+        var workspaces = await db.ChatWorkspaces.AsNoTracking().OrderBy(w => w.CreatedAt).ThenBy(w => w.Id)
+            .Select(w => new { w.Id, w.LastRefusal, w.LastRefusalAt, w.SendFailingSince })
+            .ToListAsync(ct);
+
+        var counts = await db.ChatMessages.AsNoTracking()
+            .GroupBy(m => m.WorkspaceId)
+            .Select(g => new
+            {
+                WorkspaceId = g.Key,
+                Waiting = g.Count(m => m.DroppedAt == null && m.SentRevision < m.Revision),
+                Dropped = g.Count(m => m.DroppedAt != null),
+            })
+            .ToDictionaryAsync(c => c.WorkspaceId, ct);
+
+        var rows = workspaces.Select(w =>
+        {
+            counts.TryGetValue(w.Id, out var c);
+
+            return new ChatWorkspaceDeliveryDto(
+                w.Id, c?.Waiting ?? 0, c?.Dropped ?? 0, w.LastRefusal, w.LastRefusalAt, w.SendFailingSince);
+        }).ToList();
+
+        return new ChatDeliveryDto(links.On, rows);
     }
 
     /// <summary>

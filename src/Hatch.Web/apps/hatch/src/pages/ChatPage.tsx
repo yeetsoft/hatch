@@ -3,6 +3,7 @@ import { Button, Card, EmptyState, Field, Modal, PageHeader, Table, Text } from 
 import {
   createChatWorkspace,
   deleteChatWorkspace,
+  getChatDelivery,
   getChatManifest,
   getChatWorkspaces,
   replaceChatToken,
@@ -12,8 +13,10 @@ import { ChatRooms } from '../components/ChatRooms';
 import { CopyMarkdownButton } from '../components/CopyMarkdownButton';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
+import { POLL_MS } from '../lib/refresh';
+import { useLoaded } from '../lib/useLoaded';
 import { useProjects } from '../lib/useProjects';
-import type { ChatWorkspace, Project } from '../types';
+import type { ChatDelivery, ChatWorkspace, ChatWorkspaceDelivery, Project } from '../types';
 
 /**
  * An Admin's view of the chat workspaces Hatch is connected to: connect one by
@@ -35,6 +38,9 @@ export function ChatPage() {
   const [token, setToken] = useState('');
   const [pending, setPending] = useState<ChatWorkspace | null>(null);
   const [busy, setBusy] = useState(false);
+  // What is waiting and what Slack last said move every few seconds, so they
+  // are their own read, kept fresh while the page is on screen.
+  const { data: delivery, reload: reloadDelivery } = useLoaded<ChatDelivery>(getChatDelivery, { everyMs: POLL_MS });
 
   const load = useCallback(async () => {
     try {
@@ -43,6 +49,12 @@ export function ChatPage() {
       setFailure(message(err));
     }
   }, []);
+
+  // After a write that can change what is waiting: a new workspace, a new
+  // token, a removal.
+  const loadAll = useCallback(async () => {
+    await Promise.all([load(), reloadDelivery()]);
+  }, [load, reloadDelivery]);
 
   useEffect(() => {
     void load();
@@ -66,7 +78,7 @@ export function ChatPage() {
       setAddFailure(message(err));
     } finally {
       setBusy(false);
-      await load();
+      await loadAll();
     }
   }
 
@@ -76,7 +88,7 @@ export function ChatPage() {
       await replaceChatToken(workspace.id, typed);
     } finally {
       setBusy(false);
-      await load();
+      await loadAll();
     }
   }
 
@@ -94,7 +106,7 @@ export function ChatPage() {
     } finally {
       setBusy(false);
       setPending(null);
-      await load();
+      await loadAll();
     }
   }
 
@@ -115,6 +127,12 @@ export function ChatPage() {
 
       {failure && <p className="text-danger">{failure}</p>}
 
+      {delivery && !delivery.linksOn && (
+        <Card>
+          <LinksOffNote />
+        </Card>
+      )}
+
       {workspaces?.length === 0 && <EmptyState message="No workspace is connected." />}
 
       {workspaces && workspaces.length > 0 && (
@@ -122,6 +140,7 @@ export function ChatPage() {
           <WorkspaceTable
             workspaces={workspaces}
             projects={projects}
+            delivery={delivery?.workspaces ?? []}
             now={new Date()}
             busy={busy}
             onBound={bound}
@@ -211,6 +230,7 @@ export function AddTokenForm({
 export function WorkspaceTable({
   workspaces,
   projects,
+  delivery = [],
   now,
   busy,
   onBound,
@@ -219,6 +239,8 @@ export function WorkspaceTable({
 }: {
   workspaces: ChatWorkspace[];
   projects: Project[];
+  /** What waits to be sent to each workspace; a workspace with no entry shows nothing. */
+  delivery?: ChatWorkspaceDelivery[];
   now: Date;
   busy: boolean;
   /** A workspace's bound set changed; handed the set the server answered with. */
@@ -234,6 +256,7 @@ export function WorkspaceTable({
           <th>Workspace</th>
           <th>Token</th>
           <th>Projects</th>
+          <th>Sending</th>
           <th>Connected</th>
           <th />
         </tr>
@@ -248,6 +271,9 @@ export function WorkspaceTable({
             <td className="hatch-chat-projects-cell">
               <ChatBindings workspace={workspace} projects={projects} busy={busy} onChange={onBound} />
             </td>
+            <td className="hatch-chat-delivery-cell">
+              <DeliveryState state={delivery.find((d) => d.workspaceId === workspace.id)} now={now} />
+            </td>
             <td>{agoPhrase(workspace.createdAt, now)}</td>
             <td className="hatch-chat-actions-cell">
               <div className="hatch-chat-actions">
@@ -261,6 +287,37 @@ export function WorkspaceTable({
         ))}
       </tbody>
     </Table>
+  );
+}
+
+/** What waits to be sent to a workspace, how many messages were dropped, and
+    the last sentence Slack refused one with and when. A workspace with none of
+    the three draws nothing. */
+export function DeliveryState({ state, now }: { state: ChatWorkspaceDelivery | undefined; now: Date }) {
+  if (!state) return null;
+  const said = state.lastSaid && state.lastSaid.trim() !== '' ? state.lastSaid : null;
+  if (state.waiting === 0 && state.dropped === 0 && !said) return null;
+
+  return (
+    <div className="hatch-chat-delivery">
+      {state.waiting > 0 && <span>{state.waiting} waiting</span>}
+      {state.dropped > 0 && <span className="text-danger">{state.dropped} dropped</span>}
+      {said && (
+        <span>
+          Slack said: {said}
+          {state.lastSaidAt && ` (${agoPhrase(state.lastSaidAt, now)})`}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Said when no public address is set: a message still names its ticket, with no link. */
+export function LinksOffNote() {
+  return (
+    <p className="hatch-chat-links-note">
+      Messages name the ticket with no link. <code>HATCH_PUBLIC_URL</code> sets the address, and with it set they link.
+    </p>
   );
 }
 

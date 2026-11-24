@@ -151,6 +151,21 @@ public record PersonScopeWriteRequest(string? Mode, IReadOnlyList<int>? ProjectI
 public record ChatWorkspaceDto(
     int Id, string Provider, string ExternalId, string Name, bool HasToken, DateTimeOffset CreatedAt, IReadOnlyList<int> ProjectIds);
 
+/// <summary>
+/// What is waiting to be sent to one workspace, and what the chat service last
+/// said. <c>Waiting</c> and <c>Dropped</c> count messages; <c>LastSaid</c> is
+/// the last sentence a send was refused with and <c>LastSaidAt</c> when, both
+/// null while sends work. <c>FailingSince</c> is when the run of failures began.
+/// </summary>
+public record ChatWorkspaceDeliveryDto(
+    int WorkspaceId, int Waiting, int Dropped, string? LastSaid, DateTimeOffset? LastSaidAt, DateTimeOffset? FailingSince);
+
+/// <summary>
+/// Delivery state for every connected workspace. <c>LinksOn</c> is whether
+/// messages can link back to a ticket, which needs the install's public address.
+/// </summary>
+public record ChatDeliveryDto(bool LinksOn, IReadOnlyList<ChatWorkspaceDeliveryDto> Workspaces);
+
 /// <summary>A bot token to connect a workspace with, or to replace its token with.</summary>
 public record ChatTokenRequest(string? Token);
 

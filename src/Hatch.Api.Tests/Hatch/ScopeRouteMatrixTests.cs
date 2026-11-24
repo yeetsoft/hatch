@@ -107,6 +107,7 @@ public class ScopeRouteMatrixTests
         ("BackupController.PostBackupRun", HouseBackup),
         ("ChatController.ConnectWorkspace", ChatBoundIdsPinned),
         ("ChatController.GetManifest", ChatWorkspaces),
+        ("ChatController.GetDelivery", "counts come through the message query filter; pinned in ChatControllerTests"),
         ("ChatController.GetWorkspaces", ChatBoundIdsPinned),
         ("ChatController.RemoveWorkspace", ChatWorkspaces),
         ("ChatController.ReplaceToken", ChatBoundIdsPinned),

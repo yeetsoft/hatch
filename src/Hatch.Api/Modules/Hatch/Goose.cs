@@ -127,6 +127,15 @@ public static class GooseSettings
     /// </summary>
     public static TimeSpan StandingBound(HatchOptions options) => TimeSpan.FromHours(
         options.GooseStandingHours >= 0 ? options.GooseStandingHours : new HatchOptions().GooseStandingHours);
+
+    /// <summary>
+    /// How long sends to a chat room or workspace may keep failing before
+    /// <see cref="ChatSendsFailingCheck"/> opens a finding. Zero turns the check
+    /// off, as <see cref="TrainReadyBound"/>'s zero does, and only a negative
+    /// falls back to the default.
+    /// </summary>
+    public static TimeSpan ChatSendBound(HatchOptions options) => TimeSpan.FromMinutes(
+        options.GooseChatSendMinutes >= 0 ? options.GooseChatSendMinutes : new HatchOptions().GooseChatSendMinutes);
 }
 
 /// <summary>One label and value a <see cref="FindingCheck"/> reported for a finding, as stored in <see cref="EfHatchGooseFinding.Evidence"/>.</summary>

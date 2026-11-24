@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AddTokenForm, ManifestBlock, RemoveDialog, ReplaceTokenForm, WorkspaceTable } from './ChatPage';
-import type { ChatWorkspace, Project } from '../types';
+import { AddTokenForm, DeliveryState, LinksOffNote, ManifestBlock, RemoveDialog, ReplaceTokenForm, WorkspaceTable } from './ChatPage';
+import type { ChatWorkspace, ChatWorkspaceDelivery, Project } from '../types';
 
 // The client reaches lib/clientLogger, which reads `window` at import, and
 // there is no jsdom here.
@@ -25,20 +25,21 @@ const PROJECTS = [project(1, 'AER', 'Aerie'), project(2, 'BEE', 'Hive')];
 const FELLOWSHIP = workspace(1, 'Fellowship');
 const noop = () => {};
 
-describe('the workspace table', () => {
-  const table = (rows: ChatWorkspace[], busy = false) =>
-    renderToStaticMarkup(
-      <WorkspaceTable
-        workspaces={rows}
-        projects={PROJECTS}
-        now={NOW}
-        busy={busy}
-        onBound={noop}
-        onReplace={async () => {}}
-        onRemove={noop}
-      />,
-    );
+const table = (rows: ChatWorkspace[], busy = false, delivery: ChatWorkspaceDelivery[] = []) =>
+  renderToStaticMarkup(
+    <WorkspaceTable
+      workspaces={rows}
+      projects={PROJECTS}
+      delivery={delivery}
+      now={NOW}
+      busy={busy}
+      onBound={noop}
+      onReplace={async () => {}}
+      onRemove={noop}
+    />,
+  );
 
+describe('the workspace table', () => {
   it('shows each workspace by name, with the word Token set and when it was connected', () => {
     const html = table([FELLOWSHIP, workspace(2, 'Youth')]);
     expect(html).toContain('Fellowship');
@@ -75,6 +76,55 @@ describe('the workspace table', () => {
 
   it('disables the row controls while a write is in flight', () => {
     expect(table([FELLOWSHIP], true).match(/disabled=""/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+const delivery = (over: Partial<ChatWorkspaceDelivery> = {}): ChatWorkspaceDelivery => ({
+  workspaceId: 1,
+  waiting: 0,
+  dropped: 0,
+  lastSaid: null,
+  lastSaidAt: null,
+  failingSince: null,
+  ...over,
+});
+
+describe('what is waiting to be sent', () => {
+  const state = (over: Partial<ChatWorkspaceDelivery>) =>
+    renderToStaticMarkup(<DeliveryState state={delivery(over)} now={NOW} />);
+
+  it('shows how many wait, how many were dropped, and what Slack last said with its time', () => {
+    const html = state({ waiting: 2, dropped: 1, lastSaid: 'ratelimited', lastSaidAt: '2026-03-01T11:57:00Z' });
+    expect(html).toContain('2 waiting');
+    expect(html).toContain('1 dropped');
+    expect(html).toContain('Slack said: ratelimited');
+    expect(html).toContain('3 minutes ago');
+  });
+
+  it('draws nothing for a workspace with none of the three', () => {
+    expect(state({})).toBe('');
+    expect(renderToStaticMarkup(<DeliveryState state={undefined} now={NOW} />)).toBe('');
+  });
+
+  it('leaves out the numbers that are zero', () => {
+    const html = state({ waiting: 3 });
+    expect(html).toContain('3 waiting');
+    expect(html).not.toContain('dropped');
+    expect(html).not.toContain('Slack said');
+  });
+
+  it('is a cell in the workspace row, not a row of its own', () => {
+    const html = table([FELLOWSHIP, workspace(2, 'Youth')], false, [delivery({ waiting: 4 })]);
+    expect(html).toContain('<th>Sending</th>');
+    expect(html.match(/<tr>/g)).toHaveLength(3);
+    expect(html).toContain('4 waiting');
+    expect(html.match(/Token set/g)).toHaveLength(2);
+  });
+
+  it('says messages carry no link, and names HATCH_PUBLIC_URL', () => {
+    const html = renderToStaticMarkup(<LinksOffNote />);
+    expect(html).toContain('no link');
+    expect(html).toContain('HATCH_PUBLIC_URL');
   });
 });
 
