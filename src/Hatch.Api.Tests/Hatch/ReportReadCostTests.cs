@@ -177,7 +177,10 @@ public class ReportReadCostTests
         ["GET /api/reports/flow"] = (
             new(10, 2, 1233, 833, "Comments=561;IssueEvents=704;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=500"),
             new(10, 2, 1233, 833, "Comments=241;IssueEvents=704;Issues=1400;Projects=2;Statuses=6;WorkLogEntries=300")),
-        // QuestionTrail.ReadAsync with no range, so every question and every answer.
+        // The cards' read of waiting questions, with no range (HA-2816): the card load goes through the
+        // priority tree to Questions.WaitingLevelsAsync, and the changelog's rollup reads
+        // Questions.WaitingCountsAsync, which both join Comments to Issues and Statuses. The changelog does
+        // not read QuestionTrail.
         ["GET /api/reports/changelog (epic level)"] = (
             new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
             new(13, 5, 417, 12, "Comments=1561;Issues=1223;Projects=3;Statuses=36")),
@@ -187,10 +190,14 @@ public class ReportReadCostTests
         ["GET /api/reports/changelog (loose=true)"] = (
             new(15, 7, 421, 12, "Comments=720;Issues=1251;Projects=4;Statuses=42"),
             new(15, 7, 421, 12, "Comments=1561;Issues=1450;Projects=4;Statuses=42")),
-        // Every status change with no time bound (HA-2787).
+        // The actor's events in the range, and the first event for the start clamp, read off the index as
+        // one row (HA-2817): IssueEvents is no longer what grows, and the large board reads fewer of it.
+        // It stays here for the cards, which read Comments and Issues through the same waiting-question
+        // read as the lines above (HA-2816). The first-event read is held equal to MIN(At) by
+        // ActivityFirstEventTests.
         ["GET /api/reports/activity"] = (
-            new(12, 3, 1861, 1281, "Comments=220;IssueEvents=4088;Issues=1401;Projects=8;Statuses=18"),
-            new(12, 3, 1861, 1281, "Comments=720;IssueEvents=6588;Issues=1600;Projects=8;Statuses=18")),
+            new(12, 3, 1861, 1281, "Comments=220;IssueEvents=2295;Issues=1201;Projects=8;Statuses=18"),
+            new(12, 3, 1861, 1281, "Comments=720;IssueEvents=1275;Issues=1400;Projects=8;Statuses=18")),
         // The poll sends the same statements and returns the same rows at both sizes, and whatever stands
         // in review: BoardHealthReadCostTests holds that apart. It loads Issues end to end once, in the
         // priority tree (HA-2790); the strip's rows, the column normals and the wait history are cut
