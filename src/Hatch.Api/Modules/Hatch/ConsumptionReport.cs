@@ -75,33 +75,66 @@ public static class ConsumptionReport
     /// </remarks>
     public static Result Fold(
         IReadOnlyList<Session> sessions, IReadOnlyList<Candidate> candidates,
+        IReadOnlyDictionary<long, long?> parentOf, WorkLogWindow window, ConsumptionSort sort) =>
+        FoldSums(sessions.Select(s => ToSum(s, window)).ToList(), candidates, parentOf, window, sort);
+
+    /// <summary>
+    /// <see cref="Fold"/>'s own session, as the one-session sum
+    /// <see cref="FoldSums"/> reads - so a session folded here and a row read
+    /// off the database by <see cref="WorkLogSums.ReadAsync"/> are credited by
+    /// exactly the same code.
+    /// </summary>
+    private static WorkLogSums.SessionSum ToSum(Session session, WorkLogWindow window)
+    {
+        var bucket = (int)((session.EndedAt - window.From).Ticks / window.Length.Ticks);
+
+        return new WorkLogSums.SessionSum(
+            session.IssueId, bucket, 1, session.IsError ? 1 : 0,
+            session.InputTokens, session.OutputTokens, session.CacheCreationTokens, session.CacheReadTokens,
+            session.CostUsd ?? 0m, session.CostUsd is null ? 1 : 0, session.DurationMs,
+            session.EndedAt, session.EndedAt);
+    }
+
+    /// <summary>
+    /// Every candidate a session's issue sits beneath, credited from a row
+    /// already summed per issue per bucket - what <see cref="Fold"/> itself
+    /// calls, turning each session into a one-session sum first, and what
+    /// <see cref="ReportsController.GetConsumption"/> calls directly over what
+    /// <see cref="WorkLogSums.ReadAsync"/> read off the database.
+    /// </summary>
+    /// <remarks>
+    /// One narrow row per issue per bucket, not one per session - crediting a
+    /// sum up the hierarchy is the same walk <see cref="CandidatesAbove"/>
+    /// already does, just added into a row and a bucket instead of a session.
+    /// </remarks>
+    internal static Result FoldSums(
+        IReadOnlyList<WorkLogSums.SessionSum> sums, IReadOnlyList<Candidate> candidates,
         IReadOnlyDictionary<long, long?> parentOf, WorkLogWindow window, ConsumptionSort sort)
     {
         var candidateById = candidates.ToDictionary(c => c.Id);
 
-        var totalSessions = new List<Session>();
-        var rowSessions = new Dictionary<long, List<Session>>();
-        var bucketSessions = new List<Session>[(int)window.Buckets];
-        for (var i = 0; i < bucketSessions.Length; i++) bucketSessions[i] = [];
+        var totalSums = new List<WorkLogSums.SessionSum>();
+        var rowSums = new Dictionary<long, List<WorkLogSums.SessionSum>>();
+        var bucketSums = new List<WorkLogSums.SessionSum>[(int)window.Buckets];
+        for (var i = 0; i < bucketSums.Length; i++) bucketSums[i] = [];
 
-        foreach (var session in sessions)
+        foreach (var sum in sums)
         {
-            var path = CandidatesAbove(session.IssueId, candidateById, parentOf);
+            var path = CandidatesAbove(sum.IssueId, candidateById, parentOf);
             if (path.Count == 0) continue;
 
-            totalSessions.Add(session);
+            totalSums.Add(sum);
 
-            var index = (int)((session.EndedAt - window.From).Ticks / window.Length.Ticks);
-            if (index >= 0 && index < bucketSessions.Length) bucketSessions[index].Add(session);
+            if (sum.Bucket >= 0 && sum.Bucket < bucketSums.Length) bucketSums[sum.Bucket].Add(sum);
 
             foreach (var id in path)
             {
-                if (!rowSessions.TryGetValue(id, out var list)) rowSessions[id] = list = [];
-                list.Add(session);
+                if (!rowSums.TryGetValue(id, out var list)) rowSums[id] = list = [];
+                list.Add(sum);
             }
         }
 
-        var rows = rowSessions
+        var rows = rowSums
             .Select(kv =>
             {
                 var candidate = candidateById[kv.Key];
@@ -112,7 +145,7 @@ public static class ConsumptionReport
 
                 return new Row(
                     candidate.Key, candidate.Title, candidate.Type, candidate.ProjectKey, candidate.StatusId,
-                    parentKey, FoldTotals(own), own.Min(s => s.EndedAt), own.Max(s => s.EndedAt));
+                    parentKey, FoldTotals(own), own.Min(s => s.First), own.Max(s => s.Last));
             });
 
         IOrderedEnumerable<Row> ordered = sort switch
@@ -129,14 +162,37 @@ public static class ConsumptionReport
 
         var sortedRows = ordered.ThenBy(r => r.Key, StringComparer.Ordinal).ToList();
 
-        var buckets = new List<Bucket>(bucketSessions.Length);
-        for (var i = 0; i < bucketSessions.Length; i++)
+        var buckets = new List<Bucket>(bucketSums.Length);
+        for (var i = 0; i < bucketSums.Length; i++)
         {
             var start = window.From + window.Length * i;
-            buckets.Add(new Bucket(start, start + window.Length, FoldTotals(bucketSessions[i])));
+            buckets.Add(new Bucket(start, start + window.Length, FoldTotals(bucketSums[i])));
         }
 
-        return new Result(FoldTotals(totalSessions), sortedRows, buckets);
+        return new Result(FoldTotals(totalSums), sortedRows, buckets);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="issueId"/> or anything above it is one of
+    /// <paramref name="candidateIds"/> - <see cref="CandidatesAbove"/>'s own
+    /// walk, stopping at the first hit rather than collecting every one, for
+    /// <see cref="ReportsController"/>'s bound reads: a session counts in
+    /// <c>firstSessionAt</c>/<c>lastSessionAt</c> exactly when it would have
+    /// earned a candidate above it a row.
+    /// </summary>
+    public static bool HasCandidateAbove(
+        long issueId, IReadOnlySet<long> candidateIds, IReadOnlyDictionary<long, long?> parentOf)
+    {
+        var seen = new HashSet<long>();
+        var current = (long?)issueId;
+
+        while (current is { } id && seen.Add(id))
+        {
+            if (candidateIds.Contains(id)) return true;
+            current = parentOf.TryGetValue(id, out var parent) ? parent : null;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -164,9 +220,11 @@ public static class ConsumptionReport
     /// <summary>
     /// The arithmetic, its own copy rather than a reach into
     /// <see cref="WorkLogRollup"/>'s private fold - this report's rows are not
-    /// that fold's rows.
+    /// that fold's rows. Sums of sums: each <see cref="WorkLogSums.SessionSum"/>
+    /// is already one issue's one bucket, added together the same way whether
+    /// there is one of them (<see cref="Fold"/>'s own one-session sums) or many.
     /// </summary>
-    private static WorkLogTotalsDto FoldTotals(IReadOnlyCollection<Session> rows)
+    private static WorkLogTotalsDto FoldTotals(IReadOnlyCollection<WorkLogSums.SessionSum> rows)
     {
         var input = rows.Sum(r => r.InputTokens);
         var output = rows.Sum(r => r.OutputTokens);
@@ -174,15 +232,15 @@ public static class ConsumptionReport
         var cacheRead = rows.Sum(r => r.CacheReadTokens);
 
         return new WorkLogTotalsDto(
-            rows.Count,
-            rows.Count(r => r.IsError),
+            rows.Sum(r => r.Sessions),
+            rows.Sum(r => r.Errors),
             input,
             output,
             cacheCreation,
             cacheRead,
             input + output + cacheCreation + cacheRead,
-            rows.Sum(r => r.CostUsd ?? 0m),
-            rows.Count(r => r.CostUsd is null),
+            rows.Sum(r => r.CostUsd),
+            rows.Sum(r => r.Unpriced),
             rows.Sum(r => r.DurationMs));
     }
 }

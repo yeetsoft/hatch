@@ -80,11 +80,11 @@ public class ReportReadCostTests
         // The rows in the range, off the end-time index (HA-2782), and the two bounds. The small
         // board reads its whole table, for the reason in the summary above.
         ["GET /api/reports/consumption"] = (
-            new(5, 2, 512, 302, "Issues=600;Projects=2;WorkLogEntries=502"),
-            new(5, 2, 512, 302, "Issues=600;Projects=2;WorkLogEntries=302")),
+            new(5, 2, 307, 97, "Issues=400;Projects=2;WorkLogEntries=550"),
+            new(5, 2, 307, 97, "Issues=400;Projects=2;WorkLogEntries=350")),
         ["GET /api/reports/consumption.csv"] = (
-            new(3, 2, 510, 300, "Issues=600;Projects=2;WorkLogEntries=500"),
-            new(3, 2, 510, 300, "Issues=600;Projects=2;WorkLogEntries=300")),
+            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=500"),
+            new(3, 2, 257, 47, "Issues=400;Projects=2;WorkLogEntries=300")),
         // Summed by the database: a row per bucket that holds a session, and the
         // two bounds. Reads the window and one row off each end of the end-time index.
         ["GET /api/work-log/history"] = (
@@ -93,14 +93,14 @@ public class ReportReadCostTests
         // The totals, the page, the paths read and the two bounds: at most
         // twenty rows of page, one of totals, one per distinct path, two bounds.
         ["GET /api/work-log/sessions"] = (
-            new(5, 0, 24, 24, "Issues=600;Projects=2;WorkLogEntries=1502"),
-            new(5, 0, 24, 24, "Issues=600;Projects=2;WorkLogEntries=902")),
+            new(5, 0, 24, 24, "Issues=600;Projects=1;WorkLogEntries=1502"),
+            new(5, 0, 24, 24, "Issues=600;Projects=1;WorkLogEntries=902")),
         // The same, and the heaviest five: one more read, five more rows, and
         // still the totals, the paths and the bounds once - what the
         // leaderboard asks instead of the line above twice.
         ["GET /api/work-log/sessions?top"] = (
-            new(6, 0, 29, 29, "Issues=800;Projects=4;WorkLogEntries=2002"),
-            new(6, 0, 29, 29, "Issues=800;Projects=4;WorkLogEntries=1202")),
+            new(6, 0, 29, 29, "Issues=800;Projects=2;WorkLogEntries=2002"),
+            new(6, 0, 29, 29, "Issues=800;Projects=2;WorkLogEntries=1202")),
         ["GET /api/work-log/by-playbook"] = (
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=300")),
@@ -252,6 +252,19 @@ public class ReportReadCostTests
                 else if (s.Row != grows.Small || l.Row != grows.Large)
                     failures.Add($"{read.Name} costs {s.Row} then {l.Row}, the table says {grows.Small} then {grows.Large}");
             }
+        }
+
+        // Neither consumption route sends a candidate or descendant id list -
+        // the bound reads page instead (see ReportsController.BoundSessionAsync)
+        // - and this request names no project, so no array parameter should
+        // reach the database at all.
+        foreach (var name in new[] { "GET /api/reports/consumption", "GET /api/reports/consumption.csv" })
+        {
+            var worst = Math.Max(
+                small[name].Statements.Max(s => s.MaxArrayParameter),
+                large[name].Statements.Max(s => s.MaxArrayParameter));
+            if (worst != 0)
+                failures.Add($"{name} sends an array parameter of length {worst} - no id list should reach the database here");
         }
 
         // The leaderboard is summed by the database, so what it returns does not

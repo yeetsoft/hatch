@@ -290,8 +290,12 @@ internal static class ReadCostSeed
             };
         }
 
+        // In runs on a few issues rather than spread one-per-issue, so a bucket
+        // read answers with far fewer than one row per session (see HA-2789):
+        // 300 sessions over fifteen-session runs on eight issues is about fifty
+        // (issue, day) pairs, not three hundred.
         for (var n = 0; n < WindowSessions; n++)
-            db.WorkLog.Add(Session(all[epics + n % (total - epics)], windowStart.AddHours(2 + n * 2.3), n));
+            db.WorkLog.Add(Session(all[epics + (n / 15) % 8], windowStart.AddHours(2 + n * 2.3), n));
 
         for (var n = 0; n < size.OldSessions; n++)
             db.WorkLog.Add(Session(all[n % total], now.AddDays(-100).AddHours(n), n + 1000));
