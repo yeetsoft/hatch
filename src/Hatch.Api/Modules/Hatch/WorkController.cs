@@ -1175,7 +1175,7 @@ public class WorkController(
             if (chatOutbox is not null && links is not null)
             {
                 var content = QuestionChatContent.Build(
-                    links, key, issue.Title, question.Body, null, QuestionLevels.Normalise(question.Level));
+                    links, question.Id, key, issue.Title, question.Body, null, QuestionLevels.Normalise(question.Level));
                 await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{question.Id}", issue.ProjectId, content, ct);
             }
         }

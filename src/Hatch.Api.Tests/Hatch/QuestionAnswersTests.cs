@@ -199,7 +199,7 @@ public class QuestionAnswersTests
                 await outbox.QueueAsync(
                     ChatMessageKind.Question, $"comment:{question.Id}", Issue.ProjectId,
                     QuestionChatContent.Build(
-                        links, "HA-1", Issue.Title, question.Body, Questions.ReadOptions(question.Options),
+                        links, question.Id, "HA-1", Issue.Title, question.Body, Questions.ReadOptions(question.Options),
                         QuestionLevels.Normalise(question.Level)),
                     default);
                 await Db.SaveChangesAsync();

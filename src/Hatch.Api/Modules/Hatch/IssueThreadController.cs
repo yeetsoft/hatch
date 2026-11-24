@@ -162,7 +162,7 @@ public class IssueThreadController(
                 var forChat = await db.Issues.AsNoTracking().Where(i => i.Id == issueId)
                     .Select(i => new { i.ProjectId, i.Title }).FirstAsync(ct);
                 var content = QuestionChatContent.Build(
-                    links, key, forChat.Title, comment.Body,
+                    links, comment.Id, key, forChat.Title, comment.Body,
                     Questions.ReadOptions(comment.Options), QuestionLevels.Normalise(comment.Level));
                 await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{comment.Id}", forChat.ProjectId, content, ct);
             }

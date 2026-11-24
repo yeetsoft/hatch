@@ -210,7 +210,7 @@ public class QuestionOverturnTests
         var question = await h.AskAsync(story, QuestionLevels.MergeName);
         await outbox.QueueAsync(
             ChatMessageKind.Question, $"comment:{question.Id}", h.ProjectId,
-            QuestionChatContent.Build(links, $"AER-{story.Number}", story.Title, question.Body, Questions.ReadOptions(question.Options), QuestionLevels.MergeName),
+            QuestionChatContent.Build(links, question.Id, $"AER-{story.Number}", story.Title, question.Body, Questions.ReadOptions(question.Options), QuestionLevels.MergeName),
             default);
         await h.Db.SaveChangesAsync();
         var before = await h.Db.ChatMessages.SingleAsync();

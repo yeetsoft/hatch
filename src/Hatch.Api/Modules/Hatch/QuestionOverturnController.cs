@@ -112,7 +112,7 @@ public class QuestionOverturnController(
             var lookBack = Questions.IsLookBack(
                 question.Level, issue.Status!.IsTerminal, [..answers.Select(a => a.AuthorKind), authorKind]);
             var content = QuestionChatContent.Build(
-                links, key, issue.Title, question.Body, Questions.ReadOptions(question.Options),
+                links, id, key, issue.Title, question.Body, Questions.ReadOptions(question.Options),
                 QuestionLevels.Normalise(question.Level), actor, answer, lookBack);
             await chatOutbox.QueueAsync(ChatMessageKind.Question, $"comment:{id}", issue.ProjectId, content, ct);
         }

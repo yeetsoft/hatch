@@ -49,6 +49,12 @@ public class SlackChatProvider(
     /// </summary>
     public const int MaxTextLength = 3500;
 
+    /// <summary>Slack allows 3,000 characters in a block's text, which is less than a message's own text.</summary>
+    public const int MaxBlockTextLength = 3000;
+
+    /// <summary>Slack allows 75 characters on a button.</summary>
+    public const int MaxButtonLabelLength = 75;
+
     /// <summary>The longest a title is allowed to run, after escaping.</summary>
     public const int MaxTitleLength = 300;
 
@@ -694,7 +700,14 @@ public class SlackChatProvider(
     private async Task<ChatSendResult> SendAsync(
         string endpoint, string method, string token, Dictionary<string, string> form, ChatMessageContent content, CancellationToken ct)
     {
+        // The plain text always goes: it is what a notification shows.
         form["text"] = Format(content);
+        // An edit always says what its blocks are. Slack keeps a message's earlier blocks when none
+        // are sent, so an edit with no buttons sends an empty list to take old ones away.
+        if (content.Actions is { Count: > 0 })
+            form["blocks"] = Blocks(content);
+        else if (method == "chat.update")
+            form["blocks"] = "[]";
         form["unfurl_links"] = "false";
         form["unfurl_media"] = "false";
 
@@ -764,12 +777,12 @@ public class SlackChatProvider(
     /// Hatch's own and goes in as it is. A message too long is cut at the body,
     /// then the lines, and the links are always kept.
     /// </summary>
-    internal static string Format(ChatMessageContent content)
+    internal static string Format(ChatMessageContent content, int max = MaxTextLength)
     {
         var title = "*" + Cut(OneLine(content.Title), MaxTitleLength - 2) + "*";
         var links = LinksLine(content.Links);
 
-        var room = Math.Max(0, MaxTextLength - title.Length - (links is null ? 0 : links.Length + 1));
+        var room = Math.Max(0, max - title.Length - (links is null ? 0 : links.Length + 1));
 
         var body = string.IsNullOrWhiteSpace(content.Body) ? null : content.Body.Trim();
         var lines = content.Lines.Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
@@ -814,6 +827,59 @@ public class SlackChatProvider(
         if (links is not null) text.Append('\n').Append(links);
 
         return text.ToString();
+    }
+
+    /// <summary>
+    /// The message as Slack blocks: its text in a section, then one row of buttons. A button's
+    /// label is plain text, so nothing in it mentions, links or breaks the message.
+    /// </summary>
+    internal static string Blocks(ChatMessageContent content)
+    {
+        var buttons = content.Actions!.Select(a =>
+        {
+            var button = new Dictionary<string, object>
+            {
+                ["type"] = "button",
+                ["text"] = new Dictionary<string, object>
+                {
+                    ["type"] = "plain_text",
+                    ["text"] = CutPlain(a.Label, MaxButtonLabelLength),
+                    ["emoji"] = false,
+                },
+                ["action_id"] = a.Id,
+            };
+            if (a.Primary) button["style"] = "primary";
+            return button;
+        }).ToList();
+
+        return JsonSerializer.Serialize(new object[]
+        {
+            new Dictionary<string, object>
+            {
+                ["type"] = "section",
+                ["text"] = new Dictionary<string, object> { ["type"] = "mrkdwn", ["text"] = Format(content, MaxBlockTextLength) },
+            },
+            new Dictionary<string, object> { ["type"] = "actions", ["elements"] = buttons },
+        });
+    }
+
+    /// <summary>
+    /// A label on one line, at most <paramref name="max"/> characters, ending in an ellipsis when
+    /// cut. Not escaped: it goes in as plain text. Cut between runes, so no pair is broken.
+    /// </summary>
+    private static string CutPlain(string text, int max)
+    {
+        var line = OneLine(text);
+        if (line.Length <= max) return line;
+
+        var cut = new StringBuilder();
+        foreach (var rune in line.EnumerateRunes())
+        {
+            if (cut.Length + rune.Utf16SequenceLength > max - Ellipsis.Length) break;
+            cut.Append(rune.ToString());
+        }
+
+        return cut.Append(Ellipsis).ToString();
     }
 
     /// <summary>A cut shorter than this is not worth showing.</summary>

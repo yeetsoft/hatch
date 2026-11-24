@@ -40,6 +40,8 @@ session reads it, and [the CLI reference](cli-reference#ask) has the flags.
 
 Asking, answering, overturning and changing a question's level can also post
 to a Slack room and keep it current - see [Hatch in Slack](hatch-in-slack#questions-in-a-room).
+A question can be answered from that room too, with a button for each option,
+by a person whose Slack account is linked to theirs in Hatch.
 
 ## What an open question blocks
 

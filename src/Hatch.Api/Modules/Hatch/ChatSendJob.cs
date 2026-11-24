@@ -235,6 +235,11 @@ public class ChatSendJob(
             return false;
         }
 
+        // Buttons need the socket an app-level token opens, or a press has nowhere to go. The stored
+        // row is left as it is, so a token set later gives the next edit its buttons, and setting one
+        // sends nothing again.
+        if (string.IsNullOrEmpty(workspace.AppToken)) content = content with { Actions = null };
+
         // The revision as read: a change that lands while the send is out leaves
         // a revision above this one, and goes next tick.
         var revision = row.Revision;
