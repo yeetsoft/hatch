@@ -4757,6 +4757,95 @@ button.hatch-chip {
   }
 }
 
+/* The Slack accounts section on Settings. A row's words and buttons wrap in
+   place, and the member picker scrolls inside its own box, so a long name or a
+   large workspace never widens the page past a phone's edge. */
+.hatch-slack-accounts,
+.hatch-slack-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hatch-slack-account {
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.hatch-slack-account__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.hatch-slack-account__who {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hatch-slack-account__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.hatch-slack-flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  min-width: 0;
+}
+
+.hatch-slack-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hatch-slack-picker label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.hatch-slack-picker input {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.hatch-slack-members {
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.hatch-slack-members button {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2);
+  text-align: left;
+  overflow-wrap: anywhere;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hatch-slack-members button:hover:not(:disabled),
+.hatch-slack-members button:focus-visible {
+  background: var(--primary-bg);
+}
+
 /* What waits to be sent to a workspace, in the row. Wraps in place, so a long
    sentence from Slack never widens the page. */
 .hatch-chat-delivery {
