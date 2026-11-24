@@ -99,6 +99,7 @@ All eight are server settings, set in the environment like any other
 | `Hatch__GooseRepeatClaims` | `5` | How many claims by one runner on one ticket, with the ticket not moving, make the `claim-repeating` check below open a finding. `0` turns the check off; less than that falls back to `5`. |
 | `Hatch__GooseQuestionHours` | `24` | How long a question may wait before the `questions-waiting` check below opens a finding. `0` turns the check off; less than that falls back to `24`. |
 | `Hatch__GooseChatSendMinutes` | `60` | How many minutes sends to a chat workspace or room may keep failing before the `chat-sends-failing` check below opens a finding. `0` turns the check off; less than that falls back to `60`. |
+| `Hatch__GooseChatListenMinutes` | `60` | How many minutes a chat workspace's connection may keep failing to open before the `chat-listen-failing` check below opens a finding. `0` turns the check off; less than that falls back to `60`. |
 | `Hatch__GooseStandingHours` | `4` | How many hours a ticket may stand in one column, with no runner on it and nobody it is waiting for, before the `standing-still` check below opens a finding. `0` turns the check off; less than that falls back to `4`. |
 
 Each sweep also deletes the runs whose last sweep is older than the keep
@@ -288,6 +289,25 @@ everything reads it. It closes by itself when a send to that room or workspace
 works, or when the room or workspace is removed. `0` turns the check off and
 closes what is open. A bug filed from it is titled *Messages to a chat room are
 not getting through*.
+
+### `chat-listen-failing`
+
+Watches the chat workspaces whose connection is failing to open (see
+[Hatch in Slack](hatch-in-slack#not-listening)). The listener keeps when a run
+of refused connections began on the workspace. The check opens one finding per
+workspace whose run has lasted `Hatch__GooseChatListenMinutes` (default 60).
+Sixty because the listener's own wait tops out at ten minutes, so an hour is
+six full retries and not a blip. A workspace with no app-level token never
+gets one: not having set one up is not a failure.
+
+The sentence names the workspace, since when it has not been able to listen,
+and what Slack last said. The evidence gives the workspace. It names no
+project, so only a caller who may see everything reads it - and unlike
+`chat-sends-failing`, it keeps no room out, so the workspace's own room hears
+it too, since sending still works when listening does not. It closes by
+itself when the connection opens, or when the workspace or its app-level token
+is removed. `0` turns the check off and closes what is open. A bug filed from
+it is titled *Hatch is not listening to a chat workspace*.
 
 ### How a finding reaches the panel
 

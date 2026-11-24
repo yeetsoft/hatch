@@ -191,6 +191,7 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Hatch__GooseRepeatClaims` | `5` | How many claims by one runner on one ticket, with nothing about the ticket moving, make the goose's `claim-repeating` check open a finding. `0` turns the check off; a negative value falls back to `5`. |
 | `Hatch__GooseQuestionHours` | `24` | How many hours a question may wait on a person before the goose's `questions-waiting` check opens a finding. `0` turns the check off; a negative value falls back to `24`. |
 | `Hatch__GooseChatSendMinutes` | `60` | How many minutes sends to a chat workspace or room may keep failing before the goose's `chat-sends-failing` check opens a finding. `0` turns the check off; a negative value falls back to `60`. |
+| `Hatch__GooseChatListenMinutes` | `60` | How many minutes a chat workspace's connection may keep failing to open before the goose's `chat-listen-failing` check opens a finding. `0` turns the check off; a negative value falls back to `60`. |
 | `Hatch__GooseStandingHours` | `4` | How many hours a ticket may stand in one column, with no runner on it and nobody it is waiting for, before the goose's `standing-still` check opens a finding. `0` turns the check off; a negative value falls back to `4`. |
 | **The database** | | |
 | `ConnectionStrings__Hatch` | `Host=localhost` | Where `hatch`'s own schema lives. Under `DOTNET_ENVIRONMENT=Docker`, which `compose.yaml` sets, the default is `Host=db` instead. |

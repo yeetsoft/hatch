@@ -324,6 +324,13 @@ If the cell says **The app token cannot be read. Paste it again.**, it does not
 draw a sentence from Slack: the token is stored but cannot be opened, and
 pasting it again mends it.
 
+When a workspace's connection keeps failing, [the goose](the-goose) opens a
+finding after `Hatch__GooseChatListenMinutes` of failing: 60 by default, and
+`0` turns it off. See [the goose](the-goose#chat-listen-failing). Unlike a
+finding about failing sends, this one is posted to the rooms that take
+problems belonging to no project, this workspace's own among them, since
+sending still works when listening does not.
+
 ### When Slack is down
 
 Hatch writes a message into a queue in the same step as the change that causes

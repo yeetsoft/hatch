@@ -44,6 +44,9 @@ public static class FindingBugs
         [ChatSendsFailingCheck.CheckName] = new(
             _ => "Messages to a chat room are not getting through",
             o => Minutes(GooseSettings.ChatSendBound(o)), StoodThatLong),
+        [ChatListenFailingCheck.CheckName] = new(
+            _ => "Hatch is not listening to a chat workspace",
+            o => Minutes(GooseSettings.ChatListenBound(o)), StoodThatLong),
     };
 
     /// <summary>Whether <paramref name="check"/> has its own entry, rather than the fallback title.</summary>
