@@ -1,8 +1,10 @@
 using System.Net;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Modules.Hatch;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 using QuartzLogProvider = Quartz.Logging.LogProvider;
 
@@ -39,10 +41,18 @@ public class PoolExhaustionTests
         QuartzLogProvider.SetCurrentLogProvider(null);
 
         var logs = new CapturedLogs();
+        // Without the chat listener: it holds one pooled connection for as long as
+        // it runs, so with a pool of three the test could only ever hold two. At
+        // the default pool size one held slot is not a thing a request notices.
         var factory = new MinimalFactory(hatch, quartz, logs, settings: new Dictionary<string, string>
         {
             ["Database:HatchPoolSize"] = PoolSize.ToString(),
             ["Database:PoolWaitSeconds"] = "1",
+        }, services: services =>
+        {
+            foreach (var listener in services
+                .Where(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(ChatListenService)).ToList())
+                services.Remove(listener);
         });
 
         var held = new List<AppDbContext>();

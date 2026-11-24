@@ -5330,7 +5330,7 @@ public class EfHatchChatWorkspace
     /// <summary>The bot token, sealed as <c>v2</c> for the row name <c>SecretStores.ChatWorkspace</c> gives. A value stored before sealing is <c>v1</c> and still reads.</summary>
     public required string Token { get; set; }
 
-    /// <summary>The app-level token, sealed as <c>v2</c> for the row name <c>SecretStores.ChatWorkspaceAppToken</c> gives. Null while none is set. Nothing uses it yet; the socket connection will.</summary>
+    /// <summary>The app-level token, sealed as <c>v2</c> for the row name <c>SecretStores.ChatWorkspaceAppToken</c> gives. Null while none is set. <see cref="ChatListenService"/> opens the socket connection with it.</summary>
     public string? AppToken { get; set; }
 
     public const int MaxRefusalLength = 500;
@@ -5349,6 +5349,16 @@ public class EfHatchChatWorkspace
     public string? LastRefusal { get; set; }
 
     public DateTimeOffset? LastRefusalAt { get; set; }
+
+    /// <summary>When the listener's connection for this workspace last opened and has not been lost since, or null while it is not listening. Written only by <see cref="ChatListenService"/>.</summary>
+    public DateTimeOffset? ListeningSince { get; set; }
+
+    /// <summary>When the run of refused connections began, or null while the connection opens. A connection that opened and was lost does not start one.</summary>
+    public DateTimeOffset? ListenFailingSince { get; set; }
+
+    /// <summary>The last sentence a connection was refused with. Never holds a token or an address.</summary>
+    [MaxLength(MaxRefusalLength)]
+    public string? ListenLastRefusal { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
