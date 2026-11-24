@@ -1,10 +1,7 @@
-using System.Data.Common;
 using System.Text.Json;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Contracts;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
-using Npgsql;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -22,33 +19,6 @@ public class EventAndWorkLogIndexPlanTests
 {
     private const string Runner = "mr-blue";
     private static readonly DateTimeOffset Now = new(2026, 1, 31, 12, 0, 0, TimeSpan.Zero);
-
-    /// <summary>The command a read sent: its text and its parameters, copied so they can be run again.</summary>
-    private sealed record Sent(string Sql, List<NpgsqlParameter> Parameters);
-
-    private sealed class Capture : DbCommandInterceptor
-    {
-        public List<Sent> Commands { get; } = [];
-
-        public override InterceptionResult<DbDataReader> ReaderExecuting(
-            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
-        {
-            Note(command);
-            return result;
-        }
-
-        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
-            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken ct = default)
-        {
-            Note(command);
-            return new(result);
-        }
-
-        private void Note(DbCommand command) =>
-            Commands.Add(new Sent(
-                command.CommandText,
-                command.Parameters.Cast<NpgsqlParameter>().Select(p => p.Clone()).ToList()));
-    }
 
     private sealed record Seeded(string ConnectionString, EfHatchStatus Implementation, long AmbitionId);
 
@@ -121,39 +91,17 @@ public class EventAndWorkLogIndexPlanTests
         return new Seeded(connectionString, doing, issues[0].Id);
     }
 
-    /// <summary>Runs <paramref name="read"/> once and returns the first command it sent that matches <paramref name="pick"/>.</summary>
-    private static async Task<Sent> CaptureAsync(string connectionString, Func<HatchContext, Task> read, Func<string, bool> pick)
-    {
-        var capture = new Capture();
-        await using var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).AddInterceptors(capture).Options);
-        await read(db);
-        return capture.Commands.First(c => pick(c.Sql));
-    }
-
-    /// <summary>The plan Postgres picks for the statement, with sequential scans off for the session, as one string.</summary>
-    private static async Task<string> ExplainAsync(string connectionString, Sent command)
-    {
-        await using var connection = new NpgsqlConnection(connectionString + ";Options=-c enable_seqscan=off");
-        await connection.OpenAsync();
-        await using var explain = new NpgsqlCommand("EXPLAIN (FORMAT JSON) " + command.Sql, connection);
-        // Cloned, so each keeps the Postgres type EF gave it (jsonb, not text).
-        foreach (var parameter in command.Parameters)
-            explain.Parameters.Add(parameter.Clone());
-        return (await explain.ExecuteScalarAsync())!.ToString()!;
-    }
-
     [SkippableFact]
     public async Task LetGoBy_FindsItsReleasesInTheNewIndex_NotByReadingTheTable()
     {
         Skip.IfNot(HatchDatabase.Available, "HATCH_TEST_DATABASE_URL is unset - the plan comes from a real Postgres.");
         var seeded = await SeedAsync();
 
-        var found = await CaptureAsync(
+        var found = await PlanProbe.CaptureAsync(
             seeded.ConnectionString, db => LetGo.ByAsync(db, Runner, default),
             sql => sql.Contains("\"Kind\"") && sql.Contains("@>"));
 
-        Assert.Contains("IX_IssueEvents_Payload", await ExplainAsync(seeded.ConnectionString, found));
+        Assert.Contains("IX_IssueEvents_Payload", await PlanProbe.ExplainAsync(seeded.ConnectionString, found));
     }
 
     [SkippableFact]
@@ -174,12 +122,12 @@ public class EventAndWorkLogIndexPlanTests
         Skip.IfNot(HatchDatabase.Available, "HATCH_TEST_DATABASE_URL is unset - the plan comes from a real Postgres.");
         var seeded = await SeedAsync();
 
-        var found = await CaptureAsync(
+        var found = await PlanProbe.CaptureAsync(
             seeded.ConnectionString,
             db => FamilyGate.SettledPassesAsync(db, [seeded.Implementation], new Dictionary<long, List<long>>(), default),
             sql => sql.Contains("WorkLogEntries"));
 
-        Assert.Contains("IX_WorkLogEntries_SettledPasses", await ExplainAsync(seeded.ConnectionString, found));
+        Assert.Contains("IX_WorkLogEntries_SettledPasses", await PlanProbe.ExplainAsync(seeded.ConnectionString, found));
     }
 
     [SkippableFact]
@@ -188,18 +136,18 @@ public class EventAndWorkLogIndexPlanTests
         Skip.IfNot(HatchDatabase.Available, "HATCH_TEST_DATABASE_URL is unset - the plan comes from a real Postgres.");
         var seeded = await SeedAsync();
 
-        var many = await CaptureAsync(
+        var many = await PlanProbe.CaptureAsync(
             seeded.ConnectionString,
             async db => await SendBackStreak.CountsAsync(db, [seeded.AmbitionId, seeded.AmbitionId + 1], "doing", default),
             sql => sql.Contains("IssueEvents"));
         Assert.Contains("\"Kind\" = 'status_changed'", many.Sql);
-        Assert.Contains("IX_IssueEvents_", await ExplainAsync(seeded.ConnectionString, many));
+        Assert.Contains("IX_IssueEvents_", await PlanProbe.ExplainAsync(seeded.ConnectionString, many));
 
-        var single = await CaptureAsync(
+        var single = await PlanProbe.CaptureAsync(
             seeded.ConnectionString,
             async db => await SendBackStreak.ForIssueAsync(db, seeded.AmbitionId, "doing", default),
             sql => sql.Contains("IssueEvents"));
         Assert.Contains("\"Kind\" = 'status_changed'", single.Sql);
-        Assert.Contains("IX_IssueEvents_", await ExplainAsync(seeded.ConnectionString, single));
+        Assert.Contains("IX_IssueEvents_", await PlanProbe.ExplainAsync(seeded.ConnectionString, single));
     }
 }
