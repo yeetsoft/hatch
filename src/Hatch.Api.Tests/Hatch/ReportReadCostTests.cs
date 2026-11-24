@@ -124,6 +124,12 @@ public class ReportReadCostTests
         ["BoardHealthTrail.RunnerStatesAsync"] = (
             new(4, 0, 21, 21, "RunnerStates=96"),
             new(4, 0, 21, 21, "RunnerStates=21")),
+        // The status changes the range needs and no more (HA-2784): the window, the newest move before
+        // it per issue, and for an issue that has not moved by its end the first one after. Two loads
+        // of Issues: the report's rows, and BoardHealthTrail's probe, one row per issue each.
+        ["GET /api/reports/cumulative-flow"] = (
+            new(5, 2, 1110, 710, "IssueEvents=704;Issues=800;Projects=2;Statuses=6"),
+            new(5, 2, 1110, 710, "IssueEvents=704;Issues=800;Projects=2;Statuses=6")),
     };
 
     /// <summary>
@@ -149,14 +155,14 @@ public class ReportReadCostTests
     /// <summary>Reads that still grow with history: the small cost, then the large.</summary>
     private static readonly Dictionary<string, (Row Small, Row Large)> Grows = new()
     {
-        // Every status change, with no time bound (HA-2784, HA-2787).
+        // Its status changes are bounded to the range (HA-2784): IssueEvents is the same at both sizes,
+        // and the test below holds it so. It stays here for the cards, which read Comments, and the
+        // priority tree, which reads Issues, both with no range. Four loads of Issues: the report's
+        // rows, BoardHealthTrail's probe, the cards and the priority tree.
         ["GET /api/reports/timeline"] = (
-            new(11, 3, 1536, 956, "Comments=220;IssueEvents=1794;Issues=1001;Projects=8;Statuses=24"),
-            new(11, 3, 3536, 2956, "Comments=720;IssueEvents=5314;Issues=1200;Projects=8;Statuses=24")),
-        ["GET /api/reports/cumulative-flow"] = (
-            new(3, 1, 1150, 950, "IssueEvents=1794;Issues=400;Projects=2;Statuses=6"),
-            new(3, 1, 3150, 2950, "IssueEvents=5314;Issues=400;Projects=2;Statuses=6")),
-        // Every status change with no time bound (HA-2784), and QuestionTrail with no range,
+            new(13, 4, 1496, 716, "Comments=220;IssueEvents=704;Issues=1401;Projects=8;Statuses=24"),
+            new(13, 4, 1496, 716, "Comments=720;IssueEvents=704;Issues=1600;Projects=8;Statuses=24")),
+        // Every status change with no time bound (HA-2785), and QuestionTrail with no range,
         // so every question and answer: no range index can serve either.
         ["GET /api/reports/flow"] = (
             new(8, 1, 1645, 1445, "Comments=440;IssueEvents=1869;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
@@ -331,6 +337,26 @@ public class ReportReadCostTests
         var topLarge = large["GET /api/work-log/sessions?top"].Row;
         if (topSmall.Statements != topLarge.Statements || topSmall.Rows != topLarge.Rows)
             failures.Add($"sessions?top costs {topSmall.Statements} statements and {topSmall.Rows} rows at the small size and {topLarge.Statements} and {topLarge.Rows} at the large - it should be the same");
+
+        // Both reports read the moves their range needs and no more (HA-2784), so
+        // the rows of IssueEvents are the same at both sizes. Timeline stays in
+        // the Grows list for its cards and priority tree, so the shared Grew
+        // check cannot see this figure alone, and it is held apart. Issues is loaded as many
+        // times as the lines in the table say: the report's rows and the trail's
+        // probe for cumulative flow (2), and those and the cards and the priority
+        // tree for the timeline (4).
+        foreach (var (name, loads) in new[] { ("GET /api/reports/timeline", 4), ("GET /api/reports/cumulative-flow", 2) })
+        {
+            var (before, after) = (small[name].Row, large[name].Row);
+            var (eventsBefore, eventsAfter) = (
+                ReadPerTable(before.Read).GetValueOrDefault("IssueEvents"),
+                ReadPerTable(after.Read).GetValueOrDefault("IssueEvents"));
+            if (eventsBefore != eventsAfter || eventsBefore == 0)
+                failures.Add($"{name} read {eventsBefore} IssueEvents rows at the small size and {eventsAfter} at the large - " +
+                    "the same number is the point, and none would mean the read was not measured");
+            if (before.IssueLoads != loads || after.IssueLoads != loads)
+                failures.Add($"{name} loads Issues {before.IssueLoads} then {after.IssueLoads} times, not {loads}");
+        }
 
         if (failures.Count > 0)
             Assert.Fail(
