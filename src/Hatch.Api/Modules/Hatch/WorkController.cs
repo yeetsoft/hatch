@@ -188,7 +188,7 @@ public class WorkController(
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var (signs, forges) = await CallerAnswersAsync(signing, signingWhy, forge, forgeWhy, runner, ct);
         var scan = await _dispatch.ScanAsync(
-            offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project),
+            ScanCaller.Next, offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project),
             asking: Asking(runner), models: models, has: hasDeclared, signing: signs, forge: forges);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
@@ -391,13 +391,13 @@ public class WorkController(
             (signs, forges) = await CallerAnswersAsync(signing, signingWhy, forge, forgeWhy, runner, ct);
         }
 
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects,
+        var scan = await _dispatch.ScanAsync(ScanCaller.Queue, offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects,
             asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models, has: hasDeclared,
             refusal: asRefusal, signing: signs, forge: forges);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         var taken = takers
-            ? await _dispatch.TakersAsync(offsetMinutes, runners.Cutoff(time.GetUtcNow()), ct)
+            ? await _dispatch.TakersAsync(ScanCaller.Queue, offsetMinutes, runners.Cutoff(time.GetUtcNow()), ct)
             : null;
 
         // One projection for the whole list. The per-issue one would be three
@@ -1758,7 +1758,7 @@ public class WorkController(
         // A named dispatch runs no scan, so the free-runner question the scan asks
         // of a preferring ticket is asked here. A pass has asked it already.
         var leftFor = askPeers && !hop && asking is not null
-            ? await _dispatch.LeftForLocalAsync(issue, playbook, localModelLevel, models, asking, ct)
+            ? await _dispatch.LeftForLocalAsync(ScanCaller.Next, issue, playbook, localModelLevel, models, asking, ct)
             : null;
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
@@ -1770,7 +1770,7 @@ public class WorkController(
         // The same deferral the scan makes, asked here for a named dispatch: a
         // row left for a runner marked preferred that is free to take it.
         if (blocked is null && askPeers && !hop && asking is not null
-            && await _dispatch.LeftForPreferredAsync(issue, asking, ct) is { } first)
+            && await _dispatch.LeftForPreferredAsync(ScanCaller.Next, issue, asking, ct) is { } first)
             blocked = ModelFamilies.LeftForPreferred(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, first);
 
         var hopped = hop && blocked is null;

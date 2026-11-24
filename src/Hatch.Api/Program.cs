@@ -61,6 +61,9 @@ builder.Services.AddPooledDbContextFactory<AppDbContext>(o =>
 {
     o.UseNpgsql(builder.Configuration.GetConnectionString("Hatch"));
 
+    // Counts commands for the request log line, and changes none of them.
+    o.AddInterceptors(StatementCounter.Instance);
+
     o.ConfigureWarnings(w =>
     {
         // In migrate mode only. The first command EF issues against an empty
@@ -334,6 +337,11 @@ if (httpsConfigured) app.UseHttpsRedirection();
 // refused me, and on what build" is unanswerable exactly when the wall is the
 // thing misbehaving. Costs one header per response and nothing else.
 app.UseMiddleware<HatchRevisionMiddleware>();
+
+// Also ahead of the wall, so the wall's own reads are in the count. Writes one
+// line for a request that ran a dispatch scan or built a priority tree, and
+// nothing for any other.
+app.UseMiddleware<ScanTallyMiddleware>();
 
 // Rewritten before anything else gets a look at the path - including the
 // wall, and including the static handlers below. The board's bundle

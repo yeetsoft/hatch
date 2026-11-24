@@ -1,3 +1,4 @@
+using Hatch.Api.Modules.Hatch;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -27,8 +28,13 @@ public static class ModuleRegistration
         // stays news.
         var quietCommandErrors = configuration["HATCH_MIGRATE"] == "1";
 
+        // The interceptor is added here and not in ConfigureModule, so the
+        // design-time factory, which shares that, is left as it was.
         services.AddDbContext<TContext>(o =>
-            ConfigureModule(o, configuration.GetConnectionString("Hatch"), schema, quietCommandErrors));
+        {
+            ConfigureModule(o, configuration.GetConnectionString("Hatch"), schema, quietCommandErrors);
+            o.AddInterceptors(StatementCounter.Instance);
+        });
 
         // Registered a second time under the marker interface: this is what lets the
         // startup migration loop find every module context without knowing its type.
