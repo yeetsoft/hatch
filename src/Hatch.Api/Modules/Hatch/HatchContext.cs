@@ -672,6 +672,16 @@ public class HatchContext : DbContext, IModuleContext
                 .HasForeignKey(m => m.RoomId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // A direct message goes with the link it is for. Exactly one of
+            // the two destinations is set.
+            e.HasOne(m => m.Link)
+                .WithMany()
+                .HasForeignKey(m => m.LinkId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.ToTable(t => t.HasCheckConstraint(
+                "CK_ChatMessages_OneDestination", "(\"RoomId\" IS NULL) <> (\"LinkId\" IS NULL)"));
+
             e.HasOne<EfHatchChatWorkspaceProject>()
                 .WithMany()
                 .HasForeignKey(m => new { m.WorkspaceId, m.ProjectId })
@@ -708,6 +718,8 @@ public class HatchContext : DbContext, IModuleContext
                 .IsUnique()
                 .HasDatabaseName("IX_ChatLinks_WorkspaceId_MemberId_Confirmed")
                 .HasFilter("\"ConfirmedAt\" IS NOT NULL");
+
+            e.Property(l => l.RunnerFailures).HasDefaultValue(true);
         });
 
         // A verdict is about an issue and means nothing without it, the same

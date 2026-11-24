@@ -33,7 +33,7 @@ public partial class RunnerFailuresTests
         var row = Assert.Single(await h.RowsAsync());
         Assert.Equal(kind, row.Kind);
         var messages = await h.MessagesAsync();
-        Assert.Equal(rooms, messages.Select(m => m.RoomId).OrderBy(id => id));
+        Assert.Equal(rooms, messages.Select(m => m.RoomId!.Value).OrderBy(id => id));
 
         var content = Said.Of(messages[0]);
         Assert.Equal($"{Name}: {RunnerFailureWords.Sentence(kind)}", content.Title);
@@ -53,7 +53,7 @@ public partial class RunnerFailuresTests
 
         Assert.Equal(RunnerFailureKinds.BoardPaused, Assert.Single(await h.RowsAsync()).Kind);
         var messages = await h.MessagesAsync();
-        Assert.Equal(rooms, messages.Select(m => m.RoomId).OrderBy(id => id));
+        Assert.Equal(rooms, messages.Select(m => m.RoomId!.Value).OrderBy(id => id));
         Assert.Equal($"{Name}: Paused by the board", Said.Of(messages[0]).Title);
     }
 
@@ -202,7 +202,7 @@ public partial class RunnerFailuresTests
             await using var winner = h.Connect();
             var row = Row(key.Id, Tree, RunnerFailureKinds.Forge);
             winner.RunnerFailures.Add(row);
-            await RunnerFailureMessagesTests.For(winner, h.Time).OpenedAsync(row, key.Name, default);
+            await RunnerFailureMessagesTests.For(winner, h.Time).OpenedAsync(row, key.Name, null, default);
             await winner.SaveChangesAsync();
         });
         await using var loser = new HatchContext(
@@ -212,12 +212,12 @@ public partial class RunnerFailuresTests
         // The loser's beat is a moment later, so its own message would name a different failure
         // and could not collide with the winner's: only dropping it keeps the rooms to one.
         await RunnerFailures.ReconcileAsync(
-            loser, key.Id, key.Name, session, new RunnerHeartbeatRequest(Kind: "loop", Where: Tree, Forge: "fails", ForgeWhy: "later"),
+            loser, key.Id, key.Name, null, session, new RunnerHeartbeatRequest(Kind: "loop", Where: Tree, Forge: "fails", ForgeWhy: "later"),
             RunnerFailureMessagesTests.For(loser, h.Time), Now.AddSeconds(5), default);
 
         Assert.Single(await h.RowsAsync());
         var messages = await h.MessagesAsync();
-        Assert.Equal(rooms, messages.Select(m => m.RoomId).OrderBy(id => id));
+        Assert.Equal(rooms, messages.Select(m => m.RoomId!.Value).OrderBy(id => id));
         Assert.Equal(1, await h.Db.ChatSubjects.CountAsync());
         Assert.All(messages, m => Assert.Equal(1, m.Revision));
         Assert.Equal(["Since 2026-09-08 12:00 UTC"], Said.Of(messages[0]).Lines);

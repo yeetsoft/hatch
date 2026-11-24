@@ -42,14 +42,16 @@ public static class ChatDelivery
 /// Sends what <see cref="ChatOutbox"/> queued. Each tick takes the lock, has
 /// <see cref="ChatProblemWatch"/> queue the goose and the backups if they need
 /// saying, drops what has waited a day, and sends at most one message per
-/// room: the oldest waiting there, as a post when the room has not heard of
-/// it and as an edit when it has. A change before the first send is one post
+/// destination - a room, or a person's direct message conversation: the oldest
+/// waiting there, as a post when it has not heard of it and as an edit when it
+/// has. A change before the first send is one post
 /// with the latest words, and a change after is an edit of the same message.
 ///
 /// <para>A failure delays a message and never loses it. A throttle holds the
 /// whole workspace for as long as the service asked. A token the service will
 /// not take holds the workspace and backs off. A channel the service refuses
-/// backs off that message and lets the other rooms go on.</para>
+/// backs off that message and lets the other rooms go on. A direct message the
+/// service refuses is written on its link, and nowhere else.</para>
 ///
 /// <para>Never throws, because Quartz re-fires a job that does. A job's context
 /// has no request, so it reads every project.</para>
@@ -97,7 +99,7 @@ public class ChatSendJob(
         await DropStaleAsync(ct);
 
         var now = time.GetUtcNow();
-        var rooms = await CandidateRoomsAsync(now, ct);
+        var rooms = await CandidatesAsync(now, ct);
         var heldWorkspaces = new HashSet<int>();
         var sends = 0;
 
@@ -110,7 +112,7 @@ public class ChatSendJob(
             if (heldWorkspaces.Contains(candidate.WorkspaceId)) continue;
 
             var id = await Due(now)
-                .Where(m => m.RoomId == candidate.RoomId && m.PendingSince == candidate.Since)
+                .Where(m => m.RoomId == candidate.RoomId && m.LinkId == candidate.LinkId && m.PendingSince == candidate.Since)
                 .OrderBy(m => m.Id)
                 .Select(m => (long?)m.Id)
                 .FirstOrDefaultAsync(ct);
@@ -176,28 +178,30 @@ public class ChatSendJob(
     }
 
     /// <summary>
-    /// The rooms with something worth sending, each with the age of its oldest
-    /// such message, oldest first. One entry per room, so a room that cannot be
-    /// sent to never crowds out the rest. The message itself is looked up as the
-    /// room's turn comes, since most ticks stop at the send budget.
+    /// The destinations with something worth sending, each with the age of its
+    /// oldest such message, oldest first. One entry per room or link, so one that
+    /// cannot be sent to never crowds out the rest. The message itself is looked up
+    /// as the destination's turn comes, since most ticks stop at the send budget.
     /// </summary>
-    private async Task<List<CandidateRoom>> CandidateRoomsAsync(DateTimeOffset now, CancellationToken ct)
+    private async Task<List<Candidate>> CandidatesAsync(DateTimeOffset now, CancellationToken ct)
     {
         // A group's smallest value, rather than its first row: it reads the same on
         // every provider, which a group's first row does not.
         var rooms = await Due(now)
-            .GroupBy(m => new { m.RoomId, m.WorkspaceId })
-            .Select(g => new CandidateRoom(g.Key.RoomId, g.Key.WorkspaceId, g.Min(m => m.PendingSince)))
+            .GroupBy(m => new { m.RoomId, m.LinkId, m.WorkspaceId })
+            .Select(g => new Candidate(g.Key.RoomId, g.Key.LinkId, g.Key.WorkspaceId, g.Min(m => m.PendingSince)))
             .ToListAsync(ct);
 
         return rooms
             .OrderBy(r => r.Since)
             .ThenBy(r => r.RoomId)
+            .ThenBy(r => r.LinkId)
             .Take(ChatDelivery.MaxCandidates)
             .ToList();
     }
 
-    private sealed record CandidateRoom(int RoomId, int WorkspaceId, DateTimeOffset Since);
+    /// <summary>One destination: exactly one of the room and the link is set.</summary>
+    private sealed record Candidate(int? RoomId, int? LinkId, int WorkspaceId, DateTimeOffset Since);
 
     /// <summary>
     /// Tries one message. True when a call was made to the chat service, which
@@ -212,8 +216,12 @@ public class ChatSendJob(
         if (heldWorkspaces.Contains(row.WorkspaceId)) return false;
 
         var workspace = await db.ChatWorkspaces.FirstOrDefaultAsync(w => w.Id == row.WorkspaceId, ct);
-        var room = await db.ChatRooms.FirstOrDefaultAsync(r => r.Id == row.RoomId, ct);
-        if (workspace is null || room is null) return false;
+        var room = row.RoomId is { } roomId ? await db.ChatRooms.FirstOrDefaultAsync(r => r.Id == roomId, ct) : null;
+        var link = row.LinkId is { } linkId ? await db.ChatLinks.FirstOrDefaultAsync(l => l.Id == linkId, ct) : null;
+        if (workspace is null || (room is null && link is null)) return false;
+
+        // A room's channel, or the conversation with the person's member.
+        var destination = room?.ExternalId ?? link!.ConversationId;
 
         var now = time.GetUtcNow();
 
@@ -242,8 +250,8 @@ public class ChatSendJob(
         else
         {
             result = row.ExternalId is null
-                ? await provider.PostAsync(token.Reveal(), room.ExternalId, content, ct)
-                : await provider.UpdateAsync(token.Reveal(), room.ExternalId, row.ExternalId, content, ct);
+                ? await provider.PostAsync(token.Reveal(), destination, content, ct)
+                : await provider.UpdateAsync(token.Reveal(), destination, row.ExternalId, content, ct);
         }
 
         now = time.GetUtcNow();
@@ -267,8 +275,17 @@ public class ChatSendJob(
                 row.NextAttemptAt = null;
                 row.LastRefusal = null;
 
-                room.SendFailingSince = null;
-                room.LastRefusal = null;
+                if (room is not null)
+                {
+                    room.SendFailingSince = null;
+                    room.LastRefusal = null;
+                }
+
+                if (link is not null)
+                {
+                    link.LastRefusal = null;
+                    link.LastRefusalAt = null;
+                }
 
                 workspace.FailStreak = 0;
                 workspace.SendFailingSince = null;
@@ -296,7 +313,16 @@ public class ChatSendJob(
             default:
                 BackOff(row, now, sentence);
 
-                room.SendFailingSince ??= now;
+                if (link is not null)
+                {
+                    // A person's own conversation says nothing about the workspace or
+                    // a room, and opens no finding: the refusal is the link's.
+                    link.LastRefusal = sentence;
+                    link.LastRefusalAt = now;
+                    break;
+                }
+
+                room!.SendFailingSince ??= now;
                 room.LastRefusal = sentence;
 
                 workspace.LastRefusal = sentence;

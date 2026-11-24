@@ -413,6 +413,13 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("LastRefusal")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("LastRefusalAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("MemberId")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -425,6 +432,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<Guid>("PersonId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("RunnerFailures")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTimeOffset?>("SecretExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -504,6 +516,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<int?>("LinkId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset?>("NextAttemptAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -519,7 +534,7 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int>("Revision")
                         .HasColumnType("integer");
 
-                    b.Property<int>("RoomId")
+                    b.Property<int?>("RoomId")
                         .HasColumnType("integer");
 
                     b.Property<int>("SentRevision")
@@ -541,10 +556,16 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasIndex("WorkspaceId", "ProjectId");
 
+                    b.HasIndex("LinkId", "Kind", "Subject")
+                        .IsUnique();
+
                     b.HasIndex("RoomId", "Kind", "Subject")
                         .IsUnique();
 
-                    b.ToTable("ChatMessages", "hatch");
+                    b.ToTable("ChatMessages", "hatch", t =>
+                        {
+                            t.HasCheckConstraint("CK_ChatMessages_OneDestination", "(\"RoomId\" IS NULL) <> (\"LinkId\" IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatProblem", b =>
@@ -3548,17 +3569,23 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchChatMessage", b =>
                 {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchChatLink", "Link")
+                        .WithMany()
+                        .HasForeignKey("LinkId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchChatRoom", "Room")
                         .WithMany()
                         .HasForeignKey("RoomId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchChatWorkspaceProject", null)
                         .WithMany()
                         .HasForeignKey("WorkspaceId", "ProjectId")
                         .HasPrincipalKey("WorkspaceId", "ProjectId")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Link");
 
                     b.Navigation("Room");
                 });

@@ -211,9 +211,18 @@ public record MeChatWorkspaceDto(int Id, string Name, MeChatLinkDto? Link);
 /// <summary>
 /// The caller's link in a workspace. <c>State</c> is <c>waiting</c> or
 /// <c>linked</c>; <c>ExpiresAt</c> is when a waiting link stops working, and
-/// null once linked.
+/// null once linked. <c>RunnerFailures</c> is whether a failing runner is told
+/// to this person here; <c>LastRefusal</c> is what the chat service last said
+/// when it refused a direct message to them, and <c>LastRefusalAt</c> when - both
+/// null until one is refused, and again after the next one is sent.
 /// </summary>
-public record MeChatLinkDto(int Id, string State, string MemberName, DateTimeOffset? ExpiresAt);
+public record MeChatLinkDto(
+    int Id, string State, string MemberName, DateTimeOffset? ExpiresAt,
+    bool RunnerFailures, string? LastRefusal, DateTimeOffset? LastRefusalAt);
+
+/// <summary>A write to one of the caller's links - <c>null</c> on a field leaves it alone.</summary>
+/// <param name="RunnerFailures">Whether a failing runner is told to the caller through this link.</param>
+public record MeChatLinkPatchRequest(bool? RunnerFailures);
 
 /// <summary>
 /// One person's Slack link, as an admin sees it. <c>State</c> is <c>waiting</c>
