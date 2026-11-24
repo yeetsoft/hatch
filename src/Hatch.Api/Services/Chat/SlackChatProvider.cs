@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
@@ -12,8 +13,11 @@ namespace Hatch.Api.Services.Chat;
 /// network is a sentence, never an exception. The token travels in one header
 /// and is never in a URL, a body, a log line or a sentence returned from here.
 /// </summary>
-public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<SlackChatProvider> logger) : IChatProvider
+public class SlackChatProvider(
+    IHttpClientFactory httpClientFactory, ILogger<SlackChatProvider> logger, ISocketConnector? sockets = null) : IChatProvider
 {
+    private readonly ISocketConnector connector = sockets ?? new ClientWebSocketConnector();
+
     /// <summary>The named HttpClient registered in Program.cs. No BaseAddress - the call is absolute.</summary>
     public const string HttpClientName = "Slack";
 
@@ -163,8 +167,179 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
 
         if (reply.Refusal is null) return ChatAppTokenCheck.Accepted();
 
-        return ChatAppTokenCheck.Refused(
-            reply.Code is not null && AppTokenRefusals.TryGetValue(reply.Code, out var sentence) ? sentence : reply.Refusal);
+        return ChatAppTokenCheck.Refused(AppTokenRefusalSentence(reply));
+    }
+
+    /// <summary>A refused <c>apps.connections.open</c>, in the words an app-level token needs.</summary>
+    private static string AppTokenRefusalSentence(SlackReply reply) =>
+        reply.Code is not null && AppTokenRefusals.TryGetValue(reply.Code, out var sentence) ? sentence : reply.Refusal!;
+
+    private const string ClosedBeforeReadySentence = "Slack closed the connection before it was ready; try again";
+
+    private const string ClosedSentence = "Slack closed the connection";
+
+    private const string DroppedSentence = "The connection to Slack failed";
+
+    public async Task<ChatListenEnd> ListenAsync(
+        string appToken, Func<CancellationToken, Task> opened, Action<ChatPress> pressed, CancellationToken ct)
+    {
+        // Before any request, as CheckAppTokenAsync does: a token of the wrong kind is not sent.
+        if (!appToken.StartsWith(AppTokenPrefix, StringComparison.Ordinal))
+            return ChatListenEnd.Refused($"That is not an app-level token; a Slack app-level token starts with {AppTokenPrefix}");
+
+        SlackReply reply;
+        try
+        {
+            reply = await CallAsync("apps.connections.open", appToken,
+                () => new HttpRequestMessage(HttpMethod.Post, AppsConnectionsOpenEndpoint), ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return ChatListenEnd.Stopped();
+        }
+
+        if (reply.Refusal is not null) return ChatListenEnd.Refused(AppTokenRefusalSentence(reply), reply.RetryAfter);
+
+        // The address is one-use and secret: it is read here and goes nowhere but the connector.
+        if (Str(reply.Root!.Value, "url") is not { } url
+            || !Uri.TryCreate(url, UriKind.Absolute, out var address)
+            || address.Scheme != Uri.UriSchemeWss)
+            return ChatListenEnd.Refused(Unreachable("Slack apps.connections.open named no usable address"));
+
+        ISocketConnection connection;
+        try
+        {
+            connection = await connector.ConnectAsync(address, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return ChatListenEnd.Stopped();
+        }
+        catch (Exception ex)
+        {
+            // The exception's type alone: a WebSocketException's message can carry the address.
+            logger.LogWarning("Slack socket could not be opened: {Kind}", ex.GetType().Name);
+            return ChatListenEnd.Refused(TransportSentence);
+        }
+
+        await using (connection)
+        {
+            var ready = false;
+
+            try
+            {
+                while (true)
+                {
+                    var text = await connection.ReceiveTextAsync(ct);
+                    if (text is null)
+                        return ready ? ChatListenEnd.Reopen(ClosedSentence) : ChatListenEnd.Refused(ClosedBeforeReadySentence);
+
+                    JsonDocument document;
+                    try
+                    {
+                        document = JsonDocument.Parse(text);
+                    }
+                    catch (JsonException)
+                    {
+                        // Not ours to read, and nothing from it is kept.
+                        continue;
+                    }
+
+                    using (document)
+                    {
+                        var root = document.RootElement;
+                        if (root.ValueKind != JsonValueKind.Object) continue;
+
+                        // Slack waits three seconds for this, so it comes before anything else.
+                        if (Str(root, "envelope_id") is { } envelope)
+                            await connection.SendTextAsync(JsonSerializer.Serialize(new Dictionary<string, string> { ["envelope_id"] = envelope }), ct);
+
+                        switch (Str(root, "type"))
+                        {
+                            case "hello":
+                                ready = true;
+                                try
+                                {
+                                    await opened(ct);
+                                }
+                                catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
+                                {
+                                    logger.LogWarning("The Slack listener's opened callback failed: {Kind}", ex.GetType().Name);
+                                }
+
+                                break;
+
+                            case "disconnect":
+                                var linkDisabled = Str(root, "reason") == "link_disabled";
+                                await connection.CloseAsync();
+
+                                return linkDisabled
+                                    ? ChatListenEnd.LinkDisabled("Socket Mode is turned off in the Slack app; turn it on to hear button presses")
+                                    : ChatListenEnd.Reopen("Slack asked Hatch to reconnect");
+
+                            case "interactive":
+                                if (PressOf(root) is { } press)
+                                {
+                                    try
+                                    {
+                                        pressed(press);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        logger.LogWarning("The Slack listener's pressed callback failed: {Kind}", ex.GetType().Name);
+                                    }
+                                }
+
+                                break;
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                await connection.CloseAsync();
+                return ChatListenEnd.Stopped();
+            }
+            catch (SocketMessageTooLargeException)
+            {
+                logger.LogWarning("Slack sent a message over the size allowed");
+                return ready ? ChatListenEnd.Reopen(DroppedSentence) : ChatListenEnd.Refused(DroppedSentence);
+            }
+            catch (Exception ex) when (ex is WebSocketException or IOException or ObjectDisposedException)
+            {
+                // The type alone, never the message.
+                logger.LogWarning("The Slack socket failed: {Kind}", ex.GetType().Name);
+                return ready ? ChatListenEnd.Reopen(DroppedSentence) : ChatListenEnd.Refused(DroppedSentence);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The first action of a <c>block_actions</c> payload, or null for any other
+    /// payload and for a press missing a part. Only <c>value</c> may be missing.
+    /// </summary>
+    private static ChatPress? PressOf(JsonElement envelope)
+    {
+        if (!envelope.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object) return null;
+        if (Str(payload, "type") != "block_actions") return null;
+
+        var member = payload.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.Object ? Str(user, "id") : null;
+        var channel = payload.TryGetProperty("channel", out var c) && c.ValueKind == JsonValueKind.Object ? Str(c, "id") : null;
+        var message =
+            (payload.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.Object ? Str(m, "ts") : null)
+            ?? (payload.TryGetProperty("container", out var k) && k.ValueKind == JsonValueKind.Object ? Str(k, "message_ts") : null);
+        var replyUrl = Str(payload, "response_url");
+
+        if (!payload.TryGetProperty("actions", out var actions) || actions.ValueKind != JsonValueKind.Array || actions.GetArrayLength() == 0)
+            return null;
+
+        var action = actions[0];
+        if (action.ValueKind != JsonValueKind.Object) return null;
+
+        var actionId = Str(action, "action_id");
+        if (member is null || channel is null || message is null || actionId is null || replyUrl is null) return null;
+
+        return new ChatPress(member, channel, message, actionId, Str(action, "value"), replyUrl);
     }
 
     public async Task<ChatTokenCheck> CheckTokenAsync(string token, CancellationToken ct)
@@ -340,7 +515,7 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
     /// error <see cref="Code"/> is kept for a caller that treats one as an answer;
     /// it is never the body, and never the request.
     /// </summary>
-    private sealed record SlackReply(JsonElement? Root, string? Refusal, string? Code);
+    private sealed record SlackReply(JsonElement? Root, string? Refusal, string? Code, TimeSpan? RetryAfter = null);
 
     /// <summary>
     /// One call, fail-soft: a refusal, a throttle, a dead network or an answer
@@ -359,7 +534,8 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
             if ((int)response.StatusCode == 429)
             {
                 logger.LogWarning("Slack {Method} was throttled", method);
-                return new SlackReply(null, ThrottleSentence(RetryAfterOf(response)), "ratelimited");
+                var after = RetryAfterOf(response);
+                return new SlackReply(null, ThrottleSentence(after), "ratelimited", after);
             }
 
             var body = await response.Content.ReadAsStringAsync(ct);
@@ -375,7 +551,11 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
             // The code, never the body.
             logger.LogWarning("Slack {Method} was refused: {Code}", method, code);
 
-            if (ThrottleCodes.Contains(code)) return new SlackReply(null, ThrottleSentence(RetryAfterOf(response)), code);
+            if (ThrottleCodes.Contains(code))
+            {
+                var after = RetryAfterOf(response);
+                return new SlackReply(null, ThrottleSentence(after), code, after);
+            }
 
             return new SlackReply(null, RefusalSentenceFor(code, "Slack refused"), code);
         }
