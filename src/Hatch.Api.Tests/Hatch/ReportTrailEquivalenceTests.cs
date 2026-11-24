@@ -32,7 +32,7 @@ public class ReportTrailEquivalenceTests
     /// <summary>When the cumulative flow fold is told it is: inside the generated history, so some windows run past it.</summary>
     private static readonly DateTimeOffset Now = Base.AddDays(70);
 
-    private const int Windows = 40;
+    private const int Windows = 43;
 
     [SkippableFact]
     public async Task ABoundedRead_FoldsToTheSameAnswers_AsEveryMove_OverManyWindows()
@@ -112,6 +112,184 @@ public class ReportTrailEquivalenceTests
             olderOnlyIf: EfHatchIssueEvent.StatusChanged, until: Base.AddDays(1)));
     }
 
+    /// <summary>
+    /// The flow report reads its window alone (<see cref="FlowRead"/>). The same
+    /// windows, with a project filter on some and a type filter on others, are
+    /// folded once on every move, release, session and question there is and once
+    /// on what the read returns, and the two answers are equal.
+    /// </summary>
+    [SkippableFact]
+    public async Task TheFlowRead_AnswersWhatEveryRowWould_OverManyWindows()
+    {
+        Skip.IfNot(
+            HatchDatabase.Available,
+            "HATCH_TEST_DATABASE_URL is unset - the read is built of probes that need a real Postgres. " +
+            "Run `make test-api-db`, or point the variable at a scratch database that may be dropped.");
+
+        var connectionString = await HatchDatabase.PrepareAsync();
+        var rng = new Random(2785);
+
+        await using var db = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options);
+
+        var instants = await SeedAsync(db, rng);
+        await SeedFlowAsync(db, rng, instants);
+
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
+        var rows = await LoadRowsAsync(db);
+
+        // Everything there is, as the route read it before the window was bounded.
+        var events = (await db.IssueEvents.AsNoTracking()
+                .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged || e.Kind == EfHatchIssueEvent.ClaimReleased)
+                .OrderBy(e => e.IssueId).ThenBy(e => e.At).ThenBy(e => e.Id)
+                .Select(e => new { e.IssueId, e.Id, e.Kind, e.At, e.Payload })
+                .ToListAsync())
+            .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
+            .ToList();
+        var sessions = (await db.WorkLog.AsNoTracking()
+                .Select(w => new { w.IssueId, w.EndedAt, w.IsError })
+                .ToListAsync())
+            .Select(w => new FlowReport.Session(w.IssueId, w.EndedAt, w.IsError))
+            .ToList();
+        var questions = await QuestionTrail.ReadAsync(db, null, null, default);
+
+        Assert.True(events.Count(e => e.Kind == EfHatchIssueEvent.ClaimReleased) > 40, "too few releases seeded");
+        Assert.True(sessions.Count > 80, "too few sessions seeded");
+        Assert.True(questions.Count > 40, "too few questions seeded");
+
+        var first = rows.Min(r => r.CreatedAt);
+        var windows = WindowsOf(rng, instants, first);
+        Assert.Equal(Windows, windows.Count);
+
+        var projectIds = rows.Select(r => r.ProjectId).Distinct().Order().ToList();
+        var failures = new List<string>();
+
+        // What the answers hold across the windows, so a seed that left a count at nothing is noticed.
+        long dropped = 0, sessionCount = 0, errors = 0, asked = 0, answered = 0, lapsed = 0, dwelled = 0;
+
+        // The control: the same fold on the cut without the walk back. It has to be wrong
+        // somewhere, or the hand-written stays do not reach a window and nothing is proved.
+        var withoutWalkBack = 0;
+
+        for (var w = 0; w < windows.Count; w++)
+        {
+            var (rawStart, end) = windows[w];
+            var start = RangeBounds.ClampStart(rawStart, end, first);
+
+            IReadOnlyList<int>? onlyProjects = w % 3 == 1 ? [projectIds[0]] : null;
+            var type = w % 4 == 2 ? "task" : w % 7 == 3 ? "story" : null;
+
+            var whole = FlowReport.Fold(rows, events, questions, sessions, statuses, start, end, onlyProjects, type);
+            var read = await FlowRead.ReadAsync(db, rows, statuses, start, end, onlyProjects, type, default);
+            Compare(failures, "flow", w, start, end, whole, read);
+
+            dropped += whole.Window.Dropped;
+            sessionCount += whole.Window.Sessions;
+            errors += whole.Window.SessionErrors;
+            asked += whole.Window.QuestionsAsked;
+            answered += whole.Window.QuestionsAnswered;
+            lapsed += whole.Window.QuestionsLapsed;
+            dwelled += whole.Columns.Sum(c => c.Dwelled);
+
+            var cut = (await BoardHealthTrail.ReadAsync(
+                    db, [EfHatchIssueEvent.StatusChanged], start, null, null, default, until: end, wholeInstant: true))
+                .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
+                .ToList();
+            var uncorrected = FlowReport.Fold(rows, cut, questions, sessions, statuses, start, end, onlyProjects, type);
+            if (JsonSerializer.Serialize(uncorrected.Columns) != JsonSerializer.Serialize(whole.Columns)) withoutWalkBack++;
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+
+        Assert.True(dropped > 0 && sessionCount > 0 && errors > 0 && asked > 0 && answered > 0 && lapsed > 0 && dwelled > 0,
+            $"a count is nothing in every window: dropped {dropped}, sessions {sessionCount}, errors {errors}, " +
+            $"asked {asked}, answered {answered}, lapsed {lapsed}, dwelled {dwelled}");
+        Assert.True(withoutWalkBack > 0, "no window needed the walk back, so the hand-written stays prove nothing");
+    }
+
+    /// <summary>
+    /// Releases (some dropped), sessions (some errors) and questions, spread over
+    /// the same stretch of time as the moves, some on a move's own instant.
+    /// </summary>
+    private static async Task SeedFlowAsync(HatchContext db, Random rng, List<DateTimeOffset> instants)
+    {
+        var issues = await db.Issues.AsNoTracking().ToListAsync();
+
+        DateTimeOffset Time() => rng.Next(3) == 0
+            ? instants[rng.Next(instants.Count)]
+            : Base.AddMinutes(rng.Next(-40 * 24 * 60, 130 * 24 * 60));
+
+        EfHatchIssue AnIssue() => issues[rng.Next(issues.Count)];
+
+        // Releases: dropped, worked, an outcome that only looks like dropped, and none.
+        string?[] payloads =
+        [
+            "{\"outcome\":\"dropped\",\"runner\":\"r1\"}", "{\"outcome\":\"dropped\"}", "{\"outcome\":\"worked\"}",
+            "{\"outcome\":\"Dropped\"}", "{\"outcome\":3}", "{\"runner\":\"r1\"}", null,
+        ];
+        for (var n = 0; n < 160; n++)
+            db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = AnIssue().Id, Actor = "ann", Kind = EfHatchIssueEvent.ClaimReleased, At = Time(),
+                Payload = payloads[rng.Next(payloads.Length)],
+            });
+
+        for (var n = 0; n < 200; n++)
+        {
+            var ended = Time();
+            db.WorkLog.Add(new EfHatchWorkLogEntry
+            {
+                IssueId = AnIssue().Id, SessionId = $"s{n}", StartedAt = ended.AddMinutes(-20), EndedAt = ended,
+                DurationMs = 1_200_000, IsError = rng.Next(4) == 0, Turns = 3, CreatedAt = ended,
+            });
+        }
+
+        await db.SaveChangesAsync();
+
+        // Questions of every kind, in no order: asked before, in and after a window, answered
+        // by a person, lapsed, lapsed and then answered, and answered more than once.
+        for (var n = 0; n < 120; n++)
+        {
+            var issue = AnIssue();
+            var askedAt = Time();
+            var question = new EfHatchComment
+            {
+                IssueId = issue.Id, Author = "ann", Body = "which way?", Kind = EfHatchComment.Question, CreatedAt = askedAt,
+            };
+            db.Comments.Add(question);
+            await db.SaveChangesAsync();
+
+            void Answer(string author, DateTimeOffset at, bool lapse = false)
+            {
+                db.Comments.Add(new EfHatchComment
+                {
+                    IssueId = issue.Id, Author = author, Body = "that way", Kind = EfHatchComment.Answer,
+                    AnswersId = question.Id, CreatedAt = at,
+                });
+                if (lapse)
+                    db.IssueEvents.Add(new EfHatchIssueEvent
+                    {
+                        IssueId = issue.Id, Actor = author, Kind = EfHatchIssueEvent.Answered, At = at,
+                        Payload = $"{{\"questionId\":{question.Id},\"lapsed\":true}}",
+                    });
+            }
+
+            var later = askedAt.AddMinutes(rng.Next(1, 60 * 24 * 20));
+            var latest = later.AddMinutes(rng.Next(1, 60 * 24 * 20));
+            switch (n % 6)
+            {
+                case 0: break; // never answered
+                case 1: Answer("bo", later); break;
+                case 2: Answer("Hatch", later, lapse: true); break;
+                case 3: Answer("Hatch", later, lapse: true); Answer("bo", latest); break; // lapsed, then a person
+                case 4: Answer("bo", later); Answer("cy", latest); break; // two people
+                default: Answer("Hatch", later, lapse: true); Answer("bo", later.AddMinutes(1)); Answer("cy", latest); break;
+            }
+
+            await db.SaveChangesAsync();
+        }
+    }
+
     private static async Task<List<TimelineReport.Change>> BoundedAsync(
         HatchContext db, DateTimeOffset since, DateTimeOffset until, HashSet<string>? scope) =>
         (await BoardHealthTrail.ReadAsync(
@@ -143,6 +321,9 @@ public class ReportTrailEquivalenceTests
             (all[10], all[10].AddHours(1)),                      // an hour, starting on a move
             (all[20].AddHours(-1), all[20]),                     // an hour, ending on a move
             (all[30], all[30].AddMinutes(1)),                    // one minute, on a move
+            (Base.AddDays(35), Base.AddDays(70)),                // after the moves into a column from itself, over the exits
+            (Base.AddDays(32), Base.AddDays(57)),
+            (Base.AddDays(41), Base.AddDays(70)),
         };
 
         // From a day-and-hour grid with the moves' own instants mixed in, so a
@@ -226,6 +407,18 @@ public class ReportTrailEquivalenceTests
 
         var everyIssue = epics.Concat(stories).Concat(tasks).Concat(loose).ToList();
 
+        // Five issues for the flow report's stays, written without the generator so its
+        // draws are the ones the other trails always had. Each is created before any window.
+        var hand = Enumerable.Range(0, 5).Select(n => new EfHatchIssue
+        {
+            ProjectId = projects[n % 2].Id, Number = numbers[projects[n % 2].Id] = numbers[projects[n % 2].Id] + 1,
+            Type = "task", Title = "task", Description = "", StatusId = doing.Id, Rank = ++rank,
+            CreatedBy = "ann", CreatedAt = Base.AddDays(-30 - n), UpdatedAt = Base.AddDays(-30 - n),
+        }).ToList();
+        db.Issues.AddRange(hand);
+        await db.SaveChangesAsync();
+        var (intoItself, flicker, flickerBack, firstThenItself, firstItself) = (hand[0], hand[1], hand[2], hand[3], hand[4]);
+
         // ---- Moves ----
         var instants = new List<DateTimeOffset>();
 
@@ -297,6 +490,26 @@ public class ReportTrailEquivalenceTests
 
             // Moves at the instants windows start and end on.
             Move(f, inbox, todo, day(30)), Move(f, todo, doing, day(45)),
+
+            // A move from a column into itself, after the stay began and before a window
+            // that starts after it: the stay began on day 10, not at the creation.
+            Move(intoItself, todo, doing, day(10)), Move(intoItself, doing, doing, day(30)), Move(intoItself, doing, review, day(55)),
+
+            // Two moves at one instant that leave a stay of no length: doing, review, doing.
+            // The stay in doing began on day 20 and is one stay.
+            Move(flicker, inbox, todo, day(5)), Move(flicker, todo, doing, day(20)),
+            Move(flicker, doing, review, day(40)), Move(flicker, review, doing, day(40)), Move(flicker, doing, done, day(60)),
+
+            // The same two moves the other way round, so the one written last leaves the
+            // issue in review again: the stay in review began on day 8.
+            Move(flickerBack, inbox, review, day(8)), Move(flickerBack, review, doing, day(25)),
+            Move(flickerBack, doing, review, day(25)), Move(flickerBack, review, done, day(58)),
+
+            // A stay merging back to the issue's first move.
+            Move(firstThenItself, doing, review, day(12)), Move(firstThenItself, review, review, day(30)), Move(firstThenItself, review, done, day(55)),
+
+            // A move from a column into itself as the issue's first move: the stay is the creation's.
+            Move(firstItself, review, review, day(30)), Move(firstItself, review, done, day(56)),
         };
 
         db.IssueEvents.AddRange(noise);

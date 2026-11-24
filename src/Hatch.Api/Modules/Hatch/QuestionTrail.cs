@@ -29,11 +29,23 @@ internal static class QuestionTrail
     /// an answer comment, so a question that lapsed before <paramref name="from"/>
     /// drops out with the rest that were answered before it.
     ///
+    /// That drops one question the whole read keeps: one that lapsed before
+    /// <paramref name="from"/> and was then answered by a person from it on, which
+    /// the whole read counts as answered, since a person's answer beats the lapse.
+    /// With <paramref name="laterAnswerBeatsLapse"/> it is put back: the questions
+    /// a person answered from <paramref name="from"/> on that were dropped are the
+    /// candidates, and one whose only earlier answer is the lapse comment (an
+    /// <c>answered</c> event at that issue and instant marks it) is read by id. Two
+    /// or more earlier answers mean a person answered before <paramref name="from"/>
+    /// too, and it stays dropped, as the whole read has it answered then. No
+    /// statement is sent when no question is a candidate.
+    ///
     /// The prefilter is a containment on Postgres, which has no LIKE for
     /// jsonb, and a substring on InMemory, which has no containment.
     /// </remarks>
     internal static async Task<List<FlowReport.Question>> ReadAsync(
-        HatchContext db, DateTimeOffset? from, DateTimeOffset? to, CancellationToken ct)
+        HatchContext db, DateTimeOffset? from, DateTimeOffset? to, CancellationToken ct,
+        bool laterAnswerBeatsLapse = false)
     {
         var lapseAt = new Dictionary<long, DateTimeOffset>();
         var answered = db.IssueEvents.AsNoTracking()
@@ -75,11 +87,68 @@ internal static class QuestionTrail
             .GroupBy(a => a.AnswersId)
             .ToDictionary(g => g.Key, g => g.Min(a => a.CreatedAt));
 
+        var restored = new List<FlowReport.Question>();
+        if (laterAnswerBeatsLapse && from is { } windowStart)
+        {
+            var kept = asked.Select(q => q.Id).ToHashSet();
+            var candidates = earliestAnswer.Keys.Where(id => !kept.Contains(id)).ToList();
+
+            if (candidates.Count > 0)
+            {
+                var before = await db.Comments.AsNoTracking()
+                    .Where(c => c.AnswersId != null && candidates.Contains(c.AnswersId.Value) && c.CreatedAt < windowStart)
+                    .Select(c => new { AnswersId = c.AnswersId!.Value, c.IssueId, c.CreatedAt })
+                    .ToListAsync(ct);
+
+                // Exactly one answer before the window, and the board's own.
+                var single = before.GroupBy(a => a.AnswersId).Where(g => g.Count() == 1).Select(g => g.Single()).ToList();
+
+                if (single.Count > 0)
+                {
+                    var issues = single.Select(a => a.IssueId).Distinct().ToList();
+                    var instants = single.Select(a => a.CreatedAt).Distinct().ToList();
+                    var marked = await db.IssueEvents.AsNoTracking()
+                        .Where(e => e.Kind == EfHatchIssueEvent.Answered && e.Payload != null
+                            && issues.Contains(e.IssueId) && instants.Contains(e.At))
+                        .Select(e => new { e.IssueId, e.At, e.Payload })
+                        .ToListAsync(ct);
+
+                    var lapses = new HashSet<(long IssueId, DateTimeOffset At, long QuestionId)>();
+                    foreach (var e in marked)
+                    {
+                        if (!LetGo.IsLapsedAnswer(e.Payload)) continue;
+                        if (IssueEventPayload.Parse(e.Payload) is { } payload
+                            && payload.TryGetProperty("questionId", out var id) && id.TryGetInt64(out var questionId))
+                            lapses.Add((e.IssueId, e.At, questionId));
+                    }
+
+                    var ids = single
+                        .Where(a => lapses.Contains((a.IssueId, a.CreatedAt, a.AnswersId)))
+                        .Select(a => a.AnswersId)
+                        .ToList();
+
+                    if (ids.Count > 0)
+                    {
+                        var questionsQuery = db.Comments.AsNoTracking()
+                            .Where(c => c.Kind == EfHatchComment.Question && ids.Contains(c.Id));
+                        if (to is { } beforeEnd) questionsQuery = questionsQuery.Where(c => c.CreatedAt < beforeEnd);
+
+                        restored = (await questionsQuery
+                                .Select(c => new { c.Id, c.IssueId, c.CreatedAt })
+                                .ToListAsync(ct))
+                            .Select(q => new FlowReport.Question(q.IssueId, q.Id, q.CreatedAt, earliestAnswer[q.Id]))
+                            .ToList();
+                    }
+                }
+            }
+        }
+
         return asked
             .Select(q => new FlowReport.Question(
                 q.IssueId, q.Id, q.CreatedAt,
                 earliestAnswer.TryGetValue(q.Id, out var answeredAt) ? answeredAt : null,
                 !earliestAnswer.ContainsKey(q.Id) && lapseAt.TryGetValue(q.Id, out var lapsedAt) ? lapsedAt : null))
+            .Concat(restored)
             .ToList();
     }
 }

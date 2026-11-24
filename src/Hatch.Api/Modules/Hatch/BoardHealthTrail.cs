@@ -108,6 +108,13 @@ internal static class BoardHealthTrail
     /// statements are the ones above and nothing changes. It has no meaning beside
     /// <paramref name="olderOnlyIf"/>, which decides what to keep of the newest
     /// before the window, so naming both is refused.</para>
+    /// <para><paramref name="wholeInstant"/> keeps, for each issue, every row at the
+    /// newest instant before <paramref name="since"/>, and not only the one with the
+    /// highest <c>Id</c>. Two moves at one instant make a stay of no length that the
+    /// fold drops, and which of them is the last decides whether the stay before
+    /// merges with the one after. It has no meaning beside <paramref name="olderOnlyIf"/>,
+    /// which keeps one event, so naming both is refused. Left false, the rows are the
+    /// ones it always read.</para>
     /// <para>An event whose payload names no column on either side is dropped by
     /// the fold's parser, and a cut keeps only the newest before the window; if
     /// that one were such an event the state before it would be lost. Every writer
@@ -116,10 +123,12 @@ internal static class BoardHealthTrail
     /// </remarks>
     internal static async Task<List<Ev>> ReadAsync(
         HatchContext db, string[] kinds, DateTimeOffset since, HashSet<string>? scope, List<long>? issueIds,
-        CancellationToken ct, string? olderOnlyIf = null, DateTimeOffset? until = null)
+        CancellationToken ct, string? olderOnlyIf = null, DateTimeOffset? until = null, bool wholeInstant = false)
     {
         if (until is not null && olderOnlyIf is not null)
             throw new ArgumentException("until and olderOnlyIf have no meaning together", nameof(until));
+        if (wholeInstant && olderOnlyIf is not null)
+            throw new ArgumentException("wholeInstant and olderOnlyIf have no meaning together", nameof(wholeInstant));
 
         var window = db.IssueEvents.AsNoTracking()
             .Where(e => e.At >= since && kinds.Contains(e.Kind));
@@ -206,16 +215,31 @@ internal static class BoardHealthTrail
                 .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
                 .ToListAsync(ct);
 
-            var latestOfKind = atThose
+            var atProbed = atThose
                 .Where(e => newest.TryGetValue((e.IssueId, e.Kind), out var at) && at == e.At)
-                .GroupBy(e => (e.IssueId, e.Kind))
-                .Select(g => g.OrderByDescending(e => e.Id).First());
+                .ToList();
 
-            foreach (var latest in latestOfKind
-                         .GroupBy(e => e.IssueId)
-                         .Select(g => g.OrderByDescending(e => e.At).ThenByDescending(e => e.Id).First()))
+            if (wholeInstant)
             {
-                if (olderOnlyIf is null || latest.Kind == olderOnlyIf) found.Add(latest);
+                // Every row at the issue's newest instant over the kinds asked for.
+                foreach (var g in atProbed.GroupBy(e => e.IssueId))
+                {
+                    var instant = g.Max(e => e.At);
+                    found.AddRange(g.Where(e => e.At == instant));
+                }
+            }
+            else
+            {
+                var latestOfKind = atProbed
+                    .GroupBy(e => (e.IssueId, e.Kind))
+                    .Select(g => g.OrderByDescending(e => e.Id).First());
+
+                foreach (var latest in latestOfKind
+                             .GroupBy(e => e.IssueId)
+                             .Select(g => g.OrderByDescending(e => e.At).ThenByDescending(e => e.Id).First()))
+                {
+                    if (olderOnlyIf is null || latest.Kind == olderOnlyIf) found.Add(latest);
+                }
             }
         }
 
@@ -246,6 +270,29 @@ internal static class BoardHealthTrail
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// Every event of one kind on one issue at the newest instant before
+    /// <paramref name="before"/>, or none when it has nothing earlier. One probe
+    /// of (<c>IssueId</c>, <c>Kind</c>, <c>At</c>) for the instant, and one read of
+    /// the rows at it, so a long history is never read. It runs on the caller's
+    /// own query filters, as the issue it is asked about is one the caller has
+    /// already read.
+    /// </summary>
+    internal static async Task<List<Ev>> EarlierAsync(
+        HatchContext db, string kind, long issueId, DateTimeOffset before, CancellationToken ct)
+    {
+        var at = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.IssueId == issueId && e.Kind == kind && e.At < before)
+            .MaxAsync(e => (DateTimeOffset?)e.At, ct);
+
+        if (at is not { } instant) return [];
+
+        return await db.IssueEvents.AsNoTracking()
+            .Where(e => e.IssueId == issueId && e.Kind == kind && e.At == instant)
+            .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
+            .ToListAsync(ct);
     }
 
     /// <summary>
