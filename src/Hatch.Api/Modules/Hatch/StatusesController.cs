@@ -25,7 +25,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/statuses")]
-public class StatusesController(HatchContext db, IActorDirectory actors, ICallerIdentity caller, TimeProvider time, ILogger<StatusesController> logger) : ControllerBase
+public class StatusesController(HatchContext db, IActorDirectory actors, ICallerIdentity caller, TimeProvider time, ILogger<StatusesController> logger,
+    ChangelogMessages? chat = null) : ControllerBase
 {
     /// <summary>
     /// The one mapping from a column to its <see cref="StatusDto"/>. Every route
@@ -134,6 +135,7 @@ public class StatusesController(HatchContext db, IActorDirectory actors, ICaller
             status.IsDeferred = deferred;
         }
 
+        if (chat is not null) await chat.QueueClosedAsync(closedByTick, ct);
         await db.SaveChangesAsync(ct);
         await ChangelogTasks.FileForAsync(db, actors, new RankService(db), time, closedByTick, ct, logger);
         return ToDto(status);

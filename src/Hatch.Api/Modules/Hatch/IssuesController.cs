@@ -29,7 +29,8 @@ public class IssuesController(
     IssueClaims claims,
     ICallerIdentity caller,
     TimeProvider time,
-    IProjectAccess access) : ControllerBase
+    IProjectAccess access,
+    ChangelogMessages? chat = null) : ControllerBase
 {
     /// <summary>
     /// How many times a create will re-read the project and try again. Five is
@@ -581,6 +582,7 @@ public class IssuesController(
             if (conflict is not null) return Conflict(conflict);
             if (error is not null) return BadRequest(error);
 
+            if (changed && chat is not null) await chat.QueueClosedAsync(justClosed, ct);
             if (changed) await db.SaveChangesAsync(ct);
             await ChangelogTasks.FileForAsync(db, actors, ranks, time, justClosed, ct);
 
@@ -606,6 +608,8 @@ public class IssuesController(
             if (full is not null) return Conflict(full);
             if (conflict is not null) return Conflict(conflict);
             if (error is not null) return BadRequest(error);
+
+            if (changed && chat is not null) await chat.QueueClosedAsync(justClosed, ct);
 
             try
             {
@@ -755,6 +759,7 @@ public class IssuesController(
         if (edit.ProjectId is null)
         {
             (changed, unchanged, failures, rekeyedPairs) = await ResolveAndStageAsync();
+            if (changed.Count > 0 && chat is not null) await chat.QueueClosedAsync(justClosed, ct);
             if (changed.Count > 0) await db.SaveChangesAsync(ct);
         }
         else
@@ -770,6 +775,7 @@ public class IssuesController(
             for (var attempt = 1; ; attempt++)
             {
                 (changed, unchanged, failures, rekeyedPairs) = await ResolveAndStageAsync();
+                if (changed.Count > 0 && chat is not null) await chat.QueueClosedAsync(justClosed, ct);
 
                 try
                 {
@@ -1248,6 +1254,7 @@ public class IssuesController(
         // one call - so a renumbered column and the card that caused it can
         // never land separately.
         issue.Rank = await ranks.PlaceAsync(status.Id, issue.Id, after, before, ct);
+        if (chat is not null) await chat.QueueClosedAsync(justClosed, ct);
         await db.SaveChangesAsync(ct);
         await ChangelogTasks.FileForAsync(db, actors, ranks, time, justClosed, ct);
 

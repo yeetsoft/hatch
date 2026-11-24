@@ -31,6 +31,7 @@ public static class HatchModule
         // a queued message lands or fails with the write that caused it. Its links
         // read an options value and hold nothing, so they are a singleton.
         services.AddScoped<ChatOutbox>();
+        services.AddScoped<ChangelogMessages>();
         services.AddSingleton<ChatLinks>();
 
         // Singleton, because it is a pure function with a class around it: it

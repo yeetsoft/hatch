@@ -3,9 +3,12 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
+using Hatch.Api.Tests.Chat;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
@@ -43,6 +46,34 @@ public class IssueRemandControllerTests
         var done = await h.Db.Issues.SingleAsync(i => i.Id == h.Done.Id);
         Assert.Equal(h.Closed.Id, done.StatusId);
         Assert.DoesNotContain(EfHatchIssueEvent.Remanded, await h.EventKindsAsync(h.Done.Id));
+    }
+
+    // ---- The changelog message ----
+
+    [Fact]
+    public async Task ARemandIntoAColumnThatIsAlsoDone_QueuesTheChangelogMessage_ForTheRootAndNotItsChildren()
+    {
+        var h = await NewAsync();
+        await h.ChangelogRoomAsync();
+        h.Shelf.IsTerminal = true;
+        await h.Db.SaveChangesAsync();
+
+        Created(await h.Controller.Remand(h.Root.Key, new DreamRemandRequest(h.Shelf.Id, [h.Story.Key, h.Task.Key]), default));
+
+        var row = await h.Db.ChatMessages.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal($"issue:{h.Root.Id}", row.Subject);
+        Assert.Equal("epic shipped: the root", ChatMessageContent.Read(row.Content)!.Title);
+    }
+
+    [Fact]
+    public async Task AnOrdinaryRemand_QueuesNoChangelogMessage()
+    {
+        var h = await NewAsync();
+        await h.ChangelogRoomAsync();
+
+        Created(await h.Controller.Remand(h.Root.Key, new DreamRemandRequest(h.Shelf.Id), default));
+
+        Assert.Empty(await h.Db.ChatMessages.IgnoreQueryFilters().ToListAsync());
     }
 
     // ---- Who started it (HA-2481): a remand always shelves into a deferred column, so it never crosses Columns.SendBack and never writes StartedBy ----
@@ -310,6 +341,14 @@ public class IssueRemandControllerTests
         public required EfHatchStatus Closed { get; init; }
         public required EfHatchStatus Shelf { get; init; }
 
+        /// <summary>A workspace bound to the project, with one room that carries its changelog.</summary>
+        public async Task ChangelogRoomAsync()
+        {
+            var seed = new ChatOutboxSeed(Db, Now);
+            var workspace = await seed.WorkspaceAsync("TACME", ProjectId);
+            await seed.RoomAsync(workspace, "C1", changelog: true);
+        }
+
         public Seeded Root { get; set; } = null!;
         public Seeded Story { get; set; } = null!;
         public Seeded Task { get; set; } = null!;
@@ -379,7 +418,9 @@ public class IssueRemandControllerTests
         var h = new Harness
         {
             Db = db,
-            Controller = new IssueRemandController(db, actors, new RankService(db), caller, time),
+            Controller = new IssueRemandController(
+                db, actors, new RankService(db), caller, time,
+                new ChangelogMessages(new ChatOutbox(db, time), new ChatLinks(Options.Create(new HatchOptions())), db)),
             Dreams = new DreamsController(db, caller, time),
             Actors = actors,
             ProjectId = project.Id,
