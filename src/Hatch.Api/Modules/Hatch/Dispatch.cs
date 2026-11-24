@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Hatch.Api.Ef;
@@ -107,12 +108,46 @@ public sealed class Dispatch(
     /// Null, every other caller, narrows nothing.
     /// </param>
     public async Task<Scan> ScanAsync(
+        ScanCaller caller,
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
         TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
         bool foldLetGo = true, ModelDeclaration? models = null, HasDeclaration? has = null,
         RunnerRefusal? refusal = null, VisibleProjects? within = null, SigningDeclaration? signing = null,
         ForgeDeclaration? forge = null)
+    {
+        // The count is kept apart from the walk, so the walk reads as it always
+        // did. Real time, not the clock the walk judges by: a faked clock must
+        // not make a scan look free. A nested scan, run from inside this one,
+        // has a frame of its own and takes its commands with it.
+        var frame = ScanFrame.Push(caller);
+        var started = Stopwatch.GetTimestamp();
+        Scan? scan = null;
+        try
+        {
+            scan = await ScanCoreAsync(
+                caller, offsetMinutes, ancestorKey, heldToken, repos, mine, ct, principalOverride, markDeadlocks,
+                tags, projects, asking, foldLetGo, models, has, refusal, within, signing, forge);
+            return scan;
+        }
+        finally
+        {
+            frame.Pop();
+            var elapsed = Stopwatch.GetTimestamp() - started;
+            ScanMetrics.ScanFinished(
+                caller, Stopwatch.GetElapsedTime(0, elapsed).TotalMilliseconds, scan?.Rows.Count ?? 0, frame.Statements);
+            ScanTally.Current?.RecordScan(caller, frame.Parent is null, elapsed);
+        }
+    }
+
+    private async Task<Scan> ScanCoreAsync(
+        ScanCaller caller,
+        int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
+        CancellationToken ct, Actor? principalOverride, bool markDeadlocks,
+        TagDeclaration? tags, IReadOnlyList<string>? projects, RunnerAsking? asking,
+        bool foldLetGo, ModelDeclaration? models, HasDeclaration? has,
+        RunnerRefusal? refusal, VisibleProjects? within, SigningDeclaration? signing,
+        ForgeDeclaration? forge)
     {
         tags ??= TagDeclaration.Unjudged;
         models ??= ModelDeclaration.Unjudged;
@@ -480,7 +515,7 @@ public sealed class Dispatch(
                     (string Runner, string Model)? leftFor = null;
                     if (!hop && foldLetGo && asking is not null && PreferredElsewhere(issue, playbook, localLevel, models) is { } preferred)
                     {
-                        peers ??= new PeerScans(this, asking, now, offsetMinutes);
+                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes);
                         if (await peers.FreeLocalAsync(issue.Id, preferred, ct) is { } free)
                             leftFor = (free, preferred);
                     }
@@ -512,7 +547,7 @@ public sealed class Dispatch(
                     // so a folded row parks nothing.
                     if (blocked is null && !hop && asking is not null && letGoBy.TryGetValue(issue.Id, out var by))
                     {
-                        peers ??= new PeerScans(this, asking, now, offsetMinutes);
+                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes);
                         if (await peers.CouldTakeAsync(issue.Id, ct))
                         {
                             blocked = $"{by.Runner} let this go {Minutes((int)(now - by.At).TotalSeconds)} ago, " +
@@ -527,7 +562,7 @@ public sealed class Dispatch(
                     // a preferred asker. A peer's own scan asks nobody.
                     if (blocked is null && !hop && foldLetGo && asking is not null && !askerPreferred)
                     {
-                        peers ??= new PeerScans(this, asking, now, offsetMinutes);
+                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes);
                         if (await peers.PreferredFreeAsync(issue.Id, ct) is { } preferredRunner)
                         {
                             blocked = ModelFamilies.LeftForPreferred(IssueKey.Format(issue.Project!.Key, issue.Number), status.Name, preferredRunner);
@@ -619,7 +654,7 @@ public sealed class Dispatch(
                 || hasFolded
                 || projects is { Count: > 0 }
                 || (asking is not null && candidates.Any(i => tree.EffectiveOmittedRunners(i.Id).Any(o => o.Runner == asking.Name)))
-                ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
+                ? (await ScanAsync(caller, offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
                 : rows;
             var dead = Deadlocks.Find(whole);
 
@@ -681,7 +716,7 @@ public sealed class Dispatch(
     /// peer's scan names no asker, so it defers nothing: the question is
     /// whether the ticket is takeable, not who would be asked next.
     /// </summary>
-    private sealed class PeerScans(Dispatch dispatch, RunnerAsking asking, DateTimeOffset now, int offsetMinutes)
+    private sealed class PeerScans(Dispatch dispatch, ScanCaller caller, RunnerAsking asking, DateTimeOffset now, int offsetMinutes)
     {
         private List<Peer>? _peers;
         private readonly Dictionary<string, HashSet<long>> _takeable = [];
@@ -753,7 +788,7 @@ public sealed class Dispatch(
         {
             if (!_takeable.TryGetValue(peer.Id, out var ids))
             {
-                ids = await dispatch.TakeableByAsync(peer, offsetMinutes, ct);
+                ids = await dispatch.TakeableByAsync(caller, peer, offsetMinutes, ct);
                 _takeable[peer.Id] = ids;
             }
 
@@ -849,13 +884,13 @@ public sealed class Dispatch(
     /// clear, or parked only behind higher-ranking work. A peer whose
     /// declaration is refused - <c>Mine</c> with no owner - takes none.
     /// </summary>
-    private async Task<HashSet<long>> TakeableByAsync(Peer peer, int offsetMinutes, CancellationToken ct)
+    private async Task<HashSet<long>> TakeableByAsync(ScanCaller caller, Peer peer, int offsetMinutes, CancellationToken ct)
     {
         var declared = peer.Declaration;
         if (declared.Refusal is not null) return [];
 
         var scan = await ScanAsync(
-            offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
+            caller, offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
             has: declared.Has, refusal: declared.ToRefusal(),
@@ -875,13 +910,13 @@ public sealed class Dispatch(
     /// field stays the peer's own, its column rule included - a row stuck on
     /// columns is not stuck on a toolchain.
     /// </summary>
-    private async Task<HashSet<long>> TakeableIgnoringToolchainByAsync(Peer peer, int offsetMinutes, CancellationToken ct)
+    private async Task<HashSet<long>> TakeableIgnoringToolchainByAsync(ScanCaller caller, Peer peer, int offsetMinutes, CancellationToken ct)
     {
         var declared = peer.Declaration;
         if (declared.Refusal is not null) return [];
 
         var scan = await ScanAsync(
-            offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
+            caller, offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: ModelDeclaration.Unjudged,
             has: HasDeclaration.Unjudged,
@@ -903,7 +938,7 @@ public sealed class Dispatch(
     /// live. A peer that never declared models or dependencies is never
     /// counted as lacking them. Ordered by tier, then rank.
     /// </summary>
-    public async Task<IReadOnlyList<WaitingOnARunnerDto>> WaitingOnARunnerAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    public async Task<IReadOnlyList<WaitingOnARunnerDto>> WaitingOnARunnerAsync(ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
@@ -925,7 +960,7 @@ public sealed class Dispatch(
         HashSet<long>? stuck = null;
         foreach (var peer in fleet)
         {
-            var ids = await TakeableIgnoringToolchainByAsync(peer, offsetMinutes, ct);
+            var ids = await TakeableIgnoringToolchainByAsync(caller, peer, offsetMinutes, ct);
             if (stuck is null) stuck = ids;
             else stuck.IntersectWith(ids);
             if (stuck.Count == 0) return [];
@@ -933,11 +968,11 @@ public sealed class Dispatch(
 
         foreach (var peer in fleet)
         {
-            stuck!.ExceptWith(await TakeableByAsync(peer, offsetMinutes, ct));
+            stuck!.ExceptWith(await TakeableByAsync(caller, peer, offsetMinutes, ct));
             if (stuck.Count == 0) return [];
         }
 
-        var board = await ScanAsync(offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var board = await ScanAsync(caller, offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
         var rows = board.Rows.ToDictionary(r => r.Issue.Id);
 
         var listed = new List<WaitingOnARunnerDto>();
@@ -965,9 +1000,9 @@ public sealed class Dispatch(
     /// parked behind a higher tier is not. Ordered as
     /// <see cref="WaitingOnARunnerAsync"/> orders: priority, rank, id.
     /// </summary>
-    public async Task<IReadOnlyList<AcrossHold>> HeldAtProjectLineAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<AcrossHold>> HeldAtProjectLineAsync(ScanCaller caller, CancellationToken ct)
     {
-        var board = await ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var board = await ScanAsync(caller, 0, null, null, RepositoryDeclaration.Undeclared, false, ct);
 
         return board.Rows
             .Where(r => !r.Hop && r.Across is not null && r.BlockedKind == BlockedKinds.Person)
@@ -984,11 +1019,11 @@ public sealed class Dispatch(
     /// needs a row's own <see cref="ScanRow.Blocked"/> sentence for a peer
     /// that cannot take it, not only the ones that can.
     /// </summary>
-    private async Task<Scan> PeerRowsAsync(Peer peer, int offsetMinutes, CancellationToken ct)
+    private async Task<Scan> PeerRowsAsync(ScanCaller caller, Peer peer, int offsetMinutes, CancellationToken ct)
     {
         var declared = peer.Declaration;
         return await ScanAsync(
-            offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
+            caller, offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
             has: declared.Has, refusal: declared.ToRefusal(),
@@ -1052,21 +1087,21 @@ public sealed class Dispatch(
     /// entry, including one with no takers at all. Empty where no live
     /// runner exists, or where the board scan itself fails.
     /// </summary>
-    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct) =>
-        (await TakersWithRowsAsync(offsetMinutes, liveSince, ct)).Takers;
+    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct) =>
+        (await TakersWithRowsAsync(caller, offsetMinutes, liveSince, ct)).Takers;
 
     /// <summary>
     /// <see cref="TakersAsync"/>'s body, with the undeclared board scan it ran
     /// handed back too, so a caller that needs the rows does not scan twice.
     /// The board is null where no live runner exists or the scan failed.
     /// </summary>
-    private async Task<(Scan? Board, Dictionary<long, StepTakers> Takers)> TakersWithRowsAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    private async Task<(Scan? Board, Dictionary<long, StepTakers> Takers)> TakersWithRowsAsync(ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
         if (fleet.Count == 0) return (null, new Dictionary<long, StepTakers>());
 
-        var board = await ScanAsync(offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var board = await ScanAsync(caller, offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
         if (board.Failure is not null) return (null, new Dictionary<long, StepTakers>());
 
         var judged = board.Rows
@@ -1077,7 +1112,7 @@ public sealed class Dispatch(
 
         var scans = new Dictionary<string, Scan>();
         foreach (var peer in fleet)
-            scans[peer.Id] = await PeerRowsAsync(peer, offsetMinutes, ct);
+            scans[peer.Id] = await PeerRowsAsync(caller, peer, offsetMinutes, ct);
 
         var readiness = await ReadinessAsync(board, judged, fleet, scans, ct);
         return (board, readiness.ToDictionary(p => p.Key, p => new StepTakers(p.Value.Takers, p.Value.Untaken)));
@@ -1153,9 +1188,9 @@ public sealed class Dispatch(
     /// taker if any, and why each other live runner cannot. Empty where no
     /// runner is live. Ordered by project key.
     /// </summary>
-    public async Task<IReadOnlyList<RunnerCapacityDto>> RunnerCapacityAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    public async Task<IReadOnlyList<RunnerCapacityDto>> RunnerCapacityAsync(ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
     {
-        var (board, takers) = await TakersWithRowsAsync(offsetMinutes, liveSince, ct);
+        var (board, takers) = await TakersWithRowsAsync(caller, offsetMinutes, liveSince, ct);
         if (board is null || Columns.Implementation(board.Statuses) is not { } implementation) return [];
 
         var listed = new List<RunnerCapacityDto>();
@@ -1229,12 +1264,12 @@ public sealed class Dispatch(
     /// can tell an idle peer from a busy one of the same name at a different
     /// checkout.
     /// </remarks>
-    public async Task<ReadyBoard> ReadyBoardAsync(DateTimeOffset liveSince, CancellationToken ct)
+    public async Task<ReadyBoard> ReadyBoardAsync(ScanCaller caller, DateTimeOffset liveSince, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
 
-        var board = await ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var board = await ScanAsync(caller, 0, null, null, RepositoryDeclaration.Undeclared, false, ct);
         var known = await KnownRunnersAsync(ct);
         if (board.Failure is not null) return new ReadyBoard([], [], known);
 
@@ -1245,7 +1280,7 @@ public sealed class Dispatch(
 
         var scans = new Dictionary<string, Scan>();
         foreach (var peer in fleet)
-            scans[peer.Id] = await PeerRowsAsync(peer, 0, ct);
+            scans[peer.Id] = await PeerRowsAsync(caller, peer, 0, ct);
 
         var readiness = await ReadinessAsync(board, ready.Select(r => r.Issue.Id).ToList(), fleet, scans, ct);
 
@@ -1935,12 +1970,12 @@ public sealed class Dispatch(
     /// move and the model, or null where none is, or none is in question.
     /// </summary>
     public async Task<(string Runner, string Model)?> LeftForLocalAsync(
-        EfHatchIssue issue, EfHatchPlaybook? playbook, int localModelLevel, ModelDeclaration models, RunnerAsking asking,
+        ScanCaller caller, EfHatchIssue issue, EfHatchPlaybook? playbook, int localModelLevel, ModelDeclaration models, RunnerAsking asking,
         CancellationToken ct)
     {
         if (PreferredElsewhere(issue, playbook, localModelLevel, models) is not { } preferred) return null;
 
-        var free = await new PeerScans(this, asking, time.GetUtcNow(), 0).FreeLocalAsync(issue.Id, preferred, ct);
+        var free = await new PeerScans(this, caller, asking, time.GetUtcNow(), 0).FreeLocalAsync(issue.Id, preferred, ct);
         return free is null ? null : (free, preferred);
     }
 
@@ -1950,11 +1985,11 @@ public sealed class Dispatch(
     /// named dispatch. Null where <paramref name="asking"/> is itself marked
     /// preferred, or where no such runner is free.
     /// </summary>
-    public async Task<string?> LeftForPreferredAsync(EfHatchIssue issue, RunnerAsking asking, CancellationToken ct)
+    public async Task<string?> LeftForPreferredAsync(ScanCaller caller, EfHatchIssue issue, RunnerAsking asking, CancellationToken ct)
     {
         if (await IsPreferredAsync(asking.Name, ct)) return null;
 
-        return await new PeerScans(this, asking, time.GetUtcNow(), 0).PreferredFreeAsync(issue.Id, ct);
+        return await new PeerScans(this, caller, asking, time.GetUtcNow(), 0).PreferredFreeAsync(issue.Id, ct);
     }
 
     /// <summary>
@@ -4497,6 +4532,11 @@ public sealed class PriorityTree
 
     private static async Task<PriorityTree> ForAsync(HatchContext db, IActorDirectory actors, CancellationToken ct, bool ignoreFilters, HashSet<long>? visible)
     {
+        // The one funnel every build passes through, scan or not, so it is
+        // counted here and nowhere else. Outside a scan the tag is the route.
+        ScanTally.Current?.RecordTreeBuild();
+        ScanMetrics.TreeBuilt(ScanFrame.Current?.Caller.Name ?? ScanTally.Current?.Route ?? "unrouted");
+
         var issues = ignoreFilters ? db.Issues.IgnoreQueryFilters() : db.Issues;
         var omissions = ignoreFilters ? db.RunnerOmissions.IgnoreQueryFilters() : db.RunnerOmissions;
 

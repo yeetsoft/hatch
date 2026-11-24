@@ -598,6 +598,68 @@ To fix it, either restore the right key and reload the page, or give up on the o
 value: type the secret again and press Save, which replaces it, or press Remove to
 clear it. Saving needs `HATCH_SECRET_KEY` to be set.
 
+## A busy database
+
+Every dispatch scan reads the whole board, so a database that is busier than
+the board's size explains is usually being scanned too often. Hatch counts its
+scans and says who asked for each: one log line for a request that ran a scan,
+and a meter for anything that reads numbers.
+
+- **Find the line.** The API writes one Information line for each request, and
+  each goose sweep, that ran a scan or built a priority tree. A request that did
+  neither writes nothing.
+
+  ```
+  docker compose logs api | grep "Dispatch reads on"
+  ```
+
+  For example: *Dispatch reads on api/work/next: 1 scans, 2 tree builds, 30
+  statements, 33 ms in scans, 49 ms in all, by caller next=1*.
+
+- **Read the fields.**
+  - `Route` is the route pattern of the request, never its path, so an issue key
+    does not appear. A goose sweep has no route and says `goose`.
+  - `Scans` is how many scans the request started, scans that a scan started
+    for its peers included.
+  - `TreeBuilds` is how many times the request built the priority tree. Each
+    scan builds one, and some routes build one of their own beside it.
+  - `Statements` is every database command the request sent, scan or not. It
+    counts commands sent by Hatch's own contexts; it is the driver's count, not
+    the server's.
+  - `ScanMs` is the time spent in scans. A scan that runs peer scans is timed
+    once, so nesting is not counted twice.
+  - `RequestMs` is the time of the whole request or sweep, for comparison.
+  - `Callers` is the scans started by each caller, as `name=count`.
+
+- **Name the callers.** A scan is always asked for by one of these:
+  - `next`: a runner asking for its next step, or a named step.
+  - `queue`: the queue, and the takers it lists for each step.
+  - `attention`: the Attention page.
+  - `claim-heartbeat`: a runner's heartbeat asking whether its claim should
+    yield to emergency work.
+  - `goose`: the goose's sweep.
+
+  One caller far above the rest is where to look. A queue asked for with takers, on a
+  board with two live runners, starts four: its own scan, the takers' scan of the
+  whole board, and one scan for each live runner.
+
+- **Read the meter.** The same numbers are published on the `Hatch.Dispatch`
+  meter, for whatever exporter the installation runs. Hatch ships no exporter and
+  no `/metrics` route. To look at it by hand, install
+  [`dotnet-counters`](https://learn.microsoft.com/dotnet/core/diagnostics/dotnet-counters)
+  where the API runs and point it at the process:
+
+  ```
+  dotnet-counters monitor --counters Hatch.Dispatch --process-id <pid>
+  ```
+
+  The instruments are `hatch.dispatch.scans`, `hatch.dispatch.scan.duration`
+  (milliseconds), `hatch.dispatch.scan.candidates`,
+  `hatch.dispatch.scan.statements` and `hatch.dispatch.tree_builds`. Each is
+  tagged with `caller`; a tree built outside a scan carries the route pattern
+  instead. The `api` image does not carry `dotnet-counters`, so reading the meter
+  from inside the container needs the tool added to it.
+
 ## A psql shell
 
 For looking at the database by hand:

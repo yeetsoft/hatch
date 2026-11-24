@@ -4433,6 +4433,48 @@ public class IssueClaimTests
         }
     }
 
+    // ---- Counting scans (HA-2792) ----
+
+    /// <summary>
+    /// The statement counter agrees with the commands the Npgsql driver sent
+    /// for one <c>next</c> scan. The driver's own command activities are the
+    /// witness: this is the driver's count, not the server's, because the
+    /// scratch database has no <c>pg_stat_statements</c>. Both are filtered on
+    /// the test's own tally, so a scan in another test class never lands here.
+    /// </summary>
+    [SkippableFact]
+    public async Task TheStatementCounter_AgreesWithTheCommandsTheDriverSentForOneNextScan()
+    {
+        await using var h = await NewAsync();
+        await h.FileAsync();
+
+        await using var db = new HatchContext(
+            new DbContextOptionsBuilder<HatchContext>().UseNpgsql(h.ConnectionString).AddInterceptors(StatementCounter.Instance).Options);
+        var dispatch = new Dispatch(db, h.Actors, h.Rule, h.Time);
+
+        using var probe = new ScanMeterProbe();
+        var sent = 0;
+        using var listener = new System.Diagnostics.ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "Npgsql",
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
+                System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = _ =>
+            {
+                if (ReferenceEquals(ScanTally.Current, probe.Tally)) Interlocked.Increment(ref sent);
+            },
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+
+        var scan = await dispatch.ScanAsync(ScanCaller.Next, 0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(scan.Failure);
+        Assert.True(probe.Tally.Statements > 1, "a scan reads the board in more than one statement");
+        Assert.Equal(sent, probe.Tally.Statements);
+        Assert.Equal(1, probe.Tally.Scans);
+        Assert.Equal(1, probe.Scans["next"]);
+    }
+
     private static async Task<Harness> NewAsync()
     {
         Skip.IfNot(
