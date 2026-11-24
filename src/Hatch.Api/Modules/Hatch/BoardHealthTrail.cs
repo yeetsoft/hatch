@@ -9,7 +9,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// own read (<see cref="BoardHealthController"/>) and the kept thirty-day one
 /// (<see cref="WaitHistory"/>) both go through here, so the two cut an issue's
 /// trail the same way. Every read runs on the context it is given and so on
-/// that caller's own query filters.
+/// that caller's own query filters, except where <c>everyProject</c> is passed
+/// (<see cref="ColumnNormals"/>), which reads every project's.
 /// </summary>
 internal static class BoardHealthTrail
 {
@@ -120,22 +121,28 @@ internal static class BoardHealthTrail
     /// that one were such an event the state before it would be lost. Every writer
     /// goes through <c>IssueEventPayload.StatusChanged</c>, which writes both
     /// sides, so none exists; this has not been checked against production rows.</para>
+    /// <para><paramref name="everyProject"/> reads the window, the issues the probe is
+    /// driven from and the rows at an instant on every project and not the caller's
+    /// own, for a figure that is the house's and not the caller's. The probe already
+    /// read every issue; only the rows returned differ. Left false, the statements
+    /// are the ones above.</para>
     /// </remarks>
     internal static async Task<List<Ev>> ReadAsync(
         HatchContext db, string[] kinds, DateTimeOffset since, HashSet<string>? scope, List<long>? issueIds,
-        CancellationToken ct, string? olderOnlyIf = null, DateTimeOffset? until = null, bool wholeInstant = false)
+        CancellationToken ct, string? olderOnlyIf = null, DateTimeOffset? until = null, bool wholeInstant = false,
+        bool everyProject = false)
     {
         if (until is not null && olderOnlyIf is not null)
             throw new ArgumentException("until and olderOnlyIf have no meaning together", nameof(until));
         if (wholeInstant && olderOnlyIf is not null)
             throw new ArgumentException("wholeInstant and olderOnlyIf have no meaning together", nameof(wholeInstant));
 
-        var window = db.IssueEvents.AsNoTracking()
+        var window = Events(db, everyProject)
             .Where(e => e.At >= since && kinds.Contains(e.Kind));
 
         if (until is { } closed) window = window.Where(e => e.At <= closed);
 
-        var drivers = db.Issues.AsNoTracking().AsQueryable();
+        var drivers = Issues(db, everyProject);
 
         if (scope is not null)
         {
@@ -210,7 +217,7 @@ internal static class BoardHealthTrail
             // are dropped below.
             var instants = newest.Values.Distinct().ToList();
             var owners = newest.Keys.Select(k => k.IssueId).Distinct().ToList();
-            var atThose = await db.IssueEvents.AsNoTracking()
+            var atThose = await Events(db, everyProject)
                 .Where(e => kinds.Contains(e.Kind) && owners.Contains(e.IssueId) && instants.Contains(e.At) && e.At < since)
                 .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
                 .ToListAsync(ct);
@@ -255,7 +262,7 @@ internal static class BoardHealthTrail
             {
                 var instants = bare.Select(a => a.Value).Distinct().ToList();
                 var owners = bare.Select(a => a.Key.IssueId).Distinct().ToList();
-                var atThose = await db.IssueEvents.AsNoTracking()
+                var atThose = await Events(db, everyProject)
                     .Where(e => kinds.Contains(e.Kind) && owners.Contains(e.IssueId) && instants.Contains(e.At) && e.At > end)
                     .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
                     .ToListAsync(ct);
@@ -278,22 +285,31 @@ internal static class BoardHealthTrail
     /// of (<c>IssueId</c>, <c>Kind</c>, <c>At</c>) for the instant, and one read of
     /// the rows at it, so a long history is never read. It runs on the caller's
     /// own query filters, as the issue it is asked about is one the caller has
-    /// already read.
+    /// already read - unless <paramref name="everyProject"/> is set, as in
+    /// <see cref="ReadAsync"/>.
     /// </summary>
     internal static async Task<List<Ev>> EarlierAsync(
-        HatchContext db, string kind, long issueId, DateTimeOffset before, CancellationToken ct)
+        HatchContext db, string kind, long issueId, DateTimeOffset before, CancellationToken ct, bool everyProject = false)
     {
-        var at = await db.IssueEvents.AsNoTracking()
+        var at = await Events(db, everyProject)
             .Where(e => e.IssueId == issueId && e.Kind == kind && e.At < before)
             .MaxAsync(e => (DateTimeOffset?)e.At, ct);
 
         if (at is not { } instant) return [];
 
-        return await db.IssueEvents.AsNoTracking()
+        return await Events(db, everyProject)
             .Where(e => e.IssueId == issueId && e.Kind == kind && e.At == instant)
             .Select(e => new Ev(e.IssueId, e.Id, e.Kind, e.At, e.Actor, e.Payload))
             .ToListAsync(ct);
     }
+
+    /// <summary>Events, on the caller's own filters, or on every project's when <paramref name="everyProject"/> is set.</summary>
+    private static IQueryable<EfHatchIssueEvent> Events(HatchContext db, bool everyProject) =>
+        everyProject ? db.IssueEvents.IgnoreQueryFilters().AsNoTracking() : db.IssueEvents.AsNoTracking();
+
+    /// <summary>Issues, on the caller's own filters, or on every project's when <paramref name="everyProject"/> is set.</summary>
+    private static IQueryable<EfHatchIssue> Issues(HatchContext db, bool everyProject) =>
+        everyProject ? db.Issues.IgnoreQueryFilters().AsNoTracking() : db.Issues.AsNoTracking();
 
     /// <summary>
     /// The state rows of these runners at or after <paramref name="from"/>, plus

@@ -6459,9 +6459,10 @@ and `at`, the instant the board was read at. `seconds` is the column's
 `p90DwellSeconds` from this very fold, over the last thirty days, over every
 project and over issues with no children at all, so the board and the flow page
 cannot disagree; it is null where the column has under ten stays. The fold is
-run by `ColumnNormals`, which keeps its answer for five minutes and recomputes at
-once when a column's flags or place change. It reads past project scope on
-purpose: a column is shared by every project, as its WIP count is, so a scoped
+run by `ColumnNormals`, which reads the thirty days' moves of the issues with no
+children and not the whole trail (the bounded read the flow report makes), keeps
+its answer for five minutes and recomputes at once when a column's flags or
+place change. It reads past project scope on purpose: a column is shared by every project, as its WIP count is, so a scoped
 reader gets the same normal, and what leaves is a duration and never a row. Each
 card carries `enteredColumnAt`, the instant of its newest `status_changed` event
 in the [issue event](#issue-event) trail (its creation where it has none; a rank
