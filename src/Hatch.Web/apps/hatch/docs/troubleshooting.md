@@ -636,7 +636,8 @@ and a meter for anything that reads numbers.
   - `queue`: the queue, and the takers it lists for each step.
   - `attention`: the Attention page.
   - `claim-heartbeat`: a runner's heartbeat asking whether its claim should
-    yield to emergency work.
+    yield to emergency work. It scans only while an open emergency issue
+    exists, so on a board with none this counter stays at zero.
   - `goose`: the goose's sweep.
 
   One caller far above the rest is where to look. A queue asked for with takers, on a
