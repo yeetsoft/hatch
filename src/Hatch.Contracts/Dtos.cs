@@ -159,9 +159,16 @@ public record ChatWorkspaceDto(
 /// said. <c>Waiting</c> and <c>Dropped</c> count messages; <c>LastSaid</c> is
 /// the last sentence a send was refused with and <c>LastSaidAt</c> when, both
 /// null while sends work. <c>FailingSince</c> is when the run of failures began.
+/// <c>ListeningSince</c> is when Hatch last opened its connection to listen to the
+/// workspace, null until one has opened. <c>ListenFailingSince</c> is when the run
+/// of failed attempts to open or keep it began, null while listening works.
+/// <c>ListenLastSaid</c> is the sentence the last failed attempt was refused with,
+/// null when there is none; for a token that cannot be opened it is Hatch's own
+/// sentence, not the chat service's.
 /// </summary>
 public record ChatWorkspaceDeliveryDto(
-    int WorkspaceId, int Waiting, int Dropped, string? LastSaid, DateTimeOffset? LastSaidAt, DateTimeOffset? FailingSince);
+    int WorkspaceId, int Waiting, int Dropped, string? LastSaid, DateTimeOffset? LastSaidAt, DateTimeOffset? FailingSince,
+    DateTimeOffset? ListeningSince, DateTimeOffset? ListenFailingSince, string? ListenLastSaid);
 
 /// <summary>
 /// Delivery state for every connected workspace. <c>LinksOn</c> is whether

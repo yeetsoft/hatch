@@ -35,6 +35,9 @@ public class ChatPageTests(ITestOutputHelper output)
     /// <summary>The sentence <c>SlackChatProvider</c> gives for <c>not_in_channel</c>; the fake refuses C2 with it.</summary>
     private const string NotInvitedSentence = "the app has not been invited to that channel; in Slack, add Hatch to it";
 
+    /// <summary>What Slack says when it will not open Globex's connection. Holds no token.</summary>
+    private const string SocketModeOffSentence = "Socket Mode is turned off for this app";
+
     private const string NotInvitedHint = "Not invited yet. In Slack, open the channel and add Hatch.";
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
@@ -78,6 +81,8 @@ public class ChatPageTests(ITestOutputHelper output)
             provider.Channels[FakeChatProvider.AcmeNewToken] = provider.Channels[FakeChatProvider.AcmeToken];
             provider.Channels[FakeChatProvider.GlobexToken] = [new("C9", "lobby", false, true)];
             provider.PostRefusals["C2"] = NotInvitedSentence;
+            // Acme's app token listens with the fake's default script. Globex's is refused.
+            provider.Listens[FakeChatProvider.GlobexAppToken] = new ListenScript { End = ChatListenEnd.Refused(SocketModeOffSentence) };
 
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline, services =>
@@ -136,6 +141,9 @@ public class ChatPageTests(ITestOutputHelper output)
             // Both start with no app-level token. Acme is given one; Globex stays without, so the page
             // shows one of each.
             await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Acme\") .hatch-chat-apptoken__state:text-is(\"No app token\")");
+            await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Globex\") .hatch-chat-apptoken__state:text-is(\"No app token\")");
+            // With no app token there is nothing to listen with, and no listening state in either row.
+            Assert.Equal(0, await CountAsync(harness, deadline, "main tbody .hatch-chat-listen"));
             await deadline.BoundAsync(
                 "typing the app-level token",
                 () => harness.Page!.FillAsync("input[aria-label=\"App-level token for Acme\"]", FakeChatProvider.AcmeAppToken));
@@ -161,6 +169,8 @@ public class ChatPageTests(ITestOutputHelper output)
 
             await AssertFitsAsync(harness, deadline, profile);
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "chat-two-workspaces"));
+
+            await AssertListeningShownAsync(harness, deadline, profile);
 
             await BindAndSetUpRoomsAsync(harness, deadline, baseUrl, provider, profile);
 
@@ -343,6 +353,47 @@ public class ChatPageTests(ITestOutputHelper output)
         await harness.ClickAsync(deadline, "[aria-modal=\"true\"] button:text-is(\"Remove room\")");
         await harness.WaitForHiddenAsync(deadline, announcements);
         Assert.True(await harness.IsVisibleAsync(deadline, general), "the other room went with it");
+    }
+
+    /// <summary>
+    /// Whether Hatch is listening is shown in the app token cell. Acme already holds an app token and the fake
+    /// provider lets it listen, so it reads Listening. Globex is given one through the page, and the fake refuses
+    /// it, so it reads Not listening with the sentence it was refused with. Nothing is seeded: the listener runs
+    /// in this host and would write over the columns within one tick.
+    /// </summary>
+    private async Task AssertListeningShownAsync(E2eHarness harness, Deadline deadline, DeviceProfile? profile)
+    {
+        await deadline.BoundAsync(
+            "typing Globex's app-level token",
+            () => harness.Page!.FillAsync("input[aria-label=\"App-level token for Globex\"]", FakeChatProvider.GlobexAppToken));
+        await harness.ClickAsync(deadline, "tr:has-text(\"Globex\") button:has-text(\"Set app token\")");
+        await harness.WaitForVisibleAsync(deadline, "tr:has-text(\"Globex\") .hatch-chat-apptoken__state:text-is(\"App token set\")");
+
+        // The listener looks every few seconds and the page asks every thirty; open the page again until both have moved.
+        string acme = "", globex = "";
+        while (true)
+        {
+            await harness.GoToAsync(deadline, "/chat");
+            await harness.WaitForVisibleAsync(deadline, "td strong:text-is(\"Globex\")");
+            acme = await TextAsync(harness, deadline, "main tbody tr:has-text(\"Acme\") td.hatch-chat-apptoken-cell");
+            globex = await TextAsync(harness, deadline, "main tbody tr:has-text(\"Globex\") td.hatch-chat-apptoken-cell");
+            if (acme.Contains("opened") && globex.Contains($"Slack said: {SocketModeOffSentence}")) break;
+            await deadline.BoundAsync("waiting for the listener", () => Task.Delay(500));
+        }
+
+        Assert.Contains("Listening", acme);
+        Assert.DoesNotContain("Not listening", acme);
+        Assert.Matches(@"opened (just now|\d+ (second|minute)s? ago)", acme);
+
+        Assert.Contains("Not listening", globex);
+        Assert.DoesNotContain("Not listening yet", globex);
+        Assert.Matches(@"first failed (just now|\d+ (second|minute)s? ago)", globex);
+        Assert.DoesNotContain("opened", globex);
+        Assert.Equal(2, await CountAsync(harness, deadline, "main tbody .hatch-chat-listen"));
+
+        await AssertNoTokenOnPageAsync(harness, deadline);
+        await AssertFitsAsync(harness, deadline, profile);
+        output.WriteLine("screenshot: " + await harness.FullPageScreenshotAsync(deadline, "chat-listening"));
     }
 
     /// <summary>
