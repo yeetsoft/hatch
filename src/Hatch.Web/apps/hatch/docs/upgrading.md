@@ -58,6 +58,24 @@ Then it exits. `api` is gated on it: `compose.yaml` makes `api` depend on
 only after `migrate` exits 0. With nothing to apply, `migrate` changes nothing
 and says the same things.
 
+### Migrations that build an index
+
+Some migrations build an index on a large table, such as the event trail
+(`IssueEvents`) or the work log (`WorkLogEntries`). Entity Framework runs a
+migration in one transaction, so the index is a plain `CREATE INDEX`, which
+holds a share lock on the table until it is built: reads go on, but writes to
+that table wait. On a table of 130,000 events the two indexes added for the
+scan's reads (an index of claim releases in `IssueEvents`, and one of an
+ambition's worked passes in `WorkLogEntries`) built in well under a second, and
+a writer committing every ten milliseconds waited about as long as the build
+took.
+
+On the shipped stack nothing waits: `migrate` finishes before `api` starts. If
+you run the migration while the API is still up, expect the writes that touch
+the table - claims, comments, moves - to stall for as long as the build takes,
+and longer on a larger table. Stop `api` first (`docker compose stop api`), then
+run `migrate`, then start `api` again.
+
 ## Reading its log
 
 ```

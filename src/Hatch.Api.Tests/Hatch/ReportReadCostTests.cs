@@ -86,8 +86,8 @@ public class ReportReadCostTests
             new(3, 1, 1150, 950, "IssueEvents=1294;Issues=400;Projects=2;Statuses=6"),
             new(3, 1, 3150, 2950, "IssueEvents=3294;Issues=400;Projects=2;Statuses=6")),
         ["GET /api/reports/flow"] = (
-            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=3882;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
-            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=7242;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=1500")),
+            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=2663;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
+            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=6663;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=1500")),
         ["GET /api/reports/changelog (epic level)"] = (
             new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
             new(13, 5, 417, 12, "Comments=2221;Issues=1223;Projects=3;Statuses=36")),
@@ -123,11 +123,11 @@ public class ReportReadCostTests
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=1500")),
         ["GET /api/board/health"] = (
-            new(38, 7, 3075, 1982, "Comments=1782;IssueEvents=19856;Issues=3002;Projects=16;Statuses=30;WorkLogEntries=500"),
-            new(38, 7, 5075, 3982, "Comments=3963;IssueEvents=109146;Issues=3602;Projects=16;Statuses=30;WorkLogEntries=1500")),
+            new(38, 7, 3075, 1982, "Comments=1782;IssueEvents=19856;Issues=3002;Projects=16;Statuses=30"),
+            new(38, 7, 5075, 3982, "Comments=3963;IssueEvents=109146;Issues=3602;Projects=16;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(40, 7, 3084, 2020, "Comments=1782;IssueEvents=25160;Issues=3202;Projects=24;Statuses=30;WorkLogEntries=500"),
-            new(40, 7, 5084, 4020, "Comments=3963;IssueEvents=143250;Issues=3802;Projects=24;Statuses=30;WorkLogEntries=1500")),
+            new(40, 7, 3084, 2020, "Comments=1782;IssueEvents=25160;Issues=3202;Projects=24;Statuses=30"),
+            new(40, 7, 5084, 4020, "Comments=3963;IssueEvents=143250;Issues=3802;Projects=24;Statuses=30")),
         ["ColumnNormals.ForAsync"] = (
             new(2, 1, 1144, 944, "IssueEvents=1294;Issues=200;Projects=2"),
             new(2, 1, 3144, 2944, "IssueEvents=3294;Issues=200;Projects=2")),
