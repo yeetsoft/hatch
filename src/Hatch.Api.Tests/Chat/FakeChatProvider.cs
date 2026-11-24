@@ -13,11 +13,13 @@ internal sealed class FakeChatProvider : IChatProvider
     public const string AcmeToken = "xoxb-1111-acmeSecretPart";
     public const string AcmeNewToken = "xoxb-2222-acmeReplacementPart";
     public const string GlobexToken = "xoxb-3333-globexSecretPart";
+    public const string InitechToken = "xoxb-4444-initechSecretPart";
     public const string RefusedToken = "xoxb-9999-refusedSecretPart";
 
     public const string AcmeAppToken = "xapp-1-A1111-1111-acmeAppSecretPart";
     public const string AcmeNewAppToken = "xapp-1-A1111-2222-acmeNewAppSecretPart";
     public const string GlobexAppToken = "xapp-1-A3333-3333-globexAppSecretPart";
+    public const string InitechAppToken = "xapp-1-A4444-4444-initechAppSecretPart";
     public const string RefusedAppToken = "xapp-1-A9999-9999-refusedAppSecretPart";
 
     public const string AppRefusalSentence = "the fake refused that app-level token";
@@ -29,10 +31,11 @@ internal sealed class FakeChatProvider : IChatProvider
         [AcmeToken] = ("TACME", "Acme"),
         [AcmeNewToken] = ("TACME", "Acme"),
         [GlobexToken] = ("TGLOBEX", "Globex"),
+        [InitechToken] = ("TINITECH", "Initech"),
     };
 
     /// <summary>The app-level tokens the fake accepts.</summary>
-    public HashSet<string> AppTokens { get; } = [AcmeAppToken, AcmeNewAppToken, GlobexAppToken];
+    public HashSet<string> AppTokens { get; } = [AcmeAppToken, AcmeNewAppToken, GlobexAppToken, InitechAppToken];
 
     /// <summary>Every app-level token checked, in order, whatever the answer.</summary>
     public List<string> AppChecks { get; } = [];
