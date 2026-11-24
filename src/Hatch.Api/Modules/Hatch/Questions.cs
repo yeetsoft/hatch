@@ -76,6 +76,39 @@ public static class Questions
         return normalised == QuestionLevels.MergeName && issueIsTerminal;
     }
 
+    /// <summary>
+    /// Where the question <paramref name="questionId"/> stands, or null when
+    /// there is no such question. Answers are read oldest first, so the latest is
+    /// the last. <paramref name="ignoreFilters"/> reads past the request's
+    /// project filters, as <see cref="WaitingLevelsAsync"/> does: a caller that
+    /// has judged who may answer by other means must not have the question
+    /// vanish because of whose request it runs in.
+    /// </summary>
+    public static async Task<QuestionStanding?> StandingAsync(
+        HatchContext db, long questionId, CancellationToken ct, bool ignoreFilters = false)
+    {
+        var comments = ignoreFilters ? db.Comments.IgnoreQueryFilters() : db.Comments;
+
+        var question = await comments.AsNoTracking()
+            .Where(c => c.Id == questionId && c.Kind == EfHatchComment.Question)
+            .Select(c => new { c.IssueId, c.Level, IsTerminal = c.Issue!.Status!.IsTerminal })
+            .FirstOrDefaultAsync(ct);
+        if (question is null) return null;
+
+        var answers = await comments.AsNoTracking()
+            .Where(a => a.AnswersId == questionId)
+            .OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
+            .Select(a => new { a.Author, a.AuthorKind })
+            .ToListAsync(ct);
+        var latest = answers.LastOrDefault();
+
+        var stand = IsLookBack(question.Level, question.IsTerminal, answers.Select(a => a.AuthorKind).ToList()) ? QuestionStand.LookBack
+            : answers.Count == 0 ? QuestionStand.Unanswered
+            : QuestionStand.Answered;
+
+        return new QuestionStanding(stand, question.IssueId, latest?.Author, latest?.AuthorKind);
+    }
+
     /// <summary>The first non-blank line of a comment body, trimmed. Empty where the body is all blank.</summary>
     public static string FirstLine(string body) =>
         body.Split('\n').Select(l => l.TrimEnd('\r').Trim()).FirstOrDefault(l => l.Length > 0) ?? "";
@@ -245,3 +278,13 @@ public static class Questions
             AmbitionKey: ambitionIds[r.IssueId] is { } ambitionId ? ambitionKeys.GetValueOrDefault(ambitionId) : null)).ToList();
     }
 }
+
+/// <summary>Where a question stands: nobody has answered it, somebody has, or the work went ahead on it and what is left is a look back.</summary>
+public enum QuestionStand { Unanswered, Answered, LookBack }
+
+/// <summary>What <see cref="Questions.StandingAsync"/> reads. See that method.</summary>
+/// <param name="Stand">Where the question stands.</param>
+/// <param name="IssueId">The issue the question is on.</param>
+/// <param name="LatestAuthor">Who wrote the latest answer, or null where there is none - a closed <c>merge</c> question nobody answered is a look back with no latest.</param>
+/// <param name="LatestAuthorKind">An <see cref="ActorKind"/> of the latest answer's author, or null where there is no answer or the row predates the column.</param>
+public record QuestionStanding(QuestionStand Stand, long IssueId, string? LatestAuthor, string? LatestAuthorKind);

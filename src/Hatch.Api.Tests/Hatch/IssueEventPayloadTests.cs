@@ -60,4 +60,26 @@ public class IssueEventPayloadTests
         Assert.Equal("octocat", json.GetProperty("authorLogin").GetString());
         Assert.Equal("OTH-4", json.GetProperty("originKey").GetString());
     }
+
+    [Fact]
+    public void Answered_WithoutVia_IsTheQuestionIdAlone_AsEveryRowBeforeIt()
+    {
+        var stored = JsonSerializer.Serialize(IssueEventPayload.Answered(42));
+
+        Assert.Equal("""{"questionId":42}""", stored);
+        var parsed = IssueEventPayload.Parse(stored)!.Value;
+        Assert.Equal(42, parsed.GetProperty("questionId").GetInt64());
+        Assert.False(parsed.TryGetProperty("via", out _));
+    }
+
+    [Fact]
+    public void Answered_WithVia_SaysWhereTheAnswerCameFrom()
+    {
+        var stored = JsonSerializer.Serialize(IssueEventPayload.Answered(42, AnswerVia.Slack));
+
+        Assert.Equal("""{"questionId":42,"via":"slack"}""", stored);
+        var parsed = IssueEventPayload.Parse(stored)!.Value;
+        Assert.Equal(42, parsed.GetProperty("questionId").GetInt64());
+        Assert.Equal("slack", parsed.GetProperty("via").GetString());
+    }
 }

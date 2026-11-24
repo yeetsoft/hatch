@@ -4018,7 +4018,9 @@ would otherwise have been refused, and twice - the section's first, with no
 `epic`, then the epic's - where both limits were over at once),
 `commented`, `messaged`, `message_delivered` (the payload
 names the comment and the runner), `asked`, `answered` (payload `{ questionId,
-lapsed }` - `lapsed: true` only on a row written before the stall mark
+via, lapsed }` - `via` only on an answer that came from outside the page and
+a key, naming where, as `slack` for a press in chat; an answer from the Ballot
+or from a key carries neither it nor anything new. `lapsed: true` only on a row written before the stall mark
 replaced lapsing, when taking a claim answered a question itself; nothing
 writes that shape now, but an old one is still skipped rather than counted or
 stopped at, same as `letGo` above, and counted apart from a person's answers
