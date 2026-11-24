@@ -14,8 +14,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// than <see cref="GooseSettings.TrainReadyBound"/> - HA-2496.
 /// </summary>
 public sealed class TrainReadyCheck(
-    HatchContext db, Dispatch dispatch, Runners runners, IAuthService keys, IOptions<HatchOptions> options, TimeProvider time)
-    : FindingCheck(db, time)
+    HatchContext db, Dispatch dispatch, Runners runners, IAuthService keys, IOptions<HatchOptions> options, TimeProvider time, FindingMessages? messages = null)
+    : FindingCheck(db, time, messages)
 {
     public override string Name => "train-ready";
 

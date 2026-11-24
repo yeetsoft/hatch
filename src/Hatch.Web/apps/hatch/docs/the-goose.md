@@ -280,8 +280,8 @@ finding per workspace and per room whose run has lasted
 `Hatch__GooseChatSendMinutes` (default 60). Sixty because the sender's wait
 tops out at ten minutes, so an hour is six full retries and not a blip.
 
-The sentence names the workspace, or the room and its workspace, how long it
-has been failing, and what Slack said. The evidence gives the workspace or room
+The sentence names the workspace, or the room and its workspace, when it began
+failing, and what Slack said. The evidence gives the workspace or room
 and how many messages wait. It names no project, so only a caller who may see
 everything reads it. It closes by itself when a send to that room or workspace
 works, or when the room or workspace is removed. `0` turns the check off and
@@ -289,6 +289,9 @@ closes what is open. A bug filed from it is titled *Messages to a chat room are
 not getting through*.
 
 ### How a finding reaches the panel
+
+A finding can also be posted to a Slack room, and edited there when it ends. See
+[Goose findings in Hatch in Slack](hatch-in-slack#goose-findings).
 
 An open finding is listed first under **Findings** in the Human group of the
 [attention panel](watching-the-loop#what-is-waiting-on-you), longest-standing

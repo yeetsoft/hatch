@@ -145,6 +145,25 @@ nothing there. The numbers refresh every half minute while the page is open.
 An admin who may see only some projects counts only the messages about those
 projects.
 
+## Goose findings
+
+When [the goose](the-goose) opens a finding, a room that has **Problems** on
+and carries the finding's project gets a message with the finding's sentence
+and the time the condition began. The message links to the issue the finding is
+about, when it names one, and to the goose page. Without `HATCH_PUBLIC_URL` there
+are no links.
+
+The message is edited in place, never posted again. It changes only when the
+finding's sentence changes, so a finding that stands unchanged for a day is one
+message. When the condition ends and the finding closes, the message is edited
+to start with **Ended:** and to say when it began and when it ended. A finding
+that was open before a room was set up never gets an **Ended** edit in that
+room, and neither does one that opened before Hatch could post findings.
+
+A finding that names no project goes to rooms with **Problems that belong to no
+project** on. A finding about failing sends is not posted to the room or the
+workspace it is about, since that room cannot hear it.
+
 ## Changelog messages in a room
 
 A room with the **Changelog** switch on, and a project it carries, hears about

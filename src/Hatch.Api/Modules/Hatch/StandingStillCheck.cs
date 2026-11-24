@@ -38,8 +38,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// nothing. It reads the scan <see cref="ReadyWork"/> already makes, so a sweep
 /// does not scan the board again for it.</para>
 /// </remarks>
-public sealed class StandingStillCheck(HatchContext db, ReadyWork work, IOptions<HatchOptions> options, TimeProvider time)
-    : FindingCheck(db, time)
+public sealed class StandingStillCheck(HatchContext db, ReadyWork work, IOptions<HatchOptions> options, TimeProvider time, FindingMessages? messages = null)
+    : FindingCheck(db, time, messages)
 {
     /// <summary>The check's name, which also marks a finding whose subject is an issue's key - see <see cref="AttentionController"/>.</summary>
     public const string CheckName = "standing-still";

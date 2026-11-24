@@ -19,8 +19,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// push made before a pull request or a build verdict exists leaves no event,
 /// so <see cref="Streak.Read"/> cannot see it.
 /// </remarks>
-public sealed class RepeatClaimsCheck(HatchContext db, IOptions<HatchOptions> options, TimeProvider time)
-    : FindingCheck(db, time)
+public sealed class RepeatClaimsCheck(HatchContext db, IOptions<HatchOptions> options, TimeProvider time, FindingMessages? messages = null)
+    : FindingCheck(db, time, messages)
 {
     /// <summary>How recent the newest claim of a streak must be. A constant, not an option.</summary>
     public static readonly TimeSpan Recent = TimeSpan.FromHours(2);

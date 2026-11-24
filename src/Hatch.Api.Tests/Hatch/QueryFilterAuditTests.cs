@@ -118,16 +118,21 @@ public class QueryFilterAuditTests
             + "column made terminal loads no project, and a patch that moves one changes it after the issue was "
             + "loaded; the writer's scope may hide the project, and the message must name the same key whoever "
             + "closed the issue. What leaves is one key string, no row."),
-        ["ChatOutbox.QueueAsync"] = (1,
+        ["ChatOutbox.QueueCoreAsync"] = (1,
             "The rows already queued for a thing, read so a change edits them instead of adding a second. Who "
             + "hears a thing is the rooms' to say and not the writer's, so a writer whose scope hides the project "
             + "must still find the rows its own earlier write queued, or a repeat would add a duplicate. Nothing "
             + "leaves: the rows are edited in place and never returned."),
-        ["ChatOutbox.RoomsAsync"] = (1,
+        ["ChatOutbox.RoomsAsync"] = (3,
             "The rooms that carry a project, read with the bindings and the rooms' chosen projects. A room is the "
             + "install's and not the writer's, so a scoped writer must queue for the same rooms as anyone else, or "
             + "the same change would reach different rooms by who made it. What leaves is a room id and its "
             + "workspace id, which become the queued row's."),
+        ["FindingMessages.LinksAsync"] = (1,
+            "The key of the project a finding belongs to, read so the finding's own issue link can be checked "
+            + "against it. A finding is the install's and not the writer's, and a job's context reads every "
+            + "project anyway, so a later caller must build the same message a job would. What leaves is a key "
+            + "that is only ever shown in a message to a room, never returned to the caller."),
         ["GooseJob.SweepAsync"] = (1,
             "The goose's own retention prune of closed findings, on a timer with no request and no caller scope "
             + "at all - the same reason the run pruning beside it reads every project. Nothing leaves the "
