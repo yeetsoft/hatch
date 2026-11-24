@@ -34,7 +34,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/chat")]
 public class ChatController(
     HatchContext db, IChatProvider provider, ICallerIdentity caller, TimeProvider time,
-    SecretProtector protector, ChatLinks links, ILogger<ChatController> logger) : ControllerBase
+    SecretProtector protector, ChatLinks links, ChatLinkRoster roster, ILogger<ChatController> logger) : ControllerBase
 {
     /// <summary>Every connected workspace, oldest first.</summary>
     [HttpGet("workspaces")]
@@ -416,6 +416,56 @@ public class ChatController(
             id, await caller.ActorNameAsync(ct), result.Posted);
 
         return new ChatTestResultDto(result.Posted, result.Refusal);
+    }
+
+    /// <summary>
+    /// Every person's Slack links, with the person's and the workspace's names.
+    /// Links of people who have been removed are dropped first and not listed.
+    /// Never carries a member id, a conversation id or a secret. Not narrowed
+    /// to a scope: a link has no project.
+    /// </summary>
+    [HttpGet("links")]
+    [RequireAdmin]
+    public async Task<ActionResult<IReadOnlyList<ChatLinkRowDto>>> GetLinks(CancellationToken ct)
+    {
+        await roster.PruneAsync(null, ct);
+
+        var rows = await db.ChatLinks.AsNoTracking().ToListAsync(ct);
+        var people = await roster.NamesAsync(rows.Select(l => l.PersonId).ToList(), ct);
+        var workspaces = await db.ChatWorkspaces.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name, ct);
+
+        return rows
+            .Where(l => people.ContainsKey(l.PersonId) && workspaces.ContainsKey(l.WorkspaceId))
+            .Select(l => (Row: l, Person: people[l.PersonId], Workspace: workspaces[l.WorkspaceId]))
+            .OrderBy(r => r.Person, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Workspace, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.Row.Id)
+            .Select(r => new ChatLinkRowDto(
+                r.Row.Id, r.Row.PersonId, r.Row.WorkspaceId, r.Workspace, r.Row.MemberName,
+                r.Row.ConfirmedAt is null ? "waiting" : "linked",
+                r.Row.ConfirmedAt is null ? r.Row.SecretExpiresAt : null))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Removes a person's link, waiting or confirmed. Nothing is sent to it
+    /// afterwards, and its secret confirms nothing. The person can link again
+    /// from Settings.
+    /// </summary>
+    [HttpDelete("links/{id:int}")]
+    [RequireAdmin]
+    public async Task<IActionResult> RemoveLink(int id, CancellationToken ct)
+    {
+        var row = await db.ChatLinks.FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (row is null) return NotFound();
+
+        db.ChatLinks.Remove(row);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("Chat link {LinkId} in workspace {WorkspaceId} removed by {Actor}",
+            id, row.WorkspaceId, await caller.ActorNameAsync(ct));
+
+        return NoContent();
     }
 
     private const string NoSecretKey =

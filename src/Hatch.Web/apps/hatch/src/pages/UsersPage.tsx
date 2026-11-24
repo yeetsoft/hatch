@@ -2,8 +2,10 @@ import { Fragment, type FormEvent, useCallback, useEffect, useState } from 'reac
 import { Badge, Button, Card, EmptyState, Field, Modal, PageHeader, ProjectMark, Table, Text, markVars } from '@hatch/ui';
 import {
   createPerson,
+  deleteChatLink,
   deletePerson,
   getAuthMe,
+  getChatLinks,
   getPeople,
   getPersonSessions,
   getProjects,
@@ -23,24 +25,27 @@ import {
   demotionSentence,
   isDemotion,
   isNarrowing,
+  linksOf,
   narrowingSentence,
   ROLES,
   SCOPE_MODES,
   scopeForMode,
   scopeLabel,
   sortPeople,
+  unlinkSentence,
 } from '../lib/people';
-import type { Person, PersonRole, PersonScope, PersonScopeMode, PersonScopeWriteRequest, PersonSession, Project } from '../types';
+import type { ChatLinkRow, Person, PersonRole, PersonScope, PersonScopeMode, PersonScopeWriteRequest, PersonSession, Project } from '../types';
 
-/** A change waiting on a press: a demotion, a delete, or an admin narrowing
-    their own scope. */
+/** A change waiting on a press: a demotion, a delete, an admin narrowing
+    their own scope, or the removal of somebody's Slack link. */
 export type Pending =
   | { kind: 'demote'; person: Person; to: PersonRole }
   | { kind: 'delete'; person: Person }
-  | { kind: 'narrow'; person: Person; from: PersonScope; to: PersonScope };
+  | { kind: 'narrow'; person: Person; from: PersonScope; to: PersonScope }
+  | { kind: 'unlink'; person: Person; link: ChatLinkRow };
 
 /** The one panel a row has open under it. */
-type Open = { id: string; panel: 'sessions' | 'scope' };
+type Open = { id: string; panel: 'sessions' | 'scope' | 'slack' };
 
 /** The scope the Add user form is holding. */
 type NewScope = { mode: PersonScopeMode; projectIds: number[] };
@@ -64,6 +69,7 @@ export function UsersPage() {
   const [open, setOpen] = useState<Open | null>(null);
   const [scopes, setScopes] = useState<Map<string, PersonScope>>(new Map());
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [chatLinks, setChatLinks] = useState<ChatLinkRow[]>([]);
   const [mePersonId, setMePersonId] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
@@ -72,9 +78,12 @@ export function UsersPage() {
 
   const load = useCallback(async () => {
     try {
-      const [list, scopeList] = await Promise.all([getPeople(), getScopes()]);
+      // A failed read of the links is no reason to lose the page: it reads as a
+      // Hatch with no Slack, and the column is not drawn.
+      const [list, scopeList, linkList] = await Promise.all([getPeople(), getScopes(), getChatLinks().catch(() => [])]);
       setPeople(sortPeople(list));
       setScopes(new Map(scopeList.map((scope) => [scope.personId, scope])));
+      setChatLinks(linkList);
     } catch (err) {
       setFailure(message(err));
     }
@@ -182,6 +191,9 @@ export function UsersPage() {
   }
 
   const now = new Date();
+  // A Hatch with no Slack link anywhere shows nothing new.
+  const showSlack = chatLinks.length > 0;
+  const columns = showSlack ? 9 : 8;
 
   return (
     <div className="hatch-page">
@@ -248,6 +260,7 @@ export function UsersPage() {
                 <th>Scope</th>
                 <th>Last sign-in</th>
                 <th>Sessions</th>
+                {showSlack && <th>Slack</th>}
                 <th />
               </tr>
             </thead>
@@ -302,6 +315,18 @@ export function UsersPage() {
                         {person.sessionCount} {open?.id === person.id && open.panel === 'sessions' ? '▾' : '▸'}
                       </Button>
                     </td>
+                    {showSlack && (
+                      <td>
+                        <Button
+                          onClick={() =>
+                            setOpen(open?.id === person.id && open.panel === 'slack' ? null : { id: person.id, panel: 'slack' })
+                          }
+                        >
+                          {linksOf(chatLinks, person.id).length}{' '}
+                          {open?.id === person.id && open.panel === 'slack' ? '▾' : '▸'}
+                        </Button>
+                      </td>
+                    )}
                     <td>
                       <Button
                         variant="danger"
@@ -312,11 +337,17 @@ export function UsersPage() {
                       </Button>
                     </td>
                   </tr>
-                  {open?.id === person.id && (
+                  {open?.id === person.id && (open.panel !== 'slack' || showSlack) && (
                     <tr>
-                      <td colSpan={8}>
+                      <td colSpan={columns}>
                         {open.panel === 'sessions' ? (
                           <Sessions personId={person.id} myGrantId={myGrantId} now={now} onChanged={load} />
+                        ) : open.panel === 'slack' ? (
+                          <SlackLinks
+                            links={linksOf(chatLinks, person.id)}
+                            disabled={busy}
+                            onRemove={(link) => setPending({ kind: 'unlink', person, link })}
+                          />
                         ) : (
                           <ScopeChecklist
                             projects={projects}
@@ -343,9 +374,11 @@ export function UsersPage() {
           void act(() =>
             p.kind === 'delete'
               ? deletePerson(p.person.id)
-              : p.kind === 'narrow'
-                ? putScope(p.person.id, scopeRequest(p.to))
-                : putPerson(p.person.id, { name: p.person.name, role: p.to }),
+              : p.kind === 'unlink'
+                ? deleteChatLink(p.link.id)
+                : p.kind === 'narrow'
+                  ? putScope(p.person.id, scopeRequest(p.to))
+                  : putPerson(p.person.id, { name: p.person.name, role: p.to }),
           )
         }
       />
@@ -369,9 +402,11 @@ export function PendingDialog({
   const title =
     pending?.kind === 'delete'
       ? `Delete ${name}?`
-      : pending?.kind === 'narrow'
-        ? `Change ${name}'s scope?`
-        : `Change ${name}'s role?`;
+      : pending?.kind === 'unlink'
+        ? `Remove ${name}'s Slack link?`
+        : pending?.kind === 'narrow'
+          ? `Change ${name}'s scope?`
+          : `Change ${name}'s role?`;
 
   return (
     <Modal open={pending !== null} onClose={onClose} title={title}>
@@ -380,14 +415,22 @@ export function PendingDialog({
           <p>
             {pending.kind === 'delete'
               ? deleteSentence(pending.person)
-              : pending.kind === 'narrow'
-                ? narrowingSentence(pending.person.name, pending.from, pending.to)
-                : demotionSentence(pending.person.name, pending.person.role, pending.to)}
+              : pending.kind === 'unlink'
+                ? unlinkSentence(pending.person, pending.link)
+                : pending.kind === 'narrow'
+                  ? narrowingSentence(pending.person.name, pending.from, pending.to)
+                  : demotionSentence(pending.person.name, pending.person.role, pending.to)}
           </p>
           <div className="hatch-form-actions">
             <Button onClick={onClose}>Leave it</Button>
             <Button variant="danger" loading={busy} onClick={() => onConfirm(pending)}>
-              {pending.kind === 'delete' ? 'Delete' : pending.kind === 'narrow' ? 'Narrow' : 'Demote'}
+              {pending.kind === 'delete'
+                ? 'Delete'
+                : pending.kind === 'unlink'
+                  ? 'Remove'
+                  : pending.kind === 'narrow'
+                    ? 'Narrow'
+                    : 'Demote'}
             </Button>
           </div>
         </div>
@@ -466,6 +509,50 @@ export function ScopeChecklist({
         </label>
       ))}
     </div>
+  );
+}
+
+/** One person's Slack links, as the page read them: the workspace, the Slack
+    member, and whether the link stands or still waits. An admin removes one;
+    there is no button to make or confirm one for somebody else. */
+export function SlackLinks({
+  links,
+  disabled,
+  onRemove,
+}: {
+  links: ChatLinkRow[];
+  disabled: boolean;
+  onRemove: (link: ChatLinkRow) => void;
+}) {
+  if (links.length === 0) return <Text tone="muted">No Slack links.</Text>;
+
+  return (
+    <Table>
+      <thead>
+        <tr>
+          <th>Workspace</th>
+          <th>Slack member</th>
+          <th>State</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {links.map((link) => (
+          <tr key={link.id}>
+            <td>{link.workspaceName}</td>
+            <td>{link.memberName}</td>
+            <td>
+              <Badge tone={link.state === 'linked' ? 'success' : 'muted'}>{link.state}</Badge>
+            </td>
+            <td>
+              <Button variant="danger" disabled={disabled} onClick={() => onRemove(link)}>
+                Remove
+              </Button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
   );
 }
 
