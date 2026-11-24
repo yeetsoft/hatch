@@ -51,6 +51,9 @@ public class ReportReadCostTests
     /// <summary>The limit the leaderboard read below is asked for.</summary>
     private const int LeaderboardLimit = 20;
 
+    /// <summary>The podium the leaderboard asks for beside its table.</summary>
+    private const int LeaderboardTop = 5;
+
     private static readonly string From = Now.AddDays(-ReadCostSeed.WindowDays).ToString("O");
     private static readonly string To = Now.ToString("O");
 
@@ -110,6 +113,12 @@ public class ReportReadCostTests
         ["GET /api/work-log/sessions"] = (
             new(5, 0, 24, 24, "Issues=1000;Projects=1;WorkLogEntries=3000"),
             new(5, 0, 24, 24, "Issues=1000;Projects=1;WorkLogEntries=9000")),
+        // The same, and the heaviest five: one more read, five more rows, and
+        // still the totals, the paths and the bounds once - what the
+        // leaderboard asks instead of the line above twice.
+        ["GET /api/work-log/sessions?top"] = (
+            new(6, 0, 29, 29, "Issues=1200;Projects=2;WorkLogEntries=3500"),
+            new(6, 0, 29, 29, "Issues=1200;Projects=2;WorkLogEntries=10500")),
         ["GET /api/work-log/by-playbook"] = (
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=1500")),
@@ -148,7 +157,9 @@ public class ReportReadCostTests
             Assert.IsType<FileContentResult>(result);
         }),
         new("GET /api/work-log/history", h => Ok(h.WorkLog.GetHistory(From, To, null, 0, null, null, null, default))),
-        new("GET /api/work-log/sessions", h => Ok(h.WorkLog.GetSessions(From, To, null, null, LeaderboardLimit, null, null, default))),
+        new("GET /api/work-log/sessions", h => Ok(h.WorkLog.GetSessions(From, To, null, null, LeaderboardLimit, null, null, null, default))),
+        new("GET /api/work-log/sessions?top",
+            h => Ok(h.WorkLog.GetSessions(From, To, null, null, LeaderboardLimit, null, null, LeaderboardTop, default))),
         new("GET /api/work-log/by-playbook", h => Ok(h.WorkLog.GetByPlaybook(From, To, null, null, null, default))),
         new("GET /api/board/health", h => Ok(h.Health.GetBoardHealth("24h", null, default))),
         new("GET /api/board/health?project", h => Ok(h.Health.GetBoardHealth("24h", [ReadCostSeed.KeyA], default))),
@@ -239,7 +250,21 @@ public class ReportReadCostTests
             var sessionsBound = LeaderboardLimit + 1 + ReadCostSeed.DistinctReadPaths + 2;
             if (sessions > sessionsBound)
                 failures.Add($"sessions returned {sessions} rows at the {size} size, more than the page, the totals, the paths read and the two bounds ({sessionsBound})");
+
+            // The one request the leaderboard makes for both lists: the same,
+            // and the top five besides. Its Read column grows like the table's
+            // until the end-time index exists, so what is held equal is what it
+            // returns and how many statements it takes.
+            var withTop = measured["GET /api/work-log/sessions?top"].Row;
+            var withTopBound = LeaderboardLimit + LeaderboardTop + 1 + ReadCostSeed.DistinctReadPaths + 2;
+            if (withTop.Rows > withTopBound)
+                failures.Add($"sessions?top returned {withTop.Rows} rows at the {size} size, more than the page, the top, the totals, the paths read and the two bounds ({withTopBound})");
         }
+
+        var topSmall = small["GET /api/work-log/sessions?top"].Row;
+        var topLarge = large["GET /api/work-log/sessions?top"].Row;
+        if (topSmall.Statements != topLarge.Statements || topSmall.Rows != topLarge.Rows)
+            failures.Add($"sessions?top costs {topSmall.Statements} statements and {topSmall.Rows} rows at the small size and {topLarge.Statements} and {topLarge.Rows} at the large - it should be the same");
 
         if (failures.Count > 0)
             Assert.Fail(

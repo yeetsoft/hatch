@@ -39,11 +39,12 @@ public static class ChatDelivery
 }
 
 /// <summary>
-/// Sends what <see cref="ChatOutbox"/> queued. Each tick takes the lock, drops
-/// what has waited a day, and sends at most one message per room: the oldest
-/// waiting there, as a post when the room has not heard of it and as an edit
-/// when it has. A change before the first send is one post with the latest
-/// words, and a change after is an edit of the same message.
+/// Sends what <see cref="ChatOutbox"/> queued. Each tick takes the lock, has
+/// <see cref="ChatProblemWatch"/> queue the goose and the backups if they need
+/// saying, drops what has waited a day, and sends at most one message per
+/// room: the oldest waiting there, as a post when the room has not heard of
+/// it and as an edit when it has. A change before the first send is one post
+/// with the latest words, and a change after is an edit of the same message.
 ///
 /// <para>A failure delays a message and never loses it. A throttle holds the
 /// whole workspace for as long as the service asked. A token the service will
@@ -56,7 +57,7 @@ public static class ChatDelivery
 [DisallowConcurrentExecution]
 public class ChatSendJob(
     HatchContext db, IChatProvider provider, SecretProtector protector, IChatSendLock gate,
-    TimeProvider time, ILogger<ChatSendJob> logger) : IAppJob
+    TimeProvider time, ILogger<ChatSendJob> logger, ChatProblemWatch? problems = null) : IAppJob
 {
     public string Name => "ChatSend";
 
@@ -92,6 +93,7 @@ public class ChatSendJob(
             return;
         }
 
+        await WatchProblemsAsync(ct);
         await DropStaleAsync(ct);
 
         var now = time.GetUtcNow();
@@ -115,6 +117,31 @@ public class ChatSendJob(
             if (id is null) continue;
 
             if (await DeliverAsync(id.Value, heldWorkspaces, ct)) sends++;
+        }
+    }
+
+    /// <summary>
+    /// Queues what the goose and the backups need said, before the drop and send
+    /// steps look at what is waiting. A failure here is the problem watch's alone:
+    /// it is logged, and the tracker is cleared so a refused save is not retried by
+    /// the steps after it, which would fail the same way and stop the sends.
+    /// </summary>
+    private async Task WatchProblemsAsync(CancellationToken ct)
+    {
+        if (problems is null) return;
+
+        try
+        {
+            await problems.TickAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            logger.LogWarning(e, "The chat sender could not check the goose and the backups - sending goes on");
+            db.ChangeTracker.Clear();
         }
     }
 
