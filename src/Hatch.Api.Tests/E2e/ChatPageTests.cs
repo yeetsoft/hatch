@@ -230,6 +230,8 @@ public class ChatPageTests(ITestOutputHelper output)
         await harness.WaitForVisibleAsync(deadline, globexRooms + " li.hatch-chat-channel:has-text(\"lobby\")");
         await harness.ClickAsync(deadline, globexRooms + " button[aria-label=\"Add lobby\"]");
         await harness.WaitForVisibleAsync(deadline, globexRooms + " section[aria-label=\"Room lobby\"]");
+        await SetCheckboxAsync(harness, deadline, globexRooms + " [aria-label=\"What it posts\"]", "Questions", true);
+        await SetCheckboxAsync(harness, deadline, globexRooms + " [aria-label=\"What it posts\"]", "Problems", true);
         await AssertNoTokenOnPageAsync(harness, deadline);
 
         // A switch saves on its own.
@@ -314,7 +316,7 @@ public class ChatPageTests(ITestOutputHelper output)
 
     /// <summary>
     /// What waits to be sent is shown in the workspace's own row. Acme is given two messages waiting, one dropped and
-    /// a refusal; Globex is given nothing. The host has no public address, so the page says messages carry no link and
+    /// a refusal; Globex is given one waiting, two dropped and a refusal of its own. The host has no public address, so the page says messages carry no link and
     /// names the variable that sets one.
     /// </summary>
     private async Task AssertDeliveryShownAsync(E2eHarness harness, Deadline deadline, DeviceProfile? profile)
@@ -332,8 +334,22 @@ public class ChatPageTests(ITestOutputHelper output)
         Assert.Contains("Slack said: ratelimited", acme);
         Assert.Matches("minutes? ago", acme);
 
-        // Globex has none of the three, so its cell is empty, and the page adds no row of its own.
-        Assert.Equal("", (await TextAsync(harness, deadline, "main tbody tr:has-text(\"Globex\") td.hatch-chat-delivery-cell")).Trim());
+        // Globex has its own counts, not Acme's, and the page adds no row of its own.
+        var globex = await TextAsync(harness, deadline, "main tbody tr:has-text(\"Globex\") td.hatch-chat-delivery-cell");
+        Assert.Contains("1 waiting", globex);
+        Assert.Contains("2 dropped", globex);
+        Assert.Contains("Slack said: channel_not_found", globex);
+        Assert.Matches("minutes? ago", globex);
+        Assert.DoesNotContain("ratelimited", globex);
+        Assert.DoesNotContain("2 waiting", globex);
+
+        // Each workspace has a room with its switches set: Acme's changelog, Globex's questions and problems.
+        Assert.Equal(
+            1,
+            await CountAsync(harness, deadline, "[aria-label=\"Rooms on Acme\"] section[aria-label=\"Room general\"] [aria-label=\"What it posts\"] input:checked"));
+        Assert.Equal(
+            2,
+            await CountAsync(harness, deadline, "[aria-label=\"Rooms on Globex\"] section[aria-label=\"Room lobby\"] [aria-label=\"What it posts\"] input:checked"));
         Assert.Equal(
             2,
             await harness.EvaluateAsync<int>(deadline, "counting the rows", "() => document.querySelectorAll('main tbody tr').length"));
@@ -353,7 +369,7 @@ public class ChatPageTests(ITestOutputHelper output)
         output.WriteLine("screenshot: " + await harness.FullPageScreenshotAsync(deadline, "chat-delivery"));
     }
 
-    /// <summary>Gives the Acme workspace a room with two messages waiting and one dropped, and the last thing Slack said; leaves Globex alone.</summary>
+    /// <summary>Gives the Acme workspace a room with two messages waiting and one dropped, and the last thing Slack said; gives Globex's room one waiting and two dropped, with its own last refusal.</summary>
     private static async Task SeedDeliveryAsync(IServiceProvider services)
     {
         using var scope = services.CreateScope();
@@ -377,6 +393,21 @@ public class ChatPageTests(ITestOutputHelper output)
         acme.LastRefusal = "ratelimited";
         acme.LastRefusalAt = now.AddMinutes(-3);
         acme.SendFailingSince = now.AddMinutes(-3);
+
+        // Globex already has the lobby room the page made: one message waiting there, two dropped.
+        var globex = await db.ChatWorkspaces.SingleAsync(w => w.Name == "Globex");
+        var lobby = await db.ChatRooms.SingleAsync(r => r.WorkspaceId == globex.Id && r.Name == "lobby");
+        EfHatchChatMessage GlobexMessage(string subject, bool dropped = false) => new()
+        {
+            RoomId = lobby.Id, WorkspaceId = globex.Id, Kind = "question", Subject = subject, Content = "{}",
+            QueuedAt = now, PendingSince = now, DroppedAt = dropped ? now : null,
+            NextAttemptAt = now.AddDays(1),
+        };
+
+        db.ChatMessages.AddRange(GlobexMessage("question:1"), GlobexMessage("question:2", dropped: true), GlobexMessage("question:3", dropped: true));
+        globex.LastRefusal = "channel_not_found";
+        globex.LastRefusalAt = now.AddMinutes(-7);
+        globex.SendFailingSince = now.AddMinutes(-7);
         await db.SaveChangesAsync();
     }
 

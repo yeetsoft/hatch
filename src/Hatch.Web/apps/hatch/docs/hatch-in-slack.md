@@ -2,114 +2,206 @@
 title: Hatch in Slack
 section: Running agents
 order: 60
-summary: Connect a Slack workspace to Hatch from the Chat screen, bind projects to it, set channels up as rooms, send a test message, and see what a changelog message says.
+summary: A start-to-finish guide to Slack in Hatch. Make the app from a manifest, connect the workspace, bind projects, set channels up as rooms and send a test message, then see what each message looks like and what to do when something goes wrong.
 ---
 
-Hatch can be connected to a Slack workspace. Connecting gives Hatch a workspace
-to speak in. An admin then binds projects to the workspace and sets channels up
-as **rooms**, each room taking the kinds of message and the projects it should
-carry. The Chat screen itself posts only a **test message**, to show that a
-room can be reached. The other messages come from the board, as
-[the changelog message](#changelog-messages-in-a-room) describes.
+This page takes you from no Slack app to a room that got a message from Hatch.
+Follow [the steps](#set-up-slack-start-to-finish) in order. The rest of the page
+is for after: [what a message looks like](#what-a-message-looks-like),
+[what to do when something is wrong](#when-something-is-wrong), and
+[what is not here yet](#not-here-yet).
 
-The **Chat** screen, at `/chat`, is where an admin does it. It is under
+Connecting gives Hatch a workspace to speak in. An admin binds projects to the
+workspace and sets channels up as **rooms**. Each room takes the kinds of
+message and the projects it should carry. The Chat screen itself posts only a
+**test message**, to show that a room can be reached. The other messages come
+from the board.
+
+The **Chat** screen, at `/chat`, is where an admin does all of it. It is under
 **Manage**, after **Users**, and only an admin sees it. A key never reads or
 writes a workspace, because a bot token can speak for the install.
 
-## Connect a workspace
+You need:
 
-1. Open **Manage → Chat**.
-2. Press **Copy manifest**. The manifest is also shown in the box above the
-   button, so it can be selected by hand where the browser will not allow a
-   copy.
-3. In Slack, create an app **from a manifest**, paste the manifest in, and pick
-   the workspace the app is for.
-4. Install the app to that workspace.
-5. On the app's install page, copy the **bot token**. It is `xoxb-` followed by
-   more characters, joined by dots.
-6. Paste the token into **Bot token** on the Chat screen and press
-   **Connect**.
+- A Hatch you sign in to as an admin.
+- A Slack workspace where you may install an app.
+- For messages that link back to tickets, `HATCH_PUBLIC_URL` set to the address
+  people open Hatch at, for example `https://hatch.<domain>`. Without it,
+  messages still go out, but name the ticket with no link. See
+  [Links are missing](#links-are-missing).
 
-Hatch asks Slack whose token it is and names the workspace from the answer, so
-you type no name. The workspace then appears in the table with **Token set**
-and when it was connected.
+## Set up Slack, start to finish
 
-The box is a password field, and it is emptied after every attempt, whether or
-not the token was accepted. Hatch never shows a token again. The table says
-only that one is held.
+1. **Open the Chat screen.** Open **Manage → Chat**. With no workspace
+   connected, it says **No workspace is connected.**
+2. **Make the app from the manifest.** Press **Copy manifest**. The manifest is
+   also shown in the box under **App manifest**, so it can be selected by hand
+   where the browser will not allow a copy. In Slack, create an app **from a
+   manifest**, paste the manifest in, and pick the workspace the app is for.
+3. **Install the app to the workspace.** Use the install button on the app's
+   page in Slack.
+4. **Copy the bot token.** On the app's install page, copy the **bot token**. It
+   is `xoxb-` followed by more characters, joined by dots.
+5. **Paste it into Hatch.** Paste the token into **Bot token** on the Chat screen
+   and press **Connect**. Hatch asks Slack whose token it is and names the
+   workspace from the answer, so you type no name. It worked when the workspace
+   appears in the table with **Token set** and when it was connected. The box is
+   a password field and is emptied after every attempt, whether or not the token
+   was accepted. Hatch never shows a token again: the table says only that one
+   is held. If Connect refuses, see [Connect refuses](#connect-refuses).
+6. **Bind a project.** The workspace's row has a **Projects** cell with a
+   checkbox for every project you can see. Tick a project to bind it to the
+   workspace. Each tick saves at once, and the list is disabled while it saves.
+   Untick to unbind. Binding touches nothing in Slack. A room can only carry
+   projects bound to its own workspace, and unbinding a project takes it out of
+   every room's chosen list on that workspace.
+7. **Set up a room.** Under the table, each workspace has a **Rooms on** card,
+   named for it. Press **Add a room** to see the channels the app's token can
+   see. Hatch asks Slack every time you press it, so a channel made a minute
+   ago is there. While it asks, the card says it is reading. In the list:
+   - A private channel is marked **Private**.
+   - A channel the app has not joined says **Not invited yet. In Slack, open the
+     channel and add Hatch.** Step 8 mends that.
+   - A channel that is already a room says **Already a room**, and its **Add**
+     button is off. A channel is one room only.
 
-## When Connect refuses
+   Press **Add** beside a channel. A new room starts with every switch off and
+   **Every bound project** chosen, so nothing is posted until you tick
+   something. Each room has:
+   - Four switches: **Changelog**, **Questions**, **Problems**, and **Problems
+     that belong to no project**. A change saves at once.
+   - A choice of projects. **Every bound project** carries whatever the
+     workspace is bound to. **Chosen projects** shows a checkbox for each
+     project bound to this workspace, and the room carries only the ones
+     ticked. If **Chosen projects** is picked and none is ticked, the room says
+     **This room carries no project.** It posts nothing for any project. It does
+     not fall back to every project.
+
+   **Remove room** asks first, and names the channel. Nothing in Slack is
+   touched, and the channel can be added again.
+8. **Invite the app to the channel.** Slack only lets the app post where it is a
+   member. In Slack, open the channel and add Hatch to it. Then press **Add a
+   room** again: the channel is no longer marked **Not invited yet**. You can
+   do this before step 7 as well.
+9. **Send a test message.** Press **Send a test message** on the room. It posts
+   one short message to the channel, and the button is disabled while Hatch
+   waits for Slack. Under it a line says **Sent** when the channel got it. Open
+   the channel in Slack and read it: that is the room working. If the line says
+   something else, see [The test message is refused](#the-test-message-is-refused).
+
+A room posts nothing else until a switch is on and a project is carried. After
+that, the board does the posting. [The next section](#what-a-message-looks-like)
+shows what it posts.
+
+## What a message looks like
+
+Every message has a bold title, then a short body or facts, then a line of
+links. The examples show the text, with `<domain>` standing for your Hatch's
+address, and keys and titles made up. A message is posted once and then
+**edited** as its subject changes, never posted again, so a channel reads as one
+line per thing.
+
+### A changelog message
+
+When an issue with no parent closes, a room with **Changelog** on and the issue's
+project hears of it. At first it has the title and the key:
+
+```
+story shipped: Tickets in a human voice
+DEMO-12
+```
+
+The key is a link to `https://hatch.<domain>/issues/DEMO-12` when links are
+on. When someone writes the release note, the same message is edited to carry it:
+
+```
+story shipped: Tickets in a human voice
+A ticket now opens with one sentence saying who gets what.
+DEMO-12
+```
+
+### A question
+
+Asking a question posts a message to each room with **Questions** on and the
+issue's project. It names the ticket, gives the question, lists the options with
+the recommended one marked, and the level:
+
+```
+DEMO-12 Tickets in a human voice
+Which of these should the title follow?
+Five words (recommended)
+One sentence
+Level: hold
+DEMO-12 · Answer it
+```
+
+When somebody answers, the same message is edited. It gains the latest answer
+and who gave it:
+
+```
+DEMO-12 Tickets in a human voice
+Which of these should the title follow?
+Five words (recommended)
+One sentence
+Level: hold
+Sam answered: Five words
+DEMO-12 · Answer it
+```
+
+If every answer so far came from a key, the line says **A program answered**
+rather than naming one. **Answer it** links to the Ballot. The detail is in
+[Questions in a room](#questions-in-a-room).
+
+### A problem
+
+When [the goose](the-goose) opens a finding, a room with **Problems** on and the
+finding's project hears of it. The finding's sentence is the title:
+
+```
+Messages to workspace Acme have not got through since 2026-01-05 09:30 UTC.
+Since 2026-01-05 09:30 UTC
+```
+
+When the condition ends, the same message is edited to start with **Ended:** and
+to say when it began and when it ended:
+
+```
+Ended: Messages to workspace Acme have not got through since 2026-01-05 09:30 UTC.
+Began 2026-01-05 09:30 UTC
+Ended 2026-01-05 11:10 UTC
+```
+
+The sentence is the goose's own, so it differs from finding to finding. A failing trunk build, a stopped goose and backups that need a person
+look the same way, and are described under [Goose findings](#goose-findings),
+[Goose and backup messages](#goose-and-backup-messages) and
+[Trunk build messages](#trunk-build-messages).
+
+## When something is wrong
+
+Each of these is what you see, then what to do.
+
+### Connect refuses
 
 The sentence under the box is the reason, in Slack's or Hatch's own words.
 
 - **Slack refuses the token.** It is wrong, was revoked, or was copied with part
-  missing. Copy it again from the install page.
-- **The workspace is already connected.** The sentence says to replace the
-  token instead. Use **Replace token** on its row.
+  missing. Copy it again from the app's install page.
+- **The workspace is already connected.** The sentence says to replace the token
+  instead. Use **Replace token** on its row, as in
+  [Change a token](#change-a-token).
 
-## Change a token
+### Add a room shows a sentence
 
-Use **Replace token** on the workspace's row: type the new token into the box in
-that row and press the button. The token has to be for the same workspace. A
-token for another one is refused, and the old token stays.
+If Slack refuses when you press **Add a room**, its sentence shows in place of
+the list of channels. Read it. A revoked token is mended by installing the app
+again and using **Replace token**.
 
-## Bind a project
+### The test message is refused
 
-A workspace row has a **Projects** cell with a checkbox for every project you
-can see. Tick a project to bind it to the workspace, and untick it to unbind it.
-Each tick saves at once, and the list is disabled while it saves. Binding
-touches nothing in Slack. If the save is refused, the sentence shows under the
-list.
-
-A room can only carry projects bound to its own workspace. Unbinding a project
-takes it out of every room's chosen list on that workspace.
-
-## Set up a room
-
-Under the table, each workspace has a **Rooms on** card, named for it. Press **Add a room** to
-see the channels the app's token can see. Hatch asks Slack every time you press
-it, so a channel made a minute ago is there. While it asks, the card says it is
-reading. If Slack refuses, the sentence shows instead of a list.
-
-- A channel the app has not joined says **Not invited yet. In Slack, open the
-  channel and add Hatch.** See the next section.
-- A private channel is marked **Private**.
-- A channel that is already a room says **Already a room**, and its **Add**
-  button is off. A channel is one room only.
-
-Press **Add** beside a channel to set it up. A new room starts with every switch
-off and **Every bound project** chosen, so nothing is posted until you tick
-something.
-
-Each room has:
-
-- Four switches: **Changelog**, **Questions**, **Problems**, and **Problems
-  that belong to no project**. A change saves at once.
-- A choice of projects. **Every bound project** carries whatever the workspace
-  is bound to. **Chosen projects** shows a checkbox for each project bound to
-  this workspace, and the room carries only the ones ticked.
-
-If **Chosen projects** is picked and none is ticked, the room says **This room
-carries no project.** It posts nothing for any project. It does not fall back
-to every project.
-
-**Remove room** asks first, and names the channel. Nothing in Slack is touched,
-and the channel can be added again.
-
-## Invite the app to the channel
-
-Slack only lets the app post where it is a member. In Slack, open the channel
-and add Hatch to it. Then press **Add a room** again: the channel is no longer
-marked **Not invited yet**.
-
-## Send a test message
-
-**Send a test message** on a room posts one short message to its channel. The
-button is disabled while Hatch waits for Slack. Under it a line says **Sent**,
-or says why not, in these words:
+The line under **Send a test message** says why, in these words:
 
 - **the app has not been invited to that channel; in Slack, add Hatch to it.**
-  Invite the app, as above.
+  Invite the app, as in step 8.
 - **that channel could not be found.** The channel was deleted or renamed away.
   Remove the room and add the channel again.
 - **that channel is archived.** Unarchive it in Slack, or remove the room.
@@ -119,7 +211,31 @@ or says why not, in these words:
   app again from the manifest.
 - Anything else is shown as Slack gave it.
 
-## When Slack is down
+### Links are missing
+
+Messages name their ticket. They link to the ticket only when Hatch knows the
+address people open it at, which is `HATCH_PUBLIC_URL`, and compose passes it to
+the API as `Hatch__PublicBaseUrl`. With it unset, the Chat screen says
+**Messages name the ticket with no link.** Messages still go out and name the
+ticket. To make them link, set `HATCH_PUBLIC_URL` and restart the API. Hatch does
+not guess the address from the runner's, as it does for a pull request.
+
+### Messages waiting or dropped
+
+A workspace row's **Sending** cell shows how many messages are **waiting** to be
+sent, how many were **dropped**, and the last sentence Slack refused one with,
+as **Slack said:**, and how long ago. A workspace with none of the three shows
+nothing there. The numbers refresh every half minute while the page is open. An
+admin who may see only some projects counts only the messages about those
+projects.
+
+- **Waiting** means Hatch is retrying. Read **Slack said:**: it is nearly always
+  a channel the app is not in, or a token that was revoked. Mend that, and the
+  message goes out on the next try.
+- **Dropped** means a message was unsent for a day and Hatch gave up on it. It
+  is not sent later. Mend the cause, and the next change posts as usual.
+
+### When Slack is down
 
 Hatch writes a message into a queue in the same step as the change that causes
 it, so a change on the board never fails because Slack is slow or away. A
@@ -133,17 +249,29 @@ sender then delivers the queue, and what it does when Slack refuses is this:
   the channel mends it; the message goes out on the next try.
 - A message still unsent after a day is dropped, and counted on `/chat` as
   **dropped**.
-- A finding opens after `Hatch__GooseChatSendMinutes` of failing (60 by
-  default, and `0` turns it off). See [the goose](the-goose#chat-sends-failing).
 
-## What the counts on Chat mean
+### Sends that keep failing
 
-Each workspace row has a **Sending** cell. It shows how many messages are
-**waiting** to be sent, how many were **dropped**, and the last sentence Slack
-refused one with, and how long ago. A workspace with none of the three shows
-nothing there. The numbers refresh every half minute while the page is open.
-An admin who may see only some projects counts only the messages about those
-projects.
+When sends to a workspace or room keep failing, [the goose](the-goose) opens a
+finding after `Hatch__GooseChatSendMinutes` of failing: 60 by default, and `0`
+turns it off. See [the goose](the-goose#chat-sends-failing). The finding is
+not posted to the room or workspace it is about, since that room cannot hear it.
+
+## Not here yet
+
+- **Direct messages** to a person (HA-2719). Today every message goes to a room.
+- **Answering from Slack** (HA-2720). Today a question in a room links to the
+  Ballot, and it is answered there.
+
+## Change a token
+
+Use **Replace token** on the workspace's row: type the new token into the box in
+that row and press the button. The token has to be for the same workspace. A
+token for another one is refused, and the old token stays.
+
+## What each message says
+
+The sections below are the detail behind [the examples](#what-a-message-looks-like).
 
 ## Goose findings
 
@@ -254,7 +382,7 @@ message is queued in the same save as the close, and sent after, as
 
 A message names its ticket. It links to the ticket only when Hatch knows the
 address people open it at, which is `HATCH_PUBLIC_URL`. Without it, the Chat
-screen says messages name the ticket with no link.
+screen says messages name the ticket with no link, and [what to do](#links-are-missing) is above.
 
 ## Questions in a room
 
