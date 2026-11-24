@@ -32,7 +32,7 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
         // asks, not "actionable for this caller's own checkout": the caller's
         // own repository situation is what its own next call, after freeing
         // itself, judges.
-        var scan = await dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var scan = await dispatch.ScanAsync(ScanCaller.ClaimHeartbeat, 0, null, null, RepositoryDeclaration.Undeclared, false, ct);
 
         // Rule 2: emergency work is never preempted - this is what makes a
         // surplus queue instead of a cascade. This issue is the caller's own
