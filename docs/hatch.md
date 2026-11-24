@@ -5217,8 +5217,9 @@ not counted in `inReviewWithoutPullRequest` either: its pull request is written
 and only needs opening, which is a fact the issue page carries, not a thing
 forgotten. It is not a `reviews` row, because those need a recorded url.
 
-The control keeps itself current on a sixty-second poll and on
-`visibilitychange`, the way [the battery](#the-battery) does, and a read that
+The control keeps itself current on a sixty-second poll while the tab is on
+screen, the way [the battery](#the-battery) does. A tab nobody is looking at
+asks nothing, and asks once when it is brought forward. A read that
 fails leaves the last answer drawn and says nothing at all. The bar is not
 where a fetch failure gets announced.
 

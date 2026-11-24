@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { createLedger, mayApply, mayRefresh } from './refresh';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLedger, mayApply, mayRefresh, pollWhileVisible } from './refresh';
 
 describe('mayRefresh', () => {
   it('is false while the page is hidden', () => {
@@ -94,5 +94,86 @@ describe('createLedger', () => {
     other.invalidate();
 
     expect(one.isCurrent(ticket)).toBe(true);
+  });
+});
+
+/** A stand-in for `document`: a state that can be set, and the listeners it has. */
+function fakeDocument(state: 'visible' | 'hidden') {
+  const listeners = new Set<() => void>();
+  const doc = {
+    visibilityState: state as string,
+    addEventListener: (_type: 'visibilitychange', l: () => void) => void listeners.add(l),
+    removeEventListener: (_type: 'visibilitychange', l: () => void) => void listeners.delete(l),
+  };
+  return {
+    doc,
+    listeners,
+    show() {
+      doc.visibilityState = 'visible';
+      listeners.forEach((l) => l());
+    },
+    hide() {
+      doc.visibilityState = 'hidden';
+      listeners.forEach((l) => l());
+    },
+  };
+}
+
+describe('pollWhileVisible', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('reads at once and on every interval while visible', () => {
+    const load = vi.fn();
+    const f = fakeDocument('visible');
+    pollWhileVisible({ load, everyMs: 1000, doc: f.doc });
+    expect(load).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(3000);
+    expect(load).toHaveBeenCalledTimes(4);
+  });
+
+  it('sends nothing when it starts hidden, however long it stays hidden', () => {
+    const load = vi.fn();
+    const f = fakeDocument('hidden');
+    pollWhileVisible({ load, everyMs: 1000, doc: f.doc });
+    vi.advanceTimersByTime(10 * 60 * 1000);
+    expect(load).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('sends nothing while hidden after being visible, and clears its timer', () => {
+    const load = vi.fn();
+    const f = fakeDocument('visible');
+    pollWhileVisible({ load, everyMs: 1000, doc: f.doc });
+    f.hide();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(10 * 60 * 1000);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads once on return, then a full interval later', () => {
+    const load = vi.fn();
+    const f = fakeDocument('hidden');
+    pollWhileVisible({ load, everyMs: 1000, doc: f.doc });
+    vi.advanceTimersByTime(60 * 1000);
+    f.show();
+    expect(load).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(999);
+    expect(load).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('stop clears the timer and removes the listener', () => {
+    const load = vi.fn();
+    const f = fakeDocument('visible');
+    const stop = pollWhileVisible({ load, everyMs: 1000, doc: f.doc });
+    expect(f.listeners.size).toBe(1);
+    stop();
+    expect(f.listeners.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    f.show();
+    vi.advanceTimersByTime(5000);
+    expect(load).toHaveBeenCalledTimes(1);
   });
 });

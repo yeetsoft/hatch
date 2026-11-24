@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getAttention } from '../api/client';
 import type { Attention } from '../types';
+import { pollWhileVisible } from './refresh';
 
-/** How often the bar re-asks.
+/** How often the bar re-asks while its tab is on screen.
  *
- *  A minute, rather than the battery's two. This read is three cheap queries
- *  against a table of one household's issues, and it is the only thing in the
- *  app that says a person is being waited on - an answer given four minutes
- *  after the question was asked is a widget doing its job late. */
+ *  A minute, rather than the battery's two. It is the only thing in the app
+ *  that says a person is being waited on - an answer given four minutes after
+ *  the question was asked is a widget doing its job late. The read runs a
+ *  dispatch scan for each live runner, which is why a hidden tab must not ask:
+ *  see `pollWhileVisible`. */
 export const POLL_MS = 60 * 1000;
 
 /**
@@ -15,12 +17,12 @@ export const POLL_MS = 60 * 1000;
  *
  * Shaped on `useUtilization`, and for the same reasons. Three things move it:
  *
- * - The first load.
- * - The poll above.
- * - `visibilitychange`. A backgrounded tab's timers are throttled to the point
- *   of stopping, so a tab brought forward after an hour would otherwise draw an
- *   hour-old answer. Focus is not enough on its own: a tab revealed without
- *   being clicked is never focused.
+ * - The first load, once the tab is on screen.
+ * - The poll above, while the tab is on screen.
+ * - The tab coming back into view, which asks once at once. A hidden tab asks
+ *   nothing, however long it stays hidden, so a tab brought forward after an
+ *   hour reads once and draws a current answer. Focus is not enough on its
+ *   own: a tab revealed without being clicked is never focused.
  *
  * Nothing here reports an error. A read that fails leaves the last answer
  * drawn - so the panel behind an already-lit control still lists what it listed
@@ -49,18 +51,7 @@ export function useAttention(): { attention: Attention | null; reload: () => Pro
   }, []);
 
   useEffect(() => {
-    void load();
-
-    const timer = setInterval(() => void load(), POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void load();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
+    return pollWhileVisible({ load: () => void load(), everyMs: POLL_MS });
   }, [load]);
 
   return { attention, reload: load };

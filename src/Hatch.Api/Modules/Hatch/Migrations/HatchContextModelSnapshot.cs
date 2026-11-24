@@ -3002,6 +3002,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Failing")
                         .HasColumnType("jsonb");
 
+                    b.Property<DateTimeOffset?>("FailingSince")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Remote")
                         .IsRequired()
                         .HasMaxLength(500)

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getUtilization } from '../api/client';
 import type { Utilization } from '../types';
+import { pollWhileVisible } from './refresh';
 
-/** How often the page re-asks. Matches the claim heartbeat's own interval,
+/** How often the page re-asks while its tab is on screen. Matches the claim heartbeat's own interval,
     which is the newest reading the server can ever be holding - polling
     faster would just repeat a question the server has already answered.
     A runner's own probe still runs on its own two-minute clock, so a reading
@@ -28,15 +29,15 @@ export interface UtilizationState {
  *
  * Three things move it:
  *
- * - The first load.
- * - A thirty-second poll. The server no longer holds a reading for five
- *   minutes of its own - it holds whatever a runner's heartbeat last
- *   reported - so this is what notices a new one has arrived without
- *   anybody pressing anything.
- * - `visibilitychange`. A backgrounded tab's timers are throttled to the point
- *   of stopping, so a tab brought forward after an hour would otherwise show an
- *   hour-old number until the next tick. Focus is not enough on its own: a tab
- *   revealed without being clicked is never focused.
+ * - The first load, once the tab is on screen.
+ * - A thirty-second poll, while the tab is on screen. The server no longer
+ *   holds a reading for five minutes of its own - it holds whatever a runner's
+ *   heartbeat last reported - so this is what notices a new one has arrived
+ *   without anybody pressing anything.
+ * - The tab coming back into view, which asks once at once. A hidden tab asks
+ *   nothing, however long it stays hidden, so a tab brought forward after an
+ *   hour reads once rather than waiting for the next tick. Focus is not enough
+ *   on its own: a tab revealed without being clicked is never focused.
  *
  * Nothing here reports an error. A failure to reach Hatch's own endpoint leaves
  * the last reading in place - and the endpoint's own degraded answer (`stale`)
@@ -55,18 +56,7 @@ export function useUtilization(): UtilizationState {
   }, []);
 
   useEffect(() => {
-    void load();
-
-    const timer = setInterval(() => void load(), POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void load();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
+    return pollWhileVisible({ load: () => void load(), everyMs: POLL_MS });
   }, [load]);
 
   return { reading, refresh: load };
