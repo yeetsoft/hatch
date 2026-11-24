@@ -1361,6 +1361,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasIndex("ParentId");
 
+                    b.HasIndex("Priority")
+                        .HasFilter("\"Priority\" = 2");
+
                     b.HasIndex("SearchVector");
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
