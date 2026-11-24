@@ -51,6 +51,9 @@ public class ReportReadCostTests
     /// <summary>The limit the leaderboard read below is asked for.</summary>
     private const int LeaderboardLimit = 20;
 
+    /// <summary>The podium the leaderboard asks for beside its table.</summary>
+    private const int LeaderboardTop = 5;
+
     private static readonly string From = Now.AddDays(-ReadCostSeed.WindowDays).ToString("O");
     private static readonly string To = Now.ToString("O");
 
@@ -83,8 +86,8 @@ public class ReportReadCostTests
             new(3, 1, 1150, 950, "IssueEvents=1294;Issues=400;Projects=2;Statuses=6"),
             new(3, 1, 3150, 2950, "IssueEvents=3294;Issues=400;Projects=2;Statuses=6")),
         ["GET /api/reports/flow"] = (
-            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=3882;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
-            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=7242;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=1500")),
+            new(8, 1, 1645, 1445, "Comments=440;IssueEvents=2663;Issues=800;Projects=2;Statuses=6;WorkLogEntries=500"),
+            new(8, 1, 3645, 3445, "Comments=780;IssueEvents=6663;Issues=1000;Projects=2;Statuses=6;WorkLogEntries=1500")),
         ["GET /api/reports/changelog (epic level)"] = (
             new(13, 5, 417, 12, "Comments=720;Issues=1024;Projects=3;Statuses=36"),
             new(13, 5, 417, 12, "Comments=2221;Issues=1223;Projects=3;Statuses=36")),
@@ -110,15 +113,21 @@ public class ReportReadCostTests
         ["GET /api/work-log/sessions"] = (
             new(5, 0, 24, 24, "Issues=1000;Projects=2;WorkLogEntries=2500"),
             new(5, 0, 24, 24, "Issues=1000;Projects=2;WorkLogEntries=7500")),
+        // The same, and the heaviest five: one more read, five more rows, and
+        // still the totals, the paths and the bounds once - what the
+        // leaderboard asks instead of the line above twice.
+        ["GET /api/work-log/sessions?top"] = (
+            new(6, 0, 29, 29, "Issues=1200;Projects=4;WorkLogEntries=3000"),
+            new(6, 0, 29, 29, "Issues=1200;Projects=4;WorkLogEntries=9000")),
         ["GET /api/work-log/by-playbook"] = (
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=500"),
             new(2, 0, 306, 306, "Issues=200;Statuses=6;WorkLogEntries=1500")),
         ["GET /api/board/health"] = (
-            new(38, 7, 3075, 1982, "Comments=1782;IssueEvents=19856;Issues=3002;Projects=16;Statuses=30;WorkLogEntries=500"),
-            new(38, 7, 5075, 3982, "Comments=3963;IssueEvents=109146;Issues=3602;Projects=16;Statuses=30;WorkLogEntries=1500")),
+            new(38, 7, 3075, 1982, "Comments=1782;IssueEvents=19856;Issues=3002;Projects=16;Statuses=30"),
+            new(38, 7, 5075, 3982, "Comments=3963;IssueEvents=109146;Issues=3602;Projects=16;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(40, 7, 3084, 2020, "Comments=1782;IssueEvents=25160;Issues=3202;Projects=24;Statuses=30;WorkLogEntries=500"),
-            new(40, 7, 5084, 4020, "Comments=3963;IssueEvents=143250;Issues=3802;Projects=24;Statuses=30;WorkLogEntries=1500")),
+            new(40, 7, 3084, 2020, "Comments=1782;IssueEvents=25160;Issues=3202;Projects=24;Statuses=30"),
+            new(40, 7, 5084, 4020, "Comments=3963;IssueEvents=143250;Issues=3802;Projects=24;Statuses=30")),
         ["ColumnNormals.ForAsync"] = (
             new(2, 1, 1144, 944, "IssueEvents=1294;Issues=200;Projects=2"),
             new(2, 1, 3144, 2944, "IssueEvents=3294;Issues=200;Projects=2")),
@@ -148,7 +157,9 @@ public class ReportReadCostTests
             Assert.IsType<FileContentResult>(result);
         }),
         new("GET /api/work-log/history", h => Ok(h.WorkLog.GetHistory(From, To, null, 0, null, null, null, default))),
-        new("GET /api/work-log/sessions", h => Ok(h.WorkLog.GetSessions(From, To, null, null, LeaderboardLimit, null, null, default))),
+        new("GET /api/work-log/sessions", h => Ok(h.WorkLog.GetSessions(From, To, null, null, LeaderboardLimit, null, null, null, default))),
+        new("GET /api/work-log/sessions?top",
+            h => Ok(h.WorkLog.GetSessions(From, To, null, null, LeaderboardLimit, null, null, LeaderboardTop, default))),
         new("GET /api/work-log/by-playbook", h => Ok(h.WorkLog.GetByPlaybook(From, To, null, null, null, default))),
         new("GET /api/board/health", h => Ok(h.Health.GetBoardHealth("24h", null, default))),
         new("GET /api/board/health?project", h => Ok(h.Health.GetBoardHealth("24h", [ReadCostSeed.KeyA], default))),
@@ -226,7 +237,21 @@ public class ReportReadCostTests
             var sessionsBound = LeaderboardLimit + 1 + ReadCostSeed.DistinctReadPaths + 2;
             if (sessions > sessionsBound)
                 failures.Add($"sessions returned {sessions} rows at the {size} size, more than the page, the totals, the paths read and the two bounds ({sessionsBound})");
+
+            // The one request the leaderboard makes for both lists: the same,
+            // and the top five besides. Its Read column grows like the table's
+            // until the end-time index exists, so what is held equal is what it
+            // returns and how many statements it takes.
+            var withTop = measured["GET /api/work-log/sessions?top"].Row;
+            var withTopBound = LeaderboardLimit + LeaderboardTop + 1 + ReadCostSeed.DistinctReadPaths + 2;
+            if (withTop.Rows > withTopBound)
+                failures.Add($"sessions?top returned {withTop.Rows} rows at the {size} size, more than the page, the top, the totals, the paths read and the two bounds ({withTopBound})");
         }
+
+        var topSmall = small["GET /api/work-log/sessions?top"].Row;
+        var topLarge = large["GET /api/work-log/sessions?top"].Row;
+        if (topSmall.Statements != topLarge.Statements || topSmall.Rows != topLarge.Rows)
+            failures.Add($"sessions?top costs {topSmall.Statements} statements and {topSmall.Rows} rows at the small size and {topLarge.Statements} and {topLarge.Rows} at the large - it should be the same");
 
         if (failures.Count > 0)
             Assert.Fail(

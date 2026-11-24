@@ -158,9 +158,10 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// The sessions in a range, ranked - and what that range cost in total.
     /// </summary>
     /// <remarks>
-    /// The ranking and the table are this one read asked twice with a different
-    /// sort and a different cap, rather than two endpoints that could come to
-    /// disagree about what a session is.
+    /// The ranking and the table are one read: <c>top</c> adds the heaviest
+    /// sessions by tokens to the answer beside the table at <c>sort</c>, rather
+    /// than the same read being asked twice with a different sort and cap, or
+    /// two endpoints that could come to disagree about what a session is.
     ///
     /// The range is used <em>as given</em>. That is the one place this differs
     /// from <see cref="GetHistory"/>, which snaps outward onto the bucket grid
@@ -196,6 +197,13 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// outcome; case-insensitive, and blank is absent. Narrows the rows and the
     /// totals, ANDed with the other filters. Absent reads every session.
     /// </param>
+    /// <param name="top">
+    /// How many of the heaviest sessions to answer in <c>top</c>, 1 to
+    /// <see cref="MaxSessions"/>. Always descending by tokens whatever
+    /// <paramref name="sort"/> and <paramref name="limit"/> are, ties broken as
+    /// <paramref name="sort"/>'s are, and narrowed by the same filters. Absent
+    /// leaves <c>top</c> null.
+    /// </param>
     [HttpGet("sessions")]
     public async Task<ActionResult<WorkLogSessionsDto>> GetSessions(
         [FromQuery] string? from,
@@ -205,6 +213,7 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         [FromQuery] int limit = DefaultSessions,
         [FromQuery] List<int>? projectId = null,
         [FromQuery] string? outcome = null,
+        [FromQuery] int? top = null,
         CancellationToken ct = default)
     {
         if (Range(from, to, out var start, out var end) is { } badRange) return badRange;
@@ -245,13 +254,16 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         if (limit is < 1 or > MaxSessions)
             return BadRequest($"a limit is between 1 and {MaxSessions} - not {limit}");
 
+        if (top is < 1 or > MaxSessions)
+            return BadRequest($"a top is between 1 and {MaxSessions} - not {top}");
+
         var (ancestorId, refusal) = await AncestorAsync(ancestorKey, ct);
         if (refusal is not null) return refusal;
 
         var projectIds = (projectId ?? []).Distinct().ToList();
 
         return await WorkLogRollup.SessionsAsync(
-            db, start, end, ancestorId, projectIds, ranking, limit, outcomeFilter, ct);
+            db, start, end, ancestorId, projectIds, ranking, limit, outcomeFilter, top, ct);
     }
 
     /// <summary>
