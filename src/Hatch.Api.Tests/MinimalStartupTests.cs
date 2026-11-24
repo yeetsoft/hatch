@@ -30,13 +30,7 @@ namespace Hatch.Api.Tests;
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class MinimalStartupTests
 {
-    /// <summary>
-    /// Everything ReflectionCadence, Backup, Goose and ChatSend are registered under -
-    /// the four jobs, and so the four triggers, this group is left holding.
-    /// </summary>
-    private const string JobGroup = "Hatch.Api";
-
-    /// <summary>The only triggers an install carries - see <see cref="JobGroup"/>.</summary>
+    /// <summary>The only triggers an install carries - see <see cref="FirstFirings.JobGroup"/>.</summary>
     private static readonly string[] ExpectedTriggers = ["ReflectionCadence_Trigger", "Backup_Trigger", "Goose_Trigger", "ChatSend_Trigger"];
 
     /// <summary>
@@ -90,56 +84,6 @@ public class MinimalStartupTests
         var logs = await AssertStartsAndServesAsync(migrated: true);
 
         Assert.True(logs.AtErrorOrAbove.Count == 0, string.Join(Environment.NewLine, logs.AtErrorOrAbove));
-    }
-
-    /// <summary>
-    /// ReflectionCadence's, Backup's, the goose's and ChatSend's triggers start
-    /// now, so their first firings land inside the few hundred milliseconds
-    /// between /health/ready answering and this host being disposed. Disposed
-    /// mid-firing, Quartz fails to build the job from a service provider that
-    /// is already gone and says so at Error - the test's own teardown, not a
-    /// fault in startup. So the host is not stopped until all four firings
-    /// have run their course; the next is five seconds away for ChatSend, and
-    /// a minute, fifteen minutes and a day away for the other three. Backup
-    /// with no path set is a no-op, but it is still a firing to be caught
-    /// mid-construction. Bounded at ten seconds and then let go, so a firing that
-    /// never comes is not this case's failure to report.
-    ///
-    /// <para>"Fired" and "executing" are not the same instant: Quartz records
-    /// the previous fire time first, then builds the job, and only lists it
-    /// among the currently executing jobs once it is running. A single sample
-    /// of "fired and nothing executing" can land in that gap - and did, in CI,
-    /// with the host disposed underneath the job's construction. So it takes
-    /// several samples in a row, spanning far longer than the gap, before the
-    /// firing counts as over.</para>
-    /// </summary>
-    private static async Task SettleFirstFiringAsync(IScheduler scheduler)
-    {
-        const int IdleSamples = 10;
-
-        var triggers = new[]
-        {
-            new TriggerKey("ReflectionCadence_Trigger", JobGroup),
-            new TriggerKey("Backup_Trigger", JobGroup),
-            new TriggerKey("Goose_Trigger", JobGroup),
-            new TriggerKey("ChatSend_Trigger", JobGroup),
-        };
-        var until = DateTimeOffset.UtcNow.AddSeconds(10);
-        var idle = 0;
-
-        while (DateTimeOffset.UtcNow < until)
-        {
-            var fired = true;
-            foreach (var trigger in triggers)
-            {
-                fired &= (await scheduler.GetTrigger(trigger))?.GetPreviousFireTimeUtc() is not null;
-            }
-
-
-            idle = fired && (await scheduler.GetCurrentlyExecutingJobs()).Count == 0 ? idle + 1 : 0;
-            if (idle >= IdleSamples) return;
-            await Task.Delay(50);
-        }
     }
 
     /// <summary>
@@ -217,7 +161,7 @@ public class MinimalStartupTests
             Assert.Contains("/apps/chrome/topbar.js", html);
             Assert.Contains("window.hatchTopBar", html);
 
-            await deadline.BoundAsync("letting the jobs' first firings finish", () => SettleFirstFiringAsync(factory.Services.GetRequiredService<IScheduler>()));
+            await deadline.BoundAsync("letting the jobs' first firings finish", () => FirstFirings.SettleAsync(factory.Services.GetRequiredService<IScheduler>()));
         }
         finally
         {
@@ -231,7 +175,7 @@ public class MinimalStartupTests
         try
         {
             // Unordered: the query has no ORDER BY, so compare sorted.
-            var triggerNames = await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup));
+            var triggerNames = await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, FirstFirings.JobGroup));
             Assert.Equal(ExpectedTriggers.Order(), triggerNames.Order());
 
             if (migrated)
