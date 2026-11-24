@@ -605,6 +605,18 @@ the board's size explains is usually being scanned too often. Hatch counts its
 scans and says who asked for each: one log line for a request that ran a scan,
 and a meter for anything that reads numbers.
 
+- **A request answers `503`.** Every pooled connection to `hatch` was already
+  in use, and this one waited out `Database__PoolWaitSeconds` without getting
+  one. The API logs a Warning naming the path:
+
+  ```
+  docker compose logs api | grep "answered 503"
+  ```
+
+  It is not a crash - the next request tries again, with its own wait - but
+  one happening at all means the pools are undersized for what is running
+  against them: see [Sizing Postgres](deployment-overview#sizing-postgres).
+
 - **Find the line.** The API writes one Information line for each request, and
   each goose sweep, that ran a scan or built a priority tree. A request that did
   neither writes nothing.
