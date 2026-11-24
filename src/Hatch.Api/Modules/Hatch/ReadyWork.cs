@@ -39,7 +39,8 @@ public sealed class ReadyWork(Dispatch dispatch, HatchContext db, Runners runner
         if (snapshot is not null) return snapshot;
 
         var now = time.GetUtcNow();
-        var board = await dispatch.ReadyBoardAsync(ScanCaller.Goose, runners.Cutoff(now), ct);
+        var load = await dispatch.LoadAsync(ScanCaller.Goose, ct);
+        var board = await dispatch.ReadyBoardAsync(ScanCaller.Goose, runners.Cutoff(now), ct, load);
 
         var filed = new HashSet<long>();
         foreach (var step in board.Steps)

@@ -59,7 +59,7 @@ internal static class AttentionReviews
 
     internal static async Task<Read> ReadAsync(
         HatchContext db, Dispatch dispatch, Runners runners, DateTimeOffset now, PriorityTree tree,
-        List<EfHatchStatus> statuses, EfHatchStatus review, CancellationToken ct)
+        List<EfHatchStatus> statuses, EfHatchStatus review, CancellationToken ct, ScanLoad? load = null)
     {
         var inReview = await db.Issues.AsNoTracking()
             .Where(i => i.StatusId == review.Id)
@@ -236,6 +236,24 @@ internal static class AttentionReviews
                 .Select(c => c.ParentId!.Value).Distinct().ToListAsync(ct))
                 .ToHashSet();
 
+        // With a load, every distinct project among the candidates is resolved
+        // once here rather than once a card, and the match below is made
+        // against those rows in memory - no further database read (HA-2797).
+        // Without one, the per-card MatchAsync below runs as it always has.
+        Dictionary<int, List<EfHatchPlaybook>>? playbooksByProject = null;
+        if (load is not null)
+        {
+            var candidateProjectIds = reviewCandidates.Select(i => i.ProjectId).Distinct().ToList();
+            var projects = candidateProjectIds.Count == 0
+                ? []
+                : await db.Projects.AsNoTracking().Include(p => p.Repositories)
+                    .Where(p => candidateProjectIds.Contains(p.Id)).ToListAsync(ct);
+
+            playbooksByProject = [];
+            foreach (var project in projects)
+                playbooksByProject[project.Id] = await dispatch.PlaybooksForAsync(load, project, ct);
+        }
+
         var reviews = new List<(long IssueId, string ProjectKey, ReviewDto Dto)>();
         foreach (var i in reviewCandidates)
         {
@@ -243,9 +261,13 @@ internal static class AttentionReviews
             // passing check approves the merge" is not a person's row here -
             // the move itself speaks for it, the same question Dispatch.ScanAsync
             // and WorkController.RouteAsync ask for the same row.
-            if (Columns.Approves(statuses, review, i.CheckApprovesMerge) is { } approved
-                && (await dispatch.MatchAsync(review.Id, approved.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId, ct))?.Playbook is { IsCheck: true })
-                continue;
+            if (Columns.Approves(statuses, review, i.CheckApprovesMerge) is { } approved)
+            {
+                var checkPlaybook = playbooksByProject is not null
+                    ? Dispatch.Match(playbooksByProject.GetValueOrDefault(i.ProjectId, []), review.Id, approved.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId)
+                    : (await dispatch.MatchAsync(review.Id, approved.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId, ct))?.Playbook;
+                if (checkPlaybook is { IsCheck: true }) continue;
+            }
 
             var repos = bound.TryGetValue(i.ProjectId, out var r) ? r : [];
             var issueMerges = mergesByIssue.TryGetValue(i.Id, out var m) ? (IReadOnlyList<EfHatchMergeCheck>)m : [];

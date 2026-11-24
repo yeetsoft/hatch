@@ -26,6 +26,31 @@ public sealed class Dispatch(
     /// <summary>How many times in a row a stalled issue resumes before the board holds it for a person, as <see cref="IssueClaims"/> reads it.</summary>
     public int StallResumeLimit => claims.StallResumeLimit;
 
+    // ---- What a fold shares with every other fold of this request (HA-2797) ----
+    //
+    // A repo-sourced project's own resolution, a project's dependency
+    // requirement and the calling key's own pace are each a property of the
+    // project or the account, never of the declaration folding against it -
+    // so every fold of one Dispatch (one request, AddScoped) shares the one
+    // answer rather than reading it again for every peer. A board-wide
+    // candidate read (below) is the same, keyed by the only two things that
+    // narrow it - scope and within - so two folds with the same subtree and
+    // the same visible projects (the ordinary case: an unbound peer) share
+    // their one read, and a scope-narrowed or within-narrowed fold simply
+    // reads its own, exactly as it always has.
+
+    private readonly Dictionary<int, RepoSourcedPlaybooks?> repoSourced = [];
+    private readonly Dictionary<int, IReadOnlyList<EfHatchPlaybook>> repoSourcedRows = [];
+    private readonly Dictionary<int, DependencyRequirement> requirements = [];
+
+    // Keyed by the load's own identity, never its value: a caller that builds
+    // a fresh ScanLoad for each of two logical scans (the ordinary case for a
+    // test harness that scans, changes the board, then scans again on the same
+    // Dispatch) must read fresh candidates for the second - only two folds
+    // handed the very same load, as every peer of one request is, share this.
+    private readonly Dictionary<ScanLoad, Dictionary<string, Task<FoldBundle>>> foldBundles = new(ReferenceEqualityComparer.Instance);
+    private Task<PaceReadings>? paceCache;
+
     // ---- The walk ----
 
     /// <summary>
@@ -114,7 +139,7 @@ public sealed class Dispatch(
         TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
         bool foldLetGo = true, ModelDeclaration? models = null, HasDeclaration? has = null,
         RunnerRefusal? refusal = null, VisibleProjects? within = null, SigningDeclaration? signing = null,
-        ForgeDeclaration? forge = null)
+        ForgeDeclaration? forge = null, ScanLoad? load = null)
     {
         // The count is kept apart from the walk, so the walk reads as it always
         // did. Real time, not the clock the walk judges by: a faked clock must
@@ -127,7 +152,7 @@ public sealed class Dispatch(
         {
             scan = await ScanCoreAsync(
                 caller, offsetMinutes, ancestorKey, heldToken, repos, mine, ct, principalOverride, markDeadlocks,
-                tags, projects, asking, foldLetGo, models, has, refusal, within, signing, forge);
+                tags, projects, asking, foldLetGo, models, has, refusal, within, signing, forge, load);
             return scan;
         }
         finally
@@ -140,6 +165,36 @@ public sealed class Dispatch(
         }
     }
 
+    /// <summary>
+    /// The one load every scan folds, read once for the caller and shared with
+    /// every peer scan and within-request re-scan it triggers (HA-2797). Recorded
+    /// the same way a scan is, so the counter from HA-2792 reports loads apart
+    /// from folds.
+    /// </summary>
+    public Task<ScanLoad> LoadAsync(ScanCaller caller, CancellationToken ct) =>
+        ReadLoadAsync(caller, time.GetUtcNow(), ct);
+
+    /// <summary>Reads and records one <see cref="ScanLoad"/>, for <see cref="LoadAsync"/> and the one a plain scan reads for itself.</summary>
+    private async Task<ScanLoad> ReadLoadAsync(ScanCaller caller, DateTimeOffset now, CancellationToken ct)
+    {
+        // Pushed so the tree PriorityTree.ForAsync builds inside this read is
+        // tagged by this caller - the same tag a scan's own tree carries -
+        // whether or not a scan frame already named it (a plain scan pushes
+        // one of its own before reading its load).
+        var frame = ScanFrame.Push(caller);
+        try
+        {
+            var load = await ScanLoad.ReadAsync(db, actors, claims, now, ct);
+            ScanMetrics.LoadFinished(caller);
+            ScanTally.Current?.RecordLoad(caller);
+            return load;
+        }
+        finally
+        {
+            frame.Pop();
+        }
+    }
+
     private async Task<Scan> ScanCoreAsync(
         ScanCaller caller,
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
@@ -147,7 +202,7 @@ public sealed class Dispatch(
         TagDeclaration? tags, IReadOnlyList<string>? projects, RunnerAsking? asking,
         bool foldLetGo, ModelDeclaration? models, HasDeclaration? has,
         RunnerRefusal? refusal, VisibleProjects? within, SigningDeclaration? signing,
-        ForgeDeclaration? forge)
+        ForgeDeclaration? forge, ScanLoad? load)
     {
         tags ??= TagDeclaration.Unjudged;
         models ??= ModelDeclaration.Unjudged;
@@ -191,7 +246,7 @@ public sealed class Dispatch(
             scope = await Rollup.DescendantIdsAsync(db, ancestorId.Value, ct);
         }
 
-        var now = time.GetUtcNow();
+        var now = load?.Now ?? time.GetUtcNow();
 
         // Resolved once for the pass, and only when asked: a plain scan has no
         // reason to touch either. A caller whose key belongs to nobody is
@@ -218,12 +273,13 @@ public sealed class Dispatch(
 
         // Everything a fold reads that is the same for every caller and every
         // runner - see ScanLoad. Read only now, past every refusal above, so a
-        // refused scan never pays for it.
-        var load = await ScanLoad.ReadAsync(db, actors, claims, now, ct);
+        // refused scan never pays for it - and only when the caller passed none
+        // of its own to share.
+        var scanLoad = load ?? await ReadLoadAsync(caller, now, ct);
 
         var declaration = new ScanDeclaration(tags, models, has, signing, forge, refusal, asking, foldLetGo, projects, repos);
 
-        return await FoldAsync(load, declaration, caller, offsetMinutes, heldToken, mine, markDeadlocks, scope, within, loop, askerPreferred, ct);
+        return await FoldAsync(scanLoad, declaration, caller, offsetMinutes, heldToken, mine, markDeadlocks, scope, within, loop, askerPreferred, ct);
     }
 
     private async Task<Scan> FoldAsync(
@@ -241,110 +297,31 @@ public sealed class Dispatch(
         var claimed = new ClaimGate(claims, now, heldToken, load.Lineage);
         var boardWidePlaybooks = playbooks.Where(p => p.ProjectId == null).ToList();
 
-        // A repo-sourced project's own resolution - the primary repository, its
-        // trunk, and the .hatch/playbooks.yaml copy on it - never varies by issue
-        // or transition, so it is resolved once per project per pass rather than
-        // once per candidate, the first time a project is met below.
-        var repoSourced = new Dictionary<int, RepoSourcedPlaybooks?>();
-        var repoSourcedRows = new Dictionary<int, IReadOnlyList<EfHatchPlaybook>>();
-
-        // The columns a pass looks in at all: the ones with a column to go to -
-        // the next one to their right, or, for the review column, itself. No
-        // type filter - which types a move applies to is the
-        // playbook's to say, and a row no playbook covers is folded with the
-        // sentence naming that rather than dropped before it is judged.
-        var walkable = statuses.Where(s => Columns.Target(statuses, s) is not null).Select(s => s.Id).ToList();
-
-        var query = db.Issues.Where(i => walkable.Contains(i.StatusId));
-        if (scope is not null) query = query.Where(i => scope.Contains(i.Id));
-
-        // A peer's own scope, narrowing candidates and nothing else - as
-        // ancestorKey does. The caller's own is the context's query filter.
-        if (within is { Unbounded: false })
-        {
-            var visible = within.Ids;
-            query = query.Where(i => visible.Contains(i.ProjectId));
-        }
-
-        // Untracked and without the descriptions: a scan judges by columns and
-        // reads a description only for its length, see ScanCandidates.
-        var read = await ScanCandidates.ReadAsync(db, query.OrderBy(i => i.Rank).ThenBy(i => i.Id), ct);
-        var candidates = read.Issues;
-
-        // A repo-sourced project's own resolution is needed to know which brief
-        // limits could apply to its rows, so it is resolved here for every project
-        // with a candidate - the same statements the walk would have made on first
-        // sight of the project, and none for a project that is not repo-sourced.
-        async Task ResolveRepoSourcedOnceAsync(EfHatchProject project)
-        {
-            if (repoSourced.ContainsKey(project.Id)) return;
-            var (resolved, fileRows, _) = await ResolveRepoSourcedAsync(project, ct);
-            repoSourced[project.Id] = resolved;
-            repoSourcedRows[project.Id] = fileRows;
-        }
-
-        foreach (var project in candidates.Where(i => i.Project is not null).Select(i => i.Project!).DistinctBy(p => p.Id))
-            await ResolveRepoSourcedOnceAsync(project);
-
-        // Every Match and ImplementationPlaybook call below draws from this list, so
-        // the smallest limit in it is a ceiling no matched playbook's limit is under.
-        await ScanCandidates.LoadBriefsAsync(db, read, projectId =>
-        {
-            var list = repoSourced.GetValueOrDefault(projectId) is null
-                ? playbooks.Where(p => p.ProjectId == null || p.ProjectId == projectId)
-                : repoSourcedRows[projectId].Concat(boardWidePlaybooks);
-            return list.Where(p => p.BriefLimit is not null).Select(p => p.BriefLimit).Min();
-        }, ct);
-
-        var byColumn = candidates.GroupBy(i => i.StatusId).ToDictionary(g => g.Key, g => g.ToList());
-
-        // Every epic a candidate's own parent might be, read once for the
-        // whole pass - HA-112's own limit, beside the section-wide one.
-        var epics = Wip.Epics(tree, candidates.Select(i => i.ParentId));
-
-        // What runners have found about the branches of the issues in review
-        // and the issues waiting to merge, read once for the pass and
-        // grouped, the way `open` is. Only those two columns are asked
-        // about: they are the only moves a verdict gates.
-        var review = Columns.AwaitingReview(statuses);
-        var merges = Columns.Merges(statuses);
-        var checkedIds = (review is not null && byColumn.TryGetValue(review.Id, out var inReview) ? inReview : [])
-            .Concat(merges is not null && byColumn.TryGetValue(merges.Id, out var inMerges) ? inMerges : [])
-            .Select(i => i.Id).ToList();
-        var verdicts = checkedIds.Count > 0 ? await MergeChecksAsync(checkedIds, ct) : [];
-        var builds = checkedIds.Count > 0 ? await BuildChecksAsync(checkedIds, ct) : [];
-        var landed = review is not null && byColumn.TryGetValue(review.Id, out var inReviewRows)
-            ? await LandedAsync(inReviewRows, now, ct)
-            : [];
-
-        // Blocked is static and has no db, so the assignees are resolved here
-        // and handed in, the way `open` and `gate` already are. One memoized
-        // read for the whole pass, whatever the board holds.
-        var assignees = new Dictionary<long, AssigneeDto?>();
-        foreach (var issue in candidates)
-            assignees[issue.Id] = await IssueProjection.ToAssigneeAsync(
-                actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct);
-
-        var implementation = Columns.Implementation(statuses);
-
-        // The open question each ambition standing in the implementation column is
-        // aimed at, if one qualifies - read once for the whole pass, and only for
-        // the ambitions that could use it. See AnswerQuestions.
-        var answerings = await AnswerQuestions.ForAsync(
-            db, gate,
-            implementation is null
-                ? []
-                : candidates.Where(i => i.Type == "ambition" && i.StatusId == implementation.Id).Select(i => i.Id).ToList(),
-            ct);
-
-        // The change each ambition standing in the implementation column is aimed
-        // at, if one qualifies - read once, beside the questions. See WorkOutChanges.
-        var changings = await WorkOutChanges.ForAsync(
-            db, family, statuses,
-            implementation is null
-                ? []
-                : candidates.Where(i => i.Type == "ambition" && i.StatusId == implementation.Id).Select(i => i.Id).ToList(),
-            ct);
+        // Every board-wide read a fold needs that is not a function of its own
+        // declaration - the candidates, their briefs, the merge and build
+        // verdicts, who is landed, assigned, answering or working out a
+        // change, the merge train's own order and the let-go/send-back trail -
+        // shared with every other fold of this Dispatch that shares the same
+        // scope and within (HA-2797), so a board of peers folds once each in
+        // memory rather than reading all of this again per peer.
+        var bundle = await FoldBundleAsync(load, scope, within, ct);
+        var candidates = bundle.Candidates;
+        var byColumn = bundle.ByColumn;
+        var epics = bundle.Epics;
+        var review = bundle.Review;
+        var merges = bundle.Merges;
+        var verdicts = bundle.Verdicts;
+        var builds = bundle.Builds;
+        var landed = bundle.Landed;
+        var assignees = bundle.Assignees;
+        var implementation = bundle.Implementation;
+        var answerings = bundle.Answerings;
+        var changings = bundle.Changings;
+        var effective = bundle.Effective;
+        var trainSlots = bundle.TrainSlots;
+        var drivers = bundle.Drivers;
+        var letGoCounts = bundle.LetGoCounts;
+        var sendBackStreaks = bundle.SendBackStreaks;
 
         // The whole walk, once per tier, each tier right to left: first every
         // emergency candidate in a project that is not paused; then, for an
@@ -368,32 +345,6 @@ public sealed class Dispatch(
         // expedited issue that is blocked is folded with exactly the sentence
         // it is folded with today - it is simply folded sooner.
         var rows = new List<ScanRow>();
-        var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
-
-        // The merges column's own order and head, named once for the whole
-        // pass - see Train. MergeWork.Judge is asked again inside Blocked
-        // below for its own sentence; that is not a second opinion about the
-        // order, since both calls read the same verdicts and builds fetched
-        // above.
-        IReadOnlyDictionary<long, TrainSlot> trainSlots = new Dictionary<long, TrainSlot>();
-        IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)> drivers = new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
-        if (merges is not null && byColumn.TryGetValue(merges.Id, out var inTrain))
-        {
-            // A task waiting on its story's pull request has none of its own to
-            // merge, so it has no place in the train - and left in, a row with no
-            // checks at all would be elected head over a real pull request.
-            var merging = inTrain.Where(i => !family.IsWaiting(i.Id)).ToList();
-            (_, trainSlots) = await ReadTrainAsync(merging, effective, verdicts, builds, now, ct);
-
-            if (keys is not null && runners is not null)
-                drivers = await runners.ProjectDriversAsync(db, keys, now, ct);
-        }
-
-        // A review row whose pull request is written and waiting is opened by its project's driver, so
-        // its sentence names the driver - or says there is none - just as a merges row's does.
-        if (drivers.Count == 0 && keys is not null && runners is not null
-            && candidates.Any(i => WaitingPullRequest.Has(i) && string.IsNullOrWhiteSpace(i.PullRequestUrl)))
-            drivers = await runners.ProjectDriversAsync(db, keys, now, ct);
 
         // Resolved only when some candidate actually reads at economy or low
         // level - a pass with nothing at either tier has no reason to read an
@@ -402,22 +353,10 @@ public sealed class Dispatch(
         if (effective.Values.Any(e => e.Level is PriorityLevels.Economy or PriorityLevels.Low))
             pace = await PaceReadingsAsync(ct);
 
-        // Resolved only when some candidate is actually marked - a pass with
-        // nothing stalled has no reason to read any issue's trail at all.
-        Dictionary<long, int>? letGoCounts = null;
-        var marked = candidates.Where(i => i.StalledAt is not null).Select(i => i.Id).ToList();
-        if (marked.Count > 0) letGoCounts = await LetGo.CountsAsync(db, marked, ct);
-
         // The tickets this runner let go of last, with nothing since to clear
         // the record. Only a caller that named itself pays the query.
         var letGoBy = asking is null || !foldLetGo ? [] : await LetGo.ByAsync(db, asking.Name, ct);
         PeerScans? peers = null;
-
-        // Unconditional on the implementation column existing - nothing as cheap
-        // as StalledAt pre-filters which candidates could be mid-round-trip.
-        Dictionary<long, int>? sendBackStreaks = implementation is null
-            ? null
-            : await SendBackStreak.CountsAsync(db, candidates.Select(i => i.Id).ToList(), implementation.Name, ct);
 
         // Set only after a tier's own loop below has finished, so two clear rows in
         // the same tier never park each other - only a strictly higher tier's clear
@@ -440,9 +379,9 @@ public sealed class Dispatch(
         // Whether any code-gated row was folded on a dependency its runner
         // lacks: it sits ahead of the dependency-edge fold, so it hides a ring
         // the same way. Each project's requirement is read on first sight, and
-        // only for a scan that judges it.
+        // shared with every other fold of this Dispatch (HA-2797): the
+        // requirement is the project's own, never the declaration's.
         var hasFolded = false;
-        var requirements = new Dictionary<int, DependencyRequirement>();
 
         foreach (var (tierHolds, tierIsEmergency) in ProjectTiers())
         {
@@ -462,7 +401,7 @@ public sealed class Dispatch(
 
                     if (!repoSourced.TryGetValue(issue.ProjectId, out var projectRepoSourced))
                     {
-                        await ResolveRepoSourcedOnceAsync(issue.Project!);
+                        await ResolveRepoSourcedOnceAsync(issue.Project!, ct);
                         projectRepoSourced = repoSourced[issue.ProjectId];
                     }
 
@@ -538,7 +477,7 @@ public sealed class Dispatch(
                     (string Runner, string Model)? leftFor = null;
                     if (!hop && foldLetGo && asking is not null && PreferredElsewhere(issue, playbook, localLevel, models) is { } preferred)
                     {
-                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes);
+                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes, load);
                         if (await peers.FreeLocalAsync(issue.Id, preferred, ct) is { } free)
                             leftFor = (free, preferred);
                     }
@@ -570,7 +509,7 @@ public sealed class Dispatch(
                     // so a folded row parks nothing.
                     if (blocked is null && !hop && asking is not null && letGoBy.TryGetValue(issue.Id, out var by))
                     {
-                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes);
+                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes, load);
                         if (await peers.CouldTakeAsync(issue.Id, ct))
                         {
                             blocked = $"{by.Runner} let this go {Minutes((int)(now - by.At).TotalSeconds)} ago, " +
@@ -585,7 +524,7 @@ public sealed class Dispatch(
                     // a preferred asker. A peer's own scan asks nobody.
                     if (blocked is null && !hop && foldLetGo && asking is not null && !askerPreferred)
                     {
-                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes);
+                        peers ??= new PeerScans(this, caller, asking, now, offsetMinutes, load);
                         if (await peers.PreferredFreeAsync(issue.Id, ct) is { } preferredRunner)
                         {
                             blocked = ModelFamilies.LeftForPreferred(IssueKey.Format(issue.Project!.Key, issue.Number), status.Name, preferredRunner);
@@ -677,7 +616,7 @@ public sealed class Dispatch(
                 || hasFolded
                 || projects is { Count: > 0 }
                 || (asking is not null && candidates.Any(i => tree.EffectiveOmittedRunners(i.Id).Any(o => o.Runner == asking.Name)))
-                ? (await ScanAsync(caller, offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
+                ? (await ScanAsync(caller, offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct, load: load)).Rows
                 : rows;
             var dead = Deadlocks.Find(whole);
 
@@ -695,14 +634,197 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// <see cref="FoldAsync"/>'s own board-wide read, shared with every other
+    /// fold of this Dispatch that shares the same <paramref name="scope"/> and
+    /// <paramref name="within"/> (HA-2797) - the ordinary case for a peer, which
+    /// declares neither. A fold that does declare one of its own simply reads
+    /// its own bundle, under its own key, exactly as it always has.
+    /// </summary>
+    private Task<FoldBundle> FoldBundleAsync(ScanLoad load, List<long>? scope, VisibleProjects? within, CancellationToken ct)
+    {
+        if (!foldBundles.TryGetValue(load, out var byKey))
+            foldBundles[load] = byKey = new Dictionary<string, Task<FoldBundle>>(StringComparer.Ordinal);
+
+        var key = FoldBundleKey(scope, within);
+        if (!byKey.TryGetValue(key, out var bundle))
+            byKey[key] = bundle = BuildFoldBundleAsync(load, scope, within, ct);
+        return bundle;
+    }
+
+    private static string FoldBundleKey(List<long>? scope, VisibleProjects? within)
+    {
+        var scopePart = scope is null ? "*" : string.Join(",", scope.OrderBy(id => id));
+        var withinPart = within is null || within.Unbounded ? "*" : string.Join(",", within.Ids.OrderBy(id => id));
+        return scopePart + "|" + withinPart;
+    }
+
+    private async Task<FoldBundle> BuildFoldBundleAsync(ScanLoad load, List<long>? scope, VisibleProjects? within, CancellationToken ct)
+    {
+        var now = load.Now;
+        var statuses = load.Statuses;
+        var tree = load.Tree;
+        var gate = load.Dependencies;
+        var family = load.Family;
+        var playbooks = load.Playbooks;
+        var boardWidePlaybooks = playbooks.Where(p => p.ProjectId == null).ToList();
+
+        // The columns a pass looks in at all: the ones with a column to go to -
+        // the next one to their right, or, for the review column, itself. No
+        // type filter - which types a move applies to is the
+        // playbook's to say, and a row no playbook covers is folded with the
+        // sentence naming that rather than dropped before it is judged.
+        var walkable = statuses.Where(s => Columns.Target(statuses, s) is not null).Select(s => s.Id).ToList();
+
+        var query = db.Issues.Where(i => walkable.Contains(i.StatusId));
+        if (scope is not null) query = query.Where(i => scope.Contains(i.Id));
+
+        // A peer's own scope, narrowing candidates and nothing else - as
+        // ancestorKey does. The caller's own is the context's query filter.
+        if (within is { Unbounded: false })
+        {
+            var visible = within.Ids;
+            query = query.Where(i => visible.Contains(i.ProjectId));
+        }
+
+        // Untracked and without the descriptions: a scan judges by columns and
+        // reads a description only for its length, see ScanCandidates.
+        var read = await ScanCandidates.ReadAsync(db, query.OrderBy(i => i.Rank).ThenBy(i => i.Id), ct);
+        var candidates = read.Issues;
+
+        foreach (var project in candidates.Where(i => i.Project is not null).Select(i => i.Project!).DistinctBy(p => p.Id))
+            await ResolveRepoSourcedOnceAsync(project, ct);
+
+        // Every Match and ImplementationPlaybook call below draws from this list, so
+        // the smallest limit in it is a ceiling no matched playbook's limit is under.
+        await ScanCandidates.LoadBriefsAsync(db, read, projectId =>
+        {
+            var list = repoSourced.GetValueOrDefault(projectId) is null
+                ? playbooks.Where(p => p.ProjectId == null || p.ProjectId == projectId)
+                : repoSourcedRows[projectId].Concat(boardWidePlaybooks);
+            return list.Where(p => p.BriefLimit is not null).Select(p => p.BriefLimit).Min();
+        }, ct);
+
+        var byColumn = candidates.GroupBy(i => i.StatusId).ToDictionary(g => g.Key, g => g.ToList());
+
+        // Every epic a candidate's own parent might be, read once for the
+        // whole pass - HA-112's own limit, beside the section-wide one.
+        var epics = Wip.Epics(tree, candidates.Select(i => i.ParentId));
+
+        // What runners have found about the branches of the issues in review
+        // and the issues waiting to merge, read once for the pass and
+        // grouped, the way `open` is. Only those two columns are asked
+        // about: they are the only moves a verdict gates.
+        var review = Columns.AwaitingReview(statuses);
+        var merges = Columns.Merges(statuses);
+        var checkedIds = (review is not null && byColumn.TryGetValue(review.Id, out var inReview) ? inReview : [])
+            .Concat(merges is not null && byColumn.TryGetValue(merges.Id, out var inMerges) ? inMerges : [])
+            .Select(i => i.Id).ToList();
+        var verdicts = checkedIds.Count > 0 ? await MergeChecksAsync(checkedIds, ct) : [];
+        var builds = checkedIds.Count > 0 ? await BuildChecksAsync(checkedIds, ct) : [];
+        var landed = review is not null && byColumn.TryGetValue(review.Id, out var inReviewRows)
+            ? await LandedAsync(inReviewRows, now, ct)
+            : [];
+
+        // Blocked is static and has no db, so the assignees are resolved here
+        // and handed in, the way `open` and `gate` already are. One memoized
+        // read for the whole pass, whatever the board holds.
+        var assignees = new Dictionary<long, AssigneeDto?>();
+        foreach (var issue in candidates)
+            assignees[issue.Id] = await IssueProjection.ToAssigneeAsync(
+                actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct);
+
+        var implementation = Columns.Implementation(statuses);
+
+        // The open question each ambition standing in the implementation column is
+        // aimed at, if one qualifies - read once for the whole pass, and only for
+        // the ambitions that could use it. See AnswerQuestions.
+        var answerings = await AnswerQuestions.ForAsync(
+            db, gate,
+            implementation is null
+                ? []
+                : candidates.Where(i => i.Type == "ambition" && i.StatusId == implementation.Id).Select(i => i.Id).ToList(),
+            ct);
+
+        // The change each ambition standing in the implementation column is aimed
+        // at, if one qualifies - read once, beside the questions. See WorkOutChanges.
+        var changings = await WorkOutChanges.ForAsync(
+            db, family, statuses,
+            implementation is null
+                ? []
+                : candidates.Where(i => i.Type == "ambition" && i.StatusId == implementation.Id).Select(i => i.Id).ToList(),
+            ct);
+
+        var effective = candidates.ToDictionary(i => i.Id, i => gate.Effective(i.Id));
+
+        // The merges column's own order and head, named once for the whole
+        // pass - see Train. MergeWork.Judge is asked again inside Blocked
+        // below for its own sentence; that is not a second opinion about the
+        // order, since both calls read the same verdicts and builds fetched
+        // above.
+        IReadOnlyDictionary<long, TrainSlot> trainSlots = new Dictionary<long, TrainSlot>();
+        IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)> drivers = new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
+        if (merges is not null && byColumn.TryGetValue(merges.Id, out var inTrain))
+        {
+            // A task waiting on its story's pull request has none of its own to
+            // merge, so it has no place in the train - and left in, a row with no
+            // checks at all would be elected head over a real pull request.
+            var merging = inTrain.Where(i => !family.IsWaiting(i.Id)).ToList();
+            (_, trainSlots) = await ReadTrainAsync(merging, effective, verdicts, builds, now, ct);
+
+            if (keys is not null && runners is not null)
+                drivers = await runners.ProjectDriversAsync(db, keys, now, ct);
+        }
+
+        // A review row whose pull request is written and waiting is opened by its project's driver, so
+        // its sentence names the driver - or says there is none - just as a merges row's does.
+        if (drivers.Count == 0 && keys is not null && runners is not null
+            && candidates.Any(i => WaitingPullRequest.Has(i) && string.IsNullOrWhiteSpace(i.PullRequestUrl)))
+            drivers = await runners.ProjectDriversAsync(db, keys, now, ct);
+
+        // Resolved only when some candidate is actually marked - a pass with
+        // nothing stalled has no reason to read any issue's trail at all.
+        Dictionary<long, int>? letGoCounts = null;
+        var marked = candidates.Where(i => i.StalledAt is not null).Select(i => i.Id).ToList();
+        if (marked.Count > 0) letGoCounts = await LetGo.CountsAsync(db, marked, ct);
+
+        // Unconditional on the implementation column existing - nothing as cheap
+        // as StalledAt pre-filters which candidates could be mid-round-trip.
+        Dictionary<long, int>? sendBackStreaks = implementation is null
+            ? null
+            : await SendBackStreak.CountsAsync(db, candidates.Select(i => i.Id).ToList(), implementation.Name, ct);
+
+        return new FoldBundle(
+            candidates, byColumn, epics, review, merges, verdicts, builds, landed, assignees,
+            implementation, answerings, changings, effective, trainSlots, drivers, letGoCounts, sendBackStreaks);
+    }
+
+    /// <summary>
+    /// A repo-sourced project's own resolution - the primary repository, its
+    /// trunk, and the .hatch/playbooks.yaml copy on it - never varies by issue,
+    /// transition or declaration, so it is resolved once per project for this
+    /// Dispatch rather than once per candidate or once per fold, the first time
+    /// a project is met.
+    /// </summary>
+    private async Task ResolveRepoSourcedOnceAsync(EfHatchProject project, CancellationToken ct)
+    {
+        if (repoSourced.ContainsKey(project.Id)) return;
+        var (resolved, fileRows, _) = await ResolveRepoSourcedAsync(project, ct);
+        repoSourced[project.Id] = resolved;
+        repoSourcedRows[project.Id] = fileRows;
+    }
+
+    /// <summary>
     /// The calling key's own account, read the same way <see cref="UtilizationController.Get"/>
     /// does - the freshest whole reading across its runners and sessions - and judged twice:
     /// economy's stricter arithmetic and low's laxer one. Resolved lazily by
     /// <see cref="ScanAsync"/>, only when some candidate actually reads at
-    /// economy or low level, and read once regardless of how many candidates
-    /// are at either.
+    /// economy or low level, and read once per request (HA-2797) however many
+    /// folds ask - it is the calling key's own account, never a peer's, so
+    /// every fold of this Dispatch reads the same answer.
     /// </summary>
-    private async Task<PaceReadings> PaceReadingsAsync(CancellationToken ct)
+    private Task<PaceReadings> PaceReadingsAsync(CancellationToken ct) => paceCache ??= PaceReadingsCoreAsync(ct);
+
+    private async Task<PaceReadings> PaceReadingsCoreAsync(CancellationToken ct)
     {
         var principal = await actors.PrincipalAsync(ct);
         if (principal is null)
@@ -739,7 +861,7 @@ public sealed class Dispatch(
     /// peer's scan names no asker, so it defers nothing: the question is
     /// whether the ticket is takeable, not who would be asked next.
     /// </summary>
-    private sealed class PeerScans(Dispatch dispatch, ScanCaller caller, RunnerAsking asking, DateTimeOffset now, int offsetMinutes)
+    private sealed class PeerScans(Dispatch dispatch, ScanCaller caller, RunnerAsking asking, DateTimeOffset now, int offsetMinutes, ScanLoad? load = null)
     {
         private List<Peer>? _peers;
         private readonly Dictionary<string, HashSet<long>> _takeable = [];
@@ -811,7 +933,7 @@ public sealed class Dispatch(
         {
             if (!_takeable.TryGetValue(peer.Id, out var ids))
             {
-                ids = await dispatch.TakeableByAsync(caller, peer, offsetMinutes, ct);
+                ids = await dispatch.TakeableByAsync(caller, peer, offsetMinutes, load, ct);
                 _takeable[peer.Id] = ids;
             }
 
@@ -907,7 +1029,7 @@ public sealed class Dispatch(
     /// clear, or parked only behind higher-ranking work. A peer whose
     /// declaration is refused - <c>Mine</c> with no owner - takes none.
     /// </summary>
-    private async Task<HashSet<long>> TakeableByAsync(ScanCaller caller, Peer peer, int offsetMinutes, CancellationToken ct)
+    private async Task<HashSet<long>> TakeableByAsync(ScanCaller caller, Peer peer, int offsetMinutes, ScanLoad? load, CancellationToken ct)
     {
         var declared = peer.Declaration;
         if (declared.Refusal is not null) return [];
@@ -917,7 +1039,7 @@ public sealed class Dispatch(
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
             has: declared.Has, refusal: declared.ToRefusal(),
-            within: await PeerWithinAsync(peer, ct), signing: declared.Signing, forge: declared.Forge);
+            within: await PeerWithinAsync(peer, ct), signing: declared.Signing, forge: declared.Forge, load: load);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -933,7 +1055,7 @@ public sealed class Dispatch(
     /// field stays the peer's own, its column rule included - a row stuck on
     /// columns is not stuck on a toolchain.
     /// </summary>
-    private async Task<HashSet<long>> TakeableIgnoringToolchainByAsync(ScanCaller caller, Peer peer, int offsetMinutes, CancellationToken ct)
+    private async Task<HashSet<long>> TakeableIgnoringToolchainByAsync(ScanCaller caller, Peer peer, int offsetMinutes, ScanLoad? load, CancellationToken ct)
     {
         var declared = peer.Declaration;
         if (declared.Refusal is not null) return [];
@@ -945,7 +1067,7 @@ public sealed class Dispatch(
             has: HasDeclaration.Unjudged,
             refusal: new RunnerRefusal(peer.Name, [], declared.StatusMode, declared.StatusIds),
             within: await PeerWithinAsync(peer, ct), signing: SigningDeclaration.Unjudged,
-            forge: ForgeDeclaration.Unjudged);
+            forge: ForgeDeclaration.Unjudged, load: load);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -961,7 +1083,8 @@ public sealed class Dispatch(
     /// live. A peer that never declared models or dependencies is never
     /// counted as lacking them. Ordered by tier, then rank.
     /// </summary>
-    public async Task<IReadOnlyList<WaitingOnARunnerDto>> WaitingOnARunnerAsync(ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    public async Task<IReadOnlyList<WaitingOnARunnerDto>> WaitingOnARunnerAsync(
+        ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct, ScanLoad? load = null)
     {
         var now = time.GetUtcNow();
         var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
@@ -980,10 +1103,14 @@ public sealed class Dispatch(
                               && d.Forge.State != RunnerForge.Fails
                               && (!signedOnly || d.Signing.State == RunnerSigning.Works))) return [];
 
+        // Read lazily, past both early returns above: a call that stops there
+        // must not pay for a load it never uses.
+        var scanLoad = load ?? await ReadLoadAsync(caller, now, ct);
+
         HashSet<long>? stuck = null;
         foreach (var peer in fleet)
         {
-            var ids = await TakeableIgnoringToolchainByAsync(caller, peer, offsetMinutes, ct);
+            var ids = await TakeableIgnoringToolchainByAsync(caller, peer, offsetMinutes, scanLoad, ct);
             if (stuck is null) stuck = ids;
             else stuck.IntersectWith(ids);
             if (stuck.Count == 0) return [];
@@ -991,11 +1118,11 @@ public sealed class Dispatch(
 
         foreach (var peer in fleet)
         {
-            stuck!.ExceptWith(await TakeableByAsync(caller, peer, offsetMinutes, ct));
+            stuck!.ExceptWith(await TakeableByAsync(caller, peer, offsetMinutes, scanLoad, ct));
             if (stuck.Count == 0) return [];
         }
 
-        var board = await ScanAsync(caller, offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var board = await ScanAsync(caller, offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct, load: scanLoad);
         var rows = board.Rows.ToDictionary(r => r.Issue.Id);
 
         var listed = new List<WaitingOnARunnerDto>();
@@ -1023,9 +1150,9 @@ public sealed class Dispatch(
     /// parked behind a higher tier is not. Ordered as
     /// <see cref="WaitingOnARunnerAsync"/> orders: priority, rank, id.
     /// </summary>
-    public async Task<IReadOnlyList<AcrossHold>> HeldAtProjectLineAsync(ScanCaller caller, CancellationToken ct)
+    public async Task<IReadOnlyList<AcrossHold>> HeldAtProjectLineAsync(ScanCaller caller, CancellationToken ct, ScanLoad? load = null)
     {
-        var board = await ScanAsync(caller, 0, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var board = await ScanAsync(caller, 0, null, null, RepositoryDeclaration.Undeclared, false, ct, load: load);
 
         return board.Rows
             .Where(r => !r.Hop && r.Across is not null && r.BlockedKind == BlockedKinds.Person)
@@ -1042,7 +1169,7 @@ public sealed class Dispatch(
     /// needs a row's own <see cref="ScanRow.Blocked"/> sentence for a peer
     /// that cannot take it, not only the ones that can.
     /// </summary>
-    private async Task<Scan> PeerRowsAsync(ScanCaller caller, Peer peer, int offsetMinutes, CancellationToken ct)
+    private async Task<Scan> PeerRowsAsync(ScanCaller caller, Peer peer, int offsetMinutes, ScanLoad? load, CancellationToken ct)
     {
         var declared = peer.Declaration;
         return await ScanAsync(
@@ -1050,7 +1177,7 @@ public sealed class Dispatch(
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
             has: declared.Has, refusal: declared.ToRefusal(),
-            within: await PeerWithinAsync(peer, ct), signing: declared.Signing, forge: declared.Forge);
+            within: await PeerWithinAsync(peer, ct), signing: declared.Signing, forge: declared.Forge, load: load);
     }
 
     private readonly Dictionary<Guid, VisibleProjects> peerScopes = [];
@@ -1110,21 +1237,23 @@ public sealed class Dispatch(
     /// entry, including one with no takers at all. Empty where no live
     /// runner exists, or where the board scan itself fails.
     /// </summary>
-    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct) =>
-        (await TakersWithRowsAsync(caller, offsetMinutes, liveSince, ct)).Takers;
+    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(
+        ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct, ScanLoad? load = null) =>
+        (await TakersWithRowsAsync(caller, offsetMinutes, liveSince, ct, load)).Takers;
 
     /// <summary>
     /// <see cref="TakersAsync"/>'s body, with the undeclared board scan it ran
     /// handed back too, so a caller that needs the rows does not scan twice.
     /// The board is null where no live runner exists or the scan failed.
     /// </summary>
-    private async Task<(Scan? Board, Dictionary<long, StepTakers> Takers)> TakersWithRowsAsync(ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    private async Task<(Scan? Board, Dictionary<long, StepTakers> Takers)> TakersWithRowsAsync(
+        ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct, ScanLoad? load = null)
     {
         var now = time.GetUtcNow();
         var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
         if (fleet.Count == 0) return (null, new Dictionary<long, StepTakers>());
 
-        var board = await ScanAsync(caller, offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var board = await ScanAsync(caller, offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct, load: load);
         if (board.Failure is not null) return (null, new Dictionary<long, StepTakers>());
 
         var judged = board.Rows
@@ -1135,7 +1264,7 @@ public sealed class Dispatch(
 
         var scans = new Dictionary<string, Scan>();
         foreach (var peer in fleet)
-            scans[peer.Id] = await PeerRowsAsync(caller, peer, offsetMinutes, ct);
+            scans[peer.Id] = await PeerRowsAsync(caller, peer, offsetMinutes, load, ct);
 
         var readiness = await ReadinessAsync(board, judged, fleet, scans, ct);
         return (board, readiness.ToDictionary(p => p.Key, p => new StepTakers(p.Value.Takers, p.Value.Untaken)));
@@ -1211,9 +1340,10 @@ public sealed class Dispatch(
     /// taker if any, and why each other live runner cannot. Empty where no
     /// runner is live. Ordered by project key.
     /// </summary>
-    public async Task<IReadOnlyList<RunnerCapacityDto>> RunnerCapacityAsync(ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    public async Task<IReadOnlyList<RunnerCapacityDto>> RunnerCapacityAsync(
+        ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct, ScanLoad? load = null)
     {
-        var (board, takers) = await TakersWithRowsAsync(caller, offsetMinutes, liveSince, ct);
+        var (board, takers) = await TakersWithRowsAsync(caller, offsetMinutes, liveSince, ct, load);
         if (board is null || Columns.Implementation(board.Statuses) is not { } implementation) return [];
 
         var listed = new List<RunnerCapacityDto>();
@@ -1287,12 +1417,12 @@ public sealed class Dispatch(
     /// can tell an idle peer from a busy one of the same name at a different
     /// checkout.
     /// </remarks>
-    public async Task<ReadyBoard> ReadyBoardAsync(ScanCaller caller, DateTimeOffset liveSince, CancellationToken ct)
+    public async Task<ReadyBoard> ReadyBoardAsync(ScanCaller caller, DateTimeOffset liveSince, CancellationToken ct, ScanLoad? load = null)
     {
         var now = time.GetUtcNow();
         var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
 
-        var board = await ScanAsync(caller, 0, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var board = await ScanAsync(caller, 0, null, null, RepositoryDeclaration.Undeclared, false, ct, load: load);
         var known = await KnownRunnersAsync(ct);
         if (board.Failure is not null) return new ReadyBoard([], [], known);
 
@@ -1303,7 +1433,7 @@ public sealed class Dispatch(
 
         var scans = new Dictionary<string, Scan>();
         foreach (var peer in fleet)
-            scans[peer.Id] = await PeerRowsAsync(caller, peer, 0, ct);
+            scans[peer.Id] = await PeerRowsAsync(caller, peer, 0, load, ct);
 
         var readiness = await ReadinessAsync(board, ready.Select(r => r.Issue.Id).ToList(), fleet, scans, ct);
 
@@ -3717,6 +3847,22 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// The playbooks <see cref="Match"/> and its siblings choose among for
+    /// <paramref name="project"/>, from <paramref name="load"/> rather than a
+    /// query of its own - the same rows <see cref="FoldAsync"/>'s own
+    /// <c>ResolveRepoSourcedOnceAsync</c> builds, resolved once per distinct
+    /// project a caller meets rather than once per candidate (HA-2797, for
+    /// <see cref="AttentionReviews"/>'s own per-card match).
+    /// </summary>
+    public async Task<List<EfHatchPlaybook>> PlaybooksForAsync(ScanLoad load, EfHatchProject project, CancellationToken ct)
+    {
+        var (repoSourced, fileRows, _) = await ResolveRepoSourcedAsync(project, ct);
+        return repoSourced is null
+            ? load.Playbooks
+            : fileRows.Concat(load.Playbooks.Where(p => p.ProjectId == null)).ToList();
+    }
+
+    /// <summary>
     /// The playbook a claim names: a table row by its id, or a repo-sourced
     /// project's file row by the transient id <see cref="ResolveRepoSourcedAsync"/>
     /// gave it - always negative. Null for an id that is neither.
@@ -4424,6 +4570,35 @@ internal sealed record ScanDeclaration(
     TagDeclaration Tags, ModelDeclaration Models, HasDeclaration Has, SigningDeclaration Signing,
     ForgeDeclaration Forge, RunnerRefusal? Refusal, RunnerAsking? Asking, bool FoldLetGo,
     IReadOnlyList<string>? Projects, RepositoryDeclaration Repos);
+
+/// <summary>
+/// What <see cref="Dispatch.FoldAsync"/> reads that is a function of the board's
+/// scope alone - never of a declaration - so <see cref="Dispatch.FoldBundleAsync"/>
+/// shares one of these between every fold of one Dispatch that shares the same
+/// scope and within (HA-2797): the candidates and their briefs, the merge and
+/// build verdicts, who is landed, assigned, answering a question or working out
+/// a change, the merge train's own order and head, and the let-go and send-back
+/// trail. Nothing here is a <see cref="Dispatch.BlockedWithKind"/> judgement -
+/// that still runs once per declaration, from this shared reading.
+/// </summary>
+internal sealed record FoldBundle(
+    List<EfHatchIssue> Candidates,
+    Dictionary<int, List<EfHatchIssue>> ByColumn,
+    IReadOnlyDictionary<long, EpicLimit> Epics,
+    EfHatchStatus? Review,
+    EfHatchStatus? Merges,
+    Dictionary<long, IReadOnlyList<EfHatchMergeCheck>> Verdicts,
+    Dictionary<long, IReadOnlyList<EfHatchBuildCheck>> Builds,
+    Dictionary<long, MergeWork.Judgement> Landed,
+    Dictionary<long, AssigneeDto?> Assignees,
+    EfHatchStatus? Implementation,
+    Dictionary<long, AnswerQuestions.Candidate> Answerings,
+    Dictionary<long, WorkOutChanges.Candidate> Changings,
+    Dictionary<long, (int Level, string? FromKey)> Effective,
+    IReadOnlyDictionary<long, Dispatch.TrainSlot> TrainSlots,
+    IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)> Drivers,
+    Dictionary<long, int>? LetGoCounts,
+    Dictionary<long, int>? SendBackStreaks);
 
 /// <summary>
 /// The parent/key/priority of every issue, read once, and the question

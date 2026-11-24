@@ -7,9 +7,9 @@ import { pollWhileVisible } from './refresh';
  *
  *  A minute, rather than the battery's two. It is the only thing in the app
  *  that says a person is being waited on - an answer given four minutes after
- *  the question was asked is a widget doing its job late. The read runs a
- *  dispatch scan for each live runner, which is why a hidden tab must not ask:
- *  see `pollWhileVisible`. */
+ *  the question was asked is a widget doing its job late. The read loads the
+ *  board once and folds once per live runner from that one load, so a
+ *  hidden tab is still spared asking: see `pollWhileVisible`. */
 export const POLL_MS = 60 * 1000;
 
 /**

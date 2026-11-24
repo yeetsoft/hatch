@@ -625,16 +625,22 @@ and a meter for anything that reads numbers.
   docker compose logs api | grep "Dispatch reads on"
   ```
 
-  For example: *Dispatch reads on api/work/next: 1 scans, 1 tree builds, 18
-  statements, 33 ms in scans, 49 ms in all, by caller next=1*.
+  For example: *Dispatch reads on api/work/next: 1 scans, 1 loads, 1 tree
+  builds, 18 statements, 33 ms in scans, 49 ms in all, by caller next=1, loads
+  by caller next=1*.
 
 - **Read the fields.**
   - `Route` is the route pattern of the request, never its path, so an issue key
     does not appear. A goose sweep has no route and says `goose`.
   - `Scans` is how many scans the request started, scans that a scan started
     for its peers included.
-  - `TreeBuilds` is how many times the request built the priority tree. Each
-    scan builds one, and some routes build one of their own beside it.
+  - `Loads` is how many times the request read a board-wide load - the
+    candidates, the priority tree, the dependency and family gates, WIP and the
+    playbook matrix - the one reading every scan and every peer fold of one
+    call shares (HA-2797). A route that asks for several peers still reads one.
+  - `TreeBuilds` is how many times the request built the priority tree. One
+    load builds one, and a route that reads its own tree outside any load
+    builds one more beside it.
   - `Statements` is every database command the request sent, scan or not. It
     counts commands sent by Hatch's own contexts; it is the driver's count, not
     the server's.
@@ -642,6 +648,7 @@ and a meter for anything that reads numbers.
     once, so nesting is not counted twice.
   - `RequestMs` is the time of the whole request or sweep, for comparison.
   - `Callers` is the scans started by each caller, as `name=count`.
+  - `LoadCallers` is the loads read by each caller, the same shape.
 
 - **Name the callers.** A scan is always asked for by one of these:
   - `next`: a runner asking for its next step, or a named step.
@@ -652,9 +659,12 @@ and a meter for anything that reads numbers.
     exists, so on a board with none this counter stays at zero.
   - `goose`: the goose's sweep.
 
-  One caller far above the rest is where to look. A queue asked for with takers, on a
-  board with two live runners, starts four: its own scan, the takers' scan of the
-  whole board, and one scan for each live runner.
+  A queue asked for with takers, on a board with two live runners, starts
+  four scans - its own, the takers' scan of the whole board, and one scan for
+  each live runner - from the one load the route read for the call, so
+  `Loads` stays at one however many of those run. `Scans` far above `Loads`
+  is ordinary; `Loads` growing with the fleet on one of these routes is not,
+  and is what this story (HA-2797) exists to have stopped.
 
 - **Read the meter.** The same numbers are published on the `Hatch.Dispatch`
   meter, for whatever exporter the installation runs. Hatch ships no exporter and
@@ -666,8 +676,8 @@ and a meter for anything that reads numbers.
   dotnet-counters monitor --counters Hatch.Dispatch --process-id <pid>
   ```
 
-  The instruments are `hatch.dispatch.scans`, `hatch.dispatch.scan.duration`
-  (milliseconds), `hatch.dispatch.scan.candidates`,
+  The instruments are `hatch.dispatch.scans`, `hatch.dispatch.loads`,
+  `hatch.dispatch.scan.duration` (milliseconds), `hatch.dispatch.scan.candidates`,
   `hatch.dispatch.scan.statements` and `hatch.dispatch.tree_builds`. Each is
   tagged with `caller`; a tree built outside a scan carries the route pattern
   instead. The `api` image does not carry `dotnet-counters`, so reading the meter

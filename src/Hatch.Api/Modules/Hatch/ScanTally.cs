@@ -53,9 +53,11 @@ public sealed class ScanTally
 
     private readonly object gate = new();
     private readonly SortedDictionary<string, int> byCaller = new(StringComparer.Ordinal);
+    private readonly SortedDictionary<string, int> loadsByCaller = new(StringComparer.Ordinal);
     private readonly long began = Stopwatch.GetTimestamp();
     private long statements;
     private int scans;
+    private int loads;
     private int treeBuilds;
     private long scanTicks;
 
@@ -72,10 +74,16 @@ public sealed class ScanTally
 
     public int Scans { get { lock (gate) return scans; } }
 
+    /// <summary>Loads read by <see cref="Dispatch.LoadAsync"/> or by a plain scan reading its own, each counted once however many folds it shares with.</summary>
+    public int Loads { get { lock (gate) return loads; } }
+
     public int TreeBuilds { get { lock (gate) return treeBuilds; } }
 
     /// <summary>Scans started by each caller, nested ones included.</summary>
     public IReadOnlyDictionary<string, int> ByCaller { get { lock (gate) return new Dictionary<string, int>(byCaller); } }
+
+    /// <summary>Loads read by each caller.</summary>
+    public IReadOnlyDictionary<string, int> LoadsByCaller { get { lock (gate) return new Dictionary<string, int>(loadsByCaller); } }
 
     /// <summary>True once a scan ran or a priority tree was built: the only requests worth a log line.</summary>
     public bool Ran { get { lock (gate) return scans > 0 || treeBuilds > 0; } }
@@ -104,6 +112,15 @@ public sealed class ScanTally
         }
     }
 
+    internal void RecordLoad(ScanCaller caller)
+    {
+        lock (gate)
+        {
+            loads++;
+            loadsByCaller[caller.Name] = loadsByCaller.GetValueOrDefault(caller.Name) + 1;
+        }
+    }
+
     internal void RecordTreeBuild()
     {
         lock (gate) treeBuilds++;
@@ -114,21 +131,23 @@ public sealed class ScanTally
     {
         if (!Ran) return false;
 
-        int scanCount, builds;
+        int scanCount, loadCount, builds;
         long scanMs;
-        string callers;
+        string callers, loadCallers;
         lock (gate)
         {
             scanCount = scans;
+            loadCount = loads;
             builds = treeBuilds;
             scanMs = (long)Stopwatch.GetElapsedTime(0, scanTicks).TotalMilliseconds;
             callers = string.Join(' ', byCaller.Select(p => string.Create(CultureInfo.InvariantCulture, $"{p.Key}={p.Value}")));
+            loadCallers = string.Join(' ', loadsByCaller.Select(p => string.Create(CultureInfo.InvariantCulture, $"{p.Key}={p.Value}")));
         }
 
         var requestMs = (long)Stopwatch.GetElapsedTime(began).TotalMilliseconds;
         logger.LogInformation(
-            "Dispatch reads on {Route}: {Scans} scans, {TreeBuilds} tree builds, {Statements} statements, {ScanMs} ms in scans, {RequestMs} ms in all, by caller {Callers}",
-            Route, scanCount, builds, Statements, scanMs, requestMs, callers.Length == 0 ? "none" : callers);
+            "Dispatch reads on {Route}: {Scans} scans, {Loads} loads, {TreeBuilds} tree builds, {Statements} statements, {ScanMs} ms in scans, {RequestMs} ms in all, by caller {Callers}, loads by caller {LoadCallers}",
+            Route, scanCount, loadCount, builds, Statements, scanMs, requestMs, callers.Length == 0 ? "none" : callers, loadCallers.Length == 0 ? "none" : loadCallers);
         return true;
     }
 
@@ -192,6 +211,9 @@ public static class ScanMetrics
     private static readonly Counter<long> Scans = Source.CreateCounter<long>(
         "hatch.dispatch.scans", "{scan}", "Dispatch scans started, by the caller that asked for them.");
 
+    private static readonly Counter<long> Loads = Source.CreateCounter<long>(
+        "hatch.dispatch.loads", "{load}", "Dispatch loads read, by the caller that asked for them - one per request or sweep, however many scans fold it.");
+
     private static readonly Histogram<double> Duration = Source.CreateHistogram<double>(
         "hatch.dispatch.scan.duration", "ms", "How long a scan took, peer scans it ran included.");
 
@@ -212,6 +234,9 @@ public static class ScanMetrics
         Candidates.Record(candidates, tag);
         Statements.Record(statements, tag);
     }
+
+    internal static void LoadFinished(ScanCaller caller) =>
+        Loads.Add(1, new KeyValuePair<string, object?>("caller", caller.Name));
 
     internal static void TreeBuilt(string caller) =>
         TreeBuilds.Add(1, new KeyValuePair<string, object?>("caller", caller));

@@ -295,7 +295,7 @@ public class GooseJobTests
         await job.RunAsync(CancellationToken.None);
 
         var line = Assert.Single(logs.AtLevel(Microsoft.Extensions.Logging.LogLevel.Information));
-        Assert.Contains("Dispatch reads on goose: 1 scans, 0 tree builds,", line);
+        Assert.Contains("Dispatch reads on goose: 1 scans, 0 loads, 0 tree builds,", line);
         Assert.Contains("by caller goose=1", line);
     }
 
