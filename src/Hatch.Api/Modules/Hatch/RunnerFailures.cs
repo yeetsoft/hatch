@@ -52,32 +52,37 @@ public static class RunnerFailures
     /// cleared, and a seeded session that inherited a standing pause.</para>
     /// </remarks>
     public static async Task ReconcileAsync(
-        HatchContext db, Guid apiKeyId, EfHatchRunnerSession session, RunnerHeartbeatRequest request,
-        DateTimeOffset now, CancellationToken ct)
+        HatchContext db, Guid apiKeyId, string keyName, EfHatchRunnerSession session, RunnerHeartbeatRequest request,
+        RunnerFailureMessages messages, DateTimeOffset now, CancellationToken ct)
     {
         var where = session.Where ?? "";
         var verdicts = Verdicts(session, request, now);
 
         try
         {
-            await SettleAsync(db, apiKeyId, where, verdicts, now, ct);
+            await SettleAsync(db, apiKeyId, keyName, where, verdicts, messages, now, ct);
         }
         catch (DbUpdateException)
         {
             // A racing beat opened the row first. Nothing this attempt tracked
-            // is trustworthy - not the added rows, not the edited ones - so
-            // all of it goes, and the second attempt reads what is there.
-            foreach (var entry in db.ChangeTracker.Entries<EfHatchRunnerFailure>().ToList())
+            // is trustworthy - not the added rows, not the edited ones, not the
+            // messages it queued for them - so all of it goes, and the second
+            // attempt reads what is there. The save was one transaction, so
+            // nothing of it persisted; this only clears the context.
+            foreach (var entry in db.ChangeTracker.Entries()
+                .Where(e => e.Entity is EfHatchRunnerFailure or EfHatchChatSubject or EfHatchChatMessage)
+                .ToList())
                 entry.State = EntityState.Detached;
 
-            await SettleAsync(db, apiKeyId, where, verdicts, now, ct);
+            await SettleAsync(db, apiKeyId, keyName, where, verdicts, messages, now, ct);
         }
     }
 
     /// <summary>One attempt: read the open rows, apply the verdicts, save once, trim if a row ended.</summary>
     private static async Task SettleAsync(
-        HatchContext db, Guid apiKeyId, string where, IReadOnlyList<(string Kind, Verdict Verdict, string? Why)> verdicts,
-        DateTimeOffset now, CancellationToken ct)
+        HatchContext db, Guid apiKeyId, string keyName, string where,
+        IReadOnlyList<(string Kind, Verdict Verdict, string? Why)> verdicts,
+        RunnerFailureMessages messages, DateTimeOffset now, CancellationToken ct)
     {
         if (verdicts.Count == 0) return;
 
@@ -92,7 +97,9 @@ public static class RunnerFailures
             switch (verdict)
             {
                 case Verdict.Failing when row is null:
-                    db.RunnerFailures.Add(Open(apiKeyId, where, kind, why, now));
+                    var opened = Open(apiKeyId, where, kind, why, now);
+                    db.RunnerFailures.Add(opened);
+                    await messages.OpenedAsync(opened, keyName, ct);
                     break;
                 case Verdict.Failing:
                     row.LastReportedAt = now;
@@ -101,6 +108,7 @@ public static class RunnerFailures
                 case Verdict.Fine when row is not null:
                     row.EndedAt = now;
                     ended = true;
+                    await messages.EndedAsync(row, keyName, now, ct);
                     break;
             }
         }
@@ -154,16 +162,22 @@ public static class RunnerFailures
     /// <summary>
     /// Opens the board-paused row for a pause the board has just written, or
     /// refreshes the one already open, <em>without saving</em>: the caller's
-    /// own save carries it, so the row and the pause commit together.
+    /// own save carries it, so the row, its chat message and the pause commit together.
     /// </summary>
     public static async Task OpenBoardPauseAsync(
-        HatchContext db, Guid apiKeyId, string? where, string? why, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, Guid apiKeyId, string keyName, string? where, string? why, RunnerFailureMessages messages,
+        DateTimeOffset now, CancellationToken ct)
     {
         var at = where ?? "";
         var row = await db.RunnerFailures.FirstOrDefaultAsync(
             f => f.ApiKeyId == apiKeyId && f.Where == at && f.Kind == RunnerFailureKinds.BoardPaused && f.EndedAt == null, ct);
 
-        if (row is null) db.RunnerFailures.Add(Open(apiKeyId, at, RunnerFailureKinds.BoardPaused, why, now));
+        if (row is null)
+        {
+            var opened = Open(apiKeyId, at, RunnerFailureKinds.BoardPaused, why, now);
+            db.RunnerFailures.Add(opened);
+            await messages.OpenedAsync(opened, keyName, ct);
+        }
         else
         {
             row.LastReportedAt = now;

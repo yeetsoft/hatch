@@ -24,4 +24,7 @@ public sealed class ChatLinks(IOptions<HatchOptions> options)
 
     /// <summary>The goose's page, where its findings are read, or null.</summary>
     public string? Goose() => Origin is { } origin ? $"{origin}/goose" : null;
+
+    /// <summary>A runner's page, or null. The name is typed by a person, so it is escaped into the path.</summary>
+    public string? Runner(string name) => Origin is { } origin ? $"{origin}/runners/{Uri.EscapeDataString(name)}" : null;
 }

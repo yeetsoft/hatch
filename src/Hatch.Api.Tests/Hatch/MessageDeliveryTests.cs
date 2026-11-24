@@ -208,7 +208,7 @@ public class MessageDeliveryTests
                 return new(
                     db, new StubActorDirectory(), claims, Caller, Time, TestClaims.Preemption(db, Time), runners,
                     new Dispatch(db, new StubActorDirectory(), claims, Time), new RunnerSessions(runners),
-                    new global::Hatch.Api.Tests.Auth.StubAuthService(), new RunnerStateLog(runners));
+                    new global::Hatch.Api.Tests.Auth.StubAuthService(), new RunnerStateLog(runners), global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(db, Time));
             }
         }
 

@@ -4289,7 +4289,8 @@ public class IssueClaimTests
         {
             var dispatch = new Dispatch(db, Actors, Rule, Time);
             var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time, Keys);
-            return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch, new RunnerSessions(RunnersRule), Keys, new RunnerStateLog(RunnersRule));
+            return new IssueClaimController(db, Actors, Rule, Caller, Time, preemption, RunnersRule, dispatch, new RunnerSessions(RunnersRule), Keys, new RunnerStateLog(RunnersRule),
+                global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(db, Time));
         }
 
         /// <summary>
@@ -4333,7 +4334,7 @@ public class IssueClaimTests
                 return new RunnersController(
                     db, RunnersRule, Rule, Caller, Actors, Time, Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()),
                     new StubSiteSettings(), Keys, new RunnerSessions(RunnersRule), dispatch, new StubHatchRevision(), new StubRunnerBuilds(),
-                    new RunnerStateLog(RunnersRule), NullLogger<RunnersController>.Instance);
+                    new RunnerStateLog(RunnersRule), global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(db, Time), NullLogger<RunnersController>.Instance);
             }
         }
 
