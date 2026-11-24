@@ -6,6 +6,8 @@ using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Chat;
+using Hatch.Api.Tests.Chat;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9333,6 +9335,78 @@ public class WorkControllerTests
         await AssertChangelogTaskFiledAsync(h, issue, "example.com/o/r");
     }
 
+    // ---- The changelog message, queued as an issue closes ----
+
+    [Fact]
+    public async Task HopWork_ClosingAParentlessIssue_QueuesTheChangelogMessage()
+    {
+        var h = await NewAsync();
+        await h.ChangelogRoomAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        await AssertChangelogMessageAsync(h, issue);
+    }
+
+    [Fact]
+    public async Task MergedWork_ClosingAParentlessIssue_QueuesTheChangelogMessage()
+    {
+        var h = await NewAsync();
+        await h.ChangelogRoomAsync();
+        var issue = await h.FileAsync("task", "waiting for a merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        await h.Work.MergedWork(
+            Key(issue), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        await AssertChangelogMessageAsync(h, issue);
+    }
+
+    [Fact]
+    public async Task MergedWork_OnAStory_QueuesOneMessage_AndNoneForTheTasksItCarries()
+    {
+        var h = await NewAsync();
+        await h.ChangelogRoomAsync();
+        var story = await h.FileAsync("story", "shared pull request", h.Review);
+        await h.SetPullRequestAsync(story, "https://example.com/o/r/pull/1");
+        await h.FileAsync("task", "a part", h.Review, parentId: story.Id);
+
+        await h.Work.MergedWork(
+            Key(story), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        await AssertChangelogMessageAsync(h, story);
+    }
+
+    [Fact]
+    public async Task LandedWork_ClosingAParentlessIssue_QueuesTheChangelogMessage()
+    {
+        var h = await NewAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        await h.ChangelogRoomAsync();
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        Value(await h.Work.LandedWork(Key(issue), default));
+
+        await AssertChangelogMessageAsync(h, issue);
+    }
+
+    private static async Task AssertChangelogMessageAsync(Harness h, EfHatchIssue closed)
+    {
+        var row = await h.Db.ChatMessages.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal("changelog", row.Kind);
+        Assert.Equal($"issue:{closed.Id}", row.Subject);
+        Assert.Equal(h.ProjectId, row.ProjectId);
+        var content = ChatMessageContent.Read(row.Content)!;
+        Assert.Equal($"{closed.Type} shipped: {closed.Title}", content.Title);
+        Assert.Equal(Key(closed), Assert.Single(content.Links).Label);
+        Assert.Equal(h.Done, (await h.Db.Issues.SingleAsync(i => i.Id == closed.Id)).StatusId);
+    }
+
     [Fact]
     public async Task MergedWork_OnAStoryTheTasksItCarriesDone_FileNoChangelogTaskOfTheirOwn()
     {
@@ -17396,6 +17470,14 @@ public class WorkControllerTests
         public required PlaybooksController Playbooks { get; init; }
         public required StubCallerIdentity Caller { get; init; }
         public required int ProjectId { get; init; }
+
+        /// <summary>A workspace bound to the project, with one room that carries its changelog.</summary>
+        public async Task ChangelogRoomAsync()
+        {
+            var seed = new ChatOutboxSeed(Db, Now);
+            var workspace = await seed.WorkspaceAsync("TACME", ProjectId);
+            await seed.RoomAsync(workspace, "C1", changelog: true);
+        }
         public required int Inbox { get; init; }
         public required int Todo { get; init; }
         public required int InProgress { get; init; }
@@ -18346,7 +18428,8 @@ public class WorkControllerTests
             Sessions = sessions,
             Work = new WorkController(
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new HatchOptions { PublicBaseUrl = publicBaseUrl }),
-                new RankService(db), caller, runners, keys, sessions),
+                new RankService(db), caller, runners, keys, sessions,
+                new ChangelogMessages(new ChatOutbox(db, time), new ChatLinks(Options.Create(new HatchOptions { PublicBaseUrl = publicBaseUrl })), db)),
             Overturn = new QuestionOverturnController(db, new RankService(db), caller, time),
             Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             Statuses = new StatusesController(db, new StubActorDirectory(), caller, time, NullLogger<StatusesController>.Instance),
