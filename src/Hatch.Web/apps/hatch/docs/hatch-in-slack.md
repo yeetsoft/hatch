@@ -164,6 +164,29 @@ A finding that names no project goes to rooms with **Problems that belong to no
 project** on. A finding about failing sends is not posted to the room or the
 workspace it is about, since that room cannot hear it.
 
+## Trunk build messages
+
+When the build on the tip of a repository's trunk begins failing, a room that
+has **Problems** on and carries any project that binds the repository gets a
+message. It names the repository and the trunk, the first seven characters of
+the commit, when the failure began, and each failed check as a link to its
+build page. A check the forge gave no address for is named without a link. A
+room hears of a failure once, however many of its projects bind the repository.
+
+The message is edited in place while the failure changes: a new commit, or a
+different set of failed checks, edits it. A trunk that is checked again with the
+same commit and the same failures changes nothing. When the trunk passes, the
+message is edited to **Trunk build passing again**, with when it began failing
+and when it passed. A pass ends the message: a failure after that is a new
+message, not an edit of the old one.
+
+A trunk whose build is still running with a check already failed counts as
+failing. A trunk that is still running with no check failed leaves the message
+as it is, so a re-run does not end it early: the failure stands until the trunk
+passes or fails again. A repository that no project binds is not posted
+anywhere. A trunk that was already failing when Hatch learned to post these is
+posted as a new failure the next time it is checked.
+
 ## Changelog messages in a room
 
 A room with the **Changelog** switch on, and a project it carries, hears about
