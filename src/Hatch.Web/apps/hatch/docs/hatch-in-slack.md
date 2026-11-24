@@ -260,7 +260,6 @@ not posted to the room or workspace it is about, since that room cannot hear it.
 
 ## Not here yet
 
-- **Direct messages** to a person (HA-2719). Today every message goes to a room.
 - **Answering from Slack** (HA-2720). Today a question in a room links to the
   Ballot, and it is answered there.
 
@@ -371,12 +370,14 @@ Ended 2026-01-05 11:10 UTC
 
 Each failure is one message, from when it begins to when it ends. A failure that
 comes back is a new message. A runner that keeps reporting the same failure
-changes nothing, even when what the tool said changes.
+changes nothing in the room, even when what the tool said changes.
 
-The message leaves out the checkout, and it leaves out what the tool said. The
+The room's message leaves out the checkout, and it leaves out what the tool said. The
 checkout's path can name a repository, and what `gh` said can name a host or an
 account, and everyone in the channel reads what is posted there. The runner's
-page shows both to whoever may read that runner.
+page shows both to whoever may read that runner. The person whose runner it is
+is also told directly, and that message does carry both: see
+[Direct messages](#direct-messages).
 
 A runner that goes quiet does not edit its message. Nothing in Hatch ends a
 failure for a runner that has stopped reporting, so the message keeps saying the
@@ -514,6 +515,74 @@ it.
 - **The link belongs to somebody else's request.** It was sent for another
   person's request, so it did nothing here and your own link is as it was.
 - **That workspace is not one you can see.** Reload the list.
+
+## Direct messages
+
+A direct message goes to one person, through the Slack link they confirmed (see
+[Link your Slack account](#link-your-slack-account)). A link still waiting for
+its confirmation is sent nothing but its own confirmation message. A link that
+is removed, or whose workspace is, takes the messages queued for it with it.
+Today a failing runner is the only thing sent this way.
+
+### A failing runner
+
+When a runner begins to fail, the person it belongs to is told in Slack, in
+every workspace where they have a confirmed link.
+
+- **Who.** While sign-in is on, the person whose key the runner uses. A runner
+  with no owner tells nobody. With sign-in off there is no owner to ask, so every
+  confirmed link with the switch on is told of every runner's failures.
+- **Which failures.** The same five kinds as in a room, in the same words. See
+  [Runner failure messages](#runner-failure-messages).
+- **A person who is gone.** A link whose person Hatch no longer lists is removed
+  the next time a failure meets it, with its messages.
+
+Each link has a **runner failures** switch, on by default. Hatch reads it once,
+when a failure begins: switched off, that failure is never sent to you; switched
+off later, the message already sent still gets its edits, so it is not left
+saying the failure stands. A link confirmed after a failure began is told
+nothing of it. A link's switch is set with
+[`PUT /api/me/chat/links/{id}`](api-reference).
+
+The message is the person's own, so unlike the room's it says where and what
+the tool said. It is titled as the room's is, and carries the advice the
+runner's page gives, the checkout, the tool's own words when there are any, and
+since when, with a link to the runner's page:
+
+```
+mike-laptop: Cannot reach its forge
+Sign gh in on that machine.
+Checkout: /home/mike/work/hatch
+The tool said: gh said: token expired
+Since 2026-01-05 09:30 UTC
+```
+
+The advice for each kind is what the runner's page says: **Cannot reach its
+forge**, sign `gh` in on that machine; **Cannot sign its commits**, fix signing
+there or allow unsigned commits on the project; **Its agent is signed out**, sign
+the agent in; **Its agent will not start**, read what the agent said on the
+runner's page; **Paused by the board**, read why on the runner's page, where the
+pause can be lifted.
+
+When what the tool said changes, the message is edited to say the new words.
+When the failure ends it is edited to start with **Ended:**, drops the advice,
+and says when it began and when it ended:
+
+```
+Ended: mike-laptop: Cannot reach its forge
+Checkout: /home/mike/work/hatch
+The tool said: gh said: token expired
+Began 2026-01-05 09:30 UTC
+Ended 2026-01-05 11:10 UTC
+```
+
+### When Slack refuses a direct message
+
+A refusal is the member's, so it is written on the link and nowhere else: the
+workspace's and the room's own failing signs are left alone, and no goose finding
+opens for it. Hatch tries again on the same back-off as any message, and the
+message is dropped after a day. A send clears the refusal. A token Slack no longer
+accepts, a throttle and an outage are the workspace's, as for any message.
 
 ## Remove a workspace
 

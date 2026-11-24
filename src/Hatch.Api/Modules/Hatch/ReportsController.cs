@@ -266,10 +266,14 @@ public class ReportsController(
     /// </param>
     /// <param name="type">Narrows every count to one issue type.</param>
     /// <remarks>
-    /// The status history is loaded whole, as the other reports load it - the
-    /// fold needs an issue's moves before the range to know where it stood.
-    /// Releases and sessions are read only inside the range, since all they
-    /// give is a count.
+    /// Read for the range alone (<see cref="FlowRead"/>), and answers what a read
+    /// of every move and question on the board would. Each issue's moves are the
+    /// ones inside the range, the newest before it, and the first after it when
+    /// it has none by the end; an issue whose stay that leaves inside the range
+    /// may have begun earlier than that cut shows is read back to where it began.
+    /// Questions come from the bounded form of <see cref="QuestionTrail.ReadAsync"/>.
+    /// Dropped claims, sessions and session errors are counted by the database
+    /// and no row comes back for one.
     /// </remarks>
     [HttpGet("flow")]
     public async Task<ActionResult<FlowDto>> GetFlow(
@@ -291,35 +295,7 @@ public class ReportsController(
         DateTimeOffset? first = rows.Count > 0 ? rows.Min(r => r.CreatedAt) : null;
         start = RangeBounds.ClampStart(start, end, first);
 
-        var moves = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
-            .Select(e => new { e.IssueId, e.Id, e.Kind, e.At, e.Payload })
-            .ToListAsync(ct);
-
-        var releases = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.Kind == EfHatchIssueEvent.ClaimReleased && e.At >= start && e.At < end)
-            .Select(e => new { e.IssueId, e.Id, e.Kind, e.At, e.Payload })
-            .ToListAsync(ct);
-
-        var events = moves.Concat(releases)
-            .OrderBy(e => e.IssueId)
-            .ThenBy(e => e.At)
-            .ThenBy(e => e.Id)
-            .Select(e => new FlowReport.Event(e.IssueId, e.Id, e.Kind, e.At, e.Payload))
-            .ToList();
-
-        // How a question is paired with its answer is QuestionTrail's, shared with
-        // the board health read.
-        var questions = await QuestionTrail.ReadAsync(db, null, null, ct);
-
-        var sessions = (await db.WorkLog.AsNoTracking()
-                .Where(w => w.EndedAt >= start && w.EndedAt < end)
-                .Select(w => new { w.IssueId, w.EndedAt, w.IsError })
-                .ToListAsync(ct))
-            .Select(w => new FlowReport.Session(w.IssueId, w.EndedAt, w.IsError))
-            .ToList();
-
-        var result = FlowReport.Fold(rows, events, questions, sessions, statuses, start, end, ids, type);
+        var result = await FlowRead.ReadAsync(db, rows, statuses, start, end, ids, type, ct);
 
         // Decoration only: the fold answers non-deferred board columns, every
         // one of which is in the board just loaded.

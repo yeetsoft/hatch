@@ -646,7 +646,9 @@ board has paused. Each row says which runner, what it cannot do, since when and
 what the tool said, then what to do about it, and a click opens that runner's
 page. It counts towards the badge, so the control says *1 runner is failing*,
 and it clears itself when the runner is well again or has gone quiet. An admin
-is also shown the failures of runners that belong to nobody. **Out of usage**
+is also shown the failures of runners that belong to nobody. The owner is also
+told in Slack, if they have linked their account: see
+[Direct messages](hatch-in-slack#direct-messages). **Out of usage**
 sits above **Human**, for any of your own runners that have run out, and clears
 itself once the usage comes back; it lights a dot and is not counted.
 

@@ -50,6 +50,7 @@ public class MeChatController(
     internal const string MemberTaken = "that Slack member is already linked to somebody else; an admin can remove that link";
     internal const string SecretGone = "that link was already used, was replaced, or ran out";
     internal const string SomebodyElses = "that link belongs to somebody else's request";
+    internal const string StillWaiting = "that link has not been confirmed yet; open the link in the message first";
     internal const string NoSuchMember = "that is not a Slack member a message can be sent to";
 
     /// <summary>The caller's workspaces and where their link stands in each.</summary>
@@ -291,6 +292,34 @@ public class MeChatController(
     }
 
     /// <summary>
+    /// Changes what the caller's own confirmed link is for. A field left out is
+    /// left alone. Another person's link is not found; a waiting link is not yet a
+    /// place a message may go, so it takes no setting.
+    /// </summary>
+    [HttpPut("links/{id:int}")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<MeChatLinkDto>> PutLink(int id, [FromBody] MeChatLinkPatchRequest body, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+        if (await directory.PrincipalAsync(ct) is not { } principal) return NeedsSomebodyResult();
+
+        var row = await db.ChatLinks.FirstOrDefaultAsync(l => l.Id == id && l.PersonId == principal.Id, ct);
+        if (row is null) return NotFound();
+        if (row.ConfirmedAt is null) return Conflict(StillWaiting);
+
+        if (body?.RunnerFailures is { } runnerFailures && runnerFailures != row.RunnerFailures)
+        {
+            row.RunnerFailures = runnerFailures;
+            await db.SaveChangesAsync(ct);
+
+            logger.LogInformation("Chat link {LinkId} in workspace {WorkspaceId} set to {Setting} runner failures by {Actor}",
+                id, row.WorkspaceId, runnerFailures ? "tell" : "not tell", await caller.ActorNameAsync(ct));
+        }
+
+        return Dto(row);
+    }
+
+    /// <summary>
     /// Removes the caller's own link, waiting or confirmed, even from a workspace
     /// that has left their scope. Another person's link is not found.
     /// </summary>
@@ -367,8 +396,8 @@ public class MeChatController(
 
     private static MeChatLinkDto Dto(EfHatchChatLink l) =>
         l.ConfirmedAt is null
-            ? new MeChatLinkDto(l.Id, "waiting", l.MemberName, l.SecretExpiresAt)
-            : new MeChatLinkDto(l.Id, "linked", l.MemberName, null);
+            ? new MeChatLinkDto(l.Id, "waiting", l.MemberName, l.SecretExpiresAt, l.RunnerFailures, l.LastRefusal, l.LastRefusalAt)
+            : new MeChatLinkDto(l.Id, "linked", l.MemberName, null, l.RunnerFailures, l.LastRefusal, l.LastRefusalAt);
 
     private static MeChatMemberDto Dto(ChatMember m) => new(m.Id, m.Name, m.DisplayName);
 

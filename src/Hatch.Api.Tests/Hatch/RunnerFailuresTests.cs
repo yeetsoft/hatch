@@ -288,7 +288,7 @@ public partial class RunnerFailuresTests
         var session = await loser.RunnerSessions.AsNoTracking().SingleAsync();
 
         await RunnerFailures.ReconcileAsync(
-            loser, key.Id, key.Name, session, new RunnerHeartbeatRequest(Kind: "loop", Where: Tree, Forge: "fails", ForgeWhy: "later"),
+            loser, key.Id, key.Name, null, session, new RunnerHeartbeatRequest(Kind: "loop", Where: Tree, Forge: "fails", ForgeWhy: "later"),
             global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(loser, h.Time), Now.AddSeconds(5), default);
 
         Assert.Equal(1, raced);
@@ -474,7 +474,9 @@ public partial class RunnerFailuresTests
         return await HatchDatabase.PrepareAsync();
     }
 
-    private static async Task<Harness> NewAsync(string connectionString)
+    /// <param name="wall">Whether the wall stands, as the failure messages read it.</param>
+    /// <param name="owner">The person the runner's key belongs to.</param>
+    private static async Task<Harness> NewAsync(string connectionString, bool wall = false, Guid? owner = null)
     {
         var options = new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options;
         var db = new HatchContext(options);
@@ -495,16 +497,20 @@ public partial class RunnerFailuresTests
             Person = new EfPerson { Id = Guid.NewGuid(), Name = "Nathan", Role = PersonRole.User, CreatedAt = Now, UpdatedAt = Now },
         };
         var actors = new StubActorDirectory();
+        var messages = global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(db, time, wall: wall, actors: actors);
         var claims = TestClaims.With();
         var sessions = new RunnerSessions(rule);
 
         var runners = new RunnersController(
             db, rule, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = false }), new StubSiteSettings(), keys,
             sessions, new Dispatch(db, actors, claims, time), new StubHatchRevision(), new StubRunnerBuilds(),
-            new RunnerStateLog(rule), global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(db, time), NullLogger<RunnersController>.Instance);
+            new RunnerStateLog(rule), messages, NullLogger<RunnersController>.Instance);
 
-        var harness = new Harness { Runners = runners, Db = db, Time = time, Keys = keys, Caller = caller, Options = options };
-        harness.AsKey(await harness.KeyAsync());
+        var harness = new Harness
+        {
+            Runners = runners, Db = db, Time = time, Keys = keys, Caller = caller, Options = options, Actors = actors, Messages = messages,
+        };
+        harness.AsKey(await harness.KeyAsync(owner: owner));
         return harness;
     }
 
@@ -516,6 +522,8 @@ public partial class RunnerFailuresTests
         public required AuthService Keys { get; init; }
         public required StubCallerIdentity Caller { get; init; }
         public required DbContextOptions<HatchContext> Options { get; init; }
+        public required StubActorDirectory Actors { get; init; }
+        public required RunnerFailureMessages Messages { get; init; }
 
         private EfPerson? person;
 
@@ -523,11 +531,11 @@ public partial class RunnerFailuresTests
         public HatchContext Connect() => new(Options);
 
         /// <summary>The runner's key, minted on first ask and the same after.</summary>
-        public async Task<EfApiKey> KeyAsync(string? name = null)
+        public async Task<EfApiKey> KeyAsync(string? name = null, Guid? owner = null)
         {
             name ??= Name;
             var existing = Caller.ApiKey is { } k && k.Name == name ? k : null;
-            return existing ?? (await Keys.CreateApiKeyAsync(name, null, default))!.Key;
+            return existing ?? (await Keys.CreateApiKeyAsync(name, owner, default))!.Key;
         }
 
         public Task<ActionResult<RunnerInstructionDto>> BeatAsync(RunnerHeartbeatRequest request) =>
@@ -559,7 +567,7 @@ public partial class RunnerFailuresTests
             live.AgentDownKind = RunnerAgentDownKinds.BoardPaused;
             live.AgentDownLine = "3 sessions in a row ended in error without spending a token";
             await RunnerFailures.OpenBoardPauseAsync(
-                Db, key.Id, key.Name, live.Where, live.AgentDownLine, global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(Db, Time), Time.GetUtcNow(), default);
+                Db, key.Id, key.Name, key.OwnerPersonId, live.Where, live.AgentDownLine, Messages, Time.GetUtcNow(), default);
             await Db.SaveChangesAsync();
         }
 

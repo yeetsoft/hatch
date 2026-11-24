@@ -5458,7 +5458,7 @@ public class EfHatchChatSubject
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
 
-    /// <summary>The message kind, lower case: <c>changelog</c>, <c>question</c> or <c>problem</c>.</summary>
+    /// <summary>The message kind, lower case: <c>changelog</c>, <c>question</c>, <c>problem</c> or <c>direct</c>.</summary>
     [MaxLength(MaxKindLength)]
     public required string Kind { get; set; }
 
@@ -5470,9 +5470,10 @@ public class EfHatchChatSubject
 }
 
 /// <summary>
-/// One message queued for one room, written in the same save as the change that
-/// caused it, so the row lands or fails with that write. A later change to the
-/// same thing edits this row instead of adding another.
+/// One message queued for one room or for one person's direct message
+/// conversation, written in the same save as the change that caused it, so the
+/// row lands or fails with that write. A later change to the same thing edits
+/// this row instead of adding another.
 /// </summary>
 /// <remarks>
 /// <para>Waiting is <see cref="DroppedAt"/> null and <see cref="SentRevision"/>
@@ -5486,6 +5487,10 @@ public class EfHatchChatSubject
 /// <see cref="SentRevision"/>, <see cref="Attempts"/>, <see cref="NextAttemptAt"/>,
 /// <see cref="LastRefusal"/> and <see cref="DroppedAt"/>.</para>
 ///
+/// <para>A row has exactly one destination: a <see cref="RoomId"/> or a
+/// <see cref="LinkId"/>, never both and never neither (a check constraint). A
+/// direct message names no project, and goes with its link.</para>
+///
 /// <para>The pair <c>(WorkspaceId, ProjectId)</c> is a composite foreign key into
 /// <see cref="EfHatchChatWorkspaceProject"/>'s own pair, cascading: unbinding the
 /// project removes what is waiting about it in that workspace. A null
@@ -5493,6 +5498,7 @@ public class EfHatchChatSubject
 /// </remarks>
 [Table("ChatMessages")]
 [Index(nameof(RoomId), nameof(Kind), nameof(Subject), IsUnique = true)]
+[Index(nameof(LinkId), nameof(Kind), nameof(Subject), IsUnique = true)]
 public class EfHatchChatMessage
 {
     public const int MaxKindLength = EfHatchChatSubject.MaxKindLength;
@@ -5503,10 +5509,15 @@ public class EfHatchChatMessage
     [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
 
-    public int RoomId { get; set; }
+    /// <summary>The room the message is for, or null for a direct message.</summary>
+    public int? RoomId { get; set; }
     public EfHatchChatRoom? Room { get; set; }
 
-    /// <summary>Copied from the room by the queue method, never set by a caller.</summary>
+    /// <summary>The link whose person the message is for, or null for a room message.</summary>
+    public int? LinkId { get; set; }
+    public EfHatchChatLink? Link { get; set; }
+
+    /// <summary>Copied from the room or the link by the queue method, never set by a caller.</summary>
     public int WorkspaceId { get; set; }
 
     /// <summary>The project the message is about, or null for a problem that belongs to none.</summary>
@@ -5619,6 +5630,7 @@ public class EfHatchChatLink
     public const int MaxMemberIdLength = 64;
     public const int MaxMemberNameLength = 200;
     public const int MaxConversationIdLength = 64;
+    public const int MaxRefusalLength = EfHatchChatMessage.MaxRefusalLength;
 
     /// <summary>How long a confirmation link works, from <see cref="CreatedAt"/>.</summary>
     public static readonly TimeSpan SecretLife = TimeSpan.FromHours(24);
@@ -5656,6 +5668,16 @@ public class EfHatchChatLink
 
     /// <summary>When the secret stops working. Null once confirmed.</summary>
     public DateTimeOffset? SecretExpiresAt { get; set; }
+
+    /// <summary>Whether a failing runner is told to this person here. Read once, when a failure opens.</summary>
+    public bool RunnerFailures { get; set; } = true;
+
+    /// <summary>What the chat service last said when it refused a direct message to this member. Cleared on a send.</summary>
+    [MaxLength(MaxRefusalLength)]
+    public string? LastRefusal { get; set; }
+
+    /// <summary>When <see cref="LastRefusal"/> was written.</summary>
+    public DateTimeOffset? LastRefusalAt { get; set; }
 }
 
 /// <summary>
