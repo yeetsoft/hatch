@@ -57,14 +57,21 @@ public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchR
     /// unclaimed half below rather than listed a second time under its own
     /// old name.
     /// </summary>
-    public static async Task<List<Runner>> JoinAsync(HatchContext db, IAuthService keys, CancellationToken ct)
+    /// <param name="configsById">
+    /// Every key's own config, already read - a caller holding a
+    /// <see cref="ScanLoad"/> paid for this in the one statement it shares
+    /// (HA-2797), so this join never reads <c>RunnerConfigs</c> a second
+    /// time. Null, every caller before this one, reads it here instead.
+    /// </param>
+    public static async Task<List<Runner>> JoinAsync(
+        HatchContext db, IAuthService keys, CancellationToken ct,
+        IReadOnlyDictionary<Guid, EfHatchRunnerConfig>? configsById = null)
     {
         var allKeys = await keys.ListApiKeysAsync(ct);
-        var configs = await db.RunnerConfigs.AsNoTracking().ToListAsync(ct);
+        configsById ??= (await db.RunnerConfigs.AsNoTracking().ToListAsync(ct)).ToDictionary(c => c.ApiKeyId);
         var beats = await db.LegacyRunners.AsNoTracking().ToListAsync(ct);
         var sessions = await db.RunnerSessions.AsNoTracking().ToListAsync(ct);
 
-        var configsById = configs.ToDictionary(c => c.ApiKeyId);
         var sessionsByKeyId = sessions.GroupBy(s => s.ApiKeyId).ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchRunnerSession>)g.ToList());
         var beatsByName = beats.ToDictionary(b => b.Name, StringComparer.Ordinal);
         var claimed = new HashSet<string>(StringComparer.Ordinal);

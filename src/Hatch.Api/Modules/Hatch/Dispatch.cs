@@ -51,6 +51,34 @@ public sealed class Dispatch(
     private readonly Dictionary<ScanLoad, Dictionary<string, Task<FoldBundle>>> foldBundles = new(ReferenceEqualityComparer.Instance);
     private Task<PaceReadings>? paceCache;
 
+    // A named runner's own config row - its refused models and whether it is
+    // preferred - is one more thing this request shares rather than re-reads:
+    // a peer's fold asks RefusedByAsync or IsPreferredAsync no differently
+    // than the asker's own scan does, so the first of either to ask a given
+    // name reads RunnerConfigs once and every later ask of that name, by
+    // either method, is answered from here. A caller holding a ScanLoad
+    // already paid for every config in one statement (HA-2797) - see
+    // ScanLoad.RunnerConfigsByKeyId - so that answers it with none at all.
+    private readonly Dictionary<string, Task<(bool KeyFound, EfHatchRunnerConfig? Config)>> runnerConfigCache = new(StringComparer.Ordinal);
+
+    private Task<(bool KeyFound, EfHatchRunnerConfig? Config)> RunnerConfigAsync(string name, ScanLoad? load, CancellationToken ct)
+    {
+        if (runnerConfigCache.TryGetValue(name, out var cached)) return cached;
+        return runnerConfigCache[name] = ReadRunnerConfigAsync(name, load, ct);
+    }
+
+    private async Task<(bool KeyFound, EfHatchRunnerConfig? Config)> ReadRunnerConfigAsync(string name, ScanLoad? load, CancellationToken ct)
+    {
+        if (keys is null) return (false, null);
+
+        var key = (await keys.ListApiKeysAsync(ct)).FirstOrDefault(k => string.Equals(k.Name, name, StringComparison.Ordinal));
+        if (key is null) return (false, null);
+
+        if (load is not null) return (true, load.RunnerConfigsByKeyId.GetValueOrDefault(key.Id));
+
+        return (true, await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct));
+    }
+
     // ---- The walk ----
 
     /// <summary>
@@ -209,11 +237,6 @@ public sealed class Dispatch(
         has ??= HasDeclaration.Unjudged;
         signing ??= SigningDeclaration.Unjudged;
         forge ??= ForgeDeclaration.Unjudged;
-        refusal ??= await RefusedByAsync(asking?.Name, ct);
-
-        // A runner marked preferred is never told a row is left for another
-        // one. Peer scans pass foldLetGo false, so they pay no query.
-        var askerPreferred = foldLetGo && asking is not null && await IsPreferredAsync(asking.Name, ct);
 
         // Judged here, on the one entry every caller shares - the same place
         // ancestorKey's own unknown key is refused - so a refused scan never
@@ -276,6 +299,16 @@ public sealed class Dispatch(
         // refused scan never pays for it - and only when the caller passed none
         // of its own to share.
         var scanLoad = load ?? await ReadLoadAsync(caller, now, ct);
+
+        // Answered from scanLoad's own RunnerConfigsByKeyId (HA-2797), never a
+        // query of their own: a caller sharing a load already paid for every
+        // config in the one statement above, and a caller building its own
+        // just did.
+        refusal ??= await RefusedByAsync(asking?.Name, ct, scanLoad);
+
+        // A runner marked preferred is never told a row is left for another
+        // one. Peer scans pass foldLetGo false, so they pay no query.
+        var askerPreferred = foldLetGo && asking is not null && await IsPreferredAsync(asking.Name, ct, scanLoad);
 
         var declaration = new ScanDeclaration(tags, models, has, signing, forge, refusal, asking, foldLetGo, projects, repos);
 
@@ -869,7 +902,7 @@ public sealed class Dispatch(
 
         public async Task<bool> CouldTakeAsync(long issueId, CancellationToken ct)
         {
-            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct);
+            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct, load);
 
             foreach (var peer in _peers)
             {
@@ -893,7 +926,7 @@ public sealed class Dispatch(
         {
             if (!dispatch.HasRunnerStore) return null;
 
-            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct);
+            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct, load);
             _holding ??= await dispatch.HoldingAsync(now, ct);
 
             foreach (var peer in _peers)
@@ -917,7 +950,7 @@ public sealed class Dispatch(
         {
             if (!dispatch.HasRunnerStore) return null;
 
-            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct);
+            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct, load);
             _holding ??= await dispatch.HoldingAsync(now, ct);
 
             foreach (var peer in _peers)
@@ -974,10 +1007,10 @@ public sealed class Dispatch(
     /// <see cref="Runner.IsLive"/>'s own reading of the two, carried into who
     /// counts as a peer.
     /// </summary>
-    private async Task<List<Peer>> LivePeersAsync(DateTimeOffset now, DateTimeOffset liveSince, string? excludeName, CancellationToken ct)
+    private async Task<List<Peer>> LivePeersAsync(DateTimeOffset now, DateTimeOffset liveSince, string? excludeName, CancellationToken ct, ScanLoad? load = null)
     {
         var joined = keys is not null
-            ? await Runner.JoinAsync(db, keys, ct)
+            ? await Runner.JoinAsync(db, keys, ct, load?.RunnerConfigsByKeyId)
             : (await db.LegacyRunners.AsNoTracking().ToListAsync(ct)).Select(r => new Runner(null, null, r)).ToList();
 
         var peers = new List<Peer>();
@@ -1087,7 +1120,7 @@ public sealed class Dispatch(
         ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct, ScanLoad? load = null)
     {
         var now = time.GetUtcNow();
-        var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
+        var fleet = (await LivePeersAsync(now, liveSince, null, ct, load)).Where(p => p.Declaration.Refusal is null).ToList();
 
         if (fleet.Count == 0) return [];
         var declared = fleet.Select(f => f.Declaration).ToList();
@@ -1250,7 +1283,7 @@ public sealed class Dispatch(
         ScanCaller caller, int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct, ScanLoad? load = null)
     {
         var now = time.GetUtcNow();
-        var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
+        var fleet = (await LivePeersAsync(now, liveSince, null, ct, load)).Where(p => p.Declaration.Refusal is null).ToList();
         if (fleet.Count == 0) return (null, new Dictionary<long, StepTakers>());
 
         var board = await ScanAsync(caller, offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct, load: load);
@@ -1420,10 +1453,10 @@ public sealed class Dispatch(
     public async Task<ReadyBoard> ReadyBoardAsync(ScanCaller caller, DateTimeOffset liveSince, CancellationToken ct, ScanLoad? load = null)
     {
         var now = time.GetUtcNow();
-        var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
+        var fleet = (await LivePeersAsync(now, liveSince, null, ct, load)).Where(p => p.Declaration.Refusal is null).ToList();
 
         var board = await ScanAsync(caller, 0, null, null, RepositoryDeclaration.Undeclared, false, ct, load: load);
-        var known = await KnownRunnersAsync(ct);
+        var known = await KnownRunnersAsync(ct, load);
         if (board.Failure is not null) return new ReadyBoard([], [], known);
 
         var ready = board.Rows
@@ -1457,10 +1490,10 @@ public sealed class Dispatch(
     /// back to the bare heartbeat table with no key store, as
     /// <see cref="LivePeersAsync"/> does.
     /// </summary>
-    private async Task<IReadOnlyList<KnownRunner>> KnownRunnersAsync(CancellationToken ct)
+    private async Task<IReadOnlyList<KnownRunner>> KnownRunnersAsync(CancellationToken ct, ScanLoad? load = null)
     {
         var joined = keys is not null
-            ? await Runner.JoinAsync(db, keys, ct)
+            ? await Runner.JoinAsync(db, keys, ct, load?.RunnerConfigsByKeyId)
             : (await db.LegacyRunners.AsNoTracking().ToListAsync(ct)).Select(r => new Runner(null, null, r)).ToList();
 
         return joined.Select(r =>
@@ -2373,16 +2406,17 @@ public sealed class Dispatch(
     /// <summary>
     /// The models the key named <paramref name="name"/> refuses, read once for a
     /// pass. Null for no name, no key store, and a name no key answers to - a
-    /// board-wide scan or an unknown runner refuses nothing.
+    /// board-wide scan or an unknown runner refuses nothing. <paramref name="load"/>,
+    /// where a caller already holds one, answers this from the one statement it
+    /// already paid for (HA-2797) rather than a second one of its own.
     /// </summary>
-    public async Task<RunnerRefusal?> RefusedByAsync(string? name, CancellationToken ct)
+    public async Task<RunnerRefusal?> RefusedByAsync(string? name, CancellationToken ct, ScanLoad? load = null)
     {
         if (name is null || keys is null) return null;
 
-        var key = (await keys.ListApiKeysAsync(ct)).FirstOrDefault(k => string.Equals(k.Name, name, StringComparison.Ordinal));
-        if (key is null) return null;
+        var (keyFound, config) = await RunnerConfigAsync(name, load, ct);
+        if (!keyFound) return null;
 
-        var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
         return config is null
             ? new RunnerRefusal(name, [])
             : new RunnerRefusal(name, RunnerTagColumn.Read(config.RefusedModels), config.StatusMode, RunnerStatusIdsColumn.Read(config.StatusIds));
@@ -2391,16 +2425,13 @@ public sealed class Dispatch(
     /// <summary>
     /// True when the key named <paramref name="name"/> is marked preferred.
     /// False for no name, no key store, a name no key answers to, and a key
-    /// with no config row.
+    /// with no config row. <paramref name="load"/> is <see cref="RefusedByAsync"/>'s own.
     /// </summary>
-    internal async Task<bool> IsPreferredAsync(string? name, CancellationToken ct)
+    internal async Task<bool> IsPreferredAsync(string? name, CancellationToken ct, ScanLoad? load = null)
     {
         if (name is null || keys is null) return false;
 
-        var key = (await keys.ListApiKeysAsync(ct)).FirstOrDefault(k => string.Equals(k.Name, name, StringComparison.Ordinal));
-        if (key is null) return false;
-
-        var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+        var (_, config) = await RunnerConfigAsync(name, load, ct);
         return config?.Preferred ?? false;
     }
 
@@ -4595,10 +4626,13 @@ public sealed class Disclosure
 /// <summary>
 /// What a scan reads that is the same for every caller and every runner,
 /// whatever it is deciding: the board's tree, who holds a live claim along
-/// it, what stands in each issue's way, the family and WIP sections, and the
-/// playbook matrix. Holds nothing of a caller's own declaration - see
-/// <see cref="ScanDeclaration"/> - so a peer's scan (HA-2797) can share one
-/// load with nothing in it to narrow for itself.
+/// it, what stands in each issue's way, the family and WIP sections, the
+/// playbook matrix, and every runner's own config row. Holds nothing of a
+/// caller's own declaration - see <see cref="ScanDeclaration"/> - so a peer's
+/// scan (HA-2797) can share one load with nothing in it to narrow for
+/// itself, and still answer <see cref="Dispatch.RefusedByAsync"/> or
+/// <see cref="Dispatch.IsPreferredAsync"/> for any name from
+/// <see cref="RunnerConfigsByKeyId"/> rather than a fold of its own.
 /// </summary>
 public sealed record ScanLoad(
     DateTimeOffset Now,
@@ -4608,7 +4642,8 @@ public sealed record ScanLoad(
     DependencyGate Dependencies,
     FamilyGate Family,
     WipSection? Wip,
-    List<EfHatchPlaybook> Playbooks)
+    List<EfHatchPlaybook> Playbooks,
+    IReadOnlyDictionary<Guid, EfHatchRunnerConfig> RunnerConfigsByKeyId)
 {
     /// <summary>
     /// Reads every table above, each once, from the one tree. <paramref name="now"/>
@@ -4644,7 +4679,13 @@ public sealed record ScanLoad(
             .Include(p => p.ToStatus)
             .ToListAsync(ct);
 
-        return new ScanLoad(now, statuses, tree, lineage, gate, family, wip, playbooks);
+        // Every runner's own config, whole and unfiltered, the same one
+        // statement Runner.JoinAsync reads for the fleet - tens of rows,
+        // never thousands - so RefusedByAsync and IsPreferredAsync answer
+        // any name from here rather than a query apiece.
+        var runnerConfigs = await db.RunnerConfigs.AsNoTracking().ToDictionaryAsync(c => c.ApiKeyId, ct);
+
+        return new ScanLoad(now, statuses, tree, lineage, gate, family, wip, playbooks, runnerConfigs);
     }
 }
 

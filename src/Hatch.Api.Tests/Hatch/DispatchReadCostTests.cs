@@ -99,22 +99,26 @@ public class DispatchReadCostTests
         // keeping it, and the row picked here is one no peer can take - every peer
         // is asked, from the one load the asker's own scan already read, so asking
         // more of them costs nothing further.
-        [(Next, 100, 1)] = 70,
-        [(Next, 100, 4)] = 70,
-        [(Next, 1000, 1)] = 70,
-        [(Next, 1000, 4)] = 70,
+        [(Next, 100, 1)] = 68,
+        [(Next, 100, 4)] = 68,
+        [(Next, 1000, 1)] = 68,
+        [(Next, 1000, 4)] = 68,
 
         // queue: its own scan, then the projection of every row it returns -
         // issues, comments, claims, the merge-train notes, and (descriptions=true,
         // the default) every row's description, read together once. No runner is
-        // named, so no peer is asked and the fleet does not show.
-        [(Queue, 100, 1)] = 38,
-        [(Queue, 100, 4)] = 38,
-        [(Queue, 1000, 1)] = 38,
-        [(Queue, 1000, 4)] = 38,
+        // named, so no peer is asked and the fleet does not show. One statement
+        // more than before HA-2797: the load now carries every runner's own
+        // config too, the same one RunnerConfigs read Runner.JoinAsync always
+        // made, so a name any fold asks about - the queue's own deadlock
+        // marking included - answers from memory rather than a query.
+        [(Queue, 100, 1)] = 39,
+        [(Queue, 100, 4)] = 39,
+        [(Queue, 1000, 1)] = 39,
+        [(Queue, 1000, 4)] = 39,
 
-        // queue?takers=true: the queue (38), the one load, and every live runner's
-        // own fold from it.
+        // queue?takers=true: the queue (39), and every live runner's own fold
+        // from the one load - no further statement, whatever the fleet.
         [(Takers, 100, 1)] = 41,
         [(Takers, 100, 4)] = 41,
         [(Takers, 1000, 1)] = 41,
@@ -124,10 +128,10 @@ public class DispatchReadCostTests
         // on it - deadlocks, the project line, runner capacity, who is waiting
         // on a runner - plus what the route reads besides. It still grows with
         // the board: see GrowsWithBoardSize.
-        [(Attention, 100, 1)] = 51,
-        [(Attention, 100, 4)] = 51,
-        [(Attention, 1000, 1)] = 166,
-        [(Attention, 1000, 4)] = 166,
+        [(Attention, 100, 1)] = 50,
+        [(Attention, 100, 4)] = 50,
+        [(Attention, 1000, 1)] = 165,
+        [(Attention, 1000, 4)] = 165,
     };
 
     // ---- The shape ----
