@@ -46,10 +46,12 @@ public class ReportsController(
     /// </param>
     /// <param name="createdBy">Narrows the top-level rows to one creator's.</param>
     /// <remarks>
-    /// Neither query below is bounded by the range or by the project. The fold
-    /// needs an issue's first move even when it falls after the range's end -
-    /// that move's <c>from</c> is the column the issue was in during it - and
-    /// children ride with their root whatever project they were filed in.
+    /// The issues are read whole, and by no project: children ride with their
+    /// root whatever project they were filed in. The status changes are read for
+    /// the range alone (<see cref="LoadTrailAsync"/>): each issue's moves inside
+    /// it, the newest before it, and, for an issue that has not moved by the
+    /// range's end, its first move after - that move's <c>from</c> is the column
+    /// the issue was in during it.
     /// </remarks>
     [HttpGet("timeline")]
     public async Task<ActionResult<TimelineDto>> GetTimeline(
@@ -63,10 +65,12 @@ public class ReportsController(
 
         var projectIds = (projectId ?? []).Distinct().ToList();
 
-        var (statuses, rows, changes) = await LoadHistoryAsync(ct);
+        var (statuses, rows) = await LoadBoardAsync(ct);
 
         DateTimeOffset? first = rows.Count > 0 ? rows.Min(r => r.CreatedAt) : null;
         start = RangeBounds.ClampStart(start, end, first);
+
+        var changes = await LoadTrailAsync(start, end, null, ct);
 
         var result = TimelineReport.Fold(rows, changes, statuses, start, end, projectIds, createdBy);
 
@@ -225,7 +229,13 @@ public class ReportsController(
             if (unknown.Count > 0) return BadRequest($"there is no project {string.Join(", ", unknown)}");
         }
 
-        var (statuses, rows, changes) = await LoadHistoryAsync(ct);
+        var (statuses, rows) = await LoadBoardAsync(ct);
+
+        // From where the timeline would start. The fold clamps by the scoped
+        // issues' first creation, which is never earlier than this one, so the
+        // read reaches back far enough; the raw start is what the fold is given.
+        var readFrom = RangeBounds.ClampStart(start, end, rows.Count > 0 ? rows.Min(r => r.CreatedAt) : null);
+        var changes = await LoadTrailAsync(readFrom, end, keys.Count > 0 ? keys.ToHashSet() : null, ct);
 
         var result = CumulativeFlowReport.Fold(
             rows, changes, statuses, start, end, now, keys.Count > 0 ? keys.ToHashSet() : null);
@@ -1131,30 +1141,23 @@ public class ReportsController(
     }
 
     /// <summary>
-    /// Every issue and <c>status_changed</c> event in the tracker, the raw
-    /// material both reports fold - loaded once here so <see cref="GetTimeline"/>
-    /// and <see cref="GetCumulativeFlow"/> read it the same way.
+    /// The <c>status_changed</c> events a report folding the range
+    /// [<paramref name="since"/>, <paramref name="until"/>] needs, as
+    /// <see cref="GetTimeline"/> and <see cref="GetCumulativeFlow"/> read them:
+    /// per issue, its moves inside the range, the newest one before it, and the
+    /// first one after it only when it has none at or before the end. That is
+    /// what <see cref="BoardHealthTrail.ReadAsync"/> cuts, so the health poll and
+    /// the reports cut a trail the same way, and the fold answers what it would
+    /// from every move there is.
     /// </summary>
-    private async Task<(List<EfHatchStatus> Statuses, List<TimelineReport.Row> Rows, List<TimelineReport.Change> Changes)>
-        LoadHistoryAsync(CancellationToken ct)
-    {
-        var (statuses, rows) = await LoadBoardAsync(ct);
-
-        var events = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged)
-            .OrderBy(e => e.IssueId)
-            .ThenBy(e => e.At)
-            .ThenBy(e => e.Id)
-            .Select(e => new { e.IssueId, e.Id, e.At, e.Payload })
-            .ToListAsync(ct);
-
-        var changes = events
+    /// <param name="scope">Project keys to read the moves of; every project when null.</param>
+    private async Task<List<TimelineReport.Change>> LoadTrailAsync(
+        DateTimeOffset since, DateTimeOffset until, HashSet<string>? scope, CancellationToken ct) =>
+        (await BoardHealthTrail.ReadAsync(
+                db, [EfHatchIssueEvent.StatusChanged], since, scope, null, ct, until: until))
             .Select(e => TimelineReport.ParseChange(e.IssueId, e.Id, e.At, e.Payload))
             .OfType<TimelineReport.Change>()
             .ToList();
-
-        return (statuses, rows, changes);
-    }
 
     /// <summary>The board's statuses in board order, and every issue as the folds want it.</summary>
     private async Task<(List<EfHatchStatus> Statuses, List<TimelineReport.Row> Rows)> LoadBoardAsync(CancellationToken ct)

@@ -131,10 +131,13 @@ public static class TimelineReport
     /// were in a column that could not be resolved, counted before the merge.
     /// </summary>
     /// <remarks>
-    /// <paramref name="changes"/> is the whole of the issue's history and is
-    /// deliberately not cut at <paramref name="to"/>: an issue whose first move
-    /// is after the range was in that move's <c>from</c> column during it, not
-    /// in its current one. The caller passes only this issue's changes.
+    /// <paramref name="changes"/> is the issue's history, or the cut of it that
+    /// <c>BoardHealthTrail.ReadAsync</c> reads for the range (its moves in the
+    /// range, the newest before it, and its first after it when it has none by the
+    /// range's end); the answer is the same. It is deliberately not cut to
+    /// nothing at <paramref name="to"/>: an issue whose first move is after the
+    /// range was in that move's <c>from</c> column during it, not in its current
+    /// one. The caller passes only this issue's changes.
     /// </remarks>
     internal static (List<Stretch> Stretches, int Unresolved) RebuildOf(
         Row row, IEnumerable<Change> changes, BoardIndex board, DateTimeOffset from, DateTimeOffset to)
@@ -166,10 +169,13 @@ public static class TimelineReport
     /// stretches in that range were in a column that could not be resolved.
     /// </summary>
     /// <remarks>
-    /// <paramref name="changes"/> is the whole of the issue's history and is
-    /// deliberately not cut at <paramref name="to"/>: an issue whose first move
-    /// is after the range was in that move's <c>from</c> column during it, not
-    /// in its current one. The caller passes only this issue's changes.
+    /// <paramref name="changes"/> is the issue's history, or the cut of it that
+    /// <c>BoardHealthTrail.ReadAsync</c> reads for the range (its moves in the
+    /// range, the newest before it, and its first after it when it has none by the
+    /// range's end); the answer is the same. It is deliberately not cut to
+    /// nothing at <paramref name="to"/>: an issue whose first move is after the
+    /// range was in that move's <c>from</c> column during it, not in its current
+    /// one. The caller passes only this issue's changes.
     /// </remarks>
     public static (IReadOnlyList<Segment> Segments, int Unresolved) SegmentsOf(
         Row row, IEnumerable<Change> changes, BoardIndex board, DateTimeOffset from, DateTimeOffset to)
