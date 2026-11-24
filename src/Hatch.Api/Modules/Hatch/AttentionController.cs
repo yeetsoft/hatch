@@ -283,22 +283,11 @@ public class AttentionController(HatchContext db, IActorDirectory actors, Runner
     }
 
     /// <summary>
-    /// When the goose last swept and whether it has stopped, by this read's own
-    /// clock: stopped is the newest run's last sweep being older than three
-    /// intervals, or - with no run stored - the server having been up that long.
-    /// Read through <c>GooseRuns</c>, which has no query filter, so a narrowed
-    /// caller still learns the goose has stopped. The sweep writes nothing for it.
+    /// The goose's last sweep and whether it has stopped, by this read's own
+    /// clock - <see cref="GooseWatch.JudgeAsync"/>, the one rule.
     /// </summary>
-    private async Task<AttentionGooseDto> GooseAsync(CancellationToken ct)
-    {
-        var lastRan = await db.GooseRuns.AsNoTracking()
-            .OrderByDescending(r => r.LastRanAt)
-            .Select(r => (DateTimeOffset?)r.LastRanAt)
-            .FirstOrDefaultAsync(ct);
-        var interval = GooseSettings.IntervalSeconds(options.Value);
-        var stopped = time.GetUtcNow() - (lastRan ?? gooseWatch.StartedAt) > TimeSpan.FromSeconds(3L * interval);
-        return new AttentionGooseDto(lastRan, interval, stopped);
-    }
+    private Task<AttentionGooseDto> GooseAsync(CancellationToken ct) =>
+        GooseWatch.JudgeAsync(db, gooseWatch, options.Value, time.GetUtcNow(), ct);
 
     /// <summary>
     /// Every runner out of Claude usage that is still being heard from, soonest

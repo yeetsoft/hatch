@@ -5535,3 +5535,51 @@ public class EfHatchChatMessage
     [MaxLength(MaxRefusalLength)]
     public string? LastRefusal { get; set; }
 }
+
+/// <summary>
+/// A problem that belongs to no project - the goose has stopped, the backups need
+/// a person - and the one chat message that says so. Nothing else stores these:
+/// the attention read judges them afresh on every call, and the chat sender needs
+/// to know which it has already announced.
+/// </summary>
+/// <remarks>
+/// <para>One open row per <see cref="Kind"/>, enforced by a unique index on the
+/// rows with no <see cref="EndedAt"/>, so two instances cannot both announce the
+/// same stoppage. The row and its message are saved together: <see cref="Subject"/>
+/// is made in code, not read back from a save.</para>
+///
+/// <para>It names no project, so it has no query filter. Nothing is pruned.</para>
+/// </remarks>
+[Table("ChatProblems")]
+public class EfHatchChatProblem
+{
+    public const int MaxKindLength = 24;
+    public const int MaxSentenceLength = 500;
+
+    /// <summary>The kind for the goose having stopped.</summary>
+    public const string GooseKind = "goose";
+
+    /// <summary>The kind for the backups needing a person.</summary>
+    public const string BackupsKind = "backups";
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    /// <summary><see cref="GooseKind"/> or <see cref="BackupsKind"/>.</summary>
+    [MaxLength(MaxKindLength)]
+    public required string Kind { get; set; }
+
+    /// <summary>The chat subject of the message that announced it: a name for this occurrence, not for the kind.</summary>
+    [MaxLength(EfHatchChatSubject.MaxSubjectLength)]
+    public required string Subject { get; set; }
+
+    /// <summary>When the problem began: the last sweep for the goose, when it was first seen for the backups.</summary>
+    public DateTimeOffset BeganAt { get; set; }
+
+    /// <summary>What was said of it, as last announced. A backup problem whose sentence changes is edited.</summary>
+    [MaxLength(MaxSentenceLength)]
+    public required string Sentence { get; set; }
+
+    /// <summary>When it ended, or null while it stands.</summary>
+    public DateTimeOffset? EndedAt { get; set; }
+}

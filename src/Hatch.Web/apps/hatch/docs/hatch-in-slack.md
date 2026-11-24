@@ -164,6 +164,43 @@ A finding that names no project goes to rooms with **Problems that belong to no
 project** on. A finding about failing sends is not posted to the room or the
 workspace it is about, since that room cannot hear it.
 
+## Goose and backup messages
+
+Two problems belong to no project: [the goose](the-goose) having stopped, and
+the backups needing a person. Both go to rooms with **Problems that belong to no
+project** on, and to no other. A room with only **Problems** on hears findings
+about its projects and none of these.
+
+The goose has stopped when its last sweep is older than three intervals, or,
+with no sweep stored, when the server has been up that long. It is the same rule
+the attention page uses. The message says **The goose has stopped** and **Since**
+the time of the last sweep, or the time Hatch first saw it stopped when there was
+never one. It links to the goose page. When the goose sweeps again, the message
+is edited to start with **Ended:** and to say when it began and when it ended.
+
+The backups need a person under the attention page's rules too: the last backup
+failed, the folder cannot be read, or the newest copy is more than two days old.
+The message says **The backups need a person** and why, and since when. If the
+reason changes, say from a stale folder to a failed dump, the message is edited
+with the new one. A backup problem ends only when a backup newer than the moment
+the problem began exists. A failed attempt is remembered by one running copy of
+Hatch alone, so another copy can look at the same folder and judge it healthy;
+waiting for a newer backup keeps the message from ending and beginning again as
+they disagree. When one exists, the message is edited to **Ended:**, with when it
+began and when it ended.
+
+Backups with no `Hatch__BackupPath` set are never posted. If the path is taken
+away while a backup problem is standing, the problem is ended and the message is
+left as it was, since there is nothing left to say about backups nobody asked for.
+
+A goose that stops again, or backups that fail again, after one ended are a new
+message, not an edit of the old one. Only one of each can stand at a time, even
+with several copies of Hatch running.
+
+Hatch checks both once every few seconds, as it sends messages. The limit is
+plain: if the whole scheduler stops, the sender stops with it, and nothing inside
+Hatch can say so. Watch the goose page, or something outside Hatch, for that.
+
 ## Trunk build messages
 
 When the build on the tip of a repository's trunk begins failing, a room that
