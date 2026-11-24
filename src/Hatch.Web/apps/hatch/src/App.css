@@ -4838,6 +4838,14 @@ button.hatch-chip {
   overflow-wrap: anywhere;
 }
 
+.hatch-chat-room__option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .hatch-chat-room__switches,
 .hatch-chat-room__scope,
 .hatch-chat-room__chosen,

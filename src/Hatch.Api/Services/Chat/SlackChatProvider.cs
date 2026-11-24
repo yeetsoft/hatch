@@ -23,6 +23,15 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
 
     public const string ConversationsListEndpoint = "https://slack.com/api/conversations.list";
 
+    public const string UsersLookupByEmailEndpoint = "https://slack.com/api/users.lookupByEmail";
+
+    public const string UsersListEndpoint = "https://slack.com/api/users.list";
+
+    public const string ConversationsOpenEndpoint = "https://slack.com/api/conversations.open";
+
+    /// <summary>Slackbot reports <c>is_bot: false</c>, so it is named.</summary>
+    public const string SlackbotId = "USLACKBOT";
+
     public const string PostMessageEndpoint = "https://slack.com/api/chat.postMessage";
 
     public const string UpdateMessageEndpoint = "https://slack.com/api/chat.update";
@@ -74,6 +83,9 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
         ["message_not_found"] = "the message is gone from Slack, so it cannot be edited",
         ["cant_update_message"] = "Slack does not allow that message to be edited",
         ["edit_window_closed"] = "the time Slack allows for editing that message has passed",
+        ["users_not_found"] = "Slack could not find that member",
+        ["user_disabled"] = "that Slack member has been deactivated",
+        ["cannot_dm_bot"] = "Slack does not allow a direct message to a bot",
     };
 
     private const string ThrottledSentence = "Slack asked Hatch to slow down; it will try again";
@@ -222,6 +234,143 @@ public class SlackChatProvider(IHttpClientFactory httpClientFactory, ILogger<Sla
         }
 
         return ChatChannelList.Of(channels);
+    }
+
+    public async Task<ChatMemberFound> FindMemberByEmailAsync(string token, string email, CancellationToken ct)
+    {
+        // In the body, never the URL: a URL is what a proxy and a log keep.
+        var reply = await CallAsync("users.lookupByEmail", token,
+            () => new HttpRequestMessage(HttpMethod.Post, UsersLookupByEmailEndpoint)
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["email"] = email }),
+            }, ct);
+
+        // No member, or a deactivated one: an answer, not a refusal.
+        if (reply.Code == "users_not_found") return ChatMemberFound.Of(null);
+        if (reply.Refusal is not null) return ChatMemberFound.Refused(reply.Refusal);
+
+        return ChatMemberFound.Of(
+            reply.Root!.Value.TryGetProperty("user", out var user) && MemberOf(user) is { } member ? member : null);
+    }
+
+    public async Task<ChatMemberList> ListMembersAsync(string token, CancellationToken ct)
+    {
+        var members = new List<ChatMember>();
+        var seenCursors = new HashSet<string>();
+        string? cursor = null;
+
+        while (true)
+        {
+            var url = $"{UsersListEndpoint}?limit=200" + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+            var reply = await CallAsync("users.list", token, () => new HttpRequestMessage(HttpMethod.Get, url), ct);
+
+            // A refusal or a throttle ends the read. A throttle says how long
+            // Slack asked for: no retry, no sleep.
+            if (reply.Refusal is not null) return ChatMemberList.Refused(reply.Refusal);
+
+            var root = reply.Root!.Value;
+            if (root.TryGetProperty("members", out var list) && list.ValueKind == JsonValueKind.Array)
+                foreach (var item in list.EnumerateArray())
+                    if (MemberOf(item) is { } member) members.Add(member);
+
+            var next = root.TryGetProperty("response_metadata", out var meta) ? Str(meta, "next_cursor") : null;
+            if (string.IsNullOrEmpty(next) || !seenCursors.Add(next)) break;
+
+            cursor = next;
+        }
+
+        return ChatMemberList.Of(members);
+    }
+
+    public async Task<ChatConversationOpened> OpenDirectMessageAsync(string token, string memberId, CancellationToken ct)
+    {
+        var reply = await CallAsync("conversations.open", token,
+            () => new HttpRequestMessage(HttpMethod.Post, ConversationsOpenEndpoint)
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["users"] = memberId }),
+            }, ct);
+
+        if (reply.Refusal is not null) return ChatConversationOpened.Refused(reply.Refusal);
+
+        return reply.Root!.Value.TryGetProperty("channel", out var channel) && Str(channel, "id") is { } id
+            ? ChatConversationOpened.Of(id)
+            : ChatConversationOpened.Refused(Unreachable("Slack conversations.open accepted the call and named no conversation"));
+    }
+
+    /// <summary>
+    /// What came back from one call: the answer's object, or a sentence. Slack's
+    /// error <see cref="Code"/> is kept for a caller that treats one as an answer;
+    /// it is never the body, and never the request.
+    /// </summary>
+    private sealed record SlackReply(JsonElement? Root, string? Refusal, string? Code);
+
+    /// <summary>
+    /// One call, fail-soft: a refusal, a throttle, a dead network or an answer
+    /// that is not an object is a sentence in the reply, never an exception.
+    /// Logs the method and Slack's error code, nothing from the request.
+    /// </summary>
+    private async Task<SlackReply> CallAsync(string method, string token, Func<HttpRequestMessage> build, CancellationToken ct)
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient(HttpClientName);
+            using var request = build();
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await client.SendAsync(request, ct);
+
+            if ((int)response.StatusCode == 429)
+            {
+                logger.LogWarning("Slack {Method} was throttled", method);
+                return new SlackReply(null, ThrottleSentence(RetryAfterOf(response)), "ratelimited");
+            }
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return new SlackReply(null, Unreachable($"Slack {method} answered {(int)response.StatusCode} with no object"), null);
+
+            if (root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True)
+                return new SlackReply(root.Clone(), null, null);
+
+            var code = Str(root, "error") ?? $"http_{(int)response.StatusCode}";
+            // The code, never the body.
+            logger.LogWarning("Slack {Method} was refused: {Code}", method, code);
+
+            if (ThrottleCodes.Contains(code)) return new SlackReply(null, ThrottleSentence(RetryAfterOf(response)), code);
+
+            return new SlackReply(null, RefusalSentenceFor(code, "Slack refused"), code);
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or JsonException or TaskCanceledException) && !ct.IsCancellationRequested)
+        {
+            // The exception's type alone: a message from the HTTP stack can carry the request.
+            logger.LogWarning("Slack {Method} could not be completed: {Kind}", method, ex.GetType().Name);
+            return new SlackReply(null, TransportSentence, null);
+        }
+    }
+
+    private static string ThrottleSentence(TimeSpan? after) =>
+        after is { } wait
+            ? $"Slack asked Hatch to wait {Math.Max(1, (int)Math.Ceiling(wait.TotalSeconds))} seconds before asking again"
+            : "Slack asked Hatch to slow down; try again shortly";
+
+    /// <summary>
+    /// A member a message could go to, or null for one that cannot take it:
+    /// deactivated, a bot, an app's user, or Slackbot. No email is read.
+    /// </summary>
+    private static ChatMember? MemberOf(JsonElement user)
+    {
+        if (user.ValueKind != JsonValueKind.Object) return null;
+
+        var id = Str(user, "id");
+        if (id is null || id == SlackbotId) return null;
+        if (Bool(user, "deleted") || Bool(user, "is_bot") || Bool(user, "is_app_user")) return null;
+
+        JsonElement? profile = user.TryGetProperty("profile", out var p) && p.ValueKind == JsonValueKind.Object ? p : null;
+        var name = Str(user, "real_name") ?? (profile is { } a ? Str(a, "real_name") : null) ?? Str(user, "name") ?? id;
+        var display = profile is { } b ? Str(b, "display_name") : null;
+
+        return new ChatMember(id, name, display);
     }
 
     public async Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct)

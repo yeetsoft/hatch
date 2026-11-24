@@ -262,7 +262,8 @@ name, that HA-1937 retires.
   browser specifically, not merely a signed-in session with no UI; a
   column's settings; a project's repositories, logo, landing and auto-heal
   settings, playbook source and members; Hatch's own settings; a runner's
-  record; attachment delete; choosing a home screen; running a backup.
+  record; attachment delete; choosing a home screen; linking and unlinking a
+  Slack account, which only the person it speaks for may do; running a backup.
   [`api-reference`](api-reference) has the route-by-route version.
 - **Which runners a key sees.** A key reads the runners of its owner, an
   admin's key reads every runner, and a key with no owner reads only the

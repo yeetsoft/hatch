@@ -17,7 +17,7 @@ namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
 /// Removing a workspace is one delete, and what hangs off it goes with it in
-/// the database, not in controller code. There is no such table yet; these keep
+/// the database, not in controller code. These keep
 /// that true on the day one is added: a foreign key to a workspace that is not
 /// a cascade fails the model audit, and on a real Postgres the same is read back
 /// out of the schema.
@@ -234,6 +234,15 @@ public class ChatWorkspaceCascadeDatabaseTests
 
         public Task<ChatChannelList> ListChannelsAsync(string token, CancellationToken ct) =>
             Task.FromResult(ChatChannelList.Of([]));
+
+        public Task<ChatMemberFound> FindMemberByEmailAsync(string token, string email, CancellationToken ct) =>
+            Task.FromResult(ChatMemberFound.Of(null));
+
+        public Task<ChatMemberList> ListMembersAsync(string token, CancellationToken ct) =>
+            Task.FromResult(ChatMemberList.Of([]));
+
+        public Task<ChatConversationOpened> OpenDirectMessageAsync(string token, string memberId, CancellationToken ct) =>
+            Task.FromResult(ChatConversationOpened.Of("D1"));
 
         public Task<ChatPostResult> PostMessageAsync(string token, string channelId, string text, CancellationToken ct) =>
             Task.FromResult(ChatPostResult.Delivered());

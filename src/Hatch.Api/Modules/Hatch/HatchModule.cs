@@ -41,6 +41,7 @@ public static class HatchModule
         services.AddScoped<ChatProblemWatch>();
         services.AddScoped<FindingMessages>();
         services.AddScoped<TrunkBuildMessages>();
+        services.AddScoped<RunnerFailureMessages>();
         services.AddScoped<ChangelogMessages>();
         services.AddSingleton<ChatLinks>();
 

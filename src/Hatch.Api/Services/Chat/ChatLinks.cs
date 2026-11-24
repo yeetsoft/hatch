@@ -22,6 +22,16 @@ public sealed class ChatLinks(IOptions<HatchOptions> options)
     /// <summary>The page where questions are answered, or null.</summary>
     public string? Ballot() => Origin is { } origin ? $"{origin}/ballot" : null;
 
+    /// <summary>
+    /// Where a person confirms a Slack link: Settings, with the secret in the
+    /// query, which the page reads and posts. Null when there is no address.
+    /// </summary>
+    public string? LinkBack(string secret) =>
+        Origin is { } origin ? $"{origin}/settings?chatLink={Uri.EscapeDataString(secret)}" : null;
+
     /// <summary>The goose's page, where its findings are read, or null.</summary>
     public string? Goose() => Origin is { } origin ? $"{origin}/goose" : null;
+
+    /// <summary>A runner's page, or null. The name is typed by a person, so it is escaped into the path.</summary>
+    public string? Runner(string name) => Origin is { } origin ? $"{origin}/runners/{Uri.EscapeDataString(name)}" : null;
 }

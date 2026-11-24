@@ -34,7 +34,8 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueClaimController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption,
-    Runners runners, Dispatch dispatch, RunnerSessions runnerSessions, IAuthService keys, RunnerStateLog stateLog) : ControllerBase
+    Runners runners, Dispatch dispatch, RunnerSessions runnerSessions, IAuthService keys, RunnerStateLog stateLog,
+    RunnerFailureMessages failureMessages) : ControllerBase
 {
     /// <summary>
     /// Takes the lease, or says who already has it.
@@ -433,7 +434,7 @@ public class IssueClaimController(
 
         // Opens the failure row beside the pause, in the same save; nothing
         // lifts it - the session's next beat after the pause ends it.
-        await RunnerFailures.OpenBoardPauseAsync(db, key.Id, session.Where, session.AgentDownLine, now, ct);
+        await RunnerFailures.OpenBoardPauseAsync(db, key.Id, key.Name, session.Where, session.AgentDownLine, failureMessages, now, ct);
 
         // The caller records it, after the save that carries the pause.
         return key.Name;

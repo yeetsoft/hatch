@@ -1057,7 +1057,8 @@ forge since 7:40pm - gh said: …*. It stays there until a beat finds it working
 again, and then it moves to **Earlier**, as *began 7:40pm, ended 8:10pm*. The
 same two lists carry a signed-out or non-starting agent and a pause by the
 board. A list with nothing in it draws no heading, and a runner with neither
-draws nothing.
+draws nothing. A failure can also post to a Slack room, and say when it ends:
+see [Runner failure messages](hatch-in-slack#runner-failure-messages).
 
 Each failure also lists the tickets it cost an increment, by key, each a link to
 the issue, after its words in both lists: *Its agent is signed out since 7:40pm

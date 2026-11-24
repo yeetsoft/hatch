@@ -8488,7 +8488,7 @@ public class RunnersControllerTests
             new(context, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
                 siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys,
                 sessions, new Dispatch(context, actors, claims, time), revision ?? new StubRevision("dev", 0), builds ?? new StubRunnerBuilds(),
-                new RunnerStateLog(runners), NullLogger<RunnersController>.Instance);
+                new RunnerStateLog(runners), global::Hatch.Api.Tests.Chat.RunnerFailureMessagesTests.For(context, time), NullLogger<RunnersController>.Instance);
 
         ProjectsController BuildProjects(HatchContext context) =>
             new(context, time, caller, actors, new ProjectAccess(context, actors), NullLogger<ProjectsController>.Instance, new RankService(context), claims)
