@@ -69,6 +69,7 @@ import type {
   ChatTestResult,
   ChatDelivery,
   ChatWorkspace,
+  ChatLinkRow,
   MeChat,
   MeChatLink,
   MeChatMember,
@@ -1208,6 +1209,12 @@ export const confirmChatLink = (secret: string) =>
   fetchJson<MeChatLink>('/api/me/chat/links/confirm', { method: 'POST', ...asJson({ secret }) });
 export const unlinkChat = (linkId: number) =>
   fetchJson<void>(`/api/me/chat/links/${seg(String(linkId))}`, { method: 'DELETE' });
+
+/** Every person's Slack links, for an admin; a key is refused. */
+export const getChatLinks = () => fetchJson<ChatLinkRow[]>('/api/chat/links');
+/** Removes anybody's link, waiting or linked. The person can link again. */
+export const deleteChatLink = (linkId: number) =>
+  fetchJson<void>(`/api/chat/links/${seg(String(linkId))}`, { method: 'DELETE' });
 
 // ---- People ----
 //

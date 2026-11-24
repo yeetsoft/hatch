@@ -104,7 +104,7 @@ public class MeChatKeyRefusalTests
     {
         var key = new EfApiKey { Name = "hatch", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = DateTimeOffset.UnixEpoch };
         var controller = new MeChatController(
-            null!, null!, null!, new MeScopeTests.StubCaller(null, null, key), null!, null!, null!, null!, null!, null!);
+            null!, null!, null!, new MeScopeTests.StubCaller(null, null, key), null!, null!, null!, null!, null!, null!, null!);
 
         var refusals = new ObjectResult?[]
         {

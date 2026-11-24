@@ -3930,6 +3930,18 @@ export interface MeChat {
   workspaces: MeChatWorkspace[];
 }
 
+/** One person's Slack link, as an admin sees it. Mirrors ChatLinkRowDto. No
+    member id, conversation id or secret: the server never sends one. */
+export interface ChatLinkRow {
+  id: number;
+  personId: string;
+  workspaceId: number;
+  workspaceName: string;
+  memberName: string;
+  state: 'waiting' | 'linked';
+  expiresAt: string | null;
+}
+
 /** A Slack member to pick oneself from. Mirrors MeChatMemberDto; no email. */
 export interface MeChatMember {
   id: string;

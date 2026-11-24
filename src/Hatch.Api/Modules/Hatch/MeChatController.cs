@@ -38,6 +38,7 @@ public class MeChatController(
     ICallerScope callerScope,
     SecretProtector protector,
     ChatLinks links,
+    ChatLinkRoster roster,
     TimeProvider time,
     ILogger<MeChatController> logger) : ControllerBase
 {
@@ -259,6 +260,12 @@ public class MeChatController(
 
         if (row.PersonId != principal.Id) return StatusCode(StatusCodes.Status403Forbidden, SomebodyElses);
 
+        // Before ConfirmedAt is set: a removed person's confirmed link on this
+        // member would otherwise hit the unique index, and the catch below
+        // would find nothing to blame. The row above is not modified yet, so
+        // the prune's save carries nothing else.
+        await roster.PruneAsync(row.WorkspaceId, ct);
+
         row.ConfirmedAt = now;
         row.SecretHash = null;
         row.SecretExpiresAt = null;
@@ -344,9 +351,19 @@ public class MeChatController(
         return await db.ChatWorkspaceProjects.AnyAsync(p => p.WorkspaceId == id && ids.Contains(p.ProjectId), ct) ? workspace : null;
     }
 
-    private Task<bool> MemberHeldByAnotherAsync(int workspaceId, string memberId, Guid personId, CancellationToken ct) =>
-        db.ChatLinks.AsNoTracking().Confirmed()
+    /// <summary>
+    /// Whether somebody else holds the member. A link of a person who has been
+    /// removed holds nothing, so those are dropped first, and the check is made
+    /// on what is left. Callers reach it before they track a change, or just
+    /// after clearing the tracker, so the drop saves nothing but itself.
+    /// </summary>
+    private async Task<bool> MemberHeldByAnotherAsync(int workspaceId, string memberId, Guid personId, CancellationToken ct)
+    {
+        await roster.PruneAsync(workspaceId, ct);
+
+        return await db.ChatLinks.AsNoTracking().Confirmed()
             .AnyAsync(l => l.WorkspaceId == workspaceId && l.MemberId == memberId && l.PersonId != personId, ct);
+    }
 
     private static MeChatLinkDto Dto(EfHatchChatLink l) =>
         l.ConfirmedAt is null
