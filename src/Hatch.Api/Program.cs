@@ -33,6 +33,11 @@ var builder = WebApplication.CreateBuilder(args);
 // that has to be decided while the contexts are being configured.
 var migrateMode = builder.Configuration["HATCH_MIGRATE"] == "1";
 
+// The two strings every opener below has to share - see DatabaseConnections'
+// own remarks for why a second computed string is a second pool.
+var connections = DatabaseConnections.From(builder.Configuration);
+builder.Services.AddSingleton(connections);
+
 // Structured JSON console output outside local dev, so the fluent-bit ->
 // OpenSearch pipeline (which tails raw container stdout, see
 // deploy/cluster/observability/controllers/fluent-bit.yaml) can parse fields like State.Service
@@ -59,7 +64,7 @@ builder.Services.AddSingleton<ISecrets>(new EnvSecrets(builder.Configuration));
 // same pool) for services that only ever touch the DB sequentially.
 builder.Services.AddPooledDbContextFactory<AppDbContext>(o =>
 {
-    o.UseNpgsql(builder.Configuration.GetConnectionString("Hatch"));
+    o.UseNpgsql(connections.Hatch);
 
     // Counts commands for the request log line, and changes none of them.
     o.AddInterceptors(StatementCounter.Instance);
@@ -90,7 +95,7 @@ builder.Services.AddQuartz(q =>
     {
         sb.UseProperties = true;
         sb.UseClustering();
-        sb.UsePostgres(builder.Configuration.GetConnectionString("Quartz")!);
+        sb.UsePostgres(connections.Quartz!);
         sb.UseSystemTextJsonSerializer();
     });
 });
@@ -286,7 +291,7 @@ using (var scope = app.Services.CreateScope())
 // from inside the scheduler's own construction would be a cycle.
 var scheduler = app.Services.GetRequiredService<IScheduler>();
 scheduler.ListenerManager.AddSchedulerListener(
-    ActivatorUtilities.CreateInstance<SchedulerCheckout>(app.Services, builder.Configuration.GetConnectionString("Quartz")!));
+    ActivatorUtilities.CreateInstance<SchedulerCheckout>(app.Services, connections.Quartz!));
 
 ////////
 /// HTTP Server
@@ -316,6 +321,11 @@ var forwardedHeadersOptions = new ForwardedHeadersOptions
 forwardedHeadersOptions.KnownIPNetworks.Clear();
 forwardedHeadersOptions.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedHeadersOptions);
+
+// Right after the headers it needs to be honest about who asked, and ahead
+// of everything else, so a database read from inside the auth gate itself
+// is covered: a pool exhausted there must still answer 503, not a 500.
+app.UseMiddleware<PoolExhaustedMiddleware>();
 
 // Registered only where it can do anything. It is inert in both deployments
 // today - neither the pod nor the container binds an HTTPS port, TLS is

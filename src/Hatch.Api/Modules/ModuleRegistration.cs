@@ -1,3 +1,4 @@
+using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -32,7 +33,7 @@ public static class ModuleRegistration
         // design-time factory, which shares that, is left as it was.
         services.AddDbContext<TContext>(o =>
         {
-            ConfigureModule(o, configuration.GetConnectionString("Hatch"), schema, quietCommandErrors);
+            ConfigureModule(o, DatabaseConnections.From(configuration).Hatch, schema, quietCommandErrors);
             o.AddInterceptors(StatementCounter.Instance);
         });
 

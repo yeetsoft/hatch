@@ -195,6 +195,10 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | **The database** | | |
 | `ConnectionStrings__Hatch` | `Host=localhost` | Where `hatch`'s own schema lives. Under `DOTNET_ENVIRONMENT=Docker`, which `compose.yaml` sets, the default is `Host=db` instead. |
 | `ConnectionStrings__Quartz` | `Host=localhost` | Where Quartz's tables live - created only by `containers/hatch-db/pginit.sql`. Also `Host=db` under `DOTNET_ENVIRONMENT=Docker`. |
+| `Database__HatchPoolSize` | `30` | The most connections one `api` process opens to `hatch`. Empty, zero or less falls back to the default. Left alone if the configured string already sets `Maximum Pool Size` (or `MaxPoolSize`) itself. |
+| `Database__QuartzPoolSize` | `10` | The same, for the `quartz` string. |
+| `Database__CommandTimeoutSeconds` | `30`; `0` (none) in migrate mode | How long a statement may run before Npgsql cancels it. Empty, zero or less falls back to the default - which is itself `0` in migrate mode, since a migration is expected to take longer than a request. Left alone if the string already sets `Command Timeout` (or `CommandTimeout`). |
+| `Database__PoolWaitSeconds` | `5` | How long a request waits for a pooled connection before it is answered `503` ([sizing Postgres](#sizing-postgres)). Empty, zero or less falls back to the default. Left alone if the string already sets `Timeout`. |
 | **Everything else** | | |
 | `HATCH_MIGRATE` | unset | `1` makes the image run as the migration, which applies the schema and exits, instead of serving. |
 | `DOTNET_ENVIRONMENT` | | Any value but `Development` writes the log as JSON lines instead of the human-formatted default. |
@@ -215,6 +219,61 @@ warns.
 The migration creates `hatch`'s schema on every start; see
 [backup, restore and replication](backup-restore-and-replication)
 for backing it up, restoring it and running it on a replica.
+
+## Sizing Postgres
+
+The API opens two pools, `hatch` and `quartz`, each capped at
+`Database__HatchPoolSize`/`Database__QuartzPoolSize` connections
+(`Database__*` above). A request that cannot get one within
+`Database__PoolWaitSeconds` is answered `503` rather than left to queue
+forever, and a statement that runs longer than `Database__CommandTimeoutSeconds`
+is cancelled on the server. None of this is enough on its own: the pools still
+have to fit the Postgres they are opening against, and that is arithmetic an
+operator does once, against their own numbers, not a figure this page can fix
+for every install (`docs/ethos.md`).
+
+**The connection sum.** Every replica opens its own pair of pools, so:
+
+```
+replicas x (Database__HatchPoolSize + Database__QuartzPoolSize) + reserve <= max_connections - superuser_reserved_connections
+```
+
+`max_connections` and `superuser_reserved_connections` are Postgres's own
+settings (`100` and `3` on the shipped `hatch-db` image, which sets neither).
+The `migrate` container never belongs in the reserve - it finishes before
+`api` starts (`compose.yaml`'s `depends_on: condition:
+service_completed_successfully`) and so never shares the server with it. The
+reserve is whatever else does run alongside `api`: a `pg_dump` backup, and a
+person's own `psql`. [Kubernetes](kubernetes) is one replica today, so the
+shipped defaults (`30 + 10 = 40`) leave `97 - 40 = 57` of a default
+`max_connections=100` for that reserve. A second replica would need `80`
+instead, leaving `17` - at which point the pool sizes, not the reserve, are
+what to turn down.
+
+**Memory per backend.** Each connection is a Postgres backend process, and
+each one holds working memory beyond Postgres's own `shared_buffers` - more
+once it has carried a wide row or a big result set. Budget
+`(replicas x (HatchPoolSize + QuartzPoolSize)) x the widest backend you have measured`,
+within whatever limits the container or the pod. HA-2765 is the board this
+story's figures came from: about 4,200 issues, 20,000 comments and 130,000
+events (230 MB in all), where an ordinary backend held 7 to 14 MB and a wide
+one up to 34 MB - one board's own numbers, not a figure to carry to another.
+
+**Shared buffers against the size of the database.** `shared_buffers` (`128MB`
+on the shipped image) is Postgres's own cache of table and index pages; a
+database much larger than it will read more from disk, and a database that
+fits inside it mostly will not. There is no formula here either - it is a
+number to raise once the database has grown enough to measure the difference,
+in `postgresql.conf` or a `command:` override on the `db` service.
+
+**Measure it, on the running install:**
+
+| Question | How |
+|---|---|
+| What is `max_connections`/`shared_buffers`/`superuser_reserved_connections` set to? | `SHOW max_connections;` and the same for the other two, in `psql`. |
+| How many backends are open, and in what state? | `SELECT state, count(*) FROM pg_stat_activity GROUP BY state;` |
+| How much memory does one backend hold? | The process's own PSS: `grep Pss /proc/<pid>/smaps_rollup` inside the `db` container, where `<pid>` is a backend's OS process id (`SELECT pid FROM pg_stat_activity`); or `SELECT * FROM pg_log_backend_memory_contexts(<pid>)` and read the next line it writes to the Postgres log. |
+| How big is the database, and is `shared_buffers` keeping up? | `SELECT pg_size_pretty(pg_database_size(current_database()));` for the first; `SELECT blks_hit, blks_read FROM pg_stat_database WHERE datname = current_database();` for the second - a `blks_hit` far above `blks_read` is `shared_buffers` doing its job. |
 
 ## How to stop
 
