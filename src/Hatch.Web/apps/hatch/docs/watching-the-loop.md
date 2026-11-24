@@ -527,10 +527,11 @@ own row, named, live or gone, with its own age and its own windows - one row
 for one runner. A row also says where its reading came from, `from the session
 stream` or `from a probe`, and, when the runner's usage probe is off, `probe
 off: ` and the reason; a reading that has not said where from shows neither.
-The page itself re-reads every thirty seconds, and
-again whenever a backgrounded tab is brought forward, so it follows a
-runner within about a minute. [Flow, WIP and the battery](flow-wip-and-the-battery)
-covers what the board does with this reading.
+The page itself re-reads every thirty seconds while the tab is on screen.
+A tab nobody is looking at asks nothing, and asks once when it is brought
+forward, so it follows a runner within about a minute.
+[Flow, WIP and the battery](flow-wip-and-the-battery) covers what the board
+does with this reading.
 
 ## What is waiting on you
 

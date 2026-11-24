@@ -22,6 +22,61 @@ export function mayRefresh({ visible, paused }: { visible: boolean; paused: bool
   return visible && !paused;
 }
 
+/** The three members of `document` that `pollWhileVisible` uses, so a test can
+    pass a stand-in without a DOM. */
+export interface VisibilitySource {
+  readonly visibilityState: DocumentVisibilityState | string;
+  addEventListener(type: 'visibilitychange', listener: () => void): void;
+  removeEventListener(type: 'visibilitychange', listener: () => void): void;
+}
+
+/**
+ * Calls `load` on a timer for as long as the page is on screen, and not at all
+ * while it is hidden.
+ *
+ * A tab nobody is looking at sends no timed request. Browsers slow a hidden
+ * tab's timers but do not stop them, so the timer is cleared while hidden
+ * rather than left to skip its ticks. When the page comes back, `load` is
+ * called once at once and a fresh interval starts, so the next tick is a full
+ * `everyMs` after the catch-up. A page that starts hidden asks nothing until it
+ * is shown. Every case is decided by `mayRefresh`, the one rule that
+ * `useLoaded` shares.
+ *
+ * Returns a function that stops it. An explicit reload is the caller's own
+ * `load` and never passes through here.
+ */
+export function pollWhileVisible({
+  load,
+  everyMs,
+  doc = document,
+}: {
+  load: () => void;
+  everyMs: number;
+  doc?: VisibilitySource;
+}): () => void {
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  const stopTimer = () => {
+    if (timer !== undefined) clearInterval(timer);
+    timer = undefined;
+  };
+
+  const sync = () => {
+    stopTimer();
+    if (!mayRefresh({ visible: doc.visibilityState === 'visible', paused: false })) return;
+    load();
+    timer = setInterval(load, everyMs);
+  };
+
+  doc.addEventListener('visibilitychange', sync);
+  sync();
+
+  return () => {
+    stopTimer();
+    doc.removeEventListener('visibilitychange', sync);
+  };
+}
+
 /**
  * Whether an answer that has come back may be applied.
  *

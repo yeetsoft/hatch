@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getAllRunners, getRunners } from '../api/client';
 import type { Runner } from '../types';
+import { pollWhileVisible } from './refresh';
 
-/** How often the page re-asks. Shorter than the nav battery's thirty seconds
-    because this is a control surface somebody is watching while they press
-    something: a Pause that took thirty seconds to show as paused would read
-    as a button that did nothing. */
+/** How often the page re-asks while its tab is on screen. Shorter than the
+    nav battery's thirty seconds because this is a control surface somebody is
+    watching while they press something: a Pause that took thirty seconds to
+    show as paused would read as a button that did nothing. */
 export const POLL_MS = 20 * 1000;
 
 export interface RunnersState {
@@ -26,10 +27,11 @@ export interface RunnersState {
  * The runners, kept current.
  *
  * Three things move it, exactly as `useUtilization` is moved and for the same
- * reasons: the first load, an interval, and `visibilitychange` - a backgrounded
- * tab's timers are throttled to a stop, so a tab brought forward after an hour
- * would otherwise show an hour-old page. Focus is not enough on its own,
- * because a tab revealed without being clicked is never focused.
+ * reasons: the first load, an interval, and the tab coming back into view. A
+ * hidden tab asks nothing, however long it stays hidden, and asks once at once
+ * when it is shown, so a tab brought forward after an hour shows a current
+ * page. Focus is not enough on its own, because a tab revealed without being
+ * clicked is never focused.
  *
  * A runner changes on its own, all night, which is the whole reason there is a
  * page for one - and the board polls for the same reason. The runners page asks
@@ -38,7 +40,8 @@ export interface RunnersState {
  *
  * `enabled` is for `QueueControl`, which is mounted on the board all the time:
  * its modal must not poll while closed, so turning this false clears the timer
- * and the listener and turning it true reads at once.
+ * and the listener and turning it true reads at once, if the tab is on
+ * screen.
  *
  * `all` reads every runner, revoked and gone ones included, for the runners
  * page; left false it reads the live ones, which is what the board wants.
@@ -59,18 +62,7 @@ export function useRunners(enabled = true, all = false): RunnersState {
   useEffect(() => {
     if (!enabled) return;
 
-    void load();
-
-    const timer = setInterval(() => void load(), POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void load();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
+    return pollWhileVisible({ load: () => void load(), everyMs: POLL_MS });
   }, [load, enabled]);
 
   return { runners, error, reload: load };
