@@ -182,16 +182,7 @@ public class BoardHealthController(
 
         // Each name's rows from the window's start, and the newest before it.
         var names = visible.Select(r => r.Name).ToList();
-        var rows = (await db.RunnerStates.AsNoTracking()
-                .Where(s => names.Contains(s.Runner))
-                .Where(s => s.At >= axis.From
-                    || s.Id == db.RunnerStates
-                        .Where(x => x.Runner == s.Runner && x.At < axis.From)
-                        .OrderByDescending(x => x.At).ThenByDescending(x => x.Id)
-                        .Select(x => (long?)x.Id)
-                        .FirstOrDefault())
-                .OrderBy(s => s.At).ThenBy(s => s.Id)
-                .ToListAsync(ct))
+        var rows = (await BoardHealthTrail.RunnerStatesAsync(db, names, axis.From, ct))
             .ToLookup(s => s.Runner, StringComparer.Ordinal);
 
         var inputs = new List<RunnerLanes.RunnerInput>(visible.Count);
