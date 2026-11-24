@@ -171,8 +171,6 @@ public sealed class Dispatch(
                 return Scan.Refused($"there is no project {string.Join(", ", unknownProjects)}");
         }
 
-        var statuses = await OrderedStatusesAsync(ct);
-
         // The scope, resolved once before the columns are walked. Null is the
         // whole board; a list is the subtree, and an empty one is a childless
         // issue, which is honestly "nothing under it" and falls out as an empty
@@ -218,26 +216,29 @@ public sealed class Dispatch(
 
         var loop = new LoopScope(DayNumber(now, offsetMinutes), offsetMinutes, mine, principal, callerKeyId);
 
-        // One instant for the whole pass. A scan in which the clock moved
-        // between two rows could fold one card and not its neighbour for a
-        // reason nobody could reconstruct afterwards.
-        // Read once for the pass: the claim lineage, the dependency gate and the
-        // family gate all answer one-PR questions from it. Read whole, whatever
-        // the calling key's owner may see: a level on a hidden ancestor still
-        // applies, and a parent is never closed over a child the key cannot
-        // see. The issue dispatched is still one the key can see - the
-        // candidates below come through the filter.
-        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
+        // Everything a fold reads that is the same for every caller and every
+        // runner - see ScanLoad. Read only now, past every refusal above, so a
+        // refused scan never pays for it.
+        var load = await ScanLoad.ReadAsync(db, actors, claims, now, ct);
 
-        var claimed = new ClaimGate(claims, now, heldToken, await claims.LineageAsync(db, actors, now, ct, tree));
+        var declaration = new ScanDeclaration(tags, models, has, signing, forge, refusal, asking, foldLetGo, projects, repos);
 
-        var gate = await DependencyGate.ForAsync(db, actors, statuses, ct, tree);
-        var family = await FamilyGate.ForAsync(db, actors, statuses, ct, tree);
-        var wip = await Wip.LoadAsync(db, actors, claims, statuses, now, ct);
-        var playbooks = await db.Playbooks.AsNoTracking()
-            .Include(p => p.FromStatus)
-            .Include(p => p.ToStatus)
-            .ToListAsync(ct);
+        return await FoldAsync(load, declaration, caller, offsetMinutes, heldToken, mine, markDeadlocks, scope, within, loop, askerPreferred, ct);
+    }
+
+    private async Task<Scan> FoldAsync(
+        ScanLoad load, ScanDeclaration declaration, ScanCaller caller, int offsetMinutes, Guid? heldToken, bool mine,
+        bool markDeadlocks, List<long>? scope, VisibleProjects? within, LoopScope loop, bool askerPreferred, CancellationToken ct)
+    {
+        var (tags, models, has, signing, forge, refusal, asking, foldLetGo, projects, repos) = declaration;
+        var now = load.Now;
+        var statuses = load.Statuses;
+        var tree = load.Tree;
+        var gate = load.Dependencies;
+        var family = load.Family;
+        var wip = load.Wip;
+        var playbooks = load.Playbooks;
+        var claimed = new ClaimGate(claims, now, heldToken, load.Lineage);
         var boardWidePlaybooks = playbooks.Where(p => p.ProjectId == null).ToList();
 
         // A repo-sourced project's own resolution - the primary repository, its
@@ -299,7 +300,7 @@ public sealed class Dispatch(
 
         // Every epic a candidate's own parent might be, read once for the
         // whole pass - HA-112's own limit, beside the section-wide one.
-        var epics = await Wip.EpicsAsync(db, candidates.Select(i => i.ParentId), ct);
+        var epics = Wip.Epics(tree, candidates.Select(i => i.ParentId));
 
         // What runners have found about the branches of the issues in review
         // and the issues waiting to merge, read once for the pass and
@@ -4354,6 +4355,76 @@ public sealed class Disclosure
             : list.Select(o => o.FromKey is { } key && Hidden(key) ? o with { FromKey = "", BeyondScope = true } : o).ToList();
 }
 
+// ---- The load and the fold ----
+
+/// <summary>
+/// What a scan reads that is the same for every caller and every runner,
+/// whatever it is deciding: the board's tree, who holds a live claim along
+/// it, what stands in each issue's way, the family and WIP sections, and the
+/// playbook matrix. Holds nothing of a caller's own declaration - see
+/// <see cref="ScanDeclaration"/> - so a peer's scan (HA-2797) can share one
+/// load with nothing in it to narrow for itself.
+/// </summary>
+public sealed record ScanLoad(
+    DateTimeOffset Now,
+    List<EfHatchStatus> Statuses,
+    PriorityTree Tree,
+    ClaimLineage Lineage,
+    DependencyGate Dependencies,
+    FamilyGate Family,
+    WipSection? Wip,
+    List<EfHatchPlaybook> Playbooks)
+{
+    /// <summary>
+    /// Reads every table above, each once, from the one tree. <paramref name="now"/>
+    /// is read by the caller before this, past every refusal a scan might
+    /// already answer with, so a refused scan never pays for any of it.
+    /// </summary>
+    public static async Task<ScanLoad> ReadAsync(
+        HatchContext db, IActorDirectory actors, IssueClaims claims, DateTimeOffset now, CancellationToken ct)
+    {
+        // One instant for the whole pass. A scan in which the clock moved
+        // between two rows could fold one card and not its neighbour for a
+        // reason nobody could reconstruct afterwards.
+        // Read once for the pass: the claim lineage, the dependency gate and the
+        // family gate all answer one-PR questions from it. Read whole, whatever
+        // the calling key's owner may see: a level on a hidden ancestor still
+        // applies, and a parent is never closed over a child the key cannot
+        // see. The issue dispatched is still one the key can see - the
+        // candidates come through the filter, in the fold.
+        var tree = await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
+
+        // The tree's own read, not a second query: it already ordered every
+        // status by (SortOrder, Id) to build itself.
+        var statuses = tree.Statuses;
+
+        var lineage = await claims.LineageAsync(db, actors, now, ct, tree);
+        var gate = await DependencyGate.ForAsync(db, actors, statuses, ct, tree);
+        var family = await FamilyGate.ForAsync(db, actors, statuses, ct, tree);
+        // Qualified: an unqualified Wip here would resolve to this record's own
+        // Wip property rather than the static class of the same name.
+        var wip = await global::Hatch.Api.Modules.Hatch.Wip.LoadAsync(db, actors, claims, statuses, now, ct, tree);
+        var playbooks = await db.Playbooks.AsNoTracking()
+            .Include(p => p.FromStatus)
+            .Include(p => p.ToStatus)
+            .ToListAsync(ct);
+
+        return new ScanLoad(now, statuses, tree, lineage, gate, family, wip, playbooks);
+    }
+}
+
+/// <summary>
+/// One caller's own declaration, bundled so <see cref="Dispatch.FoldAsync"/>
+/// takes a load and a declaration rather than ten loose parameters. Nothing
+/// here is read from the database - it is what the caller said, or
+/// <c>Unjudged</c> where it said nothing - so it carries no table <see cref="ScanLoad"/>
+/// already holds.
+/// </summary>
+internal sealed record ScanDeclaration(
+    TagDeclaration Tags, ModelDeclaration Models, HasDeclaration Has, SigningDeclaration Signing,
+    ForgeDeclaration Forge, RunnerRefusal? Refusal, RunnerAsking? Asking, bool FoldLetGo,
+    IReadOnlyList<string>? Projects, RepositoryDeclaration Repos);
+
 /// <summary>
 /// The parent/key/priority of every issue, read once, and the question
 /// "what priority is live here" answered against it by walking to the
@@ -4413,6 +4484,13 @@ public sealed class PriorityTree
     // the issue's own row among them - read once here rather than per call.
     private readonly List<EfHatchStatus> _statuses;
 
+    /// <summary>
+    /// The statuses this tree was built with, in board order - the same read
+    /// <see cref="ScanLoad.ReadAsync"/> takes rather than querying Statuses a
+    /// second time once a tree already carries it.
+    /// </summary>
+    public List<EfHatchStatus> Statuses => _statuses;
+
     // What those people may do, read once. A level on an ancestor in another
     // project is honoured only while its setter passes it; see HonoursAcross.
     private readonly SetterAuthority _authority;
@@ -4444,6 +4522,21 @@ public sealed class PriorityTree
     private readonly HashSet<long> _hiddenChildParents;
     private readonly HashSet<string>? _visibleKeys;
 
+    // Every id, in the (Rank, Id) order the single read below is made in -
+    // board order, so a caller that used to read Issues again for that order
+    // (IssueClaims.LineageAsync, FamilyGate.ForAsync) can walk this instead.
+    private readonly List<long> _order;
+
+    // Each issue's own nine claim columns, lifted the same way IssueClaims.cs
+    // does - so Wip.LoadAsync and IssueClaims.LineageAsync read a claim off
+    // the tree rather than from Issues a second and a third time. An id with
+    // no live claim at all still carries one, its Token null.
+    private readonly Dictionary<long, ClaimSnapshot> _claims;
+
+    // Each epic's own WIP limit, by its id - Wip.EpicsAsync's filter, read
+    // once here instead of by a second query over the same table.
+    private readonly Dictionary<long, EpicLimit> _epics;
+
     internal PriorityTree(
         Dictionary<long, (long?, string, int, int)> rows,
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
@@ -4459,7 +4552,10 @@ public sealed class PriorityTree
         HashSet<long>? visible = null,
         Dictionary<long, Guid?>? startedBy = null,
         List<EfHatchStatus>? statuses = null,
-        Dictionary<long, (string Level, int Count)>? questions = null)
+        Dictionary<long, (string Level, int Count)>? questions = null,
+        List<long>? order = null,
+        Dictionary<long, ClaimSnapshot>? claims = null,
+        Dictionary<long, EpicLimit>? epics = null)
     {
         _rows = rows;
         _questions = questions ?? new();
@@ -4476,6 +4572,9 @@ public sealed class PriorityTree
         _runnerTags = runnerTags ?? new();
         _dangerous = dangerous ?? new();
         _omissions = omissions ?? new();
+        _order = order ?? rows.Keys.ToList();
+        _claims = claims ?? new();
+        _epics = epics ?? new();
         _parents = rows.Values
             .Where(r => r.Item1 is not null)
             .Select(r => r.Item1!.Value)
@@ -4507,6 +4606,9 @@ public sealed class PriorityTree
         _parents = whole._parents;
         _startedBy = whole._startedBy;
         _statuses = whole._statuses;
+        _order = whole._order;
+        _claims = whole._claims;
+        _epics = whole._epics;
         _visible = visible;
         _hiddenChildParents = whole._rows.Where(r => r.Value.ParentId is not null && !visible.Contains(r.Key))
             .Select(r => r.Value.ParentId!.Value)
@@ -4562,14 +4664,22 @@ public sealed class PriorityTree
         var issues = ignoreFilters ? db.Issues.IgnoreQueryFilters() : db.Issues;
         var omissions = ignoreFilters ? db.RunnerOmissions.IgnoreQueryFilters() : db.RunnerOmissions;
 
+        // (Rank, Id): board order, kept on _order below so a caller that used
+        // to read Issues a second time purely for that order - the claim
+        // lineage, the family gate - can walk this tree instead.
         var rows = await issues.AsNoTracking()
+            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
             .Select(i => new
             {
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous, ProjectPriority = i.Project!.Priority,
-                i.LocalModel, i.HumanWork, i.ProjectId, i.PreApprovalSetBy, i.PrioritySetBy, i.StartedBy,
+                i.LocalModel, i.HumanWork, i.ProjectId, i.PreApprovalSetBy, i.PrioritySetBy, i.StartedBy, i.WipLimit,
+                Claim = new ClaimSnapshot(
+                    i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
+                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
             })
             .ToListAsync(ct);
 
@@ -4580,6 +4690,8 @@ public sealed class PriorityTree
         var omissionRows = await omissions.AsNoTracking()
             .Select(o => new { o.IssueId, o.RunnerName, o.Reason, o.By, o.At })
             .ToListAsync(ct);
+
+        var runsChildren = IssueTypeKinds.RunsChildrenTypes;
 
         return new PriorityTree(
             rows.ToDictionary(
@@ -4603,7 +4715,11 @@ public sealed class PriorityTree
             visible,
             rows.ToDictionary(r => r.Id, r => (Guid?)r.StartedBy),
             statuses,
-            questions);
+            questions,
+            rows.Select(r => r.Id).ToList(),
+            rows.ToDictionary(r => r.Id, r => r.Claim),
+            rows.Where(r => runsChildren.Contains(r.Type) && r.WipLimit is not null)
+                .ToDictionary(r => r.Id, r => new EpicLimit(r.Id, IssueKey.Format(r.ProjectKey, r.Number), r.WipLimit!.Value)));
     }
 
     /// <summary>
@@ -4618,6 +4734,36 @@ public sealed class PriorityTree
         _hiddenChildParents.Contains(id));
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
+
+    /// <summary>Every id this tree holds, in board order - (Rank, Id) as read. What <see cref="IssueClaims.LineageAsync"/>, <see cref="FamilyGate.ForAsync"/> and <see cref="Wip.LoadAsync"/> walk instead of reading <c>Issues</c> a second time.</summary>
+    public IReadOnlyList<long> OrderedIds => _order;
+
+    /// <summary>This issue's own nine claim columns, lifted at the same read as everything else - null for an id the tree has none for.</summary>
+    internal ClaimSnapshot? Claim(long id) => _claims.GetValueOrDefault(id);
+
+    /// <summary>The project this issue sits in, or 0 for an id the tree has none for - a tree built by hand never crosses a line.</summary>
+    internal int ProjectOf(long id) => _projects.GetValueOrDefault(id);
+
+    /// <summary>This epic's own WIP limit, or null where it has none or is not a type that runs children - <see cref="Wip.EpicsAsync"/>'s filter, read once at construction.</summary>
+    internal EpicLimit? Epic(long id) => _epics.GetValueOrDefault(id);
+
+    /// <summary>
+    /// The row <see cref="FamilyGate.ForAsync"/> and <see cref="Wip.LoadAsync"/>
+    /// each used to read off <c>Issues</c> a second time: this issue's parent,
+    /// type, key, column, project and who first started it. False for an id
+    /// the tree has none for.
+    /// </summary>
+    internal bool TryGetFamily(long id, out (long? ParentId, string Type, string Key, int StatusId, int ProjectId, Guid? StartedBy) row)
+    {
+        if (_rows.TryGetValue(id, out var r) && _onePr.TryGetValue(id, out var o))
+        {
+            row = (r.ParentId, o.Type, r.Key, o.StatusId, _projects.GetValueOrDefault(id), _startedBy.GetValueOrDefault(id));
+            return true;
+        }
+
+        row = default;
+        return false;
+    }
 
     /// <summary>Whether two issues sit in one project. An issue the tree has no project for reads as the same, so a tree built by hand never crosses a line.</summary>
     private bool SameProject(long a, long b) =>
@@ -5354,33 +5500,33 @@ public sealed class FamilyGate
 
         // Every project, not the caller's: a child in a project the caller
         // cannot see still counts toward its parent's fold, so an epic is not
-        // closed over work the caller merely cannot read.
-        var rows = await db.Issues.IgnoreQueryFilters().AsNoTracking()
-            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
-            .Select(i => new { i.Id, i.ParentId, i.StatusId, i.Type, ProjectKey = i.Project!.Key, i.Number, i.ProjectId, i.StartedBy })
-            .ToListAsync(ct);
+        // closed over work the caller merely cannot read. Off the tree's own
+        // read rather than a second one over Issues - it already carries every
+        // row in (Rank, Id) order, unfiltered.
+        tree ??= await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
 
         var projectById = new Dictionary<long, int>();
         var children = new Dictionary<long, List<long>>();
         var open = new HashSet<long>();
         var statusById = new Dictionary<long, int>();
         var byId = new Dictionary<long, (long?, string, string, int, int, Guid?)>();
-        foreach (var row in rows)
+        foreach (var id in tree.OrderedIds)
         {
-            if (!terminal.Contains(row.StatusId)) open.Add(row.Id);
-            statusById[row.Id] = row.StatusId;
-            projectById[row.Id] = row.ProjectId;
-            byId[row.Id] = (row.ParentId, row.Type, IssueKey.Format(row.ProjectKey, row.Number), row.StatusId, row.ProjectId, row.StartedBy);
+            if (!tree.TryGetFamily(id, out var row)) continue;
+
+            if (!terminal.Contains(row.StatusId)) open.Add(id);
+            statusById[id] = row.StatusId;
+            projectById[id] = row.ProjectId;
+            byId[id] = row;
 
             if (row.ParentId is not { } parent) continue;
             if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
-            siblings.Add(row.Id);
+            siblings.Add(id);
         }
 
         // Every task waiting on its story's pull request, found once for the
         // pass - see PriorityTree.WaitingOn. A board that shares no pull request
         // anywhere has an empty set and every rule below is exactly as it was.
-        tree ??= await PriorityTree.ForAsync(db, actors, ct, ignoreFilters: true);
         var waiting = tree.WaitingIds(statuses).Keys.ToHashSet();
 
         // Which tasks share a parent's branch, and which parent - read off the

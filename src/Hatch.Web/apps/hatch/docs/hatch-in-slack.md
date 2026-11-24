@@ -473,6 +473,12 @@ Each workspace is one row, with its name, where your link stands, and a button:
 - **Linked as** a name offers **Unlink**. Unlinking asks first, and removes
   only what Hatch holds. Nothing in Slack is touched.
 
+A linked row also carries a **Runner failures** switch, on by default. Turning
+it off stops a new direct message for a failure that opens afterwards; a
+message already sent still gets edited when that failure ends. See
+[Direct messages](#direct-messages). A line under the row says what Slack last
+said when it refused to send to this link, and it goes once a send works.
+
 An admin can remove anybody's link on **Manage → Users**, in the **Slack**
 column of that person's row. Removing a person removes their links too.
 [People, roles and keys](people-roles-and-keys) has the page.

@@ -1,3 +1,4 @@
+using System.Reflection;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
@@ -4934,6 +4935,32 @@ public class DispatchTests
         Assert.False(Dispatch.RunsLocally(ModelDeclaration.Of(["alpha:1b"], null), "alpha:1b"));
         Assert.False(Dispatch.RunsLocally(ModelDeclaration.Unjudged, "alpha:1b"));
         Assert.False(Dispatch.RunsLocally(null, "alpha:1b"));
+    }
+
+    // ---- The load and the fold ----
+
+    /// <summary>
+    /// <see cref="ScanLoad"/> is what every caller and every runner read alike -
+    /// it holds no reference to one caller's own declaration, which
+    /// <see cref="ScanDeclaration"/> carries instead. A type that crept into
+    /// this list would be a load no peer's scan (HA-2797) could safely share.
+    /// </summary>
+    [Fact]
+    public void ScanLoad_HoldsNoneOfACallersOwnDeclaration()
+    {
+        var forbidden = new[]
+        {
+            typeof(TagDeclaration), typeof(ModelDeclaration), typeof(HasDeclaration), typeof(SigningDeclaration),
+            typeof(ForgeDeclaration), typeof(RunnerAsking), typeof(RunnerRefusal), typeof(RepositoryDeclaration),
+        };
+
+        var type = typeof(ScanLoad);
+        var memberTypes = type.GetProperties().Select(p => p.PropertyType)
+            .Concat(type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public).Select(f => f.FieldType))
+            .Concat(type.GetConstructors().SelectMany(c => c.GetParameters()).Select(p => p.ParameterType));
+
+        foreach (var member in memberTypes)
+            Assert.DoesNotContain(member, forbidden);
     }
 
     private static async Task<Harness> NewAsync()

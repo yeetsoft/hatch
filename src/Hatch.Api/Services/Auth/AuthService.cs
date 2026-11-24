@@ -168,6 +168,13 @@ public class AuthService(
     /// <summary>Codes are ~40 bits, so a collision is a rounding error away from impossible - but a unique index turns one into a 500 for whoever was standing there, and a retry costs three lines.</summary>
     private const int CodeCollisionRetries = 3;
 
+    // Memoized per instance, which is per request: AuthService is scoped, so
+    // this is cleared the moment a write below could have changed the answer
+    // and never carried past the request it was read in. Several callers in
+    // one scan each asking "who holds this key" would otherwise read every
+    // key as many times as they asked.
+    private Task<IReadOnlyList<EfApiKey>>? keysTask;
+
     public async Task<AuthInviteCreated> CreateInviteAsync(string? label, Guid? personId, bool isBootstrap, CancellationToken ct)
     {
         var now = time.GetUtcNow();
@@ -372,7 +379,10 @@ public class AuthService(
         return key;
     }
 
-    public async Task<IReadOnlyList<EfApiKey>> ListApiKeysAsync(CancellationToken ct) =>
+    public Task<IReadOnlyList<EfApiKey>> ListApiKeysAsync(CancellationToken ct) =>
+        keysTask ??= ReadKeysAsync(ct);
+
+    private async Task<IReadOnlyList<EfApiKey>> ReadKeysAsync(CancellationToken ct) =>
         await db.ApiKeys.AsNoTracking().Include(k => k.Owner).OrderByDescending(k => k.CreatedAt).ToListAsync(ct);
 
     public async Task<ApiKeyCreated?> CreateApiKeyAsync(string name, Guid? ownerPersonId, CancellationToken ct)
@@ -394,6 +404,7 @@ public class AuthService(
 
         db.ApiKeys.Add(key);
         await db.SaveChangesAsync(ct);
+        keysTask = null;
 
         logger.LogInformation("API key {KeyId} ({Name}) minted, owned by {OwnerPersonId}", key.Id, key.Name, key.OwnerPersonId);
         return new ApiKeyCreated(key, secret);
@@ -411,6 +422,7 @@ public class AuthService(
         {
             key.RevokedAt = time.GetUtcNow();
             await db.SaveChangesAsync(ct);
+            keysTask = null;
             logger.LogWarning("API key {KeyId} ({Name}) revoked", key.Id, key.Name);
         }
 
@@ -427,6 +439,7 @@ public class AuthService(
         key.Hash = AuthTokens.Hash(secret);
         key.RotatedAt = time.GetUtcNow();
         await db.SaveChangesAsync(ct);
+        keysTask = null;
 
         // Never the secret, nor its prefix: the log names which key changed.
         logger.LogWarning("API key {KeyId} ({Name}) rotated", key.Id, key.Name);
@@ -440,6 +453,7 @@ public class AuthService(
 
         key.OwnerPersonId = personId;
         await db.SaveChangesAsync(ct);
+        keysTask = null;
 
         // Information rather than Warning, the same choice SetGrantPersonAsync
         // makes and for the same reason: this changes whose tickets a --mine
