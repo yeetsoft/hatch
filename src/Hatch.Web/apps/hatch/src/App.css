@@ -4871,6 +4871,15 @@ button.hatch-chip {
   overflow-wrap: anywhere;
 }
 
+.hatch-chat-listen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .hatch-chat-links-note {
   margin: 0;
   overflow-wrap: anywhere;

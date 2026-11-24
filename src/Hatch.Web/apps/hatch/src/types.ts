@@ -3974,6 +3974,12 @@ export interface ChatWorkspaceDelivery {
   lastSaid: string | null;
   lastSaidAt: string | null;
   failingSince: string | null;
+  /** When the listening connection last opened; null until one has. */
+  listeningSince: string | null;
+  /** When the run of failed attempts to listen began; null while listening works. */
+  listenFailingSince: string | null;
+  /** The sentence the last failed attempt was refused with; null when none. */
+  listenLastSaid: string | null;
 }
 
 /** Delivery state for every workspace, and whether messages can link back to a

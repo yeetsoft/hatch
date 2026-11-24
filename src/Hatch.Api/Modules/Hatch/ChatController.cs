@@ -59,7 +59,7 @@ public class ChatController(
     public async Task<ActionResult<ChatDeliveryDto>> GetDelivery(CancellationToken ct)
     {
         var workspaces = await db.ChatWorkspaces.AsNoTracking().OrderBy(w => w.CreatedAt).ThenBy(w => w.Id)
-            .Select(w => new { w.Id, w.LastRefusal, w.LastRefusalAt, w.SendFailingSince })
+            .Select(w => new { w.Id, w.LastRefusal, w.LastRefusalAt, w.SendFailingSince, w.ListeningSince, w.ListenFailingSince, w.ListenLastRefusal })
             .ToListAsync(ct);
 
         var counts = await db.ChatMessages.AsNoTracking()
@@ -77,7 +77,8 @@ public class ChatController(
             counts.TryGetValue(w.Id, out var c);
 
             return new ChatWorkspaceDeliveryDto(
-                w.Id, c?.Waiting ?? 0, c?.Dropped ?? 0, w.LastRefusal, w.LastRefusalAt, w.SendFailingSince);
+                w.Id, c?.Waiting ?? 0, c?.Dropped ?? 0, w.LastRefusal, w.LastRefusalAt, w.SendFailingSince,
+                w.ListeningSince, w.ListenFailingSince, w.ListenLastRefusal);
         }).ToList();
 
         return new ChatDeliveryDto(links.On, rows);

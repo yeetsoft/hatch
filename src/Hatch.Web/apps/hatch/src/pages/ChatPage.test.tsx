@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AddTokenForm, AppTokenCell, DeliveryState, LinksOffNote, ManifestBlock, RemoveDialog, ReplaceTokenForm, WorkspaceTable } from './ChatPage';
+import { AddTokenForm, AppTokenCell, DeliveryState, LinksOffNote, ListenState, ManifestBlock, RemoveDialog, ReplaceTokenForm, WorkspaceTable } from './ChatPage';
 import type { ChatWorkspace, ChatWorkspaceDelivery, Project } from '../types';
 
 // The client reaches lib/clientLogger, which reads `window` at import, and
@@ -158,6 +158,9 @@ const delivery = (over: Partial<ChatWorkspaceDelivery> = {}): ChatWorkspaceDeliv
   lastSaid: null,
   lastSaidAt: null,
   failingSince: null,
+  listeningSince: null,
+  listenFailingSince: null,
+  listenLastSaid: null,
   ...over,
 });
 
@@ -197,6 +200,71 @@ describe('what is waiting to be sent', () => {
     const html = renderToStaticMarkup(<LinksOffNote />);
     expect(html).toContain('no link');
     expect(html).toContain('HATCH_PUBLIC_URL');
+  });
+});
+
+describe('whether Hatch is listening', () => {
+  const HELD = withAppToken({ hasAppToken: true });
+  const UNREADABLE = withAppToken({ hasAppToken: true, appTokenUnreadable: true });
+  const listen = (w: ChatWorkspace, over?: Partial<ChatWorkspaceDelivery>) =>
+    renderToStaticMarkup(<ListenState workspace={w} state={over ? delivery(over) : undefined} now={NOW} />);
+
+  it('draws nothing where no app token is held', () => {
+    expect(listen(withAppToken({}))).toBe('');
+    expect(listen(withAppToken({}), { listeningSince: '2026-03-01T11:00:00Z' })).toBe('');
+  });
+
+  it('says Listening, and when the connection opened', () => {
+    const html = listen(HELD, { listeningSince: '2026-03-01T11:57:00Z' });
+    expect(html).toContain('Listening');
+    expect(html).toContain('opened 3 minutes ago');
+    expect(html).not.toContain('Not listening');
+    expect(html).not.toContain('text-danger');
+  });
+
+  it('says Not listening in red, with when it first failed and what Slack said', () => {
+    const html = listen(HELD, {
+      listeningSince: '2026-03-01T08:00:00Z',
+      listenFailingSince: '2026-03-01T11:55:00Z',
+      listenLastSaid: 'invalid_auth',
+    });
+    expect(html).toContain('text-danger');
+    expect(html).toContain('Not listening');
+    expect(html).not.toContain('Not listening yet');
+    expect(html).toContain('first failed 5 minutes ago');
+    expect(html).toContain('Slack said: invalid_auth');
+    expect(html).not.toContain('opened');
+  });
+
+  it('says Not listening yet, not in red, for a held token that has neither opened nor failed', () => {
+    const html = listen(HELD, {});
+    expect(html).toContain('Not listening yet');
+    expect(html).not.toContain('text-danger');
+    expect(html).not.toContain('Slack said');
+  });
+
+  it('reads Not listening for an unreadable token with a stale open time, and does not give Slack the words', () => {
+    const html = listen(UNREADABLE, {
+      listeningSince: '2026-03-01T08:00:00Z',
+      listenLastSaid: 'The app token cannot be read.',
+    });
+    expect(html).toContain('Not listening');
+    expect(html).toContain('text-danger');
+    expect(html).not.toContain('Listening<');
+    expect(html).not.toContain('Slack said');
+  });
+
+  it('reads Not listening yet for a held token with no delivery entry', () => {
+    const html = listen(HELD);
+    expect(html).toContain('Not listening yet');
+  });
+
+  it('is drawn inside the app token cell of the table', () => {
+    const html = table([HELD], false, [delivery({ listeningSince: '2026-03-01T11:57:00Z' })]);
+    const cellHtml = html.slice(html.indexOf('hatch-chat-apptoken-cell'), html.indexOf('hatch-chat-projects-cell'));
+    expect(cellHtml).toContain('hatch-chat-listen');
+    expect(cellHtml).toContain('opened 3 minutes ago');
+    expect(html.match(/<td[ >]/g)).toHaveLength(7);
   });
 });
 

@@ -131,7 +131,22 @@ whether or not the token is accepted, and the token is never shown again.
 removes only the app token: the bot token and the workspace stay.
 
 Accepting a token does not show that Socket Mode is switched on in the app.
-HA-2806 will show whether Hatch is listening.
+Under the token, the same cell shows whether Hatch is listening. It says one
+of these, and says nothing while no app token is held:
+
+- **Listening.** Hatch has a connection open to Slack, and says when it
+  **opened**.
+- **Not listening.** Hatch has tried and failed, in red. It says when it
+  **first failed** and, where Slack gave a reason, **Slack said:** and the
+  sentence. See [Not listening](#not-listening).
+- **Not listening yet.** A token is held, and Hatch has neither opened a
+  connection nor failed to. This is the short wait after a token is set, a few
+  seconds.
+
+Slack closes a connection every few hours and Hatch opens another, so a brief
+gap, or a new **opened** time, is not a fault. The cell is read again every half
+minute while the page is open. The buttons are not here yet (HA-2720), so
+listening changes nothing you can see in a room today.
 
 ## What a message looks like
 
@@ -287,6 +302,27 @@ projects.
   message goes out on the next try.
 - **Dropped** means a message was unsent for a day and Hatch gave up on it. It
   is not sent later. Mend the cause, and the next change posts as usual.
+
+### Not listening
+
+The **App token** cell says **Not listening** in red, with when it **first
+failed**. Hatch tries again by itself, so mend the cause and the cell turns to
+**Listening** without anything pressed. Three causes are usual:
+
+- **The app-level token was revoked.** Slack said so: the sentence names the
+  token. Make a new app-level token with the `connections:write` scope, and
+  paste it into the cell.
+- **Socket Mode was turned off in the app.** The sentence says so. Turn **Socket
+  Mode** on in the app's settings in Slack. Hatch tries again within ten
+  minutes.
+- **The server cannot reach Slack.** There is no sentence from Slack, or it
+  names a connection that failed. A firewall or a proxy is nearly always the
+  cause. The connection goes out from Hatch to Slack and nothing comes in, so
+  the server needs to reach Slack's address and nothing more.
+
+If the cell says **The app token cannot be read. Paste it again.**, it does not
+draw a sentence from Slack: the token is stored but cannot be opened, and
+pasting it again mends it.
 
 ### When Slack is down
 

@@ -309,6 +309,7 @@ export function WorkspaceTable({
                 onSet={onSetAppToken}
                 onRemove={onRemoveAppToken}
               />
+              <ListenState workspace={workspace} state={delivery.find((d) => d.workspaceId === workspace.id)} now={now} />
             </td>
             <td className="hatch-chat-projects-cell">
               <ChatBindings workspace={workspace} projects={projects} busy={busy} onChange={onBound} />
@@ -350,6 +351,48 @@ export function DeliveryState({ state, now }: { state: ChatWorkspaceDelivery | u
           {state.lastSaidAt && ` (${agoPhrase(state.lastSaidAt, now)})`}
         </span>
       )}
+    </div>
+  );
+}
+
+/** Whether Hatch is listening to a workspace. Three states, the first drawn by
+    AppTokenCell: no app token draws nothing here. A readable token with an open
+    connection and no run of failures reads Listening, with when it opened. Any
+    other held token reads Not listening, red once it has failed, with when the
+    failures began and the sentence Slack gave. An unreadable token's stored
+    sentence is Hatch's own, which AppTokenCell already says, so it is not
+    drawn as Slack's; and a stale open time on one never reads as listening. */
+export function ListenState({
+  workspace,
+  state,
+  now,
+}: {
+  workspace: ChatWorkspace;
+  state: ChatWorkspaceDelivery | undefined;
+  now: Date;
+}) {
+  const unreadable = workspace.appTokenUnreadable;
+  if (!workspace.hasAppToken && !unreadable) return null;
+
+  const since = state?.listeningSince ?? null;
+  const failing = state?.listenFailingSince ?? null;
+  if (!unreadable && since && !failing) {
+    return (
+      <div className="hatch-chat-listen">
+        <span>Listening</span>
+        <span>opened {agoPhrase(since, now)}</span>
+      </div>
+    );
+  }
+
+  const said = !unreadable && state?.listenLastSaid && state.listenLastSaid.trim() !== '' ? state.listenLastSaid : null;
+  const tried = unreadable || failing || said;
+
+  return (
+    <div className="hatch-chat-listen">
+      <span className={tried ? 'text-danger' : undefined}>{tried ? 'Not listening' : 'Not listening yet'}</span>
+      {failing && <span>first failed {agoPhrase(failing, now)}</span>}
+      {said && <span>Slack said: {said}</span>}
     </div>
   );
 }

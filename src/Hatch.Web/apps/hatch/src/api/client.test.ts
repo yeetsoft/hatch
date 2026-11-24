@@ -906,7 +906,7 @@ describe('chat page calls', () => {
   it('getChatDelivery GETs the delivery state', async () => {
     const delivery = {
       linksOn: false,
-      workspaces: [{ workspaceId: 4, waiting: 2, dropped: 1, lastSaid: 'ratelimited', lastSaidAt: null, failingSince: null }],
+      workspaces: [{ workspaceId: 4, waiting: 2, dropped: 1, lastSaid: 'ratelimited', lastSaidAt: null, failingSince: null, listeningSince: null, listenFailingSince: null, listenLastSaid: null }],
     };
     const fetchMock = vi.fn(async () => new Response(JSON.stringify(delivery), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

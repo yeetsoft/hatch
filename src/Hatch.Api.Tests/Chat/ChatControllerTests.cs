@@ -581,6 +581,9 @@ public class ChatControllerTests
         row.LastRefusal = "ratelimited";
         row.LastRefusalAt = Now;
         row.SendFailingSince = Now.AddMinutes(-5);
+        row.ListeningSince = Now.AddHours(-2);
+        row.ListenFailingSince = Now.AddMinutes(-7);
+        row.ListenLastRefusal = "invalid_auth";
         await h.Db.SaveChangesAsync();
 
         var delivery = Value(await h.Chat.GetDelivery(default));
@@ -598,6 +601,13 @@ public class ChatControllerTests
         Assert.Equal(0, globexRow.Dropped);
         Assert.Null(globexRow.LastSaid);
         Assert.Null(globexRow.FailingSince);
+
+        Assert.Equal(Now.AddHours(-2), acmeRow.ListeningSince);
+        Assert.Equal(Now.AddMinutes(-7), acmeRow.ListenFailingSince);
+        Assert.Equal("invalid_auth", acmeRow.ListenLastSaid);
+        Assert.Null(globexRow.ListeningSince);
+        Assert.Null(globexRow.ListenFailingSince);
+        Assert.Null(globexRow.ListenLastSaid);
     }
 
     [Fact]
