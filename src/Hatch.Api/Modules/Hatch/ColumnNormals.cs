@@ -110,8 +110,14 @@ public sealed class ColumnNormals
     /// otherwise a fresh read. Concurrent callers wait for one read. Nothing is
     /// kept if the read throws or is cancelled.
     /// </summary>
+    /// <param name="rows">
+    /// Every project's rows when the caller already holds them (a health poll reads
+    /// them off its priority tree, see <see cref="BoardHealthTrail.RowsFrom"/>); read
+    /// here from <c>Issues</c> when null. Only a fresh read uses them.
+    /// </param>
     public async Task<IReadOnlyList<Normal>> ForAsync(
-        HatchContext db, List<EfHatchStatus> statuses, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, List<EfHatchStatus> statuses, DateTimeOffset now, CancellationToken ct,
+        IReadOnlyList<TimelineReport.Row>? rows = null)
     {
         var fingerprint = Fingerprint(statuses);
 
@@ -121,7 +127,7 @@ public sealed class ColumnNormals
             if (_answer is { } held && _fingerprint == fingerprint && now - _madeAt < Lifetime)
                 return held;
 
-            var rows = await ReadAsync(db, ct);
+            rows ??= await ReadAsync(db, ct);
             var leaves = Leaves(rows);
             var moves = await FlowRead.MovesAsync(
                 db, leaves, statuses, now - Window, now, leaves.Select(r => r.Id).ToList(), true, ct);

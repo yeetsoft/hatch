@@ -236,6 +236,17 @@ internal static class AttentionReviews
                 .Select(c => c.ParentId!.Value).Distinct().ToListAsync(ct))
                 .ToHashSet();
 
+        // The playbook each of those cards would meet on the way into the merge column, and the
+        // fleet that would judge its dependencies: read once for the whole column, and only
+        // where a project lets a passing check approve the merge and a card stands in it,
+        // so a board with none runs neither read, and a board with many runs each once.
+        var approving = reviewCandidates.Where(i => Columns.Approves(statuses, review, i.CheckApprovesMerge) is not null).ToList();
+        PlaybookMatcher? matcher = null;
+        if (approving.Count > 0 && Columns.Approves(statuses, review, true) is { } approvedColumn)
+            matcher = await dispatch.MatcherAsync(review.Id, approvedColumn.Id, approving.Select(i => i.ProjectId).ToList(), ct);
+
+        IReadOnlyList<RunnerDeclaration>? fleet = null;
+
         var reviews = new List<(long IssueId, string ProjectKey, ReviewDto Dto)>();
         foreach (var i in reviewCandidates)
         {
@@ -243,8 +254,9 @@ internal static class AttentionReviews
             // passing check approves the merge" is not a person's row here -
             // the move itself speaks for it, the same question Dispatch.ScanAsync
             // and WorkController.RouteAsync ask for the same row.
-            if (Columns.Approves(statuses, review, i.CheckApprovesMerge) is { } approved
-                && (await dispatch.MatchAsync(review.Id, approved.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId, ct))?.Playbook is { IsCheck: true })
+            if (matcher is not null
+                && Columns.Approves(statuses, review, i.CheckApprovesMerge) is not null
+                && matcher.Match(i.Type, hasChildren.Contains(i.Id), i.ProjectId).Playbook is { IsCheck: true })
                 continue;
 
             var repos = bound.TryGetValue(i.ProjectId, out var r) ? r : [];
@@ -284,7 +296,13 @@ internal static class AttentionReviews
                 string? fleetLacks = null;
                 if (dependencyCheck is { DependencyFileContent: { } content }
                     && DependencyDeclaration.Parse(Encoding.UTF8.GetBytes(content)) is { Dependencies: { } needs })
-                    fleetLacks = await dispatch.FleetLacksAsync(needs, dependencyCheck.Canonical, runners.Cutoff(now), ct);
+                {
+                    if (needs.Count > 0)
+                    {
+                        fleet ??= await dispatch.FleetDeclarationsAsync(runners.Cutoff(now), ct);
+                        fleetLacks = Dispatch.FleetLacks(needs, dependencyCheck.Canonical, fleet);
+                    }
+                }
 
                 var judged = MergeWork.Judge(repos, issueMerges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now, review.Name, pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.RecordedBranch, fleetLacks: fleetLacks);
                 if (judged.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending) continue;

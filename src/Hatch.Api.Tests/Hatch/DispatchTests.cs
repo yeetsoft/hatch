@@ -3110,6 +3110,118 @@ public class DispatchTests
     }
 
     [Fact]
+    public async Task FamilyGate_ReadForStructureOnly_AnswersLeafnessAsTheFullGateDoes_AndRefusesWhatItDidNotRead()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "E", h.InProgress);
+        var openStory = await h.FileAsync("story", "open", h.InProgress, parentId: epic.Id);
+        var doneStory = await h.FileAsync("story", "done", h.Done, parentId: epic.Id);
+        var openTask = await h.FileAsync("task", "open", h.Todo, parentId: openStory.Id);
+        var doneTask = await h.FileAsync("task", "done", h.Done, parentId: doneStory.Id);
+        var loose = await h.FileAsync("task", "loose", h.Review);
+        var ambition = await h.FileAsync("ambition", "A", h.InProgress);
+        await h.FileAsync("epic", "under the ambition", h.InProgress, parentId: ambition.Id);
+        var statuses = await h.Db.Statuses.OrderBy(s => s.SortOrder).ToListAsync();
+
+        var full = await FamilyGate.ForAsync(h.Db, h.Actors, statuses, default);
+        var structure = await FamilyGate.ForAsync(h.Db, h.Actors, statuses, default, structureOnly: true);
+
+        foreach (var issue in await h.Db.Issues.ToListAsync())
+            Assert.Equal(full.IsLeaf(issue.Id, issue.Type, statuses), structure.IsLeaf(issue.Id, issue.Type, statuses));
+
+        Assert.False(structure.IsLeaf(epic.Id, "epic", statuses));
+        Assert.True(structure.IsLeaf(loose.Id, "task", statuses));
+        Assert.Equal(full.OpenChildren(epic.Id), structure.OpenChildren(epic.Id));
+
+        // An empty set is not an answer: the two members that needed what was not read refuse.
+        Assert.Throws<InvalidOperationException>(() => structure.IsChangelogTask(openTask.Id));
+        Assert.Throws<InvalidOperationException>(() => structure.PassFold(ambition.Id, null, statuses, Now));
+        Assert.False(full.IsChangelogTask(openTask.Id));
+        Assert.Null(full.PassFold(ambition.Id, 2, statuses, Now));
+        Assert.NotNull(doneTask);
+    }
+
+    [Fact]
+    public async Task MatcherAsync_AnswersAsMatchAsyncDoes_ForARepoSourcedAndAnOrdinaryProject()
+    {
+        var h = await NewAsync();
+        var sourced = await h.AddProjectAsync("SRC");
+        var elsewhere = await h.AddProjectAsync("ELS");
+        await h.SetRepoSourcedAsync(projectId: sourced);
+        var repo = await h.AddRepositoryAsync(baseBranch: "main", projectId: sourced);
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, model: "fable")]);
+
+        // The board's own rows: one for every project, one that names a type, one for the ordinary
+        // project alone, and one that names the repo-sourced project, which its file shuts out.
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, model: "sonnet");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, types: "story", model: "haiku");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, types: "task", projectId: h.ProjectId, model: "opus");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress, types: "bug", projectId: sourced, model: "table-row-of-a-sourced-project");
+
+        var matcher = await h.Dispatch.MatcherAsync(h.Todo, h.InProgress, [h.ProjectId, sourced, elsewhere, 9999], default);
+
+        var seen = new HashSet<string?>();
+        foreach (var project in new[] { h.ProjectId, sourced, elsewhere, 9999 })
+        foreach (var type in new[] { "task", "story", "bug", "epic" })
+        foreach (var isParent in new[] { false, true })
+        {
+            var one = await h.Dispatch.MatchAsync(h.Todo, h.InProgress, type, isParent, project, default);
+            var many = matcher.Match(type, isParent, project);
+
+            Assert.Equal(one?.Playbook?.Id, many.Playbook?.Id);
+            Assert.Equal(one?.Playbook?.Model, many.Playbook?.Model);
+            Assert.Equal(one?.Source, many.Source);
+            Assert.Equal(one?.File, many.File);
+            seen.Add(many.Playbook?.Model);
+        }
+
+        // Every layer was exercised, so equal answers are not equally empty ones.
+        Assert.Contains("fable", seen);
+        Assert.Contains("sonnet", seen);
+        Assert.Contains("haiku", seen);
+        Assert.Contains("opus", seen);
+        Assert.DoesNotContain("table-row-of-a-sourced-project", seen);
+
+        // A project it was not read for is refused, not judged against another's rows.
+        Assert.Throws<InvalidOperationException>(() => matcher.Match("task", false, 123456));
+    }
+
+    [Fact]
+    public async Task BoardHealthTrail_IssuesFrom_IsTheRowsADirectReadReturns_ForAnUnscopedAndAScopedCaller()
+    {
+        var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        var epic = await h.FileAsync("epic", "E", h.InProgress, rank: 1000);
+        var withUrl = await h.FileAsync("task", "has a url", h.Review, rank: 3000, parentId: epic.Id);
+        withUrl.PullRequestUrl = "https://example.com/o/r/pull/1";
+        var blank = await h.FileAsync("task", "blank url", h.Review, rank: 2000, parentId: epic.Id);
+        blank.PullRequestUrl = "  ";
+        var elsewhere = await h.FileAsync("story", "in the other project", h.Todo, rank: 500, projectId: other, parentId: epic.Id);
+        elsewhere.NoCode = "nothing to ship";
+        await h.ExpressAsync(withUrl);
+
+        var tree = await PriorityTree.ForAsync(h.Db, h.Actors, default, ignoreFilters: true);
+
+        foreach (var db in new[] { h.Db, ScopeSeed.Request(h.Options, ScopeSeed.Only(h.ProjectId)) })
+        {
+            var direct = (await BoardHealthTrail.IssuesAsync(db, default)).OrderBy(i => i.Row.Id).ToList();
+            var fromTree = BoardHealthTrail.IssuesFrom(tree, db).OrderBy(i => i.Row.Id).ToList();
+
+            Assert.Equal(direct, fromTree);
+        }
+
+        // The scoped caller's rows really are fewer, and the one with a blank url has none.
+        var scoped = BoardHealthTrail.IssuesFrom(tree, ScopeSeed.Request(h.Options, ScopeSeed.Only(h.ProjectId)));
+        Assert.DoesNotContain(scoped, i => i.Row.Id == elsewhere.Id);
+        Assert.True(scoped.Single(i => i.Row.Id == withUrl.Id).HasPullRequest);
+        Assert.False(scoped.Single(i => i.Row.Id == blank.Id).HasPullRequest);
+        Assert.Equal(PreApprovalLevels.Express, scoped.Single(i => i.Row.Id == withUrl.Id).OwnPreApproval);
+
+        // The house's rows, for the normals, are every project's.
+        Assert.Equal(4, BoardHealthTrail.RowsFrom(tree).Count);
+    }
+
+    [Fact]
     public async Task ScanAsync_AChildInAnotherProjectThatIsNotDone_HoldsTheEpicOutOfCloseWhoeverAsks()
     {
         var h = await NewAsync();

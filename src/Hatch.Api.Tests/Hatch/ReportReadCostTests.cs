@@ -191,18 +191,26 @@ public class ReportReadCostTests
         ["GET /api/reports/activity"] = (
             new(12, 3, 1861, 1281, "Comments=220;IssueEvents=4088;Issues=1401;Projects=8;Statuses=18"),
             new(12, 3, 1861, 1281, "Comments=720;IssueEvents=6588;Issues=1600;Projects=8;Statuses=18")),
-        // The trail reads are bounded (HA-2783, see the BoardHealthTrail lines above). What still
-        // grows is the dispatch and family-gate reads (HA-2790), one statement and one issue load fewer
-        // than before HA-2796: FamilyGate.ForAsync reads every row off the tree it is handed rather than
-        // Issues a second time. The column normals (HA-2786) are bounded
-        // now, so the rows returned are the same at both sizes; what is left is Postgres reading more of
-        // Issues at the large size, and Comments.
+        // The poll sends the same statements and returns the same rows at both sizes, and whatever stands
+        // in review: BoardHealthReadCostTests holds that apart. It loads Issues end to end once, in the
+        // priority tree (HA-2790); the strip's rows, the column normals and the wait history are cut
+        // from that load. The loads that remain are the trail's probes (the window's moves, claims,
+        // levels and records, the kept thirty days' moves, levels and records, and the normals' moves),
+        // which read an id and a time per issue, and the partial reads for the titles and the cards
+        // with children. It stays in this list because Postgres still reads more of two tables at the
+        // large size: Comments (1,782 against 1,923) and Issues (4,802 against 5,402). Neither comes
+        // from the trail's reads. Measured alone at the large size, the priority tree's read of the waiting
+        // questions (Questions.WaitingLevelsAsync) has Postgres read 720 rows of Comments against 220,
+        // and 400 of Issues against 201, because it joins Issues and Statuses with no index that
+        // answers it. The attention panel's Questions.Waiting also joins Issues through the query
+        // filters in each of its subqueries, and is shared with GET /api/attention. Neither can
+        // change without a new index or a change to what the attention panel answers.
         ["GET /api/board/health"] = (
-            new(62, 17, 5694, 2641, "Comments=1782;IssueEvents=2755;Issues=5402;LegacyRunners=3;Projects=20;RunnerStates=27;Statuses=30"),
-            new(62, 17, 5694, 2641, "Comments=1923;IssueEvents=2607;Issues=6002;LegacyRunners=3;Projects=20;RunnerStates=3;Statuses=30")),
+            new(57, 14, 5094, 2641, "Comments=1782;IssueEvents=2755;Issues=4802;LegacyRunners=3;Projects=14;RunnerStates=27;Statuses=30"),
+            new(57, 14, 5094, 2641, "Comments=1923;IssueEvents=2607;Issues=5402;LegacyRunners=3;Projects=14;RunnerStates=3;Statuses=30")),
         ["GET /api/board/health?project"] = (
-            new(66, 18, 5655, 2591, "Comments=1782;IssueEvents=2799;Issues=5804;LegacyRunners=3;Projects=26;RunnerStates=27;Statuses=30"),
-            new(66, 18, 5655, 2591, "Comments=1923;IssueEvents=2651;Issues=6404;LegacyRunners=3;Projects=26;RunnerStates=3;Statuses=30")),
+            new(61, 15, 5055, 2591, "Comments=1782;IssueEvents=2799;Issues=5204;LegacyRunners=3;Projects=20;RunnerStates=27;Statuses=30"),
+            new(61, 15, 5055, 2591, "Comments=1923;IssueEvents=2651;Issues=5804;LegacyRunners=3;Projects=20;RunnerStates=3;Statuses=30")),
     };
 
     private sealed record Read(string Name, Func<Harness, Task> Call);
@@ -530,7 +538,7 @@ public class ReportReadCostTests
     }
 
     /// <summary>The controllers, built over the one measured context.</summary>
-    private sealed class Harness
+    internal sealed class Harness
     {
         public required HatchContext Db { get; init; }
         public required List<EfHatchStatus> Statuses { get; init; }

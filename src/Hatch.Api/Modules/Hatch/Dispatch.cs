@@ -1452,12 +1452,31 @@ public sealed class Dispatch(
     {
         if (needs.Count == 0) return null;
 
-        var fleet = (await LivePeersAsync(time.GetUtcNow(), liveSince, null, ct))
-            .Where(p => p.Declaration.Refusal is null
-                && (!p.Declaration.Repos.IsDeclared || p.Declaration.Repos.Match(canonical) is not null))
+        return FleetLacks(needs, canonical, await FleetDeclarationsAsync(liveSince, ct));
+    }
+
+    /// <summary>
+    /// What every live peer has declared - the one read <see cref="FleetLacksAsync"/> makes,
+    /// for a pass that asks it of several cards and so reads it once, then judges each with
+    /// <see cref="FleetLacks"/>.
+    /// </summary>
+    public async Task<IReadOnlyList<RunnerDeclaration>> FleetDeclarationsAsync(DateTimeOffset liveSince, CancellationToken ct) =>
+        (await LivePeersAsync(time.GetUtcNow(), liveSince, null, ct)).Select(p => p.Declaration).ToList();
+
+    /// <summary>
+    /// <see cref="FleetLacksAsync"/>'s judgement against declarations already in hand: no
+    /// database, and the same answer for the same peers.
+    /// </summary>
+    public static string? FleetLacks(
+        IReadOnlyList<DeclaredDependency> needs, string canonical, IReadOnlyList<RunnerDeclaration> peers)
+    {
+        if (needs.Count == 0) return null;
+
+        var fleet = peers
+            .Where(d => d.Refusal is null && (!d.Repos.IsDeclared || d.Repos.Match(canonical) is not null))
             .ToList();
 
-        var withHas = fleet.Select(p => p.Declaration).Where(d => d.Has.Judged).ToList();
+        var withHas = fleet.Where(d => d.Has.Judged).ToList();
         if (withHas.Count == 0) return null;
 
         var needed = NeededPhrases(
@@ -3647,11 +3666,49 @@ public sealed class Dispatch(
     /// filtered afterward, so one can never be loaded as a candidate here
     /// even if one somehow exists on the table.
     /// </remarks>
-    public async Task<PlaybookMatch?> MatchAsync(int from, int to, string type, bool isParent, int projectId, CancellationToken ct)
+    public async Task<PlaybookMatch?> MatchAsync(int from, int to, string type, bool isParent, int projectId, CancellationToken ct) =>
+        (await MatcherAsync(from, to, [projectId], ct)).Match(type, isParent, projectId);
+
+    /// <summary>
+    /// <see cref="MatchAsync"/> for a pass's worth of cards on one edge: the projects' own rows
+    /// (with their repositories) and the edge's playbooks are read once, each repo-sourced
+    /// project is resolved once, and the answer for a card is then arithmetic - the same
+    /// <see cref="Match"/> and <see cref="SourceOf"/> <see cref="MatchAsync"/> runs, which is
+    /// built on this, so the two cannot drift. A project that is repo-sourced keeps its file
+    /// rows beside the table rows that name no project, as <see cref="ReadRowsAsync"/> does.
+    /// </summary>
+    public async Task<PlaybookMatcher> MatcherAsync(int from, int to, IReadOnlyCollection<int> projectIds, CancellationToken ct)
     {
-        var (rows, file) = await ReadRowsAsync(from, to, projectId, ct);
-        var playbook = Match(rows, from, to, type, isParent, projectId);
-        return new PlaybookMatch(playbook, SourceOf(playbook), file);
+        var wanted = projectIds.Distinct().ToList();
+        var projects = (await db.Projects.AsNoTracking()
+                .Include(p => p.Repositories)
+                .Where(p => wanted.Contains(p.Id))
+                .ToListAsync(ct))
+            .ToDictionary(p => p.Id);
+
+        var tableRows = await db.Playbooks.AsNoTracking()
+            .Include(p => p.FromStatus)
+            .Include(p => p.ToStatus)
+            .Include(p => p.Project)
+            .Where(p => p.FromStatusId == from && p.ToStatusId == to)
+            .ToListAsync(ct);
+
+        var byProject = new Dictionary<int, (List<EfHatchPlaybook> Rows, PlaybookFileReference? File)>();
+        foreach (var id in wanted)
+        {
+            if (!projects.TryGetValue(id, out var project))
+            {
+                byProject[id] = (tableRows, null);
+                continue;
+            }
+
+            var (repoSourced, fileRows, file) = await ResolveRepoSourcedAsync(project, ct);
+            byProject[id] = (
+                fileRows.Concat(repoSourced is not null ? tableRows.Where(p => p.ProjectId == null) : tableRows).ToList(),
+                file);
+        }
+
+        return new PlaybookMatcher(from, to, byProject);
     }
 
     /// <summary>
@@ -3759,7 +3816,7 @@ public sealed class Dispatch(
     /// naming a project is today's own-project-row case, and anything else is
     /// the board. Null only where there is no row to speak of at all.
     /// </summary>
-    private static string? SourceOf(EfHatchPlaybook? playbook) => playbook switch
+    internal static string? SourceOf(EfHatchPlaybook? playbook) => playbook switch
     {
         null => null,
         { Id: < 0 } => "file",
@@ -3959,6 +4016,38 @@ public sealed record PlaybookFileReference(string Path, string Canonical, string
 /// against. <see cref="Source"/> is null only where <see cref="Playbook"/> is.
 /// </summary>
 public sealed record PlaybookMatch(EfHatchPlaybook? Playbook, string? Source, PlaybookFileReference? File);
+
+/// <summary>
+/// <see cref="Dispatch.MatchAsync"/> for many cards on one edge, read once - see
+/// <see cref="Dispatch.MatcherAsync"/>. Holds every candidate row for each project asked about.
+/// </summary>
+public sealed class PlaybookMatcher
+{
+    private readonly int _from;
+    private readonly int _to;
+    private readonly Dictionary<int, (List<EfHatchPlaybook> Rows, PlaybookFileReference? File)> _byProject;
+
+    internal PlaybookMatcher(int from, int to, Dictionary<int, (List<EfHatchPlaybook> Rows, PlaybookFileReference? File)> byProject)
+    {
+        _from = from;
+        _to = to;
+        _byProject = byProject;
+    }
+
+    /// <summary>
+    /// What <see cref="Dispatch.MatchAsync"/> answers for a card of this type and shape in
+    /// <paramref name="projectId"/>. Throws for a project the matcher was not built for, so a
+    /// card is never judged against rows read for another.
+    /// </summary>
+    public PlaybookMatch Match(string type, bool isParent, int projectId)
+    {
+        if (!_byProject.TryGetValue(projectId, out var read))
+            throw new InvalidOperationException($"this matcher was not read for project {projectId}");
+
+        var playbook = Dispatch.Match(read.Rows, _from, _to, type, isParent, projectId);
+        return new PlaybookMatch(playbook, Dispatch.SourceOf(playbook), read.File);
+    }
+}
 
 /// <summary>
 /// One dependency a project's repository declares in
@@ -4537,6 +4626,22 @@ public sealed class PriorityTree
     // once here instead of by a second query over the same table.
     private readonly Dictionary<long, EpicLimit> _epics;
 
+    /// <summary>
+    /// What the board health strip needs of each issue beyond the rest of this tree:
+    /// the board rank, who made it and when, its project key and number, and whether
+    /// it names a pull request url (not <c>NoCode</c>, which <c>HasPr</c> also counts).
+    /// Lifted at the same read as everything else, so a health poll reads <c>Issues</c>
+    /// once.
+    /// </summary>
+    internal sealed record HealthFacts(
+        long Rank, DateTimeOffset CreatedAt, string CreatedBy, string ProjectKey, int Number, bool HasPullRequestUrl);
+
+    // Each issue's health facts. An id with no entry (a tree built by hand) has none.
+    private readonly Dictionary<long, HealthFacts> _health;
+
+    /// <summary>This issue's health facts, or null for an id the tree has none for.</summary>
+    internal HealthFacts? Health(long id) => _health.GetValueOrDefault(id);
+
     internal PriorityTree(
         Dictionary<long, (long?, string, int, int)> rows,
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
@@ -4555,8 +4660,10 @@ public sealed class PriorityTree
         Dictionary<long, (string Level, int Count)>? questions = null,
         List<long>? order = null,
         Dictionary<long, ClaimSnapshot>? claims = null,
-        Dictionary<long, EpicLimit>? epics = null)
+        Dictionary<long, EpicLimit>? epics = null,
+        Dictionary<long, HealthFacts>? health = null)
     {
+        _health = health ?? new();
         _rows = rows;
         _questions = questions ?? new();
         _visible = visible;
@@ -4609,6 +4716,7 @@ public sealed class PriorityTree
         _order = whole._order;
         _claims = whole._claims;
         _epics = whole._epics;
+        _health = whole._health;
         _visible = visible;
         _hiddenChildParents = whole._rows.Where(r => r.Value.ParentId is not null && !visible.Contains(r.Key))
             .Select(r => r.Value.ParentId!.Value)
@@ -4674,6 +4782,7 @@ public sealed class PriorityTree
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
                 i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
+                i.Rank, i.CreatedAt, i.CreatedBy, i.PullRequestUrl,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous, ProjectPriority = i.Project!.Priority,
                 i.LocalModel, i.HumanWork, i.ProjectId, i.PreApprovalSetBy, i.PrioritySetBy, i.StartedBy, i.WipLimit,
                 Claim = new ClaimSnapshot(
@@ -4719,7 +4828,8 @@ public sealed class PriorityTree
             rows.Select(r => r.Id).ToList(),
             rows.ToDictionary(r => r.Id, r => r.Claim),
             rows.Where(r => runsChildren.Contains(r.Type) && r.WipLimit is not null)
-                .ToDictionary(r => r.Id, r => new EpicLimit(r.Id, IssueKey.Format(r.ProjectKey, r.Number), r.WipLimit!.Value)));
+                .ToDictionary(r => r.Id, r => new EpicLimit(r.Id, IssueKey.Format(r.ProjectKey, r.Number), r.WipLimit!.Value)),
+            rows.ToDictionary(r => r.Id, r => new HealthFacts(r.Rank, r.CreatedAt, r.CreatedBy, r.ProjectKey, r.Number, !string.IsNullOrWhiteSpace(r.PullRequestUrl))));
     }
 
     /// <summary>
@@ -5472,6 +5582,10 @@ public sealed class FamilyGate
     // project line reads as honoured, for the question "would this carry now".
     private bool _honourAcross;
 
+    // Set where ForAsync was told to read structure only: no changelog tasks and no
+    // settled passes were read, so the two members that need them refuse to answer.
+    private bool _structureOnly;
+
     /// <summary>What a parent's starter may do across a project line - see <see cref="PullHeld"/>.</summary>
     public SetterAuthority Authority => _authority;
 
@@ -5493,8 +5607,18 @@ public sealed class FamilyGate
         _changelogTasks = changelogTasks;
     }
 
+    /// <param name="structureOnly">
+    /// Read the tree's structure and nothing else: the children, which of them are open, who is
+    /// waiting on a story's pull request, and the shared stories - everything <see cref="IsLeaf"/>
+    /// needs. The two reads beside it (<c>ChangelogTasks</c>, and the work log for the settled
+    /// passes) are skipped, and the two members that would have used them,
+    /// <see cref="IsChangelogTask"/> and <see cref="PassFold"/>, throw
+    /// <see cref="InvalidOperationException"/> so an empty set is never read as an answer.
+    /// The board health poll asks for this; it asks only leaf-ness.
+    /// </param>
     public static async Task<FamilyGate> ForAsync(
-        HatchContext db, IActorDirectory actors, List<EfHatchStatus> statuses, CancellationToken ct, PriorityTree? tree = null)
+        HatchContext db, IActorDirectory actors, List<EfHatchStatus> statuses, CancellationToken ct, PriorityTree? tree = null,
+        bool structureOnly = false)
     {
         var terminal = statuses.Where(s => s.IsTerminal).Select(s => s.Id).ToHashSet();
 
@@ -5537,11 +5661,16 @@ public sealed class FamilyGate
 
         // Every task the board filed for a changelog, found once for the pass:
         // its brief is the board's own, so a parent pull carries it unanalysed.
-        var changelogTasks = (await db.ChangelogTasks.AsNoTracking().Select(t => t.IssueId).ToListAsync(ct)).ToHashSet();
+        var changelogTasks = structureOnly
+            ? []
+            : (await db.ChangelogTasks.AsNoTracking().Select(t => t.IssueId).ToListAsync(ct)).ToHashSet();
 
-        var settledPass = await SettledPassesAsync(db, statuses, children, ct);
+        var settledPass = structureOnly ? [] : await SettledPassesAsync(db, statuses, children, ct);
 
-        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks, projectById, tree.Authority, settledPass);
+        return new FamilyGate(children, open, statusById, byId, waiting, sharedStory, changelogTasks, projectById, tree.Authority, settledPass)
+        {
+            _structureOnly = structureOnly,
+        };
     }
 
     /// <summary>
@@ -5635,7 +5764,10 @@ public sealed class FamilyGate
     /// Whether the board filed this issue itself as a changelog task - see
     /// <c>ChangelogTasks</c>.
     /// </summary>
-    public bool IsChangelogTask(long issueId) => _changelogTasks.Contains(issueId);
+    public bool IsChangelogTask(long issueId) =>
+        _structureOnly
+            ? throw new InvalidOperationException("this gate was read for structure only and did not read the changelog tasks")
+            : _changelogTasks.Contains(issueId);
 
     /// <summary>
     /// Whether this issue is a task waiting on its story's pull request - see
@@ -5728,6 +5860,9 @@ public sealed class FamilyGate
     /// </summary>
     public (string Sentence, IReadOnlyList<long> Open)? PassFold(long issueId, int? limit, List<EfHatchStatus> statuses, DateTimeOffset now)
     {
+        if (_structureOnly)
+            throw new InvalidOperationException("this gate was read for structure only and did not read the settled passes");
+
         var (_, openIds) = EpicCounts(Children(issueId), statuses);
         var allowed = limit ?? 1;
         if (openIds.Count >= allowed)
