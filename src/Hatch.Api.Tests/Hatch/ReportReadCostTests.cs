@@ -158,7 +158,17 @@ public class ReportReadCostTests
             .Select(part => part.Split('='))
             .ToDictionary(part => part[0], part => long.Parse(part[1]));
 
-    /// <summary>Reads that still grow with history: the small cost, then the large.</summary>
+    /// <summary>
+    /// Reads that still grow with history: the small cost, then the large.
+    ///
+    /// The operator chose to keep them listed (HA-2816, HA-2820), so this list is not empty on
+    /// purpose. What grows in each is Comments, and in two of them Issues, read whole at the large
+    /// size. The cost seed holds 720 comments and 200 issues, too few for Postgres to prefer an
+    /// index to a scan, so no change to a read can make it read the same rows at both sizes: a
+    /// trial partial index on Comments (IssueId) where Kind = 'question' moved neither health line.
+    /// Do not edit a line out of this list unless it is measured the same at both sizes; to settle
+    /// them for good, enlarge the seed and measure again.
+    /// </summary>
     private static readonly Dictionary<string, (Row Small, Row Large)> Grows = new()
     {
         // Its status changes are bounded to the range (HA-2784): IssueEvents is the same at both sizes,
