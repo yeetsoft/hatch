@@ -9,7 +9,9 @@ namespace Hatch.Api.Tests.E2e;
 /// <summary>
 /// HA-2570's acceptance, rendered: the Ambitions page draws two ambitions in
 /// two projects, every count non-zero somewhere, and a question waiting above
-/// the rows. Run at the desktop viewport in Chromium and at the
+/// the rows. HA-2843's beside it: a draft, a ready, a running and a done
+/// ambition, each read by its stage pill and sentence, grouped under headings
+/// with the finished one folded at the foot. Run at the desktop viewport in Chromium and at the
 /// <c>iPhone 14 Pro</c> profile in WebKit, where nothing may scroll sideways
 /// once the strip and each row are brought into view.
 ///
@@ -18,7 +20,10 @@ namespace Hatch.Api.Tests.E2e;
 /// question, one served by an epic that runs, one served by nothing - and runs
 /// two epics at a limit of one. The second sits in another project, runs one
 /// epic filed in the first project at a limit of two, and has a capability
-/// whose newest verdict does not hold. Everything is filed over plain HTTP,
+/// whose newest verdict does not hold. Both are left in the column they were filed in,
+/// past the one the shaping row shapes in, so both are ready. A third is moved
+/// into the implementation column, a fourth into a terminal one, and a fifth is
+/// filed with no capability. Everything is filed over plain HTTP,
 /// rather than anything written straight to the database.</para>
 ///
 /// <para>HA-2842 adds two more cases, each at both profiles: a person presses
@@ -46,7 +51,14 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         string AmbitionA, string TitleA, string AmbitionB, string TitleB,
         string Epic1, string Epic2, string Epic3,
         string EpicTitle1, string EpicTitle2, string EpicTitle3,
-        string EpicColumn1, string EpicColumn2, string EpicColumn3);
+        string EpicColumn1, string EpicColumn2, string EpicColumn3,
+        string Implementation, string Terminal);
+
+    private const string TitleDraft = "Returns are handled without an email";
+
+    private const string TitleRunning = "Stock counts are never a day old";
+
+    private const string TitleDone = "Invoices go out the day an order ships";
 
     /// <summary>
     /// Every row, both tiles and the page's width against the viewport's, read in
@@ -95,6 +107,11 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             rows: [...document.querySelectorAll('.hatch-ambition-row')].map((row) => ({
               edges: edges(row),
               title: row.querySelector('.hatch-ambition-title')?.textContent?.trim() ?? '',
+              stage: texts(row, '.hatch-stage-pill').join('|'),
+              why: texts(row, '.hatch-ambition-why').join('|'),
+              group: row.closest('section')?.querySelector('h2')?.textContent?.trim() ?? '',
+              folded: !!row.closest('details'),
+              shown: row.checkVisibility(),
               project: row.querySelector('.hatch-plan-project')?.textContent?.trim() ?? '',
               headings: texts(row, 'h3'),
               legend: texts(row, '.hatch-ambition-legend li'),
@@ -112,6 +129,13 @@ public class AmbitionsPageTests(ITestOutputHelper output)
                 meta: li.querySelector('.hatch-epics-in-flight-meta')?.textContent?.trim() ?? '',
               })),
             })),
+            groups: texts(document, '.hatch-ambition-group'),
+            fold: (() => {
+              const details = document.querySelector('.hatch-ambition-finished');
+              return details
+                ? { summary: details.querySelector('summary')?.textContent?.trim() ?? '', open: details.open }
+                : null;
+            })(),
             innerWidth: window.innerWidth,
             scrollWidth: document.documentElement.scrollWidth,
           };
@@ -356,21 +380,21 @@ public class AmbitionsPageTests(ITestOutputHelper output)
 
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
-            var seeded = await deadline.BoundAsync("filing two ambitions in two projects", () => SeedAsync(baseUrl));
+            var seeded = await deadline.BoundAsync("filing five ambitions in two projects", () => SeedAsync(baseUrl));
 
             await harness.OpenAsync(deadline, baseUrl, "/ambitions");
             await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-strip");
             await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-capabilities-tile");
             await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-row");
             await harness.WaitForFunctionAsync(
-                deadline, "waiting for both ambition rows", "() => document.querySelectorAll('.hatch-ambition-row').length === 2");
+                deadline, "waiting for every ambition row", "() => document.querySelectorAll('.hatch-ambition-row').length === 5");
 
             var measured = await harness.EvaluateAsync<JsonElement>(deadline, "measuring the Ambitions page", MeasureScript);
             output.WriteLine($"{profileName} /ambitions: {measured}");
             output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"ambitions-{profileName}")}");
 
             var rows = measured.GetProperty("rows").EnumerateArray().ToList();
-            Assert.Equal(2, rows.Count);
+            Assert.Equal(5, rows.Count);
             var rowA = rows.Single(r => r.GetProperty("title").GetString() == seeded.TitleA);
             var rowB = rows.Single(r => r.GetProperty("title").GetString() == seeded.TitleB);
             AssertRowA(rowA, seeded);
@@ -379,9 +403,10 @@ public class AmbitionsPageTests(ITestOutputHelper output)
                 AssertRowsLineUp(rowA, rowB);
             else
                 AssertRowsStack(rowA, rowB);
+            AssertStages(measured, rows, seeded);
             AssertStrip(measured.GetProperty("strip"), seeded);
             AssertCapabilitiesTile(measured.GetProperty("capabilities"));
-            AssertRowsMeetTheTiles(measured.GetProperty("tiles"), rows);
+            AssertRowsMeetTheTiles(measured.GetProperty("tiles"), rows.Where(r => r.GetProperty("shown").GetBoolean()).ToList());
             AssertTilesPlaced(measured.GetProperty("strip"), measured.GetProperty("capabilities"), stacked: profile is not null);
             AssertFits(measured, profile is not null);
 
@@ -390,6 +415,17 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             AssertFits(await ScrollIntoViewAsync(harness, deadline, ".hatch-ambition-strip", 0), profile is not null);
             AssertFits(await ScrollIntoViewAsync(harness, deadline, ".hatch-ambition-row", 0), profile is not null);
             AssertFits(await ScrollIntoViewAsync(harness, deadline, ".hatch-ambition-row", 1), profile is not null);
+
+            // The fold opens on a press and shows the finished row.
+            await harness.ClickAsync(deadline, ".hatch-ambition-finished > summary");
+            await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-finished .hatch-ambition-row");
+            var opened = await harness.EvaluateAsync<JsonElement>(deadline, "measuring the opened fold", MeasureScript);
+            output.WriteLine($"{profileName} /ambitions, fold open: {opened}");
+            output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"ambitions-{profileName}-finished")}");
+            Assert.True(opened.GetProperty("fold").GetProperty("open").GetBoolean());
+            Assert.All(opened.GetProperty("rows").EnumerateArray(), r => Assert.True(r.GetProperty("shown").GetBoolean()));
+            AssertFits(opened, profile is not null);
+            AssertRowsMeetTheTiles(opened.GetProperty("tiles"), opened.GetProperty("rows").EnumerateArray().ToList());
 
             // Last, since it sets the theme by hand and leaves it set.
             foreach (var theme in new[] { "light", "dark" })
@@ -410,6 +446,41 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         finally
         {
             await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// HA-2843: each stage's pill and sentence, the group each row sits under in
+    /// the order the page draws them, and the done one folded and out of sight.
+    /// </summary>
+    private static void AssertStages(JsonElement measured, List<JsonElement> rows, Seeded s)
+    {
+        var ready = $"Nothing runs until a person starts it - move it into \"{s.Implementation}\".";
+
+        Assert.Equal(["Running, 1", "Ready, 2", "Draft, 1"], Strings(measured, "groups"));
+        Assert.Equal(
+            [TitleRunning, s.TitleA, s.TitleB, TitleDraft, TitleDone],
+            rows.Select(r => r.GetProperty("title").GetString()));
+
+        AssertStage(TitleRunning, "Running", "A pass runs as soon as a runner takes it.", "Running, 1");
+        AssertStage(s.TitleA, "Ready", ready, "Ready, 2");
+        AssertStage(s.TitleB, "Ready", ready, "Ready, 2");
+        AssertStage(TitleDraft, "Draft", "It has no capabilities yet.", "Draft, 1");
+        AssertStage(TitleDone, "Done", $"It stands in \"{s.Terminal}\", which closes work.", "");
+
+        var fold = measured.GetProperty("fold");
+        Assert.Equal("1 finished", fold.GetProperty("summary").GetString());
+        Assert.False(fold.GetProperty("open").GetBoolean());
+
+        void AssertStage(string title, string stage, string why, string group)
+        {
+            var row = rows.Single(r => r.GetProperty("title").GetString() == title);
+            Assert.Equal(
+                (stage, why, group),
+                (row.GetProperty("stage").GetString(), row.GetProperty("why").GetString(), row.GetProperty("group").GetString()));
+            var finished = title == TitleDone;
+            Assert.Equal(finished, row.GetProperty("folded").GetBoolean());
+            Assert.Equal(!finished, row.GetProperty("shown").GetBoolean());
         }
     }
 
@@ -465,7 +536,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     {
         var ink = style.GetProperty("ink").GetString();
         var titles = style.GetProperty("titles").EnumerateArray().ToList();
-        Assert.Equal(2, titles.Count);
+        Assert.Equal(5, titles.Count);
         Assert.All(titles, title =>
         {
             Assert.True(
@@ -558,7 +629,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     private static void AssertCapabilitiesTile(JsonElement tile)
     {
         Assert.Equal("Capabilities that hold", tile.GetProperty("heading").GetString());
-        Assert.Equal("1 of 6", tile.GetProperty("value").GetString());
+        Assert.Equal("1 of 7", tile.GetProperty("value").GetString());
         Assert.Equal("2 more in flight. 1 newly holding this week.", tile.GetProperty("note").GetString());
     }
 
@@ -609,7 +680,9 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     /// ambition, in the second project, with two: the first does not hold and
     /// nothing serves it, the second is served by an epic filed in the first
     /// project; its limit is two. Every epic is left in the column it was filed
-    /// in, whose name is read back from the statuses.
+    /// in, whose name is read back from the statuses. Three more in the first
+    /// project: one with no capability, one moved into the implementation column
+    /// and one into a terminal column.
     /// </summary>
     private static async Task<Seeded> SeedAsync(string baseUrl)
     {
@@ -668,9 +741,24 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         var wipText = await wip.Content.ReadAsStringAsync();
         Assert.True(wip.IsSuccessStatusCode, $"PATCH /api/issues/{b.Key}/wip answered {(int)wip.StatusCode}: {wipText}");
 
+        // The stock board ticks no column, so the one a pass runs in is measured: two
+        // left of the first terminal column, the one whose next move is into review.
+        var board = statuses.Where(s => !s.IsDeferred).OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList();
+        var terminal = board.First(s => s.IsTerminal);
+        var implementation = board[board.IndexOf(terminal) - 2];
+
+        await PostAsync<IssueCreateRequest, IssueDto>(http, "/api/issues", new(projectA.Id, "ambition", TitleDraft, null, null, null, null));
+        foreach (var (title, column) in new[] { (TitleRunning, implementation), (TitleDone, terminal) })
+        {
+            var ambition = await PostAsync<IssueCreateRequest, IssueDto>(http, "/api/issues", new(projectA.Id, "ambition", title, null, null, null, null));
+            await PostAsync<CapabilityCreateRequest, CapabilityDto>(http, $"/api/issues/{ambition.Key}/capabilities", new("It works", "Look at it"));
+            await PostAsync<IssueMoveRequest, IssueDto>(http, $"/api/issues/{ambition.Key}/move", new(column.Id, null, null));
+        }
+
         return new Seeded(
             a.Key, titleA, b.Key, titleB, epic1.Key, epic2.Key, epic3.Key,
-            epicTitle1, epicTitle2, epicTitle3, ColumnOf(epic1), ColumnOf(epic2), ColumnOf(epic3));
+            epicTitle1, epicTitle2, epicTitle3, ColumnOf(epic1), ColumnOf(epic2), ColumnOf(epic3),
+            implementation.Name, terminal.Name);
     }
 
     private static async Task ServesAsync(HttpClient http, string epicKey, long capabilityId)

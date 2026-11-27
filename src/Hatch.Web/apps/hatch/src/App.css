@@ -5924,16 +5924,40 @@ input.hatch-inline-title-input {
 
    The card rule is written as `.hatch-ambition-list > .hatch-ambition-row`
    because the board's tile also wears `.hatch-card`, with a thinner pad, a
-   grab cursor and a hover ring, and a bare class would only tie with it. */
+   grab cursor and a hover ring, and a bare class would only tie with it.
+
+   The rows come in groups, one list under a heading for each stage, and the
+   finished ones in a closed list at the foot. */
+/* Only the top margin is named: .hatch-page > * centres every child of the page
+   with auto side margins, and a shorthand here would tie with it and undo that,
+   leaving the rows left of the strip. */
+.hatch-ambition-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin-top: var(--sp-4);
+}
+
+.hatch-ambition-group,
+.hatch-ambition-finished > summary {
+  margin: 0;
+  font-size: var(--t-label);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.hatch-ambition-finished > summary {
+  cursor: pointer;
+  padding: var(--sp-2) 0;
+}
+
 .hatch-ambition-list {
   --ambition-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
   list-style: none;
-  /* auto at the sides: .hatch-page > * centres the list, and the two share a
-     specificity, so a 0 here would pin it left of the heading and strip. */
-  margin: var(--sp-4) auto 0;
+  margin: var(--sp-2) 0 0;
   padding: 0;
 }
 
@@ -5990,6 +6014,42 @@ input.hatch-inline-title-input {
   align-items: center;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
+}
+
+.hatch-ambition-why {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+/* The stage, as a soft pill: money spent or work stopped in the warning fill,
+   work under way or finished well in the success fill, and the rest muted. The
+   word carries the meaning; the colour decorates it. */
+.hatch-stage-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: var(--t-label);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hatch-stage-budget-spent,
+.hatch-stage-stopped {
+  border-color: transparent;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.hatch-stage-running,
+.hatch-stage-complete,
+.hatch-stage-done {
+  border-color: transparent;
+  background: var(--success-bg);
+  color: var(--success-ink);
 }
 
 .hatch-ambition-holds {

@@ -3400,9 +3400,12 @@ public record CapabilityDto(
     string State, CapabilityVerdictDto? NewestVerdict, IReadOnlyList<string> ServedBy);
 
 /// <summary>
-/// One ambition and where it stands: its capabilities counted four ways, and
-/// the epics open beneath it. Every number is derived on read, never stored.
+/// One ambition and where it stands: its stage and what it needs next, its
+/// capabilities counted four ways, and the epics open beneath it. Everything is
+/// derived on read, never stored.
 /// </summary>
+/// <param name="Stage">The first of these that is true: <c>done</c>, <c>shelved</c>, <c>shaping</c>, <c>draft</c>, <c>ready</c>, <c>budget spent</c>, <c>complete</c>, <c>running</c>, <c>stopped</c>.</param>
+/// <param name="StageWhy">One sentence saying what the ambition needs or waits for. A running ambition whose pass is folded reads as the queue words it.</param>
 /// <param name="Limit">The ambition's <c>wipLimit</c>, read as one where it is unset.</param>
 /// <param name="Capabilities">How many capabilities the ambition has. The four counts after it add up to this.</param>
 /// <param name="Holds">Capabilities whose newest verdict is <c>holds</c>.</param>
@@ -3413,7 +3416,8 @@ public record CapabilityDto(
 /// <param name="Open">The epics open beneath the ambition, in rank order. An epic is open when its column is neither closed nor deferred.</param>
 /// <param name="ChildBeyondScope">Some child of this ambition is in a project the reader's scope does not hold. No key and no count of it is told.</param>
 public record AmbitionRowDto(
-    string Key, string ProjectKey, string Title, int StatusId, string StatusName, int Limit,
+    string Key, string ProjectKey, string Title, int StatusId, string StatusName,
+    string Stage, string StageWhy, int Limit,
     int Capabilities, int Holds, int InFlight, int WaitsOnPerson, int NotStarted, int NewlyHolding,
     IReadOnlyList<AmbitionOpenEpicDto> Open, bool ChildBeyondScope = false);
 
@@ -3424,6 +3428,31 @@ public record AmbitionRowDto(
 public record AmbitionOpenEpicDto(
     string Key, string ProjectKey, string Title, int StatusId, string StatusName,
     IReadOnlyList<int> Serves, bool WaitsOnPerson, string? Why);
+
+/// <summary>What changed under the reader's ambitions since an instant, as <c>GET /api/ambitions/changes</c> answers it.</summary>
+/// <param name="Since">The instant the lines run from, inclusive.</param>
+/// <param name="Basis"><c>given</c> when a <c>since</c> was sent, <c>visit</c> when it is the person's stored last visit, <c>week</c> when there was nothing to go on and <paramref name="Since"/> is seven days before now.</param>
+/// <param name="Omitted">How many more lines there were than <c>MaxLines</c>.</param>
+/// <param name="Lines">Newest first by <see cref="AmbitionChangeLineDto.At"/>, then kind, issue key and statement.</param>
+public record AmbitionChangesDto(DateTimeOffset Since, string Basis, int Omitted, IReadOnlyList<AmbitionChangeLineDto> Lines);
+
+/// <summary>One thing that changed. Fields a kind has no use for are null.</summary>
+/// <param name="Kind"><c>holds</c>, <c>carved</c>, <c>decided</c> or <c>asked</c>.</param>
+/// <param name="At">When it happened: the newest verdict's time, the epic's filing, the answer or the close, or the newest question.</param>
+/// <param name="AmbitionKey">The ambition it is beneath, or itself for <c>holds</c>.</param>
+/// <param name="IssueKey">The issue the line is about: the ambition for <c>holds</c>.</param>
+/// <param name="Statement">The capability's statement, for <c>holds</c>.</param>
+/// <param name="LookedAt">What the verdict says was looked at, for <c>holds</c>.</param>
+/// <param name="Serves">The positions of the ambition's capabilities the epic serves, ascending, for <c>carved</c>.</param>
+/// <param name="WentAheadOn">What the work went ahead on, for <c>decided</c>.</param>
+/// <param name="Question">The first line of the newest question, for <c>asked</c>.</param>
+/// <param name="Count">How many hold-level questions are open on the issue, for <c>asked</c>.</param>
+public record AmbitionChangeLineDto(
+    string Kind, DateTimeOffset At, string AmbitionKey, string AmbitionTitle, string IssueKey, string IssueTitle,
+    string? Statement, string? LookedAt, IReadOnlyList<int>? Serves, string? WentAheadOn, string? Question, int? Count);
+
+/// <summary>When one person last opened one page, as <c>PUT /api/me/visits/ambitions</c> answers it.</summary>
+public record PersonVisitDto(string Page, DateTimeOffset VisitedAt);
 
 /// <summary>Adds a capability. Neither line may be blank.</summary>
 /// <param name="Position">Where to put it, 1 to one past the last. Left out, it goes at the end.</param>

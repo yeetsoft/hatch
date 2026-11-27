@@ -1,3 +1,4 @@
+using System.Globalization;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -7,8 +8,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// Where every ambition stands, in one call: its capabilities counted four
-/// ways and the epics open beneath it.
+/// Where every ambition stands, in one call: its stage and what it needs next,
+/// its capabilities counted four ways and the epics open beneath it.
 ///
 /// Nothing is stored. Every number is worked out on read, from the same rows
 /// and the same tree the queue reads, so this page and the queue cannot
@@ -17,7 +18,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/ambitions")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class AmbitionsController(HatchContext db, IActorDirectory actors, TimeProvider time) : ControllerBase
+public class AmbitionsController(HatchContext db, IActorDirectory actors, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     private const string Ambition = "ambition";
 
@@ -27,8 +28,11 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
     private static readonly TimeSpan NewlyHoldingWindow = TimeSpan.FromDays(7);
 
     /// <summary>
-    /// Every ambition the reader may see, in board order: column sort order,
-    /// then rank, then id.
+    /// Every ambition the reader may see, grouped by stage: <c>budget spent</c>,
+    /// <c>running</c>, <c>stopped</c>, <c>complete</c>, <c>ready</c>,
+    /// <c>shaping</c>, <c>draft</c>, then <c>done</c> and <c>shelved</c>
+    /// together. Inside a group they keep board order: column sort order, then
+    /// rank, then id.
     /// </summary>
     /// <param name="projectId">
     /// Whose ambitions to list, or every project's when absent or empty;
@@ -43,6 +47,11 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
     /// a hold-level question is on it or an ancestor, when a dangerous flag
     /// stands over any open question there, or when it is held. A question on
     /// a story beneath the epic folds nothing: the walk only goes up.
+    ///
+    /// <para>The stage is <see cref="AmbitionStage.Of"/>'s. Everything it needs
+    /// is read once for the whole list - the columns, the playbooks, the queue's
+    /// own gate and the budgets - so the cost does not grow with the number of
+    /// ambitions.</para>
     /// </remarks>
     [HttpGet]
     public async Task<ActionResult<AmbitionRowDto[]>> GetAmbitions([FromQuery] List<int>? projectId, CancellationToken ct)
@@ -56,12 +65,14 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
             .Select(i => new
             {
                 i.Id,
+                i.ProjectId,
                 ProjectKey = i.Project!.Key,
                 i.Number,
                 i.Title,
                 i.StatusId,
                 StatusName = i.Status!.Name,
                 i.WipLimit,
+                i.BudgetUsd,
             })
             .ToListAsync(ct);
         if (ambitions.Count == 0) return Array.Empty<AmbitionRowDto>();
@@ -120,6 +131,21 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
 
         var waits = epics.ToDictionary(e => e.Id, e => WaitingWhy(priorities, e.Id, e.Held));
 
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+        var statusById = statuses.ToDictionary(s => s.Id);
+        var playbooks = await db.Playbooks.AsNoTracking().ToListAsync(ct);
+
+        // Only an ambition in the implementation column asks why its pass is not
+        // running or what it has spent, so only such a row costs the reads.
+        var implementationId = Columns.Implementation(statuses)?.Id;
+        var inPass = ambitions.Where(a => a.StatusId == implementationId).ToList();
+
+        // The gate counts every child, as the queue does, whatever the reader's
+        // scope holds: the reader's tree is read unfiltered, so it serves here.
+        var family = inPass.Count == 0 ? null : await FamilyGate.ForAsync(db, actors, statuses, ct, priorities);
+        var spent = await AmbitionBudget.SpentAsync(db, inPass.Where(a => a.BudgetUsd is not null).Select(a => a.Id).ToList(), ct);
+        var now = time.GetUtcNow();
+
         var rows = new List<AmbitionRowDto>(ambitions.Count);
         foreach (var a in ambitions)
         {
@@ -140,12 +166,20 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
                 else notStarted++;
             }
 
+            var (stage, why) = AmbitionStage.Of(
+                statusById[a.StatusId], statuses, own.Count, held,
+                Dispatch.MatchShapingPress(playbooks, a.ProjectId)?.FromStatusId,
+                budgetSpent: spent.TryGetValue(a.Id, out var sum) && AmbitionBudget.IsSpent(a.BudgetUsd, sum.Spent),
+                passFold: a.StatusId == implementationId ? family?.PassFold(a.Id, a.WipLimit, statuses, now)?.Sentence : null);
+
             rows.Add(new AmbitionRowDto(
                 IssueKey.Format(a.ProjectKey, a.Number),
                 a.ProjectKey,
                 a.Title,
                 a.StatusId,
                 a.StatusName,
+                stage,
+                why,
                 a.WipLimit ?? 1,
                 own.Count,
                 held,
@@ -165,7 +199,64 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
                 priorities.Disclose(a.Id).ChildBeyondScope));
         }
 
-        return rows.ToArray();
+        // A stable sort: the board order the rows arrived in holds inside a group.
+        return rows.OrderBy(r => AmbitionStage.Group(r.Stage)).ToArray();
+    }
+
+    /// <summary>
+    /// What changed under the reader's ambitions since an instant: capabilities that now
+    /// hold, epics carved from an ambition, decisions made without the reader and
+    /// hold-level questions still open. Newest first, at most <see cref="WhatChanged.MaxLines"/>,
+    /// with a count of any left out.
+    /// </summary>
+    /// <param name="since">
+    /// An ISO 8601 instant, read as UTC where it names no offset. Left out, a
+    /// person's read takes the last visit <c>PUT /api/me/visits/ambitions</c> stored, and a
+    /// key's, or a first visit's, takes the last seven days: the answer's <c>basis</c> says which.
+    /// </param>
+    /// <param name="projectId">Whose ambitions to read, as <see cref="GetAmbitions"/> takes it.</param>
+    [HttpGet("changes")]
+    public async Task<ActionResult<AmbitionChangesDto>> GetChanges(
+        [FromQuery] string? since, [FromQuery] List<int>? projectId, CancellationToken ct)
+    {
+        var projectIds = (projectId ?? []).Distinct().ToList();
+        var now = time.GetUtcNow();
+
+        DateTimeOffset from;
+        string basis;
+
+        if (!string.IsNullOrWhiteSpace(since))
+        {
+            // Not IssueMoment: that cuts to the second, and a visit is stored to the tick.
+            if (!DateTimeOffset.TryParse(since, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out from))
+                return BadRequest("since is not a time: send an ISO 8601 instant such as 2026-11-20T09:00:00Z");
+            basis = AmbitionChangeBasis.Given;
+        }
+        else if (await StoredVisitAsync(ct) is { } visited)
+        {
+            from = visited;
+            basis = AmbitionChangeBasis.Visit;
+        }
+        else
+        {
+            from = now.AddDays(-AmbitionChangeBasis.WeekDays);
+            basis = AmbitionChangeBasis.Week;
+        }
+
+        return await WhatChanged.ReadAsync(db, from, basis, projectIds, ct);
+    }
+
+    /// <summary>The caller's last visit to this page, or null for a key, a caller nobody signed in as, and a first visit.</summary>
+    private async Task<DateTimeOffset?> StoredVisitAsync(CancellationToken ct)
+    {
+        if (await caller.IsProgramAsync(ct)) return null;
+        if (await actors.PrincipalAsync(ct) is not { } principal) return null;
+
+        return await db.PersonVisits.AsNoTracking()
+            .Where(v => v.PersonId == principal.Id && v.Page == PersonVisitPage.Ambitions)
+            .Select(v => (DateTimeOffset?)v.VisitedAt)
+            .FirstOrDefaultAsync(ct);
     }
 
     /// <summary>
@@ -210,6 +301,6 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, TimePr
     }
 
     /// <summary>The optional project filter.</summary>
-    private static IQueryable<EfHatchIssue> InProject(IQueryable<EfHatchIssue> issues, List<int> projectIds) =>
+    internal static IQueryable<EfHatchIssue> InProject(IQueryable<EfHatchIssue> issues, List<int> projectIds) =>
         projectIds.Count > 0 ? issues.Where(i => projectIds.Contains(i.ProjectId)) : issues;
 }
