@@ -176,7 +176,7 @@ ambition's tree in a fifth:
 
 - The **Ballot**, at `/ballot`. It has no place in the nav bar or the phone
   menu. You reach it from the attention panel's **Answer on the Ballot** row,
-  from the waiting strip on the Ambitions page, and with **Go to Ballot** in
+  from the **Waiting on you** tile on the Ambitions page, and with **Go to Ballot** in
   the console. It shows one question at a time,
   the one holding the most work first, as a card: the issue it is on, what it
   holds and its level, its options with the recommended one first, and **Say
@@ -212,8 +212,8 @@ ambition's tree in a fifth:
   above the Description, answerable the same way. The badge clears on the
   board behind the dialog once it is.
 - A hold-level question anywhere on an ambition's tree also shows atop [the
-  Ambitions page](issues#the-ambitions-page), in the strip above the rows,
-  each line linking to the Ballot.
+  Ambitions page](issues#the-ambitions-page), in the **Waiting on you** tile
+  above the rows, each line linking to the Ballot.
 
 Under each question's options, on the Ballot, the issue page's card and the
 peek alike, a line says its level in words - *nothing moves until this is

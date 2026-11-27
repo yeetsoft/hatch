@@ -795,7 +795,7 @@ see, in board order: column sort order, then rank, then id. Its fields are
 `Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Limit` (the
 ambition's `wipLimit`, read as one where it is unset), `Capabilities`,
 `Holds`, `InFlight`, `WaitsOnPerson` and `NotStarted` (the four counts,
-adding up to `Capabilities`), `Open` (its open epics, in rank order), and
+adding up to `Capabilities`), `NewlyHolding` (of `Holds`, those whose unbroken run of holds began within the last seven days), `Open` (its open epics, in rank order), and
 `ChildBeyondScope` (as `/plan` reads it: some child sits in a project the
 caller's scope does not hold). `Open` carries one `AmbitionOpenEpicDto` per
 open epic: `Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Serves`
