@@ -2,13 +2,26 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, EmptyState, Field, PageHeader, Table } from '@hatch/ui';
 import { bulkEditIssues, getBoard, getProjects, searchIssues } from '../api/client';
+import { IssuePicker } from '../components/IssuePicker';
 import { MomentField } from '../components/MomentField';
 import { ProjectChooser } from '../components/ProjectChooser';
 import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
 import { tileFill } from '../lib/columns';
-import { EMPTY_FORM, KEEP, NO_FILTERS, buildBulkEdit, bulkSearch, isEmptyForm, movedOutOfScope, summarize } from '../lib/bulk';
-import type { BulkForm, Filters } from '../lib/bulk';
+import {
+  EMPTY_FORM,
+  KEEP,
+  NO_FILTERS,
+  PICK,
+  buildBulkEdit,
+  bulkSearch,
+  isEmptyForm,
+  movedOutOfScope,
+  parentMode,
+  parentModeValue,
+  summarize,
+} from '../lib/bulk';
+import type { BulkForm, Filters, ParentMode } from '../lib/bulk';
 import { message } from '../lib/errors';
 import { bulkBlocked } from '../lib/protectedColumns';
 import { truncate } from '../lib/text';
@@ -39,6 +52,56 @@ export function BulkProjectFilter({
         ))}
       </select>
     </Field>
+  );
+}
+
+/** The lookup finds any issue in the tab's scope, so nothing is filtered out of what it turns up. */
+const acceptAny = () => true;
+
+/**
+ * A parent field's two fixed choices and "An issue", with a picker drawn beside
+ * the select once "An issue" is chosen. The picker finds an issue closed long
+ * ago by key, number or title words; `scopeIds` bounds it to the tab's
+ * projects, none meaning every project.
+ */
+export function BulkParentChoice({
+  value,
+  onChange,
+  selectLabel,
+  pickerLabel,
+  keepLabel,
+  candidates,
+  scopeIds,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  selectLabel: string;
+  pickerLabel: string;
+  keepLabel: string;
+  candidates: IssueCard[];
+  scopeIds: number[];
+}) {
+  const mode = parentMode(value);
+  return (
+    <div className="hatch-bulk-parent">
+      <select aria-label={selectLabel} value={mode} onChange={(e) => onChange(parentModeValue(e.target.value as ParentMode, value))}>
+        <option value="keep">{keepLabel}</option>
+        <option value="none">— no parent —</option>
+        <option value="issue">An issue</option>
+      </select>
+      {mode === 'issue' && (
+        <IssuePicker
+          label={pickerLabel}
+          value={value === PICK ? null : value}
+          allowNone={false}
+          placeholder="Choose an issue…"
+          candidates={candidates}
+          emptyMessage="Nothing in this scope yet."
+          lookup={{ projectIds: scopeIds, accept: acceptAny }}
+          onChange={async (key) => onChange(key)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -184,27 +247,28 @@ export function BulkPage() {
             </select>
           </Field>
 
-          <Field label="Parent" hint="The issue directly above these.">
-            <select value={filters.parentKey} onChange={(e) => setFilters({ ...filters, parentKey: e.target.value })}>
-              <option value={KEEP}>— any —</option>
-              <option value="">— no parent —</option>
-              {issues.map((i) => (
-                <option key={i.key} value={i.key}>
-                  {i.key} — {truncate(i.title, 60)}
-                </option>
-              ))}
-            </select>
+          <Field label="Parent" as="div" hint="The issue directly above these.">
+            <BulkParentChoice
+              value={filters.parentKey}
+              onChange={(parentKey) => setFilters({ ...filters, parentKey })}
+              selectLabel="Parent filter"
+              pickerLabel="Parent filter issue"
+              keepLabel="— any —"
+              candidates={issues}
+              scopeIds={scope.ids}
+            />
           </Field>
 
-          <Field label="Ancestor" hint="Everything below it, at every level.">
-            <select value={filters.ancestorKey} onChange={(e) => setFilters({ ...filters, ancestorKey: e.target.value })}>
-              <option value="">— any —</option>
-              {issues.map((i) => (
-                <option key={i.key} value={i.key}>
-                  {i.key} — {truncate(i.title, 60)}
-                </option>
-              ))}
-            </select>
+          <Field label="Ancestor" as="div" hint="Everything below it, at every level.">
+            <IssuePicker
+              label="Ancestor"
+              noneLabel="— any —"
+              value={filters.ancestorKey || null}
+              candidates={issues}
+              emptyMessage="Nothing in this scope yet."
+              lookup={{ projectIds: scope.ids, accept: acceptAny }}
+              onChange={async (ancestorKey) => setFilters({ ...filters, ancestorKey })}
+            />
           </Field>
 
           <Field label="Title contains">
@@ -290,16 +354,16 @@ export function BulkPage() {
                 </select>
               </Field>
 
-              <Field label="Parent">
-                <select value={form.parent} onChange={(e) => setForm({ ...form, parent: e.target.value })}>
-                  <option value={KEEP}>— leave alone —</option>
-                  <option value="">— no parent —</option>
-                  {issues.map((i) => (
-                    <option key={i.key} value={i.key}>
-                      {i.key} — {truncate(i.title, 60)}
-                    </option>
-                  ))}
-                </select>
+              <Field label="Parent" as="div">
+                <BulkParentChoice
+                  value={form.parent}
+                  onChange={(parent) => setForm({ ...form, parent })}
+                  selectLabel="Parent change"
+                  pickerLabel="Parent change issue"
+                  keepLabel="— leave alone —"
+                  candidates={issues}
+                  scopeIds={scope.ids}
+                />
               </Field>
 
               <ProjectChooser

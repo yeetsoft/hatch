@@ -184,6 +184,9 @@ describe('the section on the page', () => {
     notStarted: 0,
     newlyHolding: 0,
     open: [],
+    summary: '',
+    decisions: 0,
+    budget: { budgetUsd: null, spentUsd: 0, unpricedSessions: 0, spent: false },
     childBeyondScope: false,
   };
 

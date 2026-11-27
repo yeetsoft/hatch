@@ -3,7 +3,16 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AmbitionList, AmbitionsBody, AmbitionTiles, heldIssues, holdQuestions } from './AmbitionsPage';
 import type { AmbitionsView } from './AmbitionsPage';
-import type { AmbitionOpenEpic, AmbitionRow, Ballot, BallotNode, BallotQuestion, Question, Status } from '../types';
+import type {
+  AmbitionOpenEpic,
+  AmbitionRow,
+  Ballot,
+  BallotNode,
+  BallotQuestion,
+  IssueBudget,
+  Question,
+  Status,
+} from '../types';
 
 /* No DOM runner: the row is rendered from props, the way PlanPage.test.tsx
    does it for EpicCard. */
@@ -42,8 +51,18 @@ const row = (key: string, over: Partial<AmbitionRow> = {}): AmbitionRow => ({
   notStarted: 5,
   newlyHolding: 1,
   open: [],
+  summary: '',
+  decisions: 0,
+  budget: { budgetUsd: null, spentUsd: 0, unpricedSessions: 0, spent: false },
   childBeyondScope: false,
   ...over,
+});
+
+const budget = (budgetUsd: number | null, spentUsd: number): IssueBudget => ({
+  budgetUsd,
+  spentUsd,
+  unpricedSessions: 0,
+  spent: budgetUsd !== null && spentUsd >= budgetUsd,
 });
 
 const render = (...rows: AmbitionRow[]): string => renderList(undefined, ...rows);
@@ -52,6 +71,13 @@ const renderList = (onNew: (() => void) | undefined, ...rows: AmbitionRow[]): st
   renderToStaticMarkup(
     <MemoryRouter>
       <AmbitionList ambitions={rows} statuses={statuses} onNew={onNew} />
+    </MemoryRouter>,
+  );
+
+const renderScoped = (scopeKeys: string[], ...rows: AmbitionRow[]): string =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <AmbitionList ambitions={rows} statuses={statuses} scopeKeys={scopeKeys} />
     </MemoryRouter>,
   );
 
@@ -226,6 +252,82 @@ describe('AmbitionList', () => {
       '<span class="hatch-ambition-serves"><span class="hatch-capability-badge">#1</span><span class="hatch-capability-badge">#3</span></span>',
     );
     expect(html).toContain('<span class="hatch-ambition-serves"><span class="text-muted">—</span></span>');
+  });
+});
+
+describe('what a row says about the ambition', () => {
+  it('draws the summary as plain text under the stage sentence', () => {
+    const html = render(row('AER-1', { stageWhy: 'Nothing runs yet.', summary: 'People see their load at a glance.' }));
+
+    expect(html).toContain(
+      '<p class="hatch-ambition-why">Nothing runs yet.</p><p class="hatch-ambition-summary">People see their load at a glance.</p>',
+    );
+  });
+
+  it('draws no summary line for an ambition with no description', () => {
+    expect(render(row('AER-1', { summary: '' }))).not.toContain('hatch-ambition-summary');
+  });
+});
+
+describe('the On you part of a row', () => {
+  const part = (html: string): string => html.slice(html.indexOf('>On you<'));
+
+  it('is the fourth part, headed On you, after the epics in flight', () => {
+    const html = render(row('AER-1'));
+
+    expect(html.match(/hatch-ambition-part/g)).toHaveLength(4);
+    expect(html.match(/<h3 class="hatch-ambition-heading">/g)).toHaveLength(3);
+    expect(html.indexOf('>In flight, 0 of 2<')).toBeLessThan(html.indexOf('>On you<'));
+  });
+
+  it('says 1 decision for one, linking the ballot, after a waiting swatch the screen readers skip', () => {
+    const html = part(render(row('AER-1', { decisions: 1 })));
+
+    expect(html).toContain(
+      '<p class="hatch-ambition-decisions"><span class="hatch-ambition-swatch hatch-ambition-waiting" aria-hidden="true"></span>' +
+        '<a href="/ballot" data-discover="true">1 decision</a></p>',
+    );
+    expect(html).not.toContain('No decision waits on you.');
+  });
+
+  it('says N decisions for more', () => {
+    expect(part(render(row('AER-1', { decisions: 3 })))).toContain('<a href="/ballot" data-discover="true">3 decisions</a>');
+  });
+
+  it('opens the ballot under the scope of the tab', () => {
+    const html = part(renderScoped(['AER', 'OPS'], row('AER-1', { decisions: 2 })));
+
+    expect(html).toMatch(/<a href="\/ballot\?scope=AER(,|%2C)OPS" data-discover="true">2 decisions<\/a>/);
+  });
+
+  it('says no decision waits, in muted words and with no link or swatch, when none does', () => {
+    const html = part(render(row('AER-1', { decisions: 0 })));
+
+    expect(html).toContain('<p class="hatch-ambition-none text-muted">No decision waits on you.</p>');
+    expect(html).not.toContain('/ballot');
+    expect(html).not.toContain('hatch-ambition-decisions');
+    expect(html).not.toContain('hatch-ambition-waiting');
+  });
+
+  it('draws no empty-state box in the part', () => {
+    expect(part(render(row('AER-1')))).not.toContain('hatch-empty');
+  });
+
+  it('reads the percent spent against a budget, below the decisions', () => {
+    const html = part(render(row('AER-1', { budget: budget(100, 41) })));
+
+    expect(html).toContain('<p class="hatch-ambition-budget">41% spent</p>');
+    expect(html.indexOf('No decision waits on you.')).toBeLessThan(html.indexOf('41% spent'));
+  });
+
+  it('reads the dollars spent where there is no budget', () => {
+    expect(part(render(row('AER-1', { budget: budget(null, 12.5) })))).toContain('<p class="hatch-ambition-budget">$12.50 spent</p>');
+  });
+
+  it('says the budget is used up, in bold ink, once it is', () => {
+    expect(part(render(row('AER-1', { budget: budget(50, 52) })))).toContain(
+      '<p class="hatch-ambition-budget hatch-ambition-budget-spent">Budget used up: 104% spent</p>',
+    );
   });
 });
 

@@ -9,6 +9,7 @@
 import { setIssueBudget } from '../api/client';
 import type { IssueBudget } from '../types';
 import { message } from './errors';
+import { moneyPhrase } from './workLog';
 
 /** What the amount field shows: the budget itself, blank for none. */
 export function budgetDraft(budgetUsd: number | null): string {
@@ -37,6 +38,18 @@ export function barFraction(budget: IssueBudget): number {
   if (percent === null) return 0;
 
   return Math.min(100, Math.max(0, percent));
+}
+
+/** The one budget line on an Ambitions row: `41% spent` against a budget,
+    `$12.50 spent` with none, and `Budget used up: 104% spent` once it is spent.
+    Leaves out the sessions that carried no price: the ambition's own page says them. */
+export function rowBudgetLine(budget: IssueBudget): string {
+  const percent = percentSpent(budget);
+
+  if (budget.spent) return percent === null ? 'Budget used up' : `Budget used up: ${percent}% spent`;
+  if (percent === null) return `${moneyPhrase(budget.spentUsd)} spent`;
+
+  return `${percent}% spent`;
 }
 
 /** The card's headline: `41% spent, for 1 of 6 capabilities`. */

@@ -17,12 +17,28 @@ import type { IssueBulkEditRequest, IssueBulkRekeyed, IssueBulkResult, IssueSear
 /** The value a picker carries when it is not being used. Never a real key: no issue key is empty and none is this. */
 export const KEEP = '__keep__';
 
+/** The third state of a parent field: "An issue" is chosen and none is picked yet. A select showing it has no key to hold, so this stands in. Like KEEP, never a real key, and never sent. */
+export const PICK = '__pick__';
+
+/** Which of a parent field's three choices a value is. */
+export type ParentMode = 'keep' | 'none' | 'issue';
+
+export const parentMode = (value: string): ParentMode =>
+  value === KEEP ? 'keep' : value === '' ? 'none' : 'issue';
+
+/** The value a choice of mode leaves. Choosing "an issue" keeps a key already held, so flicking the select back and forth does not lose the pick; otherwise it is the half-chosen state. */
+export function parentModeValue(mode: ParentMode, current: string): string {
+  if (mode === 'keep') return KEEP;
+  if (mode === 'none') return '';
+  return parentMode(current) === 'issue' ? current : PICK;
+}
+
 export interface BulkForm {
   /** '' leaves the type alone. */
   type: IssueType | '';
   /** '' leaves the column alone. */
   statusId: number | '';
-  /** KEEP leaves the parent alone, '' clears it, anything else is the new parent's key. */
+  /** KEEP leaves the parent alone, '' clears it, PICK is an issue not yet chosen (it changes nothing), anything else is the new parent's key. */
   parent: string;
   /** KEEP leaves the project alone, otherwise the new project's id. */
   projectId: number | typeof KEEP;
@@ -52,7 +68,7 @@ export const EMPTY_FORM: BulkForm = {
 export const isEmptyForm = (form: BulkForm): boolean =>
   form.type === '' &&
   form.statusId === '' &&
-  form.parent === KEEP &&
+  (form.parent === KEEP || form.parent === PICK) &&
   form.projectId === KEEP &&
   !form.setReady &&
   !form.setDue;
@@ -70,7 +86,7 @@ export function buildBulkEdit(keys: string[], form: BulkForm): IssueBulkEditRequ
 
   if (form.type !== '') request.type = form.type;
   if (form.statusId !== '') request.statusId = form.statusId;
-  if (form.parent !== KEEP) request.parentKey = form.parent;
+  if (form.parent !== KEEP && form.parent !== PICK) request.parentKey = form.parent;
   if (form.projectId !== KEEP) {
     request.projectId = form.projectId;
     request.moveDescendants = form.moveDescendants;
@@ -109,9 +125,10 @@ export function bulkSearch(filters: Filters, scopeIds: number[]): IssueSearch {
     projectId,
     type: filters.type === '' ? null : filters.type,
     statusId: filters.statusId === '' ? null : filters.statusId,
-    // KEEP is "any parent"; the empty string is a filter of its own -
-    // "no parent at all" - and has to reach the API as one.
-    parentKey: filters.parentKey === KEEP ? null : filters.parentKey,
+    // KEEP is "any parent", and so is PICK - a filter half-chosen is not yet a
+    // filter. The empty string is a filter of its own - "no parent at all" -
+    // and has to reach the API as one.
+    parentKey: filters.parentKey === KEEP || filters.parentKey === PICK ? null : filters.parentKey,
     ancestorKey: filters.ancestorKey || null,
     text: filters.text.trim() || null,
   };

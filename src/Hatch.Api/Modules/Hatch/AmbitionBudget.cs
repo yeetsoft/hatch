@@ -31,12 +31,17 @@ public static class AmbitionBudget
 
     public static async Task<IssueBudgetDto> ReadAsync(HatchContext db, EfHatchIssue ambition, CancellationToken ct)
     {
-        var (spent, unpriced) = (await SpentAsync(db, [ambition.Id], ct))[ambition.Id];
+        var sum = (await SpentAsync(db, [ambition.Id], ct))[ambition.Id];
 
-        return new IssueBudgetDto(
-            ambition.BudgetUsd, spent, unpriced,
-            Spent: IsSpent(ambition.BudgetUsd, spent));
+        return Of(ambition.BudgetUsd, sum);
     }
+
+    /// <summary>
+    /// The budget as every reader tells it, from a budget and what <see cref="SpentAsync"/>
+    /// summed: the Ambitions row and the ambition's own page both come through here.
+    /// </summary>
+    public static IssueBudgetDto Of(decimal? budget, (decimal Spent, int Unpriced) sum) =>
+        new(budget, sum.Spent, sum.Unpriced, Spent: IsSpent(budget, sum.Spent));
 
     /// <summary>Whether this much spent has reached this budget. No budget is never reached.</summary>
     public static bool IsSpent(decimal? budget, decimal spent) => budget is { } most && spent >= most;
