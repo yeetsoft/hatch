@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GO_TO_LIMIT, SEARCH_ROW, entryKeys, goToRows, goToStatus, keepHighlight, whereOnBoard } from './goTo';
+import { GO_TO_LIMIT, SEARCH_ROW, entryKeys, goToRows, goToStatus, keepHighlight, pastedKeyTarget, whereOnBoard, wholeKey } from './goTo';
 import type { IssueCard, Status } from '../types';
 
 /* Spread onto rather than written whole, so a new field on IssueCard is one
@@ -343,5 +343,48 @@ describe('goToRows: an issue the server folded off the board', () => {
 
   it('still finds the cards it was handed, so the empty result is the fold and not the fixture', () => {
     expect(keys(board, 'AER-4')).toEqual(['AER-4']);
+  });
+});
+
+describe('wholeKey', () => {
+  it('is the key, upper-cased, for one whole key', () => {
+    expect(wholeKey('HA-455')).toBe('HA-455');
+    expect(wholeKey('ha-455')).toBe('HA-455');
+    expect(wholeKey(' HA-455 ')).toBe('HA-455');
+    expect(wholeKey('FIL-1')).toBe('FIL-1');
+    expect(wholeKey('h2-7')).toBe('H2-7');
+  });
+
+  it.each(['HA455', 'HA-', '-455', '455', 'HA-455 x', 'HA-0', 'HA-045', 'HA-455-1', 'H A-455', '', '   ', 'HA-12345678901'])(
+    'is not a key: %j',
+    (text) => {
+      expect(wholeKey(text)).toBeNull();
+    },
+  );
+});
+
+describe('pastedKeyTarget', () => {
+  const board = [card('HA-455'), card('HA-456')];
+
+  it('is the card the board holds, matched in any case', () => {
+    expect(pastedKeyTarget('ha-455', false, board)).toEqual({ card: board[0] });
+  });
+
+  it('is the key alone when the board holds no card for it', () => {
+    expect(pastedKeyTarget('HA-9000', false, board)).toEqual({ key: 'HA-9000' });
+  });
+
+  it('is a key outside the tab scope all the same: nothing is checked first', () => {
+    expect(pastedKeyTarget('ZZ-3', false, board)).toEqual({ key: 'ZZ-3' });
+  });
+
+  it('is null once the highlight was moved, even for a whole key', () => {
+    expect(pastedKeyTarget('HA-455', true, board)).toBeNull();
+  });
+
+  it('is null for a query that is not one whole key', () => {
+    expect(pastedKeyTarget('455', false, board)).toBeNull();
+    expect(pastedKeyTarget('HA-455 x', false, board)).toBeNull();
+    expect(pastedKeyTarget('', false, board)).toBeNull();
   });
 });

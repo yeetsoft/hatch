@@ -38,7 +38,7 @@ import {
 } from 'react';
 import { StatusDot } from './StatusPill';
 import { boardColumns } from '../lib/columns';
-import { SEARCH_ROW, entryKeys, goToStatus, whereOnBoard } from '../lib/goTo';
+import { SEARCH_ROW, entryKeys, goToStatus, pastedKeyTarget, whereOnBoard } from '../lib/goTo';
 import type { Mark } from '../lib/goTo';
 import { listEntries, mergeAnswer, scopeToken } from '../lib/goToKeys';
 import type { GoToListing } from '../lib/goToKeys';
@@ -391,6 +391,19 @@ export function OmniBar({
       move(activeIndex - 1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      /* A whole key that was pasted or typed goes straight to its issue, whatever
+         row the list has highlighted by now - unless the person moved the
+         highlight, which says which row they want. */
+      const pasted =
+        mode === 'issues' && !offer && !done.current && !movingNow.current
+          ? pastedKeyTarget(asked, highlight !== null, cards)
+          : null;
+      if (pasted) {
+        done.current = true;
+        if ('card' in pasted) onTake(pasted.card);
+        else onTakeKey(pasted.key);
+        return;
+      }
       take(activeIndex);
     } else if (e.key === 'Escape') {
       e.preventDefault();
