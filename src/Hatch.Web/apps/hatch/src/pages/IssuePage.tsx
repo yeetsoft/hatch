@@ -2235,7 +2235,7 @@ function PassVerdictLine({ verdict, now }: { verdict: AmbitionPassVerdict; now: 
 /**
  * What happened to an ambition's capabilities most recently, and what that
  * does to each epic beneath it - see docs/hatch.md, "ChangeOutcome" and
- * apps/hatch/docs/issues.md, "Changing an ambition". Omitted entirely off any
+ * apps/hatch/docs/ambitions.md, "Changing an ambition". Omitted entirely off any
  * type but an ambition, and off an ambition that was never changed.
  *
  * Reads `GET /issues/{key}/changes` on the same tolerant terms `Passes` reads

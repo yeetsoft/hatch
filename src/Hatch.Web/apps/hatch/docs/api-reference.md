@@ -800,7 +800,7 @@ agree about its stage without a second computation. Otherwise it answers one
 `ready`, `shaping`, `draft`, then `done` and `shelved` together - and inside a
 group in board order: column sort order, then rank, then id. Its fields are
 `Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Stage` (one of those
-nine words; [the Ambitions page](issues#the-ambitions-page) says when each is
+nine words; [the Ambitions page](ambitions#the-ambitions-page) says when each is
 true), `StageWhy` (one sentence saying what the ambition needs or waits for),
 `Limit` (the
 ambition's `wipLimit`, read as one where it is unset), `Capabilities`,
@@ -817,7 +817,7 @@ for every ambition and not only a running one),
 `ChildBeyondScope` (as `/plan` reads it: some child sits in a project the
 caller's scope does not hold), and the two columns the **Shape it** and
 **Start it** presses move into (see
-[A draft ambition](issues#a-draft-ambition)): `ShapingStatusId` and
+[A draft ambition](ambitions#a-draft-ambition)): `ShapingStatusId` and
 `ShapingStatusName`, the from-column of the row flagged as shaping ambitions
 for this ambition's project, both null where no such row exists, and
 `StartStatusId` and `StartStatusName`, the board's implementation column, both
@@ -1348,7 +1348,7 @@ An ambition aimed at the row marked *works out changes* has `kind` `change`, and
 pass, and `GET /work/queue` and `GET /work/{key}` agree on it. Each queue row
 carries `changing` as one sentence, `works out what a change does to 3 epics`,
 and null on every other row. When it is sent is in
-[changing an ambition](issues#changing-an-ambition).
+[changing an ambition](ambitions#changing-an-ambition).
 The `WorkDto` also carries `changing`, null on every dispatch that is not for a
 change, and on an older board's answer. It names the change the session is to
 work out - `id`, the id a session gives `hatch change outcome` as `--change` -

@@ -314,7 +314,7 @@ The ordinary match never returns a flagged row, whatever its types say, for the
 same reason a row that answers questions is skipped. The dispatcher sends one
 session to the row for an ambition standing in its from-column, and aims nothing
 at the ambition once it stands in the to-column; see [a draft
-ambition](issues#a-draft-ambition). A file on a project's trunk cannot flag a row.
+ambition](ambitions#a-draft-ambition). A file on a project's trunk cannot flag a row.
 
 ## The fourteen rows Hatch seeds
 

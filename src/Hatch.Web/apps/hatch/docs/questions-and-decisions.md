@@ -212,7 +212,7 @@ ambition's tree in a fifth:
   above the Description, answerable the same way. The badge clears on the
   board behind the dialog once it is.
 - A hold-level question anywhere on an ambition's tree also shows atop [the
-  Ambitions page](issues#the-ambitions-page), in the **Waiting on you** tile
+  Ambitions page](ambitions#the-ambitions-page), in the **Waiting on you** tile
   above the rows, each line linking to the Ballot.
 
 Under each question's options, on the Ballot, the issue page's card and the

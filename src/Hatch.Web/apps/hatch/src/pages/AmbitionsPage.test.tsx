@@ -679,6 +679,19 @@ describe('AmbitionsBody', () => {
     expect(html).toContain('hatch-ambition-row');
   });
 
+  it('links the heading to How ambitions work, with or without a New ambition press', () => {
+    for (const onNew of [undefined, () => {}]) {
+      const html = renderToStaticMarkup(
+        <MemoryRouter>
+          <AmbitionsBody data={view({})} scopeKeys={[]} now={NOW} onNew={onNew} onMoved={() => {}} />
+        </MemoryRouter>,
+      );
+
+      expect(html).toMatch(/<a class="[^"]*" href="\/docs\/ambitions"[^>]*>How ambitions work<\/a>/);
+      expect(html.indexOf('How ambitions work')).toBeLessThan(html.indexOf('Waiting on you'));
+    }
+  });
+
   it('draws the tiles above the rows', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>

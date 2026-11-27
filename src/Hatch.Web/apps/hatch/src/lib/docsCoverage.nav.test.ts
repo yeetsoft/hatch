@@ -9,7 +9,7 @@ const SCREENS: Record<string, string> = {
   '/reports': 'flow-wip-and-the-battery',
   '/': 'the-board-and-its-columns',
   '/search': 'getting-started',
-  '/ambitions': 'issues',
+  '/ambitions': 'ambitions',
   '/runners': 'watching-the-loop',
   '/leaderboard': 'watching-the-loop',
   '/goose': 'the-goose',
