@@ -69,15 +69,24 @@ its capabilities; unlink it first. Each change shows on the epic's History as
 "serves changed". Deleting the epic or the capability removes the link and
 nothing else.
 
-Both show on the issue page, read-only. An ambition's page draws a Capabilities
+Both show on the issue page. An ambition's page draws a Capabilities
 section above Progress: one row per capability, in order, with its statement and
 how to tell, its state as one of "Holds", "Does not hold", "Cannot tell" or "Not
 checked", what the newest verdict looked at, its sha, its author and its date, and the
 epics that serve it. An ambition with none says so and shows the `hatch capability add`
-command to start one. An epic's page draws a Serves section naming each
-capability it serves, with the ambition it belongs to and that capability's
-state. The section is left out when the epic serves nothing, and no other type
-draws either one. Each state is a pill, green, red, amber or grey, and looks the
+command to start one. An epic's page draws a Serves section. For a person, an
+epic that hangs beneath an ambition, at any depth, always draws it, even when
+the epic serves nothing: it lists every capability of that ambition with a tick
+box, its number, its statement and its state, the ones the epic serves ticked.
+Change the ticks and press **Save**, and the whole set is sent at once and
+replaces what the epic served; the section then shows the saved set, and the
+ambition's Capabilities section and the Ambitions page show it too. A refusal
+appears as a sentence in the section and leaves the ticks as they were. Anybody
+who is not a person, such as a runner's key, reads the list as before: each
+capability the epic serves, with the ambition it belongs to and that
+capability's state, with no tick boxes and no Save, and no section at all when
+the epic serves nothing. An epic beneath no ambition draws nothing when it
+serves nothing, and no other type draws either section. Each state is a pill, green, red, amber or grey, and looks the
 same on Serves, on each verdict in Passes and for the outcome in Latest change.
 
 An ambition's page also draws Epics in flight, between Capabilities and
@@ -322,6 +331,16 @@ but cannot change it - `PUT /me/home` takes a person only. See [the board
 and its columns](the-board-and-its-columns) and
 [the API reference](api-reference).
 
+The heading has a primary press, **New ambition**, on both profiles. It opens a
+dialog of the same name, holding a project picker, a box for the words and
+**Add images or videos**; the project is already picked where the tab's scope
+names exactly one, or where the board has only one. **Shape** files the draft
+ambition and opens its page, as on the Dreams page, which is where the form
+comes from ([Shaping an ambition](dreams)); a refusal shows as the server's own
+sentence and the words stay. The dialog offers no dreams. The press files into
+the column where a session shapes the ambition, which the New issue dialog does
+not, and it is not drawn for a key: shaping is a person's press.
+
 Above the rows is a strip of what is waiting on the reader: one line for
 every question at the hold level anywhere on an ambition's tree, the
 ambition itself included. The strip is a card, like a row below it, with
@@ -344,7 +363,11 @@ with at least one epic open, "N open, runs M at once" and each open epic by
 its key, title and column, with the numbers of the capabilities it serves as
 badges, or a dash where it serves none. With no epic open the third part
 says so instead: "No epic is open under this ambition." With no ambition in the
-tab's scope, the page says "No ambition in scope." Each row is a card, and its three parts sit
+tab's scope, the page says in two sentences what an ambition is - "An ambition is what you are
+driving at, broken into capabilities that are each checked against the trunk
+on every pass. A person starts one by saying what they want, and a session
+shapes it." - and offers the same press as the heading, in place of a bare
+"No ambition in scope." Each row is a card, and its three parts sit
 on three columns set once for the whole list, so the head, the capabilities
 and the epics start at the same place on every row, with their first lines
 level; in the epics, the column and the capability numbers also line up from

@@ -5839,6 +5839,28 @@ input.hatch-inline-title-input {
   gap: var(--sp-2);
 }
 
+/* The tick boxes in an epic's Serves section: the box, the number and the
+   statement are one label, so the whole line is the target. On a phone the
+   label takes its own line and the state wraps beneath it. */
+.hatch-serves-choice {
+  display: flex;
+  align-items: baseline;
+  flex: 1 1 12rem;
+  gap: var(--sp-2);
+  min-width: 0;
+  cursor: pointer;
+}
+
+.hatch-serves-choice > input {
+  flex: none;
+}
+
+@media (max-width: 40rem) {
+  .hatch-serves-choice {
+    flex-basis: 100%;
+  }
+}
+
 /* Epics in flight, on an ambition's issue page: the column and the capabilities
    served sit beside the title on a desk and stack under it on a phone. Rows
    reuse .hatch-progress-row. */
@@ -5886,6 +5908,9 @@ input.hatch-inline-title-input {
 
    The rows come in groups, one list under a heading for each stage, and the
    finished ones in a closed list at the foot. */
+/* Only the top margin is named: .hatch-page > * centres every child of the page
+   with auto side margins, and a shorthand here would tie with it and undo that,
+   leaving the rows left of the strip. */
 .hatch-ambition-groups {
   display: flex;
   flex-direction: column;
@@ -5954,6 +5979,13 @@ input.hatch-inline-title-input {
 
 .hatch-ambition-title {
   display: block;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.hatch-ambition-title:hover {
+  color: var(--primary);
+  text-decoration: underline;
 }
 
 .hatch-ambition-head-meta {

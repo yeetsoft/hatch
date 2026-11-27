@@ -1,7 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, EmptyState, PageHeader } from '@hatch/ui';
+import { Button, Card, EmptyState, PageHeader } from '@hatch/ui';
 import { getAmbitions, getBallot, getStatuses } from '../api/client';
+import { NewAmbitionDialog } from '../components/NewAmbitionDialog';
 import { ScopeGate } from '../components/ScopeGate';
 import { StatusPill } from '../components/StatusPill';
 import { waitedWords } from '../lib/attention';
@@ -9,6 +10,7 @@ import { firstLine } from '../lib/dreams';
 import { message } from '../lib/errors';
 import { scopedPath } from '../lib/scope';
 import { useLoaded } from '../lib/useLoaded';
+import { useMe } from '../lib/useMe';
 import { useScope } from '../lib/useScope';
 import type { AmbitionRow, AmbitionStage, Ballot, BallotNode, Question, Status } from '../types';
 
@@ -43,6 +45,8 @@ export function AmbitionsPage() {
 
 function AmbitionsContent() {
   const scope = useScope();
+  const { me } = useMe();
+  const [shaping, setShaping] = useState(false);
 
   /* The scope in force, as one string: `scope.ids` is empty until the
      provider's own project list lands, so a read made before that was made
@@ -72,7 +76,23 @@ function AmbitionsContent() {
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data || !current) return <p className="text-muted">Loading…</p>;
 
-  return <AmbitionsBody data={data} scopeKeys={scope.isScoped ? scope.keys : []} now={new Date()} error={error} />;
+  /* A key is a program, and the server refuses it a shaping; a wall-off Hatch
+     reads a browser as the local person, so it is "not a key", never "a
+     person". A browser never presents a key: this is a guard only. */
+  const onNew = me?.kind === 'key' ? undefined : () => setShaping(true);
+
+  return (
+    <>
+      <AmbitionsBody
+        data={data}
+        scopeKeys={scope.isScoped ? scope.keys : []}
+        now={new Date()}
+        error={error}
+        onNew={onNew}
+      />
+      <NewAmbitionDialog open={shaping} projects={scope.projects} onClose={() => setShaping(false)} />
+    </>
+  );
 }
 
 /** The page under its gate: the header, the strip of what is waiting, then the
@@ -82,24 +102,28 @@ export function AmbitionsBody({
   scopeKeys,
   now,
   error = null,
+  onNew,
 }: {
   data: AmbitionsView;
   scopeKeys: string[];
   now: Date;
   error?: string | null;
+  /** Opens the New ambition dialog; left off, no press is drawn. */
+  onNew?: () => void;
 }) {
   return (
     <div className="hatch-page">
       <PageHeader
         title="Ambitions"
         description="What you are driving at, across every project, each checked against the trunk on every pass."
+        actions={onNew && <NewAmbitionButton onClick={onNew} />}
       />
 
       {error && <p className="text-danger">{error}</p>}
 
       <WaitingStrip ballot={data.ballot} error={data.ballotError} scopeKeys={scopeKeys} now={now} />
 
-      <AmbitionList ambitions={data.ambitions} statuses={data.statuses} />
+      <AmbitionList ambitions={data.ambitions} statuses={data.statuses} onNew={onNew} />
     </div>
   );
 }
@@ -168,15 +192,39 @@ function stageWord(stage: AmbitionStage): string {
   return stage.charAt(0).toUpperCase() + stage.slice(1);
 }
 
+/** The primary press that opens the New ambition dialog. */
+function NewAmbitionButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="primary" onClick={onClick}>
+      New ambition
+    </Button>
+  );
+}
+
+/** What an ambition is, in two sentences, shown where none is in scope. */
+export const NO_AMBITIONS =
+  'An ambition is what you are driving at, broken into capabilities that are each checked against the trunk on every pass. A person starts one by saying what they want, and a session shapes it.';
+
 /**
  * The rows under a heading for each stage, then the finished ones folded under
- * one line; or the one sentence saying there are none in scope.
+ * one line. Where none is in scope, the two sentences saying what an ambition
+ * is, with the press that starts one.
  *
  * The server sends the rows grouped and in order, so this only cuts them where
  * the stage changes and never sorts: a group's place is where its first row is.
  */
-export function AmbitionList({ ambitions, statuses }: { ambitions: AmbitionRow[]; statuses: Status[] }) {
-  if (ambitions.length === 0) return <EmptyState message="No ambition in scope." />;
+export function AmbitionList({
+  ambitions,
+  statuses,
+  onNew,
+}: {
+  ambitions: AmbitionRow[];
+  statuses: Status[];
+  onNew?: () => void;
+}) {
+  if (ambitions.length === 0) {
+    return <EmptyState message={NO_AMBITIONS} action={onNew && <NewAmbitionButton onClick={onNew} />} />;
+  }
 
   const groups = new Map<AmbitionStage, AmbitionRow[]>();
   const finished: AmbitionRow[] = [];

@@ -45,6 +45,18 @@ describe('the Ambitions list', () => {
     expect(list.gap).toMatch(/^var\(--sp-[\w-]+\)$/);
   });
 
+  // .hatch-page > * centres every child of the page, and a margin shorthand
+  // with a 0 at the sides undoes it, leaving the rows left of the strip. The
+  // groups' wrapper is that child, so it names its top margin alone.
+  it('keeps the auto side margins that centre it on the page', () => {
+    const groups = declarationsOf('.hatch-ambition-groups');
+
+    expect(groups.margin).toBeUndefined();
+    expect(groups['margin-left']).toBeUndefined();
+    expect(groups['margin-right']).toBeUndefined();
+    expect(groups['margin-top']).toBe('var(--sp-4)');
+  });
+
   it('sets the three columns once, on the list, and every row reads them', () => {
     const declared = [...withoutMedia.matchAll(/--ambition-columns:\s*([^;]+);/g)];
 
@@ -105,6 +117,22 @@ describe('the first line of each part', () => {
     expect(declarationsOf('.hatch-ambition-heading')['margin-bottom']).toBeUndefined();
     expect(declarationsOf('.hatch-ambition-head-meta')['margin-top']).toBe('var(--sp-2)');
     expect(declarationsOf('.hatch-ambition-part > p').margin).toBe('var(--sp-2) 0 0');
+  });
+});
+
+describe("a row's title", () => {
+  it('is drawn in ink with no underline, not as the browser draws a link', () => {
+    const title = declarationsOf('.hatch-ambition-title');
+
+    expect(title.color).toBe('var(--ink)');
+    expect(title['text-decoration']).toBe('none');
+  });
+
+  it('takes the accent and an underline under the pointer, as a key does', () => {
+    const hover = declarationsOf('.hatch-ambition-title:hover');
+
+    expect(hover).toEqual({ color: 'var(--primary)', 'text-decoration': 'underline' });
+    expect(hover).toEqual(declarationsOf('.hatch-plan-key:hover'));
   });
 });
 

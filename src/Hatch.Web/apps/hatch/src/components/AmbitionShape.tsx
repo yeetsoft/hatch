@@ -43,6 +43,10 @@ export interface AmbitionShapeViewProps {
   error: string | null;
   /** A file is being dragged over the section. */
   dragging: boolean;
+  /** Drawn inside the New ambition dialog: no heading or lede (the dialog's
+      title is the heading), no dreams line, and no dream named in the blocker.
+      Default `false`, which draws the Dreams page's section. */
+  inDialog?: boolean;
   onWords: (words: string) => void;
   onPick: (files: File[]) => void;
   onTakeOff: (id: string) => void;
@@ -57,21 +61,51 @@ export interface AmbitionShapeViewProps {
 }
 
 export function AmbitionShapeView(props: AmbitionShapeViewProps) {
-  const { projectId, projectCount, useOnScreen, dreams, words, files, refusals, changed, uploading, pressing, error, dragging } =
-    props;
+  const {
+    projectId,
+    projectCount,
+    useOnScreen,
+    dreams,
+    words,
+    files,
+    refusals,
+    changed,
+    uploading,
+    pressing,
+    error,
+    dragging,
+    inDialog = false,
+  } = props;
 
   const request = shapeRequest({ projectId, words, useOnScreen, dreams, files });
-  const blocker = shapeBlocker({ projectId, projectCount, words, useOnScreen, dreams, files, uploading });
+  const blocker = shapeBlocker({
+    projectId,
+    projectCount,
+    words,
+    useOnScreen,
+    dreams,
+    files,
+    uploading,
+    withDreams: !inDialog,
+  });
 
   return (
-    <section className="hatch-dream-weave hatch-dream-shape" aria-labelledby="hatch-dream-shape-title" {...props.drop}>
-      <h2
-        id="hatch-dream-shape-title"
-        className={`hatch-gradient-ink hatch-dream-weave__title${pressing ? ' hatch-dream-weave__title--filing' : ''}`}
-      >
-        Shape an ambition
-      </h2>
-      <p className="hatch-dream-weave__lede">Files a draft ambition and takes you to it.</p>
+    <section
+      className="hatch-dream-weave hatch-dream-shape"
+      {...(inDialog ? { 'aria-label': 'Shape an ambition' } : { 'aria-labelledby': 'hatch-dream-shape-title' })}
+      {...props.drop}
+    >
+      {!inDialog && (
+        <>
+          <h2
+            id="hatch-dream-shape-title"
+            className={`hatch-gradient-ink hatch-dream-weave__title${pressing ? ' hatch-dream-weave__title--filing' : ''}`}
+          >
+            Shape an ambition
+          </h2>
+          <p className="hatch-dream-weave__lede">Files a draft ambition and takes you to it.</p>
+        </>
+      )}
 
       <div className="hatch-dream-shape__words">
         <textarea
@@ -84,7 +118,7 @@ export function AmbitionShapeView(props: AmbitionShapeViewProps) {
         />
       </div>
 
-      <p className="hatch-dream-weave__choose-hint">{dreamsLine(useOnScreen)}</p>
+      {!inDialog && <p className="hatch-dream-weave__choose-hint">{dreamsLine(useOnScreen)}</p>}
 
       <div className="hatch-dream-shape__picker">
         <input
@@ -168,11 +202,14 @@ export function AmbitionShape({
   projectCount,
   useOnScreen,
   dreams,
+  inDialog = false,
 }: {
   projectId: number | null;
   projectCount: number;
   useOnScreen: boolean;
   dreams: Dream[];
+  /** Drawn in the New ambition dialog; see `AmbitionShapeViewProps`. */
+  inDialog?: boolean;
 }) {
   const navigate = useNavigate();
   const [words, setWords] = useState('');
@@ -246,6 +283,7 @@ export function AmbitionShape({
       pressing={pressing}
       error={error}
       dragging={dragging}
+      inDialog={inDialog}
       onWords={setWords}
       onPick={(picked) => void add(picked)}
       onTakeOff={(id) => setShelf({ projectId, rows: withoutFile(files, id), refusals })}

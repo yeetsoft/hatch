@@ -42,20 +42,35 @@ const row = (key: string, over: Partial<AmbitionRow> = {}): AmbitionRow => ({
   ...over,
 });
 
-const render = (...rows: AmbitionRow[]): string =>
+const render = (...rows: AmbitionRow[]): string => renderList(undefined, ...rows);
+
+const renderList = (onNew: (() => void) | undefined, ...rows: AmbitionRow[]): string =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <AmbitionList ambitions={rows} statuses={statuses} />
+      <AmbitionList ambitions={rows} statuses={statuses} onNew={onNew} />
     </MemoryRouter>,
   );
 
 describe('AmbitionList', () => {
-  it('draws its one sentence when no ambition is in scope', () => {
+  it('says in two sentences what an ambition is when none is in scope', () => {
     const html = render();
 
-    expect(html).toContain('No ambition in scope.');
+    expect(html).toContain('An ambition is what you are driving at, broken into capabilities');
+    expect(html).toContain('A person starts one by saying what they want, and a session shapes it.');
+    expect(html).not.toContain('No ambition in scope.');
     expect(html).toContain('hatch-empty');
     expect(html).not.toContain('hatch-ambition-row');
+  });
+
+  it('offers the New ambition press on the empty page when given one', () => {
+    expect(renderList(() => {})).toContain('New ambition');
+  });
+
+  it('draws no press on the empty page for a key, but both sentences', () => {
+    const html = renderList(undefined);
+
+    expect(html).not.toContain('New ambition');
+    expect(html).toContain('An ambition is what you are driving at');
   });
 
 
@@ -124,7 +139,8 @@ describe('AmbitionList', () => {
 
     expect(html).toContain('<summary>1 finished</summary>');
     expect(html).not.toContain('hatch-ambition-group"');
-    expect(html).not.toContain('No ambition in scope.');
+    expect(html).not.toContain('hatch-empty__action');
+    expect(html).not.toContain('A person starts one by saying what they want');
   });
 
   it('draws one segment per non-zero count, grown in proportion, and a legend naming each', () => {
@@ -376,5 +392,25 @@ describe('holdQuestions', () => {
 
     expect(holdQuestions(b).map((h) => h.question.id)).toEqual([1, 3, 4, 5]);
     expect(holdQuestions(b).every((h) => h.ambition === 'ambition AER-1')).toBe(true);
+  });
+
+  it('draws the New ambition press in the heading with onNew, and not without', () => {
+    const body = (onNew?: () => void) =>
+      renderToStaticMarkup(
+        <MemoryRouter>
+          <AmbitionsBody
+            data={{ ambitions: [row('AER-1')], statuses, ballot: tree(), ballotError: null, scopeKey: '' }}
+            scopeKeys={[]}
+            now={NOW}
+            onNew={onNew}
+          />
+        </MemoryRouter>,
+      );
+
+    const withPress = body(() => {});
+    const actions = /hatch-page-header__actions">([\s\S]*?)<\/div>/.exec(withPress)?.[1] ?? '';
+    expect(actions).toContain('New ambition');
+    expect(body()).not.toContain('New ambition');
+    expect(body()).not.toContain('hatch-page-header__actions');
   });
 });
