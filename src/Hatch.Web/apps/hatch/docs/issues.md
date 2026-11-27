@@ -1049,7 +1049,11 @@ project, type, status, parent, ancestor, text - then applies one edit to
 every result still ticked when the button is pressed, not to whatever the
 filter would return if run again later. In a scoped tab its Project filter and
 results are the scope's, while *move to project* still offers every project; an
-issue moved out of scope leaves the table and is named in the result.
+issue moved out of scope leaves the table and is named in the result. The
+Parent and Ancestor filters and the Parent edit each find any issue, closed
+ones included, by key, number or title words, within the tab's scope; the
+Parent filter and edit keep their *any* / *leave alone* and *no parent*
+choices beside *An issue*.
 
 ## Attachments
 
