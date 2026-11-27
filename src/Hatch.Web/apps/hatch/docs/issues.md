@@ -571,6 +571,11 @@ column, merged rather than merely in review, and a dependency an ancestor
 holds reaches everything below it — a task under a blocked story is blocked
 too.
 
+Add a dependency's picker asks the server for what is typed, after a short
+pause, and lists what it finds below the board's own candidates - any issue
+by key, number or title words, closed ones included. The page's own rows
+never wait on a request; a lookup only ever adds to them.
+
 ## One pull request
 
 Whether a story's tasks share the story's own branch and pull request,
