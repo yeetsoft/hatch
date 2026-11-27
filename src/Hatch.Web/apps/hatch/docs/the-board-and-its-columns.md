@@ -7,8 +7,11 @@ summary: The seven columns a stock board ships with, and who moves work out of e
 
 This is the stock board, which is what the **Hatch** logo at the left of the
 bar opens, unless the person chose Ambitions in the Home screen card on the
-Settings page: the board is the home page otherwise, and the bar has no
-Board link of its own. An operator may rename its columns, add more and
+Settings page: the board is the home page otherwise. It also has its own
+address, `/board`, which draws it for everybody whatever their home screen.
+A person who chose Ambitions has the logo for Ambitions, so a **Board** link
+takes Ambitions' place on the bar and in the phone menu; anybody else's bar
+has no Board link of its own. An operator may rename its columns, add more and
 reorder them, so nothing below depends on a name: each column is described
 by what happens in it, and the names are only what a fresh install calls
 them. [The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows a

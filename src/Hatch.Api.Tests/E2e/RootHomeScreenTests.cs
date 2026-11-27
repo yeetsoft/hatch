@@ -86,6 +86,32 @@ public class RootHomeScreenTests(ITestOutputHelper output)
             output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"home-{profileName}-ambitions")}");
             Assert.Equal("Ambitions", ambitions.GetProperty("brandLabel").GetString());
 
+            // HA-2838: the board is still one click away. Ambitions has left the bar for the Board link, in the bar on the desk and in the phone menu.
+            if (profile is null)
+            {
+                Assert.False(await harness.IsVisibleAsync(deadline, ".hatch-primary-nav a:text-is(\"Ambitions\")"));
+                await harness.ClickAsync(deadline, ".hatch-primary-nav a:text-is(\"Board\")");
+            }
+            else
+            {
+                await harness.ClickAsync(deadline, E2eHarness.GearSelector);
+                await harness.ClickAsync(deadline, ".hatch-phone-menu a:text-is(\"Board\")");
+            }
+
+            await harness.WaitForFirstColumnAsync(deadline);
+            Assert.False(await harness.IsVisibleAsync(deadline, ".hatch-ambition-row"));
+
+            var board = await harness.EvaluateAsync<JsonElement>(deadline, "reading the board's own address", """
+                () => ({
+                  pathname: location.pathname,
+                  brandLabel: document.querySelector('a.hatch-topbar__brand')?.getAttribute('aria-label') ?? '',
+                })
+                """);
+            output.WriteLine($"{profileName} /board (home ambitions): {board}");
+            output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"home-{profileName}-ambitions-board")}");
+            Assert.EndsWith("/board", board.GetProperty("pathname").GetString());
+            Assert.Equal("Ambitions", board.GetProperty("brandLabel").GetString());
+
             harness.AssertNoPageErrors();
 
             // Nothing may scroll sideways on the phone; the same check costs nothing on the desktop, so it is made there too.

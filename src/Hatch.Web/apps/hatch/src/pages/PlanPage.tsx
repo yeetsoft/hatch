@@ -7,6 +7,7 @@ import { StatusPill } from '../components/StatusPill';
 import { TypeTile } from '../components/TypeGlyph';
 import { scrubbedProject } from '../lib/filter';
 import { inheritedMark } from '../lib/inherited';
+import { BOARD } from '../lib/nav';
 import { orderPlan, planProjectId } from '../lib/plan';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
@@ -142,7 +143,7 @@ function PlanContent() {
         <EmptyState
           message="Nothing is filed yet. The plan is a picture of the board, and the board is empty."
           action={
-            <Button as={Link} to="/" variant="primary">
+            <Button as={Link} to={BOARD} variant="primary">
               Go to the board
             </Button>
           }

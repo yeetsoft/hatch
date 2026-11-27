@@ -875,7 +875,7 @@ describe('AttentionHuman findings', () => {
   it('links a finding about no issue to its project\u2019s board', () => {
     const html = draw(attention({ findings: [finding()] }));
 
-    expect(html).toContain('href="/?scope=AER"');
+    expect(html).toContain('href="/board?scope=AER"');
     expect(html).not.toContain('href="/issues/');
   });
 

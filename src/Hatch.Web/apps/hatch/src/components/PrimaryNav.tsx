@@ -30,7 +30,8 @@ function NavLinkEntry({ entry }: { entry: Extract<NavEntry, { kind: 'link' }> })
 /**
  * The app's nav: Search as the magnifying glass, Ambitions as a word,
  * Track, Agents and Manage as menus. The board is the logo's, and
- * Docs the settings menu's. `lib/nav.ts` is the one place to change what it
+ * Docs the settings menu's. For a person who chose Ambitions as their home
+ * screen the logo is Ambitions', so a Board word stands in its place. `lib/nav.ts` is the one place to change what it
  * shows or where a page lives; this component only draws whatever that file
  * returns.
  *
@@ -39,14 +40,14 @@ function NavLinkEntry({ entry }: { entry: Extract<NavEntry, { kind: 'link' }> })
  * sits in.
  */
 export function PrimaryNav({ tone }: { tone: MenuTone }) {
-  const { isAdmin } = useMe();
+  const { me, isAdmin } = useMe();
   const location = useLocation();
   const lit = activeGroup(location.pathname);
 
   return (
     <nav className="hatch-primary-nav" aria-label="Primary">
       <Menu.Bar>
-        {navFor(isAdmin).map((entry) =>
+        {navFor(isAdmin, me?.home).map((entry) =>
           entry.kind === 'link' ? (
             <NavLinkEntry key={entry.to} entry={entry} />
           ) : (
