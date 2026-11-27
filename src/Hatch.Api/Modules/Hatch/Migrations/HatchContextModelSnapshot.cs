@@ -1517,6 +1517,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasIndex("FiledFromId");
 
+                    b.HasIndex("Number");
+
                     b.HasIndex("ParentId");
 
                     b.HasIndex("Priority")

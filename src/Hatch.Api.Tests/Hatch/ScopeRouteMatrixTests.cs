@@ -301,6 +301,9 @@ public class ScopeRouteMatrixTests
         ("BallotController.GetBallot", Rows(false, t => Get("/api/ballot"), t => Get($"/api/ballot?projectId={t.ProjectId}"))),
         ("BoardController.GetBoard", Rows(true, t => Get("/api/board"))),
         ("ChangelogController.GetChangelog", Rows(false, t => Get("/api/changelog"), t => Get($"/api/changelog?projectId={t.ProjectId}"))),
+        // A number, a key prefix, a whole key, and a whole key narrowed away from its own
+        // project: every way the lookup can name an issue of the hidden project.
+        ("GoToController.GetGoTo", Rows(true, t => Get("/api/go-to?q=1"), t => Get("/api/go-to?q=bbb"), t => Get("/api/go-to?q=bbb-1"), t => Get($"/api/go-to?q=bbb-1&projectId={t.ProjectId}"), t => Get($"/api/go-to?q=aaa-1&projectId={t.ProjectId}"))),
         ("GooseController.ListFindings", Rows(false, t => Get("/api/goose/findings"))),
         ("PlanController.GetPlan", Rows(false, t => Get("/api/plan"), t => Get($"/api/plan?projectId={t.ProjectId}"))),
         ("QuestionsController.GetQuestions", Rows(false, t => Get("/api/questions?open=false"))),

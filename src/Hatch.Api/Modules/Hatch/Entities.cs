@@ -940,6 +940,9 @@ public class EfHatchStatus
 [Index(nameof(StatusId), nameof(Rank))]
 // The terminal columns' own query - what closed lately, column by column.
 [Index(nameof(StatusId), nameof(ClosedAt))]
+// The go-to lookup: a number prefix across every project reads one range per digit
+// length, and the (ProjectId, Number) index above cannot serve a read with no project.
+[Index(nameof(Number))]
 public class EfHatchIssue
 {
     public const int MaxTitleLength = 300;
