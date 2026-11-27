@@ -43,7 +43,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/projects` | key | Every project, with issue count, repositories, logo timestamp, members, `canApprove`/`canAdminister` for the caller |
+| GET | `/projects` | key | Every project, with issue count, `lastIssueNumber` (the highest number handed out, 0 for none), repositories, logo timestamp, members, `canApprove`/`canAdminister` for the caller |
 | POST | `/projects` | key | Creates one; the creating person (if any) becomes owner |
 | PATCH | `/projects/{id}` | key | Renames and/or rekeys; both optional, null leaves each alone |
 | DELETE | `/projects/{id}` | key | Deletes an empty project |

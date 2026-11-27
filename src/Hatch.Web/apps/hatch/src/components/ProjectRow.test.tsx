@@ -8,6 +8,7 @@ const BASE: Project = {
   key: 'AER',
   name: 'Aerospace',
   issueCount: 0,
+  lastIssueNumber: 0,
   createdAt: '2026-01-01T00:00:00Z',
   color: null,
   icon: null,
