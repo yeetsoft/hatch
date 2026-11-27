@@ -221,6 +221,8 @@ const view = (over: Partial<AmbitionsView> = {}): AmbitionsView => ({
   statuses,
   ballot: ballot(),
   ballotError: null,
+  changes: { since: '2026-11-20T09:00:00Z', basis: 'visit', omitted: 0, lines: [] },
+  changesError: null,
   scopeKey: '',
   ...over,
 });
@@ -482,6 +484,7 @@ describe('AmbitionsBody', () => {
     expect(html).toContain('An ambition is what you are driving at');
     expect(html).not.toContain('Waiting on you');
     expect(html).not.toContain('Capabilities that hold');
+    expect(html).not.toContain('Since you last looked');
   });
 });
 
@@ -510,7 +513,7 @@ describe('holdQuestions', () => {
       renderToStaticMarkup(
         <MemoryRouter>
           <AmbitionsBody
-            data={{ ambitions: [row('AER-1')], statuses, ballot: tree(), ballotError: null, scopeKey: '' }}
+            data={view({ ballot: tree() })}
             scopeKeys={[]}
             now={NOW}
             onNew={onNew}

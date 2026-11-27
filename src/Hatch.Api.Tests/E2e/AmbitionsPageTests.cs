@@ -1,5 +1,6 @@
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Tests.Hatch;
+using Microsoft.Playwright;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit.Abstractions;
@@ -27,6 +28,11 @@ namespace Hatch.Api.Tests.E2e;
 /// HTTP as an ambition holding the words; and a page with a project and no
 /// ambition says what an ambition is, offers the same press and does not scroll
 /// sideways.</para>
+///
+/// <para>HA-2851 adds <b>Since you last looked</b>, at both profiles: one line of
+/// each kind is read below the rows, the visit is written exactly once however
+/// often the page reads again, and a reload - a second visit - reads the section
+/// empty.</para>
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class AmbitionsPageTests(ITestOutputHelper output)
@@ -338,6 +344,252 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         {
             await harness.DisposeAsync();
         }
+    }
+
+    private const string VisitRoute = "/api/me/visits/ambitions";
+
+    private const string ChangesRoute = "/api/ambitions/changes";
+
+    private const string ChangeLines = ".hatch-ambition-changes-line";
+
+    private const string NothingChanged = "Nothing has changed since you last looked.";
+
+    private const string FirstVisit = "This is your first visit, so this covers the last seven days.";
+
+    /// <summary>What the changes seed filed: one issue behind each kind of line.</summary>
+    private sealed record SeededChanges(string Ambition, string Epic, string Decided, string Asked);
+
+    /// <summary>The section's words and each line's two boxes, with the page's width against the viewport's.</summary>
+    private const string ChangesScript = """
+        () => {
+          const section = document.querySelector('.hatch-ambition-changes');
+          const box = (e) => {
+            const r = e.getBoundingClientRect();
+            return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+          };
+          return {
+            text: section.textContent ?? '',
+            heading: section.querySelector('h2')?.textContent?.trim() ?? '',
+            top: box(section).top,
+            rowsBottom: box(document.querySelector('.hatch-ambition-list')).bottom,
+            lines: [...section.querySelectorAll('.hatch-ambition-changes-line')].map((a) => {
+              const kind = a.querySelector('.hatch-ambition-changes-kind');
+              const words = a.querySelector('.hatch-ambition-changes-words');
+              return {
+                kind: kind.textContent.trim(),
+                words: [...words.children].map((c) => c.textContent.trim()),
+                href: a.getAttribute('href') ?? '',
+                kindBox: box(kind),
+                wordsBox: box(words),
+              };
+            }),
+            innerWidth: window.innerWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+          };
+        }
+        """;
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task SinceYouLastLooked_ReadsFourKindsThenNothingAtTheDesktopProfile() => ChangesAsync("AmbitionChangesDesktop", "desktop", null);
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task SinceYouLastLooked_ReadsFourKindsThenNothingAtThePhoneProfile()
+    {
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
+        return ChangesAsync("AmbitionChangesPhone", "phone", DeviceProfile.IPhone14Pro);
+    }
+
+    /// <summary>
+    /// A first visit reads one line of each kind below the rows and records
+    /// itself once, even after the page reads again on focus; a reload, which
+    /// is a second visit, reads the section empty.
+    /// </summary>
+    private async Task ChangesAsync(string name, string profileName, DeviceProfile? profile)
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness(name);
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline, profile);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            var seeded = await deadline.BoundAsync("filing one change of each kind", () => SeedChangesAsync(baseUrl));
+
+            // Every visit written, and every one the server has answered.
+            var sent = new List<string>();
+            var answered = new List<int>();
+            var rereads = new List<string>();
+            await harness.OpenAsync(deadline, baseUrl, "/ambitions", context =>
+            {
+                context.Request += (_, request) =>
+                {
+                    if (request.Method == "PUT" && request.Url.Contains(VisitRoute))
+                        lock (sent) sent.Add(request.Url);
+                };
+                context.Response += (_, response) =>
+                {
+                    if (response.Request.Method == "PUT" && response.Url.Contains(VisitRoute))
+                        lock (answered) answered.Add(response.Status);
+                    if (response.Url.Contains(ChangesRoute) && response.Url.Contains("since="))
+                        lock (rereads) rereads.Add(response.Url);
+                };
+                return Task.CompletedTask;
+            });
+            if (profile is not null) await harness.SetViewportAsync(deadline, 390, 844);
+            await harness.WaitForVisibleAsync(deadline, ChangeLines);
+            await UntilAsync(deadline, "waiting for the visit to be stored", () => { lock (answered) return answered.Count > 0; });
+
+            // The page reads again when the tab is looked back at. It asks from
+            // the instant the first read ran from, so the lines stay.
+            await harness.EvaluateAsync<bool>(deadline, "focusing the tab", "() => { window.dispatchEvent(new Event('focus')); return true; }");
+            await UntilAsync(deadline, "waiting for the second read", () => { lock (rereads) return rereads.Count > 0; });
+            await Task.Delay(500);
+
+            var measured = await harness.EvaluateAsync<JsonElement>(deadline, "measuring the changes section", ChangesScript);
+            output.WriteLine($"{profileName} /ambitions changes: {measured}");
+            output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"ambition-changes-{profileName}")}");
+
+            lock (sent) Assert.True(sent.Count == 1, $"the visit was written {sent.Count} times on one opening");
+            lock (answered) Assert.Equal([200], answered);
+            AssertChangeLines(measured, seeded, stacked: profile is not null);
+            AssertFits(measured, profile is not null);
+            AssertFits(await ScrollIntoViewAsync(harness, deadline, ".hatch-ambition-changes", 0), profile is not null);
+
+            await deadline.BoundAsync("reloading", () => harness.Page!.ReloadAsync());
+            await harness.WaitForVisibleAsync(deadline, $".hatch-ambition-changes .hatch-empty:has-text(\"{NothingChanged}\")");
+            await UntilAsync(deadline, "waiting for the second visit to be stored", () => { lock (answered) return answered.Count > 1; });
+
+            var second = await harness.EvaluateAsync<JsonElement>(deadline, "measuring the second visit", ChangesScript);
+            output.WriteLine($"{profileName} /ambitions second visit: {second}");
+            output.WriteLine($"saved {await harness.FullPageScreenshotAsync(deadline, $"ambition-changes-second-visit-{profileName}")}");
+
+            Assert.Empty(second.GetProperty("lines").EnumerateArray());
+            Assert.Contains("ago", second.GetProperty("text").GetString());
+            Assert.DoesNotContain(FirstVisit, second.GetProperty("text").GetString());
+            lock (sent) Assert.True(sent.Count == 2, $"two openings wrote the visit {sent.Count} times");
+            AssertFits(second, profile is not null);
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    private static Task UntilAsync(Deadline deadline, string what, Func<bool> done) =>
+        deadline.BoundAsync(what, async () =>
+        {
+            while (!done()) await Task.Delay(50);
+        });
+
+    /// <summary>
+    /// The first visit's section: below the rows, one line of each kind with its
+    /// words and its link, and the kind beside the words on a desk or above them
+    /// on a phone.
+    /// </summary>
+    private static void AssertChangeLines(JsonElement section, SeededChanges s, bool stacked)
+    {
+        Assert.Equal("Since you last looked", section.GetProperty("heading").GetString());
+        Assert.Contains(FirstVisit, section.GetProperty("text").GetString());
+        Assert.True(section.GetProperty("top").GetDouble() >= section.GetProperty("rowsBottom").GetDouble(), "the section is not below the rows");
+
+        var lines = section.GetProperty("lines").EnumerateArray().ToList();
+        Assert.Equal(4, lines.Count);
+        JsonElement Line(string kind) => lines.Single(l => l.GetProperty("kind").GetString() == kind);
+
+        var holds = Line("Now holds");
+        Assert.Equal(
+            ["A partner can place an order without a phone call", "Partners order without a phone call", "Looked at: the staging flow"],
+            Strings(holds, "words"));
+        Assert.Equal($"/issues/{s.Ambition}", holds.GetProperty("href").GetString());
+
+        var carved = Line("Carved");
+        Assert.Equal([s.Epic, "A partner order form", "serves #1"], Strings(carved, "words"));
+        Assert.Equal($"/issues/{s.Epic}", carved.GetProperty("href").GetString());
+
+        var decided = Line("Decided without you");
+        Assert.Equal([s.Decided, "Went with the first store."], Strings(decided, "words"));
+        Assert.Equal("/ballot", decided.GetProperty("href").GetString());
+
+        var asked = Line("Asked you");
+        Assert.Equal([s.Asked, "Which form should it take?"], Strings(asked, "words"));
+        Assert.Equal($"/issues/{s.Asked}", asked.GetProperty("href").GetString());
+
+        double At(JsonElement line, string box, string edge) => line.GetProperty(box).GetProperty(edge).GetDouble();
+
+        foreach (var line in lines)
+        {
+            if (stacked)
+            {
+                Assert.True(At(line, "wordsBox", "top") >= At(line, "kindBox", "bottom") - Tolerance, $"the kind is not above the words: {line}");
+                Assert.True(Math.Abs(At(line, "wordsBox", "left") - At(line, "kindBox", "left")) <= Tolerance, $"the kind and the words do not share a left: {line}");
+            }
+            else
+            {
+                Assert.True(At(line, "wordsBox", "left") >= At(line, "kindBox", "right") - Tolerance, $"the words are not beside the kind: {line}");
+                Assert.True(Math.Abs(At(line, "wordsBox", "left") - At(lines[0], "wordsBox", "left")) <= Tolerance, $"the words do not share a column: {line}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// One change of each kind beneath one ambition, over plain HTTP: an epic
+    /// filed under it; a story whose question a session answered; a story with a
+    /// question still waiting at hold; and, last, a capability that holds.
+    /// </summary>
+    private static async Task<SeededChanges> SeedChangesAsync(string baseUrl)
+    {
+        using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+
+        // Read as a document: the whole runner record needs converters these options do not carry.
+        var minted = await PostAsync<CreateRunnerRequest, JsonElement>(http, "/api/runners", new CreateRunnerRequest("Marsh"));
+        using var asRunner = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        asRunner.DefaultRequestHeaders.Authorization = new("Bearer", minted.GetProperty("secret").GetString());
+
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("SIN", "SIN"));
+        var ambition = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "ambition", "Partners order without a phone call", null, null, null, null));
+        var capability = await PostAsync<CapabilityCreateRequest, CapabilityDto>(
+            http, $"/api/issues/{ambition.Key}/capabilities",
+            new("A partner can place an order without a phone call", "Place one as a partner and count the calls"));
+
+        var epic = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "epic", "A partner order form", null, ambition.Key, null, null));
+        await ServesAsync(http, epic.Key, capability.Id);
+
+        var decided = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "story", "Keep partner orders", null, epic.Key, null, null));
+        var settled = await PostAsync<CommentCreateRequest, CommentDto>(
+            http, $"/api/issues/{decided.Key}/comments",
+            new("Which store should it use?", "question", null, [new("first store", "Already wired in", true), new("second store", "Needs a rewrite")]));
+        using (var level = await http.PutAsJsonAsync(
+                   $"/api/issues/{decided.Key}/questions/{settled.Id}/level", new QuestionLevelRequest(QuestionLevels.BuildName), Web))
+            Assert.True(level.IsSuccessStatusCode, $"setting the question's level answered {(int)level.StatusCode}");
+        await PostAsync<CommentCreateRequest, CommentDto>(
+            asRunner, $"/api/issues/{decided.Key}/comments", new("Went with the first store.", "answer", settled.Id));
+
+        var asked = await PostAsync<IssueCreateRequest, IssueDto>(
+            http, "/api/issues", new(project.Id, "story", "Draw the order form", null, epic.Key, null, null));
+        await PostAsync<CommentCreateRequest, CommentDto>(
+            http, $"/api/issues/{asked.Key}/comments", new("Which form should it take?", "question"));
+
+        await PostAsync<CapabilityVerdictRequest, CapabilityVerdictDto>(
+            http, $"/api/issues/{ambition.Key}/capabilities/{capability.Id}/verdicts", new("holds", "the staging flow", "aaa1111"));
+
+        return new SeededChanges(ambition.Key, epic.Key, decided.Key, asked.Key);
     }
 
     private async Task RunAsync(string name, string profileName, DeviceProfile? profile)

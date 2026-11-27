@@ -448,6 +448,44 @@ segment each for holds, in flight, waiting and not started, and the legend
 beneath it reads "1 hold, 1 in flight, 1 waiting on a person, 1 not
 started."
 
+Below the rows, **Since you last looked** says what changed under the
+ambitions in the tab's scope since your last visit, and how long ago that
+was. Each line is its kind, then its words, newest first, and the whole line
+is a link:
+
+- **Now holds.** A capability's newest verdict became "holds": its statement,
+  the ambition, and what the verdict looked at. It links to the ambition. A
+  capability that came to hold and stopped holding in between draws no line.
+- **Carved.** An epic was filed under an ambition: its key and title, and
+  "serves #1, #2" or "serves no capability yet". It links to the epic. An
+  epic that already existed and was moved under an ambition later is not a
+  line.
+- **Decided without you.** A [question](questions-and-decisions) beneath an
+  ambition was answered by a session, or went ahead on its recommendation: the
+  key and what the work went ahead on. It links to the Ballot, under the
+  tab's scope.
+- **Asked you.** A question at the hold level was asked beneath an ambition
+  and is still open: the key and the question's first line. Several on one
+  issue make one line, "3 questions are waiting". It links to the issue.
+
+The section shows at most 30 lines, and a last line, "and N more", counts the
+rest. With nothing changed it is one sentence, "Nothing has changed since you
+last looked." On your first visit it covers the last seven days and says so.
+On a phone the kind stacks above the words. With no ambition in the tab's
+scope it is not drawn, though opening the page still counts as looking. Where
+what changed cannot be read, the section says so in a sentence and the rest of
+the page still draws.
+
+Opening the page is what counts as looking: there is no press to mark the
+lines as read. The visit is recorded once the section has been read and drawn,
+and only once for each time you open the page, so changing the scope or coming
+back to the tab keeps the lines running from the same instant. A failed read
+is not counted as a look. The last visit is kept for you, the person, on the
+server and not on the device, so a phone and a desk agree. It is one visit for
+the whole page: a look under a narrow scope counts for every project. A key
+reads the changes from an instant it names, or the last seven days, and never
+records a visit - see [the API reference](api-reference).
+
 ## Principles
 
 An ambition's description can hold a `## Principles` heading, with one bullet per principle beneath it. That heading, on an ambition's own description, is the only place anything reads a principle from - an epic that is not an ambition carries none, whatever a heading of the same name on its own description might say.
