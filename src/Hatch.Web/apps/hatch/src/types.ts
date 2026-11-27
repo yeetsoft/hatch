@@ -1795,6 +1795,25 @@ export interface Capability {
   servedBy: string[];
 }
 
+/** What POST .../capabilities takes to add one. Mirrors CapabilityCreateRequest. */
+export interface CapabilityCreateRequest {
+  statement: string;
+  howToTell: string;
+}
+
+/** What PATCH .../capabilities/{id} takes to edit one - either line, or both.
+    Mirrors CapabilityPatchRequest. */
+export interface CapabilityPatchRequest {
+  statement?: string;
+  howToTell?: string;
+}
+
+/** The order PUT .../capabilities/order writes: every capability id, once,
+    in the order wanted. Mirrors CapabilityOrderRequest. */
+export interface CapabilityOrderRequest {
+  ids: number[];
+}
+
 /** One verdict within a pass. Mirrors AmbitionPassVerdictDto. */
 export interface AmbitionPassVerdict {
   id: number;

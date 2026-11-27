@@ -134,6 +134,70 @@ describe('Capabilities', () => {
   });
 });
 
+const renderEditable = (caps: Capability[] | null, opts: { canEdit?: boolean; running?: boolean } = {}): string =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <Capabilities
+        issue={ambition}
+        board={board()}
+        capabilities={caps}
+        error={null}
+        canEdit={opts.canEdit}
+        running={opts.running}
+      />
+    </MemoryRouter>,
+  );
+
+describe('Capabilities, editable', () => {
+  it('draws no control with canEdit false, as today', () => {
+    const html = renderEditable([capability({ id: 1, position: 1, statement: 'alpha' })]);
+    expect(html).not.toContain('Edit: alpha');
+    expect(html).not.toContain('Remove: alpha');
+    expect(html).not.toContain('Move up: alpha');
+    expect(html).not.toContain('Move down: alpha');
+  });
+
+  it('draws Edit, Remove and Move for each row, the first with no Move up and the last with no Move down', () => {
+    const html = renderEditable(
+      [capability({ id: 1, position: 1, statement: 'alpha' }), capability({ id: 2, position: 2, statement: 'beta' })],
+      { canEdit: true },
+    );
+    expect(html).toContain('aria-label="Edit: alpha"');
+    expect(html).toContain('aria-label="Remove: alpha"');
+    expect(html).not.toContain('aria-label="Move up: alpha"');
+    expect(html).toContain('aria-label="Move down: alpha"');
+    expect(html).toContain('aria-label="Edit: beta"');
+    expect(html).toContain('aria-label="Move up: beta"');
+    expect(html).not.toContain('aria-label="Move down: beta"');
+  });
+
+  it('draws the add form in place of the CLI command with no capabilities', () => {
+    const html = renderEditable([], { canEdit: true });
+    expect(html).toContain('Add a capability');
+    expect(html).not.toContain('hatch capability add');
+  });
+
+  it('draws the add form under the table with capabilities', () => {
+    const html = renderEditable([capability({ id: 1 })], { canEdit: true });
+    expect(html).toContain('Add a capability');
+  });
+
+  it('says a session works out the change once, running', () => {
+    const html = renderEditable([capability({ id: 1 })], { canEdit: true, running: true });
+    expect(html).toContain('A session will work out what a change does to the epics in flight.');
+  });
+
+  it('says nothing about a session when not running', () => {
+    const html = renderEditable([capability({ id: 1 })], { canEdit: true, running: false });
+    expect(html).not.toContain('A session will work out');
+  });
+
+  it('says nothing about a session for a key or a browser nobody signed into, even running', () => {
+    const html = renderEditable([capability({ id: 1 })], { canEdit: false, running: true });
+    expect(html).not.toContain('A session will work out');
+  });
+});
+
 describe('Serves', () => {
   it('returns null off an epic', () => {
     expect(renderServes([{ ambitionKey: 'AER-1', capabilityId: 1, position: 1, statement: 'a', state: 'holds' }], ambition)).toBe('');

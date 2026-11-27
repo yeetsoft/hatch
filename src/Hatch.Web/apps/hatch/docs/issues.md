@@ -89,6 +89,27 @@ the epic serves nothing. An epic beneath no ambition draws nothing when it
 serves nothing, and no other type draws either section. Each state is a pill, green, red, amber or grey, and looks the
 same on Serves, on each verdict in Passes and for the outcome in Latest change.
 
+A person signed in, or working at the console with the wall off, can add, edit,
+reorder and remove a capability from the Capabilities section itself — a key,
+or a browser nobody has signed into, sees the section exactly as above, with no
+control on it. **Add a capability** takes a statement and a how-to-tell line and
+puts the new row last. **Edit**, on a row, opens both lines in place; **Save**
+writes them and **Cancel**, or Escape, restores the row untouched. **Remove**
+asks first, naming the epics that serve the capability — removing it unlinks
+them — and removes it once confirmed. **Move up** and **Move down** write the
+new order at once; the first row has no Move up and the last no Move down.
+Each control names its own capability for a screen reader and works from the
+keyboard. A refusal from the server shows as its own sentence beside the
+control that caused it, and what was typed stays in the field. Reordering
+writes no event an ambition's History shows as a change — only an add, an edit
+or a remove does — so moving a row is never something a running ambition's
+session has to work out the consequences of. On an ambition that has reached
+the implementation column, the section says once that a session will work out
+what a change does to the epics in flight; the Latest change section below it
+shows that change the moment the write lands, with no reload needed. The CLI
+door — `hatch capability add` — stays, and is what an ambition with no
+capabilities yet shows in place of the form to a key or a signed-out browser.
+
 An ambition's page also draws Epics in flight, between Capabilities and
 Progress. It lists each direct child in a column that is neither terminal nor
 deferred: the key as a link, the title, the column's name, and the capabilities
