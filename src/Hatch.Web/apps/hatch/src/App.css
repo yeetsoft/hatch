@@ -5327,6 +5327,11 @@ button.hatch-chip {
 
 .hatch-bulk-parent .hatch-issue-picker {
   flex: 1 1 14rem;
+}
+
+/* Alone in a grid cell too (Ancestor): the 18rem floor is wider than a cell in
+   a four-column row, so the picker fills the cell instead. */
+.hatch-bulk-page .hatch-issue-picker {
   min-width: 0;
 }
 
