@@ -46,6 +46,9 @@ export interface Project {
   key: string;
   name: string;
   issueCount: number;
+  /** The highest issue number this project has handed out, or 0 for none. Never
+      lowered when an issue is deleted. See ProjectDto.LastIssueNumber. */
+  lastIssueNumber: number;
   createdAt: string;
   color: string | null;
   icon: string | null;

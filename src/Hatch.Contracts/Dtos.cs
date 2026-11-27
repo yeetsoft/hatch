@@ -54,6 +54,7 @@ namespace Hatch.Contracts;
 /// <param name="AllowsUnsignedCommits">Whether the project allows commits that are not signed - see <see cref="EfHatchProject.AllowsUnsignedCommits"/>. On by default.</param>
 /// <param name="AllowsUnsignedCommitsBy">Who last changed <paramref name="AllowsUnsignedCommits"/>, or null until the first change - see <see cref="EfHatchProject.AllowsUnsignedCommitsBy"/>.</param>
 /// <param name="AllowsUnsignedCommitsAt">When <paramref name="AllowsUnsignedCommits"/> was last changed, or null until the first change - see <see cref="EfHatchProject.AllowsUnsignedCommitsAt"/>.</param>
+/// <param name="LastIssueNumber">The highest issue number this project has handed out, or 0 for none. Never lowered when an issue is deleted - see <see cref="EfHatchProject.NextIssueNumber"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -72,7 +73,8 @@ public record ProjectDto(
     string OnePullRequestPolicy = OnePullRequestPolicies.Optional, string? OnePullRequestPolicyBy = null, DateTimeOffset? OnePullRequestPolicyAt = null,
     string Priority = ProjectPriorities.Normal, string? PriorityBy = null, DateTimeOffset? PriorityAt = null,
     bool FilesContributions = false, string? FilesContributionsBy = null, DateTimeOffset? FilesContributionsAt = null,
-    bool AllowsUnsignedCommits = true, string? AllowsUnsignedCommitsBy = null, DateTimeOffset? AllowsUnsignedCommitsAt = null)
+    bool AllowsUnsignedCommits = true, string? AllowsUnsignedCommitsBy = null, DateTimeOffset? AllowsUnsignedCommitsAt = null,
+    int LastIssueNumber = 0)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
