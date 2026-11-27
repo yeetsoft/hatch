@@ -193,10 +193,6 @@ export function keepHighlight(rows: { key: string }[], key: string | null): stri
   return rows[0]?.key ?? null;
 }
 
-/** Where the issues the console lists come from: a host's, already in hand, or
-    a read of the board that may not have landed. */
-export type GoToLoad = 'ready' | 'loading' | 'failed';
-
 /** What the lookup has said, for the status line. */
 export interface GoToLookup {
   /** The server's answer left rows out past its limit. */
@@ -205,19 +201,14 @@ export interface GoToLookup {
   pending?: boolean;
 }
 
-/** The status line's left half. A read still out, or failed, says so before
-    anything about the query: "no issue matches" would not be true yet. A lookup
-    still out says so only while there is nothing to draw: rows already listed
-    are real. */
+/** The status line's left half. A lookup still out says so only while there is
+    nothing to draw: rows already listed are real. */
 export function goToStatus(
   query: string,
   shown: number,
   total: number,
-  load: GoToLoad = 'ready',
   lookup: GoToLookup = {},
 ): string {
-  if (load === 'loading') return 'Loading…';
-  if (load === 'failed') return 'could not load issues';
   if (!query.trim()) return 'type a key, a number, or words from a title';
   if (lookup.pending && shown === 0) return 'Loading…';
   if (total === 0) return 'no issue matches';

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Badge, Button, Card, Field, Modal, PageHeader, ProjectMark } from '@hatch/ui';
 import {
@@ -125,6 +125,7 @@ import { moneyPhrase } from '../lib/workLog';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useRemand } from '../lib/useRemand';
 import { remandOffer } from '../lib/remand';
+import { cardFromIssue } from '../lib/peekCard';
 import { useConsoleMoves } from '../lib/useConsole';
 import type { MoveResult } from '../lib/useConsole';
 import { useMoveProject } from '../lib/useMoveProject';
@@ -878,9 +879,15 @@ export function IssuePage() {
     return sendStatus(statusId, onOffer);
   };
 
+  // The page's own issue, as the console's one card: it has no board read of
+  // its own to find it on, and an issue closed long ago is not on the board's.
+  const consoleCard = useMemo(() => (issue ? cardFromIssue(issue, 0) : null), [issue]);
+
   useConsoleMoves({
     pageKey: key,
     peekedKey: null,
+    card: consoleCard,
+    statuses: board?.statuses,
     projectsByKey,
     send: (_key, statusId, onOffer) => moveStatus(statusId, onOffer),
     reload: load,

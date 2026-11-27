@@ -385,7 +385,9 @@ puts the console away.
 
 The issue in view is, in this order:
 
-1. the issue whose page you are on;
+1. the issue whose page you are on. The page hands the console its own issue
+   and its columns, so this works even for an issue closed long ago that the
+   board no longer shows;
 2. the card the board's peek is open on;
 3. the card that had keyboard focus when you pressed `/` on the board. Tab to
    a card, press `/`, type `>todo` and **↵**, and the card moves and the
@@ -418,8 +420,9 @@ What opening a row does depends on the page. On the board the card is ringed
 and peeked, or peeked alone when the board's filter is hiding it, and on the
 board `/` also opens the console over a peek that is already open. On every
 other page the row opens the issue's own page, with the tab's scope kept on
-the address. Off the board the console reads the board once as it opens, so
-its status line says **Loading…** until that lands; it does not poll.
+the address. Off the board, opening the console sends nothing: typing a key
+and pausing asks the server once, and rows already listed stay while it
+answers.
 
 ### Setting an issue's priority and pre-approval
 
