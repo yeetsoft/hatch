@@ -1058,6 +1058,18 @@ public class EfHatchIssue
     public NpgsqlTsVector SearchVector { get; private set; } = null!;
 
     /// <summary>
+    /// <see cref="Title"/> alone, unweighted - the go-to lookup's title search
+    /// (<see cref="GoToController"/>). A weight check against
+    /// <see cref="SearchVector"/> reads every candidate row from the table to
+    /// recheck the weight, which is fast for most words but not for one whose
+    /// matches are not spread evenly through the id order the lookup sorts by;
+    /// this column's own GIN index never needs the recheck. Never assigned in
+    /// code: Postgres computes it from <see cref="Title"/> the moment it is
+    /// written.
+    /// </summary>
+    public NpgsqlTsVector TitleVector { get; private set; } = null!;
+
+    /// <summary>
     /// The epic above this story, or the story above this task. Nullable and
     /// usually null; validated server-side for existence, legal type
     /// pairing, and no cycles. It may stand in another project, except that a task

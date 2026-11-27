@@ -7,8 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// Go to: the issues a typed number, key prefix or whole key names, the first few,
-/// quickly on a board of a million issues.
+/// Go to: the issues a typed number, key, whole key or title words name, the
+/// first few, quickly on a board of a million issues.
 /// </summary>
 /// <remarks>
 /// What a query means is <see cref="GoToQuery"/>'s, which follows the console's
@@ -32,7 +32,10 @@ public class GoToController(HatchContext db) : ControllerBase
     /// </summary>
     /// <param name="q">
     /// Digits alone are a number prefix in every project. Any other single word is a
-    /// key prefix, letters and digits only, any case. Anything else finds no rows.
+    /// key prefix, letters and digits only, any case. Several words are title words -
+    /// each the start of a word in the title, every one present, closed issues
+    /// included - with key rows first when a single word is also a key prefix. Title
+    /// rows run newest first, by id descending.
     /// </param>
     /// <param name="projectId">
     /// The projects the caller narrowed to; repeat it for several. A whole key naming
@@ -62,7 +65,8 @@ public class GoToController(HatchContext db) : ControllerBase
         var rows = query switch
         {
             GoToQuery.Number number => await ByNumberAsync(inScope, number.Digits, take, ct),
-            GoToQuery.Key key => await ByKeyAsync(inScope, key.Wanted, take, ct),
+            GoToQuery.Key key => await ByKeyThenTitleAsync(inScope, key.Wanted, take, ct),
+            GoToQuery.Words words => await ByTitleAsync(inScope, SearchQuery.ToTsQuery(words.Typed)!, take, ct),
             _ => [],
         };
 
@@ -152,6 +156,51 @@ public class GoToController(HatchContext db) : ControllerBase
     }
 
     /// <summary>
+    /// Key rows, then, when fewer than <paramref name="take"/> of them were found,
+    /// title rows for <paramref name="wanted"/> not already among them - a single
+    /// word may be a key prefix and the start of a title word both.
+    /// </summary>
+    private async Task<List<Row>> ByKeyThenTitleAsync(
+        IQueryable<EfHatchIssue> issues, string wanted, int take, CancellationToken ct)
+    {
+        var keyRows = await ByKeyAsync(issues, wanted, take, ct);
+        if (keyRows.Count >= take) return keyRows;
+
+        var tsquery = SearchQuery.ToTsQuery(wanted);
+        if (tsquery is null) return keyRows;
+
+        var listed = keyRows.Select(r => r.Id).ToHashSet();
+        var titleRows = await ByTitleAsync(issues, tsquery, take + keyRows.Count, ct);
+
+        return [.. keyRows, .. titleRows.Where(r => !listed.Contains(r.Id)).Take(take - keyRows.Count)];
+    }
+
+    /// <summary>
+    /// Issues whose title matches <paramref name="tsquery"/>, newest first by id. A
+    /// key sort over every match of a common word would mean sorting all of them;
+    /// <c>ORDER BY "Id" DESC LIMIT n</c> lets Postgres walk the primary key backward
+    /// for a common word and use the <see cref="EfHatchIssue.TitleVector"/> GIN
+    /// index for a rare one, the planner's own choice either way. Matched against
+    /// <see cref="EfHatchIssue.TitleVector"/> rather than
+    /// <see cref="EfHatchIssue.SearchVector"/> weighted to the title: a weight
+    /// check rereads every candidate row from the table, which measured over
+    /// 200ms at a million rows for a word whose matches are not spread evenly
+    /// through the id order this sorts by - see the pull request for the EXPLAIN.
+    /// </summary>
+    private static async Task<List<Row>> ByTitleAsync(
+        IQueryable<EfHatchIssue> issues, string tsquery, int take, CancellationToken ct) =>
+        await TitleRows(issues, tsquery, take).ToListAsync(ct);
+
+    private static IQueryable<Row> TitleRows(IQueryable<EfHatchIssue> issues, string tsquery, int take) =>
+        Read(issues.Where(i => i.TitleVector.Matches(EF.Functions.ToTsQuery(SearchQuery.Config, tsquery))))
+            .OrderByDescending(r => r.Id)
+            .Take(take);
+
+    /// <summary>The SQL for a title match, as the database is asked it.</summary>
+    public static string TitleQueryString(IQueryable<EfHatchIssue> issues, string tsquery, int take) =>
+        TitleRows(issues, tsquery, take).ToQueryString();
+
+    /// <summary>
     /// The issues <paramref name="wanted"/> names whole - <c>ha4</c> is HA-4, and
     /// <c>ha34</c> is HA-34 and HA3-4 - that are not in a project of
     /// <paramref name="projectIds"/>, marked out of scope.
@@ -183,6 +232,7 @@ public class GoToController(HatchContext db) : ControllerBase
     private static IQueryable<Row> Read(IQueryable<EfHatchIssue> issues) =>
         issues.Select(i => new Row
         {
+            Id = i.Id,
             ProjectKey = i.Project!.Key,
             Number = i.Number,
             Type = i.Type,
@@ -199,6 +249,7 @@ public class GoToController(HatchContext db) : ControllerBase
     /// <remarks>Set by member, not by constructor: EF orders a set of these by a member only when it can see how each was built.</remarks>
     private sealed record Row
     {
+        public required long Id { get; init; }
         public required string ProjectKey { get; init; }
         public required int Number { get; init; }
         public required string Type { get; init; }

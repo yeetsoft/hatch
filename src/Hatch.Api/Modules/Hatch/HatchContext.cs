@@ -1078,6 +1078,13 @@ public class HatchContext : DbContext, IModuleContext
                 .HasIndex(i => i.SearchVector)
                 .HasMethod("GIN");
 
+            modelBuilder.Entity<EfHatchIssue>()
+                .Property(i => i.TitleVector)
+                .HasComputedColumnSql("""to_tsvector('english', "Title")""", stored: true);
+            modelBuilder.Entity<EfHatchIssue>()
+                .HasIndex(i => i.TitleVector)
+                .HasMethod("GIN");
+
             modelBuilder.Entity<EfHatchComment>()
                 .Property(c => c.SearchVector)
                 .HasComputedColumnSql(
@@ -1108,6 +1115,7 @@ public class HatchContext : DbContext, IModuleContext
         else
         {
             modelBuilder.Entity<EfHatchIssue>().Ignore(i => i.SearchVector);
+            modelBuilder.Entity<EfHatchIssue>().Ignore(i => i.TitleVector);
             modelBuilder.Entity<EfHatchComment>().Ignore(c => c.SearchVector);
             modelBuilder.Entity<EfHatchWorkLogEntry>().Ignore(w => w.SearchVector);
             modelBuilder.Entity<EfHatchDream>().Ignore(d => d.SearchVector);

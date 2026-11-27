@@ -283,10 +283,12 @@ for a scope of one project. See [Reports](flow-wip-and-the-battery#reports).
 
 Press `/` on any page and a prompt opens over it. Type an issue's key
 (`HA-3`, `ha-3` or `ha3`), its number (`3`), or words from its title, and the
-list narrows as you type. **↑↓** move, **↵** opens the highlighted row and
-**esc** puts it away. The last row, **Search everything**, carries what you
-typed to the Search page - the way to find an issue by a title it used to
-have, since the console itself matches current titles only. It is not a
+list narrows as you type. A title word matches from the start of a word in
+the title - `dash` finds "Dashboard filters", but `ash` does not. **↑↓**
+move, **↵** opens the highlighted row and **esc** puts it away. The last
+row, **Search everything**, carries what you typed to the Search page - the
+way to find an issue by a title it used to have, since the console itself
+matches current titles only. It is not a
 shortcut while you are typing:
 `/` in a text box, a description editor, or the board's own search box is a
 slash.

@@ -744,7 +744,7 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/search` | Full-text search across title, previous titles, description, comments and work log, paged |
-| GET | `/go-to` | The first issues a typed number, key prefix or whole key names, quickly at any size of board |
+| GET | `/go-to` | The first issues a typed number, key, whole key or title words name, quickly at any size of board |
 | GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
 | GET | `/ambitions` | Every ambition with its capabilities counted four ways and the epics open under it; takes a repeatable `projectId` |
@@ -776,15 +776,18 @@ reading anything else; `More` is true when rows were left out past `limit`. Ther
 is no total, because counting every match of a short number across a large board
 is the slow part - a client says "keep typing" instead. `q` follows the console:
 digits alone are a number prefix in every project (`45` is 45, 450-459, 4500-4599
-and so on), any other single word is a key prefix on letters and digits alone,
-ignoring case (`ha`, `ha-4` and `ha4` agree), and anything else - blank, or
-words - answers no rows. Rows run by number, then by project key. A project key
-may hold digits, so `ha34` reads as HA with 34 and as HA3 with 4, wherever both
-projects exist. `projectId` narrows the answer; a single word that is the whole key
-of an issue outside it is listed first with `OutOfScope` true, and counts against
-`limit`. The caller's own project scope applies as on every read: an issue the
-caller cannot see is never a row, out of scope or not. A `limit` outside 1-50 is a
-400.
+and so on); any other single word is a key prefix on letters and digits alone,
+ignoring case (`ha`, `ha-4` and `ha4` agree); several words are title words -
+each the start of a word in the title and every one of them present, the title
+only, closed issues included - and a single word that is not a number is both:
+key rows first, then title rows not already listed. Key and number rows run by
+number, then by project key; title rows run newest first, by id descending. A
+project key may hold digits, so `ha34` reads as HA with 34 and as HA3 with 4,
+wherever both projects exist. `projectId` narrows the answer; a single word that
+is the whole key of an issue outside it is listed first with `OutOfScope` true,
+and counts against `limit`. The caller's own project scope applies as on every
+read: an issue the caller cannot see is never a row, out of scope or not. A
+`limit` outside 1-50 is a 400.
 
 `/ambitions` takes an optional, repeatable `projectId`, the same filter
 `/plan` takes, and answers one `AmbitionRowDto` per ambition the caller may

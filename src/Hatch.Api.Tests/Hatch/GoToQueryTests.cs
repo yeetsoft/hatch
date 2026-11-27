@@ -12,12 +12,20 @@ public class GoToQueryTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("ha 4")]
-    [InlineData("fix the gasket")]
     [InlineData("-")]
     [InlineData("--")]
     public void BlankWordsAndPunctuation_AreNothing(string? q) =>
         Assert.IsType<GoToQuery.None>(GoToQuery.Parse(q));
+
+    [Theory]
+    [InlineData("ha 4")]
+    [InlineData("fix the gasket")]
+    public void SeveralWords_AreTitleWords(string q) =>
+        Assert.Equal(new GoToQuery.Words(q), GoToQuery.Parse(q));
+
+    [Fact]
+    public void WhitespaceThatLeavesNoWord_IsNothing() =>
+        Assert.IsType<GoToQuery.None>(GoToQuery.Parse("- -"));
 
     [Theory]
     [InlineData("4", "4")]
