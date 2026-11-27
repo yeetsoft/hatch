@@ -1,6 +1,7 @@
 using Hatch.Api.Modules.Hatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -93,6 +94,92 @@ public class AmbitionsControllerTests
         var row = Assert.Single(await h.ReadAsync());
 
         Assert.Equal((0, 1), (row.Holds, row.NotStarted));
+    }
+
+    [Fact]
+    public async Task ARunOfHoldsThatBeganExactlySevenDaysAgo_IsNewlyHolding()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        await h.VerdictAsync(await h.CapabilityAsync(ambition, 1), EfHatchCapabilityVerdict.Holds, Now.AddDays(-7));
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Equal((1, 1), (row.Holds, row.NewlyHolding));
+    }
+
+    [Fact]
+    public async Task ARunOfHoldsThatBeganSevenDaysAndASecondAgo_IsNotNewlyHolding()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        await h.VerdictAsync(await h.CapabilityAsync(ambition, 1), EfHatchCapabilityVerdict.Holds, Now.AddDays(-7).AddSeconds(-1));
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Equal((1, 0), (row.Holds, row.NewlyHolding));
+    }
+
+    [Fact]
+    public async Task AnOldRunOfHolds_StaysOldWhenANewHoldsJoinsIt()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var capability = await h.CapabilityAsync(ambition, 1);
+        await h.VerdictAsync(capability, EfHatchCapabilityVerdict.Holds, Now.AddDays(-30));
+        await h.VerdictAsync(capability, EfHatchCapabilityVerdict.Holds, Now.AddDays(-1));
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Equal((1, 0), (row.Holds, row.NewlyHolding));
+    }
+
+    [Theory]
+    [InlineData(EfHatchCapabilityVerdict.DoesNotHold)]
+    [InlineData(EfHatchCapabilityVerdict.CannotTell)]
+    public async Task AVerdictThatIsNotHolds_BetweenTwoHolds_StartsTheRunAgain(string between)
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var capability = await h.CapabilityAsync(ambition, 1);
+        await h.VerdictAsync(capability, EfHatchCapabilityVerdict.Holds, Now.AddDays(-30));
+        await h.VerdictAsync(capability, between, Now.AddDays(-20));
+        await h.VerdictAsync(capability, EfHatchCapabilityVerdict.Holds, Now.AddDays(-1));
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Equal((1, 1), (row.Holds, row.NewlyHolding));
+    }
+
+    [Fact]
+    public async Task ACapabilityWhoseNewestVerdictIsNotHolds_OrThatWasNeverJudged_IsNotNewlyHolding()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var lost = await h.CapabilityAsync(ambition, 1);
+        await h.VerdictAsync(lost, EfHatchCapabilityVerdict.Holds, Now.AddDays(-2));
+        await h.VerdictAsync(lost, EfHatchCapabilityVerdict.DoesNotHold, Now.AddDays(-1));
+        await h.CapabilityAsync(ambition, 2);
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Equal((0, 0), (row.Holds, row.NewlyHolding));
+    }
+
+    [Fact]
+    public async Task EachAmbition_CountsItsOwnNewlyHolding()
+    {
+        var h = await NewAsync();
+        var first = await h.FileAsync("ambition", "first", rank: 1);
+        var second = await h.FileAsync("ambition", "second", rank: 2);
+        await h.VerdictAsync(await h.CapabilityAsync(first, 1), EfHatchCapabilityVerdict.Holds, Now.AddDays(-1));
+        await h.VerdictAsync(await h.CapabilityAsync(first, 2), EfHatchCapabilityVerdict.Holds, Now.AddDays(-2));
+        await h.VerdictAsync(await h.CapabilityAsync(second, 1), EfHatchCapabilityVerdict.Holds, Now.AddDays(-1));
+        await h.VerdictAsync(await h.CapabilityAsync(second, 2), EfHatchCapabilityVerdict.Holds, Now.AddDays(-40));
+
+        var rows = await h.ReadAsync();
+
+        Assert.Equal([(2, 2), (2, 1)], rows.Select(r => (r.Holds, r.NewlyHolding)));
     }
 
     [Fact]
@@ -419,7 +506,7 @@ public class AmbitionsControllerTests
             return capability;
         }
 
-        public async Task VerdictAsync(EfHatchCapability capability, string verdict)
+        public async Task VerdictAsync(EfHatchCapability capability, string verdict, DateTimeOffset? at = null)
         {
             Db.CapabilityVerdicts.Add(new EfHatchCapabilityVerdict
             {
@@ -428,7 +515,7 @@ public class AmbitionsControllerTests
                 LookedAt = "the page",
                 Sha = "abc1234",
                 Author = "hatch-agent",
-                CreatedAt = Now,
+                CreatedAt = at ?? Now,
             });
 
             await Db.SaveChangesAsync();
@@ -488,7 +575,7 @@ public class AmbitionsControllerTests
         return new Harness
         {
             Db = db,
-            Ambitions = new AmbitionsController(db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), TimeProvider.System),
+            Ambitions = new AmbitionsController(db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), new FakeTimeProvider(Now)),
             ProjectId = project.Id,
             Other = other.Id,
             Todo = todo.Id,
