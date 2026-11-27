@@ -332,6 +332,11 @@ public class AdminSurfaceTests
         // IssuesController.SearchIssues, whose cards it returns.
         "SearchController.GetSearch",
 
+        // The go-to lookup: the first issues a typed number or key names - a
+        // cross-issue read like the search beside it, key-accepting and open to
+        // a person, narrowed by the caller's scope the same way.
+        "GoToController.GetGoTo",
+
         // Dreams: a line somebody wanted said, with no issue underneath it at
         // all - key-accepting like the rest of the module, reads included,
         // for the same reason BoardController's is: it is the operator's own
@@ -1100,6 +1105,7 @@ public class AdminSurfaceTests
         "RunnersController.EndSession",
         "RunnersController.PutRefusedModels",
         "SearchController.GetSearch",
+        "GoToController.GetGoTo",
         "SettingsController.GetClaudeToken",
         "SettingsController.GetCredential",
         "StatusesController.CreateStatus",

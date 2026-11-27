@@ -2099,6 +2099,34 @@ public record SearchHitDto(
 /// </param>
 public record SearchDto(int Total, IReadOnlyList<SearchHitDto> Hits);
 
+/// <summary>
+/// One row of the console's go-to list: an issue a typed number or key names, with
+/// its column, so the row can be drawn without reading anything else.
+/// </summary>
+/// <param name="Key">The display key, <c>AER-12</c>.</param>
+/// <param name="ProjectKey">The project half of <paramref name="Key"/>.</param>
+/// <param name="Number">The number half of <paramref name="Key"/>.</param>
+/// <param name="Type">epic, story, task or bug.</param>
+/// <param name="Title">The issue's title.</param>
+/// <param name="OutOfScope">
+/// True when the issue is outside the projects the caller narrowed to, and listed only
+/// because its whole key was typed.
+/// </param>
+/// <param name="StatusId">The column the issue stands in.</param>
+/// <param name="StatusName">That column's name.</param>
+/// <param name="StatusColor">That column's colour, as <c>#rrggbb</c>.</param>
+public record GoToRowDto(
+    string Key, string ProjectKey, int Number, string Type, string Title, bool OutOfScope,
+    int StatusId, string StatusName, string StatusColor);
+
+/// <summary>
+/// The issues a typed number or key could mean, the first few. There is no total:
+/// counting every match of a short number across a large board is the slow part.
+/// </summary>
+/// <param name="Rows">At most the limit asked for.</param>
+/// <param name="More">True when rows were left out past the limit.</param>
+public record GoToDto(IReadOnlyList<GoToRowDto> Rows, bool More);
+
 // ---- What is waiting on a person ----
 
 /// <summary>
