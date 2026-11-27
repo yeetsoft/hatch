@@ -13,6 +13,7 @@
 
 import { LEGAL_PARENT_TYPES } from '../types';
 import { compareIssueKeys } from './issuePicker';
+import type { PickedRow } from './pickerLookup';
 import type { IssueCard, IssueType } from '../types';
 
 /**
@@ -53,10 +54,38 @@ export const parentHint = (type: IssueType): string => {
 /**
  * What an `IssuePicker` with no candidates says, for the New issue dialog's
  * Parent field - `projectKey` is undefined until a project is chosen. Once
- * one is, the sentence still names none: the list is every project's, so
- * "nothing in HATCH" would no longer describe it.
+ * one is, the sentence invites typing rather than naming none: a lookup can
+ * still find a legal parent closed long before the board read it, so
+ * "nothing can be a parent yet" would be wrong as soon as it is typed about.
  */
 export const parentEmptyMessage = (projectKey: string | undefined, type: IssueType): string =>
   projectKey
-    ? `Nothing can be a parent of a ${type} yet.`
+    ? `Type a key, a number or title words to find a parent for ${article(type)} ${type}.`
     : 'Nothing can be a parent until a project is chosen.';
+
+/**
+ * The same refusal `parentCandidates` applies to the board's own cards, over
+ * a row the lookup found: a legal type, and never `self`. A relative among
+ * the page's own cards is caught by `parentCandidates` already; one closed
+ * long enough to be off the board is not, and only this and the server's own
+ * refusal catch it.
+ */
+export function parentLookupFilter(type: IssueType, self?: string): (row: PickedRow) => boolean {
+  const legal = LEGAL_PARENT_TYPES[type];
+  return (row) => row.key !== self && legal.some((t) => t === row.type);
+}
+
+/**
+ * `picked` when it is still a legal parent for `type` in a chosen project,
+ * else null - the New issue dialog's own clamp, read off a looked-up row
+ * rather than a card list. A pick that no longer qualifies (the type was
+ * changed, say) is not forgotten: `picked` is left as the caller holds it,
+ * so the pick reappears the moment the type allows it again.
+ */
+export function parentInForce(
+  picked: PickedRow | null,
+  projectKey: string | undefined,
+  type: IssueType,
+): PickedRow | null {
+  return picked && projectKey !== undefined && parentLookupFilter(type)(picked) ? picked : null;
+}

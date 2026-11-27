@@ -6,6 +6,7 @@
  * (ResolveFiledFromAsync, IssuesController) refuses only the issue itself;
  * everything else, including another project, is legal. */
 
+import type { PickedRow } from './pickerLookup';
 import type { IssueCard } from '../types';
 
 /**
@@ -14,4 +15,14 @@ import type { IssueCard } from '../types';
  */
 export function filedFromCandidates(cards: IssueCard[], self: string): IssueCard[] {
   return cards.filter((c) => c.key !== self);
+}
+
+/**
+ * The same refusal, over a row the lookup found rather than a card the page
+ * holds: everything but `self`. Needed because an issue filed from one closed
+ * long enough to be off the board is otherwise only caught by the server's
+ * own refusal.
+ */
+export function filedFromLookupFilter(self: string): (row: PickedRow) => boolean {
+  return (row) => row.key !== self;
 }
