@@ -284,7 +284,12 @@ for a scope of one project. See [Reports](flow-wip-and-the-battery#reports).
 Press `/` on any page and a prompt opens over it. Type an issue's key
 (`HA-3`, `ha-3` or `ha3`), its number (`3`), or words from its title, and the
 list narrows as you type. **↑↓** move, **↵** opens the highlighted row and
-**esc** puts it away. The last row, **Search everything**, carries what you
+**esc** puts it away. Paste a whole key (`HA-455`, any case, with the hyphen)
+and press **↵**, and you land on that issue at once, with no lookup first, even
+before the list has filled: on the board, a card the board holds is peeked, and
+any other key opens its issue page, which says so when the key names nothing.
+Move the highlight with **↑↓** or the mouse first, and **↵** takes that row
+instead. The last row, **Search everything**, carries what you
 typed to the Search page - the way to find an issue by a title it used to
 have, since the console itself matches current titles only. A key or a number
 finds closed issues too, not only the ones on the board: each project knows
