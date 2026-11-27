@@ -5889,7 +5889,9 @@ input.hatch-inline-title-input {
   flex-direction: column;
   gap: var(--sp-4);
   list-style: none;
-  margin: var(--sp-4) 0 0;
+  /* auto at the sides: .hatch-page > * centres the list, and the two share a
+     specificity, so a 0 here would pin it left of the heading and strip. */
+  margin: var(--sp-4) auto 0;
   padding: 0;
 }
 
@@ -5931,6 +5933,13 @@ input.hatch-inline-title-input {
 
 .hatch-ambition-title {
   display: block;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.hatch-ambition-title:hover {
+  color: var(--primary);
+  text-decoration: underline;
 }
 
 .hatch-ambition-head-meta {
