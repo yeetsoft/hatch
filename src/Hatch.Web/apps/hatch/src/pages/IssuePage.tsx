@@ -103,7 +103,7 @@ import {
   showsPresses,
 } from '../lib/latestChange';
 import { isObviated, isSettled, tileFill } from '../lib/columns';
-import { dependencyCandidates } from '../lib/dependencies';
+import { dependencyCandidates, dependencyLookupFilter } from '../lib/dependencies';
 import { filedFromCandidates } from '../lib/filedFrom';
 import { deleteQuestion } from '../lib/deletion';
 import { firstLine } from '../lib/dreams';
@@ -1397,6 +1397,9 @@ function Dependencies({
   onRemove: (dependsOnKey: string) => Promise<unknown>;
 }) {
   const candidates = dependencyCandidates(board.issues, issue.key, issue.dependsOnKeys);
+  // Unscoped: an edge may cross a project where a parent may not, so the
+  // lookup is asked about every project rather than the issue's own.
+  const accept = dependencyLookupFilter(board.issues, issue.key, issue.dependsOnKeys);
 
   return (
     <>
@@ -1428,7 +1431,8 @@ function Dependencies({
               allowNone={false}
               placeholder="Add a dependency…"
               candidates={candidates}
-              emptyMessage="Nothing else on the board can be depended on."
+              emptyMessage="Type a key, a number or title words to find an issue."
+              lookup={{ projectIds: [], accept }}
               onChange={onAdd}
             />
           </Field>
