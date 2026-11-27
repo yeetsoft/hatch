@@ -187,8 +187,13 @@ not been started. It is sent to the row that shapes it once, and then it waits
 for a person to start it.
 
 **Where it stands.** A draft stands in the from-column of the row that shapes
-ambitions, Breakdown on a stock board. A person files it into that column; no
-button does it for them yet.
+ambitions, Breakdown on a stock board. A person files it into that column, or
+presses **Shape it**, drawn on the Ambitions row and on the ambition's own
+page header for a draft whose project has such a row. The press is a plain
+move into that column - no session and no confirmation - and the row then
+reads `shaping`. Where the project has no such row, the press is absent, and
+the draft's stage sentence says the two ways on: add capabilities by hand, or
+add a row that shapes ambitions on the Playbooks page.
 
 **The row that shapes it.** Hatch sends one session at a draft standing in that
 column, to the [row flagged as shaping an
@@ -199,7 +204,9 @@ ambition: an epic, a story, a task or a bug on the same move gets its own row,
 never this one. Where the project and the board each have one, the project's wins.
 
 **Where it stands after.** Once the draft stands in the to-column, nothing is
-aimed at it. It is not shaped again, and it is never sent to a pass.
+aimed at it. It is not shaped again, and it is never sent to a pass. A draft
+with a capability already on it - written by hand, with no session - reads
+`ready` the same way, whether or not the project has a shaping row.
 
 **What the queue says.** A draft with no row for its move reads
 `waits for a person to start it - move it into "<implementation column>"`,
@@ -209,9 +216,21 @@ An open question on the draft holds it the way it holds any ticket, with the
 question's own sentence.
 
 **Starting it.** Starting an ambition is a person's move into the implementation
-column. From there [a pass](#passes) runs exactly as it does for any ambition.
+column, offered as **Start it** on a `ready` row's Ambitions line and on its own
+page header. Unlike Shape it, the press asks first: it names how many
+capabilities a pass will check, how many epics run at once, the budget or that
+none is set, and the pre-approval level, each read fresh when the press is made.
+Confirming is the same plain move a drag already makes, and the row then reads
+`running`. From there [a pass](#passes) runs exactly as it does for any ambition.
 A person who moves a shaped draft back into the from-column gets it shaped
 again.
+
+**Both presses are a person's.** Neither is a new route or a new permission -
+each is the ordinary move route, gated the way a drag into that column already
+is, and a refusal (a protected column, a full one) shows as the server's own
+sentence beside the press. A key is offered neither: each is a move a person
+may already make by hand, and a key gains nothing from a button standing in
+for a drag it was never offered either.
 
 ## Changing an ambition
 

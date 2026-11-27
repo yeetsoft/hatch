@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, EmptyState, Field } from '@hatch/ui';
-import { PRE_APPROVAL_LEVELS } from '../lib/preApproval';
+import { AmbitionPresses } from './AmbitionPresses';
+import { preApprovalWord } from '../lib/preApproval';
 import { scopedPath } from '../lib/scope';
 import { wipLimitDraft, wipLimitHint, wipLimitLabel, wipLimitPlaceholder, wipLimitRequest } from '../lib/wip';
 import type { AmbitionRow, AmbitionStage, Issue, Project } from '../types';
@@ -70,12 +71,6 @@ export function AmbitionCrumb({ title, scopeKeys }: { title: string; scopeKeys: 
   );
 }
 
-/** A pre-approval level as the word `PreApprovalControl`'s pill wears, read
-    only - the control that sets it is on the status bar above this card. */
-function preApprovalWord(level: Issue['preApproval']): string {
-  return PRE_APPROVAL_LEVELS.find((l) => l.name === level)?.word ?? level;
-}
-
 /** How many epics run at once, editable right where it is read - blur-commit,
     re-synced when the value changes underneath, the way `WipLimitField` on
     the issue page is. Saved through the same `onSetLimit`. */
@@ -116,6 +111,11 @@ function EpicsAtOnceField({ limit, onSetLimit }: { limit: number | null; onSetLi
  * page shows for the same ambition - see `AmbitionsController`. `row` is
  * null while that read is still in flight; `rowError` says why it never
  * arrived, and the facts below it still draw from `issue`.
+ *
+ * Shape it and Start it - see HA-2845 - sit under the stage sentence, drawn
+ * by `AmbitionPresses` from the same `row`. `onMoved` is the reload this
+ * page already does for everything else; a move repaints the whole header
+ * from the next read rather than this component guessing the new stage.
  */
 export function AmbitionHeader({
   issue,
@@ -124,6 +124,7 @@ export function AmbitionHeader({
   project,
   passCount,
   onSetLimit,
+  onMoved,
 }: {
   issue: Issue;
   row: AmbitionRow | null;
@@ -131,6 +132,7 @@ export function AmbitionHeader({
   project: Project | null;
   passCount: number | null;
   onSetLimit: (limit: string) => void;
+  onMoved: () => void;
 }) {
   return (
     <Card className="hatch-ambition-header">
@@ -142,6 +144,7 @@ export function AmbitionHeader({
             <div className="hatch-ambition-header-stage">
               <StagePill stage={row.stage} />
               <p className="hatch-ambition-why">{row.stageWhy}</p>
+              <AmbitionPresses row={row} onMoved={onMoved} />
             </div>
             <CapabilityBar row={row} />
           </>

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AmbitionCrumb, AmbitionHeader } from './AmbitionHeader';
-import type { AmbitionRow, Issue } from '../types';
+import { MeContext } from '../lib/useMe';
+import type { AmbitionRow, Issue, Me } from '../types';
 
 const issue = (over: Partial<Issue> = {}): Issue =>
   ({
@@ -35,22 +36,39 @@ const row = (over: Partial<AmbitionRow> = {}): AmbitionRow => ({
   decisions: 0,
   budget: { budgetUsd: null, spentUsd: 0, unpricedSessions: 0, spent: false },
   childBeyondScope: false,
+  shapingStatusId: null,
+  shapingStatusName: null,
+  startStatusId: null,
+  startStatusName: null,
   ...over,
 });
 
-const renderHeader = (over: Partial<React.ComponentProps<typeof AmbitionHeader>> = {}): string =>
+const meOf = (over: Partial<Me> = {}): Me => ({
+  kind: 'person',
+  name: '',
+  role: 'user',
+  configured: true,
+  canSignOut: true,
+  canSignIn: false,
+  ...over,
+});
+
+const renderHeader = (over: Partial<React.ComponentProps<typeof AmbitionHeader>> = {}, me: Me = meOf()): string =>
   renderToStaticMarkup(
-    <MemoryRouter>
-      <AmbitionHeader
-        issue={issue()}
-        row={row()}
-        rowError={null}
-        project={null}
-        passCount={3}
-        onSetLimit={() => {}}
-        {...over}
-      />
-    </MemoryRouter>,
+    <MeContext.Provider value={{ me, isAdmin: false, settled: true }}>
+      <MemoryRouter>
+        <AmbitionHeader
+          issue={issue()}
+          row={row()}
+          rowError={null}
+          project={null}
+          passCount={3}
+          onSetLimit={() => {}}
+          onMoved={() => {}}
+          {...over}
+        />
+      </MemoryRouter>
+    </MeContext.Provider>,
   );
 
 describe('AmbitionCrumb', () => {
@@ -128,5 +146,32 @@ describe('AmbitionHeader', () => {
     const html = renderHeader({ row: row({ capabilities: 0, holds: 0, inFlight: 0, waitsOnPerson: 0, notStarted: 0 }) });
 
     expect(html).toContain('This ambition has no capabilities yet.');
+  });
+
+  it('offers Shape it for a draft whose project has a shaping row', () => {
+    const html = renderHeader({ row: row({ stage: 'draft', shapingStatusId: 2, shapingStatusName: 'Idea' }) });
+
+    expect(html).toContain('Shape it');
+    expect(html).not.toContain('Start it');
+  });
+
+  it('offers Start it for a ready row', () => {
+    const html = renderHeader({ row: row({ stage: 'ready', startStatusId: 3, startStatusName: 'Doing' }) });
+
+    expect(html).toContain('Start it');
+    expect(html).not.toContain('Shape it');
+  });
+
+  it('offers neither press for a running row', () => {
+    const html = renderHeader({ row: row({ stage: 'running' }) });
+
+    expect(html).not.toContain('Shape it');
+    expect(html).not.toContain('Start it');
+  });
+
+  it('offers neither press to a key', () => {
+    const html = renderHeader({ row: row({ stage: 'draft', shapingStatusId: 2 }) }, meOf({ kind: 'key' }));
+
+    expect(html).not.toContain('Shape it');
   });
 });

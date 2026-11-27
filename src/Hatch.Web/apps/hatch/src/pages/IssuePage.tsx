@@ -1280,6 +1280,7 @@ export function IssuePage() {
           project={project}
           passCount={passes ? passes.length : null}
           onSetLimit={(limit) => void saveWipLimit(limit)}
+          onMoved={() => void load()}
         />
       )}
 

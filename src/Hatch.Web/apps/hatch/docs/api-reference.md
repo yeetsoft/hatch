@@ -813,9 +813,15 @@ ambition and on everything beneath it that the reader may see: other levels,
 answered questions and ones on closed issues are not counted, and
 `projectId` does not narrow it, as it does not narrow `Open`), `Budget` (an
 `IssueBudgetDto`, the same as `GET /issues/{key}/budget` answers, worked out
-for every ambition and not only a running one), and
+for every ambition and not only a running one),
 `ChildBeyondScope` (as `/plan` reads it: some child sits in a project the
-caller's scope does not hold). `Open` carries one `AmbitionOpenEpicDto` per
+caller's scope does not hold), and the two columns the **Shape it** and
+**Start it** presses move into (see
+[A draft ambition](issues#a-draft-ambition)): `ShapingStatusId` and
+`ShapingStatusName`, the from-column of the row flagged as shaping ambitions
+for this ambition's project, both null where no such row exists, and
+`StartStatusId` and `StartStatusName`, the board's implementation column, both
+null on a board with none. `Open` carries one `AmbitionOpenEpicDto` per
 open epic: `Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Serves`
 (the positions, ascending, of the capabilities of its own ambition that it
 serves), `WaitsOnPerson`, and `Why` - one sentence saying so, naming no key,

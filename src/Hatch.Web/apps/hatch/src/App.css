@@ -6022,6 +6022,15 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* Shape it and Start it - see HA-2845. Wraps rather than scrolling, so the
+   phone never gains a sideways scrollbar from a press beside a long sentence. */
+.hatch-ambition-press {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
 /* What the ambition is for, in ink, under the sentence on its stage. */
 .hatch-ambition-summary {
   font-size: var(--t-label);

@@ -452,6 +452,31 @@ public class AmbitionsControllerTests
     }
 
     [Fact]
+    public async Task ARow_NamesTheShapingAndStartColumns_ByIdAndName()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "a");
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Equal((h.Idea, "idea"), (row.ShapingStatusId, row.ShapingStatusName));
+        Assert.Equal((h.Doing, "doing"), (row.StartStatusId, row.StartStatusName));
+    }
+
+    [Fact]
+    public async Task AProjectWithNoShapingRow_NamesTheStartColumnOnly()
+    {
+        var h = await NewAsync(shapingProject: s => s.Other);
+        await h.FileAsync("ambition", "a");
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Null(row.ShapingStatusId);
+        Assert.Null(row.ShapingStatusName);
+        Assert.Equal((h.Doing, "doing"), (row.StartStatusId, row.StartStatusName));
+    }
+
+    [Fact]
     public async Task AnAmbitionLeftOfImplementationWithNoCapability_IsADraft()
     {
         var h = await NewAsync();

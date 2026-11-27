@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AmbitionList, AmbitionsBody, AmbitionTiles, heldIssues, holdQuestions } from './AmbitionsPage';
 import type { AmbitionsView } from './AmbitionsPage';
+import { MeContext } from '../lib/useMe';
 import type {
   AmbitionOpenEpic,
   AmbitionRow,
@@ -10,6 +11,7 @@ import type {
   BallotNode,
   BallotQuestion,
   IssueBudget,
+  Me,
   Question,
   Status,
 } from '../types';
@@ -55,6 +57,20 @@ const row = (key: string, over: Partial<AmbitionRow> = {}): AmbitionRow => ({
   decisions: 0,
   budget: { budgetUsd: null, spentUsd: 0, unpricedSessions: 0, spent: false },
   childBeyondScope: false,
+  shapingStatusId: null,
+  shapingStatusName: null,
+  startStatusId: 2,
+  startStatusName: 'In Progress',
+  ...over,
+});
+
+const meOf = (over: Partial<Me> = {}): Me => ({
+  kind: 'person',
+  name: '',
+  role: 'user',
+  configured: true,
+  canSignOut: true,
+  canSignIn: false,
   ...over,
 });
 
@@ -70,14 +86,14 @@ const render = (...rows: AmbitionRow[]): string => renderList(undefined, ...rows
 const renderList = (onNew: (() => void) | undefined, ...rows: AmbitionRow[]): string =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <AmbitionList ambitions={rows} statuses={statuses} onNew={onNew} />
+      <AmbitionList ambitions={rows} statuses={statuses} onNew={onNew} onMoved={() => {}} />
     </MemoryRouter>,
   );
 
 const renderScoped = (scopeKeys: string[], ...rows: AmbitionRow[]): string =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <AmbitionList ambitions={rows} statuses={statuses} scopeKeys={scopeKeys} />
+      <AmbitionList ambitions={rows} statuses={statuses} scopeKeys={scopeKeys} onMoved={() => {}} />
     </MemoryRouter>,
   );
 
@@ -253,11 +269,50 @@ describe('AmbitionList', () => {
     );
     expect(html).toContain('<span class="hatch-ambition-serves"><span class="text-muted">—</span></span>');
   });
+
+  it('offers Shape it for a draft row whose project has a shaping row', () => {
+    const html = render(row('AER-1', { stage: 'draft', shapingStatusId: 5, shapingStatusName: 'Idea', startStatusId: null }));
+
+    expect(html).toContain('Shape it');
+    expect(html).not.toContain('Start it');
+  });
+
+  it('offers Start it for a ready row with an implementation column', () => {
+    const html = render(row('AER-1', { stage: 'ready', startStatusId: 2 }));
+
+    expect(html).toContain('Start it');
+    expect(html).not.toContain('Shape it');
+  });
+
+  it('offers neither press for a running row', () => {
+    const html = render(row('AER-1', { stage: 'running' }));
+
+    expect(html).not.toContain('Shape it');
+    expect(html).not.toContain('Start it');
+  });
+
+  it('offers neither press to a key', () => {
+    const html = renderToStaticMarkup(
+      <MeContext.Provider value={{ me: meOf({ kind: 'key' }), isAdmin: false, settled: true }}>
+        <MemoryRouter>
+          <AmbitionList
+            ambitions={[row('AER-1', { stage: 'ready', startStatusId: 2 })]}
+            statuses={statuses}
+            onMoved={() => {}}
+          />
+        </MemoryRouter>
+      </MeContext.Provider>,
+    );
+
+    expect(html).not.toContain('Start it');
+  });
 });
 
 describe('what a row says about the ambition', () => {
   it('draws the summary as plain text under the stage sentence', () => {
-    const html = render(row('AER-1', { stageWhy: 'Nothing runs yet.', summary: 'People see their load at a glance.' }));
+    const html = render(
+      row('AER-1', { stageWhy: 'Nothing runs yet.', summary: 'People see their load at a glance.', startStatusId: null }),
+    );
 
     expect(html).toContain(
       '<p class="hatch-ambition-why">Nothing runs yet.</p><p class="hatch-ambition-summary">People see their load at a glance.</p>',
@@ -614,7 +669,7 @@ describe('AmbitionsBody', () => {
   it('draws the failure sentence and still draws the second tile and the rows when the ballot could not be read', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AmbitionsBody data={view({ ballot: null, ballotError: 'boom' })} scopeKeys={[]} now={NOW} />
+        <AmbitionsBody data={view({ ballot: null, ballotError: 'boom' })} scopeKeys={[]} now={NOW} onMoved={() => {}} />
       </MemoryRouter>,
     );
 
@@ -627,7 +682,7 @@ describe('AmbitionsBody', () => {
   it('draws the tiles above the rows', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AmbitionsBody data={view({ ballot: tree() })} scopeKeys={[]} now={NOW} />
+        <AmbitionsBody data={view({ ballot: tree() })} scopeKeys={[]} now={NOW} onMoved={() => {}} />
       </MemoryRouter>,
     );
 
@@ -639,7 +694,7 @@ describe('AmbitionsBody', () => {
   it('draws only the explaining sentences where no ambition is in scope', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AmbitionsBody data={view({ ambitions: [] })} scopeKeys={[]} now={NOW} />
+        <AmbitionsBody data={view({ ambitions: [] })} scopeKeys={[]} now={NOW} onMoved={() => {}} />
       </MemoryRouter>,
     );
 
@@ -679,6 +734,7 @@ describe('holdQuestions', () => {
             scopeKeys={[]}
             now={NOW}
             onNew={onNew}
+            onMoved={() => {}}
           />
         </MemoryRouter>,
       );

@@ -1160,6 +1160,15 @@ export interface AmbitionRow {
   budget: IssueBudget;
   /** Some child is in a project the reader's scope does not hold. */
   childBeyondScope: boolean;
+  /** The column that shapes a draft into capabilities, or null where the
+      ambition's project has no row flagged to shape ambitions. */
+  shapingStatusId: number | null;
+  /** That column's name, or null with `shapingStatusId`. */
+  shapingStatusName: string | null;
+  /** The implementation column a ready ambition starts in, or null on a board with none. */
+  startStatusId: number | null;
+  /** That column's name, or null with `startStatusId`. */
+  startStatusName: string | null;
 }
 
 /** One thing that changed under an ambition, as `GET /ambitions/changes` tells

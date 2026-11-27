@@ -58,7 +58,9 @@ public static class AmbitionStage
 
         if (!Columns.AtOrPastImplementation(statuses, status.Id))
             return capabilities == 0
-                ? (Draft, "It has no capabilities yet.")
+                ? (Draft, shapingStatusId is null
+                    ? "It has no capabilities yet. Add them by hand, or add a playbook row that shapes ambitions on the Playbooks page."
+                    : "It has no capabilities yet.")
                 : (Ready, $"Nothing runs until a person starts it - {Dispatch.MoveItInto(implementation.Name)}.");
 
         if (status.Id != implementation.Id)

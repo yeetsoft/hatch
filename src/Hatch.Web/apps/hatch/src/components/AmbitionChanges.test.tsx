@@ -188,6 +188,10 @@ describe('the section on the page', () => {
     decisions: 0,
     budget: { budgetUsd: null, spentUsd: 0, unpricedSessions: 0, spent: false },
     childBeyondScope: false,
+    shapingStatusId: null,
+    shapingStatusName: null,
+    startStatusId: 2,
+    startStatusName: 'In Progress',
   };
 
   const page = (over: Partial<AmbitionsView> = {}) =>
@@ -206,6 +210,7 @@ describe('the section on the page', () => {
           }}
           scopeKeys={[]}
           now={NOW}
+          onMoved={() => {}}
         />
       </MemoryRouter>,
     );
