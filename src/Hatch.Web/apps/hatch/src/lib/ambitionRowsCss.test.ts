@@ -46,9 +46,15 @@ describe('the Ambitions list', () => {
   });
 
   // .hatch-page > * centres every child of the page, and a margin shorthand
-  // with a 0 at the sides undoes it, leaving the rows left of the strip.
+  // with a 0 at the sides undoes it, leaving the rows left of the strip. The
+  // groups' wrapper is that child, so it names its top margin alone.
   it('keeps the auto side margins that centre it on the page', () => {
-    expect(declarationsOf('.hatch-ambition-list').margin).toBe('var(--sp-4) auto 0');
+    const groups = declarationsOf('.hatch-ambition-groups');
+
+    expect(groups.margin).toBeUndefined();
+    expect(groups['margin-left']).toBeUndefined();
+    expect(groups['margin-right']).toBeUndefined();
+    expect(groups['margin-top']).toBe('var(--sp-4)');
   });
 
   it('sets the three columns once, on the list, and every row reads them', () => {
@@ -61,6 +67,18 @@ describe('the Ambitions list', () => {
     expect(declarationsOf(ROW).display).toBe('grid');
     expect(declarationsOf(ROW)['grid-template-columns']).toBe('var(--ambition-columns)');
     expect(declarationsOf(ROW)['align-items']).toBe('start');
+  });
+});
+
+describe('the stage on a row', () => {
+  it('colours its pill from the fills the app already has', () => {
+    expect(declarationsOf('.hatch-stage-pill').color).toBe('var(--muted)');
+    for (const stage of ['budget-spent', 'stopped']) {
+      expect(declarationsOf(`.hatch-stage-${stage}`).background).toBe('var(--warn-bg)');
+    }
+    for (const stage of ['running', 'complete', 'done']) {
+      expect(declarationsOf(`.hatch-stage-${stage}`).background).toBe('var(--success-bg)');
+    }
   });
 });
 

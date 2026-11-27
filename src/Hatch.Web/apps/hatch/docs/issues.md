@@ -338,8 +338,9 @@ The Ambitions page, at `/ambitions`, is a top-level link after the magnifying
 glass on the nav bar, and in the phone menu, except for a person who made it
 their home screen (below): the logo is theirs to Ambitions, and a **Board** link
 stands in its place on the bar and in the phone menu. It lists every ambition across every
-project, in one read, each with where it stands. It follows the tab's
-project scope the same way Plan and Ballot do, and nothing is stored for it.
+project, in one read, each with the stage it is at and what it needs next. It
+follows the tab's project scope the same way Plan and Ballot do, and nothing is
+stored for it.
 
 A person may make this page their home screen, in the **Home screen** card
 on the Settings page. The root address (`/`) then opens Ambitions, and the
@@ -393,7 +394,8 @@ last seven days. A "does not hold" or "cannot tell" verdict between two
 "holds" ends the run, so the later one starts it again.
 
 A row is the ambition's title, linking to the ambition's own page, its
-project key and its column. Beside that, "N capabilities" with a bar and a
+project key and its stage as a pill, and under them one sentence saying what
+the ambition needs or waits for. Beside that, "N capabilities" with a bar and a
 legend: one segment and one legend entry per count that is not zero, each in
 its own colour, the segments in proportion to each other. An ambition with no
 capabilities says so instead: "This ambition has no capabilities yet." Last,
@@ -401,9 +403,8 @@ capabilities says so instead: "This ambition has no capabilities yet." Last,
 with at least one epic open, "N open, runs M at once" and each open epic by
 its key, title and column, with the numbers of the capabilities it serves as
 badges, or a dash where it serves none. With no epic open the third part
-says so instead: "No epic is open under this ambition." Rows come in board
-order: by column, then by rank, then by id. With no ambition in the tab's scope, the
-page says in two sentences what an ambition is - "An ambition is what you are
+says so instead: "No epic is open under this ambition." With no ambition in the
+tab's scope, the page says in two sentences what an ambition is - "An ambition is what you are
 driving at, broken into capabilities that are each checked against the trunk
 on every pass. A person starts one by saying what they want, and a session
 shapes it." - and offers the same press as the heading, in place of a bare
@@ -414,6 +415,44 @@ level; in the epics, the column and the capability numbers also line up from
 one epic to the next. On a phone the three parts of a row, and
 the words of a line in the first tile, stack one above the other instead of
 running side by side.
+
+### Stages
+
+An ambition's stage is the first of these that is true of it. The server works
+it out on each read, from the same rules [the queue](watching-the-loop) uses,
+and finds each column by what it is ticked or where it stands, never by its
+name.
+
+| Stage | When | The sentence under it |
+|---|---|---|
+| Done | It stands in a terminal column. | It stands in "*column*", which closes work. |
+| Shelved | It stands in a deferred column. | It stands in "*column*" and is set aside until a person moves it. |
+| Shaping | It stands in the from-column of the playbook row that shapes ambitions for its project. | It is being shaped into a title, a description and capabilities. |
+| Draft | It stands left of the implementation column and has no capability. | It has no capabilities yet. |
+| Ready | It stands left of the implementation column and has at least one capability. | Nothing runs until a person starts it - move it into "*implementation column*". |
+| Budget spent | It stands in the implementation column and its budget is spent. | Its budget is spent - raise it or clear it before the next pass. |
+| Complete | It stands in the implementation column, has capabilities, and the newest verdict on each is "holds". | Every capability holds, so a pass has nothing left to do. |
+| Running | It stands in the implementation column. | What the queue says where it is holding the pass for room, or because the last pass took what it could; otherwise: A pass runs as soon as a runner takes it. |
+| Stopped | Anything else: it stands past the implementation column, where no pass runs. | It stands in "*column*", and a pass runs only in "*implementation column*". |
+
+A board with no implementation column has no column a pass runs in, so every
+ambition there that is not done, shelved or shaping is Stopped, and its
+sentence says that. The shaping row is read from the Playbooks page, so a row
+that only a repository's own playbook file holds does not make an ambition read
+as Shaping.
+
+A running ambition's sentence speaks for the pass's room alone.
+[The queue](watching-the-loop) says everything else that can hold a pass, and a
+question at the hold level also shows in the strip above the rows.
+
+Rows are grouped by stage under a heading with the stage and its count, such as
+"Running, 2", in this order: Budget spent, Running, Stopped, Complete, Ready,
+Shaping, Draft. A stage with no ambition has no heading. Done and Shelved
+ambitions are folded under one closed line at the foot of the list, "N
+finished", which opens to show them. Inside a group, and inside the fold, rows
+keep board order: by column, then by rank, then by id.
+
+### The capability bar
 
 The bar's four counts are read afresh on every visit, never stored, and a
 capability is counted once, in the first of these that is true of it:
