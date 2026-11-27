@@ -31,6 +31,9 @@ const row = (over: Partial<AmbitionRow> = {}): AmbitionRow => ({
   notStarted: 1,
   newlyHolding: 0,
   open: [],
+  summary: '',
+  decisions: 0,
+  budget: { budgetUsd: null, spentUsd: 0, unpricedSessions: 0, spent: false },
   childBeyondScope: false,
   ...over,
 });
