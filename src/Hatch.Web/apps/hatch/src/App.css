@@ -5315,6 +5315,26 @@ button.hatch-chip {
   font-size: var(--t-body);
 }
 
+/* A parent field's select, with the picker beside it once "An issue" is
+   chosen. The picker's own min-width (18rem) would overflow a narrow grid
+   cell, so the pair wraps rather than squeezes. */
+.hatch-bulk-parent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2, 0.5rem);
+  align-items: center;
+}
+
+.hatch-bulk-parent .hatch-issue-picker {
+  flex: 1 1 14rem;
+}
+
+/* Alone in a grid cell too (Ancestor): the 18rem floor is wider than a cell in
+   a four-column row, so the picker fills the cell instead. */
+.hatch-bulk-page .hatch-issue-picker {
+  min-width: 0;
+}
+
 /* ---- The issue page ---- */
 
 .hatch-issue-subheader {

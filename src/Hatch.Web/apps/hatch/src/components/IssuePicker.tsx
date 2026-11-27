@@ -51,6 +51,10 @@ export interface IssuePickerProps {
       adds something rather than replacing what is there - there is nothing to
       clear, and removing is a button on the row that was added. */
   allowNone?: boolean;
+  /** What the clear row says. Defaults to `— none —`; a field whose empty
+      state means "any" rather than "none" says so here. Also the face when
+      `value` is null and no `placeholder` is set. */
+  noneLabel?: string;
   /** The face when `value` is null. Defaults to the clear row's own label,
       which is the right face for a field that holds one value and reads as
       empty, and the wrong one for a control that adds. */
@@ -84,6 +88,7 @@ export function IssuePicker({
   emptyMessage,
   onChange,
   allowNone = true,
+  noneLabel = NONE,
   placeholder,
   homeProject,
   lookup,
@@ -251,7 +256,7 @@ export function IssuePicker({
   // still the value in force.
   const taken = lastTaken && lastTaken.key === value ? lastTaken : null;
   const found = chosen ?? fromCaller ?? taken;
-  const face = value === null ? (placeholder ?? NONE) : found ? `${found.key} — ${found.title}` : value;
+  const face = value === null ? (placeholder ?? noneLabel) : found ? `${found.key} — ${found.title}` : value;
 
   return (
     <div
@@ -349,7 +354,7 @@ export function IssuePicker({
                       )}
                     </>
                   ) : (
-                    NONE
+                    noneLabel
                   )}
                 </li>
               );
