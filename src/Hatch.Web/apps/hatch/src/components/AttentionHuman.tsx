@@ -29,6 +29,7 @@ import {
   waitingOnARunnerEmptyWords,
 } from '../lib/attention';
 import { lastSuccessWords } from '../lib/backup';
+import { BOARD } from '../lib/nav';
 import { scopedPath } from '../lib/scope';
 import { playbookFileWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
@@ -144,7 +145,7 @@ function FindingRow({ finding: f, now, onFiled }: { finding: AttentionFinding; n
     <>
       <Link
         className="hatch-attention-row"
-        to={f.issueKey ? `/issues/${f.issueKey}` : scopedPath('/', f.projectKey ? [f.projectKey] : [])}
+        to={f.issueKey ? `/issues/${f.issueKey}` : scopedPath(BOARD, f.projectKey ? [f.projectKey] : [])}
       >
         <span className="hatch-attention-row-head">
           {(f.issueKey ?? f.projectKey) && <span className="hatch-attention-key">{f.issueKey ?? f.projectKey}</span>}

@@ -17,6 +17,7 @@ import { DesignIndexPage, DesignPage } from './design/DesignPage';
 import { HomeRoute } from './pages/HomeRoute';
 import { AmbitionsPage } from './pages/AmbitionsPage';
 import { BallotPage } from './pages/BallotPage';
+import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
 import { DreamsPage } from './pages/DreamsPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -47,7 +48,7 @@ import { MeProvider, useMe } from './lib/useMe';
 import { scopedPath, scopeTitle } from './lib/scope';
 import { ScopeProvider, useScope } from './lib/useScope';
 import { hasMultipleProjects } from './lib/useProjects';
-import { HOME, homeLabel, navRows } from './lib/nav';
+import { HOME, homeLabel, isHomeCurrent, navRows } from './lib/nav';
 import { usePhone } from './lib/viewport';
 import { usePullToRefresh } from './lib/usePullToRefresh';
 
@@ -94,7 +95,7 @@ function AppShell() {
                named for where it goes - the board, unless the person chose
                Ambitions as their home screen on Settings. */
             homeLabel={homeLabel(me?.home)}
-            homeCurrent={location.pathname === HOME}
+            homeCurrent={isHomeCurrent(location.pathname, me?.home)}
             width="full"
             /* Below the phone breakpoint PrimaryNav is absent rather than
                hidden by CSS - its triggers must not sit in the tab order when
@@ -130,7 +131,7 @@ function AppShell() {
                      order: -1 in App.css draws this ahead of Theme without
                      TopBar.tsx's own DOM order (Theme first) ever changing. */
                   <div className="hatch-phone-menu">
-                    {navRows(isAdmin).map((row, index, rows) => (
+                    {navRows(isAdmin, me?.home).map((row, index, rows) => (
                       <Fragment key={row.to}>
                         {/* A top-level row after a group's rows (Docs) has no
                             heading to set it apart, so it gets a rule. */}
@@ -181,6 +182,7 @@ function AppShell() {
           <main className="hatch-content">
             <Routes>
               <Route path="/" element={<HomeRoute />} />
+              <Route path="/board" element={<BoardPage />} />
               <Route path="/ballot" element={<BallotPage />} />
               <Route path="/plan" element={<PlanPage />} />
               <Route path="/ambitions" element={<AmbitionsPage />} />

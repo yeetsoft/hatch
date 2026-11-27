@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dependencyCandidates } from './dependencies';
+import { dependencyCandidates, dependencyLookupFilter } from './dependencies';
 import type { IssueCard } from '../types';
 
 const TODO = 1;
@@ -118,5 +118,37 @@ describe('dependencyCandidates', () => {
     const loose = [card('AER-7', null), card('AER-8', null)];
 
     expect(keys(dependencyCandidates(loose, 'AER-7', []))).toEqual(['AER-8']);
+  });
+});
+
+/* The same refusal, run over a row a lookup found rather than a card on the
+   board - so the only thing worth re-checking is that it is the same refusal,
+   not that the walk works, which `dependencyCandidates`'s own tests already
+   cover. */
+const row = (key: string) => ({ key, title: `${key} title`, type: 'task' });
+
+describe('dependencyLookupFilter', () => {
+  it('refuses the issue itself', () => {
+    expect(dependencyLookupFilter(cards, 'AER-9', [])(row('AER-9'))).toBe(false);
+  });
+
+  it('refuses what it already waits on', () => {
+    expect(dependencyLookupFilter(cards, 'AER-9', ['OPS-4'])(row('OPS-4'))).toBe(false);
+  });
+
+  it('refuses an ancestor among the cards', () => {
+    expect(dependencyLookupFilter(cards, 'AER-3', [])(row('AER-1'))).toBe(false);
+  });
+
+  it('refuses a descendant among the cards', () => {
+    expect(dependencyLookupFilter(cards, 'AER-1', [])(row('AER-3'))).toBe(false);
+  });
+
+  it('passes a key no card holds', () => {
+    expect(dependencyLookupFilter(cards, 'AER-9', [])(row('AER-404'))).toBe(true);
+  });
+
+  it('passes an unrelated card, closed or not', () => {
+    expect(dependencyLookupFilter(cards, 'AER-9', [])(row('OPS-4'))).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import appSource from '../App.tsx?raw';
 import { MeContext } from '../lib/useMe';
 import type { Me } from '../types';
 import { HomeRoute } from './HomeRoute';
@@ -25,6 +26,14 @@ const renderAs = (me: Me | null, settled: boolean): string =>
       <HomeRoute />
     </MeContext.Provider>,
   );
+
+describe('the board has its own address', () => {
+  it('mounts BoardPage at /board in App, outside HomeRoute, so it draws whatever the home screen', () => {
+    expect(appSource).toContain('<Route path="/board" element={<BoardPage />} />');
+    expect(appSource).toContain('<Route path="/" element={<HomeRoute />} />');
+    expect(appSource).not.toContain('<Route path="/board" element={<HomeRoute');
+  });
+});
 
 describe('HomeRoute', () => {
   it('draws nothing before the first read has settled', () => {

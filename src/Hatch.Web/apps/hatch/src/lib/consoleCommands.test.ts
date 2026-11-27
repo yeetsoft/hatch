@@ -88,7 +88,7 @@ describe('commandList', () => {
   it('has a Go to for every row the nav lists, in its order', () => {
     for (const ctx of [admin, person]) {
       const list = commandList(ctx);
-      const goes = list.filter((c) => c.id.startsWith('go:') && c.id !== 'go:/' && c.id !== 'go:/ballot' && c.id !== 'go:/settings');
+      const goes = list.filter((c) => c.id.startsWith('go:') && c.id !== 'go:/board' && c.id !== 'go:/ballot' && c.id !== 'go:/settings');
       expect(goes.map((c) => c.id)).toEqual(navRows(ctx.isAdmin).map((r) => `go:${r.to}`));
       expect(goes.map((c) => c.name)).toEqual(navRows(ctx.isAdmin).map((r) => `Go to ${r.label}`));
     }
@@ -112,7 +112,15 @@ describe('commandList', () => {
     find(commandList(admin), 'Go to Board').run(fake);
     find(commandList(admin), 'Go to Plan').run(fake);
     find(commandList(admin), 'Go to Settings').run(fake);
-    expect(went).toEqual(['/', '/plan', '/settings']);
+    expect(went).toEqual(['/board', '/plan', '/settings']);
+  });
+
+  it('lists Go to Board and Go to Ambitions to everybody, whatever their home screen', () => {
+    for (const ctx of [admin, person]) {
+      const list = names(commandList(ctx));
+      expect(list).toContain('Go to Board');
+      expect(list).toContain('Go to Ambitions');
+    }
   });
 
   it('offers New issue to everybody on every page, and runs it by asking for the dialog', () => {

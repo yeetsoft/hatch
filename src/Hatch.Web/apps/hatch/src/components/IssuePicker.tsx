@@ -1,4 +1,5 @@
-/* Picking one issue out of sixty.
+/* Picking one issue out of sixty - or, with `lookup`, out of every issue the
+   house holds.
 
    A native <select> does prefix typeahead on the option's leading text, so
    typing `745` finds nothing when every option starts with the project key -
@@ -6,10 +7,13 @@
    faster than the browser's typeahead timeout. This is a button that opens a
    popup holding a search box and a list, driven by the keyboard end to end.
 
-   Presentational and self-contained, like IssuePeek: it fetches nothing, knows
-   nothing about issues beyond the cards it is handed, and every ordering and
-   matching decision it makes is made in lib/issuePicker.ts, which is where
-   they are tested. What is here is state and events.
+   Mostly self-contained, like IssuePeek: it knows nothing about issues beyond
+   the cards it is handed, and every ordering and matching decision it makes
+   over them is made in lib/issuePicker.ts, which is where they are tested.
+   `lookup`, where a caller offers it, is the one way in which it does reach
+   past the cards it was handed - the request itself lives in
+   lib/usePickerLookup.ts, and what the answer adds, says and settles in
+   lib/pickerLookup.ts. What is here is state and events.
 
    It stays in apps/hatch rather than @hatch/ui, since this is its only
    consumer - promoting it there is a move to make once something else needs
@@ -17,6 +21,9 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { pickerRows } from '../lib/issuePicker';
+import { lookupView, mergePickerRows, pickerNote, settleHighlight } from '../lib/pickerLookup';
+import type { PickedRow } from '../lib/pickerLookup';
+import { usePickerLookup } from '../lib/usePickerLookup';
 import type { IssueCard } from '../types';
 
 /** The row that clears the value. Pinned first, and never filtered out. */
@@ -35,9 +42,11 @@ export interface IssuePickerProps {
   /** What the popup says where the candidates would be when there are none. */
   emptyMessage: string;
   /** Writes the choice: the key, or '' for the clear - the shape patchIssue
-      already takes. The caller owns the request and the refusal; this awaits
-      only to know when the press is over, so `onChange` must not throw. */
-  onChange: (key: string) => Promise<unknown>;
+      already takes. `picked` is the row taken, or null for the clear, for a
+      caller that needs more than the key; most ignore it. The caller owns
+      the request and the refusal; this awaits only to know when the press is
+      over, so `onChange` must not throw. */
+  onChange: (key: string, picked: PickedRow | null) => Promise<unknown>;
   /** Whether the pinned clear row is offered. False on a picker whose press
       adds something rather than replacing what is there - there is nothing to
       clear, and removing is a button on the row that was added. */
@@ -50,6 +59,14 @@ export interface IssuePickerProps {
       by the two Parent fields, where the list spans projects and the issue's
       own is the likelier answer; unset, the list is project A to Z. */
   homeProject?: string;
+  /** Offers a server lookup for what the page's own candidates do not cover -
+      an issue closed before the board read it, say. Unset, the picker
+      behaves exactly as it always has: candidates alone, fetching nothing.
+      `projectIds` is the lookup's scope, none meaning every project; `accept`
+      is run over a found row the way the candidates were already filtered,
+      since a row the lookup turns up may be a relative the page cannot see
+      and so never excluded by `candidates` at all. */
+  lookup?: { projectIds: number[]; accept: (row: PickedRow) => boolean };
 }
 
 export function IssuePicker({
@@ -61,6 +78,7 @@ export function IssuePicker({
   allowNone = true,
   placeholder,
   homeProject,
+  lookup,
 }: IssuePickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -71,6 +89,13 @@ export function IssuePicker({
   // is exactly the span of the promise it is already awaiting, and two
   // booleans for one await is two things that can come to disagree.
   const [saving, setSaving] = useState(false);
+  // The row `take` last took, kept only so the face can read `KEY — title`
+  // for a row a lookup found - `candidates` never held it, and never will.
+  const [lastTaken, setLastTaken] = useState<PickedRow | null>(null);
+
+  // Open and offered a lookup at all; going false is also what tells the hook
+  // to forget the last answer, so the next opening starts clean.
+  const finished = usePickerLookup(query, open && lookup !== undefined, lookup?.projectIds ?? []);
 
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -90,9 +115,28 @@ export function IssuePicker({
      index below is arithmetic on one list - `offset` is the whole of the
      difference when it is not. */
   const offset = allowNone ? 1 : 0;
-  const rows: (IssueCard | null)[] = allowNone
-    ? [null, ...pickerRows(candidates, query, homeProject)]
-    : pickerRows(candidates, query, homeProject);
+
+  const pageRows = pickerRows(candidates, query, homeProject);
+  const view = lookup ? lookupView(query, finished) : { rows: [], looking: false };
+  const merged: PickedRow[] = lookup ? mergePickerRows(pageRows, view.rows, lookup.accept) : pageRows;
+  const rows: (PickedRow | null)[] = allowNone ? [null, ...merged] : merged;
+  const note = pickerNote({
+    lookup: lookup !== undefined,
+    candidates: candidates.length,
+    rows: merged.length,
+    typed: query,
+    looking: view.looking,
+  });
+
+  /* A lookup's answer lands with no keystroke behind it, so nothing moves the
+     highlight for it the way `typed` does for its own. Settled here instead,
+     onto the first real row once one exists where there was none, or clamped
+     onto the last row if the list it was on has since shrunk. */
+  useEffect(() => {
+    if (!open) return;
+    setHighlight((h) => settleHighlight(h, rows.length, offset));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.length, offset, open]);
 
   function openList() {
     const all = pickerRows(candidates, '', homeProject);
@@ -126,17 +170,18 @@ export function IssuePicker({
     setHighlight((h) => (rows.length === 0 ? null : h === null ? 0 : Math.min(h + 1, rows.length - 1)));
   const up = () => setHighlight((h) => (h === null ? null : Math.max(h - 1, 0)));
 
-  async function take(row: IssueCard | null) {
+  async function take(row: PickedRow | null) {
     const key = row?.key ?? '';
     close();
     // Already in force: the server would no-op it, but a control that spends a
     // round trip and a page reload to do nothing feels broken on a slow link.
     if (key === (value ?? '')) return;
 
+    setLastTaken(row);
     returning.current = true;
     setSaving(true);
     try {
-      await onChange(key);
+      await onChange(key, row);
     } finally {
       setSaving(false);
     }
@@ -189,7 +234,12 @@ export function IssuePicker({
   }, [open, highlight, query]);
 
   const chosen = candidates.find((c) => c.key === value) ?? null;
-  const face = value === null ? (placeholder ?? NONE) : chosen ? `${chosen.key} — ${chosen.title}` : value;
+  // A row the picker took but `candidates` was never handed - a lookup's find
+  // - still reads as `KEY — title` rather than a bare key, as long as it is
+  // still the value in force.
+  const taken = lastTaken && lastTaken.key === value ? lastTaken : null;
+  const found = chosen ?? taken;
+  const face = value === null ? (placeholder ?? NONE) : found ? `${found.key} — ${found.title}` : value;
 
   return (
     <div
@@ -246,10 +296,9 @@ export function IssuePicker({
             onKeyDown={onKeyDown}
           />
 
-          {candidates.length === 0 && <p className="hatch-issue-picker-note">{emptyMessage}</p>}
-          {candidates.length > 0 && rows.length === offset && (
-            <p className="hatch-issue-picker-note">Nothing matches “{query.trim()}”.</p>
-          )}
+          {note === 'empty' && <p className="hatch-issue-picker-note">{emptyMessage}</p>}
+          {note === 'looking' && <p className="hatch-issue-picker-note">Looking…</p>}
+          {note === 'nothing' && <p className="hatch-issue-picker-note">Nothing matches “{query.trim()}”.</p>}
 
           <ul className="hatch-issue-picker-list" id={listId} role="listbox" aria-label={label}>
             {rows.map((row, index) => {
