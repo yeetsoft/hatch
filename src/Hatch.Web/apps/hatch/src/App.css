@@ -6049,21 +6049,40 @@ input.hatch-inline-title-input {
   min-width: 0;
 }
 
-/* What is waiting on the reader, above the rows: a card like a row, one line
-   per hold question, each a link to the ballot. The lines sit on four
-   columns - ambition, key, question, wait - so two lines read as a table; a
-   subgrid on the list and on each line keeps the columns aligned. The card
-   rule is prefixed as .hatch-ambition-row's is, for the same reason: the
-   board's tile also wears .hatch-card and a bare class would only tie with
-   it. */
-.hatch-page > .hatch-ambition-strip {
-  padding: var(--sp-4);
-  background: var(--card);
-  cursor: default;
+/* The two tiles above the rows: what is waiting on the reader, and how many
+   capabilities hold. Each is the board's own tile, so the card, the label and
+   the large line are .hatch-health-tile's, .hatch-health-label's and
+   .hatch-health-value's; only the line under the large line and the link are
+   new. Two columns on a desk, one on a phone. The grid takes no margin
+   shorthand: .hatch-page > * centres every child with auto side margins, and a
+   shorthand here would undo that.
+
+   The first tile also holds one line per hold question, each a link to the
+   ballot. The lines sit on four columns - ambition, key, question, wait - so
+   two lines read as a table; a subgrid on the list and on each line keeps the
+   columns aligned. */
+.hatch-ambition-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
 }
 
-.hatch-page > .hatch-ambition-strip:hover {
-  border-color: var(--line);
+.hatch-ambition-tile {
+  gap: var(--sp-1);
+}
+
+.hatch-ambition-tile-note {
+  margin: 0;
+  font-size: var(--t-label);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.hatch-ambition-tile-link {
+  align-self: flex-start;
+  margin-top: var(--sp-2);
+  color: var(--primary);
+  text-decoration: underline;
 }
 
 .hatch-ambition-strip-lines {
@@ -6115,6 +6134,16 @@ input.hatch-inline-title-input {
     display: flex;
     grid-column: auto;
     flex: 1 0 100%;
+  }
+
+  .hatch-ambition-tiles {
+    grid-template-columns: 1fr;
+  }
+
+  .hatch-ambition-tile-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   .hatch-ambition-strip-lines {
@@ -6565,6 +6594,37 @@ input.hatch-inline-title-input {
   column-gap: var(--sp-4);
 }
 
+/* A fifth column, Edit/Remove/Move, drawn only where a person may write
+   (HA-2840) - :has() rather than a modifier class, since CapabilityRow's own
+   className is one shared literal (ambitionRhythmCss.test.ts's "one row
+   rule"), not something a prop should change. A key's or a signed-out
+   browser's row, with no .hatch-capability-controls, keeps the four-column
+   rule above instead of reserving blank space for a fifth.
+   Its bounds are fixed lengths rather than `auto` for the same reason the row
+   itself stays one grid rather than four flexed pieces: `auto` sizes a track
+   from its own row's content, and the first and last rows (with no Move up or
+   no Move down) hold one fewer button than the rows between them, which would
+   put every other column at a different left on those two rows alone. */
+.hatch-progress-row.hatch-capability-row:has(.hatch-capability-controls) {
+  grid-template-columns: 3rem minmax(0, 1fr) minmax(12rem, 16rem) minmax(8rem, 14rem) minmax(9rem, 13rem);
+}
+
+/* The controls column wraps rather than stretching the row's height for one
+   long row of buttons, and never scrolls the page sideways. */
+.hatch-capability-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}
+
+@media (max-width: 40rem) {
+  .hatch-capability-controls {
+    justify-content: flex-start;
+  }
+}
+
 /* .hatch-progress-row pushes a bare muted child to the right; the number stays
    at the left of its column. */
 .hatch-progress-row.hatch-capability-row > .text-muted {
@@ -6582,7 +6642,11 @@ input.hatch-inline-title-input {
 }
 
 @media (max-width: 40rem) {
-  .hatch-progress-row.hatch-capability-row {
+  /* Both forms, the four-column and the :has() five-column rule above - the
+     second is named on its own since :has() carries its argument's own
+     specificity and would otherwise still win here. */
+  .hatch-progress-row.hatch-capability-row,
+  .hatch-progress-row.hatch-capability-row:has(.hatch-capability-controls) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -7002,6 +7066,13 @@ input.hatch-inline-title-input {
 
 /* The dialog's stack, as .hatch-cascade is for the close offer. */
 .hatch-claim-clear {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* The remove-a-capability dialog's own stack, the same shape. */
+.hatch-capability-remove {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);

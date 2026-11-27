@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { AmbitionList, AmbitionsBody, holdQuestions, WaitingStrip } from './AmbitionsPage';
-import type { AmbitionOpenEpic, AmbitionRow, Ballot, BallotNode, Question, Status } from '../types';
+import { AmbitionList, AmbitionsBody, AmbitionTiles, heldIssues, holdQuestions } from './AmbitionsPage';
+import type { AmbitionsView } from './AmbitionsPage';
+import type { AmbitionOpenEpic, AmbitionRow, Ballot, BallotNode, BallotQuestion, Question, Status } from '../types';
 
 /* No DOM runner: the row is rendered from props, the way PlanPage.test.tsx
    does it for EpicCard. */
 const statuses = [
   { id: 1, name: 'To Do', color: '#3366cc' },
   { id: 2, name: 'In Progress', color: '#cc6633' },
+  { id: 3, name: 'Done', color: '#33aa66', isTerminal: true, isDeferred: false },
+  { id: 4, name: 'Shelved', color: '#999999', isTerminal: false, isDeferred: true },
 ] as Status[];
 
 const epic = (key: string, over: Partial<AmbitionOpenEpic> = {}): AmbitionOpenEpic => ({
@@ -35,25 +38,41 @@ const row = (key: string, over: Partial<AmbitionRow> = {}): AmbitionRow => ({
   inFlight: 3,
   waitsOnPerson: 0,
   notStarted: 5,
+  newlyHolding: 1,
   open: [],
   childBeyondScope: false,
   ...over,
 });
 
-const render = (...rows: AmbitionRow[]): string =>
+const render = (...rows: AmbitionRow[]): string => renderList(undefined, ...rows);
+
+const renderList = (onNew: (() => void) | undefined, ...rows: AmbitionRow[]): string =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <AmbitionList ambitions={rows} statuses={statuses} />
+      <AmbitionList ambitions={rows} statuses={statuses} onNew={onNew} />
     </MemoryRouter>,
   );
 
 describe('AmbitionList', () => {
-  it('draws its one sentence when no ambition is in scope', () => {
+  it('says in two sentences what an ambition is when none is in scope', () => {
     const html = render();
 
-    expect(html).toContain('No ambition in scope.');
+    expect(html).toContain('An ambition is what you are driving at, broken into capabilities');
+    expect(html).toContain('A person starts one by saying what they want, and a session shapes it.');
+    expect(html).not.toContain('No ambition in scope.');
     expect(html).toContain('hatch-empty');
     expect(html).not.toContain('hatch-ambition-row');
+  });
+
+  it('offers the New ambition press on the empty page when given one', () => {
+    expect(renderList(() => {})).toContain('New ambition');
+  });
+
+  it('draws no press on the empty page for a key, but both sentences', () => {
+    const html = renderList(undefined);
+
+    expect(html).not.toContain('New ambition');
+    expect(html).toContain('An ambition is what you are driving at');
   });
 
 
@@ -150,7 +169,7 @@ describe('AmbitionList', () => {
   });
 });
 
-/* The strip above the rows: drawn from a ballot and a fixed clock. */
+/* The tiles above the rows: drawn from a ballot and a fixed clock. */
 const NOW = new Date('2026-11-20T12:00:00Z');
 
 const question = (id: number, issueKey: string, over: Partial<Question> = {}): Question => ({
@@ -180,14 +199,41 @@ const node = (key: string, type: BallotNode['type'], over: Partial<BallotNode> =
   ...over,
 });
 
-const ballot = (...roots: BallotNode[]): Ballot => ({ roots, questions: [] });
+/** The ballot's own list: one entry per question in the tree, each holding `holds`
+    issues, as the server gives it. */
+const entries = (roots: BallotNode[], holds: Record<number, number>): BallotQuestion[] => {
+  const out: BallotQuestion[] = [];
+  const walk = (n: BallotNode) => {
+    for (const q of n.questions)
+      out.push({ question: q, holds: holds[q.id] ?? 1, wentAheadOn: null, issueStatus: null, closedAt: null, merged: null, landings: null });
+    n.children.forEach(walk);
+  };
+  roots.forEach(walk);
+  return out;
+};
 
-const strip = (b: Ballot | null, error: string | null = null, scopeKeys: string[] = []): string =>
+const ballot = (...roots: BallotNode[]): Ballot => ({ roots, questions: entries(roots, {}) });
+
+const withHolds = (holds: Record<number, number>, ...roots: BallotNode[]): Ballot => ({ roots, questions: entries(roots, holds) });
+
+const view = (over: Partial<AmbitionsView> = {}): AmbitionsView => ({
+  ambitions: [row('AER-1')],
+  statuses,
+  ballot: ballot(),
+  ballotError: null,
+  scopeKey: '',
+  ...over,
+});
+
+const tiles = (over: Partial<AmbitionsView> = {}, scopeKeys: string[] = []): string =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <WaitingStrip ballot={b} error={error} scopeKeys={scopeKeys} now={NOW} />
+      <AmbitionTiles data={view(over)} scopeKeys={scopeKeys} now={NOW} />
     </MemoryRouter>,
   );
+
+const strip = (b: Ballot | null, error: string | null = null, scopeKeys: string[] = []): string =>
+  tiles({ ballot: b, ballotError: error }, scopeKeys);
 
 const tree = (): Ballot =>
   ballot(
@@ -201,20 +247,22 @@ const tree = (): Ballot =>
     }),
   );
 
-describe('WaitingStrip', () => {
-  it('draws the strip as a card, its heading the card heading the rest of the app uses', () => {
+describe('the Waiting on you tile', () => {
+  it("draws as the board's tile, headed Waiting on you, in the first place", () => {
     const html = strip(tree());
 
-    expect(html).toContain('<section class="hatch-card hatch-ambition-strip">');
-    expect(html).toContain('<h2 class="hatch-section-title">');
+    expect(html).toContain('<div class="hatch-ambition-tiles">');
+    expect(html).toContain('<section class="hatch-health-tile hatch-ambition-tile hatch-ambition-strip">');
+    expect(html).toContain('<h2 class="hatch-health-label">Waiting on you</h2>');
+    expect(html).toContain('<p class="hatch-health-value">2 decisions</p>');
+    expect(html.indexOf('Waiting on you')).toBeLessThan(html.indexOf('Capabilities that hold'));
   });
 
   it('draws one line per hold question, in the ballot order, each linking to the ballot', () => {
     const html = strip(tree());
 
-    expect(html).toContain('2 decisions waiting on you');
     expect(html.match(/hatch-ambition-strip-line"/g)).toHaveLength(2);
-    expect(html.match(/href="\/ballot"/g)).toHaveLength(2);
+    expect(html.match(/href="\/ballot"/g)).toHaveLength(3);
     expect(html.match(/ambition AER-1/g)).toHaveLength(2);
     expect(html).toContain('>AER-1<');
     expect(html).toContain('>AER-2<');
@@ -226,11 +274,92 @@ describe('WaitingStrip', () => {
     expect(html.indexOf('body 1')).toBeLessThan(html.indexOf('body 2'));
   });
 
-  it('says decision, not decisions, for one', () => {
+  it('says decision, not decisions, and open issue, not open issues, for one', () => {
     const html = strip(ballot(node('AER-1', 'ambition', { questions: [question(1, 'AER-1')] })));
 
-    expect(html).toContain('1 decision waiting on you');
+    expect(html).toContain('<p class="hatch-health-value">1 decision</p>');
+    expect(html).toContain('Holding 1 open issue.');
     expect(html).not.toContain('1 decisions');
+    expect(html).not.toContain('1 open issues');
+  });
+
+  it('counts what the questions hold, an epic and its story once', () => {
+    const b = withHolds(
+      { 2: 4, 3: 2 },
+      node('AER-1', 'ambition', {
+        children: [
+          node('AER-2', 'epic', {
+            questions: [question(2, 'AER-2')],
+            children: [node('AER-3', 'story', { questions: [question(3, 'AER-3')] })],
+          }),
+        ],
+      }),
+    );
+
+    expect(heldIssues(b)).toBe(4);
+    expect(strip(b)).toContain('Holding 4 open issues.');
+  });
+
+  it('sums an ambition question and an epic question beneath it', () => {
+    const b = withHolds(
+      { 1: 1, 2: 3 },
+      node('AER-1', 'ambition', {
+        questions: [question(1, 'AER-1')],
+        children: [node('AER-2', 'epic', { questions: [question(2, 'AER-2')] })],
+      }),
+    );
+
+    expect(heldIssues(b)).toBe(4);
+  });
+
+  it("counts the most any one of a node's questions holds, once", () => {
+    const b = withHolds(
+      { 1: 2, 2: 5 },
+      node('AER-1', 'ambition', { children: [node('AER-2', 'epic', { questions: [question(1, 'AER-2'), question(2, 'AER-2')] })] }),
+    );
+
+    expect(heldIssues(b)).toBe(5);
+  });
+
+  it('counts several epics and ambitions each in turn, and leaves a look-back and a build question out', () => {
+    const b = withHolds(
+      { 1: 2, 2: 3, 3: 7, 4: 9 },
+      node('AER-1', 'ambition', {
+        children: [
+          node('AER-2', 'epic', { questions: [question(1, 'AER-2')] }),
+          node('AER-3', 'epic', { questions: [question(2, 'AER-3'), question(3, 'AER-3', { level: 'build' })] }),
+        ],
+      }),
+      node('OPS-1', 'ambition', { questions: [question(4, 'OPS-1', { level: 'merge', lookBack: true })] }),
+    );
+
+    expect(heldIssues(b)).toBe(5);
+  });
+
+  it('names how long the oldest decision has waited', () => {
+    const b = ballot(
+      node('AER-1', 'ambition', {
+        children: [
+          node('AER-2', 'epic', { questions: [question(1, 'AER-2', { askedAt: '2026-11-20T03:00:00Z' })] }),
+          node('AER-3', 'epic', { questions: [question(2, 'AER-3', { askedAt: '2026-11-20T10:00:00Z' })] }),
+        ],
+      }),
+    );
+
+    expect(strip(b)).toContain('Holding 2 open issues. The oldest has waited 9 hours.');
+  });
+
+  it('says the oldest was just asked under a minute', () => {
+    const b = ballot(node('AER-1', 'ambition', { questions: [question(1, 'AER-1', { askedAt: '2026-11-20T11:59:30Z' })] }));
+
+    expect(strip(b)).toContain('Holding 1 open issue. The oldest was just asked.');
+  });
+
+  it('links the ballot as a link, under the scope of the tab', () => {
+    const html = strip(tree(), null, ['AER']);
+
+    expect(html).toMatch(/<a class="hatch-ambition-tile-link" href="\/ballot\?scope=AER"[^>]*>Open the ballot<\/a>/);
+    expect(html.match(/href="\/ballot\?scope=AER"/g)).toHaveLength(3);
   });
 
   it('leaves out a look-back', () => {
@@ -250,52 +379,109 @@ describe('WaitingStrip', () => {
     expect(html).toContain('Nothing is waiting on you.');
   });
 
-  it('draws its sentence for an empty ballot', () => {
-    expect(strip(ballot())).toContain('Nothing is waiting on you.');
+  it('with none waiting, says so, with no large line and no link', () => {
+    const html = strip(ballot());
+
+    expect(html).toContain('Nothing is waiting on you.');
+    expect(html).toContain('<h2 class="hatch-health-label">Waiting on you</h2>');
+    expect(html).not.toContain('hatch-health-value">0 decisions');
+    expect(html).not.toContain('Open the ballot');
+    expect(html).not.toContain('Holding');
   });
 
-  it('draws the failure sentence as an error, not an empty state', () => {
+  it('says the ballot could not be read as an error, and still draws the second tile', () => {
     const html = strip(null, 'boom');
 
-    expect(html).toContain('<p class="text-danger hatch-ambition-failure">');
+    expect(html).toContain('<p class="text-danger hatch-ambition-failure">What is waiting on you could not be read: boom</p>');
     expect(html).not.toContain('hatch-empty');
+    expect(html).not.toContain('Open the ballot');
+    expect(html).toContain('Capabilities that hold');
+  });
+});
+
+describe('the Capabilities that hold tile', () => {
+  it('reads N of M with the in-flight and newly holding counts, summed over the rows', () => {
+    const html = tiles({
+      ambitions: [
+        row('AER-1', { capabilities: 4, holds: 1, inFlight: 1, newlyHolding: 1 }),
+        row('OPS-2', { capabilities: 2, holds: 0, inFlight: 1, newlyHolding: 0 }),
+      ],
+    });
+
+    expect(html).toContain('<section class="hatch-health-tile hatch-ambition-tile hatch-ambition-capabilities-tile">');
+    expect(html).toContain('<h2 class="hatch-health-label">Capabilities that hold</h2>');
+    expect(html).toContain('<p class="hatch-health-value">1 of 6</p>');
+    expect(html).toContain('<p class="hatch-ambition-tile-note">2 more in flight. 1 newly holding this week.</p>');
   });
 
-  it('links to the ballot under the scope of the tab', () => {
-    expect(strip(tree(), null, ['AER'])).toContain('href="/ballot?scope=AER"');
+  it('leaves out an ambition in a finished column and one in a shelved column', () => {
+    const html = tiles({
+      ambitions: [
+        row('AER-1', { capabilities: 4, holds: 1, inFlight: 1, newlyHolding: 1 }),
+        row('AER-2', { statusId: 3, statusName: 'Done', capabilities: 10, holds: 10, inFlight: 5, newlyHolding: 5 }),
+        row('AER-3', { statusId: 4, statusName: 'Shelved', capabilities: 20, holds: 20, inFlight: 6, newlyHolding: 6 }),
+      ],
+    });
+
+    expect(html).toContain('1 of 4');
+    expect(html).toContain('1 more in flight. 1 newly holding this week.');
+  });
+
+  it('reads 0 of 0 where only finished ambitions are in scope, and still draws both tiles', () => {
+    const html = tiles({ ambitions: [row('AER-2', { statusId: 3, statusName: 'Done' })] });
+
+    expect(html).toContain('0 of 0');
+    expect(html).toContain('0 more in flight. 0 newly holding this week.');
+    expect(html).toContain('Waiting on you');
+  });
+
+  it('is drawn with the decisions tile failed', () => {
+    expect(tiles({ ballot: null, ballotError: 'boom' })).toContain('hatch-ambition-capabilities-tile');
+  });
+});
+
+describe('AmbitionTiles', () => {
+  it('draws neither tile where no ambition is in scope', () => {
+    expect(tiles({ ambitions: [] })).toBe('');
   });
 });
 
 describe('AmbitionsBody', () => {
-  it('draws the failure sentence and still draws the rows when the ballot could not be read', () => {
+  it('draws the failure sentence and still draws the second tile and the rows when the ballot could not be read', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AmbitionsBody
-          data={{ ambitions: [row('AER-1')], statuses, ballot: null, ballotError: 'boom', scopeKey: '' }}
-          scopeKeys={[]}
-          now={NOW}
-        />
+        <AmbitionsBody data={view({ ballot: null, ballotError: 'boom' })} scopeKeys={[]} now={NOW} />
       </MemoryRouter>,
     );
 
     expect(html).toContain('could not be read: boom');
     expect(html).not.toContain('hatch-ambition-strip-line');
+    expect(html).toContain('Capabilities that hold');
     expect(html).toContain('hatch-ambition-row');
   });
 
-  it('draws the strip above the rows', () => {
+  it('draws the tiles above the rows', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AmbitionsBody
-          data={{ ambitions: [row('AER-1')], statuses, ballot: tree(), ballotError: null, scopeKey: '' }}
-          scopeKeys={[]}
-          now={NOW}
-        />
+        <AmbitionsBody data={view({ ballot: tree() })} scopeKeys={[]} now={NOW} />
       </MemoryRouter>,
     );
 
-    expect(html.indexOf('decisions waiting on you')).toBeGreaterThan(-1);
-    expect(html.indexOf('decisions waiting on you')).toBeLessThan(html.indexOf('hatch-ambition-row'));
+    expect(html.indexOf('Waiting on you')).toBeGreaterThan(-1);
+    expect(html.indexOf('Capabilities that hold')).toBeLessThan(html.indexOf('hatch-ambition-row'));
+    expect(html.indexOf('Waiting on you')).toBeLessThan(html.indexOf('hatch-ambition-row'));
+  });
+
+  it('draws only the explaining sentences where no ambition is in scope', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AmbitionsBody data={view({ ambitions: [] })} scopeKeys={[]} now={NOW} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('An ambition is what you are driving at');
+    expect(html).not.toContain('Waiting on you');
+    expect(html).not.toContain('Capabilities that hold');
   });
 });
 
@@ -317,5 +503,25 @@ describe('holdQuestions', () => {
 
     expect(holdQuestions(b).map((h) => h.question.id)).toEqual([1, 3, 4, 5]);
     expect(holdQuestions(b).every((h) => h.ambition === 'ambition AER-1')).toBe(true);
+  });
+
+  it('draws the New ambition press in the heading with onNew, and not without', () => {
+    const body = (onNew?: () => void) =>
+      renderToStaticMarkup(
+        <MemoryRouter>
+          <AmbitionsBody
+            data={{ ambitions: [row('AER-1')], statuses, ballot: tree(), ballotError: null, scopeKey: '' }}
+            scopeKeys={[]}
+            now={NOW}
+            onNew={onNew}
+          />
+        </MemoryRouter>,
+      );
+
+    const withPress = body(() => {});
+    const actions = /hatch-page-header__actions">([\s\S]*?)<\/div>/.exec(withPress)?.[1] ?? '';
+    expect(actions).toContain('New ambition');
+    expect(body()).not.toContain('New ambition');
+    expect(body()).not.toContain('hatch-page-header__actions');
   });
 });

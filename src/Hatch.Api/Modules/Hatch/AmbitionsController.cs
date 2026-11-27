@@ -17,11 +17,14 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/ambitions")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class AmbitionsController(HatchContext db, IActorDirectory actors) : ControllerBase
+public class AmbitionsController(HatchContext db, IActorDirectory actors, TimeProvider time) : ControllerBase
 {
     private const string Ambition = "ambition";
 
     private const string Epic = "epic";
+
+    /// <summary>How long a run of holds may have lasted and still be new.</summary>
+    private static readonly TimeSpan NewlyHoldingWindow = TimeSpan.FromDays(7);
 
     /// <summary>
     /// Every ambition the reader may see, in board order: column sort order,
@@ -94,6 +97,9 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors) : Cont
             .ToListAsync(ct);
         var newest = await IssueCapabilitiesController.NewestVerdictsAsync(db, capabilities.Select(c => c.Id), ct);
 
+        var heldLongAgo = await HeldBeforeAsync(
+            capabilities.Select(c => c.Id).Where(id => newest.GetValueOrDefault(id)?.Verdict == EfHatchCapabilityVerdict.Holds).ToList(), ct);
+
         var epicIds = epics.Select(e => e.Id).ToList();
         var links = epicIds.Count == 0
             ? []
@@ -146,6 +152,7 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors) : Cont
                 flying,
                 waiting,
                 notStarted,
+                own.Count(c => newest.GetValueOrDefault(c.Id)?.Verdict == EfHatchCapabilityVerdict.Holds && !heldLongAgo.Contains(c.Id)),
                 open.Select(e => new AmbitionOpenEpicDto(
                     IssueKey.Format(e.ProjectKey, e.Number),
                     e.ProjectKey,
@@ -159,6 +166,28 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors) : Cont
         }
 
         return rows.ToArray();
+    }
+
+    /// <summary>
+    /// Of the capabilities given, all of which hold now, those whose unbroken
+    /// run of holds began more than seven days ago. The run reaches back that
+    /// far when a holds verdict that old has nothing but holds after it, so a
+    /// does_not_hold or cannot_tell in between starts the run again. One query
+    /// for the whole read.
+    /// </summary>
+    private async Task<HashSet<long>> HeldBeforeAsync(List<long> holding, CancellationToken ct)
+    {
+        if (holding.Count == 0) return [];
+
+        var cutoff = time.GetUtcNow() - NewlyHoldingWindow;
+        var old = await db.CapabilityVerdicts.AsNoTracking()
+            .Where(v => holding.Contains(v.CapabilityId) && v.Verdict == EfHatchCapabilityVerdict.Holds && v.CreatedAt < cutoff)
+            .Where(v => !db.CapabilityVerdicts.Any(w => w.CapabilityId == v.CapabilityId && w.Id > v.Id && w.Verdict != EfHatchCapabilityVerdict.Holds))
+            .Select(v => v.CapabilityId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return old.ToHashSet();
     }
 
     /// <summary>

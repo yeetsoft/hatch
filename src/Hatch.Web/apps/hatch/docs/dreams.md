@@ -206,6 +206,12 @@ it files a draft ambition and takes you to it. It has no project control of
 its own: it uses the picker above the composer, and files into the project
 that picker names - or the one project, when the board runs only one.
 
+The same form is drawn on the Ambitions page, in the **New ambition** dialog,
+from the same component. There it has no heading or dreams line of its own - the
+dialog's title is the heading - sends no dreams, and brings its own **Project**
+picker, with the project already picked where there is only one. This page's
+section draws and works as described here, dreams included.
+
 **The box.** A box takes the words, typed at the same size as the dream box
 and the **Seed** box, over the same rule, which goes full while it has focus.
 

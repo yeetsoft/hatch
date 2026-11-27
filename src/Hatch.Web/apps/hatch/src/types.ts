@@ -1132,6 +1132,8 @@ export interface AmbitionRow {
   inFlight: number;
   waitsOnPerson: number;
   notStarted: number;
+  /** Of `holds`, those whose unbroken run of holds began within seven days. */
+  newlyHolding: number;
   open: AmbitionOpenEpic[];
   /** Some child is in a project the reader's scope does not hold. */
   childBeyondScope: boolean;
@@ -1777,6 +1779,25 @@ export interface Capability {
   newestVerdict: CapabilityVerdict | null;
   /** The keys of every epic that serves this capability, in key order. */
   servedBy: string[];
+}
+
+/** What POST .../capabilities takes to add one. Mirrors CapabilityCreateRequest. */
+export interface CapabilityCreateRequest {
+  statement: string;
+  howToTell: string;
+}
+
+/** What PATCH .../capabilities/{id} takes to edit one - either line, or both.
+    Mirrors CapabilityPatchRequest. */
+export interface CapabilityPatchRequest {
+  statement?: string;
+  howToTell?: string;
+}
+
+/** The order PUT .../capabilities/order writes: every capability id, once,
+    in the order wanted. Mirrors CapabilityOrderRequest. */
+export interface CapabilityOrderRequest {
+  ids: number[];
 }
 
 /** One verdict within a pass. Mirrors AmbitionPassVerdictDto. */

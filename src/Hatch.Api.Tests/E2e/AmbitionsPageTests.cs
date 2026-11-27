@@ -20,6 +20,13 @@ namespace Hatch.Api.Tests.E2e;
 /// epic filed in the first project at a limit of two, and has a capability
 /// whose newest verdict does not hold. Everything is filed over plain HTTP,
 /// rather than anything written straight to the database.</para>
+///
+/// <para>HA-2842 adds two more cases, each at both profiles: a person presses
+/// <b>New ambition</b> in the heading, sees the one project picked, types the
+/// words, presses <b>Shape</b> and lands on the draft, which reads back over
+/// HTTP as an ambition holding the words; and a page with a project and no
+/// ambition says what an ambition is, offers the same press and does not scroll
+/// sideways.</para>
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class AmbitionsPageTests(ITestOutputHelper output)
@@ -42,7 +49,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         string EpicColumn1, string EpicColumn2, string EpicColumn3);
 
     /// <summary>
-    /// Every row, the strip and the page's width against the viewport's, read in
+    /// Every row, both tiles and the page's width against the viewport's, read in
     /// one script so they are one moment. A row is found by its title, never by
     /// its place.
     /// </summary>
@@ -50,26 +57,41 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         () => {
           const texts = (root, selector) => [...root.querySelectorAll(selector)].map((e) => (e.textContent ?? '').trim());
           const strip = document.querySelector('.hatch-ambition-strip');
+          const capabilities = document.querySelector('.hatch-ambition-capabilities-tile');
+          const tiles = document.querySelector('.hatch-ambition-tiles');
           const place = (e) => {
             if (!e) return null;
             const r = e.getBoundingClientRect();
             return { left: r.left, top: r.top };
           };
           const edges = (e) => {
+            if (!e) return null;
             const r = e.getBoundingClientRect();
             return { left: r.left, right: r.right };
           };
+          const tile = (e) => ({
+            heading: e.querySelector('h2')?.textContent?.trim() ?? '',
+            value: e.querySelector('.hatch-health-value')?.textContent?.trim() ?? '',
+            note: e.querySelector('.hatch-ambition-tile-note')?.textContent?.trim() ?? '',
+            text: e.textContent ?? '',
+            place: place(e),
+          });
           return {
             strip: strip
               ? {
-                  edges: edges(strip),
-                  heading: strip.querySelector('h2')?.textContent?.trim() ?? '',
-                  text: strip.textContent ?? '',
+                  ...tile(strip),
                   hrefs: [...strip.querySelectorAll('a')].map((a) => a.getAttribute('href') ?? ''),
                   strong: texts(strip, 'strong'),
                   keys: texts(strip, '.hatch-plan-key'),
+                  link: texts(strip, '.hatch-ambition-tile-link'),
+                  linkUnderline: (() => {
+                    const a = strip.querySelector('.hatch-ambition-tile-link');
+                    return a ? getComputedStyle(a).textDecorationLine : '';
+                  })(),
                 }
               : null,
+            capabilities: capabilities ? tile(capabilities) : null,
+            tiles: tiles ? { edges: edges(tiles) } : null,
             rows: [...document.querySelectorAll('.hatch-ambition-row')].map((row) => ({
               edges: edges(row),
               title: row.querySelector('.hatch-ambition-title')?.textContent?.trim() ?? '',
@@ -128,6 +150,196 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         return RunAsync("AmbitionsPhone", "phone", DeviceProfile.IPhone14Pro);
     }
 
+    private const string HeadingPress = ".hatch-page-header__actions button:has-text(\"New ambition\")";
+
+    private const string DialogWords = "[role=dialog] textarea[aria-label=\"Words\"]";
+
+    private const string DialogPicked = "[role=dialog] .hatch-project-chooser input:checked";
+
+    private const string DialogShape = "[role=dialog] .hatch-gradient-fill";
+
+    private const string Typed = "Let a partner see where their order stands";
+
+    private const string WhatItIs = "An ambition is what you are driving at, broken into capabilities";
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task NewAmbition_FilesADraftAtTheDesktopProfile() => FileFromThePageAsync("NewAmbitionDesktop", "desktop", null);
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task NewAmbition_FilesADraftAtThePhoneProfile()
+    {
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
+        return FileFromThePageAsync("NewAmbitionPhone", "phone", DeviceProfile.IPhone14Pro);
+    }
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task TheEmptyPage_SaysWhatAnAmbitionIsAtTheDesktopProfile() => EmptyPageAsync("AmbitionsEmptyDesktop", "desktop", null);
+
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task TheEmptyPage_SaysWhatAnAmbitionIsAtThePhoneProfile()
+    {
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
+        return EmptyPageAsync("AmbitionsEmptyPhone", "phone", DeviceProfile.IPhone14Pro);
+    }
+
+    /// <summary>One project and one ambition: press the heading's New ambition, see the project picked, type, press Shape, land on the draft.</summary>
+    private async Task FileFromThePageAsync(string name, string profileName, DeviceProfile? profile)
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness(name);
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline, profile);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            await deadline.BoundAsync("filing a project and an ambition", async () =>
+            {
+                using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+                var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("NAP", "NAP"));
+                await PostAsync<IssueCreateRequest, IssueDto>(
+                    http, "/api/issues", new(project.Id, "ambition", "Partners order without a phone call", null, null, null, null));
+            });
+
+            await harness.OpenAsync(deadline, baseUrl, "/ambitions");
+            if (profile is not null) await harness.SetViewportAsync(deadline, 390, 844);
+            await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-row");
+            await harness.WaitForVisibleAsync(deadline, HeadingPress);
+            output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, $"new-ambition-page-{profileName}")}");
+
+            await harness.ClickAsync(deadline, HeadingPress);
+            await harness.WaitForVisibleAsync(deadline, "[role=dialog] h3:has-text(\"New ambition\")");
+            await harness.WaitForVisibleAsync(deadline, DialogPicked);
+
+            // The one project is already picked, so Shape waits only on words.
+            var resting = await harness.EvaluateAsync<JsonElement>(deadline, "measuring the dialog", DialogScript);
+            output.WriteLine($"{profileName} dialog: {resting}");
+            Assert.Equal(1, resting.GetProperty("picked").GetInt32());
+            Assert.True(resting.GetProperty("shapeDisabled").GetBoolean());
+            Assert.Equal("Give some words or a file first.", resting.GetProperty("why").GetString());
+            Assert.False(resting.GetProperty("mentionsDreams").GetBoolean());
+            Assert.True(
+                resting.GetProperty("scrollWidth").GetDouble() <= resting.GetProperty("innerWidth").GetDouble() + Tolerance,
+                $"the page scrolls sideways: {resting}");
+            output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, $"new-ambition-dialog-{profileName}")}");
+
+            await harness.ClickAsync(deadline, DialogWords);
+            await harness.InsertTextAsync(deadline, Typed);
+            await harness.WaitForFunctionAsync(
+                deadline,
+                "waiting for Shape to light",
+                "() => !document.querySelector('[role=dialog] .hatch-gradient-fill').disabled");
+            await harness.ClickAsync(deadline, DialogShape);
+            await harness.WaitForFunctionAsync(deadline, "waiting for the draft's page", "() => location.pathname.startsWith('/issues/')");
+
+            var key = (await harness.EvaluateAsync<string>(deadline, "reading the address", "() => location.pathname")).Split('/')[^1];
+            output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, $"new-ambition-draft-{profileName}")}");
+
+            using var read = new HttpClient { BaseAddress = new Uri(baseUrl) };
+            var issue = await read.GetFromJsonAsync<JsonElement>($"/api/issues/{key}", Web);
+            output.WriteLine($"{key}: type {issue.GetProperty("type")}");
+            Assert.Equal("ambition", issue.GetProperty("type").GetString());
+            Assert.Contains(Typed, issue.GetProperty("description").GetString() ?? "");
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>The dialog's picked project, the press and its reason, and the page's width, read in one script.</summary>
+    private const string DialogScript = """
+        () => {
+          const dialog = document.querySelector('[role=dialog]');
+          const picked = dialog.querySelectorAll('.hatch-project-chooser input:checked').length;
+          return {
+            picked,
+            shapeDisabled: dialog.querySelector('.hatch-gradient-fill').disabled,
+            why: dialog.querySelector('.hatch-dream-weave__why')?.textContent?.trim() ?? null,
+            mentionsDreams: /dream/i.test(dialog.querySelector('.hatch-dream-shape').textContent ?? ''),
+            innerWidth: window.innerWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+          };
+        }
+        """;
+
+    /// <summary>One project and no ambition: the two sentences and the press show, the old sentence does not, and nothing scrolls sideways.</summary>
+    private async Task EmptyPageAsync(string name, string profileName, DeviceProfile? profile)
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness(name);
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline, profile);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            await deadline.BoundAsync("filing a project", async () =>
+            {
+                using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+                await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("NAP", "NAP"));
+            });
+
+            await harness.OpenAsync(deadline, baseUrl, "/ambitions");
+            if (profile is not null) await harness.SetViewportAsync(deadline, 390, 844);
+            await harness.WaitForVisibleAsync(deadline, $".hatch-empty:has-text(\"{WhatItIs}\")");
+
+            var measured = await harness.EvaluateAsync<JsonElement>(deadline, "measuring the empty page", """
+                () => {
+                  const empty = [...document.querySelectorAll('.hatch-empty')].find((e) => (e.textContent ?? '').includes('An ambition is what'));
+                  return {
+                    text: empty?.textContent ?? '',
+                    presses: [...document.querySelectorAll('button')].filter((b) => (b.textContent ?? '').trim() === 'New ambition').length,
+                    inEmpty: empty ? [...empty.querySelectorAll('button')].filter((b) => (b.textContent ?? '').trim() === 'New ambition').length : 0,
+                    body: document.body.textContent ?? '',
+                    innerWidth: window.innerWidth,
+                    scrollWidth: document.documentElement.scrollWidth,
+                  };
+                }
+                """);
+            output.WriteLine($"{profileName} empty /ambitions: {measured}");
+            output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, $"ambitions-empty-{profileName}")}");
+
+            Assert.Contains("A person starts one by saying what they want, and a session shapes it.", measured.GetProperty("text").GetString());
+            Assert.DoesNotContain("No ambition in scope.", measured.GetProperty("body").GetString());
+            Assert.Equal(1, measured.GetProperty("inEmpty").GetInt32());
+            Assert.Equal(2, measured.GetProperty("presses").GetInt32());
+            Assert.True(
+                measured.GetProperty("scrollWidth").GetDouble() <= measured.GetProperty("innerWidth").GetDouble() + Tolerance,
+                $"the page scrolls sideways: {measured}");
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
     private async Task RunAsync(string name, string profileName, DeviceProfile? profile)
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
@@ -148,6 +360,7 @@ public class AmbitionsPageTests(ITestOutputHelper output)
 
             await harness.OpenAsync(deadline, baseUrl, "/ambitions");
             await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-strip");
+            await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-capabilities-tile");
             await harness.WaitForVisibleAsync(deadline, ".hatch-ambition-row");
             await harness.WaitForFunctionAsync(
                 deadline, "waiting for both ambition rows", "() => document.querySelectorAll('.hatch-ambition-row').length === 2");
@@ -167,7 +380,9 @@ public class AmbitionsPageTests(ITestOutputHelper output)
             else
                 AssertRowsStack(rowA, rowB);
             AssertStrip(measured.GetProperty("strip"), seeded);
-            AssertRowsMeetTheStrip(measured.GetProperty("strip"), rows);
+            AssertCapabilitiesTile(measured.GetProperty("capabilities"));
+            AssertRowsMeetTheTiles(measured.GetProperty("tiles"), rows);
+            AssertTilesPlaced(measured.GetProperty("strip"), measured.GetProperty("capabilities"), stacked: profile is not null);
             AssertFits(measured, profile is not null);
 
             // Nothing may scroll sideways once the strip and each row are the
@@ -225,17 +440,17 @@ public class AmbitionsPageTests(ITestOutputHelper output)
         AssertEpic(epic, s.EpicTitle3, s.EpicColumn3, "#2");
     }
 
-    /// <summary>HA-2839: each row's left and right edges are the strip's, from the two elements' own boxes.</summary>
-    private void AssertRowsMeetTheStrip(JsonElement strip, IReadOnlyList<JsonElement> rows)
+    /// <summary>HA-2839, HA-2847: each row's left and right edges are the two tiles', taken together, from the elements' own boxes.</summary>
+    private void AssertRowsMeetTheTiles(JsonElement tiles, IReadOnlyList<JsonElement> rows)
     {
-        var (left, right) = Edges(strip);
+        var (left, right) = Edges(tiles);
         foreach (var row in rows)
         {
             var (rowLeft, rowRight) = Edges(row);
-            output.WriteLine($"edges: strip {left} to {right}, row {rowLeft} to {rowRight}");
+            output.WriteLine($"edges: tiles {left} to {right}, row {rowLeft} to {rowRight}");
             Assert.True(
                 Math.Abs(rowLeft - left) <= Tolerance && Math.Abs(rowRight - right) <= Tolerance,
-                $"a row runs from {rowLeft} to {rowRight} and the strip from {left} to {right}");
+                $"a row runs from {rowLeft} to {rowRight} and the tiles from {left} to {right}");
         }
     }
 
@@ -327,12 +542,43 @@ public class AmbitionsPageTests(ITestOutputHelper output)
     /// <summary>One decision waiting, on the first ambition and the epic carrying the question, linking to the ballot; the second ambition is not in it.</summary>
     private static void AssertStrip(JsonElement strip, Seeded s)
     {
-        Assert.Equal("1 decision waiting on you", strip.GetProperty("heading").GetString());
+        Assert.Equal("Waiting on you", strip.GetProperty("heading").GetString());
+        Assert.Equal("1 decision", strip.GetProperty("value").GetString());
+        Assert.Equal("Holding 1 open issue. The oldest was just asked.", strip.GetProperty("note").GetString());
+        Assert.Equal(["Open the ballot"], Strings(strip, "link"));
+        Assert.Equal("underline", strip.GetProperty("linkUnderline").GetString());
         Assert.Equal([s.TitleA], Strings(strip, "strong"));
         Assert.Equal([s.Epic1], Strings(strip, "keys"));
         Assert.DoesNotContain(s.TitleB, strip.GetProperty("text").GetString());
         Assert.All(Strings(strip, "hrefs"), href => Assert.EndsWith("/ballot", href));
         Assert.NotEmpty(Strings(strip, "hrefs"));
+    }
+
+    /// <summary>One of the six capabilities holds, two more are in flight, and the one that holds only just began.</summary>
+    private static void AssertCapabilitiesTile(JsonElement tile)
+    {
+        Assert.Equal("Capabilities that hold", tile.GetProperty("heading").GetString());
+        Assert.Equal("1 of 6", tile.GetProperty("value").GetString());
+        Assert.Equal("2 more in flight. 1 newly holding this week.", tile.GetProperty("note").GetString());
+    }
+
+    /// <summary>Side by side they share a top; stacked they share a left, the second below the first.</summary>
+    private void AssertTilesPlaced(JsonElement first, JsonElement second, bool stacked)
+    {
+        var a = first.GetProperty("place");
+        var b = second.GetProperty("place");
+        output.WriteLine($"tile places: ({a.GetProperty("left")}, {a.GetProperty("top")}) and ({b.GetProperty("left")}, {b.GetProperty("top")})");
+
+        if (stacked)
+        {
+            Assert.True(Math.Abs(a.GetProperty("left").GetDouble() - b.GetProperty("left").GetDouble()) <= Tolerance, "the stacked tiles do not share a left");
+            Assert.True(b.GetProperty("top").GetDouble() > a.GetProperty("top").GetDouble(), "the second tile is not below the first");
+        }
+        else
+        {
+            Assert.True(Math.Abs(a.GetProperty("top").GetDouble() - b.GetProperty("top").GetDouble()) <= Tolerance, "the tiles do not share a top");
+            Assert.True(b.GetProperty("left").GetDouble() > a.GetProperty("left").GetDouble(), "the second tile is not beside the first");
+        }
     }
 
     private static List<string> Strings(JsonElement element, string property) =>

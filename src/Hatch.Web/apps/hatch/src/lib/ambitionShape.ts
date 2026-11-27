@@ -6,7 +6,7 @@
 import { message } from './errors';
 import { LOGO_ACCEPTED_TYPES } from './projectLogo';
 import { shrink } from './shrinkImage';
-import type { Attachment, Dream, DreamShapeRequest } from '../types';
+import type { Attachment, Dream, DreamShapeRequest, Project } from '../types';
 
 /** One file added to a shaping: the stored attachment's id, and the name and
     size the row shows. */
@@ -54,15 +54,29 @@ export function shapeBlocker(args: {
   dreams: Dream[];
   files: ShapeFile[];
   uploading: boolean;
+  /** False where no dreams are offered (the New ambition dialog), so the
+      nothing-given line does not name them. Default `true`. */
+  withDreams?: boolean;
 }): string | null {
-  const { projectId, projectCount, uploading } = args;
+  const { projectId, projectCount, uploading, withDreams = true } = args;
   if (projectId === null) {
     return projectCount === 0 ? 'There is no project to shape into yet.' : 'Pick a project above to shape.';
   }
   if (uploading) return 'A file is still uploading.';
-  if (shapeRequest({ ...args, projectId }) === null) return 'Give some words, a dream or a file first.';
+  if (shapeRequest({ ...args, projectId }) === null) {
+    return withDreams ? 'Give some words, a dream or a file first.' : 'Give some words or a file first.';
+  }
 
   return null;
+}
+
+/** The project a shaping goes into: `picked` while it is one of `projects`,
+    else the only project, else `null`. The same rule as `weaveProjectDefault`
+    in lib/dreams.ts, for a form that holds its own pick. */
+export function shapeProject(picked: number | null, projects: Project[]): number | null {
+  if (picked !== null && projects.some((project) => project.id === picked)) return picked;
+
+  return projects.length === 1 ? projects[0].id : null;
 }
 
 /** The line that says whether the dreams go in. */

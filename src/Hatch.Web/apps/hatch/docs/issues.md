@@ -89,6 +89,27 @@ the epic serves nothing. An epic beneath no ambition draws nothing when it
 serves nothing, and no other type draws either section. Each state is a pill, green, red, amber or grey, and looks the
 same on Serves, on each verdict in Passes and for the outcome in Latest change.
 
+A person signed in, or working at the console with the wall off, can add, edit,
+reorder and remove a capability from the Capabilities section itself — a key,
+or a browser nobody has signed into, sees the section exactly as above, with no
+control on it. **Add a capability** takes a statement and a how-to-tell line and
+puts the new row last. **Edit**, on a row, opens both lines in place; **Save**
+writes them and **Cancel**, or Escape, restores the row untouched. **Remove**
+asks first, naming the epics that serve the capability — removing it unlinks
+them — and removes it once confirmed. **Move up** and **Move down** write the
+new order at once; the first row has no Move up and the last no Move down.
+Each control names its own capability for a screen reader and works from the
+keyboard. A refusal from the server shows as its own sentence beside the
+control that caused it, and what was typed stays in the field. Reordering
+writes no event an ambition's History shows as a change — only an add, an edit
+or a remove does — so moving a row is never something a running ambition's
+session has to work out the consequences of. On an ambition that has reached
+the implementation column, the section says once that a session will work out
+what a change does to the epics in flight; the Latest change section below it
+shows that change the moment the write lands, with no reload needed. The CLI
+door — `hatch capability add` — stays, and is what an ambition with no
+capabilities yet shows in place of the form to a key or a signed-out browser.
+
 An ambition's page also draws Epics in flight, between Capabilities and
 Progress. It lists each direct child in a column that is neither terminal nor
 deferred: the key as a link, the title, the column's name, and the capabilities
@@ -330,16 +351,46 @@ but cannot change it - `PUT /me/home` takes a person only. See [the board
 and its columns](the-board-and-its-columns) and
 [the API reference](api-reference).
 
-Above the rows is a strip of what is waiting on the reader: one line for
-every question at the hold level anywhere on an ambition's tree, the
-ambition itself included. The strip is a card, like a row below it, with
-the same heading style as every other card in the app. A line names the
+The heading has a primary press, **New ambition**, on both profiles. It opens a
+dialog of the same name, holding a project picker, a box for the words and
+**Add images or videos**; the project is already picked where the tab's scope
+names exactly one, or where the board has only one. **Shape** files the draft
+ambition and opens its page, as on the Dreams page, which is where the form
+comes from ([Shaping an ambition](dreams)); a refusal shows as the server's own
+sentence and the words stay. The dialog offers no dreams. The press files into
+the column where a session shapes the ambition, which the New issue dialog does
+not, and it is not drawn for a key: shaping is a person's press.
+
+Above the rows are two tiles, side by side on a desk and one above the
+other on a phone. They are the board's own tiles: the same card, the same
+small heading and the same large line. Together they start and end where the
+rows do. With no ambition in the tab's scope, neither is drawn.
+
+The first tile, **Waiting on you**, is what waits on the reader. Its large
+line counts the questions at the hold level anywhere on an ambition's tree,
+the ambition itself included: "3 decisions", or "1 decision". Under it, a
+sentence says how many open issues those questions hold and how long the
+oldest has waited: "Holding 4 open issues. The oldest has waited 9 hours."
+An issue held by two questions counts once, and so does a story beneath an
+epic whose own question already holds it. Under a minute it reads "The
+oldest was just asked." Then comes one line for every question: the
 ambition, the key of the issue the question is on, the first words of the
-question, and how long it has waited; the whole line links to the Ballot,
-under the tab's scope. The four sit on four columns, so two lines read as
-a table. With none waiting, the strip is one sentence: "Nothing is waiting
-on you." Where the read behind the strip fails, the strip says so in a
-sentence of its own and the rows beneath it still draw.
+question, and how long it has waited. The four sit on four columns, so two
+lines read as a table; the whole line links to the Ballot, under the tab's
+scope, and so does the **Open the ballot** link below them. With none
+waiting, the tile is one sentence, "Nothing is waiting on you.", with no
+large line and no link. Where the read behind the tile fails, the tile says
+so in a sentence of its own, and the second tile and the rows still draw.
+
+The second tile, **Capabilities that hold**, counts them: "N of M" is the
+capabilities whose newest verdict holds, over every capability of every
+ambition in the tab's scope. An ambition in a finished or a shelved column
+is left out of both numbers, so a closed ambition does not read as parts done
+for good; a scope holding only such ambitions reads "0 of 0". Under it, "2
+more in flight. 1 newly holding this week." counts the capabilities not yet
+holding that an open epic is working on, and those that hold now whose unbroken run of holds began in the
+last seven days. A "does not hold" or "cannot tell" verdict between two
+"holds" ends the run, so the later one starts it again.
 
 A row is the ambition's title, linking to the ambition's own page, its
 project key and its column. Beside that, "N capabilities" with a bar and a
@@ -352,13 +403,17 @@ its key, title and column, with the numbers of the capabilities it serves as
 badges, or a dash where it serves none. With no epic open the third part
 says so instead: "No epic is open under this ambition." Rows come in board
 order: by column, then by rank, then by id. With no ambition in the tab's scope, the
-page says "No ambition in scope." Each row is a card, and its three parts sit
+page says in two sentences what an ambition is - "An ambition is what you are
+driving at, broken into capabilities that are each checked against the trunk
+on every pass. A person starts one by saying what they want, and a session
+shapes it." - and offers the same press as the heading, in place of a bare
+"No ambition in scope." Each row is a card, and its three parts sit
 on three columns set once for the whole list, so the head, the capabilities
 and the epics start at the same place on every row, with their first lines
 level; in the epics, the column and the capability numbers also line up from
 one epic to the next. On a phone the three parts of a row, and
-the words of a strip line, stack one above the other instead of running side
-by side.
+the words of a line in the first tile, stack one above the other instead of
+running side by side.
 
 The bar's four counts are read afresh on every visit, never stored, and a
 capability is counted once, in the first of these that is true of it:
@@ -379,8 +434,8 @@ three things is true of it: a question at the hold level is open on it or on
 an ancestor, the ambition itself included; it is flagged dangerous and some
 question, at any level, is open on it or an ancestor; or it is itself held.
 A question on a story beneath the epic does not make the epic wait - other
-work under it can still move - though that question still shows in the strip
-above the rows. A column with no playbook is not read as waiting on a person
+work under it can still move - though that question still shows in the
+**Waiting on you** tile above the rows. A column with no playbook is not read as waiting on a person
 here; [the queue](watching-the-loop) is where that is said.
 
 For example, an ambition with four capabilities and two open epics might

@@ -117,4 +117,32 @@ describe('AmbitionShapeView', () => {
     expect(draw({ pressing: true })).toContain('hatch-dream-weave__title--filing');
     expect(draw()).not.toContain('hatch-dream-weave__title--filing');
   });
+
+  it('in the dialog leaves out the heading, the lede and the dreams line', () => {
+    const html = draw({ inDialog: true, useOnScreen: true, dreams: [{ id: 1 } as Dream] });
+
+    expect(html).not.toContain('<h2');
+    expect(html).not.toContain('Files a draft ambition and takes you to it.');
+    expect(html).not.toContain('No dreams go in.');
+    expect(html).not.toContain('dreams listed');
+    expect(html).toContain('aria-label="Shape an ambition"');
+    expect(html).not.toContain('aria-labelledby');
+    expect(html).toContain('hatch-dream-weave hatch-dream-shape');
+  });
+
+  it('in the dialog still draws the words box, the picker and Shape', () => {
+    const html = draw({ inDialog: true });
+
+    expect(html).toContain('aria-label="Words"');
+    expect(html).toContain('aria-label="Add images or videos"');
+    expect(pill(html)).not.toContain('disabled');
+  });
+
+  it('in the dialog names no dream in the blocker', () => {
+    const html = draw({ inDialog: true, words: '' });
+
+    expect(pill(html)).toContain('disabled');
+    expect(html).toContain('Give some words or a file first.');
+    expect(html).not.toContain('a dream');
+  });
 });
