@@ -22,6 +22,6 @@ export function StatusPill({ status, size = 'sm' }: { status: Status; size?: Sta
 }
 
 /** The colour on its own, for a column heading that already says the name beside it. */
-export function StatusDot({ status }: { status: Status }) {
+export function StatusDot({ status }: { status: Pick<Status, 'color'> }) {
   return <span className="hatch-status-dot" style={statusVars(status.color)} aria-hidden="true" />;
 }

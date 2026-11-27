@@ -123,6 +123,7 @@ import type {
   RunnerOrderRequest,
   RunnerPatchRequest,
   RunnerSessionPatchRequest,
+  GoToAnswer,
   SearchResult,
   SessionSort,
   Status,
@@ -454,6 +455,17 @@ export const searchIssues = (filter: IssueSearch) => {
   }
   const query = params.toString();
   return fetchJson<IssueCard[]>(`/api/issues${query ? `?${query}` : ''}`);
+};
+
+/**
+ * The issues a typed number or key could mean, the first fifty. `projectIds` is
+ * the tab's scope; none means every project. A `signal` lets a newer query
+ * abandon this one.
+ */
+export const getGoTo = (query: string, projectIds: number[], signal?: AbortSignal) => {
+  const params = new URLSearchParams({ q: query });
+  for (const id of projectIds) params.append('projectId', String(id));
+  return fetchJson<GoToAnswer>(`/api/go-to?${params.toString()}`, { signal });
 };
 
 /** The search page's data: `params` is already built, so the page and the

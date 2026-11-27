@@ -243,7 +243,7 @@ describe('goToRows: the tab scope', () => {
 });
 
 describe('keepHighlight', () => {
-  const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows;
+  const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows.map((r) => ({ key: r.card.key }));
 
   it('keeps the same key while it is still listed', () => {
     expect(keepHighlight(rows, 'AER-2')).toBe('AER-2');
@@ -261,7 +261,7 @@ describe('keepHighlight', () => {
 
 describe('entryKeys', () => {
   it('lists the rows then the search row, for a non-blank query', () => {
-    const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows;
+    const rows = goToRows(numbered('AER', 1, 2, 3), 'aer').rows.map((r) => ({ key: r.card.key }));
     expect(entryKeys(rows, 'aer')).toEqual(['AER-1', 'AER-2', 'AER-3', SEARCH_ROW]);
   });
 
@@ -300,6 +300,17 @@ describe('goToStatus', () => {
   it('says so when the board read failed', () => {
     expect(goToStatus('', 0, 0, 'failed')).toBe('could not load issues');
     expect(goToStatus('aer', 0, 0, 'failed')).toBe('could not load issues');
+  });
+
+  it('says Loading… for a lookup still out only while nothing is drawn', () => {
+    expect(goToStatus('455', 0, 0, 'ready', { pending: true })).toBe('Loading…');
+    expect(goToStatus('455', 3, 3, 'ready', { pending: true })).toBe('3 issues');
+  });
+
+  it('says keep typing when the server left rows out', () => {
+    expect(goToStatus('4', 50, 111, 'ready', { more: true })).toBe('50 of 111 — keep typing');
+    expect(goToStatus('4', 50, 50, 'ready', { more: true })).toBe('50+ — keep typing');
+    expect(goToStatus('4', 3, 3, 'ready', { more: false })).toBe('3 issues');
   });
 
   it('is unchanged once ready', () => {
