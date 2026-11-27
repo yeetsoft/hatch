@@ -35,6 +35,7 @@ import {
   getWorkLogSessions,
   liftRunnerOmission,
   omitRunner,
+  putIssueServes,
   orderRunner,
   orderRunnerSession,
   patchRunnerSession,
@@ -312,6 +313,35 @@ describe('omitRunner', () => {
       expect.objectContaining({ method: 'PUT', body: '{"reason":"too risky"}' }),
     );
     expect(result).toEqual(issue);
+  });
+});
+
+describe('putIssueServes', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('PUTs the whole set as capabilityIds and returns the rows', async () => {
+    const rows = [{ ambitionKey: 'AER-1', capabilityId: 1, position: 1, statement: 'a', state: 'holds' }];
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(rows), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await putIssueServes('AER-2', [1, 3]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/issues/AER-2/serves',
+      expect.objectContaining({ method: 'PUT', body: '{"capabilityIds":[1,3]}' }),
+    );
+    expect(result).toEqual(rows);
+  });
+
+  it('escapes a slash in the key', async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await putIssueServes('AER/2', []);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/issues/AER%2F2/serves', expect.objectContaining({ method: 'PUT' }));
   });
 });
 
