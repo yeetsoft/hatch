@@ -305,14 +305,18 @@ API is shown beside the field as its own sentence. If the budget cannot be read,
 ## The Ambitions page
 
 The Ambitions page, at `/ambitions`, is a top-level link after the magnifying
-glass on the nav bar, and in the phone menu. It lists every ambition across every
+glass on the nav bar, and in the phone menu, except for a person who made it
+their home screen (below): the logo is theirs to Ambitions, and a **Board** link
+stands in its place on the bar and in the phone menu. It lists every ambition across every
 project, in one read, each with where it stands. It follows the tab's
 project scope the same way Plan and Ballot do, and nothing is stored for it.
 
 A person may make this page their home screen, in the **Home screen** card
 on the Settings page. The root address (`/`) then opens Ambitions, and the
 **Hatch** logo leads here too; the board is the default, and what a person
-who has chosen nothing gets. A key reads the choice (`home` on `GET /me`)
+who has chosen nothing gets. The board is never lost to the choice: it has
+its own address, `/board`, which the **Board** link, the console's
+**Go to Board** and the queue command all open. A key reads the choice (`home` on `GET /me`)
 but cannot change it - `PUT /me/home` takes a person only. See [the board
 and its columns](the-board-and-its-columns) and
 [the API reference](api-reference).

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import appSource from '../App.tsx?raw';
-import { HOME, HOME_LABEL, NAV, PHONE_ONLY, activeGroup, homeLabel, navFor, navRows } from './nav';
+import { BOARD, HOME, HOME_LABEL, NAV, PHONE_ONLY, activeGroup, homeAddress, homeLabel, isHomeCurrent, navFor, navRows } from './nav';
 import type { NavEntry } from './nav';
 
 // Excluded on purpose: /issues/:key is reached from a card, and
@@ -8,7 +8,9 @@ import type { NavEntry } from './nav';
 // /reports/consumption and /reports/activity from the Reports index, and /changelog from the
 // docs Reference section, never the nav;
 // /docs/* is the same page as /docs, for any path under it; / is the logo's and /docs the
-// settings menu's and the phone list's (below), neither a bar entry; /settings and * (the
+// settings menu's and the phone list's (below), neither a bar entry; /board is the board's own
+// address, which the bar offers only as a stand-in for Ambitions (navFor's home argument), never as a
+// NAV row; /settings and * (the
 // unknown-route fallback) are not pages a menu lists. :name is /runners'
 // nested detail route - the regex below captures a nested <Route>'s path
 // literally, with no parent prefix - reached from a RunnerRow, never the nav.
@@ -18,6 +20,7 @@ import type { NavEntry } from './nav';
 // (below, in NAV) is the row that opens it.
 const EXCLUDED_ROUTES = new Set([
   '/',
+  '/board',
   '/docs',
   '/issues/:key',
   '/reports/timeline',
@@ -116,6 +119,58 @@ describe('the bar', () => {
     const manage = NAV.find((entry) => entry.kind === 'group' && entry.label === 'Manage');
     if (!manage || manage.kind !== 'group') throw new Error('Manage not found');
     expect(manage.rows.map((row) => row.to)).not.toContain('/history');
+  });
+});
+
+describe('the board has its own address', () => {
+  it('is /board, mounted outside HomeRoute so it draws for everybody', () => {
+    expect(BOARD).toBe('/board');
+    expect(appSource).toContain(`<Route path="${BOARD}" element={<BoardPage />} />`);
+  });
+
+  it('leaves the bar exactly as it is for board, for no home and for nobody answered', () => {
+    for (const isAdmin of [false, true]) {
+      expect(navFor(isAdmin, 'board')).toEqual(navFor(isAdmin));
+      expect(navFor(isAdmin, undefined)).toEqual(navFor(isAdmin));
+      expect(navRows(isAdmin, 'board')).toEqual(navRows(isAdmin));
+    }
+  });
+
+  it('puts Board where Ambitions was for a person who chose Ambitions', () => {
+    for (const isAdmin of [false, true]) {
+      const bar = navFor(isAdmin, 'ambitions');
+      expect(bar.map((entry) => entry.label)).toEqual(['Search', 'Board', 'Track', 'Agents', 'Manage']);
+      expect(bar[1]).toEqual({ kind: 'link', to: '/board', label: 'Board' });
+    }
+  });
+
+  it('lists /board and not /ambitions in the phone rows for that person, with Docs still last', () => {
+    for (const isAdmin of [false, true]) {
+      const rows = navRows(isAdmin, 'ambitions');
+      const tos = rows.map((row) => row.to);
+      expect(tos).toContain('/board');
+      expect(tos).not.toContain('/ambitions');
+      expect(tos.indexOf('/board')).toBe(1);
+      expect(rows[rows.length - 1].to).toBe('/docs');
+      expect(rows).toHaveLength(navRows(isAdmin).length);
+    }
+  });
+
+  it('names the home page for the chosen home screen', () => {
+    expect(homeAddress('ambitions')).toBe('/ambitions');
+    expect(homeAddress('board')).toBe('/board');
+    expect(homeAddress(undefined)).toBe('/board');
+  });
+
+  it('lights the logo on the root and on the home page address, and on no other', () => {
+    expect(isHomeCurrent('/', 'board')).toBe(true);
+    expect(isHomeCurrent('/board', 'board')).toBe(true);
+    expect(isHomeCurrent('/Board', undefined)).toBe(true);
+    expect(isHomeCurrent('/ambitions', 'board')).toBe(false);
+    expect(isHomeCurrent('/', 'ambitions')).toBe(true);
+    expect(isHomeCurrent('/ambitions', 'ambitions')).toBe(true);
+    expect(isHomeCurrent('/board', 'ambitions')).toBe(false);
+    expect(isHomeCurrent('/plan', 'ambitions')).toBe(false);
   });
 });
 

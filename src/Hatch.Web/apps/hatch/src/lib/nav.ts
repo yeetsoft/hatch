@@ -72,11 +72,33 @@ export const NAV: NavEntry[] = [
   },
 ];
 
-/** The board's route, which the logo links to: the bar has no Board entry of
-    its own, so the logo is the way home and `HOME_LABEL` is its accessible
-    name. */
+/** The root address: the page a person chose as home, which the logo links
+    to. `HOME_LABEL` is the logo's accessible name for a person whose home is
+    the board. */
 export const HOME = '/';
 export const HOME_LABEL = 'Board';
+
+/** The board's own address, which draws it for everybody whatever their home
+    screen. */
+export const BOARD = '/board';
+
+/** The bar's Board link, offered in Ambitions' place to a person who chose
+    Ambitions: the logo goes to Ambitions for them, so the bar offers the
+    board. */
+const BOARD_ROW: NavRow = { to: BOARD, label: HOME_LABEL };
+
+/** The address of the page `home` names: `/ambitions` for a person who chose
+    it, the board's own address for anybody else. */
+export function homeAddress(home?: Me['home']): string {
+  return home === 'ambitions' ? '/ambitions' : BOARD;
+}
+
+/** Whether the logo is lit at `pathname`: on the root, and on the home page's
+    own address. Compared lower-case, as `matches` does. */
+export function isHomeCurrent(pathname: string, home?: Me['home']): boolean {
+  const path = pathname.toLowerCase();
+  return path === HOME || path === homeAddress(home);
+}
 
 /** The logo's accessible name for a person whose home screen is `home`:
     `Ambitions` for a person who chose it on Settings, `Board` for anybody
@@ -92,10 +114,13 @@ export const PHONE_ONLY: NavRow[] = [{ to: '/docs', label: 'Docs' }];
 
 /** `NAV`, with the admin-only rows dropped for anybody else, and a group left
     with nothing in it dropped along with them - a menu never opens on
-    nothing. */
-export function navFor(isAdmin: boolean): NavEntry[] {
+    nothing. For a person whose `home` is Ambitions, the Board link stands in
+    Ambitions' place: the logo is their way to Ambitions. */
+export function navFor(isAdmin: boolean, home?: Me['home']): NavEntry[] {
   return NAV.map((entry): NavEntry | null => {
-    if (entry.kind === 'link') return entry;
+    if (entry.kind === 'link') {
+      return home === 'ambitions' && entry.to === '/ambitions' ? { kind: 'link', ...BOARD_ROW } : entry;
+    }
     const rows = isAdmin ? entry.rows : entry.rows.filter((row) => !row.adminOnly);
     return rows.length > 0 ? { ...entry, rows } : null;
   }).filter((entry): entry is NavEntry => entry !== null);
@@ -110,12 +135,12 @@ export interface NavRowFlat {
   groupLabel: string | null;
 }
 
-/** `navFor(isAdmin)`, flattened to one row per entry: a top-level link keeps
+/** `navFor(isAdmin, home)`, flattened to one row per entry: a top-level link keeps
     its place with no heading, and a group's rows each carry that group's
     label, so the phone menu can draw a heading exactly where the label
     changes. */
-export function navRows(isAdmin: boolean): NavRowFlat[] {
-  const bar = navFor(isAdmin).flatMap((entry): NavRowFlat[] =>
+export function navRows(isAdmin: boolean, home?: Me['home']): NavRowFlat[] {
+  const bar = navFor(isAdmin, home).flatMap((entry): NavRowFlat[] =>
     entry.kind === 'link'
       ? [{ to: entry.to, label: entry.label, end: entry.end, groupLabel: null }]
       : entry.rows.map((row) => ({ to: row.to, label: row.label, groupLabel: entry.label })),
