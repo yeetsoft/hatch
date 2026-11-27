@@ -761,6 +761,10 @@ export const getIssueCapabilities = (key: string) => fetchJson<Capability[]>(`/a
 /** What an issue serves, with each capability's ambition. Empty for any type
     that serves nothing - see IssueServesController. */
 export const getIssueServes = (key: string) => fetchJson<ServedCapability[]>(`/api/issues/${seg(key)}/serves`);
+/** Replaces the set of capabilities an epic serves with exactly these, and
+    answers the set as saved. A person's call - see IssueServesController. */
+export const putIssueServes = (key: string, capabilityIds: number[]) =>
+  fetchJson<ServedCapability[]>(`/api/issues/${seg(key)}/serves`, { method: 'PUT', ...asJson({ capabilityIds }) });
 /** An ambition's passes, newest first, each with the verdicts it recorded and
     the comments said while it ran. 400 off an ambition - see
     IssuePassesController. */

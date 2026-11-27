@@ -69,15 +69,24 @@ its capabilities; unlink it first. Each change shows on the epic's History as
 "serves changed". Deleting the epic or the capability removes the link and
 nothing else.
 
-Both show on the issue page, read-only. An ambition's page draws a Capabilities
+Both show on the issue page. An ambition's page draws a Capabilities
 section above Progress: one row per capability, in order, with its statement and
 how to tell, its state as one of "Holds", "Does not hold", "Cannot tell" or "Not
 checked", what the newest verdict looked at, its sha, its author and its date, and the
 epics that serve it. An ambition with none says so and shows the `hatch capability add`
-command to start one. An epic's page draws a Serves section naming each
-capability it serves, with the ambition it belongs to and that capability's
-state. The section is left out when the epic serves nothing, and no other type
-draws either one. Each state is a pill, green, red, amber or grey, and looks the
+command to start one. An epic's page draws a Serves section. For a person, an
+epic that hangs beneath an ambition, at any depth, always draws it, even when
+the epic serves nothing: it lists every capability of that ambition with a tick
+box, its number, its statement and its state, the ones the epic serves ticked.
+Change the ticks and press **Save**, and the whole set is sent at once and
+replaces what the epic served; the section then shows the saved set, and the
+ambition's Capabilities section and the Ambitions page show it too. A refusal
+appears as a sentence in the section and leaves the ticks as they were. Anybody
+who is not a person, such as a runner's key, reads the list as before: each
+capability the epic serves, with the ambition it belongs to and that
+capability's state, with no tick boxes and no Save, and no section at all when
+the epic serves nothing. An epic beneath no ambition draws nothing when it
+serves nothing, and no other type draws either section. Each state is a pill, green, red, amber or grey, and looks the
 same on Serves, on each verdict in Passes and for the outcome in Latest change.
 
 An ambition's page also draws Epics in flight, between Capabilities and
