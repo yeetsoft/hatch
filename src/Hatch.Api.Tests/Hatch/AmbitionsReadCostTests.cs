@@ -49,7 +49,8 @@ public class AmbitionsReadCostTests
 
         var measured = await ReadCounter.MeasureAsync(connectionString, async db =>
         {
-            var result = await new AmbitionsController(db, new StubActorDirectory(), new FakeTimeProvider(Now))
+            var result = await new AmbitionsController(
+                    db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), new FakeTimeProvider(Now))
                 .GetAmbitions(null, default);
 
             var rows = result.Value ?? throw new InvalidOperationException("the read was refused");
