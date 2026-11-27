@@ -292,30 +292,20 @@ describe('goToStatus', () => {
     expect(goToStatus('zzz', 0, 0)).toBe('no issue matches');
   });
 
-  it('says Loading… while the board read is out, before anything about the query', () => {
-    expect(goToStatus('', 0, 0, 'loading')).toBe('Loading…');
-    expect(goToStatus('aer', 0, 0, 'loading')).toBe('Loading…');
-  });
-
-  it('says so when the board read failed', () => {
-    expect(goToStatus('', 0, 0, 'failed')).toBe('could not load issues');
-    expect(goToStatus('aer', 0, 0, 'failed')).toBe('could not load issues');
-  });
-
   it('says Loading… for a lookup still out only while nothing is drawn', () => {
-    expect(goToStatus('455', 0, 0, 'ready', { pending: true })).toBe('Loading…');
-    expect(goToStatus('455', 3, 3, 'ready', { pending: true })).toBe('3 issues');
+    expect(goToStatus('455', 0, 0, { pending: true })).toBe('Loading…');
+    expect(goToStatus('455', 3, 3, { pending: true })).toBe('3 issues');
   });
 
   it('says keep typing when the server left rows out', () => {
-    expect(goToStatus('4', 50, 111, 'ready', { more: true })).toBe('50 of 111 — keep typing');
-    expect(goToStatus('4', 50, 50, 'ready', { more: true })).toBe('50+ — keep typing');
-    expect(goToStatus('4', 3, 3, 'ready', { more: false })).toBe('3 issues');
+    expect(goToStatus('4', 50, 111, { more: true })).toBe('50 of 111 — keep typing');
+    expect(goToStatus('4', 50, 50, { more: true })).toBe('50+ — keep typing');
+    expect(goToStatus('4', 3, 3, { more: false })).toBe('3 issues');
   });
 
   it('is unchanged once ready', () => {
-    expect(goToStatus('aer', 4, 4, 'ready')).toBe('4 issues');
-    expect(goToStatus('zzz', 0, 0, 'ready')).toBe('no issue matches');
+    expect(goToStatus('aer', 4, 4)).toBe('4 issues');
+    expect(goToStatus('zzz', 0, 0)).toBe('no issue matches');
   });
 });
 

@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '@hatch/ui';
 import { getAssignees, getBoard, setPreApproval, setPriority } from '../api/client';
 import type { CommandContext, CommandEnv, IssueView } from '../lib/consoleCommands';
-import type { GoToLoad } from '../lib/goTo';
+import { consoleSource } from '../lib/consoleSource';
 import { focusedIssueKey, issueInView } from '../lib/issueInView';
 import { HOME } from '../lib/nav';
 import { OPEN_QUEUE, scopedPath } from '../lib/scope';
@@ -15,7 +15,7 @@ import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useMe } from '../lib/useMe';
 import { useScope } from '../lib/useScope';
 import type { CloseOffer } from '../lib/closeSubtree';
-import type { AssigneeDirectory, IssueCard, Status } from '../types';
+import type { AssigneeDirectory, IssueCard } from '../types';
 import { NewIssueDialog } from './NewIssueDialog';
 import { OmniBar } from './OmniBar';
 import type { MoveOutcome, SetChange } from './OmniBar';
@@ -33,26 +33,18 @@ function dialogOpen(): boolean {
   );
 }
 
-/** The issues and columns read for a page that is not a host. */
-interface Read {
-  state: GoToLoad;
-  issues: IssueCard[];
-  statuses: Status[];
-}
-
-const LOADING: Read = { state: 'loading', issues: [], statuses: [] };
-
 /**
  * `/` opens the console from every page.
  *
  * Above <Routes>, so one listener serves them all. The board is the one page
  * that holds the issues already, and it offers them as the console's host: a
  * take there rings the card and peeks it, and `>new` opens its own New issue
- * dialog. Anywhere else there is no host, so the console reads the board once,
- * when it opens, and a take opens the issue's page with the scope kept; `>new`
- * mounts the dialog here, over the page, and filing opens the new issue's page.
- * It never polls: it is open for seconds, and the read it made is as good as
- * the person's next keystroke needs.
+ * dialog. Anywhere else there is no host, so the console reads nothing when it
+ * opens: its rows come from the projects' numbers and, after a pause in typing,
+ * one lookup (see OmniBar). A take opens the issue's page with the scope kept;
+ * `>new` mounts the dialog here, over the page, and reads the board for its
+ * parent choices - that read belongs to the dialog - and filing opens the new
+ * issue's page.
  *
  * A page that can move issues - the board, and the issue page - registers that
  * too, and the console then offers Status for the issue in view: the page's own,
@@ -74,7 +66,8 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const scope = useScope();
   const [open, setOpen] = useState(false);
   const [host, setHostState] = useState<ConsoleHost | null>(null);
-  const [read, setRead] = useState<Read>(LOADING);
+  /** The issues the New issue dialog offers as parents, read off the board. */
+  const [candidates, setCandidates] = useState<IssueCard[]>([]);
   const [moves, setMoves] = useState<HeldMoves | null>(null);
   /** The card that had keyboard focus as `/` was pressed, before the prompt took it. */
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
@@ -93,7 +86,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       if (dialogOpen()) return;
 
       e.preventDefault();
-      setRead(LOADING);
       setFocusedKey(focusedIssueKey(document.activeElement));
       setOpen(true);
     };
@@ -111,24 +103,17 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     wasHosted.current = hosted;
   }, [hosted]);
 
-  // Off the board: one read, when the console opens, or when it hands over to
-  // the New issue dialog - which needs the same issues as parent candidates, and
-  // must not cancel a read still in flight. A console closed before it answers
-  // ignores the answer.
-  const reading = (open || filing) && !hosted;
+  // Off the board, the console itself reads nothing. The New issue dialog needs
+  // the board's issues as parent candidates, so it reads them when it opens. A
+  // dialog closed before the read answers ignores the answer.
+  const reading = filing && !hosted;
   useEffect(() => {
     if (!reading) return;
 
     let live = true;
     getBoard().then(
-      (board) =>
-        live &&
-        setRead({
-          state: 'ready',
-          issues: board.issues,
-          statuses: board.statuses,
-        }),
-      () => live && setRead({ state: 'failed', issues: [], statuses: [] }),
+      (board) => live && setCandidates(board.issues),
+      () => live && setCandidates([]),
     );
     return () => {
       live = false;
@@ -167,8 +152,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     if (!open) dropQuestion();
   }, [open, dropQuestion]);
 
-  const cards = host ? host.cards : read.issues;
-  const statuses = host ? host.statuses : read.statuses;
+  const { cards, statuses } = consoleSource(host, moves);
   const viewKey = moves
     ? issueInView({
         pageKey: moves.pageKey,
@@ -242,7 +226,12 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
         ? host.openQueue()
         : navigate(scopedPath(HOME, scope.keys), { replace: pathname === HOME, state: { [OPEN_QUEUE]: true } }),
     changeFilter: (next) => host?.filters.onChange(next),
-    newIssue: () => (host ? host.onNewIssue() : setFiling(true)),
+    newIssue: () => {
+      if (host) return host.onNewIssue();
+      // A second filing must not show the first one's parents while this read lands.
+      setCandidates([]);
+      setFiling(true);
+    },
   };
 
   return (
@@ -257,7 +246,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
           projects={scope.projects}
           allProjects={scope.allProjects}
           scopeIds={scope.ids}
-          load={host ? 'ready' : read.state}
           onTake={onTake}
           onTakeKey={onTakeKey}
           onSearch={onSearch}
@@ -272,7 +260,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       <NewIssueDialog
         open={filing}
         projects={scope.projects}
-        candidates={read.issues}
+        candidates={candidates}
         defaultProjectKey={scope.keys[0] ?? ''}
         directory={directory}
         onClose={() => setFiling(false)}

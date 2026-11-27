@@ -6,8 +6,9 @@ import type { IssueCard, Project, Status } from '../types';
 /**
  * A page that holds the board already, and so can hand the console its issues
  * without a read of its own - and knows what to do with the one that is taken.
- * Only the board is one today. Every other page has no host, and the console
- * reads the board itself and opens the issue's page.
+ * Only the board is one today. Every other page has no host: the console lists
+ * issues from the projects' numbers and the server's lookup, and opens the
+ * issue's page.
  *
  * The context and its hook rather than the provider, in a file of their own, for
  * the reason lib/useIssueConfirmations.ts gives. The provider and the console it
@@ -110,8 +111,8 @@ export type MoveResult = 'moved' | 'asked';
 /**
  * A page that can move an issue to a column, and so lets the console do it.
  *
- * Offered by the board, and by the issue page, which is not a host: the console
- * still reads the board for it. Every function is the page's own - the one its
+ * Offered by the board, and by the issue page, which is not a host: it hands
+ * the console its own issue and its columns instead. Every function is the page's own - the one its
  * status bar or peek calls - so the console and the mouse go through the same
  * refusals and the same dialogs, and cannot come to disagree.
  */
@@ -120,6 +121,12 @@ export interface ConsoleMoves {
   pageKey: string | null;
   /** The card the board's peek is open on. */
   peekedKey: string | null;
+  /** The page's own issue as a card, for a page that is not the host: the
+      console has no board to find it on. The board passes none - it is the
+      host, and its cards win. */
+  card?: IssueCard | null;
+  /** The page's columns, with `card`. The board passes none. */
+  statuses?: Status[];
   projectsByKey: Map<string, Project>;
   /** Moves `key` to the column. `onOffer` is told what the move offers to close
       under it - null for nothing - in place of the page's own dialog. A refusal
@@ -155,6 +162,8 @@ export function useConsoleMoves(moves: ConsoleMoves | null): void {
   const pageKey = moves?.pageKey;
   const peekedKey = moves?.peekedKey;
   const projectsByKey = moves?.projectsByKey;
+  const card = moves?.card;
+  const statuses = moves?.statuses;
   const offered = moves !== null;
 
   useEffect(() => {
@@ -165,12 +174,14 @@ export function useConsoleMoves(moves: ConsoleMoves | null): void {
     setMoves({
       pageKey,
       peekedKey,
+      card,
+      statuses,
       projectsByKey,
       send: (key, statusId, onOffer) => latest.current?.send(key, statusId, onOffer) ?? Promise.resolve('moved'),
       reload: () => latest.current?.reload() ?? Promise.resolve(),
       onClosed: (offer, changed) => latest.current?.onClosed?.(offer, changed),
     });
-  }, [setMoves, offered, pageKey, peekedKey, projectsByKey]);
+  }, [setMoves, offered, pageKey, peekedKey, card, statuses, projectsByKey]);
 
   useEffect(() => () => setMoves(null), [setMoves]);
 }
