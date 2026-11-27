@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader } from '@hatch/ui';
 import { getAmbitions, getBallot, getStatuses } from '../api/client';
 import { CapabilityBar, StagePill, stageWord } from '../components/AmbitionHeader';
+import { AmbitionPresses } from '../components/AmbitionPresses';
 import { NewAmbitionDialog } from '../components/NewAmbitionDialog';
 import { ScopeGate } from '../components/ScopeGate';
 import { StatusPill } from '../components/StatusPill';
@@ -69,7 +70,7 @@ function AmbitionsContent() {
     return { ambitions, statuses, ballot: read.ballot, ballotError: read.failure, scopeKey };
   }, [scope.isScoped, scope.ids, scopeKey]);
 
-  const { data, error } = useLoaded<AmbitionsView>(load);
+  const { data, error, reload } = useLoaded<AmbitionsView>(load);
 
   /* Only a read made for the scope now in force is drawn: until the refetch the
      provider's late list triggers resolves, `data` is the unscoped one. */
@@ -91,6 +92,7 @@ function AmbitionsContent() {
         now={new Date()}
         error={error}
         onNew={onNew}
+        onMoved={reload}
       />
       <NewAmbitionDialog open={shaping} projects={scope.projects} onClose={() => setShaping(false)} />
     </>
@@ -104,6 +106,7 @@ export function AmbitionsBody({
   now,
   error = null,
   onNew,
+  onMoved,
 }: {
   data: AmbitionsView;
   scopeKeys: string[];
@@ -111,6 +114,8 @@ export function AmbitionsBody({
   error?: string | null;
   /** Opens the New ambition dialog; left off, no press is drawn. */
   onNew?: () => void;
+  /** Reloads the page after Shape it or Start it moves a row. */
+  onMoved: () => void;
 }) {
   return (
     <div className="hatch-page">
@@ -124,7 +129,13 @@ export function AmbitionsBody({
 
       <AmbitionTiles data={data} scopeKeys={scopeKeys} now={now} />
 
-      <AmbitionList ambitions={data.ambitions} statuses={data.statuses} scopeKeys={scopeKeys} onNew={onNew} />
+      <AmbitionList
+        ambitions={data.ambitions}
+        statuses={data.statuses}
+        scopeKeys={scopeKeys}
+        onNew={onNew}
+        onMoved={onMoved}
+      />
     </div>
   );
 }
@@ -303,12 +314,15 @@ export function AmbitionList({
   statuses,
   scopeKeys = [],
   onNew,
+  onMoved,
 }: {
   ambitions: AmbitionRow[];
   statuses: Status[];
   /** The projects the tab is narrowed to, for the link to the ballot. */
   scopeKeys?: string[];
   onNew?: () => void;
+  /** Reloads the page after Shape it or Start it moves a row. */
+  onMoved: () => void;
 }) {
   if (ambitions.length === 0) {
     return <EmptyState message={NO_AMBITIONS} action={onNew && <NewAmbitionButton onClick={onNew} />} />;
@@ -324,7 +338,7 @@ export function AmbitionList({
   const list = (rows: AmbitionRow[]) => (
     <ul className="hatch-ambition-list">
       {rows.map((row) => (
-        <AmbitionRowView key={row.key} row={row} statuses={statuses} scopeKeys={scopeKeys} />
+        <AmbitionRowView key={row.key} row={row} statuses={statuses} scopeKeys={scopeKeys} onMoved={onMoved} />
       ))}
     </ul>
   );
@@ -363,10 +377,13 @@ export function AmbitionRowView({
   row,
   statuses,
   scopeKeys = [],
+  onMoved,
 }: {
   row: AmbitionRow;
   statuses: Status[];
   scopeKeys?: string[];
+  /** Reloads the page after Shape it or Start it moves this row. */
+  onMoved: () => void;
 }) {
   return (
     <Card as="li" className="hatch-ambition-row">
@@ -379,6 +396,7 @@ export function AmbitionRowView({
           <StagePill stage={row.stage} />
         </span>
         <p className="hatch-ambition-why">{row.stageWhy}</p>
+        <AmbitionPresses row={row} onMoved={onMoved} />
         {row.summary && <p className="hatch-ambition-summary">{row.summary}</p>}
       </div>
 

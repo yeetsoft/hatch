@@ -3418,11 +3418,16 @@ public record CapabilityDto(
 /// <param name="Decisions">Open hold-level questions on the ambition and everything beneath it that the reader may see. Other levels, answered questions and ones on closed issues are not counted, and the read's <c>projectId</c> does not narrow it.</param>
 /// <param name="Budget">The ambition's budget and what it has spent, as its own page tells it. Spend is read for every ambition, not only a running one.</param>
 /// <param name="ChildBeyondScope">Some child of this ambition is in a project the reader's scope does not hold. No key and no count of it is told.</param>
+/// <param name="ShapingStatusId">The column that shapes a draft into capabilities: the from-column of the row flagged <c>ShapesAmbition</c> for this ambition's project, or null where no such row exists.</param>
+/// <param name="ShapingStatusName">That column's name, or null with <paramref name="ShapingStatusId"/>.</param>
+/// <param name="StartStatusId">The implementation column a ready ambition starts in, or null on a board with none.</param>
+/// <param name="StartStatusName">That column's name, or null with <paramref name="StartStatusId"/>.</param>
 public record AmbitionRowDto(
     string Key, string ProjectKey, string Title, int StatusId, string StatusName,
     string Stage, string StageWhy, int Limit,
     int Capabilities, int Holds, int InFlight, int WaitsOnPerson, int NotStarted, int NewlyHolding,
-    IReadOnlyList<AmbitionOpenEpicDto> Open, string Summary, int Decisions, IssueBudgetDto Budget, bool ChildBeyondScope = false);
+    IReadOnlyList<AmbitionOpenEpicDto> Open, string Summary, int Decisions, IssueBudgetDto Budget, bool ChildBeyondScope = false,
+    int? ShapingStatusId = null, string? ShapingStatusName = null, int? StartStatusId = null, string? StartStatusName = null);
 
 /// <summary>One epic open beneath an ambition, as the Ambitions read draws it.</summary>
 /// <param name="Serves">The positions of the capabilities of its ambition that it serves, ascending.</param>

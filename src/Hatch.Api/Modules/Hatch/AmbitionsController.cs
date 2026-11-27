@@ -164,7 +164,8 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
         // Only an ambition in the implementation column asks why its pass is not
         // running, so only such a row costs the gate. Every row tells what it has
         // spent, but that is one read for all of them, not one each.
-        var implementationId = Columns.Implementation(statuses)?.Id;
+        var implementation = Columns.Implementation(statuses);
+        var implementationId = implementation?.Id;
         var inPass = ambitions.Where(a => a.StatusId == implementationId).ToList();
 
         // The gate counts every child, as the queue does, whatever the reader's
@@ -195,10 +196,12 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
             }
 
             var budget = AmbitionBudget.Of(a.BudgetUsd, spent[a.Id]);
+            var shaping = Dispatch.MatchShapingPress(playbooks, a.ProjectId);
+            var shapingStatus = shaping is null ? null : statusById.GetValueOrDefault(shaping.FromStatusId);
 
             var (stage, why) = AmbitionStage.Of(
                 statusById[a.StatusId], statuses, own.Count, held,
-                Dispatch.MatchShapingPress(playbooks, a.ProjectId)?.FromStatusId,
+                shapingStatus?.Id,
                 budgetSpent: budget.Spent,
                 passFold: a.StatusId == implementationId ? family?.PassFold(a.Id, a.WipLimit, statuses, now)?.Sentence : null);
 
@@ -229,7 +232,11 @@ public class AmbitionsController(HatchContext db, IActorDirectory actors, ICalle
                 AmbitionSummary.Of(a.Description),
                 decisions.GetValueOrDefault(a.Id),
                 budget,
-                priorities.Disclose(a.Id).ChildBeyondScope));
+                priorities.Disclose(a.Id).ChildBeyondScope,
+                shapingStatus?.Id,
+                shapingStatus?.Name,
+                implementation?.Id,
+                implementation?.Name));
         }
 
         // A stable sort: the board order the rows arrived in holds inside a group.

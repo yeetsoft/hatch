@@ -46,6 +46,18 @@ public class AmbitionStageTests
     }
 
     [Fact]
+    public void ADraftWithNoShapingRow_NamesTheTwoWaysOn() =>
+        Assert.Equal(
+            "It has no capabilities yet. Add them by hand, or add a playbook row that shapes ambitions on the Playbooks page.",
+            AmbitionStage.Of(Idea, Board, 0, 0, null, false, null).Why);
+
+    [Fact]
+    public void ADraftWithAShapingRow_KeepsTheShortSentence() =>
+        Assert.Equal(
+            "It has no capabilities yet.",
+            AmbitionStage.Of(Idea, Board, 0, 0, Todo.Id, false, null).Why);
+
+    [Fact]
     public void BudgetSpent_BeatsComplete() =>
         Assert.Equal("budget spent", Stage(Doing, capabilities: 1, holds: 1, budgetSpent: true));
 

@@ -46,6 +46,13 @@ export const PRE_APPROVAL_LEVELS: PreApprovalLevel[] = [
   },
 ];
 
+/** A pre-approval level as the word `PreApprovalControl`'s pill wears. Shared
+    by the band that sets it and anything that only reads the level, so
+    neither names a word the other does not. */
+export function preApprovalWord(level: PreApproval): string {
+  return PRE_APPROVAL_LEVELS.find((l) => l.name === level)?.word ?? level;
+}
+
 /** Whether a level is out of this person's reach: setting preapproved, and
     lowering out of it, are the approver's act. The own level is never locked,
     since it is already marked and cannot be pressed for being current. */
