@@ -1171,6 +1171,49 @@ export interface AmbitionRow {
   startStatusName: string | null;
 }
 
+/** One thing that changed under an ambition, as `GET /ambitions/changes` tells
+    it. A field a kind has no use for is null. */
+export interface AmbitionChangeLine {
+  kind: 'holds' | 'carved' | 'decided' | 'asked';
+  at: string;
+  /** The ambition it is beneath, or itself for `holds`. */
+  ambitionKey: string;
+  ambitionTitle: string;
+  /** The issue the line is about: the ambition for `holds`. */
+  issueKey: string;
+  issueTitle: string;
+  /** The capability's statement, for `holds`. */
+  statement: string | null;
+  /** What the verdict says was looked at, for `holds`. */
+  lookedAt: string | null;
+  /** The positions of the capabilities the epic serves, ascending, for `carved`. */
+  serves: number[] | null;
+  /** What the work went ahead on, for `decided`. */
+  wentAheadOn: string | null;
+  /** The first line of the newest question, for `asked`. */
+  question: string | null;
+  /** How many hold-level questions are open on the issue, for `asked`. */
+  count: number | null;
+}
+
+/** What changed under the reader's ambitions since an instant, newest first. */
+export interface AmbitionChanges {
+  /** The instant the lines run from, inclusive. */
+  since: string;
+  /** `given` when a `since` was sent, `visit` when it is the stored last visit,
+      `week` when there was nothing to go on and `since` is seven days ago. */
+  basis: 'given' | 'visit' | 'week';
+  /** How many more lines there were than the read answers. */
+  omitted: number;
+  lines: AmbitionChangeLine[];
+}
+
+/** When one person last opened one page. */
+export interface PersonVisit {
+  page: string;
+  visitedAt: string;
+}
+
 /** A recorded landing: the repository, and the sha the work reached the trunk at. */
 export interface BallotLanding {
   canonical: string;
