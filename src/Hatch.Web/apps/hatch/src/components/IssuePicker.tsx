@@ -67,6 +67,14 @@ export interface IssuePickerProps {
       since a row the lookup turns up may be a relative the page cannot see
       and so never excluded by `candidates` at all. */
   lookup?: { projectIds: number[]; accept: (row: PickedRow) => boolean };
+  /** The row `value` names, kept by the caller rather than found among
+      `candidates`. Needed where a caller can lose a looked-up pick out from
+      under this component - the New issue dialog unmounts this picker on a
+      type change or a Cancel, so `lastTaken` below is gone by the time it
+      remounts, and without this the face would read a bare key rather than
+      `KEY — title`. Unset where the caller holds nothing past what this
+      component already tracks, which is every other call site today. */
+  valueRow?: PickedRow | null;
 }
 
 export function IssuePicker({
@@ -79,6 +87,7 @@ export function IssuePicker({
   placeholder,
   homeProject,
   lookup,
+  valueRow,
 }: IssuePickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -234,11 +243,14 @@ export function IssuePicker({
   }, [open, highlight, query]);
 
   const chosen = candidates.find((c) => c.key === value) ?? null;
+  // The caller's own memory of a looked-up pick, where it has one - see
+  // `valueRow` above.
+  const fromCaller = valueRow && valueRow.key === value ? valueRow : null;
   // A row the picker took but `candidates` was never handed - a lookup's find
   // - still reads as `KEY — title` rather than a bare key, as long as it is
   // still the value in force.
   const taken = lastTaken && lastTaken.key === value ? lastTaken : null;
-  const found = chosen ?? taken;
+  const found = chosen ?? fromCaller ?? taken;
   const face = value === null ? (placeholder ?? NONE) : found ? `${found.key} — ${found.title}` : value;
 
   return (
