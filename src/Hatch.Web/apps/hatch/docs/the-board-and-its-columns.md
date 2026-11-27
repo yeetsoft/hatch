@@ -283,21 +283,23 @@ for a scope of one project. See [Reports](flow-wip-and-the-battery#reports).
 
 Press `/` on any page and a prompt opens over it. Type an issue's key
 (`HA-3`, `ha-3` or `ha3`), its number (`3`), or words from its title, and the
-list narrows as you type. **↑↓** move, **↵** opens the highlighted row and
-**esc** puts it away. Paste a whole key (`HA-455`, any case, with the hyphen)
-and press **↵**, and you land on that issue at once, with no lookup first, even
-before the list has filled: on the board, a card the board holds is peeked, and
-any other key opens its issue page, which says so when the key names nothing.
-Move the highlight with **↑↓** or the mouse first, and **↵** takes that row
-instead. The last row, **Search everything**, carries what you
-typed to the Search page - the way to find an issue by a title it used to
-have, since the console itself matches current titles only. A key or a number
-finds closed issues too, not only the ones on the board: each project knows
-the highest number it has handed out, so typing `455` lists issue 455 of every
-project that got that far, at once. The rows for keys the page already holds
-show their titles right away; the rest show the key with a dim `…` where the
-title goes, and fill in a moment after you stop typing, when the console asks
-the server once. More than fifty keys say `50 of 112 — keep typing`. It is not a
+list narrows as you type. A title word matches from the start of a word in
+the title - `dash` finds "Dashboard filters", but `ash` does not. **↑↓**
+move, **↵** opens the highlighted row and **esc** puts it away. Paste a whole
+key (`HA-455`, any case, with the hyphen) and press **↵**, and you land on that
+issue at once, with no lookup first, even before the list has filled: on the
+board, a card the board holds is peeked, and any other key opens its issue
+page, which says so when the key names nothing. Move the highlight with
+**↑↓** or the mouse first, and **↵** takes that row instead. The last row,
+**Search everything**, carries what you typed to the Search page - the way to
+find an issue by a title it used to have, since the console itself matches
+current titles only. A key or a number finds closed issues too, not only the
+ones on the board: each project knows the highest number it has handed out,
+so typing `455` lists issue 455 of every project that got that far, at once.
+The rows for keys the page already holds show their titles right away; the
+rest show the key with a dim `…` where the title goes, and fill in a moment
+after you stop typing, when the console asks the server once. More than fifty
+keys say `50 of 112 — keep typing`. It is not a
 shortcut while you are typing:
 `/` in a text box, a description editor, or the board's own search box is a
 slash.

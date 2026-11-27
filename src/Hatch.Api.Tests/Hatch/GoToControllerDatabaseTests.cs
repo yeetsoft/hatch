@@ -149,6 +149,121 @@ public class GoToControllerDatabaseTests
         Assert.Equal(["HA3-4"], result.Rows.Select(r => r.Key));
     }
 
+    // ---- Title words ----
+
+    [SkippableFact]
+    public async Task ATitleWord_FindsAnOpenIssue_AndAClosedOne()
+    {
+        await using var h = await NewAsync();
+        var open = await h.FileTitledAsync(h.Ha, "Dashboard filters");
+        var closed = await h.FileTitledAsync(h.Ha, "Dashboard export", closed: true);
+
+        var result = await h.GoToAsync("dashboard");
+
+        Assert.Equal(["HA-" + closed, "HA-" + open], result.Rows.Select(r => r.Key));
+    }
+
+    [SkippableFact]
+    public async Task ATitleWord_MatchesFromTheStartOfAWord_NeverAMiddle()
+    {
+        await using var h = await NewAsync();
+        await h.FileTitledAsync(h.Ha, "Dashboard filters");
+
+        Assert.Single((await h.GoToAsync("dash")).Rows);
+        Assert.Empty((await h.GoToAsync("ash")).Rows);
+    }
+
+    [SkippableFact]
+    public async Task AWordOnlyInTheDescription_OrOnlyInAPreviousTitle_FindsNothing()
+    {
+        await using var h = await NewAsync();
+        await h.FileTitledAsync(h.Ha, "Dashboard filters", description: "mentions gasket somewhere");
+        await h.FileTitledAsync(h.Ha, "Dashboard export", previousTitles: "gasket cleanup");
+
+        Assert.Empty((await h.GoToAsync("gasket")).Rows);
+    }
+
+    [SkippableFact]
+    public async Task TwoTitleWords_MustBothBePresent_InEitherOrder_AndAStopWordDoesNoHarm()
+    {
+        await using var h = await NewAsync();
+        var fix = await h.FileTitledAsync(h.Ha, "Fix the gasket leak");
+        await h.FileTitledAsync(h.Ha, "Fix the drill");
+        await h.FileTitledAsync(h.Ha, "Replace the gasket");
+
+        var result = await h.GoToAsync("fix the gasket");
+
+        Assert.Equal(["HA-" + fix], result.Rows.Select(r => r.Key));
+    }
+
+    [SkippableFact]
+    public async Task TitleRows_RunNewestFirst_ByIdDescending_RegardlessOfNumberOrder()
+    {
+        await using var h = await NewAsync();
+        var first = await h.FileTitledAsync(h.Ha, "Dashboard one");
+        var third = await h.FileTitledAsync(h.Ha, "Dashboard three");
+        var second = await h.FileTitledAsync(h.Ha, "Dashboard two");
+
+        // Filed in the order first, third, second - ids ascend in that order.
+        var result = await h.GoToAsync("dashboard");
+
+        Assert.Equal(
+            ["HA-" + second, "HA-" + third, "HA-" + first],
+            result.Rows.Select(r => r.Key));
+    }
+
+    [SkippableFact]
+    public async Task TitleWords_More_IsTruePastTheLimit_AndFalseAtExactlyIt()
+    {
+        await using var h = await NewAsync();
+        await h.FileTitledAsync(h.Ha, "Dashboard one");
+        await h.FileTitledAsync(h.Ha, "Dashboard two");
+        await h.FileTitledAsync(h.Ha, "Dashboard three");
+
+        var cut = await h.GoToAsync("dashboard", limit: 2);
+        Assert.Equal(2, cut.Rows.Count);
+        Assert.True(cut.More);
+
+        var whole = await h.GoToAsync("dashboard", limit: 3);
+        Assert.Equal(3, whole.Rows.Count);
+        Assert.False(whole.More);
+    }
+
+    [SkippableFact]
+    public async Task AWordThatIsAlsoAKeyPrefix_ListsKeyRowsFirst_ThenTitleRows_NeverTwice()
+    {
+        await using var h = await NewAsync();
+        await h.FileAsync(h.Ha, 4);
+        var harbor = await h.FileTitledAsync(h.Ha, "Harbor patrol");
+        var haystack = await h.FileTitledAsync(h.Zz, "Haystack search");
+
+        // "ha" is a key prefix of project HA, so HA-4 and the harbor issue (whose
+        // title also starts with "ha") are both key rows; the haystack issue, in
+        // another project, is found only as a title row and comes after them.
+        var result = await h.GoToAsync("ha");
+
+        Assert.Equal(["HA-4", "HA-" + harbor, "ZZ-" + haystack], result.Rows.Select(r => r.Key));
+    }
+
+    [SkippableFact]
+    public async Task DigitsAlone_FindNoTitleRows()
+    {
+        await using var h = await NewAsync();
+        await h.FileTitledAsync(h.Ha, "Version 4 notes");
+
+        Assert.Empty((await h.GoToAsync("4")).Rows);
+    }
+
+    [SkippableFact]
+    public async Task ATitleWord_OutsideTheScopeOrTheNarrowing_IsNotFound()
+    {
+        await using var h = await NewAsync();
+        await h.FileTitledAsync(h.Zz, "Dashboard filters");
+
+        Assert.Empty((await h.GoToAsync("dashboard", h.Ha)).Rows);
+        Assert.Empty((await h.GoToAsync("dashboard", scopedTo: h.Ha)).Rows);
+    }
+
     // ---- A whole key, outside the scope ----
 
     [SkippableFact]
@@ -227,12 +342,12 @@ public class GoToControllerDatabaseTests
     // ---- Nothing, and the limit ----
 
     [SkippableFact]
-    public async Task TitleWords_Blank_AndAKeyThenANumber_AnswerNoRows()
+    public async Task BlankOrUnmatchedWords_AnswerNoRows()
     {
         await using var h = await NewAsync();
         await h.FileAsync(h.Ha, 4);
 
-        foreach (var typed in new[] { "gasket", "issue 4", "", "   ", "ha 4", null })
+        foreach (var typed in new[] { "gasket", "ha 4", "", "   ", null })
         {
             var result = await h.GoToAsync(typed);
             Assert.Empty(result.Rows);
@@ -387,6 +502,7 @@ public class GoToControllerDatabaseTests
         DbContextOptions<HatchContext> options, int ha, int ha3, int zz, int todoId, int doneId) : IAsyncDisposable
     {
         private readonly List<HatchContext> open = [];
+        private int nextTitledNumber = 9000;
 
         public int Ha { get; } = ha;
         public int Ha3 { get; } = ha3;
@@ -431,6 +547,37 @@ public class GoToControllerDatabaseTests
             }
 
             await db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// An issue with a title, and optionally a description or previous titles,
+        /// for the title-word tests. Its number is its own counter, away from the
+        /// small numbers <see cref="FileAsync"/> tests use, so the two never collide
+        /// within one project.
+        /// </summary>
+        public async Task<int> FileTitledAsync(
+            int projectId, string title, string description = "", string previousTitles = "", bool closed = false)
+        {
+            var db = Connect();
+            var number = nextTitledNumber++;
+            db.Issues.Add(new EfHatchIssue
+            {
+                ProjectId = projectId,
+                Number = number,
+                Type = "story",
+                Title = title,
+                Description = description,
+                PreviousTitles = previousTitles,
+                StatusId = closed ? DoneId : TodoId,
+                Rank = 1024L * number,
+                CreatedBy = "operator",
+                CreatedAt = Now,
+                UpdatedAt = Now,
+                ClosedAt = closed ? Now : null,
+            });
+
+            await db.SaveChangesAsync();
+            return number;
         }
 
         /// <summary>

@@ -1478,6 +1478,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
+                    b.Property<NpgsqlTsVector>("TitleVector")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("to_tsvector('english', \"Title\")", true);
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1527,6 +1533,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasIndex("SearchVector");
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
+
+                    b.HasIndex("TitleVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("TitleVector"), "GIN");
 
                     b.HasIndex("ProjectId", "Number")
                         .IsUnique();

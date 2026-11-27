@@ -7,8 +7,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 /// <remarks>
 /// The meanings: digits alone are a number prefix; any other single word is a key
-/// prefix, on letters and digits alone and ignoring case; anything else (blank,
-/// or words with a space between them) is not a key or a number and finds no rows
+/// prefix, on letters and digits alone and ignoring case; several words are title
+/// words, each the start of a word in the title and every one of them present;
+/// blank, or nothing left once only letters and digits are kept, finds no rows
 /// here.
 /// </remarks>
 public abstract record GoToQuery
@@ -25,14 +26,17 @@ public abstract record GoToQuery
     /// <summary>One word, squashed to lower-case letters and digits: a prefix of a key, hyphen ignored.</summary>
     public sealed record Key(string Wanted) : GoToQuery;
 
-    /// <summary>
-    /// Reads what was typed. Whitespace inside means title words, which this lookup
-    /// does not answer.
-    /// </summary>
+    /// <summary>Several words: a title search, as <see cref="SearchQuery.ToTsQuery"/> reads them.</summary>
+    public sealed record Words(string Typed) : GoToQuery;
+
+    /// <summary>Reads what was typed.</summary>
     public static GoToQuery Parse(string? q)
     {
         var typed = q?.Trim();
-        if (string.IsNullOrEmpty(typed) || typed.Any(char.IsWhiteSpace)) return new None();
+        if (string.IsNullOrEmpty(typed)) return new None();
+
+        if (typed.Any(char.IsWhiteSpace))
+            return SearchQuery.ToTsQuery(typed) is null ? new None() : new Words(typed);
 
         if (typed.All(IsDigit)) return new Number(typed);
 
