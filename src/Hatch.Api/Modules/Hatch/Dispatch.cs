@@ -5067,6 +5067,17 @@ public sealed class PriorityTree
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
 
+    /// <summary>
+    /// Every issue the reader may see that has an open hold-level question on it, with how
+    /// many. Hold is the strictest level, so an issue whose strictest level is hold has a
+    /// count of exactly its hold questions. Closed issues are already out of the question
+    /// read. What the Ambitions page counts as waiting on the reader, with no query of its own.
+    /// </summary>
+    internal IEnumerable<(long IssueId, int Count)> VisibleHoldQuestions() =>
+        _questions
+            .Where(q => q.Value.Level == QuestionLevels.HoldName && (_visible is null || _visible.Contains(q.Key)))
+            .Select(q => (q.Key, q.Value.Count));
+
     /// <summary>Every id this tree holds, in board order - (Rank, Id) as read. What <see cref="IssueClaims.LineageAsync"/>, <see cref="FamilyGate.ForAsync"/> and <see cref="Wip.LoadAsync"/> walk instead of reading <c>Issues</c> a second time.</summary>
     public IReadOnlyList<long> OrderedIds => _order;
 

@@ -668,6 +668,155 @@ public class AmbitionsControllerTests
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
+    // ---- What a row says: what it is for, what waits on the reader, what it has cost ----
+
+    [Fact]
+    public async Task TheSummary_IsTheDescriptionsFirstSentence_AndEmptyWithNoDescription()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("ambition", "told", rank: 1, description: "# Aim\n\nPeople see their load at a glance. The rest is detail.");
+        await h.FileAsync("ambition", "silent", rank: 2);
+
+        var rows = await h.ReadAsync();
+
+        Assert.Equal("People see their load at a glance.", rows.Single(r => r.Title == "told").Summary);
+        Assert.Equal("", rows.Single(r => r.Title == "silent").Summary);
+    }
+
+    [Fact]
+    public async Task AnAmbitionWithNoBudget_ReadsItsSpendFromBeneathIt_InAnyProject()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id, statusId: h.Done);
+        var story = await h.FileAsync("story", "s", parentId: epic.Id, project: h.Other, statusId: h.Done);
+        await h.LogAsync(ambition, 1.25m);
+        await h.LogAsync(story, 2m);
+        await h.LogAsync(story, null);
+
+        var budget = Assert.Single(await h.ReadAsync()).Budget;
+
+        Assert.Equal((null, 3.25m, 1, false), (budget.BudgetUsd, budget.SpentUsd, budget.UnpricedSessions, budget.Spent));
+    }
+
+    [Fact]
+    public async Task AnAmbitionWhoseBudgetIsReached_ReadsAsSpent_InAnyColumn()
+    {
+        var h = await NewAsync();
+        var draft = await h.FileAsync("ambition", "draft", statusId: h.Idea, budget: 10m, rank: 1);
+        var under = await h.FileAsync("ambition", "under", statusId: h.Todo, budget: 10m, rank: 2);
+        await h.LogAsync(draft, 10m);
+        await h.LogAsync(under, 4.1m);
+
+        var rows = await h.ReadAsync();
+
+        var reached = rows.Single(r => r.Title == "draft").Budget;
+        Assert.Equal((10m, 10m, true), (reached.BudgetUsd, reached.SpentUsd, reached.Spent));
+        var notYet = rows.Single(r => r.Title == "under").Budget;
+        Assert.Equal((10m, 4.1m, false), (notYet.BudgetUsd, notYet.SpentUsd, notYet.Spent));
+    }
+
+    [Fact]
+    public async Task TheRowsBudget_IsTheOneItsOwnPageTells()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a", statusId: h.Doing, budget: 8m);
+        await h.LogAsync(await h.FileAsync("epic", "e", parentId: ambition.Id), 5m);
+
+        var row = Assert.Single(await h.ReadAsync());
+
+        Assert.Equal(await AmbitionBudget.ReadAsync(h.Db, ambition, default), row.Budget);
+    }
+
+    [Fact]
+    public async Task Decisions_CountOpenHoldQuestionsOnTheAmbitionItsEpicsAndTheirStories()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id);
+        var story = await h.FileAsync("story", "s", parentId: epic.Id);
+        await h.AskAsync(ambition, "one?", level: QuestionLevels.HoldName);
+        await h.AskAsync(epic, "two?", level: QuestionLevels.HoldName);
+        await h.AskAsync(story, "three?", level: QuestionLevels.HoldName);
+        await h.AskAsync(story, "four?", level: QuestionLevels.HoldName);
+
+        Assert.Equal(4, Assert.Single(await h.ReadAsync()).Decisions);
+    }
+
+    [Fact]
+    public async Task Decisions_LeaveOutBuildAndMergeQuestions_AnsweredOnes_AndOnesOnClosedIssues()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id);
+        var closed = await h.FileAsync("story", "closed", parentId: epic.Id, statusId: h.Done);
+        await h.AskAsync(epic, "counted?", level: QuestionLevels.HoldName);
+        await h.AskAsync(epic, "build?", level: QuestionLevels.BuildName);
+        await h.AskAsync(epic, "merge?", level: QuestionLevels.MergeName);
+        await h.AnswerAsync(await h.AskAsync(epic, "answered?", level: QuestionLevels.HoldName));
+        await h.AskAsync(closed, "closed?", level: QuestionLevels.HoldName);
+
+        Assert.Equal(1, Assert.Single(await h.ReadAsync()).Decisions);
+    }
+
+    [Fact]
+    public async Task AnIssueWithBothAHoldAndBuildQuestions_CountsOnlyTheHoldOne()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id);
+        await h.AskAsync(epic, "hold?", level: QuestionLevels.HoldName);
+        await h.AskAsync(epic, "build?", level: QuestionLevels.BuildName);
+        await h.AskAsync(epic, "build too?", level: QuestionLevels.BuildName);
+
+        Assert.Equal(1, Assert.Single(await h.ReadAsync()).Decisions);
+    }
+
+    [Fact]
+    public async Task AnAmbitionWithNothingWaiting_HasNoDecisions_AndEachAmbitionCountsItsOwn()
+    {
+        var h = await NewAsync();
+        var quiet = await h.FileAsync("ambition", "quiet", rank: 1);
+        var busy = await h.FileAsync("ambition", "busy", rank: 2);
+        await h.AskAsync(await h.FileAsync("epic", "e", parentId: busy.Id), "which?", level: QuestionLevels.HoldName);
+        await h.AskAsync(await h.FileAsync("epic", "unrelated"), "elsewhere?", level: QuestionLevels.HoldName);
+
+        var rows = await h.ReadAsync();
+
+        Assert.Equal(0, rows.Single(r => r.Key == h.Key(quiet)).Decisions);
+        Assert.Equal(1, rows.Single(r => r.Key == h.Key(busy)).Decisions);
+    }
+
+    [Fact]
+    public async Task Decisions_IgnoreTheProjectFilter_AsTheOpenEpicsDo()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var epic = await h.FileAsync("epic", "e", parentId: ambition.Id, project: h.Other);
+        await h.AskAsync(epic, "which?", level: QuestionLevels.HoldName);
+
+        Assert.Equal(1, Assert.Single(await h.ReadAsync(h.ProjectId)).Decisions);
+    }
+
+    [Fact]
+    public async Task AReadersScope_HidesAQuestionOnAnIssueItCannotSee_ButNotOneBelowAnIssueItCannotSee()
+    {
+        var h = await NewAsync();
+        var ambition = await h.FileAsync("ambition", "a");
+        var hiddenEpic = await h.FileAsync("epic", "hidden", parentId: ambition.Id, project: h.Other);
+        var visibleStory = await h.FileAsync("story", "visible", parentId: hiddenEpic.Id);
+        await h.AskAsync(hiddenEpic, "on the hidden epic?", level: QuestionLevels.HoldName);
+        await h.AskAsync(await h.FileAsync("story", "hidden story", parentId: hiddenEpic.Id, project: h.Other), "also hidden?", level: QuestionLevels.HoldName);
+        await h.AskAsync(visibleStory, "below the hidden epic?", level: QuestionLevels.HoldName);
+
+        Assert.Equal(3, Assert.Single(await h.ReadAsync()).Decisions);
+
+        await using var scoped = ScopeSeed.Request(h.Options, ScopeSeed.Only(h.ProjectId));
+        var rows = Value(await h.ControllerOn(scoped).GetAmbitions(null, null, default));
+
+        Assert.Equal(1, Assert.Single(rows).Decisions);
+    }
+
     // ---- The harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 3, 1, 9, 0, 0, TimeSpan.Zero);
@@ -675,6 +824,7 @@ public class AmbitionsControllerTests
     private class Harness
     {
         public required HatchContext Db { get; init; }
+        public required DbContextOptions<HatchContext> Options { get; init; }
         public required AmbitionsController Ambitions { get; init; }
         public required int ProjectId { get; init; }
         public required int Other { get; init; }
@@ -691,7 +841,8 @@ public class AmbitionsControllerTests
 
         public async Task<EfHatchIssue> FileAsync(
             string type, string title, int? statusId = null, long? parentId = null, int? project = null,
-            int? rank = null, bool held = false, string? dangerous = null, int? wipLimit = null, decimal? budget = null)
+            int? rank = null, bool held = false, string? dangerous = null, int? wipLimit = null, decimal? budget = null,
+            string description = "")
         {
             var issue = new EfHatchIssue
             {
@@ -699,7 +850,7 @@ public class AmbitionsControllerTests
                 Number = next++,
                 Type = type,
                 Title = title,
-                Description = "",
+                Description = description,
                 StatusId = statusId ?? Todo,
                 Rank = rank ?? this.rank,
                 ParentId = parentId,
@@ -763,9 +914,9 @@ public class AmbitionsControllerTests
             await Db.SaveChangesAsync();
         }
 
-        public async Task AskAsync(EfHatchIssue issue, string body, string? level = null)
+        public async Task<EfHatchComment> AskAsync(EfHatchIssue issue, string body, string? level = null)
         {
-            Db.Comments.Add(new EfHatchComment
+            var question = new EfHatchComment
             {
                 IssueId = issue.Id,
                 Author = "hatch-agent",
@@ -773,12 +924,28 @@ public class AmbitionsControllerTests
                 Kind = EfHatchComment.Question,
                 Level = level,
                 CreatedAt = Now,
+            };
+
+            Db.Comments.Add(question);
+            await Db.SaveChangesAsync();
+            return question;
+        }
+
+        public async Task AnswerAsync(EfHatchComment question)
+        {
+            Db.Comments.Add(new EfHatchComment
+            {
+                IssueId = question.IssueId,
+                Author = "operator",
+                Body = "this one",
+                AnswersId = question.Id,
+                CreatedAt = Now,
             });
 
             await Db.SaveChangesAsync();
         }
 
-        public async Task LogAsync(EfHatchIssue issue, decimal cost)
+        public async Task LogAsync(EfHatchIssue issue, decimal? cost)
         {
             Db.WorkLog.Add(new EfHatchWorkLogEntry
             {
@@ -796,6 +963,10 @@ public class AmbitionsControllerTests
 
             Assert.Equal((stage, why), (row.Stage, row.StageWhy));
         }
+
+        /// <summary>The same controller over another context - one a reader's scope has been put on.</summary>
+        public AmbitionsController ControllerOn(HatchContext db) =>
+            new(db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), new FakeTimeProvider(Now));
 
         public async Task<AmbitionRowDto[]> ReadAsync(params int[] projectIds) =>
             Value(await Ambitions.GetAmbitions(projectIds.Length == 0 ? null : projectIds.ToList(), null, default));
@@ -819,8 +990,8 @@ public class AmbitionsControllerTests
     /// </summary>
     private static async Task<Harness> NewAsync(Func<(int Here, int Other), int>? shapingProject = null)
     {
-        var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var options = new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        var db = new HatchContext(options);
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         var other = new EfHatchProject { Key = "OPS", Name = "Operations", CreatedAt = Now };
@@ -845,6 +1016,7 @@ public class AmbitionsControllerTests
         return new Harness
         {
             Db = db,
+            Options = options,
             Ambitions = new AmbitionsController(db, new StubActorDirectory(), new MeScopeTests.StubCaller(null, null, null), new FakeTimeProvider(Now)),
             ProjectId = project.Id,
             Other = other.Id,

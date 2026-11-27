@@ -8,6 +8,7 @@ import { ScopeGate } from '../components/ScopeGate';
 import { StatusPill } from '../components/StatusPill';
 import { waitedWords } from '../lib/attention';
 import { firstLine } from '../lib/dreams';
+import { rowBudgetLine } from '../lib/budget';
 import { message } from '../lib/errors';
 import { scopedPath } from '../lib/scope';
 import { useLoaded } from '../lib/useLoaded';
@@ -123,7 +124,7 @@ export function AmbitionsBody({
 
       <AmbitionTiles data={data} scopeKeys={scopeKeys} now={now} />
 
-      <AmbitionList ambitions={data.ambitions} statuses={data.statuses} onNew={onNew} />
+      <AmbitionList ambitions={data.ambitions} statuses={data.statuses} scopeKeys={scopeKeys} onNew={onNew} />
     </div>
   );
 }
@@ -300,10 +301,13 @@ export const NO_AMBITIONS =
 export function AmbitionList({
   ambitions,
   statuses,
+  scopeKeys = [],
   onNew,
 }: {
   ambitions: AmbitionRow[];
   statuses: Status[];
+  /** The projects the tab is narrowed to, for the link to the ballot. */
+  scopeKeys?: string[];
   onNew?: () => void;
 }) {
   if (ambitions.length === 0) {
@@ -320,7 +324,7 @@ export function AmbitionList({
   const list = (rows: AmbitionRow[]) => (
     <ul className="hatch-ambition-list">
       {rows.map((row) => (
-        <AmbitionRowView key={row.key} row={row} statuses={statuses} />
+        <AmbitionRowView key={row.key} row={row} statuses={statuses} scopeKeys={scopeKeys} />
       ))}
     </ul>
   );
@@ -353,9 +357,17 @@ function ColumnPill({ statusId, statusName, statuses }: { statusId: number; stat
   return status ? <StatusPill status={status} size="sm" /> : <span className="text-muted">{statusName}</span>;
 }
 
-/** One ambition: its head with its stage and what it needs, its capabilities
-    as a bar, and its open epics. */
-export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses: Status[] }) {
+/** One ambition: its head with its stage, what it needs and what it is for, its
+    capabilities as a bar, its open epics, and what is on the reader. */
+export function AmbitionRowView({
+  row,
+  statuses,
+  scopeKeys = [],
+}: {
+  row: AmbitionRow;
+  statuses: Status[];
+  scopeKeys?: string[];
+}) {
   return (
     <Card as="li" className="hatch-ambition-row">
       <div className="hatch-ambition-part">
@@ -367,6 +379,7 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
           <StagePill stage={row.stage} />
         </span>
         <p className="hatch-ambition-why">{row.stageWhy}</p>
+        {row.summary && <p className="hatch-ambition-summary">{row.summary}</p>}
       </div>
 
       <div className="hatch-ambition-part">
@@ -413,6 +426,21 @@ export function AmbitionRowView({ row, statuses }: { row: AmbitionRow; statuses:
             </ul>
           </>
         )}
+      </div>
+
+      <div className="hatch-ambition-part">
+        <h3 className="hatch-ambition-heading">On you</h3>
+        {row.decisions > 0 ? (
+          <p className="hatch-ambition-decisions">
+            <span className="hatch-ambition-swatch hatch-ambition-waiting" aria-hidden="true" />
+            <Link to={scopedPath('/ballot', scopeKeys)}>{plural(row.decisions, 'decision', 'decisions')}</Link>
+          </p>
+        ) : (
+          <p className="hatch-ambition-none text-muted">No decision waits on you.</p>
+        )}
+        <p className={row.budget.spent ? 'hatch-ambition-budget hatch-ambition-budget-spent' : 'hatch-ambition-budget'}>
+          {rowBudgetLine(row.budget)}
+        </p>
       </div>
     </Card>
   );

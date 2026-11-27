@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_FORM, KEEP, NO_FILTERS, buildBulkEdit, bulkSearch, isEmptyForm, movedOutOfScope, summarize } from './bulk';
+import {
+  EMPTY_FORM,
+  KEEP,
+  NO_FILTERS,
+  PICK,
+  buildBulkEdit,
+  bulkSearch,
+  isEmptyForm,
+  movedOutOfScope,
+  parentMode,
+  parentModeValue,
+  summarize,
+} from './bulk';
 import type { BulkForm, Filters } from './bulk';
 
 const form = (over: Partial<BulkForm> = {}): BulkForm => ({ ...EMPTY_FORM, ...over });
@@ -86,9 +98,49 @@ describe('buildBulkEdit', () => {
   });
 });
 
+describe('the parent edit, half chosen', () => {
+  it('never sends the half-chosen state', () => {
+    expect(buildBulkEdit(KEYS, form({ parent: PICK }))).toBeNull();
+    const request = buildBulkEdit(KEYS, form({ parent: PICK, statusId: 3 }))!;
+    expect(request).not.toHaveProperty('parentKey');
+    expect(JSON.stringify(request)).not.toContain(PICK);
+  });
+
+  it('sends a key, and still sends the empty string to clear', () => {
+    expect(buildBulkEdit(KEYS, form({ parent: 'AER-9' }))!.parentKey).toBe('AER-9');
+    expect(buildBulkEdit(KEYS, form({ parent: '' }))!.parentKey).toBe('');
+  });
+});
+
+describe('parentMode', () => {
+  it('names the three choices', () => {
+    expect(parentMode(KEEP)).toBe('keep');
+    expect(parentMode('')).toBe('none');
+    expect(parentMode(PICK)).toBe('issue');
+    expect(parentMode('AER-9')).toBe('issue');
+  });
+
+  it('round-trips each mode', () => {
+    for (const mode of ['keep', 'none', 'issue'] as const) {
+      expect(parentMode(parentModeValue(mode, KEEP))).toBe(mode);
+      expect(parentMode(parentModeValue(mode, 'AER-9'))).toBe(mode);
+    }
+  });
+
+  it('keeps a key already held when "an issue" is chosen again, and otherwise waits for a pick', () => {
+    expect(parentModeValue('issue', 'AER-9')).toBe('AER-9');
+    expect(parentModeValue('issue', PICK)).toBe(PICK);
+    expect(parentModeValue('issue', KEEP)).toBe(PICK);
+    expect(parentModeValue('issue', '')).toBe(PICK);
+    expect(parentModeValue('keep', 'AER-9')).toBe(KEEP);
+    expect(parentModeValue('none', 'AER-9')).toBe('');
+  });
+});
+
 describe('isEmptyForm', () => {
   it('is true only for a form that would change nothing', () => {
     expect(isEmptyForm(EMPTY_FORM)).toBe(true);
+    expect(isEmptyForm(form({ parent: PICK }))).toBe(true);
     expect(isEmptyForm(form({ type: 'task' }))).toBe(false);
     expect(isEmptyForm(form({ parent: '' }))).toBe(false);
     expect(isEmptyForm(form({ setReady: true }))).toBe(false);
@@ -169,6 +221,10 @@ describe('bulkSearch', () => {
     expect(bulkSearch(filters({ parentKey: '' }), SCOPE).parentKey).toBe('');
     expect(bulkSearch(filters({ parentKey: KEEP }), SCOPE).parentKey).toBeNull();
     expect(bulkSearch(filters({ parentKey: 'AER-9' }), SCOPE).parentKey).toBe('AER-9');
+  });
+
+  it('reads a half-chosen parent filter as "any parent"', () => {
+    expect(bulkSearch(filters({ parentKey: PICK }), SCOPE).parentKey).toBeNull();
   });
 
   it('trims the text and drops it when nothing is left', () => {

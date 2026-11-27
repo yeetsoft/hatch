@@ -411,7 +411,12 @@ last seven days. A "does not hold" or "cannot tell" verdict between two
 
 A row is the ambition's title, linking to the ambition's own page, its
 project key and its stage as a pill, and under them one sentence saying what
-the ambition needs or waits for. Beside that, "N capabilities" with a bar and a
+the ambition needs or waits for. Under that comes the summary: the first
+sentence of the ambition's description as plain text, in ink, cut at 200
+characters with an ellipsis. It skips what is not prose: comments, fenced
+code, headings, tables and rules. A list marker or a `>` is dropped, a link
+keeps its words and an image goes. An ambition with no description, or none
+that holds a sentence, has no such line. Beside that, "N capabilities" with a bar and a
 legend: one segment and one legend entry per count that is not zero, each in
 its own colour, the segments in proportion to each other. An ambition with no
 capabilities says so instead: "This ambition has no capabilities yet." Last,
@@ -424,13 +429,28 @@ tab's scope, the page says in two sentences what an ambition is - "An ambition i
 driving at, broken into capabilities that are each checked against the trunk
 on every pass. A person starts one by saying what they want, and a session
 shapes it." - and offers the same press as the heading, in place of a bare
-"No ambition in scope." Each row is a card, and its three parts sit
-on three columns set once for the whole list, so the head, the capabilities
-and the epics start at the same place on every row, with their first lines
-level; in the epics, the column and the capability numbers also line up from
-one epic to the next. On a phone the three parts of a row, and
-the words of a line in the first tile, stack one above the other instead of
-running side by side.
+"No ambition in scope." Last comes a fourth part, **On you**, which says what
+waits on the reader and what the ambition has cost. It reads "1 decision" or
+"N decisions": the open hold-level questions on the ambition and on everything
+beneath it that the reader may see. Questions at the build or merge level,
+answered ones and ones on closed issues are not counted. Pressing the count
+opens the Ballot under the tab's scope; the row does not name the issue a
+question holds, and the Ballot does. With none, it says "No decision waits on
+you." in muted words. The count ignores the tab's project filter, as the
+row's open epics do, so it can count a question in another project that the
+tile above and a narrowed Ballot leave out; the same holds for a question
+beneath an issue the reader cannot see. Below it is one budget line: "41%
+spent" against a budget, "$12.50 spent" with none, and "Budget used up: 104%
+spent" once the budget is spent. It leaves out the note about sessions that
+carried no price, which the ambition's own page gives.
+
+Each row is a card, and its four parts sit on four columns set once for the
+whole list, so the head, the capabilities, the epics and what is on the reader
+start at the same place on every row, with their first lines level; in the
+epics, the column and the capability numbers also line up from one epic to the
+next. On a phone the four parts of a row, and the words of a line in the first
+tile, stack one above the other instead of running side by side, and nothing
+scrolls sideways.
 
 An ambition's own page draws the same stage pill and sentence, and the same
 capability bar and legend, in the header card right after Details - narrowed
@@ -1110,7 +1130,11 @@ project, type, status, parent, ancestor, text - then applies one edit to
 every result still ticked when the button is pressed, not to whatever the
 filter would return if run again later. In a scoped tab its Project filter and
 results are the scope's, while *move to project* still offers every project; an
-issue moved out of scope leaves the table and is named in the result.
+issue moved out of scope leaves the table and is named in the result. The
+Parent and Ancestor filters and the Parent edit each find any issue, closed
+ones included, by key, number or title words, within the tab's scope; the
+Parent filter and edit keep their *any* / *leave alone* and *no parent*
+choices beside *An issue*.
 
 ## Attachments
 

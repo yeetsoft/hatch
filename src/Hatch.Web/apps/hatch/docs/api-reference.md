@@ -747,7 +747,7 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | GET | `/go-to` | The first issues a typed number, key, whole key or title words name, quickly at any size of board |
 | GET | `/plan` | Every epic's and ambition's rollup, the Plan page's one request; a tree may cross projects |
 | GET | `/plan/{key}` | One issue's rollup and its children's, a child in another project included |
-| GET | `/ambitions` | Every ambition with its stage, its capabilities counted four ways and the epics open under it, grouped by stage; takes a repeatable `projectId`, or narrows to one ambition's `key` |
+| GET | `/ambitions` | Every ambition with its stage, its capabilities counted four ways, the epics open under it, a summary of its description, the hold questions waiting under it and its budget, grouped by stage; takes a repeatable `projectId`, or narrows to one ambition's `key` |
 | GET | `/ambitions/changes` | What changed under the caller's ambitions since an instant: capabilities that now hold, epics carved, decisions made without a person, hold questions still open; takes `since` and a repeatable `projectId` |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
@@ -805,7 +805,15 @@ true), `StageWhy` (one sentence saying what the ambition needs or waits for),
 `Limit` (the
 ambition's `wipLimit`, read as one where it is unset), `Capabilities`,
 `Holds`, `InFlight`, `WaitsOnPerson` and `NotStarted` (the four counts,
-adding up to `Capabilities`), `NewlyHolding` (of `Holds`, those whose unbroken run of holds began within the last seven days), `Open` (its open epics, in rank order), and
+adding up to `Capabilities`), `NewlyHolding` (of `Holds`, those whose unbroken run of holds began within the last seven days), `Open` (its open epics, in rank order),
+`Summary` (the first sentence of the description as plain text, at most 200
+characters, with an ellipsis where it was cut, and an empty string where the
+ambition has none), `Decisions` (the open hold-level questions on the
+ambition and on everything beneath it that the reader may see: other levels,
+answered questions and ones on closed issues are not counted, and
+`projectId` does not narrow it, as it does not narrow `Open`), `Budget` (an
+`IssueBudgetDto`, the same as `GET /issues/{key}/budget` answers, worked out
+for every ambition and not only a running one), and
 `ChildBeyondScope` (as `/plan` reads it: some child sits in a project the
 caller's scope does not hold). `Open` carries one `AmbitionOpenEpicDto` per
 open epic: `Key`, `ProjectKey`, `Title`, `StatusId`, `StatusName`, `Serves`
